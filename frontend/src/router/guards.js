@@ -15,8 +15,13 @@ export function setupGuards(router) {
       return { path: '/login' };
     }
 
-    if ((to.path === '/staff' || to.path === '/actividad') && !auth.esJefe) {
+    if (to.path === '/actividad' && !auth.esJefe) {
       return { path: '/empleados' };
+    }
+
+    // La pestaña Staff de Configuración es solo para el JEFE
+    if (to.path === '/configuracion' && to.query.tab === 'staff' && !auth.esJefe) {
+      return { path: '/configuracion' };
     }
   });
 }

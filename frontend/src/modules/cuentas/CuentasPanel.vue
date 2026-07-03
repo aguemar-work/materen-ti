@@ -5,6 +5,7 @@ import { useCuentasStore } from '../../stores/cuentas.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { revelarPassword, crearEntrega } from '../../api/passwords.js';
 import { showToast } from '../../core/toast.js';
+import { formatFecha } from '../../core/formatters.js';
 import CuentaForm from './CuentaForm.vue';
 
 const props = defineProps({
@@ -220,11 +221,11 @@ onMounted(async () => {
           <tr v-for="cuenta in lista" :key="cuenta.asignacion_id">
             <td>
               <span class="user-name">{{ cuenta.plataforma_nombre }}</span>
-              <span v-if="cuenta.tipo_cuenta === 'compartida'" class="badge-compartida" title="Cuenta compartida: varios usuarios a la vez">compartida</span>
-              <span v-else-if="cuenta.tipo_cuenta === 'reutilizable'" class="badge-compartida" title="Cuenta reutilizable: se hereda entre empleados">reutilizable</span>
+              <span v-if="cuenta.tipo_cuenta === 'compartida'" class="badge badge--sky badge-inline" title="Cuenta compartida: varios usuarios a la vez">compartida</span>
+              <span v-else-if="cuenta.tipo_cuenta === 'reutilizable'" class="badge badge--sky badge-inline" title="Cuenta reutilizable: se hereda entre empleados">reutilizable</span>
               <span
                 v-if="cuenta.requiere_rotacion"
-                class="badge-rotar"
+                class="badge badge--warning badge-inline"
                 title="Un titular anterior dejó esta cuenta y la contraseña no se ha cambiado"
               >
                 <i class="ti ti-alert-triangle"></i> Rotar contraseña
@@ -345,24 +346,22 @@ onMounted(async () => {
         <p class="traspaso-info">{{ cuentaHistorial?.usuario }}</p>
         <div v-if="cargandoHistorial" class="no-results">Cargando historial...</div>
         <div v-else-if="historialItems.length === 0" class="no-results">Sin historial registrado.</div>
-        <table v-else class="historial-table">
-          <thead>
-            <tr>
-              <th>Empleado</th>
-              <th>Desde</th>
-              <th>Hasta</th>
-              <th>Notas</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="h in historialItems" :key="h.id" :class="{ 'row-activa': h.activa }">
-              <td>{{ h.empleado_nombre }}</td>
-              <td>{{ h.fecha_inicio }}</td>
-              <td>{{ h.fecha_fin ?? '—' }}</td>
-              <td class="notas-hist">{{ h.notas || '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div v-else class="timeline">
+          <div v-for="h in historialItems" :key="h.id" class="timeline-item">
+            <span class="timeline-dot" :class="h.activa ? 'timeline-dot--active' : 'timeline-dot--closed'"></span>
+            <div class="timeline-content">
+              <div class="timeline-title">
+                {{ h.empleado_nombre }}
+                <span v-if="h.activa" class="badge badge--success badge-inline">Activa</span>
+              </div>
+              <div class="timeline-meta">
+                Desde {{ formatFecha(h.fecha_inicio) }}
+                <template v-if="h.fecha_fin"> · hasta {{ formatFecha(h.fecha_fin) }}</template>
+              </div>
+              <div v-if="h.notas" class="timeline-notas">{{ h.notas }}</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -447,32 +446,11 @@ onMounted(async () => {
 
 .cuentas-error { color: var(--color-danger); }
 
-.badge-compartida {
-  display: inline-block;
+/* Estructura y color: sistema de badges global (.badge + .badge--X);
+   aquí solo el ajuste de este contexto: separación del texto vecino. */
+.badge-inline {
   margin-left: 6px;
-  padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 4px;
-  background: #e0f2fe;
-  color: #0369a1;
   vertical-align: middle;
-}
-
-.badge-rotar {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 6px;
-  padding: 1px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 20px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  color: #b45309;
-  vertical-align: middle;
-  white-space: nowrap;
 }
 
 /* Modales internos */
@@ -489,31 +467,5 @@ onMounted(async () => {
   color: var(--color-text-secondary);
 }
 
-.historial-table {
-  width: 100%;
-  font-size: 13px;
-  border-collapse: collapse;
-}
-
-.historial-table th,
-.historial-table td {
-  text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.historial-table th {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  font-weight: 600;
-}
-
-.row-activa td {
-  background: color-mix(in srgb, #10b981 7%, transparent);
-}
-
-.notas-hist {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
+/* Estructura del historial: sistema de timeline global (main.css) */
 </style>

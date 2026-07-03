@@ -1,36 +1,103 @@
 
+    /* ============================================================
+       Sistema de tema — TODOS los colores del panel viven aquí.
+       Tema claro en :root; tema oscuro en [data-theme="dark"].
+       Para cambiar la identidad (ej: color de marca) basta ajustar
+       los --color-accent* en ambos bloques.
+       ============================================================ */
     :root {
-      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      --color-primary: var(--color-accent);
+      /* Tipografía estilo Meta: pila del sistema operativo.
+         Windows → Segoe UI · macOS/iOS → San Francisco · Android → Roboto */
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas,
+                   'Liberation Mono', monospace;
 
-      --color-bg: #f0f2f7;
-      --color-bg-elevated: #ffffff;
-      --color-bg-subtle: #f8f9fc;
-      --color-bg-hover: #eef1f8;
+      /* Escala tipográfica (usar estos tokens en pantallas nuevas) */
+      --fs-xs: 11px;    /* badges, headers de tabla uppercase */
+      --fs-sm: 12px;    /* labels secundarios, metadatos */
+      --fs-base: 13px;  /* botones, inputs, celdas, nav */
+      --fs-md: 14px;    /* body */
+      --fs-lg: 15px;    /* títulos de toolbar/sección */
+      --fs-xl: 17px;    /* títulos de modal */
+      --fs-2xl: 20px;   /* títulos de página/login */
+      --fs-stat: 26px;  /* valores de stat cards */
 
-      --color-text-primary: #0f172a;
-      --color-text-secondary: #64748b;
-      --color-text-tertiary: #94a3b8;
+      /* Marca Materen: Cyprus #004741 + Sand #f0ede4 */
+      --color-bg: #f0ede4;            /* sand */
+      --color-bg-elevated: #fdfcf8;   /* blanco cálido para tarjetas */
+      --color-bg-subtle: #f7f4ec;
+      --color-bg-hover: #eceadf;
+
+      --color-text-primary: #1d2420;
+      --color-text-secondary: #68716b;
+      --color-text-tertiary: #98a19a;
       --color-text-inverse: #ffffff;
 
-      --color-border: #e2e8f0;
-      --color-border-subtle: #f1f5f9;
+      --color-border: #ded9cb;
+      --color-border-subtle: #eae7db;
 
-      --color-accent: #4f46e5;
-      --color-accent-hover: #4338ca;
-      --color-accent-subtle: #eef2ff;
-      --color-accent-text: #4338ca;
+      /* Identidad */
+      --color-accent: #004741;        /* cyprus */
+      --color-accent-2: #0d9488;      /* teal, extremo de gradientes */
+      --color-accent-soft: #14b8a6;   /* iconos y detalles sobre fondos oscuros */
+      --color-accent-hover: #00332f;
+      --color-accent-subtle: #e2ece8;
+      --color-accent-text: #00594f;
 
-      --color-danger: #dc2626;
-      --color-danger-bg: #fef2f2;
-      --color-danger-border: #fecaca;
+      /* ============================================================
+         Familias semánticas — fórmula consistente (mismo H por
+         familia; bg/text/border comparten S/L, solo cambia el hue).
+         Claro:  bg H,S35-55%,L90-93% · text H,S45-60%,L28-35% · border H,S30-45%,L75-80%
+         Todos los pares bg/text verificados ≥5.3:1 (WCAG AA, la
+         mayoría en rango AAA). Ver contraste.mjs para el script.
+         ============================================================ */
 
-      --color-success-bg: #ecfdf5;
-      --color-success-text: #047857;
-      --color-warning-bg: #fffbeb;
-      --color-warning-text: #b45309;
-      --color-neutral-bg: #f1f5f9;
-      --color-neutral-text: #475569;
+      /* rojo = crítico */
+      --color-danger: #dc2626;              /* vivo: iconos/botones sólidos */
+      --color-danger-bg: #f7e4de;
+      --color-danger-text: #8a3020;
+      --color-danger-border: #e3b8a9;
+
+      /* verde = ok/disponible */
+      --color-success: #16a34a;             /* vivo: iconos/botones sólidos */
+      --color-success-bg: #e8f0e0;
+      --color-success-text: #33552c;
+      --color-success-border: #c3d6b3;
+
+      /* ámbar = advertencia (rotar, por vencer) */
+      --color-warning-bg: #f7ecd6;
+      --color-warning-text: #7a4e0c;
+      --color-warning-text-strong: #5c3b09; /* énfasis extra sobre warning-bg */
+      --color-warning-bg-strong: #f0dcae;   /* énfasis extra: chip más saturado */
+      --color-warning-border: #e0c894;
+
+      /* azul = informativo (asignado, entregas) */
+      --color-info-bg: #dfeaf5;
+      --color-info-text: #215e85;
+      --color-info-border: #a9cbe3;
+
+      /* morado = ubicaciones */
+      --color-purple-bg: #e7e3f5;
+      --color-purple-text: #4c3a85;
+      --color-purple-border: #c3b6e3;
+
+      /* celeste = etiquetas de tipo de cuenta */
+      --color-sky-bg: #dcf0f4;
+      --color-sky-text: #1e6478;
+      --color-sky-border: #a0d3e0;
+
+      /* teal = correos/garantías */
+      --color-teal-bg: #dcf0e8;
+      --color-teal-text: #1f6b52;
+      --color-teal-bg-subtle: #eaf7f0;      /* variante más clara para fondos grandes */
+      --color-teal-border: #a0d9c0;
+
+      /* gris = baja/inactivo genérico */
+      --color-neutral-bg: #eceadf;
+      --color-neutral-text: #474d40;
+      --color-neutral-border: #ded9cb;
 
       --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
       --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
@@ -45,15 +112,90 @@
       --max-w: 1280px;
     }
 
+    /* ── Tema oscuro ─────────────────────────────────────────────
+       Se activa con <html data-theme="dark">. El sidebar ya es
+       oscuro en ambos temas, así que no cambia. */
+    [data-theme="dark"] {
+      /* Cyprus nocturno: fondos verde-noche, textos tintados de sand */
+      --color-bg: #0a1512;
+      --color-bg-elevated: #11221d;
+      --color-bg-subtle: #0d1a16;
+      --color-bg-hover: #1a2f29;
+
+      --color-text-primary: #eae7dc;   /* sand claro */
+      --color-text-secondary: #93a39b;
+      --color-text-tertiary: #5f6f67;
+      --color-text-inverse: #0a1512;
+
+      --color-border: #23403a;
+      --color-border-subtle: #182e28;
+
+      /* El cyprus puro es muy oscuro para fondo oscuro:
+         el acento sube a teal luminoso manteniendo la familia */
+      --color-accent: #0d9488;
+      --color-accent-2: #10b981;
+      --color-accent-soft: #2dd4bf;
+      --color-accent-hover: #14b8a6;
+      --color-accent-subtle: rgba(20, 184, 166, 0.14);
+      --color-accent-text: #5eead4;
+
+      /* Fórmula oscuro: bg H,S25-30%,L20-22% · text H,S45-60%,L75-80% ·
+         border H,S25-30%,L35-38%. Mismos hues que el tema claro. */
+      --color-danger: #ef4444;
+      --color-danger-bg: #3a221c;
+      --color-danger-text: #e39a83;
+      --color-danger-border: #5c3527;
+
+      --color-success: #22c55e;
+      --color-success-bg: #26301f;
+      --color-success-text: #a8d18e;
+      --color-success-border: #445c37;
+
+      --color-warning-bg: #3a2c15;
+      --color-warning-text: #e0b566;
+      --color-warning-text-strong: #f3cf8f;
+      --color-warning-bg-strong: #4a3819;
+      --color-warning-border: #5c471f;
+
+      --color-info-bg: #1c2c3a;
+      --color-info-text: #82bce3;
+      --color-info-border: #2f4a5c;
+
+      --color-purple-bg: #26213a;
+      --color-purple-text: #b6a3e3;
+      --color-purple-border: #3f355c;
+
+      --color-sky-bg: #1a2f33;
+      --color-sky-text: #7ecbe0;
+      --color-sky-border: #2e4f57;
+
+      --color-teal-bg: #1a332a;
+      --color-teal-text: #7ed9b8;
+      --color-teal-bg-subtle: #16281f;
+      --color-teal-border: #2e5c4c;
+
+      --color-neutral-bg: #26281f;
+      --color-neutral-text: #c2c7b5;
+      --color-neutral-border: #3f4536;
+
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    html[data-theme="dark"] { color-scheme: dark; }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: var(--font-sans);
-      font-size: 14px;
+      font-size: var(--fs-md);
       color: var(--color-text-primary);
       background: var(--color-bg);
       line-height: 1.5;
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     .sr-only {
@@ -98,13 +240,13 @@
       width: 38px;
       height: 38px;
       border-radius: var(--radius-md);
-      background: linear-gradient(135deg, var(--color-accent) 0%, #7c3aed 100%);
+      background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       color: white;
       font-size: 20px;
-      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+      box-shadow: 0 4px 12px rgba(0, 71, 65, 0.3);
     }
 
     .brand-text h1 {
@@ -121,6 +263,35 @@
     /* ── Layout ── */
     .page {
       padding: 1.5rem;
+    }
+
+    /* ── Grilla de 12 columnas ───────────────────────────────────
+       Sistema de layout del panel: las vistas componen sobre 12
+       columnas con .col-N (span). Colapso responsive automático:
+       ≤1200px se ensancha, ≤700px todo apila. */
+    .grid-12 {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .col-2  { grid-column: span 2; }
+    .col-3  { grid-column: span 3; }
+    .col-4  { grid-column: span 4; }
+    .col-6  { grid-column: span 6; }
+    .col-8  { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
+
+    @media (max-width: 1200px) {
+      .col-2 { grid-column: span 4; }
+      .col-3 { grid-column: span 6; }
+      .col-4 { grid-column: span 6; }
+      .col-8 { grid-column: span 12; }
+    }
+
+    @media (max-width: 700px) {
+      .col-2 { grid-column: span 6; }
+      .col-3, .col-4, .col-6 { grid-column: span 12; }
     }
 
     /* ── Stats ── */
@@ -204,13 +375,75 @@
       gap: 8px;
     }
 
-    .badge-count {
-      background: var(--color-accent-subtle);
-      color: var(--color-accent-text);
-      border-radius: 20px;
-      padding: 2px 10px;
-      font-size: 11px;
+    /* ============================================================
+       Badges — sistema unificado (base + modificador).
+       Antes: 5 convenciones distintas (.status/.s-*, .sit-*,
+       .badge-rotar, .pill, .badge-count) con paddings y radios
+       ligeramente distintos entre sí. Ahora todas comparten la
+       misma estructura; solo cambia el color por familia.
+       Las clases antiguas quedan como ALIAS (agrupadas en el mismo
+       selector) para no romper markup existente — los templates
+       activos ya fueron migrados a `.badge .badge--X`.
+       ============================================================ */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: var(--fs-xs);
       font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .badge--success, .s-activo, .sit-disponible {
+      background: var(--color-success-bg); color: var(--color-success-text);
+    }
+    .badge--warning, .s-suspendido, .sit-reparacion, .badge-rotar {
+      background: var(--color-warning-bg); color: var(--color-warning-text);
+    }
+    .badge--danger, .sit-perdido, .badge-sin-devolver {
+      background: var(--color-danger-bg); color: var(--color-danger-text);
+    }
+    .badge--info, .sit-asignado {
+      background: var(--color-info-bg); color: var(--color-info-text);
+    }
+    .badge--purple, .sit-ubicacion {
+      background: var(--color-purple-bg); color: var(--color-purple-text);
+    }
+    .badge--sky {
+      background: var(--color-sky-bg); color: var(--color-sky-text);
+    }
+    .badge--teal {
+      background: var(--color-teal-bg); color: var(--color-teal-text);
+    }
+    .badge--neutral, .s-inactivo, .sit-baja, .pill {
+      background: var(--color-neutral-bg); color: var(--color-neutral-text);
+    }
+    /* Acento de marca: contadores y chips neutros de identidad (no es un estado) */
+    .badge--accent, .badge-count {
+      background: var(--color-accent-subtle); color: var(--color-accent-text);
+    }
+
+    /* .status: mismo patrón + indicador de punto (para estados "vivos":
+       Activo/Inactivo/Suspendido). Combinar con un .badge--X para el color:
+       <span class="status badge--success">Activo</span> */
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: var(--fs-xs);
+      font-weight: 600;
+    }
+
+    .status::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
     }
 
     .toolbar-actions {
@@ -239,14 +472,14 @@
 
     .btn:hover {
       background: var(--color-bg-subtle);
-      border-color: #cbd5e1;
+      border-color: var(--color-text-tertiary);
     }
 
     .btn-primary {
       background: var(--color-accent);
       color: var(--color-text-inverse);
       border-color: var(--color-accent);
-      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+      box-shadow: 0 2px 8px rgba(0, 71, 65, 0.25);
     }
 
     .btn-primary:hover {
@@ -309,7 +542,7 @@
     .filters select:focus {
       outline: none;
       border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.18);
     }
 
     /* ── Table ── */
@@ -366,51 +599,19 @@
 
     .text-muted { color: var(--color-text-secondary); }
 
-    /* ── Status & pills ── */
-    .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 3px 10px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 600;
-    }
-
-    .status::before {
-      content: '';
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-
-    .s-activo { background: var(--color-success-bg); color: var(--color-success-text); }
-    .s-inactivo { background: var(--color-neutral-bg); color: var(--color-neutral-text); }
-    .s-suspendido { background: var(--color-warning-bg); color: var(--color-warning-text); }
-
+    /* ── Status & pills ──
+       Definiciones movidas al sistema de badges unificado (arriba).
+       .pills sigue viva como wrapper de layout (no es un badge en sí). */
     .pills { display: flex; flex-wrap: wrap; gap: 4px; }
 
-    .pill {
-      background: var(--color-accent-subtle);
-      color: var(--color-accent-text);
-      padding: 2px 8px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 500;
-    }
-
-    .pill-more {
-      background: var(--color-neutral-bg);
-      color: var(--color-neutral-text);
-    }
+    .pill-more { background: var(--color-neutral-bg); color: var(--color-neutral-text); }
 
     /* ── Avatar ── */
     .avatar {
       width: 36px;
       height: 36px;
       border-radius: 50%;
-      background: linear-gradient(135deg, var(--color-accent-subtle), #e0e7ff);
+      background: linear-gradient(135deg, var(--color-accent-subtle), var(--color-accent-subtle));
       display: flex;
       align-items: center;
       justify-content: center;
@@ -451,6 +652,149 @@
     }
 
     /* ── Empty state ── */
+    /* Error de formulario/acción — persistente, a diferencia del toast.
+       Úsalo para mensajes que el usuario debe leer completos: rechazos de
+       trigger de BD (tope de asientos, doble titular activo, etc.) o
+       validación. Antes duplicado idéntico en 10 módulos. */
+    .form-error {
+      color: var(--color-danger-text);
+      background: var(--color-danger-bg);
+      border: 1px solid var(--color-danger-border);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      font-size: var(--fs-base);
+      margin: 0;
+    }
+
+    .form-grid .form-error { grid-column: 1 / -1; }
+
+    /* ── Timeline — historial de asignaciones ─────────────────────
+       "El corazón del sistema" (README): quién tuvo qué acceso y
+       cuándo. Alternativa a .table-wrap para ese bloque específico
+       (ver historial de una cuenta, equipo o empleado). */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .timeline-item {
+      display: flex;
+      gap: 12px;
+      padding-bottom: 16px;
+      position: relative;
+    }
+
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 20px;
+      bottom: 0;
+      width: 1px;
+      background: var(--color-border);
+    }
+
+    .timeline-item:last-child::before { display: none; }
+
+    .timeline-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 3px;
+    }
+
+    .timeline-dot--active { background: var(--color-success-text); }
+    .timeline-dot--closed { background: var(--color-text-tertiary); }
+
+    .timeline-content { font-size: var(--fs-base); flex: 1; min-width: 0; }
+
+    .timeline-title {
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+
+    .timeline-meta {
+      font-size: var(--fs-sm);
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
+    .timeline-notas {
+      font-size: var(--fs-sm);
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+      font-style: italic;
+    }
+
+    /* ── Barra de capacidad — asientos de licencia ────────────────
+       Reemplaza el texto suelto "2/3": comunica cercanía al límite
+       antes de que el trigger de BD bloquee la asignación. */
+    .capacity {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 80px;
+    }
+
+    .capacity-bar {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--color-bg-subtle);
+      overflow: hidden;
+    }
+
+    .capacity-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.2s;
+    }
+
+    .capacity-fill--ok      { background: var(--color-success-text); } /* <70% ocupado */
+    .capacity-fill--warning { background: var(--color-warning-text); } /* 70-99% */
+    .capacity-fill--full    { background: var(--color-danger-text); }  /* =100% */
+
+    .capacity-label {
+      font-size: var(--fs-xs);
+      color: var(--color-text-secondary);
+    }
+
+    /* ── Badge doble ───────────────────────────────────────────────
+       Para entidades con dos estados simultáneos e independientes
+       (ej. equipo: físico + derivado). No usar para variantes de un
+       mismo estado — solo cuando ambos datos aportan información. */
+    .badge-group {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      flex-wrap: nowrap;
+    }
+
+    /* ── Confirmación destructiva ──────────────────────────────────
+       Tratamiento visual para modales de acciones irreversibles (dar
+       de baja, cerrar asignación reutilizable). Decisión de producto
+       (jul 2026): sin paso extra de fricción (sin checkbox ni escribir
+       el nombre) — un borde y un ícono de alerta ya distinguen la
+       acción; el detalle de qué va a pasar vive en el cuerpo del modal.
+       No aplica a "revelar contraseña": es de lectura y ya queda
+       auditada en Actividad, no necesita este tratamiento. */
+    .confirm-dialog--destructive .modal {
+      border-top: 3px solid var(--color-danger-text);
+    }
+
+    .confirm-dialog--destructive .modal-icon {
+      background: var(--color-danger-bg);
+      color: var(--color-danger-text);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
     .empty {
       text-align: center;
       padding: 3.5rem 1.5rem;
@@ -572,7 +916,7 @@
     .tool-input:focus {
       outline: none;
       border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.18);
     }
 
     .form-group textarea {
@@ -737,7 +1081,7 @@
 .modal.modal-lg { max-width: 680px; }
 .modal.modal-detail { max-width: 620px; }
 .mode-badge { font-size: 11px; padding: 3px 8px; border-radius: 20px; background: var(--color-neutral-bg); color: var(--color-neutral-text); font-weight: 600; }
-.mode-badge.cloud { background: #ecfdf5; color: #047857; }
+.mode-badge.cloud { background: var(--color-success-bg); color: var(--color-success-text); }
 .cred-list { display: flex; flex-direction: column; gap: 10px; }
 .cred-card { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 12px; background: var(--color-bg-subtle); }
 .cred-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }

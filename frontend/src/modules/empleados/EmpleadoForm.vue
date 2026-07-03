@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
+import { normalizarTelefono } from '../../core/formatters.js';
 
 const props = defineProps({
   empleado: {
@@ -85,6 +86,12 @@ function copiarTelefono() {
   form.value.whatsapp = form.value.telefono;
 }
 
+// Al salir del campo, el número queda en formato internacional:
+// "987654321" → "+51987654321" (así wa.me siempre funciona)
+function normalizarCampo(campo) {
+  form.value[campo] = normalizarTelefono(form.value[campo]) || '';
+}
+
 function cancelar() {
   emit('cerrar', false);
 }
@@ -146,13 +153,25 @@ async function guardar() {
 
         <div class="form-group">
           <label for="telefono">Teléfono</label>
-          <input id="telefono" v-model="form.telefono" :disabled="guardando">
+          <input
+            id="telefono"
+            v-model="form.telefono"
+            placeholder="987 654 321 (el +51 se agrega solo)"
+            :disabled="guardando"
+            @blur="normalizarCampo('telefono')"
+          >
         </div>
 
         <div class="form-group">
           <label for="whatsapp">WhatsApp</label>
           <div class="whatsapp-row">
-            <input id="whatsapp" v-model="form.whatsapp" :disabled="guardando">
+            <input
+              id="whatsapp"
+              v-model="form.whatsapp"
+              placeholder="987 654 321 (el +51 se agrega solo)"
+              :disabled="guardando"
+              @blur="normalizarCampo('whatsapp')"
+            >
             <button class="btn" type="button" :disabled="guardando || !form.telefono" @click="copiarTelefono">
               Copiar del teléfono
             </button>
@@ -232,16 +251,6 @@ async function guardar() {
   padding: 8px 10px;
 }
 
-.form-error {
-  grid-column: 1 / -1;
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 13px;
-  margin: 0;
-}
 
 .modal-actions.full {
   grid-column: 1 / -1;

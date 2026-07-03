@@ -448,7 +448,7 @@ async function guardar() {
 }
 
 .combo-wrap input.combo-ok {
-  border-color: #16a34a;
+  border-color: var(--color-success);
 }
 
 .combo-check {
@@ -456,7 +456,7 @@ async function guardar() {
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: #16a34a;
+  color: var(--color-success);
   font-size: 16px;
   pointer-events: none;
 }
@@ -490,7 +490,7 @@ async function guardar() {
 }
 
 .combo-lista li:hover {
-  background: color-mix(in srgb, var(--color-primary, #4f46e5) 8%, transparent);
+  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent);
 }
 
 .combo-vacio {
@@ -532,16 +532,6 @@ async function guardar() {
   line-height: 1.4;
 }
 
-.form-error {
-  grid-column: 1 / -1;
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 13px;
-  margin: 0;
-}
 
 .modal-actions.full {
   grid-column: 1 / -1;

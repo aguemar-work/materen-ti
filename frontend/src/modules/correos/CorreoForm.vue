@@ -249,16 +249,6 @@ async function guardar() {
   flex: 1;
 }
 
-.form-error {
-  grid-column: 1 / -1;
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 13px;
-  margin: 0;
-}
 
 .modal-actions.full {
   grid-column: 1 / -1;

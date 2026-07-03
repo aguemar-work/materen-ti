@@ -62,10 +62,13 @@ async function confirmarBaja() {
 </script>
 
 <template>
-  <div class="modal-bg" @click.self="cancelar">
+  <div class="modal-bg confirm-dialog--destructive" @click.self="cancelar">
     <div class="modal baja-modal" role="dialog" aria-labelledby="baja-title">
       <div class="modal-title">
-        <span id="baja-title">Dar de baja a {{ nombreCompleto }}</span>
+        <span id="baja-title" class="baja-title-con-icono">
+          <span class="modal-icon"><i class="ti ti-user-off" aria-hidden="true"></i></span>
+          Dar de baja a {{ nombreCompleto }}
+        </span>
         <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
           <i class="ti ti-x" aria-hidden="true"></i>
         </button>
@@ -190,6 +193,12 @@ async function confirmarBaja() {
   max-width: 480px;
 }
 
+.baja-title-con-icono {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .baja-body {
   padding: 4px 24px 16px;
   display: flex;
@@ -216,7 +225,7 @@ async function confirmarBaja() {
   gap: 8px;
   font-size: 13px;
   color: var(--color-text-secondary);
-  background: var(--color-bg-subtle, #f8fafc);
+  background: var(--color-bg-subtle, var(--color-bg-subtle));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
@@ -237,9 +246,9 @@ async function confirmarBaja() {
   padding: 8px 12px;
 }
 
-.grupo-header--danger { background: #fef2f2; color: #b91c1c; }
-.grupo-header--ok     { background: #f0fdf4; color: #15803d; }
-.grupo-header--info   { background: #eff6ff; color: #1d4ed8; }
+.grupo-header--danger { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.grupo-header--ok     { background: var(--color-success-bg); color: var(--color-success-text); }
+.grupo-header--info   { background: var(--color-info-bg); color: var(--color-info-text); }
 
 .baja-grupo ul {
   list-style: none;
@@ -276,9 +285,9 @@ async function confirmarBaja() {
   align-items: flex-start;
   font-size: 12.5px;
   line-height: 1.45;
-  color: #92400e;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  color: var(--color-warning-text-strong);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
 }
@@ -294,28 +303,18 @@ async function confirmarBaja() {
 }
 
 .btn-danger {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
   color: #fff;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
-  border-color: #b91c1c;
+  background: var(--color-danger-text);
+  border-color: var(--color-danger-text);
 }
 
 .btn-danger:disabled {
   opacity: 0.65;
   cursor: not-allowed;
-}
-
-.form-error {
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 13px;
-  margin: 0;
 }
 </style>

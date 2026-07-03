@@ -4,12 +4,10 @@ import LoginView from '../modules/auth/LoginView.vue';
 import DashboardView from '../modules/dashboard/DashboardView.vue';
 import EmpleadosView from '../modules/empleados/EmpleadosView.vue';
 import EmpleadoDetalleView from '../modules/empleados/EmpleadoDetalleView.vue';
-import EmpresasView from '../modules/empresas/EmpresasView.vue';
-import PlataformasView from '../modules/plataformas/PlataformasView.vue';
+import ConfiguracionView from '../modules/configuracion/ConfiguracionView.vue';
 import CorreosView from '../modules/correos/CorreosView.vue';
 import LicenciasView from '../modules/licencias/LicenciasView.vue';
 import EquiposView from '../modules/equipos/EquiposView.vue';
-import StaffView from '../modules/staff/StaffView.vue';
 import ActividadView from '../modules/actividad/ActividadView.vue';
 import EntregaView from '../modules/entregas/EntregaView.vue';
 
@@ -42,15 +40,14 @@ const routes = [
     component: EmpleadoDetalleView,
   },
   {
-    path: '/empresas',
-    name: 'empresas',
-    component: EmpresasView,
+    path: '/configuracion',
+    name: 'configuracion',
+    component: ConfiguracionView,
   },
-  {
-    path: '/plataformas',
-    name: 'plataformas',
-    component: PlataformasView,
-  },
+  // Rutas antiguas → sus pestañas dentro de Configuración
+  { path: '/empresas', redirect: { path: '/configuracion', query: { tab: 'empresas' } } },
+  { path: '/plataformas', redirect: { path: '/configuracion', query: { tab: 'plataformas' } } },
+  { path: '/staff', redirect: { path: '/configuracion', query: { tab: 'staff' } } },
   {
     path: '/correos',
     name: 'correos',
@@ -65,11 +62,6 @@ const routes = [
     path: '/equipos',
     name: 'equipos',
     component: EquiposView,
-  },
-  {
-    path: '/staff',
-    name: 'staff',
-    component: StaffView,
   },
   {
     path: '/actividad',

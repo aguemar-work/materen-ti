@@ -11,11 +11,11 @@ const cargando = ref(true);
 const filtroAccion = ref('');
 
 const ACCIONES = {
-  ver:             { label: 'Vio la contraseña',   icon: 'ti ti-eye',              clase: 'acc-ver' },
-  copiar:          { label: 'Copió la contraseña', icon: 'ti ti-copy',             clase: 'acc-copiar' },
-  enviar:          { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'acc-enviar' },
-  entrega_creada:  { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'acc-enviar' },
-  entrega_abierta: { label: 'Entrega abierta',     icon: 'ti ti-mailbox-opened',   clase: 'acc-abierta' },
+  ver:             { label: 'Vio la contraseña',   icon: 'ti ti-eye',              clase: 'badge--info' },
+  copiar:          { label: 'Copió la contraseña', icon: 'ti ti-copy',             clase: 'badge--accent' },
+  enviar:          { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'badge--success' },
+  entrega_creada:  { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'badge--success' },
+  entrega_abierta: { label: 'Entrega abierta',     icon: 'ti ti-mailbox-opened',   clase: 'badge--warning' },
 };
 
 const listaFiltrada = computed(() =>
@@ -107,7 +107,7 @@ onMounted(async () => {
                 <td class="text-muted fecha-cell">{{ formatFechaHora(r.created_at) }}</td>
                 <td>{{ r.user_email || '(empleado, vía enlace)' }}</td>
                 <td>
-                  <span class="badge-accion" :class="infoAccion(r.accion).clase">
+                  <span class="badge" :class="infoAccion(r.accion).clase">
                     <i :class="infoAccion(r.accion).icon"></i>
                     {{ infoAccion(r.accion).label }}
                   </span>
@@ -143,19 +143,5 @@ onMounted(async () => {
   font-size: 12.5px;
 }
 
-.badge-accion {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
-
-.acc-ver     { background: #eff6ff; color: #1d4ed8; }
-.acc-copiar  { background: #eef2ff; color: #4338ca; }
-.acc-enviar  { background: #f0fdf4; color: #15803d; }
-.acc-abierta { background: #fffbeb; color: #b45309; }
+/* Estructura y color: sistema de badges global (.badge + .badge--X) */
 </style>

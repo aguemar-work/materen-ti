@@ -47,9 +47,9 @@ function nombreCompleto(emp) {
 }
 
 function claseEstado(estado) {
-  if (estado === 'Activo') return 's-activo';
-  if (estado === 'Suspendido') return 's-suspendido';
-  return 's-inactivo';
+  if (estado === 'Activo') return 'badge--success';
+  if (estado === 'Suspendido') return 'badge--warning';
+  return 'badge--neutral';
 }
 
 function abrirNuevo() {
@@ -242,7 +242,7 @@ onMounted(async () => {
 .header-btns { display: flex; gap: 8px; align-items: center; }
 
 .fila-empleado { cursor: pointer; }
-.fila-empleado:hover td { background: var(--color-bg-hover, #f8fafc); }
+.fila-empleado:hover td { background: var(--color-bg-hover, var(--color-bg-subtle)); }
 
-.user-name--link { color: var(--color-primary, #4f46e5); }
+.user-name--link { color: var(--color-primary, var(--color-accent)); }
 </style>

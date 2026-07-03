@@ -40,6 +40,31 @@ export function trimText(val) {
   return clean(val);
 }
 
+// Normaliza teléfonos a formato internacional (Perú por defecto):
+//   "987 654 321"  → "+51987654321"   (celular peruano: 9 dígitos, empieza en 9)
+//   "51987654321"  → "+51987654321"
+//   "+51 987..."   → "+51987654321"   (ya tiene código: solo se limpia)
+//   otros formatos → solo dígitos, sin adivinar el país
+export function normalizarTelefono(val) {
+  if (val == null || val === '') return null;
+  const s = String(val).trim();
+  if (!s) return null;
+  const digitos = s.replace(/\D/g, '');
+  if (!digitos) return null;
+  if (s.startsWith('+')) return `+${digitos}`;
+  if (/^9\d{8}$/.test(digitos)) return `+51${digitos}`;
+  if (/^519\d{8}$/.test(digitos)) return `+${digitos}`;
+  return digitos;
+}
+
+// "+51987654321" → "+51 987 654 321" (solo para mostrar)
+export function formatTelefono(val) {
+  if (!val) return '';
+  const m = /^\+51(9\d{8})$/.exec(val);
+  if (m) return `+51 ${m[1].slice(0, 3)} ${m[1].slice(3, 6)} ${m[1].slice(6)}`;
+  return val;
+}
+
 // "2026-07-02" → "02/07/2026" (fechas de la BD, sin zona horaria)
 export function formatFecha(val) {
   if (!val) return '';

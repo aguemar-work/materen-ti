@@ -84,24 +84,8 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
   <div class="empresas-page">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-building" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Empresas</span>
-          </div>
-        </div>
-        <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva empresa
-        </button>
-      </div>
-    </header>
-
     <main class="page">
       <div class="card">
         <div class="card-toolbar">
@@ -109,6 +93,9 @@ onMounted(async () => {
             Empresas registradas
             <span class="badge-count">{{ listaFiltrada.length }} empresas</span>
           </div>
+          <button class="btn btn-primary" type="button" @click="abrirNueva">
+            <i class="ti ti-plus" aria-hidden="true"></i> Nueva empresa
+          </button>
         </div>
 
         <div class="filters">
@@ -217,16 +204,6 @@ onMounted(async () => {
   color: var(--color-danger);
 }
 
-.form-error {
-  grid-column: 1 / -1;
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 13px;
-  margin: 0;
-}
 
 .modal-actions.full {
   grid-column: 1 / -1;

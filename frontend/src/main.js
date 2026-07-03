@@ -6,6 +6,9 @@ import { setupGuards } from './router/guards.js';
 import { useAuthStore } from './stores/auth.js';
 import './styles/main.css';
 import { initToast } from './core/toast.js';
+import { initTema } from './core/tema.js';
+
+initTema();
 
 async function boot() {
   const app = createApp(App);

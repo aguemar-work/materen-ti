@@ -103,11 +103,13 @@ cuándo y si la contraseña se rotó después.
 │       ├── modules/           # una carpeta por módulo de UI
 │       │   ├── actividad/     # auditoría (solo JEFE)
 │       │   ├── auth/          # login + reestablecer contraseña (código por email)
+│       │   ├── configuracion/ # /configuracion con pestañas: Empresas, Plataformas,
+│       │   │                  #   Tipos de equipo, Ubicaciones, Staff (JEFE)
 │       │   ├── correos/       # cuentas reutilizables/compartidas
 │       │   ├── cuentas/       # panel de accesos de un empleado + formularios
 │       │   ├── dashboard/     # stats + pendientes accionables
 │       │   ├── empleados/     # lista, ficha (/empleados/:id), alta, baja
-│       │   ├── empresas/  plataformas/  staff/
+│       │   ├── empresas/  plataformas/  staff/   # paneles embebidos en Configuración
 │       │   ├── licencias/     # licencias de software con tope de asientos
 │       │   ├── equipos/       # inventario físico: entrega/devolución/hoja de vida
 │       │   └── entregas/      # página pública /entrega/:token
@@ -116,6 +118,8 @@ cuándo y si la contraseña se rotó después.
 ├── functions/
 │   └── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir
 ├── migrations/             # 001..010 — esquema completo, en orden, comentado
+├── docs/
+│   └── GUIA-UX-UI.md       # colores, tipografías, layout y componentes del panel
 ├── AGENTS.md               # contexto para agentes de código
 └── insforge.toml           # config del backend (auth por código, password min 6)
 ```

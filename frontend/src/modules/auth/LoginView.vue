@@ -335,7 +335,7 @@ async function onCambiarPassword() {
   border: none;
   padding: 0;
   font-size: 13px;
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary, var(--color-accent));
   cursor: pointer;
   align-self: center;
 }
@@ -357,9 +357,9 @@ async function onCambiarPassword() {
 }
 
 .login-aviso {
-  color: var(--color-success, #15803d);
-  background: var(--color-success-bg, #f0fdf4);
-  border: 1px solid var(--color-success-border, #bbf7d0);
+  color: var(--color-success, var(--color-success-text));
+  background: var(--color-success-bg, var(--color-success-bg));
+  border: 1px solid var(--color-success-border, var(--color-success-border));
   border-radius: var(--radius-md);
   padding: 8px 12px;
   font-size: 13px;

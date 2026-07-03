@@ -3,11 +3,19 @@ import { ref, computed, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { temaActual, alternarTema } from '../../core/tema.js';
 
 const router = useRouter();
 const auth = useAuthStore();
 
 const sidebarAbierto = ref(false);
+
+// ── Tema claro/oscuro ─────────────────────────────────────────
+const tema = ref(temaActual());
+
+function toggleTema() {
+  tema.value = alternarTema();
+}
 
 // ── Búsqueda global ───────────────────────────────────────────
 const busqueda = ref('');
@@ -76,16 +84,15 @@ const navItems = computed(() => {
   const items = [
     { path: '/dashboard', label: 'Dashboard', icon: 'ti ti-layout-dashboard' },
     { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
-    { path: '/empresas', label: 'Empresas', icon: 'ti ti-building' },
-    { path: '/plataformas', label: 'Plataformas', icon: 'ti ti-apps' },
     { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
     { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
     { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
   ];
   if (auth.esJefe) {
     items.push({ path: '/actividad', label: 'Actividad', icon: 'ti ti-activity' });
-    items.push({ path: '/staff', label: 'Staff', icon: 'ti ti-shield' });
   }
+  // Catálogos y administración (empresas, plataformas, tipos, ubicaciones, staff)
+  items.push({ path: '/configuracion', label: 'Configuración', icon: 'ti ti-settings' });
   return items;
 });
 
@@ -208,6 +215,14 @@ async function cerrarSesion() {
         <button
           class="sb-logout"
           type="button"
+          :title="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
+          @click="toggleTema"
+        >
+          <i :class="tema === 'dark' ? 'ti ti-sun' : 'ti ti-moon'" aria-hidden="true"></i>
+        </button>
+        <button
+          class="sb-logout"
+          type="button"
           title="Cerrar sesión"
           @click="cerrarSesion"
         >
@@ -237,17 +252,18 @@ async function cerrarSesion() {
 </template>
 
 <style scoped>
-/* ── Variables del sidebar ───────────────────────────────────── */
+/* ── Variables del sidebar ───────────────────────────────────────
+   Minimalista: el sidebar se funde con el fondo de la página
+   (sin panel oscuro, sin bordes). Hover/activo = tinte muy tenue,
+   nunca bordes ni indicadores. Sigue el tema claro/oscuro. */
 .sidebar {
   --sb-w: 240px;
-  --sb-bg: #111827;
-  --sb-text: #9ca3af;
-  --sb-text-strong: #f9fafb;
-  --sb-border: rgba(255, 255, 255, 0.08);
-  --sb-hover: rgba(255, 255, 255, 0.06);
-  --sb-active-bg: rgba(99, 102, 241, 0.18);
-  --sb-active-text: #c7d2fe;
-  --sb-active-border: #6366f1;
+  --sb-bg: var(--color-bg);
+  --sb-text: var(--color-text-secondary);
+  --sb-text-strong: var(--color-text-primary);
+  --sb-hover: var(--color-bg-hover);
+  --sb-active-bg: var(--color-accent-subtle);
+  --sb-active-text: var(--color-accent-text);
 }
 
 /* ── Layout raíz ─────────────────────────────────────────────── */
@@ -292,17 +308,18 @@ async function cerrarSesion() {
   padding: 8px 10px 8px 34px;
   font-size: 13px;
   color: var(--sb-text-strong);
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid var(--sb-border);
+  background: var(--color-bg-hover);
+  border: 1px solid transparent;
   border-radius: 8px;
   outline: none;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.sb-busqueda input::placeholder { color: var(--sb-text); }
+.sb-busqueda input::placeholder { color: var(--color-text-tertiary); }
 
 .sb-busqueda input:focus {
-  border-color: var(--sb-active-border);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border);
 }
 
 .sb-resultados {
@@ -311,9 +328,10 @@ async function cerrarSesion() {
   left: 14px;
   right: 14px;
   z-index: 300;
-  background: #fff;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
   max-height: 340px;
   overflow-y: auto;
   padding: 4px;
@@ -324,7 +342,7 @@ async function cerrarSesion() {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   padding: 8px 10px 3px;
 }
 
@@ -342,16 +360,16 @@ async function cerrarSesion() {
   font-size: 13px;
 }
 
-.sb-res-item:hover { background: #eef2ff; }
+.sb-res-item:hover { background: var(--color-accent-subtle); }
 
 .sb-res-item i {
-  color: #6366f1;
+  color: var(--color-accent-soft);
   font-size: 15px;
   flex-shrink: 0;
 }
 
 .sb-res-main {
-  color: #111827;
+  color: var(--color-text-primary);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -362,7 +380,7 @@ async function cerrarSesion() {
 
 .sb-res-sec {
   font-size: 11.5px;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -370,7 +388,7 @@ async function cerrarSesion() {
 .sb-res-vacio {
   padding: 14px 10px;
   font-size: 12.5px;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   text-align: center;
 }
 
@@ -379,8 +397,7 @@ async function cerrarSesion() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 18px 18px;
-  border-bottom: 1px solid var(--sb-border);
+  padding: 20px 18px 14px;
   flex-shrink: 0;
 }
 
@@ -388,14 +405,13 @@ async function cerrarSesion() {
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   font-size: 18px;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
 }
 
 .sb-logo-text {
@@ -425,7 +441,6 @@ async function cerrarSesion() {
   font-size: 13.5px;
   font-weight: 500;
   transition: background 0.15s, color 0.15s;
-  border-left: 3px solid transparent;
 }
 
 .sb-nav-item i {
@@ -441,7 +456,6 @@ async function cerrarSesion() {
 .sb-nav-item--active {
   background: var(--sb-active-bg);
   color: var(--sb-active-text);
-  border-left-color: var(--sb-active-border);
   font-weight: 600;
 }
 
@@ -454,7 +468,6 @@ async function cerrarSesion() {
 .sb-footer {
   flex-shrink: 0;
   padding: 12px 14px;
-  border-top: 1px solid var(--sb-border);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -472,7 +485,7 @@ async function cerrarSesion() {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -517,8 +530,8 @@ async function cerrarSesion() {
 }
 
 .sb-logout:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
+  background: var(--color-bg-hover);
+  color: var(--sb-text-strong);
 }
 
 /* ── Contenido principal ─────────────────────────────────────── */

@@ -3,7 +3,7 @@ import { createClient } from '@insforge/sdk';
 // aquí solo se envía a cifrar antes de guardar. Los listados ya no
 // traen contraseñas; se revelan bajo demanda (auditado) vía passwords.js
 import { cifrarPassword } from './passwords.js';
-import { toTitleCase, toLower, stripSpaces, onlyDigits, trimText } from '../core/formatters.js';
+import { toTitleCase, toLower, normalizarTelefono, onlyDigits, trimText } from '../core/formatters.js';
 
 let client;
 
@@ -829,6 +829,63 @@ export const insforgeApi = {
     return data;
   },
 
+  async updateUbicacion(id, datos) {
+    const { data, error } = await getClient().database
+      .from('ubicaciones')
+      .update({ nombre: toTitleCase(datos.nombre), descripcion: trimText(datos.descripcion) })
+      .eq('id', id)
+      .select('id, nombre, descripcion')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async softDeleteUbicacion(id) {
+    const { error } = await getClient().database
+      .from('ubicaciones')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  async createTipoEquipo(datos) {
+    const { data, error } = await getClient().database
+      .from('tipos_equipo')
+      .insert([{
+        id: datos.id,
+        nombre: trimText(datos.nombre),
+        campos_spec: datos.campos_spec || [],
+        accesorios_sugeridos: datos.accesorios_sugeridos || [],
+      }])
+      .select('id, nombre, campos_spec, accesorios_sugeridos')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateTipoEquipo(id, datos) {
+    const { data, error } = await getClient().database
+      .from('tipos_equipo')
+      .update({
+        nombre: trimText(datos.nombre),
+        campos_spec: datos.campos_spec || [],
+        accesorios_sugeridos: datos.accesorios_sugeridos || [],
+      })
+      .eq('id', id)
+      .select('id, nombre, campos_spec, accesorios_sugeridos')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async softDeleteTipoEquipo(id) {
+    const { error } = await getClient().database
+      .from('tipos_equipo')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
   // Asignación activa de un equipo (persona o ubicación), o null
   async asignacionActivaEquipo(equipoId) {
     const { data, error } = await getClient().database
@@ -1201,8 +1258,8 @@ function empleadoToRow(datos) {
     empresa_id:      datos.empresa_id,
     estado:          datos.estado,
     fecha_alta:      datos.fecha_alta,
-    telefono:        stripSpaces(datos.telefono),
-    whatsapp:        stripSpaces(datos.whatsapp),
+    telefono:        normalizarTelefono(datos.telefono),
+    whatsapp:        normalizarTelefono(datos.whatsapp),
     correo_personal: toLower(datos.correo_personal),
     cargo:           toTitleCase(datos.cargo),
     notas:           trimText(datos.notas),

@@ -42,21 +42,8 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
   <div class="staff-page">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-shield-lock" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Staff</span>
-          </div>
-        </div>
-      </div>
-    </header>
-
     <main class="page">
       <div class="card">
         <div class="card-toolbar">
@@ -101,14 +88,14 @@ onMounted(async () => {
                     <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
                   </select>
                   <span
-                    class="badge-rol"
-                    :class="miembro.rol === 'JEFE' ? 'rol-jefe' : 'rol-asistente'"
+                    class="badge badge-rol"
+                    :class="miembro.rol === 'JEFE' ? 'badge--purple' : 'badge--info'"
                   >
                     {{ miembro.rol }}
                   </span>
                 </td>
                 <td>
-                  <span class="status" :class="miembro.activo ? 's-activo' : 's-inactivo'">
+                  <span class="status" :class="miembro.activo ? 'badge--success' : 'badge--neutral'">
                     {{ miembro.activo ? 'Activo' : 'Inactivo' }}
                   </span>
                 </td>
@@ -139,24 +126,11 @@ onMounted(async () => {
   color: var(--color-danger);
 }
 
+/* Estructura y color vienen del sistema de badges global (.badge + .badge--X);
+   aquí solo el tratamiento único de este chip: versalitas para el rol. */
 .badge-rol {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.rol-jefe {
-  background: #ede9fe;
-  color: #6d28d9;
-}
-
-.rol-asistente {
-  background: #dbeafe;
-  color: #1d4ed8;
 }
 
 /* El select solo se muestra para JEFE, el badge siempre */

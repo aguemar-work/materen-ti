@@ -21,9 +21,9 @@ const hayPendientes = computed(
 );
 
 function claseEstado(estado) {
-  if (estado === 'Activo') return 's-activo';
-  if (estado === 'Suspendido') return 's-suspendido';
-  return 's-inactivo';
+  if (estado === 'Activo') return 'badge--success';
+  if (estado === 'Suspendido') return 'badge--warning';
+  return 'badge--neutral';
 }
 
 // A dónde lleva cada pendiente: cuentas personales → ficha del titular;
@@ -73,40 +73,47 @@ onMounted(async () => {
 
       <template v-else>
         <!-- Stats -->
-        <div class="stats-grid">
-          <div class="stat-card">
+        <div class="grid-12">
+          <div class="stat-card col-2">
             <div class="stat-icon stat-icon--blue"><i class="ti ti-users"></i></div>
             <div class="stat-info">
               <span class="stat-value">{{ stats.empleadosActivos }}</span>
               <span class="stat-label">Empleados activos</span>
             </div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card col-2">
             <div class="stat-icon stat-icon--gray"><i class="ti ti-users-minus"></i></div>
             <div class="stat-info">
               <span class="stat-value">{{ stats.empleadosTotal - stats.empleadosActivos }}</span>
               <span class="stat-label">Dados de baja</span>
             </div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card col-2">
             <div class="stat-icon stat-icon--indigo"><i class="ti ti-key"></i></div>
             <div class="stat-info">
               <span class="stat-value">{{ stats.cuentasAsignadas }}</span>
               <span class="stat-label">Cuentas asignadas</span>
             </div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card col-2">
             <div class="stat-icon stat-icon--teal"><i class="ti ti-mail-share"></i></div>
             <div class="stat-info">
               <span class="stat-value">{{ stats.correosCompartidos }}</span>
               <span class="stat-label">Correos compartidos</span>
             </div>
           </div>
-          <div class="stat-card" :class="{ 'stat-card--alerta': stats.cuentasPorRotar > 0 }">
+          <div class="stat-card col-2" :class="{ 'stat-card--alerta': stats.cuentasPorRotar > 0 }">
             <div class="stat-icon stat-icon--amber"><i class="ti ti-key-off"></i></div>
             <div class="stat-info">
               <span class="stat-value">{{ stats.cuentasPorRotar }}</span>
               <span class="stat-label">Contraseñas por rotar</span>
+            </div>
+          </div>
+          <div class="stat-card col-2" :class="{ 'stat-card--alerta': stats.licenciasPorVencer > 0 }">
+            <div class="stat-icon stat-icon--teal"><i class="ti ti-license"></i></div>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.licenciasPorVencer }}</span>
+              <span class="stat-label">Licencias por vencer</span>
             </div>
           </div>
         </div>
@@ -119,8 +126,8 @@ onMounted(async () => {
             <i class="ti ti-circle-check-filled"></i> Todo al día: sin contraseñas por rotar, licencias por vencer ni equipos sin devolver.
           </div>
 
-          <div v-else class="pendientes-grid">
-            <div v-if="pendientes.equiposSinDevolver.length" class="pend-card">
+          <div v-else class="grid-12">
+            <div v-if="pendientes.equiposSinDevolver.length" class="pend-card col-4">
               <div class="pend-header pend-header--equipos">
                 <i class="ti ti-devices-off"></i>
                 Equipos sin devolver (bajas)
@@ -140,7 +147,7 @@ onMounted(async () => {
               </RouterLink>
             </div>
 
-            <div v-if="pendientes.porRotar.length" class="pend-card">
+            <div v-if="pendientes.porRotar.length" class="pend-card col-4">
               <div class="pend-header pend-header--rotar">
                 <i class="ti ti-alert-triangle"></i>
                 Contraseñas por rotar
@@ -160,7 +167,7 @@ onMounted(async () => {
               </RouterLink>
             </div>
 
-            <div v-if="pendientes.sinPassword.length" class="pend-card">
+            <div v-if="pendientes.sinPassword.length" class="pend-card col-4">
               <div class="pend-header pend-header--sinpw">
                 <i class="ti ti-key-off"></i>
                 Cuentas sin contraseña
@@ -180,7 +187,7 @@ onMounted(async () => {
               </RouterLink>
             </div>
 
-            <div v-if="pendientes.licenciasPorVencer.length" class="pend-card">
+            <div v-if="pendientes.licenciasPorVencer.length" class="pend-card col-4">
               <div class="pend-header pend-header--lic">
                 <i class="ti ti-license"></i>
                 Licencias por vencer
@@ -203,7 +210,7 @@ onMounted(async () => {
               </RouterLink>
             </div>
 
-            <div v-if="pendientes.garantiasPorVencer.length" class="pend-card">
+            <div v-if="pendientes.garantiasPorVencer.length" class="pend-card col-4">
               <div class="pend-header pend-header--garantia">
                 <i class="ti ti-shield-check"></i>
                 Garantías por vencer
@@ -229,8 +236,8 @@ onMounted(async () => {
         <div class="section">
           <h2 class="section-title">Últimos empleados registrados</h2>
           <div v-if="recientes.length === 0" class="no-results">Sin empleados aún.</div>
-          <div v-else class="recientes-grid">
-            <div v-for="emp in recientes" :key="emp.id" class="emp-card">
+          <div v-else class="grid-12">
+            <div v-for="emp in recientes" :key="emp.id" class="emp-card col-3">
               <div class="emp-avatar">{{ emp.nombres[0] }}{{ emp.apellidos[0] }}</div>
               <div class="emp-info">
                 <span class="emp-nombre">{{ emp.nombres }} {{ emp.apellidos }}</span>
@@ -272,13 +279,6 @@ onMounted(async () => {
 
 .no-results { text-align: center; padding: 40px; color: var(--color-text-secondary); }
 
-/* Stats */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-}
-
 .stat-card {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
@@ -296,13 +296,13 @@ onMounted(async () => {
   font-size: 22px; flex-shrink: 0;
 }
 
-.stat-icon--blue   { background: #dbeafe; color: #1d4ed8; }
-.stat-icon--gray   { background: #f1f5f9; color: #64748b; }
-.stat-icon--indigo { background: #e0e7ff; color: #4338ca; }
-.stat-icon--teal   { background: #ccfbf1; color: #0f766e; }
-.stat-icon--amber  { background: #fef3c7; color: #b45309; }
+.stat-icon--blue   { background: var(--color-info-border); color: var(--color-info-text); }
+.stat-icon--gray   { background: var(--color-neutral-bg); color: var(--color-text-secondary); }
+.stat-icon--indigo { background: var(--color-accent-subtle); color: var(--color-accent-hover); }
+.stat-icon--teal   { background: var(--color-teal-bg); color: var(--color-teal-text); }
+.stat-icon--amber  { background: var(--color-warning-bg-strong); color: var(--color-warning-text); }
 
-.stat-card--alerta { border-color: #fde68a; }
+.stat-card--alerta { border-color: var(--color-warning-border); }
 
 .stat-info { display: flex; flex-direction: column; }
 .stat-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1; }
@@ -314,20 +314,14 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   font-size: 13.5px;
-  color: #15803d;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
   border-radius: var(--radius-lg, 12px);
   padding: 14px 16px;
 }
 
 .todo-ok i { font-size: 18px; }
-
-.pendientes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-}
 
 .pend-card {
   background: var(--color-bg-elevated);
@@ -347,11 +341,11 @@ onMounted(async () => {
   border-bottom: 1px solid var(--color-border);
 }
 
-.pend-header--rotar    { background: #fffbeb; color: #b45309; }
-.pend-header--sinpw    { background: #fef2f2; color: #b91c1c; }
-.pend-header--lic      { background: #eff6ff; color: #1d4ed8; }
-.pend-header--equipos  { background: #fef2f2; color: #b91c1c; }
-.pend-header--garantia { background: #f0fdfa; color: #0f766e; }
+.pend-header--rotar    { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.pend-header--sinpw    { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.pend-header--lic      { background: var(--color-info-bg); color: var(--color-info-text); }
+.pend-header--equipos  { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.pend-header--garantia { background: var(--color-teal-bg-subtle); color: var(--color-teal-text); }
 
 .pend-count {
   margin-left: auto;
@@ -374,7 +368,7 @@ onMounted(async () => {
 }
 
 .pend-item:last-child { border-bottom: none; }
-.pend-item:hover { background: var(--color-bg-hover, #f8fafc); }
+.pend-item:hover { background: var(--color-bg-hover, var(--color-bg-subtle)); }
 
 .pend-item-main {
   display: flex;
@@ -412,12 +406,6 @@ onMounted(async () => {
   margin: 0 0 14px;
 }
 
-.recientes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
-}
-
 .emp-card {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
@@ -431,7 +419,7 @@ onMounted(async () => {
 
 .emp-avatar {
   width: 36px; height: 36px; border-radius: 50%;
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
   color: #fff; font-size: 12px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; text-transform: uppercase;

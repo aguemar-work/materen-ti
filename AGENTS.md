@@ -26,6 +26,9 @@ auditoría de accesos y entregas por enlace de un solo uso.
   (preserva el flag `requiere_rotacion` y `last_password_change`).
 - Formato de código: seguir el estilo existente (componentes `<script setup>`,
   stores Pinia por módulo, capa de datos en `api/insforge.js` con mappers).
+- **UI/UX**: colores, tipografías y clases reutilizables en
+  `docs/GUIA-UX-UI.md` y `frontend/src/styles/main.css` (sin Tailwind ni
+  librería de componentes).
 
 ## Flujo de trabajo backend
 

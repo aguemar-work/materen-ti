@@ -23,6 +23,7 @@ const empleadosActivos = ref([]);
 const empleadoAsignarId = ref('');
 const cargandoEmpleados = ref(false);
 const asignando = ref(false);
+const errorAsignar = ref('');
 
 const HOY = new Date().toISOString().split('T')[0];
 const EN_30_DIAS = (() => {
@@ -40,6 +41,16 @@ const listaFiltrada = computed(() => {
     (l.cuenta_usuario || '').toLowerCase().includes(q)
   );
 });
+
+// Barra de capacidad: comunica cercanía al tope de asientos antes de que
+// el trigger de BD (check_tope_licencia) bloquee la asignación.
+function capacidadInfo(l) {
+  const pct = l.cantidad > 0 ? Math.min(100, Math.round((l.usados / l.cantidad) * 100)) : 0;
+  let clase = 'capacity-fill--ok';
+  if (pct >= 100) clase = 'capacity-fill--full';
+  else if (pct >= 70) clase = 'capacity-fill--warning';
+  return { pct, clase };
+}
 
 function estadoVencimiento(l) {
   if (l.tipo === 'perpetua' || !l.fecha_vencimiento) return { clase: 'venc-ok', texto: 'Perpetua' };
@@ -128,6 +139,7 @@ async function copiarClave(licencia) {
 async function abrirAsignar(licencia) {
   licenciaAsignar.value = licencia;
   empleadoAsignarId.value = '';
+  errorAsignar.value = '';
   mostrarAsignar.value = true;
   if (!empleadosActivos.value.length) {
     cargandoEmpleados.value = true;
@@ -145,13 +157,17 @@ async function abrirAsignar(licencia) {
 
 async function confirmarAsignar() {
   if (!empleadoAsignarId.value) return;
+  errorAsignar.value = '';
   asignando.value = true;
   try {
     await store.asignar(licenciaAsignar.value.id, empleadoAsignarId.value);
     mostrarAsignar.value = false;
     showToast('Asiento asignado');
   } catch (e) {
-    showToast(e?.message || 'Error al asignar', 'error');
+    // Rechazo del trigger de tope de asientos (check_tope_licencia): se
+    // muestra dentro del modal, no solo en el toast, porque el mensaje
+    // completo debe leerse con calma antes de reintentar.
+    errorAsignar.value = e?.message || 'Error al asignar';
   } finally {
     asignando.value = false;
   }
@@ -286,9 +302,16 @@ onMounted(async () => {
                   <span v-else class="text-muted">—</span>
                 </td>
                 <td>
-                  <span class="asientos" :class="{ 'asientos--lleno': lic.usados >= lic.cantidad }">
-                    {{ lic.usados }}/{{ lic.cantidad }}
-                  </span>
+                  <div class="capacity">
+                    <div class="capacity-bar">
+                      <div
+                        class="capacity-fill"
+                        :class="capacidadInfo(lic).clase"
+                        :style="{ width: capacidadInfo(lic).pct + '%' }"
+                      ></div>
+                    </div>
+                    <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
+                  </div>
                 </td>
                 <td>
                   <div v-if="lic.usuarios.length" class="usuarios-cell">
@@ -374,9 +397,18 @@ onMounted(async () => {
         </div>
         <div class="modal-body">
           <p class="asignar-info">
-            <strong>{{ licenciaAsignar?.software }}</strong> —
-            {{ licenciaAsignar?.usados }}/{{ licenciaAsignar?.cantidad }} asientos usados
+            <strong>{{ licenciaAsignar?.software }}</strong>
           </p>
+          <div v-if="licenciaAsignar" class="capacity">
+            <div class="capacity-bar">
+              <div
+                class="capacity-fill"
+                :class="capacidadInfo(licenciaAsignar).clase"
+                :style="{ width: capacidadInfo(licenciaAsignar).pct + '%' }"
+              ></div>
+            </div>
+            <span class="capacity-label">{{ licenciaAsignar.usados }}/{{ licenciaAsignar.cantidad }} asientos usados</span>
+          </div>
           <div v-if="cargandoEmpleados" class="no-results">Cargando empleados...</div>
           <div v-else class="form-group">
             <label for="as-empleado">Empleado *</label>
@@ -387,6 +419,7 @@ onMounted(async () => {
               </option>
             </select>
           </div>
+          <p v-if="errorAsignar" class="form-error" role="alert">{{ errorAsignar }}</p>
           <div class="modal-actions">
             <button class="btn" type="button" :disabled="asignando" @click="mostrarAsignar = false">Cancelar</button>
             <button class="btn btn-primary" type="button" :disabled="asignando || !empleadoAsignarId" @click="confirmarAsignar">
@@ -435,7 +468,7 @@ onMounted(async () => {
 .clave-origen {
   font-size: 10.5px;
   color: var(--color-text-secondary);
-  background: var(--color-bg-subtle, #f1f5f9);
+  background: var(--color-bg-subtle, var(--color-neutral-bg));
   border-radius: 8px;
   padding: 1px 6px;
   white-space: nowrap;
@@ -448,13 +481,7 @@ onMounted(async () => {
   min-width: 72px;
 }
 
-.asientos {
-  font-weight: 700;
-  font-size: 13px;
-  color: var(--color-text-primary);
-}
-
-.asientos--lleno { color: #b45309; }
+/* Ocupación de asientos: .capacity/.capacity-bar globales (main.css) */
 
 .usuarios-cell {
   display: flex;
@@ -468,7 +495,7 @@ onMounted(async () => {
   align-items: center;
   gap: 3px;
   font-size: 11.5px;
-  background: var(--color-bg-subtle, #f1f5f9);
+  background: var(--color-bg-subtle, var(--color-neutral-bg));
   border: 1px solid var(--color-border);
   border-radius: 20px;
   padding: 2px 8px;
@@ -485,7 +512,7 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-.chip-x:hover { color: var(--color-danger, #dc2626); }
+.chip-x:hover { color: var(--color-danger, var(--color-danger)); }
 
 .venc-badge {
   display: inline-block;
@@ -496,9 +523,9 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.venc-ok      { background: #f0fdf4; color: #15803d; }
-.venc-pronto  { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-.venc-vencida { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.venc-ok      { background: var(--color-success-bg); color: var(--color-success-text); }
+.venc-pronto  { background: var(--color-warning-bg); color: var(--color-warning-text); border: 1px solid var(--color-warning-border); }
+.venc-vencida { background: var(--color-danger-bg); color: var(--color-danger-text); border: 1px solid var(--color-danger-border); }
 
 .venc-cell {
   display: flex;

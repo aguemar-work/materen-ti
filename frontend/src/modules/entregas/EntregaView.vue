@@ -182,9 +182,9 @@ async function copiar(texto, id) {
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  color: #92400e;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  color: var(--color-warning-text-strong);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
 }
@@ -209,7 +209,7 @@ async function copiar(texto, id) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary, var(--color-accent));
   margin-bottom: 6px;
 }
 
@@ -238,7 +238,7 @@ async function copiar(texto, id) {
 }
 
 .cred-url {
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary, var(--color-accent));
   text-decoration: none;
 }
 
@@ -265,9 +265,9 @@ async function copiar(texto, id) {
 .soporte-texto {
   font-size: 12.5px;
   line-height: 1.5;
-  color: #92400e;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  color: var(--color-warning-text-strong);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
   margin: 0 0 10px;
@@ -282,14 +282,14 @@ async function copiar(texto, id) {
   padding: 9px 14px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-primary, #4f46e5);
-  border: 1.5px solid var(--color-primary, #4f46e5);
+  color: var(--color-primary, var(--color-accent));
+  border: 1.5px solid var(--color-primary, var(--color-accent));
   border-radius: var(--radius-md);
   text-decoration: none;
   transition: background 0.15s;
 }
 
 .soporte-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #4f46e5) 8%, transparent);
+  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent);
 }
 </style>

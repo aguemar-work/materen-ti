@@ -5,7 +5,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, formatTelefono } from '../../core/formatters.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
@@ -43,9 +43,9 @@ const iniciales = computed(() =>
 );
 
 function claseEstado(estado) {
-  if (estado === 'Activo') return 's-activo';
-  if (estado === 'Suspendido') return 's-suspendido';
-  return 's-inactivo';
+  if (estado === 'Activo') return 'badge--success';
+  if (estado === 'Suspendido') return 'badge--warning';
+  return 'badge--neutral';
 }
 
 async function cargar() {
@@ -222,7 +222,7 @@ onMounted(cargar);
               </div>
               <div class="dato">
                 <dt>Teléfono</dt>
-                <dd>{{ empleado.telefono || '—' }}</dd>
+                <dd>{{ formatTelefono(empleado.telefono) || '—' }}</dd>
               </div>
               <div class="dato">
                 <dt>WhatsApp</dt>
@@ -234,7 +234,7 @@ onMounted(cargar);
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <i class="ti ti-brand-whatsapp"></i> {{ empleado.whatsapp }}
+                    <i class="ti ti-brand-whatsapp"></i> {{ formatTelefono(empleado.whatsapp) }}
                   </a>
                   <template v-else>—</template>
                 </dd>
@@ -333,7 +333,7 @@ onMounted(cargar);
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
@@ -371,13 +371,13 @@ onMounted(cargar);
 }
 
 .btn-baja {
-  color: #b91c1c;
-  border-color: #fecaca;
+  color: var(--color-danger-text);
+  border-color: var(--color-danger-border);
 }
 
 .btn-baja:hover:not(:disabled) {
-  background: #fef2f2;
-  border-color: #fca5a5;
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
 }
 
 .alta-banner {
@@ -385,8 +385,8 @@ onMounted(cargar);
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: color-mix(in srgb, var(--color-primary, #4f46e5) 6%, #fff);
-  border: 1px solid color-mix(in srgb, var(--color-primary, #4f46e5) 25%, transparent);
+  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 6%, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-primary, var(--color-accent)) 25%, transparent);
   border-radius: var(--radius-lg, 12px);
   padding: 12px 16px;
   margin-bottom: 16px;
@@ -412,11 +412,11 @@ onMounted(cargar);
 }
 
 .alta-paso--hecho {
-  color: #15803d;
+  color: var(--color-success-text);
 }
 
 .alta-paso--hecho i {
-  color: #16a34a;
+  color: var(--color-success);
 }
 
 .alta-sep {

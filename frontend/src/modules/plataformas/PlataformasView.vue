@@ -84,24 +84,8 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
   <div class="plataformas-page">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-apps" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Plataformas</span>
-          </div>
-        </div>
-        <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva plataforma
-        </button>
-      </div>
-    </header>
-
     <main class="page">
       <div class="card">
         <div class="card-toolbar">
@@ -109,6 +93,9 @@ onMounted(async () => {
             Plataformas registradas
             <span class="badge-count">{{ listaFiltrada.length }} plataformas</span>
           </div>
+          <button class="btn btn-primary" type="button" @click="abrirNueva">
+            <i class="ti ti-plus" aria-hidden="true"></i> Nueva plataforma
+          </button>
         </div>
 
         <div class="filters">
@@ -253,7 +240,7 @@ onMounted(async () => {
 
 .slug {
   font-size: 12px;
-  background: var(--color-surface-2, #f1f3f5);
+  background: var(--color-surface-2, var(--color-bg-hover));
   padding: 2px 6px;
   border-radius: 4px;
   color: var(--color-text-muted, #666);
@@ -293,16 +280,6 @@ onMounted(async () => {
   margin-left: 6px;
 }
 
-.form-error {
-  grid-column: 1 / -1;
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 13px;
-  margin: 0;
-}
 
 .modal-actions.full {
   grid-column: 1 / -1;

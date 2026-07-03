@@ -20,12 +20,12 @@ const equipoEditar = ref(null);
 const HOY = new Date().toISOString().split('T')[0];
 
 const SITUACIONES = {
-  disponible:    { label: 'Disponible',     clase: 'sit-disponible' },
-  asignado:      { label: 'Asignado',       clase: 'sit-asignado' },
-  en_ubicacion:  { label: 'En ubicación',   clase: 'sit-ubicacion' },
-  en_reparacion: { label: 'En reparación',  clase: 'sit-reparacion' },
-  de_baja:       { label: 'De baja',        clase: 'sit-baja' },
-  perdido:       { label: 'Robado/Perdido', clase: 'sit-perdido' },
+  disponible:    { label: 'Disponible',     clase: 'badge--success' },
+  asignado:      { label: 'Asignado',       clase: 'badge--info' },
+  en_ubicacion:  { label: 'En ubicación',   clase: 'badge--purple' },
+  en_reparacion: { label: 'En reparación',  clase: 'badge--warning' },
+  de_baja:       { label: 'De baja',        clase: 'badge--neutral' },
+  perdido:       { label: 'Robado/Perdido', clase: 'badge--danger' },
 };
 
 const listaFiltrada = computed(() => {
@@ -45,6 +45,23 @@ const listaFiltrada = computed(() => {
 
 function situacionInfo(e) {
   return SITUACIONES[e.situacion] || { label: e.situacion, clase: '' };
+}
+
+// Un equipo tiene estado FÍSICO (operativo/en_reparacion/de_baja/perdido) y
+// situación DERIVADA (Disponible/Asignado/En ubicación) simultáneos. Cuando
+// está operativo Y en uso, mostrar ambos confirma de un vistazo que el
+// equipo está sano *mientras* alguien lo tiene — con un solo badge no se ve.
+// Si no está operativo, el estado físico ya lo dice todo (un solo badge).
+function badgesSituacion(eq) {
+  if (eq.estado === 'operativo' && (eq.situacion === 'asignado' || eq.situacion === 'en_ubicacion')) {
+    const derivado = situacionInfo(eq);
+    return [
+      { label: 'Operativo', clase: 'badge--success', fisico: true },
+      { label: derivado.label, clase: derivado.clase, fisico: false },
+    ];
+  }
+  const info = situacionInfo(eq);
+  return [{ label: info.label, clase: info.clase, fisico: false }];
 }
 
 // ── Formulario ────────────────────────────────────────────────
@@ -74,6 +91,7 @@ const empleadoSelId = ref('');
 const listaEmpAbierta = ref(false);
 const condicionEntrega = ref('');
 const procesando = ref(false);
+const errorAsignar = ref('');
 
 const empleadosFiltrados = computed(() => {
   const q = busquedaEmpleado.value.trim().toLowerCase();
@@ -100,6 +118,7 @@ async function abrirAsignar(equipo) {
   empleadoSelId.value = '';
   busquedaEmpleado.value = '';
   condicionEntrega.value = '';
+  errorAsignar.value = '';
   mostrarAsignar.value = true;
   if (!empleadosActivos.value.length) {
     try {
@@ -114,13 +133,16 @@ async function abrirAsignar(equipo) {
 
 async function confirmarAsignar() {
   if (!empleadoSelId.value) return;
+  errorAsignar.value = '';
   procesando.value = true;
   try {
     await store.asignar(equipoAsignar.value.id, empleadoSelId.value, condicionEntrega.value);
     mostrarAsignar.value = false;
     showToast(`${equipoAsignar.value.codigo} entregado`);
   } catch (e) {
-    showToast(e?.message || 'Error al asignar', 'error');
+    // Rechazo del trigger de asignación (portador activo o equipo no
+    // operativo): se muestra dentro del modal, no solo en el toast.
+    errorAsignar.value = e?.message || 'Error al asignar';
   } finally {
     procesando.value = false;
   }
@@ -339,7 +361,7 @@ onMounted(async () => {
                 <th>Código</th>
                 <th>Equipo</th>
                 <th>Serie</th>
-                <th>Situación</th>
+                <th class="th-situacion">Situación</th>
                 <th>Portador</th>
                 <th>Garantía</th>
                 <th></th>
@@ -361,14 +383,21 @@ onMounted(async () => {
                 </td>
                 <td class="eq-serie">{{ eq.serie || '—' }}</td>
                 <td>
-                  <span class="sit-badge" :class="situacionInfo(eq).clase">
-                    {{ situacionInfo(eq).label }}
+                  <span class="badge-group" :title="badgesSituacion(eq).map(b => b.label).join(' · ')">
+                    <span
+                      v-for="b in badgesSituacion(eq)"
+                      :key="b.label"
+                      class="badge"
+                      :class="[b.clase, { 'badge-fisico': b.fisico }]"
+                    >
+                      {{ b.label }}
+                    </span>
                   </span>
                 </td>
                 <td>
                   <template v-if="eq.portador">
                     <RouterLink class="portador-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
-                    <span v-if="eq.portador_inactivo" class="badge-sin-devolver" title="Este empleado fue dado de baja y no ha devuelto el equipo">
+                    <span v-if="eq.portador_inactivo" class="badge badge--danger badge-sin-devolver" title="Este empleado fue dado de baja y no ha devuelto el equipo">
                       <i class="ti ti-alert-triangle"></i> Sin devolver
                     </span>
                   </template>
@@ -505,6 +534,8 @@ onMounted(async () => {
             <label for="asig-cond">Condición de entrega</label>
             <input id="asig-cond" v-model="condicionEntrega" placeholder="ej: nuevo, con cargador y mochila" :disabled="procesando">
           </div>
+
+          <p v-if="errorAsignar" class="form-error" role="alert">{{ errorAsignar }}</p>
 
           <div class="modal-actions">
             <button class="btn" type="button" :disabled="procesando" @click="mostrarAsignar = false">Cancelar</button>
@@ -671,28 +702,23 @@ onMounted(async () => {
   color: var(--color-text-secondary);
 }
 
-.sit-badge {
-  display: inline-block;
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
+/* Estructura y color: sistema de badges global (.badge + .badge--X) */
 
-.sit-disponible { background: #f0fdf4; color: #15803d; }
-.sit-asignado   { background: #eff6ff; color: #1d4ed8; }
-.sit-ubicacion  { background: #f5f3ff; color: #6d28d9; }
-.sit-reparacion { background: #fffbeb; color: #b45309; }
-.sit-baja       { background: #f1f5f9; color: #64748b; }
-.sit-perdido    { background: #fef2f2; color: #b91c1c; }
+/* Columna Situación: ancho mínimo para que el badge doble (físico +
+   derivado) no se corte. En pantallas chicas, si no entra, se prioriza
+   el estado derivado (el físico queda accesible en el title del grupo). */
+.th-situacion { min-width: 168px; }
+
+@media (max-width: 900px) {
+  .badge-fisico { display: none; }
+}
 
 .ubicacion-nombre {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 13px;
-  color: #6d28d9;
+  color: var(--color-purple-text);
 }
 
 .nueva-ubicacion {
@@ -711,21 +737,13 @@ onMounted(async () => {
 .portador-link:hover { color: var(--color-primary); text-decoration: underline; }
 
 .badge-sin-devolver {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+  /* Estructura y color: sistema de badges global (.badge + .badge--danger);
+     aquí solo el ajuste único de este chip: separación y peso extra. */
   margin-left: 6px;
-  font-size: 11px;
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 20px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #b91c1c;
-  white-space: nowrap;
 }
 
-.garantia-vencida { color: #b91c1c; }
+.garantia-vencida { color: var(--color-danger-text); }
 
 .modal-sm { width: 440px; max-width: 95vw; }
 .modal-hoja { width: 560px; max-width: 95vw; }
@@ -761,10 +779,10 @@ onMounted(async () => {
   color: var(--color-text-secondary); font-size: 15px; pointer-events: none;
 }
 .combo-wrap input { width: 100%; padding-left: 32px; padding-right: 32px; }
-.combo-wrap input.combo-ok { border-color: #16a34a; }
+.combo-wrap input.combo-ok { border-color: var(--color-success); }
 .combo-check {
   position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-  color: #16a34a; font-size: 16px; pointer-events: none;
+  color: var(--color-success); font-size: 16px; pointer-events: none;
 }
 .combo-lista {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
@@ -779,7 +797,7 @@ onMounted(async () => {
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
   padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px;
 }
-.combo-lista li:hover { background: color-mix(in srgb, var(--color-primary, #4f46e5) 8%, transparent); }
+.combo-lista li:hover { background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent); }
 .combo-vacio { color: var(--color-text-secondary); cursor: default !important; font-size: 12.5px; }
 .combo-vacio:hover { background: none !important; }
 .combo-sec { font-size: 11.5px; color: var(--color-text-secondary); }

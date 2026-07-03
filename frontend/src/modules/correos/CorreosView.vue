@@ -161,7 +161,7 @@ onMounted(async () => {
                   <div class="user-name">{{ correo.plataforma_nombre || '—' }}</div>
                 </td>
                 <td>
-                  <span class="badge-tipo" :class="`badge-tipo--${correo.tipo_cuenta}`">
+                  <span class="badge" :class="correo.tipo_cuenta === 'compartida' ? 'badge--accent' : 'badge--success'">
                     <i :class="correo.tipo_cuenta === 'compartida' ? 'ti ti-users' : 'ti ti-transfer'"></i>
                     {{ correo.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable' }}
                   </span>
@@ -173,7 +173,7 @@ onMounted(async () => {
                       <span v-if="correo.asignados?.length" class="asignado-nombre" :title="correo.asignados.join(', ')">
                         {{ correo.asignados[0] }}
                       </span>
-                      <span v-else class="badge-libre">
+                      <span v-else class="badge badge--success">
                         <i class="ti ti-circle-check"></i> Libre
                       </span>
                     </template>
@@ -187,7 +187,7 @@ onMounted(async () => {
                       </span>
                       <span v-else class="text-muted">Sin usuarios</span>
                     </template>
-                    <span v-if="correo.requiere_rotacion" class="badge-rotar" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
+                    <span v-if="correo.requiere_rotacion" class="badge badge--warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
                       <i class="ti ti-alert-triangle"></i> Rotar contraseña
                     </span>
                   </div>
@@ -260,27 +260,6 @@ onMounted(async () => {
 <style scoped>
 .correos-error { color: var(--color-danger); }
 
-.badge-tipo {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
-
-.badge-tipo--compartida {
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-  color: var(--color-primary);
-}
-
-.badge-tipo--reutilizable {
-  background: color-mix(in srgb, #10b981 12%, transparent);
-  color: #059669;
-}
-
 .correo-usuario {
   font-family: var(--font-mono, monospace);
   font-size: 13px;
@@ -301,32 +280,7 @@ onMounted(async () => {
   max-width: 160px;
 }
 
-.badge-libre {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 20px;
-  background: color-mix(in srgb, #10b981 12%, transparent);
-  color: #059669;
-  white-space: nowrap;
-}
-
-.badge-rotar {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 20px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  color: #b45309;
-  white-space: nowrap;
-}
+/* .badge-libre y .badge-rotar: estructura y color del sistema de badges global */
 
 .password-cell {
   display: flex;
