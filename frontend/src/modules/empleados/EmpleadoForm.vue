@@ -1,0 +1,249 @@
+<script setup>
+import { ref, computed, watch, onMounted } from 'vue';
+import { insforgeApi } from '../../api/insforge.js';
+import { useEmpleadosStore } from '../../stores/empleados.js';
+
+const props = defineProps({
+  empleado: {
+    type: Object,
+    default: null,
+  },
+});
+
+const emit = defineEmits(['cerrar']);
+
+const store = useEmpleadosStore();
+
+const empresas = ref([]);
+const cargandoEmpresas = ref(false);
+const guardando = ref(false);
+const error = ref('');
+
+const esEdicion = computed(() => !!props.empleado?.id);
+
+const form = ref({
+  nombres: '',
+  apellidos: '',
+  dni: '',
+  telefono: '',
+  whatsapp: '',
+  correo_personal: '',
+  cargo: '',
+  empresa_id: '',
+  estado: 'Activo',
+  fecha_alta: new Date().toISOString().slice(0, 10),
+  notas: '',
+});
+
+function resetForm() {
+  if (props.empleado) {
+    form.value = {
+      nombres: props.empleado.nombres,
+      apellidos: props.empleado.apellidos,
+      dni: props.empleado.dni,
+      telefono: props.empleado.telefono || '',
+      whatsapp: props.empleado.whatsapp || '',
+      correo_personal: props.empleado.correo_personal || '',
+      cargo: props.empleado.cargo || '',
+      empresa_id: props.empleado.empresa_id,
+      estado: props.empleado.estado,
+      fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
+      notas: props.empleado.notas || '',
+    };
+  } else {
+    form.value = {
+      nombres: '',
+      apellidos: '',
+      dni: '',
+      telefono: '',
+      whatsapp: '',
+      correo_personal: '',
+      cargo: '',
+      empresa_id: '',
+      estado: 'Activo',
+      fecha_alta: new Date().toISOString().slice(0, 10),
+      notas: '',
+    };
+  }
+  error.value = '';
+}
+
+watch(() => props.empleado, resetForm, { immediate: true });
+
+onMounted(async () => {
+  cargandoEmpresas.value = true;
+  try {
+    empresas.value = await insforgeApi.listEmpresas();
+  } catch (e) {
+    error.value = e?.message || 'Error al cargar empresas';
+  } finally {
+    cargandoEmpresas.value = false;
+  }
+});
+
+function copiarTelefono() {
+  form.value.whatsapp = form.value.telefono;
+}
+
+function cancelar() {
+  emit('cerrar', false);
+}
+
+async function guardar() {
+  error.value = '';
+  guardando.value = true;
+  try {
+    let guardado;
+    if (esEdicion.value) {
+      guardado = await store.actualizar(props.empleado.id, form.value);
+    } else {
+      guardado = await store.crear(form.value);
+    }
+    // Se emite el empleado guardado para que el alta pueda navegar a su ficha
+    emit('cerrar', guardado);
+  } catch (e) {
+    error.value = e?.message || 'Error al guardar empleado';
+  } finally {
+    guardando.value = false;
+  }
+}
+</script>
+
+<template>
+  <div class="modal-bg" @click.self="cancelar">
+    <div class="modal modal-lg empleado-form" role="dialog" aria-labelledby="empleado-form-title">
+      <div class="modal-title">
+        <span id="empleado-form-title">{{ esEdicion ? 'Editar empleado' : 'Nuevo empleado' }}</span>
+        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <form class="form-grid" @submit.prevent="guardar">
+        <div class="form-group full">
+          <span class="section-label"><i class="ti ti-user"></i> Datos personales</span>
+        </div>
+
+        <div class="form-group">
+          <label for="nombres">Nombres *</label>
+          <input id="nombres" v-model="form.nombres" required :disabled="guardando">
+        </div>
+
+        <div class="form-group">
+          <label for="apellidos">Apellidos *</label>
+          <input id="apellidos" v-model="form.apellidos" required :disabled="guardando">
+        </div>
+
+        <div class="form-group">
+          <label for="dni">DNI *</label>
+          <input id="dni" v-model="form.dni" required :disabled="guardando">
+        </div>
+
+        <div class="form-group">
+          <label for="correo">Correo personal</label>
+          <input id="correo" v-model="form.correo_personal" type="email" :disabled="guardando">
+        </div>
+
+        <div class="form-group">
+          <label for="telefono">Teléfono</label>
+          <input id="telefono" v-model="form.telefono" :disabled="guardando">
+        </div>
+
+        <div class="form-group">
+          <label for="whatsapp">WhatsApp</label>
+          <div class="whatsapp-row">
+            <input id="whatsapp" v-model="form.whatsapp" :disabled="guardando">
+            <button class="btn" type="button" :disabled="guardando || !form.telefono" @click="copiarTelefono">
+              Copiar del teléfono
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group full">
+          <span class="section-label"><i class="ti ti-briefcase"></i> Datos laborales</span>
+        </div>
+
+        <div class="form-group">
+          <label for="empresa">Empresa *</label>
+          <select id="empresa" v-model="form.empresa_id" required :disabled="guardando || cargandoEmpresas">
+            <option value="" disabled>Seleccionar empresa</option>
+            <option v-for="emp in empresas" :key="emp.id" :value="emp.id">
+              {{ emp.nombre }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="cargo">Cargo</label>
+          <input id="cargo" v-model="form.cargo" :disabled="guardando">
+        </div>
+
+        <div class="form-group">
+          <label for="estado">Estado *</label>
+          <select id="estado" v-model="form.estado" required :disabled="guardando">
+            <option value="Activo">Activo</option>
+            <option value="Inactivo">Inactivo</option>
+            <option value="Suspendido">Suspendido</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="fecha-alta">Fecha de alta *</label>
+          <input id="fecha-alta" v-model="form.fecha_alta" type="date" required :disabled="guardando">
+        </div>
+
+        <div class="form-group full">
+          <label for="notas">Notas</label>
+          <textarea id="notas" v-model="form.notas" :disabled="guardando"></textarea>
+        </div>
+
+        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+
+        <div class="modal-actions full">
+          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
+          <button class="btn btn-primary" type="submit" :disabled="guardando">
+            {{ guardando ? 'Guardando...' : 'Guardar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.empleado-form .section-label {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.whatsapp-row {
+  display: flex;
+  gap: 8px;
+}
+
+.whatsapp-row input {
+  flex: 1;
+}
+
+.whatsapp-row .btn {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.form-error {
+  grid-column: 1 / -1;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 13px;
+  margin: 0;
+}
+
+.modal-actions.full {
+  grid-column: 1 / -1;
+}
+</style>
