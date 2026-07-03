@@ -169,11 +169,20 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 014 | `ubicaciones` + asignaciones de equipo a persona O ubicación (exactamente uno) |
 | 015 | `fotos` en equipos (bucket público `equipos-fotos`, compresión en cliente) |
 
+## Producción
+
+- Frontend desplegado en Vercel: **https://materen-ti.vercel.app**
+- SPA rewrites: `frontend/vercel.json` (copiado a `dist/` vía `public/`) — sin
+  esto las rutas profundas (`/entrega/:token`, `/empleados/:id`) dan 404.
+- CORS de la edge function `credenciales`: allowlist con el dominio de
+  producción + localhost (dev). Si cambia el dominio, actualizar
+  `ORIGENES_PERMITIDOS` en `functions/credenciales.ts` y redesplegar.
+
 ## Pendientes / roadmap
 
-- [ ] Desplegar el frontend (los enlaces de entrega necesitan URL pública).
+- [x] Desplegar el frontend → https://materen-ti.vercel.app (Vercel).
 - [ ] Tests automatizados (candidatos: triggers de BD y edge function).
-- [ ] Restringir CORS de la edge function al dominio del frontend (tras el despliegue).
+- [x] Restringir CORS de la edge function al dominio del frontend.
 - [ ] Partir `api/insforge.js` por dominio a medida que crezca.
 - [ ] Multitenancy y modelo de cobro (si se comercializa).
 - [x] Búsqueda global en la UI (sidebar: empleados, cuentas y equipos).

@@ -19,11 +19,26 @@
 
 import { createClient, createAdminClient } from 'npm:@insforge/sdk';
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+// Solo el frontend de producción y los puertos de desarrollo local.
+// Un origen no listado no recibe cabeceras CORS: el navegador bloquea.
+const ORIGENES_PERMITIDOS = new Set([
+  'https://materen-ti.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:4173',
+]);
+
+let CORS: Record<string, string> = {};
+
+function corsPara(origin: string | null): Record<string, string> {
+  if (!origin || !ORIGENES_PERMITIDOS.has(origin)) return {};
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
+  };
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -95,6 +110,7 @@ function randomToken(): string {
 // ── Handler ──────────────────────────────────────────────────
 
 export default async function (req: Request): Promise<Response> {
+  CORS = corsPara(req.headers.get('Origin'));
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (req.method !== 'POST') return json({ ok: false, code: 'metodo_invalido' }, 405);
 
