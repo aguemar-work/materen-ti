@@ -83,6 +83,7 @@ function irAEquipo() {
 const navItems = computed(() => {
   const items = [
     { path: '/dashboard', label: 'Dashboard', icon: 'ti ti-layout-dashboard' },
+    { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset' },
     { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
     { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
     { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
@@ -283,7 +284,7 @@ async function cerrarSesion() {
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-  z-index: 200;
+  z-index: var(--z-nav); /* solo aplica cuando es fixed (móvil, ≤768px) */
 }
 
 /* ── Búsqueda global ─────────────────────────────────────────── */
@@ -327,7 +328,7 @@ async function cerrarSesion() {
   top: calc(100% + 2px);
   left: 14px;
   right: 14px;
-  z-index: 300;
+  z-index: var(--z-popover);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
   border-radius: 10px;
@@ -339,7 +340,7 @@ async function cerrarSesion() {
 
 .sb-res-grupo {
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-secondary);
@@ -584,7 +585,7 @@ async function cerrarSesion() {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 199;
+    z-index: calc(var(--z-nav) - 1); /* justo debajo del drawer que cubre */
   }
 
   .topbar-mobile {
@@ -598,7 +599,7 @@ async function cerrarSesion() {
     box-shadow: var(--shadow-sm);
     position: sticky;
     top: 0;
-    z-index: 60;
+    z-index: var(--z-header-mobile);
     flex-shrink: 0;
   }
 

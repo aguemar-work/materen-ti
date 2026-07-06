@@ -13,6 +13,7 @@ cuándo y si la contraseña se rotó después.
 | Frontend | Vue 3 + Vite + Pinia + vue-router (`frontend/`) |
 | Backend | [InsForge](https://insforge.dev) (BaaS sobre Postgres) — proyecto `sistema-ti`, API `https://kjyj8t5t.us-east.insforge.app` |
 | Seguridad | Edge function `credenciales` (`functions/credenciales.ts`) — cifrado AES-256-GCM en servidor, auditoría y entregas de un solo uso |
+| Soporte | Edge function `tickets` (`functions/tickets.ts`) — mesa de ayuda interna, reemplaza el helpdesk externo (Bitrix24) |
 
 ## Conceptos del dominio
 
@@ -48,6 +49,26 @@ cuándo y si la contraseña se rotó después.
   Las suscripciones con `fecha_vencimiento` a ≤30 días aparecen como pendiente
   en el Dashboard. La baja de empleado también libera sus asientos.
 
+- **Ticket**: reporte de soporte, público y sin sesión (el empleado **nunca**
+  entra al sistema). Se crea desde `/ticket/nuevo` de dos formas: (a) con el
+  **token de entrega** en la URL → se autorresuelve el empleado, sin pedirle
+  datos; (b) sin token → intenta emparejar por correo/DNI contra `empleados`
+  (si no hay match único, el ticket se crea igual con `vinculado = false` para
+  revisión manual — el emparejamiento nunca bloquea el envío). No confundir el
+  **token de entrega** (credenciales) con el **token de ticket** (seguimiento
+  del reporte): son dos tokens distintos con propósitos distintos. El staff
+  también puede abrir tickets internos desde `/tickets` (a nombre propio o de
+  un empleado). Cada ticket tiene código (`TCK-####`) y token propio; con el
+  token el empleado sigue su caso en `/ticket/:token` (solo ve comentarios no
+  internos) sin volver a autenticarse. Estados: `abierto → en_progreso →
+  resuelto → cerrado` (con `reabierto` si vuelve a haber actividad). Al
+  cerrarse, si el ticket tiene empleado vinculado, se crea automáticamente una
+  encuesta de satisfacción y se reutiliza el **mismo token** para el enlace
+  (`/ticket/:token/satisfaccion`) — a diferencia de Bitrix24, el empleado no
+  tiene que anotar ningún ID. `ticket_eventos` es la hoja de vida append-only
+  del ticket (asignaciones, cambios de estado/prioridad, fallos de correo,
+  envío/respuesta de encuesta).
+
 - **Equipo**: activo físico con código de inventario único (etiqueta), tipo
   (catálogo `tipos_equipo` con plantilla de specs y accesorios por tipo),
   serie, garantía y costo. El estado guardado es **solo el físico**
@@ -73,6 +94,11 @@ cuándo y si la contraseña se rotó después.
    "Rotar contraseña".
 3. **Auditoría**: cada vez que alguien **ve, copia o envía** una contraseña
    queda registrado en `accesos_log`. El JEFE lo consulta en `/actividad`.
+4. **Soporte por ticket**: el empleado reporta un problema en `/ticket/nuevo`
+   (con o sin token de entrega) → recibe su código y token en pantalla y por
+   correo (best-effort) → el staff lo triaga en `/tickets` (asignar,
+   priorizar, comentar interno/visible vía Timeline) → al cerrar, se dispara
+   la encuesta de satisfacción reutilizando el mismo token.
 
 ## Modelo de seguridad
 
@@ -88,7 +114,11 @@ cuándo y si la contraseña se rotó después.
 - En formularios de edición, el campo contraseña vacío significa "mantener la
   actual" — la contraseña vigente nunca se precarga.
 - La página `/entrega/:token` es pública (sin sesión) e incluye la política de
-  soporte: solo por ticket (helpdesk Bitrix24).
+  soporte: solo por ticket, con enlace a `/ticket/nuevo` (token de entrega ya
+  en la URL) — ya no enlaza al helpdesk externo de Bitrix24.
+- Las tablas `tickets` y `ticket_satisfaccion` no tienen política de INSERT
+  para clientes: solo la edge function `tickets` (cliente admin) escribe,
+  igual que `entregas`. `ticket_eventos` es append-only por trigger.
 
 ## Estructura del repo
 
@@ -112,12 +142,14 @@ cuándo y si la contraseña se rotó después.
 │       │   ├── empresas/  plataformas/  staff/   # paneles embebidos en Configuración
 │       │   ├── licencias/     # licencias de software con tope de asientos
 │       │   ├── equipos/       # inventario físico: entrega/devolución/hoja de vida
-│       │   └── entregas/      # página pública /entrega/:token
-│       ├── router/            # rutas + guards (meta.public para entregas)
+│       │   ├── entregas/      # página pública /entrega/:token
+│       │   └── tickets/       # mesa de ayuda: público (nuevo/seguimiento/encuesta) + staff (bandeja/detalle)
+│       ├── router/            # rutas + guards (meta.public para entregas y tickets)
 │       └── stores/            # Pinia
 ├── functions/
-│   └── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir
-├── migrations/             # 001..010 — esquema completo, en orden, comentado
+│   ├── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir
+│   └── tickets.ts          # edge function: catalogo / crear / seguimiento / encuesta / enviarEncuesta
+├── migrations/             # 001..016 — esquema completo, en orden, comentado
 ├── docs/
 │   └── GUIA-UX-UI.md       # colores, tipografías, layout y componentes del panel
 ├── AGENTS.md               # contexto para agentes de código
@@ -149,6 +181,9 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
   `UPDATE ... FROM (VALUES ...)` por lote.
 - **Edge function**: editar `functions/credenciales.ts` y desplegar con
   `npx @insforge/cli functions deploy credenciales --file functions/credenciales.ts`.
+  Lo mismo para `functions/tickets.ts` → `npx @insforge/cli functions deploy
+  tickets --file functions/tickets.ts` (tiene su propio `ORIGENES_PERMITIDOS`,
+  se actualiza igual que en `credenciales.ts`).
 - **Gotcha del SDK**: `functions.invoke()` deriva por defecto un subdominio
   que no existe en este backend; por eso `getClient()` pasa
   `functionsUrl: baseUrl + '/functions'`. No quitar esa opción.
@@ -172,15 +207,21 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 013 | Equipos: `tipos_equipo`, `equipos`, `asignaciones_equipo`, `eventos_equipo` + triggers |
 | 014 | `ubicaciones` + asignaciones de equipo a persona O ubicación (exactamente uno) |
 | 015 | `fotos` en equipos (bucket público `equipos-fotos`, compresión en cliente) |
+| 016 | Tickets: `categorias_ticket`/`subcategorias_ticket`, `tickets`, `ticket_comentarios`, `ticket_eventos`, `ticket_satisfaccion` + triggers (código autogenerado, bloqueo de comentarios en cerrado, encuesta automática al cerrar) |
 
 ## Producción
 
 - Frontend desplegado en Vercel: **https://materen-ti.vercel.app**
 - SPA rewrites: `frontend/vercel.json` (copiado a `dist/` vía `public/`) — sin
   esto las rutas profundas (`/entrega/:token`, `/empleados/:id`) dan 404.
-- CORS de la edge function `credenciales`: allowlist con el dominio de
-  producción + localhost (dev). Si cambia el dominio, actualizar
-  `ORIGENES_PERMITIDOS` en `functions/credenciales.ts` y redesplegar.
+- CORS de las edge functions `credenciales` y `tickets`: allowlist con el
+  dominio de producción + localhost (dev), una por función. Si cambia el
+  dominio, actualizar `ORIGENES_PERMITIDOS` en ambos archivos y redesplegar.
+- Correo transaccional (confirmación de ticket, aviso de encuesta) es
+  best-effort: el plan actual de InsForge (free) no tiene `emails.send()`
+  habilitado, así que esos envíos fallan y quedan registrados como evento
+  `correo_fallido` en `ticket_eventos`, sin bloquear la creación/cierre del
+  ticket. El canal garantizado es la pantalla (código + token visibles).
 
 ## Pendientes / roadmap
 

@@ -29,3 +29,13 @@ export async function comprimirImagen(file) {
   const nombre = file.name.replace(/\.[^.]+$/, '') + '.jpg';
   return new File([blob], nombre, { type: 'image/jpeg' });
 }
+
+// Para enviar un archivo dentro de un JSON (ej. al crear un ticket desde
+// una página pública, sin sesión para subir directo a storage)
+export async function archivoABase64(file) {
+  const buffer = await file.arrayBuffer();
+  let binario = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i++) binario += String.fromCharCode(bytes[i]);
+  return btoa(binario);
+}

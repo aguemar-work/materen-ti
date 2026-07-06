@@ -1,5 +1,27 @@
 # AGENTS.md
 
+> Este proyecto sigue [`docs/MATEREN-CORE.md`](docs/MATEREN-CORE.md) para
+> principios y patrones compartidos de Materen (escalas, fórmula de color,
+> componentes de dominio ya resueltos, seguridad). Los tokens de color y la
+> identidad visual específicos de Sistema TI están en
+> [`frontend/src/styles/main.css`](frontend/src/styles/main.css) y
+> [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
+
+**Vigencia de este documento**: actualizado 2026-07-06, migración 016. Un
+`.md` sin esta línea no debe asumirse al día (regla de
+[Materen Core → Gobernanza](docs/MATEREN-CORE.md#gobernanza)).
+
+**Excepciones de precedencia documental**
+([Gobernanza](docs/MATEREN-CORE.md#gobernanza) — declaradas
+explícitamente, no asumidas): ante un conflicto, la documentación de
+intención (este archivo, `README.md`, `GUIA-UX-UI.md`) gana **excepto**:
+1. **Valores literales de tokens de color/tipografía/radio/z-index** — gana
+   `frontend/src/styles/main.css`, que es siempre más reciente que su
+   propia descripción en la guía.
+2. **Estructura de datos** (columnas, tablas, triggers) — gana el estado
+   real de la base y el historial de `migrations/*.sql`, no la descripción
+   de dominio en `README.md`.
+
 Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
 modelo de seguridad y estructura del repo).
 
@@ -8,7 +30,9 @@ modelo de seguridad y estructura del repo).
 Panel interno de TI (Vue 3 + InsForge/Postgres) para inventariar empleados y
 controlar el ciclo de vida de sus credenciales: alta guiada, baja con resumen,
 cuentas personales/reutilizables/compartidas, rotación de contraseñas,
-auditoría de accesos y entregas por enlace de un solo uso.
+auditoría de accesos y entregas por enlace de un solo uso. Incluye además una
+mesa de ayuda interna (`/tickets`) que reemplaza el helpdesk externo: los
+empleados nunca tienen acceso al sistema, solo páginas públicas con token.
 
 ## Reglas del proyecto
 
@@ -44,6 +68,18 @@ auditoría de accesos y entregas por enlace de un solo uso.
   `npx @insforge/cli functions deploy credenciales --file functions/credenciales.ts`.
   Secrets que usa: `CRED_KEY_V2`, `CRED_KEY_LEGACY`, `API_KEY`,
   `INSFORGE_BASE_URL` (los dos últimos son reservados de la plataforma).
+- **Edge function `tickets`**: `functions/tickets.ts` → desplegar con
+  `npx @insforge/cli functions deploy tickets --file functions/tickets.ts`.
+  Mismo patrón CORS/admin-client que `credenciales.ts` (helpers duplicados a
+  propósito, no se comparte código entre funciones). `tickets`/
+  `ticket_satisfaccion` no tienen INSERT de cliente: solo esta función
+  escribe. El **token de entrega** (`entregas`) y el **token de ticket**
+  (`tickets`) son conceptos distintos — no reusar uno para el otro.
+- **Gotcha de triggers `created_by`**: `set_created_by_only()` asume una
+  columna `created_by`; en tablas con otro nombre de autor (ej.
+  `ticket_comentarios.autor_id`) hay que crear una función dedicada
+  (`set_autor_id_only()`) en vez de reusarla — si no, el insert falla con
+  `record "new" has no field "created_by"`.
 - **Gotcha del SDK** (v1.4.0): `functions.invoke()` deriva
   `https://<app>.functions.insforge.app`, que NO existe en este backend; en
   navegador el 404 sin CORS bloquea el fallback. Por eso `getClient()`

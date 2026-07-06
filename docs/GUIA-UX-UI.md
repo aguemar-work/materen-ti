@@ -1,8 +1,34 @@
 # Guía UX/UI del Sistema TI
 
+> Este documento implementa, para Sistema TI, la fórmula y los patrones
+> definidos en [`MATEREN-CORE.md`](MATEREN-CORE.md) (compartido entre todos
+> los productos Materen). Lo de acá abajo son los **valores concretos**
+> (hex, componentes ya cableados); la fundación conceptual vive allá.
+
+**Vigencia**: actualizado 2026-07-06 (tema Cyprus/Sand + oscuro, tipografía
+de sistema, grilla de 12 columnas, sidebar minimalista, badges/timeline/
+capacity-bar/confirm-dialog unificados, escala de z-index). Si el código de
+`main.css` contradice algo de aquí, gana el código
+([Gobernanza de documentación](MATEREN-CORE.md#gobernanza)).
+
 Documentación del sistema visual del panel: colores, tipografías, layout y
 convenciones de componentes. Útil para mantener coherencia al añadir pantallas
 o ajustar la identidad de marca.
+
+### Sincronización con Materen Core
+
+Para no mantener dos especificaciones que divergen con el tiempo, lo canónico
+vive en [`MATEREN-CORE.md`](MATEREN-CORE.md); acá solo la implementación de
+Sistema TI. Patrones ya **promovidos** al documento madre:
+
+| Tema en esta guía | Especificación canónica | Qué queda acá |
+|---|---|---|
+| Escala z-index | [Fundaciones → Interacción](MATEREN-CORE.md#fundaciones) | Valores `--z-*` en `main.css` |
+| Radios (`--radius-pill`, etc.) | [Fundaciones → Radios](MATEREN-CORE.md#fundaciones) | Tokens en `main.css` |
+| Un acento por vista (+ excepción modal) | [Fundaciones → Interacción](MATEREN-CORE.md#fundaciones) | Corrección jul 2026 en 7 vistas |
+| Badge base + modificadores, ajustes locales | [Patrones → Badge](MATEREN-CORE.md#patrones-de-componente) | Modificadores de dominio (`--purple`, `--sky`, etc.) |
+| Capacity, timeline, confirmación, `.form-error` | [Patrones de componente](MATEREN-CORE.md#patrones-de-componente) | Markup de referencia de este repo |
+| `.badge-group` | [Patrón candidato](MATEREN-CORE.md#patrones-de-componente) — **no generalizado** | Solo Equipos; no copiar hasta segunda ocurrencia |
 
 ## Arquitectura general
 
@@ -10,10 +36,10 @@ El frontend **no usa Tailwind ni librería de componentes**. Todo el diseño viv
 
 | Archivo | Rol |
 |---------|-----|
-| [`frontend/src/styles/main.css`](../frontend/src/styles/main.css) | Design system completo (~864 líneas): tokens, layout, botones, tablas, modales, etc. |
+| [`frontend/src/styles/main.css`](../frontend/src/styles/main.css) | Design system completo: tokens, layout, botones, tablas, modales, badges, timeline, capacity, confirm-dialog, etc. |
 | [`frontend/src/core/tema.js`](../frontend/src/core/tema.js) | Alternancia claro/oscuro (`data-theme` en `<html>`) |
-| [`frontend/src/components/shared/AppLayout.vue`](../frontend/src/components/shared/AppLayout.vue) | Shell: sidebar fijo + área principal |
-| [`frontend/index.html`](../frontend/index.html) | Carga de fuentes (Google Fonts) e iconos (Tabler CDN) |
+| [`frontend/src/components/shared/AppLayout.vue`](../frontend/src/components/shared/AppLayout.vue) | Shell: sidebar minimalista + área principal |
+| [`frontend/index.html`](../frontend/index.html) | Iconos (Tabler CDN). Sin webfonts de texto — tipografía del sistema operativo (ver §Tipografía) |
 
 **Patrón de uso:** las vistas Vue aplican clases globales (`.card`, `.btn-primary`, `.filters`…) directamente en el template. Solo hay **un componente compartido** (`AppLayout`); el resto son vistas por módulo con `<style scoped>` para badges/chips de dominio.
 
@@ -49,9 +75,17 @@ flowchart TB
 
 ## Identidad de marca
 
-Comentado explícitamente en `main.css` como **Marca Materen**:
+> **Paleta vigente en producción, no marca oficial.** Cyprus y Sand son los
+> colores **implementados hoy** en `main.css` y en https://materen-ti.vercel.app.
+> La identidad de marca Materen es Navy + Turquesa/Índigo — ver
+> [Identidad de marca](MATEREN-CORE.md#identidad-de-marca) en Materen Core.
+> Esta paleta verde es [deuda de migración](MATEREN-CORE.md#deuda-de-migracion),
+> no una excepción de marca. Si abriste este archivo sin leer Materen Core, **no
+> asumas que Cyprus es el color oficial de Materen.**
 
-- **Cyprus** `#004741` — color de acento principal (botones, links, icono de marca)
+Comentado en `main.css` como implementación local (heredada):
+
+- **Cyprus** `#004741` — acento principal vigente (botones, links, icono de marca)
 - **Sand** `#f0ede4` — fondo base del tema claro (cálido, no blanco puro)
 
 El icono de marca usa un **gradiente** Cyprus → teal:
@@ -148,11 +182,37 @@ Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
 ### Sombras y radios
 
 ```
---radius-sm: 6px    --shadow-sm: sutil
---radius-md: 10px   --shadow-md: tarjetas hover
---radius-lg: 14px   --shadow-lg: modales
+--radius-sm: 6px      --shadow-sm: sutil
+--radius-md: 10px     --shadow-md: tarjetas hover
+--radius-lg: 14px     --shadow-lg: modales
 --radius-xl: 20px
+--radius-pill: 999px  (badges, capacity-bar, timeline-dot)
 ```
+
+Escala canónica en [Fundaciones → Radios](MATEREN-CORE.md#fundaciones).
+
+### Escala de z-index
+
+Especificación canónica en [Fundaciones → Interacción](MATEREN-CORE.md#fundaciones)
+("capas, no números sueltos"). Valores concretos de Sistema TI:
+
+```
+--z-header: 50           site-header sticky de cada vista
+--z-header-mobile: 60    topbar-mobile (encima del header normal)
+--z-nav: 100             sidebar en modo drawer (≤768px) + su overlay (z-nav - 1)
+--z-popover: 300         .sb-resultados (búsqueda global)
+--z-modal: 400           .modal-bg
+--z-modal-stacked: 410   reservado para un modal sobre otro (sin uso aún)
+--z-toast: 500           .toast — siempre visible, incluso sobre un modal
+```
+
+Antes de este ajuste, `.modal-bg` estaba en `z-index: 100` y el drawer móvil
+en `200` — un modal podía quedar **debajo** del sidebar en móvil. Corregido
+al fijar la escala (promovida a
+[Materen Core → Fundaciones](MATEREN-CORE.md#fundaciones)). Los dropdowns internos de un modal (`.combo-lista` en
+Equipos/Licencias, `z-index: 20`) no participan de esta escala: compiten
+solo dentro del stacking context que crea su propio `.modal-bg`, no contra
+el sidebar ni el header.
 
 ### Excepciones hardcodeadas
 
@@ -373,6 +433,10 @@ Umbrales: `--ok` <70% ocupado, `--warning` 70-99%, `--full` =100%. En uso en
 
 ### Badge doble (`.badge-group`)
 
+> **Patrón candidato en Materen Core** — visto una sola vez en este repo; no
+> generalizar hasta que un segundo módulo lo necesite. Ver
+> [Patrones de componente → candidatos](MATEREN-CORE.md#patrones-de-componente).
+
 Para entidades con **dos estados simultáneos e independientes** — un equipo
 tiene estado físico (operativo/en_reparación/de_baja/perdido) y situación
 derivada (Disponible/Asignado/En ubicación) a la vez:
@@ -449,10 +513,29 @@ Licencias y Equipos, además de los formularios de creación/edición.
 
 ## Resumen
 
-Panel con **CSS custom + variables CSS**, identidad **Materen (verde cyprus + sand cálido)**, tipografía **Inter**, iconos **Tabler**, **tema claro/oscuro** con sidebar minimalista que se funde con el fondo (sin bordes; hover/activo de tinte muy tenue), y **clases utilitarias globales** consumidas directamente por las vistas Vue — sin design tokens JSON ni framework CSS externo.
+Panel con **CSS custom + variables CSS**, paleta **Cyprus/Sand vigente en
+producción** (en migración hacia Navy + Turquesa/Índigo de
+[Materen Core](MATEREN-CORE.md#identidad-de-marca)), tipografía nativa del SO,
+iconos **Tabler**, **tema claro/oscuro** con sidebar minimalista que se funde
+con el fondo (sin bordes; hover/activo de tinte muy tenue), y **clases
+utilitarias globales** consumidas directamente por las vistas Vue — sin design
+tokens JSON ni framework CSS externo.
 
 ### Principios de diseño (definidos por el JEFE)
 
 - **Minimalista**: no sobresaturar la vista ni agobiar con información.
 - Estados hover/activo **sin bordes** — solo fondos muy tenues.
 - Preferir fusión de superficies sobre paneles/bloques delimitados.
+- **Un solo acento visible por vista**
+  ([Fundaciones → Interacción](MATEREN-CORE.md#fundaciones)). El botón `.btn-primary`
+  del header/toolbar de cada módulo (ej. "Nueva licencia") es el acento fijo
+  de esa vista. **Corrección (jul 2026)**: en 7 vistas (Empleados, Correos,
+  Empresas, Plataformas, Licencias, Equipos, Cuentas) el estado vacío
+  mostraba un **segundo** `.btn-primary` idéntico ("Agregar X") al mismo
+  tiempo que el del header — dos acentos simultáneos para la misma acción.
+  Se demotó el CTA del estado vacío a `.btn` (secundario); el header sigue
+  siendo el único lugar con el acento primario para "crear".
+  **Excepción declarada**: el botón "Guardar"/"Confirmar" dentro de un
+  modal SÍ puede ser `.btn-primary` aunque el header de la página detrás
+  también lo sea — el modal es la superficie de foco activa, el fondo queda
+  inerte tras el backdrop. No se considera doble acento.

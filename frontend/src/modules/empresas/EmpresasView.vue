@@ -117,7 +117,7 @@ onMounted(async () => {
           <div class="empty-icon"><i class="ti ti-building"></i></div>
           <h3>Sin empresas</h3>
           <p>{{ busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera empresa.' }}</p>
-          <button v-if="!busqueda" class="btn btn-primary" type="button" @click="abrirNueva">
+          <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
             <i class="ti ti-plus"></i> Agregar empresa
           </button>
         </div>

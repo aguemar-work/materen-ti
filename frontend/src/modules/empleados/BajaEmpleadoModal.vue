@@ -18,6 +18,7 @@ const equipos = ref([]);
 const cargando = ref(true);
 const procesando = ref(false);
 const error = ref('');
+const btnCancelar = ref(null);
 
 const nombreCompleto = computed(() => `${props.empleado.nombres} ${props.empleado.apellidos}`);
 
@@ -30,6 +31,10 @@ const sinAccesos = computed(
 );
 
 onMounted(async () => {
+  // Confirmación de nivel Base (Materen Core #patrones-de-componente): el foco por defecto va
+  // en Cancelar, no en Confirmar — el usuario debe elegir avanzar a
+  // propósito, nunca por apretar Enter/Espacio sin pensar.
+  btnCancelar.value?.focus();
   try {
     const resumen = await insforgeApi.resumenBaja(props.empleado.id);
     cuentas.value = resumen.cuentas;
@@ -173,7 +178,7 @@ async function confirmarBaja() {
       </div>
 
       <div class="modal-actions baja-actions">
-        <button class="btn" type="button" :disabled="procesando" @click="cancelar">Cancelar</button>
+        <button ref="btnCancelar" class="btn" type="button" :disabled="procesando" @click="cancelar">Cancelar</button>
         <button
           class="btn btn-danger"
           type="button"

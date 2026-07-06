@@ -118,14 +118,9 @@ async function copiar(texto, id) {
           exclusivamente a través de ticket. No se atenderán consultas por WhatsApp
           ni por ningún otro canal.
         </p>
-        <a
-          class="soporte-btn"
-          href="https://formularios-inacons.bitrix24.site/helpdesk/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <RouterLink class="soporte-btn" :to="`/ticket/nuevo?entrega=${route.params.token}`">
           <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
-        </a>
+        </RouterLink>
       </div>
     </div>
   </div>
@@ -152,7 +147,7 @@ async function copiar(texto, id) {
 
 .entrega-title {
   font-size: 19px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0 0 8px;
 }
@@ -206,7 +201,7 @@ async function copiar(texto, id) {
 
 .cred-plataforma {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--color-primary, var(--color-accent));

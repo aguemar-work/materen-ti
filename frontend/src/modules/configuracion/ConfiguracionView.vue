@@ -9,6 +9,7 @@ import EmpresasView from '../empresas/EmpresasView.vue';
 import PlataformasView from '../plataformas/PlataformasView.vue';
 import TiposEquipoPanel from './TiposEquipoPanel.vue';
 import UbicacionesPanel from './UbicacionesPanel.vue';
+import CategoriasTicketPanel from './CategoriasTicketPanel.vue';
 import StaffView from '../staff/StaffView.vue';
 
 const route = useRoute();
@@ -21,6 +22,7 @@ const TABS = computed(() => {
     { id: 'plataformas',  label: 'Plataformas',     icon: 'ti ti-apps',      componente: PlataformasView },
     { id: 'tipos-equipo', label: 'Tipos de equipo', icon: 'ti ti-devices',   componente: TiposEquipoPanel },
     { id: 'ubicaciones',  label: 'Ubicaciones',     icon: 'ti ti-map-pin',   componente: UbicacionesPanel },
+    { id: 'categorias-ticket', label: 'Categorías de tickets', icon: 'ti ti-headset', componente: CategoriasTicketPanel },
   ];
   if (auth.esJefe) {
     tabs.push({ id: 'staff', label: 'Staff y roles', icon: 'ti ti-shield', componente: StaffView });

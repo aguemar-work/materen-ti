@@ -136,7 +136,7 @@ onMounted(async () => {
           <div class="empty-icon"><i class="ti ti-mail-share"></i></div>
           <h3>Sin correos compartidos</h3>
           <p>{{ busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.' }}</p>
-          <button v-if="!busqueda" class="btn btn-primary" type="button" @click="abrirNuevo">
+          <button v-if="!busqueda" class="btn" type="button" @click="abrirNuevo">
             <i class="ti ti-plus"></i> Nuevo correo compartido
           </button>
         </div>

@@ -159,7 +159,7 @@ onMounted(async () => {
           <div class="empty-icon"><i class="ti ti-users"></i></div>
           <h3>Sin empleados</h3>
           <p>{{ busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agrega el primer empleado al inventario.' }}</p>
-          <button v-if="!busqueda && !filtroEstado" class="btn btn-primary" type="button" @click="abrirNuevo">
+          <button v-if="!busqueda && !filtroEstado" class="btn" type="button" @click="abrirNuevo">
             <i class="ti ti-plus"></i> Agregar empleado
           </button>
         </div>

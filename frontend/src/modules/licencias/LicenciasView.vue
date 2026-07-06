@@ -244,7 +244,7 @@ onMounted(async () => {
           <div class="empty-icon"><i class="ti ti-license"></i></div>
           <h3>Sin licencias</h3>
           <p>{{ busqueda ? 'No hay resultados con ese filtro.' : 'Registra la primera licencia para ordenar el software que pagan.' }}</p>
-          <button v-if="!busqueda" class="btn btn-primary" type="button" @click="abrirNueva">
+          <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
             <i class="ti ti-plus"></i> Nueva licencia
           </button>
         </div>

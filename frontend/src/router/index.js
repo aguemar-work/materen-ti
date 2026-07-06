@@ -10,6 +10,11 @@ import LicenciasView from '../modules/licencias/LicenciasView.vue';
 import EquiposView from '../modules/equipos/EquiposView.vue';
 import ActividadView from '../modules/actividad/ActividadView.vue';
 import EntregaView from '../modules/entregas/EntregaView.vue';
+import TicketsView from '../modules/tickets/TicketsView.vue';
+import TicketDetalleView from '../modules/tickets/TicketDetalleView.vue';
+import TicketNuevoView from '../modules/tickets/TicketNuevoView.vue';
+import TicketSeguimientoView from '../modules/tickets/TicketSeguimientoView.vue';
+import TicketSatisfaccionView from '../modules/tickets/TicketSatisfaccionView.vue';
 
 const routes = [
   {
@@ -69,10 +74,41 @@ const routes = [
     component: ActividadView,
   },
   {
+    path: '/tickets',
+    name: 'tickets',
+    component: TicketsView,
+  },
+  {
+    path: '/tickets/:id',
+    name: 'ticket-detalle',
+    component: TicketDetalleView,
+  },
+  {
     // Página pública: el empleado abre su entrega de un solo uso sin sesión
     path: '/entrega/:token',
     name: 'entrega',
     component: EntregaView,
+    meta: { public: true },
+  },
+  {
+    // Página pública: formulario de creación de ticket (?entrega=<token> opcional)
+    path: '/ticket/nuevo',
+    name: 'ticket-nuevo',
+    component: TicketNuevoView,
+    meta: { public: true },
+  },
+  {
+    // Página pública: seguimiento de UN ticket por su propio token
+    path: '/ticket/:token',
+    name: 'ticket-seguimiento',
+    component: TicketSeguimientoView,
+    meta: { public: true },
+  },
+  {
+    // Página pública: encuesta de satisfacción, enlace enviado al cerrar
+    path: '/ticket/:token/satisfaccion',
+    name: 'ticket-satisfaccion',
+    component: TicketSatisfaccionView,
     meta: { public: true },
   },
 ];

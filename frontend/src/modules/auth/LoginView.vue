@@ -290,7 +290,7 @@ async function onCambiarPassword() {
 
 .login-title {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
   margin-bottom: 4px;
 }

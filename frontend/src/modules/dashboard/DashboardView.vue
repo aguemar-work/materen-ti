@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
+import { formatFecha } from '../../core/formatters.js';
 
 const stats = ref(null);
 const recientes = ref([]);
@@ -9,6 +10,7 @@ const pendientes = ref({
   porRotar: [], sinPassword: [], licenciasPorVencer: [],
   equiposSinDevolver: [], garantiasPorVencer: [],
 });
+const pendientesTickets = ref({ sinAsignar: [], sinVincular: [], abiertosViejos: [] });
 const cargando = ref(true);
 
 const hayPendientes = computed(
@@ -17,7 +19,10 @@ const hayPendientes = computed(
     pendientes.value.sinPassword.length > 0 ||
     pendientes.value.licenciasPorVencer.length > 0 ||
     pendientes.value.equiposSinDevolver.length > 0 ||
-    pendientes.value.garantiasPorVencer.length > 0
+    pendientes.value.garantiasPorVencer.length > 0 ||
+    pendientesTickets.value.sinAsignar.length > 0 ||
+    pendientesTickets.value.sinVincular.length > 0 ||
+    pendientesTickets.value.abiertosViejos.length > 0
 );
 
 function claseEstado(estado) {
@@ -43,14 +48,16 @@ function contextoPendiente(item) {
 
 onMounted(async () => {
   try {
-    const [est, emp, pend] = await Promise.all([
+    const [est, emp, pend, pendTk] = await Promise.all([
       insforgeApi.getEstadisticas(),
       insforgeApi.listEmpleadosRecientes(6),
       insforgeApi.listPendientes(),
+      insforgeApi.pendientesTickets(),
     ]);
     stats.value = est;
     recientes.value = emp;
     pendientes.value = pend;
+    pendientesTickets.value = pendTk;
   } finally {
     cargando.value = false;
   }
@@ -123,7 +130,7 @@ onMounted(async () => {
           <h2 class="section-title">Pendientes</h2>
 
           <div v-if="!hayPendientes" class="todo-ok">
-            <i class="ti ti-circle-check-filled"></i> Todo al día: sin contraseñas por rotar, licencias por vencer ni equipos sin devolver.
+            <i class="ti ti-circle-check-filled"></i> Todo al día: sin contraseñas por rotar, licencias por vencer, equipos sin devolver ni tickets pendientes.
           </div>
 
           <div v-else class="grid-12">
@@ -229,6 +236,66 @@ onMounted(async () => {
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
             </div>
+
+            <div v-if="pendientesTickets.sinAsignar.length" class="pend-card col-4">
+              <div class="pend-header pend-header--rotar">
+                <i class="ti ti-headset"></i>
+                Tickets sin asignar
+                <span class="pend-count">{{ pendientesTickets.sinAsignar.length }}</span>
+              </div>
+              <RouterLink
+                v-for="item in pendientesTickets.sinAsignar"
+                :key="item.ticket_id"
+                class="pend-item"
+                :to="`/tickets/${item.ticket_id}`"
+              >
+                <div class="pend-item-main">
+                  <span class="pend-usuario">{{ item.codigo }}</span>
+                  <span class="pend-contexto">{{ item.titulo }}</span>
+                </div>
+                <i class="ti ti-chevron-right"></i>
+              </RouterLink>
+            </div>
+
+            <div v-if="pendientesTickets.sinVincular.length" class="pend-card col-4">
+              <div class="pend-header pend-header--sinpw">
+                <i class="ti ti-user-question"></i>
+                Tickets sin vincular
+                <span class="pend-count">{{ pendientesTickets.sinVincular.length }}</span>
+              </div>
+              <RouterLink
+                v-for="item in pendientesTickets.sinVincular"
+                :key="item.ticket_id"
+                class="pend-item"
+                :to="`/tickets/${item.ticket_id}`"
+              >
+                <div class="pend-item-main">
+                  <span class="pend-usuario">{{ item.codigo }}</span>
+                  <span class="pend-contexto">{{ item.titulo }}</span>
+                </div>
+                <i class="ti ti-chevron-right"></i>
+              </RouterLink>
+            </div>
+
+            <div v-if="pendientesTickets.abiertosViejos.length" class="pend-card col-4">
+              <div class="pend-header pend-header--lic">
+                <i class="ti ti-clock-exclamation"></i>
+                Tickets abiertos hace +3 días
+                <span class="pend-count">{{ pendientesTickets.abiertosViejos.length }}</span>
+              </div>
+              <RouterLink
+                v-for="item in pendientesTickets.abiertosViejos"
+                :key="item.ticket_id"
+                class="pend-item"
+                :to="`/tickets/${item.ticket_id}`"
+              >
+                <div class="pend-item-main">
+                  <span class="pend-usuario">{{ item.codigo }}</span>
+                  <span class="pend-contexto">{{ item.titulo }} · desde {{ formatFecha(item.desde) }}</span>
+                </div>
+                <i class="ti ti-chevron-right"></i>
+              </RouterLink>
+            </div>
           </div>
         </div>
 
@@ -256,7 +323,7 @@ onMounted(async () => {
 .page { display: flex; flex-direction: column; height: 100%; }
 
 .site-header {
-  position: sticky; top: 0; z-index: 50;
+  position: sticky; top: 0; z-index: var(--z-header);
   background: var(--color-bg-elevated);
   border-bottom: 1px solid var(--color-border);
   box-shadow: var(--shadow-sm);
@@ -268,7 +335,7 @@ onMounted(async () => {
 }
 
 .header-title h1 {
-  font-size: 18px; font-weight: 700;
+  font-size: 18px; font-weight: 600;
   color: var(--color-text-primary);
   margin: 0; display: flex; align-items: center; gap: 8px;
 }
@@ -350,7 +417,7 @@ onMounted(async () => {
 .pend-count {
   margin-left: auto;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   background: rgba(0, 0, 0, 0.08);
   border-radius: 20px;
   padding: 1px 8px;

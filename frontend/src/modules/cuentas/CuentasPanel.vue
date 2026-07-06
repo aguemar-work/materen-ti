@@ -201,7 +201,7 @@ onMounted(async () => {
       <div class="empty-icon"><i class="ti ti-key"></i></div>
       <h3>Sin cuentas registradas</h3>
       <p>Agrega la primera cuenta para este empleado.</p>
-      <button class="btn btn-primary" type="button" @click="abrirNueva">
+      <button class="btn" type="button" @click="abrirNueva">
         <i class="ti ti-plus"></i> Agregar cuenta
       </button>
     </div>

@@ -349,7 +349,7 @@ onMounted(async () => {
           <div class="empty-icon"><i class="ti ti-devices"></i></div>
           <h3>Sin equipos</h3>
           <p>{{ busqueda || filtroTipo || filtroSituacion ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer equipo del inventario.' }}</p>
-          <button v-if="!busqueda && !filtroTipo && !filtroSituacion" class="btn btn-primary" type="button" @click="abrirNuevo">
+          <button v-if="!busqueda && !filtroTipo && !filtroSituacion" class="btn" type="button" @click="abrirNuevo">
             <i class="ti ti-plus"></i> Nuevo equipo
           </button>
         </div>
@@ -665,7 +665,7 @@ onMounted(async () => {
 .eq-codigo {
   font-family: var(--font-mono, monospace);
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .eq-modelo {
@@ -738,9 +738,9 @@ onMounted(async () => {
 
 .badge-sin-devolver {
   /* Estructura y color: sistema de badges global (.badge + .badge--danger);
-     aquí solo el ajuste único de este chip: separación y peso extra. */
+     aquí solo el ajuste único de este chip: separación del texto vecino.
+     Sin peso extra: 700 se reserva para stat cards y wordmark (Materen Core #fundaciones). */
   margin-left: 6px;
-  font-weight: 700;
 }
 
 .garantia-vencida { color: var(--color-danger-text); }

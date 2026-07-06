@@ -251,7 +251,7 @@ async function guardar() {
 
         <!-- Specs según la plantilla del tipo -->
         <template v-if="camposSpec.length">
-          <div class="form-group full seccion-label">
+          <div class="form-group full section-label">
             <i class="ti ti-list-details"></i> Especificaciones ({{ tipoActual?.nombre }})
           </div>
           <div v-for="campo in camposSpec" :key="campo" class="form-group">
@@ -262,7 +262,7 @@ async function guardar() {
 
         <!-- Accesorios: sugeridos por el tipo + libres -->
         <template v-if="form.tipo_id">
-          <div class="form-group full seccion-label">
+          <div class="form-group full section-label">
             <i class="ti ti-plug"></i> Accesorios incluidos
           </div>
           <div class="form-group full">
@@ -307,7 +307,7 @@ async function guardar() {
         </template>
 
         <!-- Fotos -->
-        <div class="form-group full seccion-label">
+        <div class="form-group full section-label">
           <i class="ti ti-camera"></i> Fotos ({{ form.fotos.length }}/{{ MAX_FOTOS }})
         </div>
         <div class="form-group full">
@@ -374,19 +374,7 @@ async function guardar() {
 .costo-inputs input { flex: 1; }
 .costo-inputs select { width: 76px; }
 
-.seccion-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
-  border-top: 1px solid var(--color-border);
-  padding-top: 12px;
-  margin-top: 4px;
-}
+/* Etiquetas de sección: .section-label global (main.css) */
 
 .acc-chips {
   display: flex;
