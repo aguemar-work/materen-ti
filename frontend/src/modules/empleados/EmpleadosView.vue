@@ -168,22 +168,22 @@ onMounted(async () => {
           <table>
             <thead>
               <tr>
-                <th>Nombre completo</th>
                 <th>DNI</th>
-                <th>Empresa</th>
+                <th>Nombre</th>
                 <th>Cargo</th>
+                <th>Empresa</th>
                 <th>Estado</th>
-                <th></th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="emp in listaFiltrada" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
-                <td>
-                  <div class="user-name user-name--link">{{ nombreCompleto(emp) }}</div>
-                </td>
                 <td class="text-muted">{{ emp.dni }}</td>
-                <td>{{ emp.empresa_nombre || '—' }}</td>
+                <td>
+                  <div class="user-name">{{ nombreCompleto(emp) }}</div>
+                </td>
                 <td class="text-muted">{{ emp.cargo || '—' }}</td>
+                <td>{{ emp.empresa_nombre || '—' }}</td>
                 <td>
                   <span class="status" :class="claseEstado(emp.estado)">{{ emp.estado }}</span>
                 </td>
@@ -243,6 +243,4 @@ onMounted(async () => {
 
 .fila-empleado { cursor: pointer; }
 .fila-empleado:hover td { background: var(--color-bg-hover, var(--color-bg-subtle)); }
-
-.user-name--link { color: var(--color-primary, var(--color-accent)); }
 </style>
