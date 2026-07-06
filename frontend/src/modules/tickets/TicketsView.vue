@@ -56,6 +56,19 @@ function verTicket(ticket) {
   router.push(`/tickets/${ticket.id}`);
 }
 
+// Enlaces públicos que el staff comparte con los empleados (o abre para
+// probar) — se copian con window.location.origin para que funcionen igual
+// en desarrollo y en producción.
+async function copiarEnlace(ruta, mensaje) {
+  const link = `${window.location.origin}${ruta}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    showToast(mensaje);
+  } catch {
+    showToast('No se pudo copiar. Copia manualmente: ' + link, 'error');
+  }
+}
+
 function onNuevoCerrado(creado) {
   mostrarNuevo.value = false;
   if (creado) {
@@ -98,6 +111,14 @@ onMounted(async () => {
           <div class="toolbar-title">
             Tickets de soporte
             <span class="badge-count">{{ listaFiltrada.length }}</span>
+          </div>
+          <div class="toolbar-actions">
+            <button class="btn" type="button" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
+              <i class="ti ti-link" aria-hidden="true"></i> Copiar enlace para reportar
+            </button>
+            <button class="btn" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
+              <i class="ti ti-search" aria-hidden="true"></i> Copiar enlace de búsqueda
+            </button>
           </div>
         </div>
 
