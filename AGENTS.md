@@ -7,7 +7,7 @@
 > [`frontend/src/styles/main.css`](frontend/src/styles/main.css) y
 > [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
-**Vigencia de este documento**: actualizado 2026-07-06, migración 016. Un
+**Vigencia de este documento**: actualizado 2026-07-06, migración 017. Un
 `.md` sin esta línea no debe asumirse al día (regla de
 [Materen Core → Gobernanza](docs/MATEREN-CORE.md#gobernanza)).
 

@@ -10,6 +10,7 @@
 //   catalogo       público          → { categorias[], subcategorias[] }
 //   crear          público o staff  → { codigo, token, vinculado }
 //   seguimiento    público          → { codigo, titulo, estado, comentarios[] }
+//   buscarPorDni   público          → { tickets[] } (solo tickets ACTIVOS; limitado por IP)
 //   encuesta       público          → { ok }
 //   enviarEncuesta staff            → { ok, enviado }
 //
@@ -285,6 +286,47 @@ export default async function (req: Request): Promise<Response> {
       actualizado: ticket.updated_at,
       // No se exponen nombres de staff: cara pública única, "Soporte TI"
       comentarios: (comentarios || []).map((c) => ({ mensaje: c.mensaje, fecha: c.created_at, autor: 'Soporte TI' })),
+    });
+  }
+
+  // ── buscarPorDni: público, para quien perdió el enlace de seguimiento ──
+  // Solo devuelve tickets ACTIVOS (nunca cerrados/rechazados/resueltos) y
+  // nunca revela si el DNI corresponde o no a un empleado real. Limitado
+  // por IP para frenar enumeración de DNIs (8 dígitos es poco espacio).
+  if (body.action === 'buscarPorDni') {
+    const dni = soloDigitos(String(body.dni || ''));
+    if (dni.length !== 8) return json({ ok: false, code: 'dni_invalido' });
+
+    const ip = (req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'desconocida')
+      .split(',')[0].trim();
+    const desde = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
+    const { data: intentosPrevios } = await admin.database
+      .from('ticket_busqueda_intentos')
+      .select('id')
+      .eq('ip', ip)
+      .gte('created_at', desde);
+    if ((intentosPrevios?.length || 0) >= 15) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+    await admin.database.from('ticket_busqueda_intentos').insert([{ ip, dni }]);
+
+    const { data: empleado } = await admin.database
+      .from('empleados').select('id').eq('dni', dni).is('deleted_at', null).maybeSingle();
+    if (!empleado) return json({ ok: true, tickets: [] });
+
+    const { data: tickets } = await admin.database
+      .from('tickets')
+      .select('codigo, titulo, estado, created_at, token')
+      .eq('empleado_id', empleado.id)
+      .in('estado', ['abierto', 'en_progreso', 'reabierto'])
+      .order('created_at', { ascending: false });
+
+    return json({
+      ok: true,
+      tickets: (tickets || []).map((t) => ({
+        codigo: t.codigo, titulo: t.titulo, estado: t.estado, creado: t.created_at, token: t.token,
+      })),
     });
   }
 

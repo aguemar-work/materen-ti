@@ -132,6 +132,9 @@ onMounted(async () => {
         <p class="ticket-subtitulo">
           Cuéntanos qué pasó y te ayudamos a resolverlo.
         </p>
+        <RouterLink class="ticket-ver-mios" to="/ticket/buscar">
+          <i class="ti ti-search" aria-hidden="true"></i> ¿Ya reportaste algo? Busca tu ticket
+        </RouterLink>
 
         <form class="ticket-form" @submit.prevent="enviar">
           <div v-if="!tokenEntrega" class="form-group full">
@@ -230,6 +233,9 @@ onMounted(async () => {
         <p v-else class="ticket-texto ticket-nota">
           No pudimos identificarte automáticamente — un agente revisará tu caso a la brevedad.
         </p>
+        <p class="ticket-texto ticket-nota">
+          Si pierdes este enlace, puedes <RouterLink to="/ticket/buscar">buscar tu ticket por DNI</RouterLink>.
+        </p>
       </template>
     </div>
   </div>
@@ -272,6 +278,20 @@ onMounted(async () => {
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 10px;
+}
+
+.ticket-ver-mios {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--color-accent-text);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+
+.ticket-ver-mios:hover {
+  text-decoration: underline;
 }
 
 .ticket-form {

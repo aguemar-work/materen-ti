@@ -5,9 +5,11 @@ import { insforgeApi } from '../../api/insforge.js';
 import { getClient } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
+import { useAuthStore } from '../../stores/auth.js';
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 
 const ticket = ref(null);
 const comentarios = ref([]);
@@ -24,13 +26,18 @@ const enviandoComentario = ref(false);
 const mostrarHoja = ref(false);
 const cargandoHoja = ref(false);
 
-const ESTADOS = [
-  { valor: 'abierto', label: 'Abierto' },
-  { valor: 'en_progreso', label: 'En progreso' },
-  { valor: 'resuelto', label: 'Resuelto' },
-  { valor: 'cerrado', label: 'Cerrado' },
-  { valor: 'reabierto', label: 'Reabierto' },
-];
+const ESTADOS_INFO = {
+  abierto:     { label: 'Abierto',       clase: 'badge--info' },
+  en_progreso: { label: 'En progreso',   clase: 'badge--warning' },
+  resuelto:    { label: 'Resuelto',      clase: 'badge--success' },
+  cerrado:     { label: 'Cerrado',       clase: 'badge--neutral' },
+  reabierto:   { label: 'Reabierto',     clase: 'badge--danger' },
+  rechazado:   { label: 'Rechazado',     clase: 'badge--neutral' },
+};
+
+function estadoInfo(e) {
+  return ESTADOS_INFO[e] || { label: e, clase: 'badge--neutral' };
+}
 
 const PRIORIDADES = [
   { valor: 'baja', label: 'Baja' },
@@ -38,6 +45,16 @@ const PRIORIDADES = [
   { valor: 'alta', label: 'Alta' },
   { valor: 'urgente', label: 'Urgente' },
 ];
+
+const NIVELES_ATENCION = [
+  { valor: 'N1', label: 'N1 — Soporte básico' },
+  { valor: 'N2', label: 'N2 — Especializado' },
+  { valor: 'N3', label: 'N3 — Experto / desarrollo' },
+];
+
+// Estados en los que el ticket ya está en curso: campos editables + botón Resuelto
+const ESTADOS_EN_CURSO = ['en_progreso', 'reabierto', 'resuelto'];
+const ESTADOS_TERMINALES = ['cerrado', 'rechazado'];
 
 const staffPorId = computed(() => {
   const mapa = {};
@@ -60,6 +77,7 @@ const EVENTO_LABELS = {
   reasignado: 'Reasignado',
   estado_cambiado: 'Cambio de estado',
   prioridad_cambiada: 'Cambio de prioridad',
+  nivel_atencion_cambiado: 'Cambio de nivel de atención',
   correo_fallido: 'No se pudo enviar el correo',
   encuesta_enviada: 'Encuesta enviada',
   encuesta_respondida: 'Encuesta respondida',
@@ -81,7 +99,7 @@ async function cargar() {
     ticket.value = t;
     comentarios.value = coms;
     staffLista.value = staff.filter((s) => s.activo);
-    if (t.estado === 'resuelto' || t.estado === 'cerrado') {
+    if (t.estado !== 'abierto') {
       satisfaccion.value = await insforgeApi.getSatisfaccionTicket(route.params.id);
     }
   } catch (e) {
@@ -91,28 +109,129 @@ async function cargar() {
   }
 }
 
-async function cambiarEstado(nuevoEstado) {
-  const anterior = ticket.value.estado;
-  if (nuevoEstado === anterior) return;
+// ── Iniciar atención (abierto -> en_progreso): pide prioridad + nivel +
+// asignado, todo junto, precargando "asignado a" con quien hace clic ──────
+const mostrarIniciar = ref(false);
+const iniciarForm = ref({ prioridad: 'media', nivelAtencion: '', asignadoA: '' });
+const iniciando = ref(false);
+
+function abrirIniciar() {
+  iniciarForm.value = {
+    prioridad: ticket.value.prioridad || 'media',
+    nivelAtencion: '',
+    asignadoA: auth.user?.id || '',
+  };
+  mostrarIniciar.value = true;
+}
+
+async function confirmarIniciar() {
+  if (!iniciarForm.value.nivelAtencion) {
+    showToast('Selecciona un nivel de atención', 'error');
+    return;
+  }
+  if (!iniciarForm.value.asignadoA) {
+    showToast('Selecciona a quién se asigna el ticket', 'error');
+    return;
+  }
+  iniciando.value = true;
+  try {
+    const datos = {
+      estado: 'en_progreso',
+      prioridad: iniciarForm.value.prioridad,
+      nivel_atencion: iniciarForm.value.nivelAtencion,
+      asignado_a: iniciarForm.value.asignadoA,
+    };
+    await insforgeApi.actualizarTicket(ticket.value.id, datos);
+    Object.assign(ticket.value, datos);
+    mostrarIniciar.value = false;
+    showToast('Ticket en atención');
+  } catch (e) {
+    showToast(e?.message || 'No se pudo iniciar el ticket', 'error');
+  } finally {
+    iniciando.value = false;
+  }
+}
+
+// ── Rechazar (abierto -> rechazado, terminal): exige un motivo, que queda
+// como comentario visible para el empleado ──────────────────────────────
+const mostrarRechazar = ref(false);
+const motivoRechazo = ref('');
+const rechazando = ref(false);
+
+function abrirRechazar() {
+  motivoRechazo.value = '';
+  mostrarRechazar.value = true;
+}
+
+async function confirmarRechazar() {
+  const motivo = motivoRechazo.value.trim();
+  if (!motivo) {
+    showToast('Escribe el motivo del rechazo', 'error');
+    return;
+  }
+  rechazando.value = true;
+  try {
+    await insforgeApi.crearComentarioTicket(ticket.value.id, motivo, false);
+    await insforgeApi.actualizarTicket(ticket.value.id, { estado: 'rechazado' });
+    ticket.value.estado = 'rechazado';
+    comentarios.value = await insforgeApi.listComentariosTicket(ticket.value.id);
+    mostrarRechazar.value = false;
+    showToast('Ticket rechazado');
+  } catch (e) {
+    showToast(e?.message || 'No se pudo rechazar el ticket', 'error');
+  } finally {
+    rechazando.value = false;
+  }
+}
+
+// ── Marcar como resuelto: encadena resuelto -> cerrado en un solo clic
+// (queda igual registrado en la hoja de vida) y dispara la encuesta ─────
+const resolviendo = ref(false);
+
+async function marcarResuelto() {
+  resolviendo.value = true;
+  try {
+    await insforgeApi.actualizarTicket(ticket.value.id, { estado: 'resuelto' });
+    await insforgeApi.actualizarTicket(ticket.value.id, { estado: 'cerrado' });
+    ticket.value.estado = 'cerrado';
+    showToast('Ticket resuelto y cerrado');
+    try {
+      const { data } = await getClient().functions.invoke('tickets', {
+        body: { action: 'enviarEncuesta', ticketId: ticket.value.id },
+      });
+      if (data?.enviado) showToast('Encuesta de satisfacción enviada al correo del empleado');
+    } catch { /* mejor esfuerzo: no bloquea el cierre del ticket */ }
+    satisfaccion.value = await insforgeApi.getSatisfaccionTicket(ticket.value.id);
+  } catch (e) {
+    showToast(e?.message || 'No se pudo marcar como resuelto', 'error');
+  } finally {
+    resolviendo.value = false;
+  }
+}
+
+// ── Reabrir: solo JEFE (reforzado también por trigger en BD) ────────────
+const reabriendo = ref(false);
+
+async function reabrirTicket() {
+  reabriendo.value = true;
+  try {
+    await insforgeApi.actualizarTicket(ticket.value.id, { estado: 'reabierto' });
+    ticket.value.estado = 'reabierto';
+    showToast('Ticket reabierto');
+  } catch (e) {
+    showToast(e?.message || 'No se pudo reabrir el ticket', 'error');
+  } finally {
+    reabriendo.value = false;
+  }
+}
+
+async function cambiarNivelAtencion(valor) {
   guardandoCampo.value = true;
   try {
-    await insforgeApi.actualizarTicket(ticket.value.id, { estado: nuevoEstado });
-    ticket.value.estado = nuevoEstado;
-    showToast(`Ticket ${ESTADOS.find((e) => e.valor === nuevoEstado)?.label.toLowerCase()}`);
-
-    if (nuevoEstado === 'cerrado') {
-      // Encuesta de satisfacción: mejor esfuerzo, la edge function decide
-      // si aplica (ticket interno sin empleado → no envía nada).
-      try {
-        const { data } = await getClient().functions.invoke('tickets', {
-          body: { action: 'enviarEncuesta', ticketId: ticket.value.id },
-        });
-        if (data?.enviado) showToast('Encuesta de satisfacción enviada al correo del empleado');
-      } catch { /* mejor esfuerzo: no bloquea el cierre del ticket */ }
-      satisfaccion.value = await insforgeApi.getSatisfaccionTicket(ticket.value.id);
-    }
+    await insforgeApi.actualizarTicket(ticket.value.id, { nivel_atencion: valor || null });
+    ticket.value.nivel_atencion = valor || null;
   } catch (e) {
-    showToast(e?.message || 'Error al cambiar el estado', 'error');
+    showToast(e?.message || 'Error al cambiar el nivel de atención', 'error');
   } finally {
     guardandoCampo.value = false;
   }
@@ -243,29 +362,105 @@ onMounted(cargar);
           </div>
 
           <div class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-adjustments"></i> Gestión</div>
-
-            <div class="form-group">
-              <label for="tk-estado">Estado</label>
-              <select id="tk-estado" :value="ticket.estado" :disabled="guardandoCampo" @change="cambiarEstado($event.target.value)">
-                <option v-for="e in ESTADOS" :key="e.valor" :value="e.valor">{{ e.label }}</option>
-              </select>
+            <div class="datos-title">
+              <i class="ti ti-adjustments"></i> Gestión
+              <span class="badge tk-estado-badge" :class="estadoInfo(ticket.estado).clase">{{ estadoInfo(ticket.estado).label }}</span>
             </div>
 
-            <div class="form-group">
-              <label for="tk-prioridad">Prioridad</label>
-              <select id="tk-prioridad" :value="ticket.prioridad" :disabled="guardandoCampo" @change="cambiarPrioridad($event.target.value)">
-                <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
-              </select>
+            <!-- abierto: Rechazar / Iniciar -->
+            <div v-if="ticket.estado === 'abierto' && !mostrarIniciar && !mostrarRechazar" class="tk-acciones-estado">
+              <button class="btn btn-danger" type="button" @click="abrirRechazar">
+                <i class="ti ti-x" aria-hidden="true"></i> Rechazar
+              </button>
+              <button class="btn btn-primary" type="button" @click="abrirIniciar">
+                <i class="ti ti-player-play" aria-hidden="true"></i> Iniciar atención
+              </button>
             </div>
 
-            <div class="form-group">
-              <label for="tk-asignado">Asignado a</label>
-              <select id="tk-asignado" :value="ticket.asignado_a || ''" :disabled="guardandoCampo" @change="cambiarAsignado($event.target.value)">
-                <option value="">Sin asignar</option>
-                <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-              </select>
+            <!-- Formulario: Iniciar atención -->
+            <div v-if="mostrarIniciar" class="tk-form-inline">
+              <div class="form-group">
+                <label for="in-prioridad">Prioridad</label>
+                <select id="in-prioridad" v-model="iniciarForm.prioridad" :disabled="iniciando">
+                  <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="in-nivel">Nivel de atención *</label>
+                <select id="in-nivel" v-model="iniciarForm.nivelAtencion" :disabled="iniciando">
+                  <option value="" disabled>Seleccionar</option>
+                  <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="in-asignado">Asignado a *</label>
+                <select id="in-asignado" v-model="iniciarForm.asignadoA" :disabled="iniciando">
+                  <option value="" disabled>Seleccionar</option>
+                  <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">
+                    {{ s.user_id === auth.user?.id ? `${s.nombre} (yo)` : s.nombre }}
+                  </option>
+                </select>
+              </div>
+              <div class="tk-form-acciones">
+                <button class="btn" type="button" :disabled="iniciando" @click="mostrarIniciar = false">Cancelar</button>
+                <button class="btn btn-primary" type="button" :disabled="iniciando" @click="confirmarIniciar">
+                  {{ iniciando ? 'Iniciando...' : 'Confirmar inicio' }}
+                </button>
+              </div>
             </div>
+
+            <!-- Formulario: Rechazar -->
+            <div v-if="mostrarRechazar" class="tk-form-inline">
+              <div class="form-group">
+                <label for="re-motivo">Motivo del rechazo *</label>
+                <textarea id="re-motivo" v-model="motivoRechazo" rows="3" placeholder="El empleado verá este motivo en su seguimiento" :disabled="rechazando"></textarea>
+              </div>
+              <div class="tk-form-acciones">
+                <button class="btn" type="button" :disabled="rechazando" @click="mostrarRechazar = false">Cancelar</button>
+                <button class="btn btn-danger" type="button" :disabled="rechazando" @click="confirmarRechazar">
+                  {{ rechazando ? 'Rechazando...' : 'Confirmar rechazo' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- en curso: campos editables + Marcar como resuelto -->
+            <template v-if="ESTADOS_EN_CURSO.includes(ticket.estado)">
+              <div class="form-group">
+                <label for="tk-prioridad">Prioridad</label>
+                <select id="tk-prioridad" :value="ticket.prioridad" :disabled="guardandoCampo" @change="cambiarPrioridad($event.target.value)">
+                  <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="tk-nivel">Nivel de atención</label>
+                <select id="tk-nivel" :value="ticket.nivel_atencion || ''" :disabled="guardandoCampo" @change="cambiarNivelAtencion($event.target.value)">
+                  <option value="" disabled>Sin definir</option>
+                  <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="tk-asignado">Asignado a</label>
+                <select id="tk-asignado" :value="ticket.asignado_a || ''" :disabled="guardandoCampo" @change="cambiarAsignado($event.target.value)">
+                  <option value="">Sin asignar</option>
+                  <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+                </select>
+              </div>
+              <button class="btn btn-primary tk-btn-resolver" type="button" :disabled="resolviendo" @click="marcarResuelto">
+                <i class="ti ti-circle-check" aria-hidden="true"></i>
+                {{ resolviendo ? 'Cerrando...' : 'Marcar como resuelto' }}
+              </button>
+            </template>
+
+            <!-- terminal: solo lectura + Reabrir (jefe) -->
+            <template v-if="ESTADOS_TERMINALES.includes(ticket.estado)">
+              <p class="tk-detalle">Prioridad: {{ PRIORIDADES.find((p) => p.valor === ticket.prioridad)?.label || ticket.prioridad }}</p>
+              <p class="tk-detalle">Nivel de atención: {{ NIVELES_ATENCION.find((n) => n.valor === ticket.nivel_atencion)?.label || 'Sin definir' }}</p>
+              <p class="tk-detalle">Asignado a: {{ staffPorId[ticket.asignado_a] || 'Sin asignar' }}</p>
+              <button v-if="auth.esJefe" class="btn tk-btn-reabrir" type="button" :disabled="reabriendo" @click="reabrirTicket">
+                <i class="ti ti-refresh" aria-hidden="true"></i> {{ reabriendo ? 'Reabriendo...' : 'Reabrir ticket' }}
+              </button>
+              <p v-else class="tk-nota">Solo el jefe puede reabrir este ticket.</p>
+            </template>
 
             <label class="check-inline">
               <input type="checkbox" :checked="ticket.es_base_conocimiento" :disabled="guardandoCampo" @change="toggleFlag('es_base_conocimiento')">
@@ -309,7 +504,7 @@ onMounted(cargar);
           </div>
           <p v-else class="tk-nota">Sin comentarios todavía.</p>
 
-          <div v-if="ticket.estado !== 'cerrado'" class="tk-nuevo-comentario">
+          <div v-if="!ESTADOS_TERMINALES.includes(ticket.estado)" class="tk-nuevo-comentario">
             <textarea
               v-model="nuevoComentario"
               rows="3"
@@ -326,7 +521,9 @@ onMounted(cargar);
               </button>
             </div>
           </div>
-          <p v-else class="tk-nota">Ticket cerrado — reábrelo para seguir comentando.</p>
+          <p v-else class="tk-nota">
+            Ticket {{ estadoInfo(ticket.estado).label.toLowerCase() }} — {{ auth.esJefe ? 'reábrelo para seguir comentando.' : 'solo el jefe puede reabrirlo para seguir comentando.' }}
+          </p>
         </div>
       </div>
     </main>
@@ -410,6 +607,50 @@ onMounted(cargar);
   margin-top: 16px;
   border-top: 1px solid var(--color-border);
   padding-top: 14px;
+}
+
+.tk-estado-badge {
+  margin-left: auto;
+}
+
+.tk-acciones-estado {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tk-acciones-estado .btn {
+  flex: 1;
+  justify-content: center;
+}
+
+.tk-form-inline {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tk-form-inline textarea {
+  width: 100%;
+}
+
+.tk-form-acciones {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tk-btn-resolver {
+  width: 100%;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.tk-btn-reabrir {
+  width: 100%;
+  justify-content: center;
+  margin-top: 6px;
 }
 
 .tk-solicitante, .tk-sin-vincular {

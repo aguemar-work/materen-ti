@@ -13,6 +13,7 @@ const route = useRoute();
 const estado = ref('cargando');
 const error = ref('');
 const ticket = ref(null);
+const copiado = ref(null);
 
 const ESTADOS = {
   abierto:     { label: 'Abierto',       clase: 'badge--info' },
@@ -20,6 +21,7 @@ const ESTADOS = {
   resuelto:    { label: 'Resuelto',      clase: 'badge--success' },
   cerrado:     { label: 'Cerrado',       clase: 'badge--neutral' },
   reabierto:   { label: 'Reabierto',     clase: 'badge--danger' },
+  rechazado:   { label: 'Rechazado',     clase: 'badge--neutral' },
 };
 
 function estadoInfo(e) {
@@ -41,6 +43,18 @@ onMounted(async () => {
     estado.value = 'error';
   }
 });
+
+async function copiar(texto, id) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    copiado.value = id;
+    setTimeout(() => { if (copiado.value === id) copiado.value = null; }, 1500);
+  } catch { /* portapapeles no disponible */ }
+}
+
+function enlaceSeguimiento() {
+  return `${window.location.origin}/ticket/${route.params.token}`;
+}
 </script>
 
 <template>
@@ -62,12 +76,26 @@ onMounted(async () => {
         <div class="ticket-error-icon"><i class="ti ti-link-off"></i></div>
         <h2 class="ticket-title">No disponible</h2>
         <p class="ticket-texto">{{ error }}</p>
+        <RouterLink class="ticket-link" to="/ticket/buscar">
+          <i class="ti ti-search" aria-hidden="true"></i> Buscar mis tickets por DNI
+        </RouterLink>
       </template>
 
       <template v-else>
         <div class="segui-header">
           <span class="segui-codigo">{{ ticket.codigo }}</span>
           <span class="badge" :class="estadoInfo(ticket.estado).clase">{{ estadoInfo(ticket.estado).label }}</span>
+        </div>
+
+        <div class="segui-copiar">
+          <button class="btn" type="button" @click="copiar(enlaceSeguimiento(), 'link')">
+            <i :class="copiado === 'link' ? 'ti ti-check' : 'ti ti-link'" aria-hidden="true"></i>
+            {{ copiado === 'link' ? 'Enlace copiado' : 'Copiar enlace' }}
+          </button>
+          <button class="btn" type="button" @click="copiar(ticket.codigo, 'codigo')">
+            <i :class="copiado === 'codigo' ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i>
+            {{ copiado === 'codigo' ? 'Código copiado' : 'Copiar código' }}
+          </button>
         </div>
 
         <h2 class="ticket-title">{{ ticket.titulo }}</h2>
@@ -150,6 +178,18 @@ onMounted(async () => {
   font-family: var(--font-mono, monospace);
   font-size: var(--fs-sm);
   color: var(--color-text-secondary);
+}
+
+.segui-copiar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.segui-copiar .btn {
+  flex: 1;
+  justify-content: center;
+  font-size: var(--fs-sm);
 }
 
 .segui-meta {

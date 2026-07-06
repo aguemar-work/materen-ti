@@ -25,6 +25,7 @@ const ESTADOS = {
   resuelto:    { label: 'Resuelto',     clase: 'badge--success' },
   cerrado:     { label: 'Cerrado',      clase: 'badge--neutral' },
   reabierto:   { label: 'Reabierto',    clase: 'badge--danger' },
+  rechazado:   { label: 'Rechazado',    clase: 'badge--neutral' },
 };
 
 const PRIORIDADES = {

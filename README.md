@@ -60,14 +60,22 @@ cuándo y si la contraseña se rotó después.
   también puede abrir tickets internos desde `/tickets` (a nombre propio o de
   un empleado). Cada ticket tiene código (`TCK-####`) y token propio; con el
   token el empleado sigue su caso en `/ticket/:token` (solo ve comentarios no
-  internos) sin volver a autenticarse. Estados: `abierto → en_progreso →
-  resuelto → cerrado` (con `reabierto` si vuelve a haber actividad). Al
-  cerrarse, si el ticket tiene empleado vinculado, se crea automáticamente una
-  encuesta de satisfacción y se reutiliza el **mismo token** para el enlace
-  (`/ticket/:token/satisfaccion`) — a diferencia de Bitrix24, el empleado no
-  tiene que anotar ningún ID. `ticket_eventos` es la hoja de vida append-only
-  del ticket (asignaciones, cambios de estado/prioridad, fallos de correo,
-  envío/respuesta de encuesta).
+  internos) sin volver a autenticarse, con CTAs para copiar el enlace/código,
+  o puede recuperarlo en `/ticket/buscar` (por DNI, solo tickets activos,
+  limitado por IP). Flujo de estados guiado por botones (no un select libre):
+  desde `abierto`, el staff elige **Rechazar** (estado terminal `rechazado`,
+  pide motivo obligatorio visible al empleado, sin encuesta) o **Iniciar
+  atención** (pasa a `en_progreso`, exige elegir de una vez prioridad + nivel
+  de atención N1/N2/N3 + asignado a — precargado con quien inicia, editable).
+  En curso, **Marcar como resuelto** encadena `resuelto → cerrado` en un solo
+  clic y dispara la encuesta si hay empleado vinculado. Solo el **JEFE** puede
+  **Reabrir** un ticket cerrado/rechazado (reforzado también por trigger en
+  BD, no solo en la UI) — conserva prioridad/nivel/asignado previos. Al
+  cerrarse con empleado vinculado, se reutiliza el **mismo token** del ticket
+  para el enlace de encuesta (`/ticket/:token/satisfaccion`) — a diferencia de
+  Bitrix24, el empleado no tiene que anotar ningún ID. `ticket_eventos` es la
+  hoja de vida append-only del ticket (asignaciones, cambios de estado/
+  prioridad/nivel de atención, fallos de correo, envío/respuesta de encuesta).
 
 - **Equipo**: activo físico con código de inventario único (etiqueta), tipo
   (catálogo `tipos_equipo` con plantilla de specs y accesorios por tipo),
@@ -208,6 +216,7 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 014 | `ubicaciones` + asignaciones de equipo a persona O ubicación (exactamente uno) |
 | 015 | `fotos` en equipos (bucket público `equipos-fotos`, compresión en cliente) |
 | 016 | Tickets: `categorias_ticket`/`subcategorias_ticket`, `tickets`, `ticket_comentarios`, `ticket_eventos`, `ticket_satisfaccion` + triggers (código autogenerado, bloqueo de comentarios en cerrado, encuesta automática al cerrar) |
+| 017 | Tickets — flujo guiado: estado `rechazado`, columna `nivel_atencion` (N1/N2/N3), trigger que exige nivel+asignado al iniciar, trigger que restringe "reabrir" al jefe, `ticket_busqueda_intentos` (rate-limit de la búsqueda pública por DNI) |
 
 ## Producción
 

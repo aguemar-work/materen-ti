@@ -502,6 +502,18 @@
       border-color: var(--color-accent-hover);
     }
 
+    .btn-danger {
+      background: var(--color-danger-bg);
+      color: var(--color-danger-text);
+      border-color: var(--color-danger-border);
+    }
+
+    .btn-danger:hover {
+      background: var(--color-danger);
+      color: #fff;
+      border-color: var(--color-danger);
+    }
+
     /* ── Filters ── */
     .filters {
       display: flex;

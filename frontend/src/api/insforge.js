@@ -1150,7 +1150,7 @@ export const insforgeApi = {
     const { data, error } = await getClient().database
       .from('tickets')
       .select(`
-        id, codigo, titulo, descripcion, estado, prioridad, origen, vinculado,
+        id, codigo, titulo, descripcion, estado, prioridad, nivel_atencion, origen, vinculado,
         contacto_ingresado, asignado_a, es_base_conocimiento, es_leccion_aprendida,
         adjunto_url, created_at, updated_at,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
@@ -1218,16 +1218,16 @@ export const insforgeApi = {
       db.from('tickets')
         .select('id, codigo, titulo')
         .is('asignado_a', null)
-        .not('estado', 'in', '("resuelto","cerrado")')
+        .not('estado', 'in', '("resuelto","cerrado","rechazado")')
         .order('created_at', { ascending: true }),
       db.from('tickets')
         .select('id, codigo, titulo')
         .eq('vinculado', false)
-        .not('estado', 'in', '("resuelto","cerrado")')
+        .not('estado', 'in', '("resuelto","cerrado","rechazado")')
         .order('created_at', { ascending: true }),
       db.from('tickets')
         .select('id, codigo, titulo, created_at')
-        .not('estado', 'in', '("resuelto","cerrado")')
+        .not('estado', 'in', '("resuelto","cerrado","rechazado")')
         .lte('created_at', fechaEnDias(-3))
         .order('created_at', { ascending: true }),
     ]);
@@ -1395,6 +1395,7 @@ function mapTicketDetalle(row) {
     descripcion: row.descripcion,
     estado: row.estado,
     prioridad: row.prioridad,
+    nivel_atencion: row.nivel_atencion,
     origen: row.origen,
     vinculado: row.vinculado,
     contacto_ingresado: row.contacto_ingresado || '',

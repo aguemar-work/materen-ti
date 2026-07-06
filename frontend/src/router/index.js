@@ -15,6 +15,7 @@ import TicketDetalleView from '../modules/tickets/TicketDetalleView.vue';
 import TicketNuevoView from '../modules/tickets/TicketNuevoView.vue';
 import TicketSeguimientoView from '../modules/tickets/TicketSeguimientoView.vue';
 import TicketSatisfaccionView from '../modules/tickets/TicketSatisfaccionView.vue';
+import TicketBuscarView from '../modules/tickets/TicketBuscarView.vue';
 
 const routes = [
   {
@@ -95,6 +96,13 @@ const routes = [
     path: '/ticket/nuevo',
     name: 'ticket-nuevo',
     component: TicketNuevoView,
+    meta: { public: true },
+  },
+  {
+    // Página pública: buscar tickets ACTIVOS por DNI (sin enlace guardado)
+    path: '/ticket/buscar',
+    name: 'ticket-buscar',
+    component: TicketBuscarView,
     meta: { public: true },
   },
   {

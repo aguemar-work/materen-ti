@@ -19,6 +19,8 @@ function mensajeError(code) {
     datos_invalidos: 'Selecciona un nivel de satisfacción válido',
     error_codigo: 'No se pudo generar el código del ticket',
     error_creando: 'No se pudo registrar el ticket',
+    dni_invalido: 'Ingresa un DNI válido (8 dígitos)',
+    demasiados_intentos: 'Demasiados intentos. Espera unos minutos e intenta de nuevo',
   };
   return mensajes[code] || `Error de tickets (${code || 'desconocido'})`;
 }
@@ -46,4 +48,10 @@ export async function seguimientoTicket(token) {
 // Respuesta a la encuesta de satisfacción
 export async function responderEncuesta(token, nivel, comentario) {
   await invoke({ action: 'encuesta', token, nivel, comentario });
+}
+
+// Tickets ACTIVOS de un empleado, para quien perdió el enlace de seguimiento
+export async function buscarTicketsPorDni(dni) {
+  const data = await invoke({ action: 'buscarPorDni', dni });
+  return data.tickets;
 }
