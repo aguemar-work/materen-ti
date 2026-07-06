@@ -1,11 +1,9 @@
 # AGENTS.md
 
 > Este proyecto sigue [`docs/MATEREN-CORE.md`](docs/MATEREN-CORE.md) para
-> principios y patrones compartidos de Materen (escalas, fórmula de color,
-> componentes de dominio ya resueltos, seguridad). Los tokens de color y la
-> identidad visual específicos de Sistema TI están en
-> [`frontend/src/styles/main.css`](frontend/src/styles/main.css) y
-> [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
+> principios y patrones compartidos de Materen. Tokens canónicos en
+> `frontend/src/styles/main.css` con prefijo `--mat-*` (alias legacy `--color-*`).
+> Detalle de implementación en [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
 **Vigencia de este documento**: actualizado 2026-07-06, migración 017. Un
 `.md` sin esta línea no debe asumirse al día (regla de
@@ -51,8 +49,8 @@ empleados nunca tienen acceso al sistema, solo páginas públicas con token.
 - Formato de código: seguir el estilo existente (componentes `<script setup>`,
   stores Pinia por módulo, capa de datos en `api/insforge.js` con mappers).
 - **UI/UX**: colores, tipografías y clases reutilizables en
-  `docs/GUIA-UX-UI.md` y `frontend/src/styles/main.css` (sin Tailwind ni
-  librería de componentes).
+  `docs/GUIA-UX-UI.md` y `frontend/src/styles/main.css` (tokens `--mat-*`,
+  sin Tailwind ni librería de componentes).
 
 ## Flujo de trabajo backend
 

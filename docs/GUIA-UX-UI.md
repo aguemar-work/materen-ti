@@ -5,9 +5,8 @@
 > los productos Materen). Lo de acá abajo son los **valores concretos**
 > (hex, componentes ya cableados); la fundación conceptual vive allá.
 
-**Vigencia**: actualizado 2026-07-06 (tema Cyprus/Sand + oscuro, tipografía
-de sistema, grilla de 12 columnas, sidebar minimalista, badges/timeline/
-capacity-bar/confirm-dialog unificados, escala de z-index). Si el código de
+**Vigencia**: actualizado 2026-07-06 — migración a Materen Core (Navy/Índigo,
+tokens `--mat-*`, alias `--color-*`, Inter + Poppins). Si el código de
 `main.css` contradice algo de aquí, gana el código
 ([Gobernanza de documentación](MATEREN-CORE.md#gobernanza)).
 
@@ -46,7 +45,7 @@ El frontend **no usa Tailwind ni librería de componentes**. Todo el diseño viv
 ```mermaid
 flowchart TB
   subgraph tokens ["main.css"]
-    brand["Cyprus + Sand"]
+    brand["Navy + Índigo"]
     semantic["Paleta semántica"]
     layout["Radios, sombras, espaciado"]
   end
@@ -75,56 +74,62 @@ flowchart TB
 
 ## Identidad de marca
 
-> **Paleta vigente en producción, no marca oficial.** Cyprus y Sand son los
-> colores **implementados hoy** en `main.css` y en https://materen-ti.vercel.app.
-> La identidad de marca Materen es Navy + Turquesa/Índigo — ver
-> [Identidad de marca](MATEREN-CORE.md#identidad-de-marca) en Materen Core.
-> Esta paleta verde es [deuda de migración](MATEREN-CORE.md#deuda-de-migracion),
-> no una excepción de marca. Si abriste este archivo sin leer Materen Core, **no
-> asumas que Cyprus es el color oficial de Materen.**
+Implementación de [Identidad de marca](MATEREN-CORE.md#identidad-de-marca)
+en `main.css` (tokens canónicos `--mat-*`; alias legacy `--color-*`):
 
-Comentado en `main.css` como implementación local (heredada):
+| Token | Hex | Rol en Sistema TI |
+|-------|-----|-------------------|
+| `--mat-color-brand` | `#11133C` (Navy) | Identidad de marca |
+| `--mat-color-accent` | `#4F46E5` (Índigo) | Botones primarios, foco, ítem activo |
+| `--mat-color-accent-alt` | `#51EDC8` (Turquesa) | Extremo del gradiente del icono de marca |
+| `--mat-color-brand-elevated` | `#1C2050` | Superficies secundarias sobre Navy (oscuro) |
 
-- **Cyprus** `#004741` — acento principal vigente (botones, links, icono de marca)
-- **Sand** `#f0ede4` — fondo base del tema claro (cálido, no blanco puro)
-
-El icono de marca usa un **gradiente** Cyprus → teal:
+El icono de marca usa **gradiente Índigo → Turquesa**:
 
 ```css
 /* frontend/src/styles/main.css — .brand-icon */
-background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
-box-shadow: 0 4px 12px rgba(0, 71, 65, 0.3);
+background: linear-gradient(135deg, var(--mat-color-accent) 0%, var(--mat-color-accent-alt) 100%);
+box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
 ```
+
+> **Código nuevo:** preferir `--mat-*`. Los `--color-*` existen solo como alias
+> de compatibilidad hacia las vistas que aún no migraron.
 
 ---
 
 ## Paleta de colores (tokens CSS)
 
+Los valores canónicos viven en `--mat-color-*`; la tabla usa los alias `--color-*`
+que apuntan a ellos.
+
 ### Fondos y texto — tema claro (`:root`)
+
+Neutros con tinte Navy (H~237°, saturación baja), según
+[Fórmula de color → Neutros](MATEREN-CORE.md#formula-de-color):
 
 | Token | Valor | Uso |
 |-------|-------|-----|
-| `--color-bg` | `#f0ede4` | Fondo de página (sand) |
-| `--color-bg-elevated` | `#fdfcf8` | Tarjetas, header |
-| `--color-bg-subtle` | `#f7f4ec` | Filtros, cabeceras de tabla |
-| `--color-bg-hover` | `#eceadf` | Hover en filas/elementos |
-| `--color-text-primary` | `#1d2420` | Texto principal |
-| `--color-text-secondary` | `#68716b` | Subtítulos, labels |
-| `--color-text-tertiary` | `#98a19a` | Placeholders, iconos muted |
-| `--color-border` | `#ded9cb` | Bordes estándar |
+| `--mat-color-bg` | `#eceef4` | Fondo de página |
+| `--mat-color-bg-elevated` | `#fafafc` | Tarjetas, header |
+| `--mat-color-bg-subtle` | `#f4f5f9` | Filtros, cabeceras de tabla |
+| `--mat-color-bg-hover` | `#e2e4ec` | Hover en filas/elementos |
+| `--mat-color-text-primary` | `#1a1d2e` | Texto principal |
+| `--mat-color-text-secondary` | `#5a5f78` | Subtítulos, labels |
+| `--mat-color-text-tertiary` | `#8b8fa3` | Placeholders, iconos muted |
+| `--mat-color-border` | `#d4d7e3` | Bordes estándar |
 
 ### Acento / identidad
 
 | Token | Claro | Oscuro |
 |-------|-------|--------|
-| `--color-accent` | `#004741` (cyprus) | `#0d9488` (teal luminoso) |
-| `--color-accent-2` | `#0d9488` | `#10b981` |
-| `--color-accent-soft` | `#14b8a6` | `#2dd4bf` |
-| `--color-accent-hover` | `#00332f` | `#14b8a6` |
-| `--color-accent-subtle` | `#e2ece8` | `rgba(20,184,166,0.14)` |
-| `--color-accent-text` | `#00594f` | `#5eead4` |
+| `--mat-color-accent` | `#4F46E5` (índigo) | `#818CF8` |
+| `--mat-color-accent-2` | `#51EDC8` (turquesa) | `#51EDC8` |
+| `--mat-color-accent-soft` | `#6366F1` | `#A5B4FC` |
+| `--mat-color-accent-hover` | `#4338CA` | `#6366F1` |
+| `--mat-color-accent-subtle` | `#ededfc` | `rgba(129,140,248,0.14)` |
+| `--mat-color-accent-text` | `#3730A3` | `#C7D2FE` |
 
-En oscuro el cyprus puro no tiene contraste suficiente, por eso el acento **sube a teal** manteniendo la familia verde.
+En oscuro el índigo sube de luminosidad para mantener contraste sobre fondos Navy.
 
 ### Colores semánticos (convención de dominio)
 
@@ -222,20 +227,20 @@ el sidebar ni el header.
 
 ---
 
-## Tipografía — estilo Meta (fuente del sistema)
+## Tipografía — Inter + Poppins (Materen Core)
 
-**Decisión del JEFE**: tipografía al estilo Facebook/Meta = **pila nativa del
-sistema operativo**, sin webfonts de texto (carga instantánea, sensación
-nativa, cero dependencia de Google Fonts):
+Cargada en [`frontend/index.html`](../frontend/index.html), según
+[Fundaciones → Tipografía](MATEREN-CORE.md#fundaciones):
 
-| Rol | Pila | Resultado por SO |
-|-----|------|------------------|
-| UI general | `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial` | Windows → **Segoe UI** · macOS → **San Francisco** · Android → **Roboto** |
-| Códigos, contraseñas, seriales | `ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas` | Mono nativo del SO |
-| Iconos | **Tabler Icons** (`ti ti-*`) | Único webfont que queda (CDN) |
+| Rol | Fuente | Pesos |
+|-----|--------|-------|
+| Cuerpo / UI | **Inter** (`--mat-font-sans`) | 400–700 |
+| Encabezados (marca, toolbar, modal) | **Poppins** (`--mat-font-display`) | 500–700 |
+| Códigos, contraseñas, seriales | Mono del SO (`--mat-font-mono`) | — |
+| Iconos | **Tabler Icons** (`ti ti-*`) | CDN |
 
-Variables: `--font-sans` y `--font-mono`. El `body` lleva
-`-webkit-font-smoothing: antialiased` (acabado Meta).
+Variables canónicas: `--mat-fs-*` (alias legacy `--fs-*`). El `body` usa
+`--mat-fs-md` (14px). Títulos de marca/toolbar/modal usan `--font-display`.
 
 ### Escala tipográfica (tokenizada)
 
@@ -243,18 +248,17 @@ Tokens en `main.css` — **usar en pantallas nuevas** en lugar de px sueltos:
 
 | Token | Valor | Uso típico |
 |-------|-------|------------|
-| `--fs-xs` | 11px | Badges, headers de tabla (uppercase) |
-| `--fs-sm` | 12px | Labels secundarios, metadatos |
-| `--fs-base` | 13px | Botones, inputs, celdas de tabla, nav |
-| `--fs-md` | 14px | `body` base |
-| `--fs-lg` | 15px | Títulos de toolbar/sección |
-| `--fs-xl` | 17px | Títulos de modal |
-| `--fs-2xl` | 20px | Títulos de página/login |
-| `--fs-stat` | 26px | Valores en stat cards |
+| `--mat-fs-xs` | 11px | Badges, headers de tabla (uppercase) |
+| `--mat-fs-sm` | 12px | Labels secundarios, metadatos |
+| `--mat-fs-base` | 13px | Botones, inputs, celdas de tabla, nav |
+| `--mat-fs-md` | 14px | `body` base |
+| `--mat-fs-lg` | 15px | Títulos de toolbar/sección |
+| `--mat-fs-xl` | 17px | Títulos de modal |
+| `--mat-fs-2xl` | 20px | Títulos de página/login |
+| `--mat-fs-stat` | 26px | Valores en stat cards |
 
-Pesos: **500** botones/nav, **600** labels/badges/títulos (Meta favorece
-semibold), **700** solo números de stats y marca. Uppercase con
-letter-spacing `0.04–0.06em`.
+Pesos: **600** botones/nav/labels/badges (Materen Core), **700** solo stats y
+marca. Uppercase con letter-spacing `0.04–0.06em`.
 
 ---
 
@@ -291,7 +295,7 @@ sobre grids ad-hoc por vista.**
 ┌────────────┬──────────────────────────────┐
 │  Sidebar   │  layout-main (scroll)        │
 │  240px     │  ├ site-header sticky 64px   │
-│  #05201c   │  └ .page → .card → tabla     │
+│  (tema)    │  └ .page → .card → tabla     │
 └────────────┴──────────────────────────────┘
 ```
 
@@ -504,8 +508,8 @@ Licencias y Equipos, además de los formularios de creación/edición.
 
 ## Cómo modificar la identidad visual
 
-1. **Cambiar marca:** editar `--color-accent*` en `:root` y `[data-theme="dark"]` en [`main.css`](../frontend/src/styles/main.css)
-2. **Cambiar tipografía:** actualizar `--font-sans`/`--font-mono` y el `<link>` en [`index.html`](../frontend/index.html)
+1. **Cambiar marca:** editar `--mat-color-accent*` en `:root` y `[data-theme="dark"]` en [`main.css`](../frontend/src/styles/main.css)
+2. **Cambiar tipografía:** actualizar `--mat-font-*` y el `<link>` en [`index.html`](../frontend/index.html)
 3. **Nuevo componente visual:** preferir añadir clase global en `main.css` antes que estilos inline o duplicados por vista
 4. **Nuevo estado/badge de dominio:** clase scoped en la vista usando `var(--color-*-bg)` y `var(--color-*-text)` existentes
 
@@ -513,13 +517,10 @@ Licencias y Equipos, además de los formularios de creación/edición.
 
 ## Resumen
 
-Panel con **CSS custom + variables CSS**, paleta **Cyprus/Sand vigente en
-producción** (en migración hacia Navy + Turquesa/Índigo de
-[Materen Core](MATEREN-CORE.md#identidad-de-marca)), tipografía nativa del SO,
-iconos **Tabler**, **tema claro/oscuro** con sidebar minimalista que se funde
-con el fondo (sin bordes; hover/activo de tinte muy tenue), y **clases
-utilitarias globales** consumidas directamente por las vistas Vue — sin design
-tokens JSON ni framework CSS externo.
+Panel con **CSS custom + tokens Materen** (`--mat-*`), identidad **Navy +
+Índigo/Turquesa**, tipografía **Inter + Poppins**, iconos **Tabler**, **tema
+claro/oscuro** con sidebar minimalista que se funde con el fondo, y **clases
+utilitarias globales** en `main.css`.
 
 ### Principios de diseño (definidos por el JEFE)
 

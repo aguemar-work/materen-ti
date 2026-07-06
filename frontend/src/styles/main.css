@@ -1,123 +1,107 @@
 
     /* ============================================================
-       Sistema de tema — TODOS los colores del panel viven aquí.
-       Tema claro en :root; tema oscuro en [data-theme="dark"].
-       Para cambiar la identidad (ej: color de marca) basta ajustar
-       los --color-accent* en ambos bloques.
+       Sistema de tema — Materen Core (docs/MATEREN-CORE.md).
+       Tokens canónicos: --mat-*  ·  Alias legacy: --color-*, --fs-*.
+       Tema claro en :root; oscuro en [data-theme="dark"].
        ============================================================ */
     :root {
-      --color-primary: var(--color-accent);
-      /* Tipografía estilo Meta: pila del sistema operativo.
-         Windows → Segoe UI · macOS/iOS → San Francisco · Android → Roboto */
-      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-                   Helvetica, Arial, sans-serif;
-      --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas,
-                   'Liberation Mono', monospace;
+      /* ── Marca (MATEREN-CORE §3) ───────────────────────────── */
+      --mat-color-brand: #11133C;
+      --mat-color-accent: #4F46E5;
+      --mat-color-accent-alt: #51EDC8;
+      --mat-color-brand-elevated: #1C2050;
 
-      /* Escala tipográfica (usar estos tokens en pantallas nuevas) */
-      --fs-xs: 11px;    /* badges, headers de tabla uppercase */
-      --fs-sm: 12px;    /* labels secundarios, metadatos */
-      --fs-base: 13px;  /* botones, inputs, celdas, nav */
-      --fs-md: 14px;    /* body */
-      --fs-lg: 15px;    /* títulos de toolbar/sección */
-      --fs-xl: 17px;    /* títulos de modal */
-      --fs-2xl: 20px;   /* títulos de página/login */
-      --fs-stat: 26px;  /* valores de stat cards */
+      /* ── Tipografía (MATEREN-CORE §4) ──────────────────────── */
+      --mat-font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+                       'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --mat-font-display: 'Poppins', var(--mat-font-sans);
+      --mat-font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas,
+                       'Liberation Mono', monospace;
+      --mat-fs-xs: 11px;
+      --mat-fs-sm: 12px;
+      --mat-fs-base: 13px;
+      --mat-fs-md: 14px;
+      --mat-fs-lg: 15px;
+      --mat-fs-xl: 17px;
+      --mat-fs-2xl: 20px;
+      --mat-fs-stat: 26px;
 
-      /* Marca Materen: Cyprus #004741 + Sand #f0ede4 */
-      --color-bg: #f0ede4;            /* sand */
-      --color-bg-elevated: #fdfcf8;   /* blanco cálido para tarjetas */
-      --color-bg-subtle: #f7f4ec;
-      --color-bg-hover: #eceadf;
+      /* ── Superficies — neutros con tinte Navy (H~237°, S baja) ─ */
+      --mat-color-bg: #eceef4;
+      --mat-color-bg-elevated: #fafafc;
+      --mat-color-bg-subtle: #f4f5f9;
+      --mat-color-bg-hover: #e2e4ec;
 
-      --color-text-primary: #1d2420;
-      --color-text-secondary: #68716b;
-      --color-text-tertiary: #98a19a;
-      --color-text-inverse: #ffffff;
+      --mat-color-text-primary: #1a1d2e;
+      --mat-color-text-secondary: #5a5f78;
+      --mat-color-text-tertiary: #8b8fa3;
+      --mat-color-text-inverse: #ffffff;
 
-      --color-border: #ded9cb;
-      --color-border-subtle: #eae7db;
+      --mat-color-border: #d4d7e3;
+      --mat-color-border-subtle: #e8eaf0;
 
-      /* Identidad */
-      --color-accent: #004741;        /* cyprus */
-      --color-accent-2: #0d9488;      /* teal, extremo de gradientes */
-      --color-accent-soft: #14b8a6;   /* iconos y detalles sobre fondos oscuros */
-      --color-accent-hover: #00332f;
-      --color-accent-subtle: #e2ece8;
-      --color-accent-text: #00594f;
+      /* ── Acento de interacción (Índigo + Turquesa en gradientes) ─ */
+      --mat-color-accent-hover: #4338CA;
+      --mat-color-accent-2: var(--mat-color-accent-alt);
+      --mat-color-accent-soft: #6366F1;
+      --mat-color-accent-subtle: #ededfc;
+      --mat-color-accent-subtle-bg: #ededfc;
+      --mat-color-accent-subtle-text: #4338CA;
+      --mat-color-accent-text: #3730A3;
 
-      /* ============================================================
-         Familias semánticas — fórmula consistente (mismo H por
-         familia; bg/text/border comparten S/L, solo cambia el hue).
-         Claro:  bg H,S35-55%,L90-93% · text H,S45-60%,L28-35% · border H,S30-45%,L75-80%
-         Todos los pares bg/text verificados ≥5.3:1 (WCAG AA, la
-         mayoría en rango AAA). Ver contraste.mjs para el script.
-         ============================================================ */
+      /* ── Familias semánticas — mismos hues que antes (fórmula HSL) ─
+         Claro:  bg H,S35-55%,L90-93% · text H,S45-60%,L28-35%
+         Verificado con scripts/contraste.mjs */
+      --mat-color-danger: #dc2626;
+      --mat-color-danger-bg: #f7e4de;
+      --mat-color-danger-text: #8a3020;
+      --mat-color-danger-border: #e3b8a9;
 
-      /* rojo = crítico */
-      --color-danger: #dc2626;              /* vivo: iconos/botones sólidos */
-      --color-danger-bg: #f7e4de;
-      --color-danger-text: #8a3020;
-      --color-danger-border: #e3b8a9;
+      --mat-color-success: #16a34a;
+      --mat-color-success-bg: #e8f0e0;
+      --mat-color-success-text: #33552c;
+      --mat-color-success-border: #c3d6b3;
 
-      /* verde = ok/disponible */
-      --color-success: #16a34a;             /* vivo: iconos/botones sólidos */
-      --color-success-bg: #e8f0e0;
-      --color-success-text: #33552c;
-      --color-success-border: #c3d6b3;
+      --mat-color-warning-bg: #f7ecd6;
+      --mat-color-warning-text: #7a4e0c;
+      --mat-color-warning-text-strong: #5c3b09;
+      --mat-color-warning-bg-strong: #f0dcae;
+      --mat-color-warning-border: #e0c894;
 
-      /* ámbar = advertencia (rotar, por vencer) */
-      --color-warning-bg: #f7ecd6;
-      --color-warning-text: #7a4e0c;
-      --color-warning-text-strong: #5c3b09; /* énfasis extra sobre warning-bg */
-      --color-warning-bg-strong: #f0dcae;   /* énfasis extra: chip más saturado */
-      --color-warning-border: #e0c894;
+      --mat-color-info-bg: #dfeaf5;
+      --mat-color-info-text: #215e85;
+      --mat-color-info-border: #a9cbe3;
 
-      /* azul = informativo (asignado, entregas) */
-      --color-info-bg: #dfeaf5;
-      --color-info-text: #215e85;
-      --color-info-border: #a9cbe3;
+      --mat-color-purple-bg: #e7e3f5;
+      --mat-color-purple-text: #4c3a85;
+      --mat-color-purple-border: #c3b6e3;
 
-      /* morado = ubicaciones */
-      --color-purple-bg: #e7e3f5;
-      --color-purple-text: #4c3a85;
-      --color-purple-border: #c3b6e3;
+      --mat-color-sky-bg: #dcf0f4;
+      --mat-color-sky-text: #1e6478;
+      --mat-color-sky-border: #a0d3e0;
 
-      /* celeste = etiquetas de tipo de cuenta */
-      --color-sky-bg: #dcf0f4;
-      --color-sky-text: #1e6478;
-      --color-sky-border: #a0d3e0;
+      --mat-color-teal-bg: #dcf0e8;
+      --mat-color-teal-text: #1f6b52;
+      --mat-color-teal-bg-subtle: #eaf7f0;
+      --mat-color-teal-border: #a0d9c0;
 
-      /* teal = correos/garantías */
-      --color-teal-bg: #dcf0e8;
-      --color-teal-text: #1f6b52;
-      --color-teal-bg-subtle: #eaf7f0;      /* variante más clara para fondos grandes */
-      --color-teal-border: #a0d9c0;
+      --mat-color-neutral-bg: #eceadf;
+      --mat-color-neutral-text: #474d40;
+      --mat-color-neutral-border: #ded9cb;
 
-      /* gris = baja/inactivo genérico */
-      --color-neutral-bg: #eceadf;
-      --color-neutral-text: #474d40;
-      --color-neutral-border: #ded9cb;
+      --mat-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --mat-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+      --mat-shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.12);
 
-      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-      --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
-      --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.12);
-
-      --radius-sm: 6px;
-      --radius-md: 10px;
-      --radius-lg: 14px;
-      --radius-xl: 20px;
-      --radius-pill: 999px; /* Materen Core #fundaciones: escala de radios canónica */
+      --mat-radius-sm: 6px;
+      --mat-radius-md: 10px;
+      --mat-radius-lg: 14px;
+      --mat-radius-xl: 20px;
+      --mat-radius-pill: 999px;
 
       --header-h: 64px;
       --max-w: 1280px;
 
-      /* ── Escala de capas (Materen Core #fundaciones) ───────────
-         "Z-index en capas, no en números sueltos": fijar el orden
-         una vez, en un solo lugar. Nunca hardcodear un valor nuevo
-         sin mirar esta escala primero.
-         header(50) < header-móvil(60) < nav-móvil(100) < popover(300)
-         < modal(400) < modal-apilado(410) < toast(500) */
       --z-header: 50;
       --z-header-mobile: 60;
       --z-nav: 100;
@@ -125,77 +109,143 @@
       --z-modal: 400;
       --z-modal-stacked: 410;
       --z-toast: 500;
+
+      /* ── Alias legacy (--color-*, --fs-*, etc.) — no usar en código nuevo */
+      --color-primary: var(--mat-color-accent);
+      --font-sans: var(--mat-font-sans);
+      --font-display: var(--mat-font-display);
+      --font-mono: var(--mat-font-mono);
+      --fs-xs: var(--mat-fs-xs);
+      --fs-sm: var(--mat-fs-sm);
+      --fs-base: var(--mat-fs-base);
+      --fs-md: var(--mat-fs-md);
+      --fs-lg: var(--mat-fs-lg);
+      --fs-xl: var(--mat-fs-xl);
+      --fs-2xl: var(--mat-fs-2xl);
+      --fs-stat: var(--mat-fs-stat);
+
+      --color-bg: var(--mat-color-bg);
+      --color-bg-elevated: var(--mat-color-bg-elevated);
+      --color-bg-subtle: var(--mat-color-bg-subtle);
+      --color-bg-hover: var(--mat-color-bg-hover);
+      --color-text-primary: var(--mat-color-text-primary);
+      --color-text-secondary: var(--mat-color-text-secondary);
+      --color-text-tertiary: var(--mat-color-text-tertiary);
+      --color-text-inverse: var(--mat-color-text-inverse);
+      --color-border: var(--mat-color-border);
+      --color-border-subtle: var(--mat-color-border-subtle);
+
+      --color-accent: var(--mat-color-accent);
+      --color-accent-2: var(--mat-color-accent-2);
+      --color-accent-soft: var(--mat-color-accent-soft);
+      --color-accent-hover: var(--mat-color-accent-hover);
+      --color-accent-subtle: var(--mat-color-accent-subtle);
+      --color-accent-text: var(--mat-color-accent-text);
+
+      --color-danger: var(--mat-color-danger);
+      --color-danger-bg: var(--mat-color-danger-bg);
+      --color-danger-text: var(--mat-color-danger-text);
+      --color-danger-border: var(--mat-color-danger-border);
+      --color-success: var(--mat-color-success);
+      --color-success-bg: var(--mat-color-success-bg);
+      --color-success-text: var(--mat-color-success-text);
+      --color-success-border: var(--mat-color-success-border);
+      --color-warning-bg: var(--mat-color-warning-bg);
+      --color-warning-text: var(--mat-color-warning-text);
+      --color-warning-text-strong: var(--mat-color-warning-text-strong);
+      --color-warning-bg-strong: var(--mat-color-warning-bg-strong);
+      --color-warning-border: var(--mat-color-warning-border);
+      --color-info-bg: var(--mat-color-info-bg);
+      --color-info-text: var(--mat-color-info-text);
+      --color-info-border: var(--mat-color-info-border);
+      --color-purple-bg: var(--mat-color-purple-bg);
+      --color-purple-text: var(--mat-color-purple-text);
+      --color-purple-border: var(--mat-color-purple-border);
+      --color-sky-bg: var(--mat-color-sky-bg);
+      --color-sky-text: var(--mat-color-sky-text);
+      --color-sky-border: var(--mat-color-sky-border);
+      --color-teal-bg: var(--mat-color-teal-bg);
+      --color-teal-text: var(--mat-color-teal-text);
+      --color-teal-bg-subtle: var(--mat-color-teal-bg-subtle);
+      --color-teal-border: var(--mat-color-teal-border);
+      --color-neutral-bg: var(--mat-color-neutral-bg);
+      --color-neutral-text: var(--mat-color-neutral-text);
+      --color-neutral-border: var(--mat-color-neutral-border);
+
+      --shadow-sm: var(--mat-shadow-sm);
+      --shadow-md: var(--mat-shadow-md);
+      --shadow-lg: var(--mat-shadow-lg);
+      --radius-sm: var(--mat-radius-sm);
+      --radius-md: var(--mat-radius-md);
+      --radius-lg: var(--mat-radius-lg);
+      --radius-xl: var(--mat-radius-xl);
+      --radius-pill: var(--mat-radius-pill);
     }
 
-    /* ── Tema oscuro ─────────────────────────────────────────────
-       Se activa con <html data-theme="dark">. El sidebar ya es
-       oscuro en ambos temas, así que no cambia. */
+    /* ── Tema oscuro ───────────────────────────────────────────── */
     [data-theme="dark"] {
-      /* Cyprus nocturno: fondos verde-noche, textos tintados de sand */
-      --color-bg: #0a1512;
-      --color-bg-elevated: #11221d;
-      --color-bg-subtle: #0d1a16;
-      --color-bg-hover: #1a2f29;
+      --mat-color-bg: #0f111c;
+      --mat-color-bg-elevated: #1a1d30;
+      --mat-color-bg-subtle: #141622;
+      --mat-color-bg-hover: #242840;
 
-      --color-text-primary: #eae7dc;   /* sand claro */
-      --color-text-secondary: #93a39b;
-      --color-text-tertiary: #5f6f67;
-      --color-text-inverse: #0a1512;
+      --mat-color-text-primary: #eaeaf0;
+      --mat-color-text-secondary: #a0a4b8;
+      --mat-color-text-tertiary: #6e7288;
+      --mat-color-text-inverse: #0f111c;
 
-      --color-border: #23403a;
-      --color-border-subtle: #182e28;
+      --mat-color-border: #2e3348;
+      --mat-color-border-subtle: #232638;
 
-      /* El cyprus puro es muy oscuro para fondo oscuro:
-         el acento sube a teal luminoso manteniendo la familia */
-      --color-accent: #0d9488;
-      --color-accent-2: #10b981;
-      --color-accent-soft: #2dd4bf;
-      --color-accent-hover: #14b8a6;
-      --color-accent-subtle: rgba(20, 184, 166, 0.14);
-      --color-accent-text: #5eead4;
+      --mat-color-accent: #818CF8;
+      --mat-color-accent-hover: #6366F1;
+      --mat-color-accent-2: var(--mat-color-accent-alt);
+      --mat-color-accent-soft: #A5B4FC;
+      --mat-color-accent-subtle: rgba(129, 140, 248, 0.14);
+      --mat-color-accent-subtle-bg: rgba(129, 140, 248, 0.14);
+      --mat-color-accent-subtle-text: #C7D2FE;
+      --mat-color-accent-text: #C7D2FE;
 
-      /* Fórmula oscuro: bg H,S25-30%,L20-22% · text H,S45-60%,L75-80% ·
-         border H,S25-30%,L35-38%. Mismos hues que el tema claro. */
-      --color-danger: #ef4444;
-      --color-danger-bg: #3a221c;
-      --color-danger-text: #e39a83;
-      --color-danger-border: #5c3527;
+      --mat-color-danger: #ef4444;
+      --mat-color-danger-bg: #3a221c;
+      --mat-color-danger-text: #e39a83;
+      --mat-color-danger-border: #5c3527;
 
-      --color-success: #22c55e;
-      --color-success-bg: #26301f;
-      --color-success-text: #a8d18e;
-      --color-success-border: #445c37;
+      --mat-color-success: #22c55e;
+      --mat-color-success-bg: #26301f;
+      --mat-color-success-text: #a8d18e;
+      --mat-color-success-border: #445c37;
 
-      --color-warning-bg: #3a2c15;
-      --color-warning-text: #e0b566;
-      --color-warning-text-strong: #f3cf8f;
-      --color-warning-bg-strong: #4a3819;
-      --color-warning-border: #5c471f;
+      --mat-color-warning-bg: #3a2c15;
+      --mat-color-warning-text: #e0b566;
+      --mat-color-warning-text-strong: #f3cf8f;
+      --mat-color-warning-bg-strong: #4a3819;
+      --mat-color-warning-border: #5c471f;
 
-      --color-info-bg: #1c2c3a;
-      --color-info-text: #82bce3;
-      --color-info-border: #2f4a5c;
+      --mat-color-info-bg: #1c2c3a;
+      --mat-color-info-text: #82bce3;
+      --mat-color-info-border: #2f4a5c;
 
-      --color-purple-bg: #26213a;
-      --color-purple-text: #b6a3e3;
-      --color-purple-border: #3f355c;
+      --mat-color-purple-bg: #26213a;
+      --mat-color-purple-text: #b6a3e3;
+      --mat-color-purple-border: #3f355c;
 
-      --color-sky-bg: #1a2f33;
-      --color-sky-text: #7ecbe0;
-      --color-sky-border: #2e4f57;
+      --mat-color-sky-bg: #1a2f33;
+      --mat-color-sky-text: #7ecbe0;
+      --mat-color-sky-border: #2e4f57;
 
-      --color-teal-bg: #1a332a;
-      --color-teal-text: #7ed9b8;
-      --color-teal-bg-subtle: #16281f;
-      --color-teal-border: #2e5c4c;
+      --mat-color-teal-bg: #1a332a;
+      --mat-color-teal-text: #7ed9b8;
+      --mat-color-teal-bg-subtle: #16281f;
+      --mat-color-teal-border: #2e5c4c;
 
-      --color-neutral-bg: #26281f;
-      --color-neutral-text: #c2c7b5;
-      --color-neutral-border: #3f4536;
+      --mat-color-neutral-bg: #26281f;
+      --mat-color-neutral-text: #c2c7b5;
+      --mat-color-neutral-border: #3f4536;
 
-      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-      --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+      --mat-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --mat-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+      --mat-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
     }
 
     html[data-theme="dark"] { color-scheme: dark; }
@@ -261,11 +311,12 @@
       justify-content: center;
       color: white;
       font-size: 20px;
-      box-shadow: 0 4px 12px rgba(0, 71, 65, 0.3);
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
     }
 
     .brand-text h1 {
-      font-size: 15px;
+      font-family: var(--font-display);
+      font-size: var(--fs-lg);
       font-weight: 600;
       letter-spacing: -0.01em;
     }
@@ -383,7 +434,8 @@
     }
 
     .toolbar-title {
-      font-size: 15px;
+      font-family: var(--font-display);
+      font-size: var(--fs-lg);
       font-weight: 600;
       display: flex;
       align-items: center;
@@ -478,8 +530,8 @@
       background: var(--color-bg-elevated);
       color: var(--color-text-primary);
       cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
+      font-size: var(--fs-base);
+      font-weight: 600;
       font-family: var(--font-sans);
       transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
       white-space: nowrap;
@@ -494,7 +546,7 @@
       background: var(--color-accent);
       color: var(--color-text-inverse);
       border-color: var(--color-accent);
-      box-shadow: 0 2px 8px rgba(0, 71, 65, 0.25);
+      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.28);
     }
 
     .btn-primary:hover {
@@ -569,7 +621,7 @@
     .filters select:focus {
       outline: none;
       border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.18);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.22);
     }
 
     /* ── Table ── */
@@ -894,7 +946,8 @@
     }
 
     .modal-title {
-      font-size: 17px;
+      font-family: var(--font-display);
+      font-size: var(--fs-xl);
       font-weight: 600;
       margin-bottom: 1.25rem;
       display: flex;
@@ -943,7 +996,7 @@
     .tool-input:focus {
       outline: none;
       border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.18);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.22);
     }
 
     .form-group textarea {

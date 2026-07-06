@@ -5,7 +5,6 @@ import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha } from '../../core/formatters.js';
 import TicketInternoForm from './TicketInternoForm.vue';
 
 const router = useRouter();
@@ -18,6 +17,13 @@ const filtroPrioridad = ref('');
 const soloSinAsignar = ref(false);
 const soloSinVincular = ref(false);
 const mostrarNuevo = ref(false);
+const staffLista = ref([]);
+
+const staffPorId = computed(() => {
+  const mapa = {};
+  for (const s of staffLista.value) mapa[s.user_id] = s.nombre;
+  return mapa;
+});
 
 const ESTADOS = {
   abierto:     { label: 'Abierto',      clase: 'badge--info' },
@@ -79,7 +85,8 @@ function onNuevoCerrado(creado) {
 
 onMounted(async () => {
   try {
-    await store.cargar();
+    const [, staff] = await Promise.all([store.cargar(), insforgeApi.listStaff()]);
+    staffLista.value = staff;
   } catch {
     showToast(error.value || 'Error al cargar tickets', 'error');
   }
@@ -157,32 +164,32 @@ onMounted(async () => {
             <thead>
               <tr>
                 <th>Código</th>
-                <th>Título</th>
                 <th>Solicitante</th>
+                <th>Título</th>
                 <th>Categoría</th>
                 <th>Estado</th>
                 <th>Prioridad</th>
-                <th>Actualizado</th>
+                <th>Asignado a</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="t in listaFiltrada" :key="t.id" class="fila-ticket" @click="verTicket(t)">
                 <td><span class="tk-codigo">{{ t.codigo }}</span></td>
                 <td>
-                  <div class="user-name">{{ t.titulo }}</div>
-                </td>
-                <td>
                   <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
                     <i class="ti ti-alert-triangle"></i> Sin vincular
                   </span>
                   <span v-else>{{ t.solicitante || '—' }}</span>
                 </td>
-                <td class="text-muted">{{ t.categoria }}{{ t.subcategoria ? ` · ${t.subcategoria}` : '' }}</td>
+                <td>
+                  <div class="user-name">{{ t.titulo }}</div>
+                </td>
+                <td><span v-if="t.categoria" class="badge badge--sky">{{ t.categoria }}</span></td>
                 <td><span class="badge" :class="estadoInfo(t.estado).clase">{{ estadoInfo(t.estado).label }}</span></td>
                 <td><span class="badge" :class="prioridadInfo(t.prioridad).clase">{{ prioridadInfo(t.prioridad).label }}</span></td>
-                <td class="text-muted">
-                  <span v-if="!t.asignado_a" class="badge badge--neutral" title="Sin asignar">Sin asignar</span>
-                  <template v-else>{{ formatFecha(t.updated_at) }}</template>
+                <td>
+                  <span v-if="!t.asignado_a" class="badge badge--neutral">Sin asignar</span>
+                  <template v-else>{{ staffPorId[t.asignado_a] || 'Staff' }}</template>
                 </td>
               </tr>
             </tbody>

@@ -65,10 +65,10 @@ function soloDigitos(valor: string): string {
 
 // Plantilla mínima, consistente con el tono del resto del sistema
 function plantillaCorreo(titulo: string, cuerpoHtml: string): string {
-  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;color:#1d2420">
-    <h2 style="color:#004741">${titulo}</h2>
+  return `<div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a1d2e">
+    <h2 style="color:#4F46E5;font-family:Poppins,Arial,sans-serif">${titulo}</h2>
     ${cuerpoHtml}
-    <p style="font-size:12px;color:#68716b;margin-top:24px">Sistema TI</p>
+    <p style="font-size:12px;color:#5a5f78;margin-top:24px">Sistema TI · Materen</p>
   </div>`;
 }
 
