@@ -1,9 +1,10 @@
 # AGENTS.md
 
 > Este proyecto sigue [`docs/MATEREN-CORE.md`](docs/MATEREN-CORE.md) para
-> principios y patrones compartidos de Materen. Tokens canónicos en
-> `frontend/src/styles/main.css` con prefijo `--mat-*` (alias legacy `--color-*`).
-> Detalle de implementación en [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
+> principios en [`docs/MATEREN-CORE.md`](docs/MATEREN-CORE.md); tokens de producto
+> v0.3 en [`docs/MATEREN-DESIGN-SYSTEM.md`](docs/MATEREN-DESIGN-SYSTEM.md).
+> Implementación: `frontend/src/styles/main.css` (`--mat-*`, estilo shadcn sin
+> librería) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
 **Vigencia de este documento**: actualizado 2026-07-06, migración 017. Un
 `.md` sin esta línea no debe asumirse al día (regla de

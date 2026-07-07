@@ -1,14 +1,14 @@
 # Guía UX/UI del Sistema TI
 
 > Este documento implementa, para Sistema TI, la fórmula y los patrones
-> definidos en [`MATEREN-CORE.md`](MATEREN-CORE.md) (compartido entre todos
-> los productos Materen). Lo de acá abajo son los **valores concretos**
-> (hex, componentes ya cableados); la fundación conceptual vive allá.
+> definidos en [`MATEREN-CORE.md`](MATEREN-CORE.md) y
+> [`MATEREN-DESIGN-SYSTEM.md`](MATEREN-DESIGN-SYSTEM.md). Lo de acá abajo son los
+> **valores concretos** implementados en Sistema TI.
 
-**Vigencia**: actualizado 2026-07-06 — migración a Materen Core (Navy/Índigo,
-tokens `--mat-*`, alias `--color-*`, Inter + Poppins). Si el código de
-`main.css` contradice algo de aquí, gana el código
-([Gobernanza de documentación](MATEREN-CORE.md#gobernanza)).
+**Vigencia**: actualizado 2026-07-06 — Design System producto v0.3 (verde petróleo
++ acento `#157955`), estética tipo shadcn en CSS custom (bordes, sin sombras).
+Tokens `--mat-*` en [`main.css`](../frontend/src/styles/main.css). Especificación:
+[`MATEREN-DESIGN-SYSTEM.md`](MATEREN-DESIGN-SYSTEM.md).
 
 Documentación del sistema visual del panel: colores, tipografías, layout y
 convenciones de componentes. Útil para mantener coherencia al añadir pantallas
@@ -38,14 +38,14 @@ El frontend **no usa Tailwind ni librería de componentes**. Todo el diseño viv
 | [`frontend/src/styles/main.css`](../frontend/src/styles/main.css) | Design system completo: tokens, layout, botones, tablas, modales, badges, timeline, capacity, confirm-dialog, etc. |
 | [`frontend/src/core/tema.js`](../frontend/src/core/tema.js) | Alternancia claro/oscuro (`data-theme` en `<html>`) |
 | [`frontend/src/components/shared/AppLayout.vue`](../frontend/src/components/shared/AppLayout.vue) | Shell: sidebar minimalista + área principal |
-| [`frontend/index.html`](../frontend/index.html) | Iconos (Tabler CDN). Sin webfonts de texto — tipografía del sistema operativo (ver §Tipografía) |
+| [`frontend/index.html`](../frontend/index.html) | Inter + Sora (Google Fonts) + Tabler Icons |
 
 **Patrón de uso:** las vistas Vue aplican clases globales (`.card`, `.btn-primary`, `.filters`…) directamente en el template. Solo hay **un componente compartido** (`AppLayout`); el resto son vistas por módulo con `<style scoped>` para badges/chips de dominio.
 
 ```mermaid
 flowchart TB
   subgraph tokens ["main.css"]
-    brand["Navy + Índigo"]
+    brand["Petróleo + acento"]
     semantic["Paleta semántica"]
     layout["Radios, sombras, espaciado"]
   end
@@ -74,26 +74,25 @@ flowchart TB
 
 ## Identidad de marca
 
-Implementación de [Identidad de marca](MATEREN-CORE.md#identidad-de-marca)
-en `main.css` (tokens canónicos `--mat-*`; alias legacy `--color-*`):
+Implementación de [MATEREN-DESIGN-SYSTEM.md](MATEREN-DESIGN-SYSTEM.md) v0.3
+(colores muestreados del logo) en `main.css`:
 
 | Token | Hex | Rol en Sistema TI |
 |-------|-----|-------------------|
-| `--mat-color-brand` | `#11133C` (Navy) | Identidad de marca |
-| `--mat-color-accent` | `#4F46E5` (Índigo) | Botones primarios, foco, ítem activo |
-| `--mat-color-accent-alt` | `#51EDC8` (Turquesa) | Extremo del gradiente del icono de marca |
-| `--mat-color-brand-elevated` | `#1C2050` | Superficies secundarias sobre Navy (oscuro) |
+| `--mat-color-brand` | `#072E2A` | Ink de marca — títulos, stats, toast |
+| `--mat-color-accent` | `#157955` | Botón primario, links, foco (teal-deep, AA) |
+| `--mat-color-accent-alt` | `#34D399` | Gradiente de marca — no texto sobre blanco |
+| `--mat-color-bg` | `#F8F6F1` | Fondo de página (cálido) |
 
-El icono de marca usa **gradiente Índigo → Turquesa**:
+El icono de marca usa **gradiente teal-deep → verde acento**:
 
 ```css
-/* frontend/src/styles/main.css — .brand-icon */
 background: linear-gradient(135deg, var(--mat-color-accent) 0%, var(--mat-color-accent-alt) 100%);
-box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
 ```
 
-> **Código nuevo:** preferir `--mat-*`. Los `--color-*` existen solo como alias
-> de compatibilidad hacia las vistas que aún no migraron.
+**Estilo shadcn (sin la librería):** un acento por vista, botones outline/solid,
+inputs `h-36px` con focus ring, contenedores separados por **borde** (sin
+`box-shadow` decorativo).
 
 ---
 
@@ -104,32 +103,30 @@ que apuntan a ellos.
 
 ### Fondos y texto — tema claro (`:root`)
 
-Neutros con tinte Navy (H~237°, saturación baja), según
-[Fórmula de color → Neutros](MATEREN-CORE.md#formula-de-color):
+Neutros cálidos (DS v0.3 — el petróleo **no** es color de cuerpo):
 
 | Token | Valor | Uso |
 |-------|-------|-----|
-| `--mat-color-bg` | `#eceef4` | Fondo de página |
-| `--mat-color-bg-elevated` | `#fafafc` | Tarjetas, header |
-| `--mat-color-bg-subtle` | `#f4f5f9` | Filtros, cabeceras de tabla |
-| `--mat-color-bg-hover` | `#e2e4ec` | Hover en filas/elementos |
-| `--mat-color-text-primary` | `#1a1d2e` | Texto principal |
-| `--mat-color-text-secondary` | `#5a5f78` | Subtítulos, labels |
-| `--mat-color-text-tertiary` | `#8b8fa3` | Placeholders, iconos muted |
-| `--mat-color-border` | `#d4d7e3` | Bordes estándar |
+| `--mat-color-bg` | `#F8F6F1` | Fondo de página |
+| `--mat-color-bg-elevated` | `#FFFFFF` | Tarjetas, header |
+| `--mat-color-bg-subtle` | `#F1EEE7` | Filtros, cabeceras de tabla |
+| `--mat-color-bg-hover` | `#EDE9DF` | Hover en filas/elementos |
+| `--mat-color-text-primary` | `#3A372E` | Texto de cuerpo |
+| `--mat-color-text-secondary` | `#6B7280` | Subtítulos, labels |
+| `--mat-color-text-tertiary` | `#9CA3AF` | Placeholders |
+| `--mat-color-border` | `#EAE6DC` | Bordes estándar |
 
 ### Acento / identidad
 
 | Token | Claro | Oscuro |
 |-------|-------|--------|
-| `--mat-color-accent` | `#4F46E5` (índigo) | `#818CF8` |
-| `--mat-color-accent-2` | `#51EDC8` (turquesa) | `#51EDC8` |
-| `--mat-color-accent-soft` | `#6366F1` | `#A5B4FC` |
-| `--mat-color-accent-hover` | `#4338CA` | `#6366F1` |
-| `--mat-color-accent-subtle` | `#ededfc` | `rgba(129,140,248,0.14)` |
-| `--mat-color-accent-text` | `#3730A3` | `#C7D2FE` |
+| `--mat-color-accent` | `#157955` | `#34D399` |
+| `--mat-color-accent-alt` | `#34D399` | `#34D399` |
+| `--mat-color-accent-hover` | `#126B48` | `#2DD4A0` |
+| `--mat-color-accent-subtle` | `#E6F7F1` | `rgba(52,211,153,0.14)` |
+| `--mat-color-accent-text` | `#157955` | `#6EE7B7` |
 
-En oscuro el índigo sube de luminosidad para mantener contraste sobre fondos Navy.
+Títulos (marca, toolbar, modal) usan `--mat-color-brand` (`#072E2A`), no el color de cuerpo.
 
 ### Colores semánticos (convención de dominio)
 
@@ -227,17 +224,14 @@ el sidebar ni el header.
 
 ---
 
-## Tipografía — Inter + Poppins (Materen Core)
-
-Cargada en [`frontend/index.html`](../frontend/index.html), según
-[Fundaciones → Tipografía](MATEREN-CORE.md#fundaciones):
+## Tipografía — Inter + Sora (DS v0.3)
 
 | Rol | Fuente | Pesos |
 |-----|--------|-------|
-| Cuerpo / UI | **Inter** (`--mat-font-sans`) | 400–700 |
-| Encabezados (marca, toolbar, modal) | **Poppins** (`--mat-font-display`) | 500–700 |
-| Códigos, contraseñas, seriales | Mono del SO (`--mat-font-mono`) | — |
-| Iconos | **Tabler Icons** (`ti ti-*`) | CDN |
+| Cuerpo / UI | **Inter** | 400–600 |
+| Encabezados | **Sora** (temporal; Axiforma pendiente) | 500–700 |
+| Mono | SO nativo | — |
+| Iconos | **Tabler Icons** | CDN |
 
 Variables canónicas: `--mat-fs-*` (alias legacy `--fs-*`). El `body` usa
 `--mat-fs-md` (14px). Títulos de marca/toolbar/modal usan `--font-display`.
@@ -517,10 +511,10 @@ Licencias y Equipos, además de los formularios de creación/edición.
 
 ## Resumen
 
-Panel con **CSS custom + tokens Materen** (`--mat-*`), identidad **Navy +
-Índigo/Turquesa**, tipografía **Inter + Poppins**, iconos **Tabler**, **tema
-claro/oscuro** con sidebar minimalista que se funde con el fondo, y **clases
-utilitarias globales** en `main.css`.
+Panel con **CSS custom estilo shadcn** (sin Tailwind ni librería), tokens
+**verde petróleo + acento** (DS v0.3), **Inter + Sora**, iconos **Tabler**,
+separación por **bordes** (sin sombras en contenedores), y clases globales en
+`main.css`.
 
 ### Principios de diseño (definidos por el JEFE)
 

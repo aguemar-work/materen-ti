@@ -159,7 +159,9 @@ cuándo y si la contraseña se rotó después.
 │   └── tickets.ts          # edge function: catalogo / crear / seguimiento / encuesta / enviarEncuesta
 ├── migrations/             # 001..016 — esquema completo, en orden, comentado
 ├── docs/
-│   └── GUIA-UX-UI.md       # colores, tipografías, layout y componentes del panel
+│   ├── MATEREN-CORE.md     # filosofía, patrones, gobernanza compartida
+│   ├── MATEREN-DESIGN-SYSTEM.md  # tokens de producto v0.3 (verde petróleo)
+│   └── GUIA-UX-UI.md       # implementación concreta en Sistema TI
 ├── AGENTS.md               # contexto para agentes de código
 └── insforge.toml           # config del backend (auth por código, password min 6)
 ```

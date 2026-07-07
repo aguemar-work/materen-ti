@@ -26,25 +26,25 @@ function contraste(hex1, hex2) {
 }
 
 const CLARO = {
-  success: { bg: '#e8f0e0', text: '#33552c' },
-  warning: { bg: '#f7ecd6', text: '#7a4e0c' },
-  danger:  { bg: '#f7e4de', text: '#8a3020' },
-  info:    { bg: '#dfeaf5', text: '#215e85' },
-  purple:  { bg: '#e7e3f5', text: '#4c3a85' },
-  sky:     { bg: '#dcf0f4', text: '#1e6478' },
-  teal:    { bg: '#dcf0e8', text: '#1f6b52' },
-  neutral: { bg: '#eceadf', text: '#474d40' },
+  success: { bg: '#E6F7F1', text: '#157955' },
+  warning: { bg: '#FBF0DC', text: '#845A0E' },
+  danger:  { bg: '#FAEAE3', text: '#963D28' },
+  info:    { bg: '#EDEBF7', text: '#5B58A0' },
+  purple:  { bg: '#EDE8F5', text: '#534878' },
+  sky:     { bg: '#E5F2F0', text: '#256B7A' },
+  teal:    { bg: '#E6F7F1', text: '#126B52' },
+  neutral: { bg: '#F1EFE8', text: '#525862' },
 };
 
 const OSCURO = {
-  success: { bg: '#26301f', text: '#a8d18e' },
-  warning: { bg: '#3a2c15', text: '#e0b566' },
-  danger:  { bg: '#3a221c', text: '#e39a83' },
-  info:    { bg: '#1c2c3a', text: '#82bce3' },
-  purple:  { bg: '#26213a', text: '#b6a3e3' },
-  sky:     { bg: '#1a2f33', text: '#7ecbe0' },
-  teal:    { bg: '#1a332a', text: '#7ed9b8' },
-  neutral: { bg: '#26281f', text: '#c2c7b5' },
+  success: { bg: '#0A2E28', text: '#6EE7B7' },
+  warning: { bg: '#3A2C15', text: '#E8C878' },
+  danger:  { bg: '#3A2520', text: '#E88870' },
+  info:    { bg: '#1E1D30', text: '#A8A5E0' },
+  purple:  { bg: '#1E1A28', text: '#B8A8E8' },
+  sky:     { bg: '#1A2A2E', text: '#7ECBE0' },
+  teal:    { bg: '#0F332C', text: '#6EE7B7' },
+  neutral: { bg: '#0F332C', text: '#9CA3AF' },
 };
 
 function reportar(nombre, tabla) {

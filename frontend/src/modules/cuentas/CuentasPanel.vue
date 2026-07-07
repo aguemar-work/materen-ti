@@ -11,7 +11,6 @@ import CuentaForm from './CuentaForm.vue';
 const props = defineProps({
   empleadoId: { type: String, required: true },
   empleadoNombre: { type: String, required: true },
-  empleadoEmpresa: { type: String, default: '' },
   empleadoWhatsapp: { type: String, default: '' },
 });
 
@@ -150,10 +149,15 @@ async function enviarWhatsApp() {
     const cuentaIds = lista.value.map((c) => c.cuenta_id);
     const { token } = await crearEntrega(props.empleadoId, cuentaIds, 24);
     const link = `${window.location.origin}/entrega/${token}`;
-    const empresa = props.empleadoEmpresa ? ` a ${props.empleadoEmpresa}` : '';
     const texto =
-      `Bienvenido/a ${props.empleadoNombre}${empresa}. ` +
-      `Tus accesos están en este enlace (solo se puede abrir UNA vez y expira en 24 horas — tenlos a la mano para guardarlos):\n${link}`;
+      `Bienvenido/a, ${props.empleadoNombre} 👋\n` +
+      `Tus accesos están listos. Puedes obtenerlos en el siguiente enlace:\n` +
+      `🔗 ${link}\n` +
+      `⚠️ Importante:\n\n` +
+      `Este enlace se puede abrir solo una vez.\n` +
+      `Expira en 24 horas.\n` +
+      `Guarda tus credenciales en un lugar seguro apenas las veas (no podrás volver a acceder al enlace).\n\n` +
+      `Si tienes algún problema para acceder, contáctanos lo antes posible.`;
     const digits = (props.empleadoWhatsapp || '').replace(/\D/g, '');
     const url = digits
       ? `https://wa.me/${digits}?text=${encodeURIComponent(texto)}`

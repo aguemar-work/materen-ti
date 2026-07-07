@@ -288,7 +288,6 @@ onMounted(cargar);
             class="accesos-panel"
             :empleado-id="empleado.id"
             :empleado-nombre="nombreCompleto"
-            :empleado-empresa="empleado.empresa_nombre || ''"
             :empleado-whatsapp="empleado.whatsapp || ''"
           />
         </div>
