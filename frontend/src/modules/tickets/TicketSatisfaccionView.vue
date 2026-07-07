@@ -2,17 +2,30 @@
 // Página PÚBLICA (sin sesión): encuesta de satisfacción. El enlace llega
 // resuelto (por correo o desde el seguimiento) — el empleado no escribe
 // ningún ID a mano, solo responde nivel + comentario.
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { responderEncuesta } from '../../api/ticketsPublicos.js';
+import { responderEncuesta, encuestaYaRespondida } from '../../api/ticketsPublicos.js';
 
 const route = useRoute();
 
-// estado: 'formulario' | 'enviando' | 'gracias' | 'error'
-const estado = ref('formulario');
+// estado: 'cargando' | 'formulario' | 'enviando' | 'gracias' | 'ya_respondida' | 'error'
+const estado = ref('cargando');
 const error = ref('');
 const nivel = ref(0);
 const comentario = ref('');
+
+// Antes de mostrar el formulario, hay que saber si ya se respondió: si no,
+// tras refrescar la página parece que se puede volver a enviar (aunque el
+// backend ya lo bloquee, no debe ni parecer posible).
+onMounted(async () => {
+  try {
+    const yaRespondida = await encuestaYaRespondida(route.params.token);
+    estado.value = yaRespondida ? 'ya_respondida' : 'formulario';
+  } catch (e) {
+    error.value = e?.message || 'No se pudo cargar la encuesta';
+    estado.value = 'error';
+  }
+});
 
 const NIVELES = [
   { valor: 1, icono: 'ti-mood-cry', label: 'Muy insatisfecho' },
@@ -33,6 +46,12 @@ async function enviar() {
     await responderEncuesta(route.params.token, nivel.value, comentario.value.trim());
     estado.value = 'gracias';
   } catch (e) {
+    // Ya se respondió (ej. otra pestaña envió justo antes): no hay nada que
+    // reintentar, mostrar la misma pantalla de "ya respondida".
+    if (e?.code === 'ya_respondida') {
+      estado.value = 'ya_respondida';
+      return;
+    }
     error.value = e?.message || 'No se pudo enviar tu respuesta';
     estado.value = 'formulario';
   }
@@ -52,7 +71,15 @@ async function enviar() {
         </div>
       </div>
 
-      <template v-if="estado === 'formulario' || estado === 'enviando'">
+      <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
+
+      <template v-else-if="estado === 'error'">
+        <div class="ticket-error-icon"><i class="ti ti-link-off"></i></div>
+        <h2 class="ticket-title">No disponible</h2>
+        <p class="ticket-texto">{{ error }}</p>
+      </template>
+
+      <template v-else-if="estado === 'formulario' || estado === 'enviando'">
         <h2 class="ticket-title">¿Cómo te fue?</h2>
         <p class="ticket-texto">Tu opinión nos ayuda a mejorar el soporte.</p>
 
@@ -93,6 +120,12 @@ async function enviar() {
         <div class="ticket-ok-icon"><i class="ti ti-circle-check-filled"></i></div>
         <h2 class="ticket-title">¡Gracias por tu respuesta!</h2>
         <p class="ticket-texto">Tu opinión quedó registrada.</p>
+      </template>
+
+      <template v-else-if="estado === 'ya_respondida'">
+        <div class="ticket-ok-icon"><i class="ti ti-circle-check-filled"></i></div>
+        <h2 class="ticket-title">Ya registramos tu respuesta</h2>
+        <p class="ticket-texto">Gracias por contarnos cómo te fue — no es necesario volver a responder.</p>
       </template>
     </div>
   </div>
@@ -172,6 +205,12 @@ async function enviar() {
 .ticket-ok-icon {
   font-size: 40px;
   color: var(--color-success-text);
+  margin-bottom: 8px;
+}
+
+.ticket-error-icon {
+  font-size: 40px;
+  color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
 </style>

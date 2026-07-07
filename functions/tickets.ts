@@ -11,6 +11,7 @@
 //   crear          público o staff  → { codigo, token, vinculado }
 //   seguimiento    público          → { codigo, titulo, estado, comentarios[] }
 //   buscarPorDni   público          → { tickets[] } (solo tickets ACTIVOS; limitado por IP)
+//   encuestaEstado público          → { respondida } (para no mostrar el formulario tras refrescar)
 //   encuesta       público          → { ok }
 //   enviarEncuesta staff            → { ok, enviado }
 //
@@ -331,6 +332,24 @@ export default async function (req: Request): Promise<Response> {
   }
 
   // ── encuesta: público, respuesta a la encuesta de satisfacción ──────
+  // ── encuestaEstado: público, para saber si ya se respondió ANTES de
+  // mostrar el formulario (evita el formulario "fantasma" tras refrescar
+  // la página una vez ya enviada la respuesta) ────────────────────────
+  if (body.action === 'encuestaEstado') {
+    const token = String(body.token || '');
+    if (!token) return json({ ok: false, code: 'token_requerido' });
+
+    const { data: ticket } = await admin.database
+      .from('tickets').select('id').eq('token', token).maybeSingle();
+    if (!ticket) return json({ ok: false, code: 'no_existe' });
+
+    const { data: encuesta } = await admin.database
+      .from('ticket_satisfaccion').select('fecha_envio').eq('ticket_id', ticket.id).maybeSingle();
+    if (!encuesta) return json({ ok: false, code: 'no_disponible' });
+
+    return json({ ok: true, respondida: !!encuesta.fecha_envio });
+  }
+
   if (body.action === 'encuesta') {
     const token = String(body.token || '');
     const nivel = Number(body.nivel);

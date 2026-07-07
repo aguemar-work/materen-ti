@@ -6,7 +6,11 @@ import { getClient } from './insforge.js';
 async function invoke(body) {
   const { data, error } = await getClient().functions.invoke('tickets', { body });
   if (error) throw new Error(error.message || 'Error en el servidor de tickets');
-  if (!data?.ok) throw new Error(mensajeError(data?.code));
+  if (!data?.ok) {
+    const e = new Error(mensajeError(data?.code));
+    e.code = data?.code;
+    throw e;
+  }
   return data;
 }
 
@@ -43,6 +47,13 @@ export async function seguimientoTicket(token) {
   const data = await invoke({ action: 'seguimiento', token });
   const { ok, ...resto } = data;
   return resto;
+}
+
+// Si ya se respondió antes (ej. el usuario refresca la página tras enviar),
+// para no mostrar el formulario de nuevo como si nada se hubiera enviado
+export async function encuestaYaRespondida(token) {
+  const data = await invoke({ action: 'encuestaEstado', token });
+  return data.respondida;
 }
 
 // Respuesta a la encuesta de satisfacción
