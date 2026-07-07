@@ -107,6 +107,15 @@ function randomToken(): string {
   return toB64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// ── Rate-limit de revelado (auditoría H-05) ──────────────────
+// Un staff activo puede revelar cualquier contraseña por ID; sin tope,
+// un insider (o una cuenta comprometida) exfiltra todo el almacén en un
+// bucle. Se limita por usuario reutilizando accesos_log, que ya registra
+// cada 'ver'/'copiar'. No frena el uso normal (clics sueltos), sí el
+// barrido masivo. La auditoría sigue siendo el control detectivo.
+const REVELADO_MAX = 40;          // revelados permitidos por ventana
+const REVELADO_VENTANA_MIN = 5;   // minutos
+
 // ── Handler ──────────────────────────────────────────────────
 
 export default async function (req: Request): Promise<Response> {
@@ -134,6 +143,18 @@ export default async function (req: Request): Promise<Response> {
     detalle?: string | null;
   }) {
     await admin.database.from('accesos_log').insert([entry]);
+  }
+
+  // Cuántas contraseñas reveló este usuario en la ventana reciente.
+  async function reveladosRecientes(userId: string): Promise<number> {
+    const desde = new Date(Date.now() - REVELADO_VENTANA_MIN * 60 * 1000).toISOString();
+    const { data } = await admin.database
+      .from('accesos_log')
+      .select('id')
+      .eq('user_id', userId)
+      .in('accion', ['ver', 'copiar'])
+      .gte('created_at', desde);
+    return data?.length || 0;
   }
 
   // ── Acción pública: abrir una entrega de un solo uso ───────
@@ -214,6 +235,10 @@ export default async function (req: Request): Promise<Response> {
     const motivo = body.motivo === 'copiar' ? 'copiar' : 'ver';
     if (!cuentaId) return json({ ok: false, code: 'cuenta_requerida' });
 
+    if (await reveladosRecientes(user.id) >= REVELADO_MAX) {
+      return json({ ok: false, code: 'demasiados_revelados' }, 429);
+    }
+
     const { data: cuenta } = await admin.database
       .from('cuentas')
       .select('id, usuario, password, plataformas(nombre)')
@@ -240,6 +265,10 @@ export default async function (req: Request): Promise<Response> {
     const licenciaId = String(body.licenciaId || '');
     const motivo = body.motivo === 'copiar' ? 'copiar' : 'ver';
     if (!licenciaId) return json({ ok: false, code: 'licencia_requerida' });
+
+    if (await reveladosRecientes(user.id) >= REVELADO_MAX) {
+      return json({ ok: false, code: 'demasiados_revelados' }, 429);
+    }
 
     const { data: licencia } = await admin.database
       .from('licencias')

@@ -31,22 +31,28 @@ export const insforgeApi = {
   async buscarGlobal(query) {
     if (!query || query.trim().length < 2) return { empleados: [], cuentas: [], equipos: [] };
     const q = query.trim().toLowerCase();
+    // PostgREST interpreta , . ( ) * : % como sintaxis dentro del string de
+    // .or()/.ilike(); se neutralizan para que un término con esos caracteres
+    // no pueda alterar el filtro (auditoría H-07). Un buscador de nombres/
+    // códigos/DNI no los necesita.
+    const qSafe = q.replace(/[,.()*:%\\"]/g, ' ').trim();
+    if (qSafe.length < 2) return { empleados: [], cuentas: [], equipos: [] };
     const db = getClient().database;
     const [empRes, cuentasRes, equiposRes] = await Promise.all([
       db.from('empleados')
         .select('id, nombres, apellidos, dni, cargo, estado, empresas(nombre)')
         .is('deleted_at', null)
-        .or(`nombres.ilike.%${q}%,apellidos.ilike.%${q}%,dni.ilike.%${q}%`)
+        .or(`nombres.ilike.%${qSafe}%,apellidos.ilike.%${qSafe}%,dni.ilike.%${qSafe}%`)
         .limit(6),
       db.from('cuentas')
         .select('id, usuario, plataforma_id, tipo_cuenta, plataformas(nombre), asignaciones_cuenta(fecha_fin, empleado_id)')
         .is('deleted_at', null)
-        .ilike('usuario', `%${q}%`)
+        .ilike('usuario', `%${qSafe}%`)
         .limit(6),
       db.from('equipos')
         .select('id, codigo, marca, modelo, serie, tipos_equipo(nombre)')
         .is('deleted_at', null)
-        .or(`codigo.ilike.%${q}%,marca.ilike.%${q}%,modelo.ilike.%${q}%,serie.ilike.%${q}%`)
+        .or(`codigo.ilike.%${qSafe}%,marca.ilike.%${qSafe}%,modelo.ilike.%${qSafe}%,serie.ilike.%${qSafe}%`)
         .limit(6),
     ]);
     return {

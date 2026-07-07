@@ -56,6 +56,28 @@ function randomToken(): string {
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// ── Validación de adjuntos (auditoría H-03) ──────────────────
+// El adjunto es una captura de pantalla comprimida en el cliente (~200KB).
+// El cliente NO es de confianza: se ignora el `tipo` declarado y se
+// deduce el formato real por los magic bytes, se exige que sea una imagen
+// y se acota el tamaño muy por debajo del máximo de la plataforma (50MB).
+const ADJUNTO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+// Devuelve la extensión canónica si los primeros bytes son de una imagen
+// soportada; null si no lo es (no se sube).
+function sniffImagen(b: Uint8Array): string | null {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
+  if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'gif';
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'webp';
+  return null;
+}
+
+const MIME_POR_EXT: Record<string, string> = {
+  jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+};
+
 function esEmail(valor: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
 }
@@ -186,14 +208,23 @@ export default async function (req: Request): Promise<Response> {
     if (adjunto?.contenidoBase64) {
       try {
         const binario = atob(adjunto.contenidoBase64);
-        const bytes = new Uint8Array(binario.length);
-        for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
-        const blob = new Blob([bytes], { type: adjunto.tipo || 'image/jpeg' });
-        const key = `${token}/${adjunto.nombre || 'captura.jpg'}`;
-        const { data: subida, error: eSubida } = await admin.storage.from('tickets-adjuntos').upload(key, blob);
-        if (!eSubida && subida) {
-          adjuntoUrl = subida.url;
-          adjuntoKey = subida.key;
+        // Tamaño acotado en servidor (no se confía en el cliente)
+        if (binario.length > 0 && binario.length <= ADJUNTO_MAX_BYTES) {
+          const bytes = new Uint8Array(binario.length);
+          for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+          // Tipo real por magic bytes, ignorando el `tipo` declarado por el cliente
+          const ext = sniffImagen(bytes);
+          if (ext) {
+            const blob = new Blob([bytes], { type: MIME_POR_EXT[ext] });
+            // Nombre de archivo fijo y seguro: el token es la carpeta, la
+            // extensión la marca el formato real. Nada del cliente entra en la key.
+            const key = `${token}/captura.${ext}`;
+            const { data: subida, error: eSubida } = await admin.storage.from('tickets-adjuntos').upload(key, blob);
+            if (!eSubida && subida) {
+              adjuntoUrl = subida.url;
+              adjuntoKey = subida.key;
+            }
+          }
         }
       } catch {
         // El adjunto es opcional: si falla la subida, el ticket se crea igual
@@ -298,18 +329,40 @@ export default async function (req: Request): Promise<Response> {
     const dni = soloDigitos(String(body.dni || ''));
     if (dni.length !== 8) return json({ ok: false, code: 'dni_invalido' });
 
-    const ip = (req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'desconocida')
-      .split(',')[0].trim();
+    // IP del cliente: se prefieren headers de un solo valor puestos por el
+    // edge (no falsificables por el cliente); x-forwarded-for queda de último
+    // recurso. El header de confianza exacto de InsForge debe confirmarse
+    // (auditoría H-02); mientras, se refuerza con un límite por DNI que no
+    // depende de la IP.
+    const ip = (
+      req.headers.get('cf-connecting-ip') ||
+      req.headers.get('x-real-ip') ||
+      req.headers.get('x-forwarded-for') ||
+      'desconocida'
+    ).split(',')[0].trim();
     const desde = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
-    const { data: intentosPrevios } = await admin.database
+    // Límite por IP: frena barridos desde una sola fuente.
+    const { data: porIp } = await admin.database
       .from('ticket_busqueda_intentos')
       .select('id')
       .eq('ip', ip)
       .gte('created_at', desde);
-    if ((intentosPrevios?.length || 0) >= 15) {
+    if ((porIp?.length || 0) >= 15) {
       return json({ ok: false, code: 'demasiados_intentos' }, 429);
     }
+
+    // Límite por DNI: frena la extracción de tickets de una persona concreta
+    // aunque el atacante rote IPs (cierra la evasión del rate-limit, H-02).
+    const { data: porDni } = await admin.database
+      .from('ticket_busqueda_intentos')
+      .select('id')
+      .eq('dni', dni)
+      .gte('created_at', desde);
+    if ((porDni?.length || 0) >= 10) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+
     await admin.database.from('ticket_busqueda_intentos').insert([{ ip, dni }]);
 
     const { data: empleado } = await admin.database

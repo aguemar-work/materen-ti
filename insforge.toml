@@ -3,14 +3,19 @@ allowed_redirect_urls = []
 require_email_verification = true
 verify_email_method = "code"
 reset_password_method = "code"
-disable_signup = false
+# El sistema NO tiene registro público: solo el JEFE aprovisiona staff desde
+# el dashboard de InsForge. Con signup abierto + el trigger que crea staff,
+# cualquiera podía autorregistrarse como ASISTENTE activo (auditoría H-CRIT).
+disable_signup = true
 
 [auth.password]
-min_length = 6
-require_number = false
-require_lowercase = false
-require_uppercase = false
-require_special_char = false
+# Cuentas JEFE/ASISTENTE = llaves de todo el almacén de credenciales.
+# Política endurecida (auditoría H-04): antes min 6 sin complejidad.
+min_length = 12
+require_number = true
+require_lowercase = true
+require_uppercase = true
+require_special_char = true
 
 [auth.smtp]
 enabled = false

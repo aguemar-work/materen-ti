@@ -6,8 +6,10 @@
 > Implementación: `frontend/src/styles/main.css` (`--mat-*`, estilo shadcn sin
 > librería) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
-**Vigencia de este documento**: actualizado 2026-07-06, migración 017. Un
-`.md` sin esta línea no debe asumirse al día (regla de
+**Vigencia de este documento**: actualizado 2026-07-07, migración 019
+(endurecimiento de seguridad tras auditoría estática —
+`auditoria_seguridad_sistema-ti_2026-07-07.md`). Un `.md` sin esta línea no
+debe asumirse al día (regla de
 [Materen Core → Gobernanza](docs/MATEREN-CORE.md#gobernanza)).
 
 **Excepciones de precedencia documental**
@@ -42,6 +44,10 @@ empleados nunca tienen acceso al sistema, solo páginas públicas con token.
   function `credenciales` (cifra con claves de servidor y audita en
   `accesos_log`). No reintroducir cifrado en el cliente.
 - **Softdelete** en todo (`deleted_at`); DELETE físico solo JEFE (RLS).
+- **No reabrir el registro público**: `disable_signup` debe seguir en `true` y
+  el trigger `handle_new_staff_user` debe crear el `staff` **inactivo**
+  (`activo=false`). Solo el JEFE aprovisiona/activa staff. Revertir esto
+  reintroduce la escalada H-CRIT de la auditoría.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — las
   asignaciones se cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, enviar `password_cambiada: true` solo si el usuario

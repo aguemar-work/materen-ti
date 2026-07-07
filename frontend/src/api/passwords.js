@@ -17,6 +17,7 @@ function mensajeError(code) {
     no_existe: 'El registro no existe',
     ya_abierta: 'Este enlace ya fue utilizado',
     expirada: 'Este enlace expiró',
+    demasiados_revelados: 'Demasiadas contraseñas reveladas en poco tiempo. Espera unos minutos.',
   };
   return mensajes[code] || `Error de credenciales (${code || 'desconocido'})`;
 }
