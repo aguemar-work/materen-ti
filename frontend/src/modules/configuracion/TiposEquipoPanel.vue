@@ -1,10 +1,11 @@
 <script setup>
 // Catálogo de tipos de equipo con sus plantillas: qué specs pide cada
 // tipo y qué accesorios sugiere al registrar/entregar un equipo.
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { showToast } from '../../core/toast.js';
+import Pagination from '../../components/shared/Pagination.vue';
 
 const equiposStore = useEquiposStore();
 
@@ -18,6 +19,14 @@ const form = ref({ nombre: '', specs: '', accesorios: '' });
 const errorForm = ref('');
 
 const esEdicion = computed(() => !!editar.value);
+
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(lista, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return lista.value.slice(inicio, inicio + TAM_PAGINA);
+});
 
 // "Cámara de seguridad" → "camara_de_seguridad"
 function slugDe(nombre) {
@@ -108,7 +117,7 @@ onMounted(async () => {
 
 <template>
   <main class="page">
-    <div class="card">
+    <div class="card card--fill">
       <div class="card-toolbar">
         <div class="toolbar-title">
           Tipos de equipo
@@ -132,7 +141,7 @@ onMounted(async () => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="t in lista" :key="t.id">
+            <tr v-for="t in listaPaginada" :key="t.id">
               <td><span class="user-name">{{ t.nombre }}</span></td>
               <td>
                 <div class="chips">
@@ -159,6 +168,7 @@ onMounted(async () => {
             </tr>
           </tbody>
         </table>
+        <Pagination v-model="paginaActual" :total-items="lista.length" :page-size="TAM_PAGINA" />
       </div>
     </div>
 

@@ -1,6 +1,6 @@
 <script setup>
-// Catálogo de ubicaciones (almacenes, áreas, sedes, obras...)
-// usado por el módulo de Equipos para asignar equipos a lugares.
+// Catálogo de áreas/obras (áreas administrativas, obras en campo...)
+// usado por el módulo de Empleados para asignar dónde trabaja cada uno.
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
@@ -27,9 +27,9 @@ function abrirNueva() {
   mostrarForm.value = true;
 }
 
-function abrirEditar(u) {
-  editar.value = u;
-  form.value = { nombre: u.nombre, descripcion: u.descripcion || '' };
+function abrirEditar(a) {
+  editar.value = a;
+  form.value = { nombre: a.nombre, descripcion: a.descripcion || '' };
   errorForm.value = '';
   mostrarForm.value = true;
 }
@@ -39,15 +39,15 @@ async function guardar() {
   guardando.value = true;
   try {
     if (editar.value) {
-      const actualizada = await insforgeApi.updateUbicacion(editar.value.id, form.value);
-      const idx = lista.value.findIndex((u) => u.id === editar.value.id);
+      const actualizada = await insforgeApi.updateAreaObra(editar.value.id, form.value);
+      const idx = lista.value.findIndex((a) => a.id === editar.value.id);
       if (idx !== -1) lista.value[idx] = actualizada;
-      showToast('Ubicación actualizada');
+      showToast('Área/Obra actualizada');
     } else {
-      const nueva = await insforgeApi.createUbicacion(form.value.nombre, form.value.descripcion);
+      const nueva = await insforgeApi.createAreaObra(form.value.nombre, form.value.descripcion);
       lista.value.push(nueva);
       lista.value.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-      showToast('Ubicación creada');
+      showToast('Área/Obra creada');
     }
     mostrarForm.value = false;
   } catch (e) {
@@ -58,13 +58,13 @@ async function guardar() {
 }
 
 async function confirmarEliminar() {
-  const u = porEliminar.value;
-  if (!u) return;
+  const a = porEliminar.value;
+  if (!a) return;
   eliminando.value = true;
   try {
-    await insforgeApi.softDeleteUbicacion(u.id);
-    lista.value = lista.value.filter((x) => x.id !== u.id);
-    showToast('Ubicación eliminada');
+    await insforgeApi.softDeleteAreaObra(a.id);
+    lista.value = lista.value.filter((x) => x.id !== a.id);
+    showToast('Área/Obra eliminada');
     porEliminar.value = null;
   } catch (e) {
     showToast(e?.message || 'Error al eliminar', 'error');
@@ -75,9 +75,9 @@ async function confirmarEliminar() {
 
 onMounted(async () => {
   try {
-    lista.value = await insforgeApi.listUbicaciones();
+    lista.value = await insforgeApi.listAreasObras();
   } catch (e) {
-    showToast(e?.message || 'Error al cargar ubicaciones', 'error');
+    showToast(e?.message || 'Error al cargar áreas/obras', 'error');
   } finally {
     cargando.value = false;
   }
@@ -97,20 +97,20 @@ const listaPaginada = computed(() => {
     <div class="card card--fill">
       <div class="card-toolbar">
         <div class="toolbar-title">
-          Ubicaciones
+          Áreas/Obras
           <span class="badge-count">{{ lista.length }}</span>
         </div>
         <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva ubicación
+          <i class="ti ti-plus" aria-hidden="true"></i> Nueva área/obra
         </button>
       </div>
 
-      <div v-if="cargando" class="no-results">Cargando ubicaciones...</div>
+      <div v-if="cargando" class="no-results">Cargando áreas/obras...</div>
 
       <div v-else-if="lista.length === 0" class="empty">
-        <div class="empty-icon"><i class="ti ti-map-pin"></i></div>
-        <h3>Sin ubicaciones</h3>
-        <p>Crea almacenes, áreas u obras para asignarles equipos.</p>
+        <div class="empty-icon"><i class="ti ti-building-community"></i></div>
+        <h3>Sin áreas/obras</h3>
+        <p>Crea áreas administrativas u obras para asignarlas a los empleados.</p>
       </div>
 
       <div v-else class="table-wrap">
@@ -123,15 +123,15 @@ const listaPaginada = computed(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="u in listaPaginada" :key="u.id">
-              <td><span class="user-name"><i class="ti ti-map-pin ub-icon"></i> {{ u.nombre }}</span></td>
-              <td class="text-muted">{{ u.descripcion || '—' }}</td>
+            <tr v-for="a in listaPaginada" :key="a.id">
+              <td><span class="user-name"><i class="ti ti-building-community ao-icon"></i> {{ a.nombre }}</span></td>
+              <td class="text-muted">{{ a.descripcion || '—' }}</td>
               <td>
                 <div class="actions">
-                  <button class="icon-btn" type="button" title="Editar" @click="abrirEditar(u)">
+                  <button class="icon-btn" type="button" title="Editar" @click="abrirEditar(a)">
                     <i class="ti ti-pencil"></i>
                   </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" @click="porEliminar = u">
+                  <button class="icon-btn danger" type="button" title="Eliminar" @click="porEliminar = a">
                     <i class="ti ti-trash"></i>
                   </button>
                 </div>
@@ -146,18 +146,18 @@ const listaPaginada = computed(() => {
     <!-- Formulario (Modal accesible compartido) -->
     <Modal
       v-if="mostrarForm"
-      :titulo="editar ? 'Editar ubicación' : 'Nueva ubicación'"
+      :titulo="editar ? 'Editar área/obra' : 'Nueva área/obra'"
       size="sm"
       @close="mostrarForm = false"
     >
-      <form class="ub-form" @submit.prevent="guardar">
+      <form class="ao-form" @submit.prevent="guardar">
         <div class="form-group">
-          <label for="ub-nombre">Nombre *</label>
-          <input id="ub-nombre" v-model="form.nombre" required placeholder="ej: Almacén de TI, Recepción, Obra Norte" :disabled="guardando">
+          <label for="ao-nombre">Nombre *</label>
+          <input id="ao-nombre" v-model="form.nombre" required placeholder="ej: Oficina Central, Obra San Isidro" :disabled="guardando">
         </div>
         <div class="form-group">
-          <label for="ub-desc">Descripción</label>
-          <input id="ub-desc" v-model="form.descripcion" :disabled="guardando">
+          <label for="ao-desc">Descripción</label>
+          <input id="ao-desc" v-model="form.descripcion" :disabled="guardando">
         </div>
         <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
         <div class="modal-actions">
@@ -174,8 +174,8 @@ const listaPaginada = computed(() => {
       v-if="porEliminar"
       destructivo
       icono="ti-trash"
-      titulo="Eliminar ubicación"
-      :mensaje="`¿Eliminar la ubicación “${porEliminar.nombre}”? Los equipos que estuvieron ahí conservan su historial.`"
+      titulo="Eliminar área/obra"
+      :mensaje="`¿Eliminar “${porEliminar.nombre}”? Los empleados asignados quedan sin área/obra.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
       @cancel="porEliminar = null"
@@ -185,6 +185,6 @@ const listaPaginada = computed(() => {
 </template>
 
 <style scoped>
-.ub-icon { color: var(--color-purple-text); margin-right: 4px; }
-.ub-form { display: flex; flex-direction: column; gap: 12px; }
+.ao-icon { color: var(--color-purple-text); margin-right: 4px; }
+.ao-form { display: flex; flex-direction: column; gap: 12px; }
 </style>

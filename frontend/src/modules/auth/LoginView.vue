@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/auth.js';
@@ -13,6 +13,12 @@ const modo = ref('login');
 
 const email = ref('');
 const password = ref('');
+const verPassword = ref(false);
+
+// Si el campo se vacía, vuelve a ocultarse (el toggle desaparece con él)
+watch(password, (v) => {
+  if (!v) verPassword.value = false;
+});
 const error = ref('');
 const aviso = ref('');
 const procesando = ref(false);
@@ -30,7 +36,7 @@ const titulo = computed(() => ({
 }[modo.value]));
 
 const subtitulo = computed(() => ({
-  'login': 'Ingresa con tu cuenta de staff',
+  'login': null, // el login va limpio: solo título, campos y CTA
   'reset-email': 'Te enviaremos un código de verificación a tu correo',
   'reset-codigo': `Ingresa el código de 6 dígitos enviado a ${email.value}`,
   'reset-password': 'Elige tu nueva contraseña (mínimo 6 caracteres)',
@@ -109,18 +115,10 @@ async function onCambiarPassword() {
 <template>
   <div class="login-page">
     <div class="login-card card">
-      <div class="login-brand brand">
-        <div class="brand-icon">
-          <i class="ti ti-shield-lock" aria-hidden="true"></i>
-        </div>
-        <div class="brand-text">
-          <h1>Sistema TI</h1>
-          <span>Panel de administración</span>
-        </div>
-      </div>
+      <img src="/logo_materen_sisti.svg" alt="Sistema TI" class="login-logo">
 
       <h2 class="login-title">{{ titulo }}</h2>
-      <p class="login-subtitle">{{ subtitulo }}</p>
+      <p v-if="subtitulo" class="login-subtitle">{{ subtitulo }}</p>
 
       <!-- Paso: login -->
       <form v-if="modo === 'login'" class="login-form" @submit.prevent="onSubmit">
@@ -139,15 +137,27 @@ async function onCambiarPassword() {
 
         <div class="form-group full">
           <label for="password">Contraseña</label>
-          <input
-            id="password"
-            v-model="password"
-            type="password"
-            autocomplete="current-password"
-            placeholder="••••••••"
-            required
-            :disabled="cargando"
-          >
+          <div class="password-field">
+            <input
+              id="password"
+              v-model="password"
+              :type="verPassword ? 'text' : 'password'"
+              autocomplete="current-password"
+              placeholder="••••••••"
+              required
+              :disabled="cargando"
+            >
+            <button
+              v-if="password"
+              class="password-toggle"
+              type="button"
+              :title="verPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
+              :aria-label="verPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
+              @click="verPassword = !verPassword"
+            >
+              <i :class="verPassword ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+            </button>
+          </div>
         </div>
 
         <button
@@ -159,7 +169,7 @@ async function onCambiarPassword() {
         </button>
 
         <button class="login-link" type="button" @click="irA('reset-email')">
-          ¿Olvidaste tu contraseña?
+          Olvidé la contraseña
         </button>
 
         <p v-if="aviso" class="login-aviso" role="status">{{ aviso }}</p>
@@ -284,14 +294,28 @@ async function onCambiarPassword() {
   padding: 2rem;
 }
 
-.login-brand {
+.login-logo {
+  display: block;
+  height: 32px;
+  width: auto;
   margin-bottom: 1.75rem;
+}
+
+/* El logo es verde pino (#072E2A): en oscuro se pasa a blanco
+   para no perderse contra el fondo (antes lo resolvía un plate blanco). */
+[data-theme="dark"] .login-logo {
+  filter: brightness(0) invert(1);
 }
 
 .login-title {
   font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
+  margin-bottom: 1.25rem;
+}
+
+/* Cuando hay subtítulo (flujo de reset), el título se le acerca */
+.login-title:has(+ .login-subtitle) {
   margin-bottom: 4px;
 }
 
@@ -328,6 +352,36 @@ async function onCambiarPassword() {
   opacity: 0.7;
   cursor: not-allowed;
   background: var(--color-bg-subtle);
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  width: 100%;
+  padding-right: 38px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  color: var(--color-text-secondary);
+  border-radius: 6px;
+  transition: color 0.12s;
+}
+
+.password-toggle:hover {
+  color: var(--color-text-primary);
 }
 
 .login-link {

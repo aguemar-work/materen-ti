@@ -79,7 +79,7 @@ export const insforgeApi = {
   async listEmpleadosRecientes(limit = 5) {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre)')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -90,7 +90,7 @@ export const insforgeApi = {
   async listEmpleados() {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre)')
       .is('deleted_at', null)
       .order('apellidos', { ascending: true });
     if (error) throw error;
@@ -100,7 +100,7 @@ export const insforgeApi = {
   async getEmpleado(id) {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -111,7 +111,7 @@ export const insforgeApi = {
     const { data, error } = await getClient().database
       .from('empleados')
       .insert([empleadoToRow(datos)])
-      .select('*, empresas(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre)')
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -122,7 +122,7 @@ export const insforgeApi = {
       .from('empleados')
       .update(empleadoToRow(datos))
       .eq('id', id)
-      .select('*, empresas(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre)')
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -213,7 +213,7 @@ export const insforgeApi = {
       .from('empleados')
       .update({ estado: 'Inactivo' })
       .eq('id', empleadoId)
-      .select('*, empresas(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre)')
       .single();
     if (e3) throw e3;
 
@@ -225,7 +225,7 @@ export const insforgeApi = {
       .from('empleados')
       .update({ deleted_at: null, estado: 'Activo' })
       .eq('id', id)
-      .select('*, empresas(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre)')
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -849,6 +849,46 @@ export const insforgeApi = {
   async softDeleteUbicacion(id) {
     const { error } = await getClient().database
       .from('ubicaciones')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  // ── Áreas/Obras (catálogo para empleados) ─────────────────────
+  async listAreasObras() {
+    const { data, error } = await getClient().database
+      .from('areas_obras')
+      .select('id, nombre, descripcion')
+      .is('deleted_at', null)
+      .order('nombre', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async createAreaObra(nombre, descripcion = null) {
+    const { data, error } = await getClient().database
+      .from('areas_obras')
+      .insert([{ nombre: toTitleCase(nombre), descripcion: trimText(descripcion) }])
+      .select('id, nombre, descripcion')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateAreaObra(id, datos) {
+    const { data, error } = await getClient().database
+      .from('areas_obras')
+      .update({ nombre: toTitleCase(datos.nombre), descripcion: trimText(datos.descripcion) })
+      .eq('id', id)
+      .select('id, nombre, descripcion')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async softDeleteAreaObra(id) {
+    const { error } = await getClient().database
+      .from('areas_obras')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
@@ -1503,23 +1543,26 @@ async function licenciaToRow(datos) {
 }
 
 function empleadoToRow(datos) {
+  // "notas" dejó de escribirse (jul 2026): el campo salió del formulario,
+  // pero la columna conserva lo histórico.
   return {
     nombres:         toTitleCase(datos.nombres),
     apellidos:       toTitleCase(datos.apellidos),
     dni:             onlyDigits(datos.dni),
     empresa_id:      datos.empresa_id,
+    area_obra_id:    datos.area_obra_id || null,
     estado:          datos.estado,
     fecha_alta:      datos.fecha_alta,
     telefono:        normalizarTelefono(datos.telefono),
     whatsapp:        normalizarTelefono(datos.whatsapp),
     correo_personal: toLower(datos.correo_personal),
     cargo:           toTitleCase(datos.cargo),
-    notas:           trimText(datos.notas),
   };
 }
 
 function mapEmpleado(row) {
   const empresa = row.empresas || {};
+  const areaObra = row.areas_obras || {};
   return {
     id: row.id,
     nombres: row.nombres,
@@ -1531,6 +1574,8 @@ function mapEmpleado(row) {
     cargo: row.cargo || '',
     empresa_id: row.empresa_id,
     empresa_nombre: empresa.nombre || '',
+    area_obra_id: row.area_obra_id || '',
+    area_obra_nombre: areaObra.nombre || '',
     estado: row.estado,
     fecha_alta: row.fecha_alta || '',
     notas: row.notas || '',

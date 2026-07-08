@@ -131,7 +131,7 @@ onMounted(async () => {
 
 <template>
   <main class="page">
-    <div class="card">
+    <div class="card card--fill">
       <div class="card-toolbar">
         <div class="toolbar-title">
           Categorías de tickets

@@ -5,8 +5,9 @@
 > [`MATEREN-DESIGN-SYSTEM.md`](MATEREN-DESIGN-SYSTEM.md). Lo de acá abajo son los
 > **valores concretos** implementados en Sistema TI.
 
-**Vigencia**: actualizado 2026-07-06 — Design System producto v0.3 (verde petróleo
-+ acento `#157955`), estética tipo shadcn en CSS custom (bordes, sin sombras).
+**Vigencia**: actualizado 2026-07-07 — superficies **gris neutro** en ambos temas
+(la marca solo vive en el acento `#157955`/`#34D399` y el logo), estética tipo
+shadcn en CSS custom (bordes, sin sombras).
 Tokens `--mat-*` en [`main.css`](../frontend/src/styles/main.css). Especificación:
 [`MATEREN-DESIGN-SYSTEM.md`](MATEREN-DESIGN-SYSTEM.md).
 
@@ -74,15 +75,19 @@ flowchart TB
 
 ## Identidad de marca
 
-Implementación de [MATEREN-DESIGN-SYSTEM.md](MATEREN-DESIGN-SYSTEM.md) v0.3
-(colores muestreados del logo) en `main.css`:
+> **Principio (jul 2026, decisión del JEFE): la marca no es la paleta del
+> sistema.** El logo (verde pino + menta) es identidad; las superficies, bordes
+> y texto de la UI son **grises neutros** en ambos temas. La marca se conecta a
+> la interfaz únicamente a través del **acento** (botón primario, nav activo,
+> focus ring) y del propio logo. Antes de esta corrección el ink petróleo teñía
+> títulos/stats/toast y el tema oscuro entero era lienzo petróleo.
 
 | Token | Hex | Rol en Sistema TI |
 |-------|-----|-------------------|
-| `--mat-color-brand` | `#072E2A` | Ink de marca — títulos, stats, toast |
-| `--mat-color-accent` | `#157955` | Botón primario, links, foco (teal-deep, AA) |
+| `--mat-color-brand` | `#072E2A` | Reservado a piezas de marca (logo); **no es color de sistema** |
+| `--mat-color-accent` | `#157955` | Botón primario, links, foco (teal-deep, AA) — único punto de marca en la UI |
 | `--mat-color-accent-alt` | `#34D399` | Gradiente de marca — no texto sobre blanco |
-| `--mat-color-bg` | `#F8F6F1` | Fondo de página (cálido) |
+| `--mat-color-bg` | `#F6F7F8` | Fondo de página (gris neutro) |
 
 El icono de marca usa **gradiente teal-deep → verde acento**:
 
@@ -103,18 +108,22 @@ que apuntan a ellos.
 
 ### Fondos y texto — tema claro (`:root`)
 
-Neutros cálidos (DS v0.3 — el petróleo **no** es color de cuerpo):
+Grises neutros (jul 2026 — reemplazan los neutros cálidos/crema de v0.3; ni el
+petróleo ni la calidez del logo son colores de cuerpo):
 
 | Token | Valor | Uso |
 |-------|-------|-----|
-| `--mat-color-bg` | `#F8F6F1` | Fondo de página |
+| `--mat-color-bg` | `#F6F7F8` | Fondo de página |
 | `--mat-color-bg-elevated` | `#FFFFFF` | Tarjetas, header |
-| `--mat-color-bg-subtle` | `#F1EEE7` | Filtros, cabeceras de tabla |
-| `--mat-color-bg-hover` | `#EDE9DF` | Hover en filas/elementos |
-| `--mat-color-text-primary` | `#3A372E` | Texto de cuerpo |
+| `--mat-color-bg-subtle` | `#F0F2F4` | Filtros, cabeceras de tabla |
+| `--mat-color-bg-hover` | `#EAEDF0` | Hover en filas/elementos |
+| `--mat-color-text-primary` | `#23282D` | Texto de cuerpo |
 | `--mat-color-text-secondary` | `#6B7280` | Subtítulos, labels |
 | `--mat-color-text-tertiary` | `#9CA3AF` | Placeholders |
-| `--mat-color-border` | `#EAE6DC` | Bordes estándar |
+| `--mat-color-border` | `#E4E7EB` | Bordes estándar |
+
+En oscuro el lienzo también es gris neutro (`#0F1113` página, `#16181B`
+tarjetas, bordes `#282D33`) — ya no petróleo. El acento sube a `#34D399`.
 
 ### Acento / identidad
 
@@ -126,7 +135,10 @@ Neutros cálidos (DS v0.3 — el petróleo **no** es color de cuerpo):
 | `--mat-color-accent-subtle` | `#E6F7F1` | `rgba(52,211,153,0.14)` |
 | `--mat-color-accent-text` | `#157955` | `#6EE7B7` |
 
-Títulos (marca, toolbar, modal) usan `--mat-color-brand` (`#072E2A`), no el color de cuerpo.
+Títulos (toolbar, modal) y valores de stats usan `--color-text-primary`, igual
+que el cuerpo — la jerarquía se logra con tamaño/peso, no con el ink de marca.
+`--mat-color-brand` quedó reservado al área del logo (`.brand-text h1` vía
+`--color-brand-ink`).
 
 ### Colores semánticos (convención de dominio)
 
@@ -171,7 +183,7 @@ sobre su propio `-bg` (para eso están `-text`).
 Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
 **el sidebar no debe sentirse como un bloque aparte** —
 
-- Fondo: `var(--color-bg)` — el mismo de la página (sand claro / verde-noche
+- Fondo: `var(--color-bg)` — el mismo de la página (gris claro / gris-noche
   oscuro). **Sin borde derecho, sin sombra, sin líneas divisorias** internas
   (logo y footer sin `border-bottom/top`).
 - Hover de ítems: fondo muy tenue `var(--color-bg-hover)`, **nunca bordes**.
@@ -179,7 +191,21 @@ Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
   `var(--color-accent-text)`, **sin border-left ni indicadores**.
 - Búsqueda: input sin borde visible (fondo tenue); al enfocar sube a
   `--color-bg-elevated` con borde suave.
-- Ancho: `240px`. En móvil (off-canvas) sí lleva sombra al abrirse.
+- **Nav agrupada (jul 2026)** por frecuencia de uso, en este orden: día a día
+  sin label (Dashboard, Tickets) → "Gestión" (Empleados, Correos, Licencias,
+  Equipos) → "Administración" (Actividad solo JEFE, Configuración). Labels de
+  sección en uppercase 10.5px `--color-text-secondary`; la separación entre
+  grupos es solo espaciado (`gap`), **nunca líneas divisorias**. Colapsado:
+  los labels se ocultan y queda el espaciado.
+- Ancho: `240px` expandido, `64px` colapsado (rail de solo iconos). En móvil
+  (off-canvas) sí lleva sombra al abrirse.
+- **Colapso (jul 2026)**: toggle en la fila del logo
+  (`ti-layout-sidebar-left-collapse/expand`); preferencia persistida en
+  `localStorage` clave `sistema-ti-sidebar` (mismo patrón que el tema).
+  Colapsado: labels ocultos con `title` como tooltip, búsqueda reducida a un
+  botón que expande y enfoca el input, footer apilado con solo avatar +
+  iconos. Solo aplica en desktop (>768px); el drawer móvil siempre va
+  completo y oculta el toggle.
 
 ### Sombras y radios
 
@@ -266,7 +292,7 @@ marca. Uppercase con letter-spacing `0.04–0.06em`.
 4. Oscuro: atributo `data-theme="dark"` en `<html>`
 
 El sidebar usa los tokens del tema, así que **cambia junto con el área
-principal** (sand en claro, verde-noche en oscuro).
+principal** (gris claro / gris-noche oscuro).
 
 ---
 
@@ -283,23 +309,56 @@ Uso en el Dashboard: 6 stat-cards `col-2` (fila completa), pendientes
 `col-4` (3 por fila), recientes `col-3` (4 por fila). **Preferir esta grilla
 sobre grids ad-hoc por vista.**
 
-### Shell autenticado
+### Shell autenticado (unificado jul 2026)
 
 ```
 ┌────────────┬──────────────────────────────┐
 │  Sidebar   │  layout-main (scroll)        │
-│  240px     │  ├ site-header sticky 64px   │
-│  (tema)    │  └ .page → .card → tabla     │
+│  240px/64  │  ├ site-header sticky ≥64px  │
+│  (tema)    │  └ main.page (full-bleed)    │
 └────────────┴──────────────────────────────┘
 ```
 
+**Todas las vistas de módulo comparten la misma estructura** — la raíz lleva
+`.vista-modulo` (llena el alto del `layout-main`), el header muestra el
+**título del módulo** (no la marca, que ya vive en el sidebar), y `main.page`
+es **full-bleed** (sin padding; decisión del JEFE jul 2026 — el módulo ocupa
+todo el ancho y alto). Solo icono + título, **sin descripción** (decisión del
+JEFE jul 2026):
+
+```html
+<div class="mimodulo-page vista-modulo">
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-title">
+        <h1><i class="ti ti-users" aria-hidden="true"></i> Empleados</h1>
+      </div>
+      <div class="header-btns">…acciones (único .btn-primary de la vista)…</div>
+    </div>
+  </header>
+  <main class="page">…</main>
+</div>
+```
+
+`.brand` (icono + "Sistema TI") quedó **reservado a rutas públicas** (login,
+entrega, tickets públicos), donde no hay sidebar que muestre la marca.
+
 ### Página tipo listado (empleados, equipos, etc.)
 
-1. `site-header` → `header-inner` → `.brand` + `.header-btns`
-2. `main.page` → `.card`
+1. Shell de arriba, con las acciones del módulo en `.header-btns`
+2. `main.page` → `.card.card--fill` — el card se estira a todo el
+   ancho/alto disponible, **sin borde ni radio** (full-bleed)
 3. `.card-toolbar` (título + acciones)
 4. `.filters` (búsqueda + selects)
 5. `.table-wrap` > `table` o `.empty`
+
+### Página multi-card (dashboard, detalle de empleado/ticket)
+
+El contenido no es un solo card: el `main` lleva `page--padded`
+(padding `1.5rem`, `1rem` en ≤600px) y adentro van stats/grids/cards con
+borde y radio normales. Las vistas de detalle mantienen su header
+contextual (botón volver + entidad) sobre la misma base `site-header` +
+`header-inner`.
 
 ### Rutas públicas (login, entrega)
 
@@ -313,7 +372,10 @@ Sin sidebar: card centrada a pantalla completa, reutilizando `.card`, `.brand`, 
 | ≤768px | Sidebar off-canvas + topbar móvil 48px |
 | ≤600px | Formularios 1 columna, padding reducido |
 
-Constantes: `--header-h: 64px`, `--max-w: 1280px`, padding de página `1.5rem` (1rem en móvil).
+Constantes: `--header-h: 64px` (ahora `min-height` — el header crece si lleva
+tabs, como en Configuración). `--max-w` se eliminó (estaba definido pero
+ningún selector lo usaba; el contenido es de ancho completo). `.page` ya no
+tiene padding — el respiro en vistas multi-card lo da `.page--padded`.
 
 ---
 
@@ -321,23 +383,29 @@ Constantes: `--header-h: 64px`, `--max-w: 1280px`, padding de página `1.5rem` (
 
 Todo en `main.css` — no hay átomos Vue separados:
 
-**Botones:** `.btn`, `.btn-primary`, `.btn-whatsapp` (+ `.btn-danger` local en algunos modales)
+**Botones:** `.btn`, `.btn-primary`, `.btn-whatsapp`, `.btn-danger` (+ `.toolbar-actions` para agrupar varios en un toolbar)
 
-**Contenedores:** `.card`, `.card-toolbar`, `.stat-card`, `.cred-card`
+**Contenedores:** `.card`, `.card-toolbar`, `.stat-card`, `.password-cell`/`.password-text` (credenciales en `CuentasPanel.vue`)
 
-**Formularios:** `.form-grid`, `.form-group`, `.section-label`, `.tool-tag`, `.tool-input`
+**Formularios:** `.form-grid`, `.form-group`, `.section-label`, `.acc-chip`/`.acc-chip--on` (chips de accesorios/herramientas en `EquipoForm.vue`)
 
-**Datos:** `.table-wrap`, `table/th/td`, `.user-cell`, `.avatar`
+**Datos:** `.table-wrap`, `table/th/td`, `.user-name`, `.avatar`
 
-**Estado:** `.status`, `.s-activo`, `.s-inactivo`, `.s-suspendido`, `.pill`, `.badge-count`
+**Estado:** `.status`, `.badge`/`.badge--*` (ver sistema unificado abajo), `.badge-count`
 
 **Interacción:** `.icon-btn`, `.actions`, `.filters`, `.search-wrap`
 
-**Overlays:** `.modal-bg`, `.modal`, `.modal-lg`, `.modal-detail`, `.modal-actions`
+**Overlays:** `.modal-bg`, `.modal`, `.modal-lg`, `.modal-actions`
 
 **Feedback:** `.empty`, `.no-results`, `.toast` (vía `core/toast.js`)
 
-**Detalle:** `.detail-header`, `.detail-grid`, `.detail-item`
+**Detalle:** `.detalle-grid`, `.datos-card`, `.datos-lista`, `.dato` (`EmpleadoDetalleView.vue`)
+
+> `.cred-card`, `.tool-tag`/`.tool-input`, `.user-cell`, `.modal-detail`,
+> `.detail-header`/`.detail-grid`/`.detail-item` siguen definidas en
+> `main.css` pero **ningún template las usa ya** — mismo caso que las
+> clases antiguas de badges, quedaron como restos sin limpiar. No usarlas
+> en código nuevo; se pueden borrar de `main.css` en una limpieza futura.
 
 ### Badges — sistema unificado
 
@@ -477,6 +545,44 @@ contraseña" (es de lectura, ya auditada en Actividad) ni se implementó aún
 para "cerrar asignación reutilizable" (usa `confirm()` nativo del navegador,
 que no admite estilos — requeriría un modal propio; pendiente).
 
+### Paginación (`Pagination.vue`)
+
+Todas las tablas cargan la lista completa del store y la filtran en el
+cliente (no hay paginación en el backend/InsForge); a partir de jul 2026
+esa lista filtrada también se corta en páginas de 20 filas para no
+renderizar cientos de `<tr>` de una vez. Componente compartido en
+`frontend/src/components/shared/Pagination.vue`:
+
+```html
+<script setup>
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(listaFiltrada, () => { paginaActual.value = 1; }); // reset al filtrar/buscar
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
+});
+</script>
+
+<tbody>
+  <tr v-for="item in listaPaginada" :key="item.id">...</tr>
+</tbody>
+<!-- fuera de <table>, dentro de .table-wrap -->
+<Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
+```
+
+El componente muestra "Mostrando X–Y de Z" y controles anterior/siguiente
+(usa `.icon-btn`, ya con estado `:disabled`); no renderiza nada si
+`totalItems` es 0, y se auto-ajusta si la página actual queda fuera de
+rango al reducirse la lista filtrada. El conteo del badge del toolbar y el
+estado vacío siguen usando la lista filtrada completa, nunca la página.
+
+En uso en las 10 vistas con tabla (Tickets, Empleados, Equipos, Licencias,
+Plataformas, Empresas, Correos, Actividad, Staff, y los paneles de
+Ubicaciones/Tipos de equipo en Configuración). Se descartó a propósito en
+`CuentasPanel.vue`: es una lista de cuentas de un solo empleado (unas
+pocas filas, sin buscador), no un listado global.
+
 ### Errores de formulario/acción (`.form-error`)
 
 Antes duplicado idéntico en 10 módulos; ahora global. Distinto del toast:
@@ -512,7 +618,7 @@ Licencias y Equipos, además de los formularios de creación/edición.
 ## Resumen
 
 Panel con **CSS custom estilo shadcn** (sin Tailwind ni librería), tokens
-**verde petróleo + acento** (DS v0.3), **Inter + Sora**, iconos **Tabler**,
+**neutros grises + acento de marca** (`#157955`/`#34D399`), **Inter + Sora**, iconos **Tabler**,
 separación por **bordes** (sin sombras en contenedores), y clases globales en
 `main.css`.
 

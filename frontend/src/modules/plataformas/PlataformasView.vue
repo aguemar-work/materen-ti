@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { usePlataformasStore } from '../../stores/plataformas.js';
 import { showToast } from '../../core/toast.js';
+import Pagination from '../../components/shared/Pagination.vue';
 
 const store = usePlataformasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -21,6 +22,14 @@ const listaFiltrada = computed(() => {
   return lista.value.filter((p) =>
     p.nombre.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
   );
+});
+
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(listaFiltrada, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
 });
 
 const esEdicion = computed(() => !!plataformaEditar.value?.id);
@@ -85,9 +94,9 @@ onMounted(async () => {
 
 <template>
   <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
-  <div class="plataformas-page">
+  <div class="plataformas-page vista-modulo">
     <main class="page">
-      <div class="card">
+      <div class="card card--fill">
         <div class="card-toolbar">
           <div class="toolbar-title">
             Plataformas registradas
@@ -133,7 +142,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="plat in listaFiltrada" :key="plat.id">
+              <tr v-for="plat in listaPaginada" :key="plat.id">
                 <td>
                   <code class="slug">{{ plat.id }}</code>
                 </td>
@@ -170,6 +179,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
         </div>
       </div>
     </main>

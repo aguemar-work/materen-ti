@@ -6,8 +6,9 @@
        ============================================================ */
     :root {
       /* ── Marca (muestreado del logo) ───────────────────────── */
-      --mat-color-brand: #072E2A;           /* verde petróleo — ink títulos */
+      --mat-color-brand: #072E2A;           /* verde petróleo — reservado a piezas de marca (logo); no es color de sistema */
       --mat-color-brand-elevated: #0A2E28;
+      --mat-color-brand-ink: #072E2A;        /* texto de marca (títulos); vira a acento en oscuro para no fundirse con --bg-elevated */
       --mat-color-accent-alt: #34D399;      /* verde acento bruto — no texto sobre blanco */
       --mat-color-accent: #157955;          /* teal-deep — botones, links, foco */
       --mat-color-accent-hover: #126B48;
@@ -33,21 +34,22 @@
       --mat-fs-2xl: 20px;
       --mat-fs-stat: 26px;
 
-      /* ── Superficies ───────────────────────────────────────── */
-      --mat-color-bg: #F8F6F1;
+      /* ── Superficies (grises neutros — la marca no tiñe el sistema,
+         solo se conecta a través del acento) ─────────────────── */
+      --mat-color-bg: #F6F7F8;
       --mat-color-bg-elevated: #FFFFFF;
-      --mat-color-bg-subtle: #F1EEE7;
-      --mat-color-bg-hover: #EDE9DF;
+      --mat-color-bg-subtle: #F0F2F4;
+      --mat-color-bg-hover: #EAEDF0;
 
-      --mat-color-text-primary: #3A372E;    /* cuerpo — no petróleo en todo */
+      --mat-color-text-primary: #23282D;    /* cuerpo — gris neutro, no marca */
       --mat-color-text-secondary: #6B7280;
       --mat-color-text-tertiary: #9CA3AF;
       --mat-color-text-disabled: #C7CBD1;
       --mat-color-text-inverse: #FFFFFF;
 
-      --mat-color-border: #EAE6DC;
-      --mat-color-border-subtle: #F1EEE7;
-      --mat-color-border-strong: #D8D3C5;
+      --mat-color-border: #E4E7EB;
+      --mat-color-border-subtle: #EEF0F3;
+      --mat-color-border-strong: #D2D7DC;
 
       --mat-ring: rgba(21, 121, 85, 0.28);
 
@@ -72,11 +74,11 @@
       --mat-color-info-text: #5B58A0;
       --mat-color-info-border: #D4D0EA;
 
-      --mat-color-neutral-bg: #F1EFE8;
+      --mat-color-neutral-bg: #EFF1F3;
       --mat-color-neutral-text: #525862;
-      --mat-color-neutral-border: #EAE6DC;
+      --mat-color-neutral-border: #E4E7EB;
 
-      /* Categóricas de dominio TI (armonizadas con paleta cálida) */
+      /* Categóricas de dominio TI (armonizadas con paleta neutra) */
       --mat-color-purple-bg: #EDE8F5;
       --mat-color-purple-text: #534878;
       --mat-color-purple-border: #D4CBE8;
@@ -103,7 +105,6 @@
       --mat-radius-pill: 999px;
 
       --header-h: 64px;
-      --max-w: 1280px;
 
       --z-header: 50;
       --z-header-mobile: 60;
@@ -138,6 +139,7 @@
       --color-border: var(--mat-color-border);
       --color-border-subtle: var(--mat-color-border-subtle);
       --color-border-strong: var(--mat-color-border-strong);
+      --color-brand-ink: var(--mat-color-brand-ink);
 
       --color-accent: var(--mat-color-accent);
       --color-accent-2: var(--mat-color-accent-2);
@@ -186,22 +188,23 @@
       --radius-pill: var(--mat-radius-pill);
     }
 
-    /* ── Tema oscuro (lienzo oscuro petróleo; acento luminoso) ─── */
+    /* ── Tema oscuro (lienzo gris neutro; la marca solo en el acento) ─ */
     [data-theme="dark"] {
-      --mat-color-bg: #051A18;
-      --mat-color-bg-elevated: #072E2A;
-      --mat-color-bg-subtle: #0A2E28;
-      --mat-color-bg-hover: #0F3D36;
+      --mat-color-bg: #0F1113;
+      --mat-color-bg-elevated: #16181B;
+      --mat-color-bg-subtle: #1C1F23;
+      --mat-color-bg-hover: #24282D;
 
-      --mat-color-text-primary: #E8EBE9;
+      --mat-color-text-primary: #E7E9EB;
       --mat-color-text-secondary: #9CA3AF;
       --mat-color-text-tertiary: #6B7280;
       --mat-color-text-disabled: #4B5563;
-      --mat-color-text-inverse: #051A18;
+      --mat-color-text-inverse: #0F1113;
 
-      --mat-color-border: #1A4038;
-      --mat-color-border-subtle: #0F332C;
-      --mat-color-border-strong: #245248;
+      --mat-color-border: #282D33;
+      --mat-color-border-subtle: #1F2429;
+      --mat-color-border-strong: #363C44;
+      --mat-color-brand-ink: #34D399;
 
       --mat-color-accent: #34D399;
       --mat-color-accent-hover: #2DD4A0;
@@ -233,9 +236,9 @@
       --mat-color-info-text: #A8A5E0;
       --mat-color-info-border: rgba(91, 88, 160, 0.32);
 
-      --mat-color-neutral-bg: #0F332C;
+      --mat-color-neutral-bg: #24282D;
       --mat-color-neutral-text: #9CA3AF;
-      --mat-color-neutral-border: #1A4038;
+      --mat-color-neutral-border: #31373E;
 
       --mat-color-purple-bg: rgba(83, 72, 120, 0.18);
       --mat-color-purple-text: #B8A8E8;
@@ -283,18 +286,34 @@
       position: sticky;
       top: 0;
       z-index: var(--z-header);
-      height: var(--header-h);
+      min-height: var(--header-h);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
       background: var(--color-bg-elevated);
       border-bottom: 1px solid var(--color-border);
     }
 
     .header-inner {
-      padding: 0 1.5rem;
-      height: 100%;
+      padding: 10px 1.5rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
+    }
+
+    /* Título de módulo (patrón único de header, jul 2026):
+       h1 con icono + nombre del módulo, sin descripción;
+       la marca vive en el sidebar. */
+    .header-title h1 {
+      font-family: var(--font-display);
+      font-size: var(--fs-2xl);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--color-text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .brand {
@@ -320,7 +339,7 @@
       font-size: var(--fs-lg);
       font-weight: 600;
       letter-spacing: -0.01em;
-      color: var(--mat-color-brand);
+      color: var(--color-brand-ink);
     }
 
     .brand-text span {
@@ -328,8 +347,27 @@
       color: var(--color-text-secondary);
     }
 
-    /* ── Layout ── */
+    /* ── Layout ──
+       Shell único de módulo (jul 2026): la raíz de cada vista
+       (.vista-modulo) llena el alto del layout-main; .page es
+       full-bleed (sin padding) y el contenido decide:
+       - listados: .card--fill ocupa todo ancho/alto, sin borde
+       - multi-card (dashboard, detalle): main.page.page--padded */
+    .vista-modulo {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
     .page {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .page--padded {
       padding: 1.5rem;
     }
 
@@ -407,7 +445,7 @@
       font-weight: 700;
       line-height: 1.1;
       letter-spacing: -0.02em;
-      color: var(--mat-color-brand);
+      color: var(--color-text-primary);
     }
 
     .stat-info .stat-label {
@@ -424,6 +462,21 @@
       overflow: hidden;
     }
 
+    /* Card full-bleed de listado: ocupa todo el ancho y alto del
+       área de contenido, pegado a los bordes (sin borde ni radio). */
+    .card--fill {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+    }
+
+    .card--fill .table-wrap {
+      flex: 1;
+    }
+
     .card-toolbar {
       display: flex;
       align-items: center;
@@ -438,7 +491,7 @@
       font-family: var(--font-display);
       font-size: var(--fs-lg);
       font-weight: 600;
-      color: var(--mat-color-brand);
+      color: var(--color-text-primary);
       display: flex;
       align-items: center;
       gap: 8px;
@@ -734,6 +787,45 @@
       background: var(--color-danger-bg);
     }
 
+    .icon-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .icon-btn:disabled:hover {
+      background: transparent;
+      color: var(--color-text-secondary);
+    }
+
+    /* ── Pagination ── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0.85rem 1.25rem;
+      border-top: 1px solid var(--color-border-subtle);
+      flex-wrap: wrap;
+    }
+
+    .pagination-info {
+      font-size: var(--fs-base);
+      color: var(--color-text-secondary);
+    }
+
+    .pagination-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .pagination-pages {
+      font-size: var(--fs-base);
+      color: var(--color-text-secondary);
+      padding: 0 4px;
+      white-space: nowrap;
+    }
+
     /* ── Empty state ── */
     /* Error de formulario/acción — persistente, a diferencia del toast.
        Úsalo para mensajes que el usuario debe leer completos: rechazos de
@@ -916,7 +1008,7 @@
     .modal-bg {
       position: fixed;
       inset: 0;
-      background: rgba(7, 46, 42, 0.55);
+      background: rgba(12, 15, 17, 0.55);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -951,7 +1043,7 @@
       font-family: var(--font-display);
       font-size: var(--fs-xl);
       font-weight: 600;
-      color: var(--mat-color-brand);
+      color: var(--color-text-primary);
       margin-bottom: 1.25rem;
       display: flex;
       justify-content: space-between;
@@ -1144,8 +1236,8 @@
       position: fixed;
       bottom: 24px;
       right: 24px;
-      background: var(--mat-color-brand);
-      color: var(--color-text-inverse);
+      background: var(--color-bg-elevated);
+      color: var(--color-text-primary);
       padding: 10px 18px;
       border-radius: var(--radius-md);
       border: 1px solid var(--color-border-strong);
@@ -1158,7 +1250,7 @@
       transition: opacity 0.3s, transform 0.3s;
     }
 
-    .toast i { font-size: 16px; color: var(--color-accent-alt); }
+    .toast i { font-size: 16px; color: var(--color-accent); }
 
     /* ── Responsive ── */
     @media (max-width: 900px) {
@@ -1166,7 +1258,7 @@
     }
 
     @media (max-width: 600px) {
-      .page { padding: 1rem; }
+      .page--padded { padding: 1rem; }
       .stats-row { grid-template-columns: 1fr 1fr; }
       .form-grid { grid-template-columns: 1fr; }
       .detail-grid { grid-template-columns: 1fr; }
@@ -1192,4 +1284,4 @@
 .btn-whatsapp:hover { background: #1ebe57; border-color: #1ebe57; }
 .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
 .cred-count { font-size: 12px; color: var(--color-text-secondary); }
-.toast-error i { color: #fca5a5 !important; }
+.toast-error i { color: var(--color-danger-text) !important; }

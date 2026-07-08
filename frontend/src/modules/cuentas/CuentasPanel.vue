@@ -3,7 +3,8 @@ import { reactive, ref, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { revelarPassword, crearEntrega } from '../../api/passwords.js';
+import { revelarPassword } from '../../api/passwords.js';
+import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
 import CuentaForm from './CuentaForm.vue';
@@ -146,23 +147,12 @@ const creandoEntrega = ref(false);
 async function enviarWhatsApp() {
   creandoEntrega.value = true;
   try {
-    const cuentaIds = lista.value.map((c) => c.cuenta_id);
-    const { token } = await crearEntrega(props.empleadoId, cuentaIds, 24);
-    const link = `${window.location.origin}/entrega/${token}`;
-    const texto =
-      `Bienvenido/a, ${props.empleadoNombre} 👋\n` +
-      `Tus accesos están listos. Puedes obtenerlos en el siguiente enlace:\n` +
-      `🔗 ${link}\n` +
-      `⚠️ Importante:\n\n` +
-      `Este enlace se puede abrir solo una vez.\n` +
-      `Expira en 24 horas.\n` +
-      `Guarda tus credenciales en un lugar seguro apenas las veas (no podrás volver a acceder al enlace).\n\n` +
-      `Si tienes algún problema para acceder, contáctanos lo antes posible.`;
-    const digits = (props.empleadoWhatsapp || '').replace(/\D/g, '');
-    const url = digits
-      ? `https://wa.me/${digits}?text=${encodeURIComponent(texto)}`
-      : `https://wa.me/?text=${encodeURIComponent(texto)}`;
-    window.open(url, '_blank', 'noopener');
+    await enviarCredencialesWhatsApp({
+      empleadoId: props.empleadoId,
+      empleadoNombre: props.empleadoNombre,
+      whatsapp: props.empleadoWhatsapp,
+      cuentaIds: lista.value.map((c) => c.cuenta_id),
+    });
   } catch (e) {
     showToast(e?.message || 'Error al crear la entrega', 'error');
   } finally {

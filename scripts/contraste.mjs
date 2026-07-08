@@ -33,18 +33,20 @@ const CLARO = {
   purple:  { bg: '#EDE8F5', text: '#534878' },
   sky:     { bg: '#E5F2F0', text: '#256B7A' },
   teal:    { bg: '#E6F7F1', text: '#126B52' },
-  neutral: { bg: '#F1EFE8', text: '#525862' },
+  neutral: { bg: '#EFF1F3', text: '#525862' },
 };
 
+// Oscuro: los -bg semánticos son rgba(); acá van pre-compuestos sobre
+// --mat-color-bg-elevated (#16181B), la superficie donde viven los badges.
 const OSCURO = {
-  success: { bg: '#0A2E28', text: '#6EE7B7' },
-  warning: { bg: '#3A2C15', text: '#E8C878' },
-  danger:  { bg: '#3A2520', text: '#E88870' },
-  info:    { bg: '#1E1D30', text: '#A8A5E0' },
-  purple:  { bg: '#1E1A28', text: '#B8A8E8' },
-  sky:     { bg: '#1A2A2E', text: '#7ECBE0' },
-  teal:    { bg: '#0F332C', text: '#6EE7B7' },
-  neutral: { bg: '#0F332C', text: '#9CA3AF' },
+  success: { bg: '#1A2E2A', text: '#6EE7B7' },
+  warning: { bg: '#2E2719', text: '#E8C878' },
+  danger:  { bg: '#2F2120', text: '#E88870' },
+  info:    { bg: '#212230', text: '#A8A5E0' },
+  purple:  { bg: '#21212C', text: '#B8A8E8' },
+  sky:     { bg: '#18252A', text: '#7ECBE0' },
+  teal:    { bg: '#152524', text: '#6EE7B7' },
+  neutral: { bg: '#24282D', text: '#9CA3AF' },
 };
 
 function reportar(nombre, tabla) {

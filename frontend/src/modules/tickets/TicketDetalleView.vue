@@ -306,7 +306,7 @@ onMounted(cargar);
 </script>
 
 <template>
-  <div class="ticket-detalle-page">
+  <div class="ticket-detalle-page vista-modulo">
     <header class="site-header">
       <div class="header-inner">
         <div class="header-left">
@@ -329,7 +329,7 @@ onMounted(cargar);
       </div>
     </header>
 
-    <main class="page">
+    <main class="page page--padded">
       <div v-if="cargando" class="no-results">Cargando ticket...</div>
 
       <div v-else-if="ticket" class="grid-12">

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
@@ -7,6 +7,7 @@ import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
 import { generarActa } from './acta.js';
 import EquipoForm from './EquipoForm.vue';
+import Pagination from '../../components/shared/Pagination.vue';
 
 const store = useEquiposStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -41,6 +42,14 @@ const listaFiltrada = computed(() => {
       e.portador.toLowerCase().includes(q) ||
       e.ubicacion_nombre.toLowerCase().includes(q);
   });
+});
+
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(listaFiltrada, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
 });
 
 function situacionInfo(e) {
@@ -300,17 +309,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="equipos-page">
+  <div class="equipos-page vista-modulo">
     <header class="site-header">
       <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-devices" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Equipos</span>
-          </div>
+        <div class="header-title">
+          <h1><i class="ti ti-devices" aria-hidden="true"></i> Equipos</h1>
         </div>
         <button class="btn btn-primary" type="button" @click="abrirNuevo">
           <i class="ti ti-plus" aria-hidden="true"></i> Nuevo equipo
@@ -319,7 +322,7 @@ onMounted(async () => {
     </header>
 
     <main class="page">
-      <div class="card">
+      <div class="card card--fill">
         <div class="card-toolbar">
           <div class="toolbar-title">
             Inventario de equipos
@@ -368,7 +371,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="eq in listaFiltrada" :key="eq.id">
+              <tr v-for="eq in listaPaginada" :key="eq.id">
                 <td><span class="eq-codigo">{{ eq.codigo }}</span></td>
                 <td>
                   <div class="eq-info">
@@ -488,6 +491,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
         </div>
       </div>
     </main>

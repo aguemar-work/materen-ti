@@ -2,9 +2,10 @@
 // Auditoría de accesos a contraseñas — solo visible para el JEFE.
 // Los registros los escribe la edge function; nadie puede crearlos
 // ni borrarlos desde el cliente.
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
+import Pagination from '../../components/shared/Pagination.vue';
 
 const registros = ref([]);
 const cargando = ref(true);
@@ -23,6 +24,14 @@ const listaFiltrada = computed(() =>
     ? registros.value.filter((r) => r.accion === filtroAccion.value)
     : registros.value
 );
+
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(listaFiltrada, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
+});
 
 function infoAccion(accion) {
   return ACCIONES[accion] || { label: accion, icon: 'ti ti-activity', clase: '' };
@@ -48,23 +57,17 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="actividad-page">
+  <div class="actividad-page vista-modulo">
     <header class="site-header">
       <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-activity" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Actividad</span>
-          </div>
+        <div class="header-title">
+          <h1><i class="ti ti-activity" aria-hidden="true"></i> Actividad</h1>
         </div>
       </div>
     </header>
 
     <main class="page">
-      <div class="card">
+      <div class="card card--fill">
         <div class="card-toolbar">
           <div class="toolbar-title">
             Auditoría de accesos a contraseñas
@@ -103,7 +106,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in listaFiltrada" :key="r.id">
+              <tr v-for="r in listaPaginada" :key="r.id">
                 <td class="text-muted fecha-cell">{{ formatFechaHora(r.created_at) }}</td>
                 <td>{{ r.user_email || '(empleado, vía enlace)' }}</td>
                 <td>
@@ -121,6 +124,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
         </div>
       </div>
     </main>

@@ -65,17 +65,16 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
-    <div class="site-header">
-      <div class="header-content">
+  <div class="dashboard-page vista-modulo">
+    <header class="site-header">
+      <div class="header-inner">
         <div class="header-title">
           <h1><i class="ti ti-layout-dashboard" aria-hidden="true"></i> Dashboard</h1>
-          <p class="header-subtitle">Resumen del inventario de accesos.</p>
         </div>
       </div>
-    </div>
+    </header>
 
-    <div class="page-body">
+    <main class="page page--padded dashboard-body">
       <div v-if="cargando" class="no-results">Cargando...</div>
 
       <template v-else>
@@ -315,34 +314,14 @@ onMounted(async () => {
           </div>
         </div>
       </template>
-    </div>
+    </main>
   </div>
 </template>
 
 <style scoped>
-.page { display: flex; flex-direction: column; height: 100%; }
-
-.site-header {
-  position: sticky; top: 0; z-index: var(--z-header);
-  background: var(--color-bg-elevated);
-  border-bottom: 1px solid var(--color-border);
-  box-shadow: var(--shadow-sm);
-}
-
-.header-content {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; padding: 16px 24px;
-}
-
-.header-title h1 {
-  font-size: 18px; font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 0; display: flex; align-items: center; gap: 8px;
-}
-
-.header-subtitle { margin: 2px 0 0; font-size: 13px; color: var(--color-text-secondary); }
-
-.page-body { flex: 1; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 28px; }
+/* Header y page vienen del shell global (main.css); acá solo el
+   layout interno de las secciones del dashboard. */
+.dashboard-body { display: flex; flex-direction: column; gap: 28px; }
 
 .no-results { text-align: center; padding: 40px; color: var(--color-text-secondary); }
 

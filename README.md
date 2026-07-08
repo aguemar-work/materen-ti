@@ -58,11 +58,14 @@ cuándo y si la contraseña se rotó después.
   **token de entrega** (credenciales) con el **token de ticket** (seguimiento
   del reporte): son dos tokens distintos con propósitos distintos. El staff
   también puede abrir tickets internos desde `/tickets` (a nombre propio o de
-  un empleado). Cada ticket tiene código (`TCK-####`) y token propio; con el
-  token el empleado sigue su caso en `/ticket/:token` (solo ve comentarios no
-  internos) sin volver a autenticarse, con CTAs para copiar el enlace/código,
-  o puede recuperarlo en `/ticket/buscar` (por DNI, solo tickets activos,
-  limitado por IP). Flujo de estados guiado por botones (no un select libre):
+  un empleado), donde además tiene botones para copiar los enlaces públicos
+  de reportar (`/ticket/nuevo`) y de búsqueda por DNI (`/ticket/buscar`) para
+  difundirlos a los empleados. Cada ticket tiene código (`TCK-####`) y token
+  propio; con el token el empleado sigue su caso en `/ticket/:token` (solo ve
+  comentarios no internos) sin volver a autenticarse, con CTAs para copiar el
+  enlace/código, o puede recuperarlo en `/ticket/buscar` (por DNI, solo
+  tickets activos, limitado por IP). Flujo de estados guiado por botones (no
+  un select libre):
   desde `abierto`, el staff elige **Rechazar** (estado terminal `rechazado`,
   pide motivo obligatorio visible al empleado, sin encuesta) o **Iniciar
   atención** (pasa a `en_progreso`, exige elegir de una vez prioridad + nivel
@@ -73,9 +76,12 @@ cuándo y si la contraseña se rotó después.
   BD, no solo en la UI) — conserva prioridad/nivel/asignado previos. Al
   cerrarse con empleado vinculado, se reutiliza el **mismo token** del ticket
   para el enlace de encuesta (`/ticket/:token/satisfaccion`) — a diferencia de
-  Bitrix24, el empleado no tiene que anotar ningún ID. `ticket_eventos` es la
-  hoja de vida append-only del ticket (asignaciones, cambios de estado/
-  prioridad/nivel de atención, fallos de correo, envío/respuesta de encuesta).
+  Bitrix24, el empleado no tiene que anotar ningún ID. Esa página consulta
+  primero si ya se respondió (`encuestaEstado`) antes de mostrar el
+  formulario, para que un refresco después de enviar no la haga parecer
+  reenviable. `ticket_eventos` es la hoja de vida append-only del ticket
+  (asignaciones, cambios de estado/prioridad/nivel de atención, fallos de
+  correo, envío/respuesta de encuesta).
 
 - **Equipo**: activo físico con código de inventario único (etiqueta), tipo
   (catálogo `tipos_equipo` con plantilla de specs y accesorios por tipo),
@@ -127,6 +133,20 @@ cuándo y si la contraseña se rotó después.
 - Las tablas `tickets` y `ticket_satisfaccion` no tienen política de INSERT
   para clientes: solo la edge function `tickets` (cliente admin) escribe,
   igual que `entregas`. `ticket_eventos` es append-only por trigger.
+- **Sin registro público**: `disable_signup = true` en `insforge.toml`. El
+  staff lo aprovisiona solo el JEFE desde el dashboard; el trigger de auto-alta
+  crea la fila `staff` **inactiva** (`activo = false`) y el JEFE la activa a
+  mano (defensa en profundidad, migración 018).
+- **Política de contraseñas** de staff: mínimo 12 caracteres con número,
+  minúscula, mayúscula y símbolo (`insforge.toml`).
+- **Rate-limits**: el revelado de contraseñas está topado por usuario
+  (40 / 5 min, vía `accesos_log`); la búsqueda pública por DNI, por IP y por
+  DNI (`ticket_busqueda_intentos`).
+- **Integridad de tickets** (migración 019): un ticket `cerrado`/`rechazado`
+  solo sale de ese estado si el JEFE lo reabre; `token`, `codigo`, `origen` y
+  `creado_por` son inmutables tras la creación.
+- El detalle completo del análisis estático y su remediación vive en
+  `auditoria_seguridad_sistema-ti_2026-07-07.md`.
 
 ## Estructura del repo
 
@@ -156,8 +176,9 @@ cuándo y si la contraseña se rotó después.
 │       └── stores/            # Pinia
 ├── functions/
 │   ├── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir
-│   └── tickets.ts          # edge function: catalogo / crear / seguimiento / encuesta / enviarEncuesta
-├── migrations/             # 001..016 — esquema completo, en orden, comentado
+│   └── tickets.ts          # edge function: catalogo / crear / seguimiento / buscarPorDni /
+│                           #   encuestaEstado / encuesta / enviarEncuesta
+├── migrations/             # 001..019 — esquema completo, en orden, comentado
 ├── docs/
 │   ├── MATEREN-CORE.md     # filosofía, patrones, gobernanza compartida
 │   ├── MATEREN-DESIGN-SYSTEM.md  # tokens de producto v0.3 (verde petróleo)
@@ -219,6 +240,8 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 015 | `fotos` en equipos (bucket público `equipos-fotos`, compresión en cliente) |
 | 016 | Tickets: `categorias_ticket`/`subcategorias_ticket`, `tickets`, `ticket_comentarios`, `ticket_eventos`, `ticket_satisfaccion` + triggers (código autogenerado, bloqueo de comentarios en cerrado, encuesta automática al cerrar) |
 | 017 | Tickets — flujo guiado: estado `rechazado`, columna `nivel_atencion` (N1/N2/N3), trigger que exige nivel+asignado al iniciar, trigger que restringe "reabrir" al jefe, `ticket_busqueda_intentos` (rate-limit de la búsqueda pública por DNI) |
+| 018 | Seguridad (auditoría H-CRIT): el trigger de auto-alta crea el `staff` **inactivo** (`activo=false`); el JEFE lo activa. Complementa `disable_signup=true` en `insforge.toml` |
+| 019 | Seguridad (auditoría H-01/H-06): trigger que impide sacar un ticket de `cerrado`/`rechazado` salvo reabriéndolo (solo JEFE); `token`/`codigo`/`origen`/`creado_por` inmutables tras crear |
 
 ## Producción
 

@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
 import TicketInternoForm from './TicketInternoForm.vue';
+import Pagination from '../../components/shared/Pagination.vue';
 
 const router = useRouter();
 const store = useTicketsStore();
@@ -58,6 +59,14 @@ const listaFiltrada = computed(() => {
   });
 });
 
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(listaFiltrada, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
+});
+
 function verTicket(ticket) {
   router.push(`/tickets/${ticket.id}`);
 }
@@ -94,17 +103,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="tickets-page">
+  <div class="tickets-page vista-modulo">
     <header class="site-header">
       <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-headset" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Tickets</span>
-          </div>
+        <div class="header-title">
+          <h1><i class="ti ti-headset" aria-hidden="true"></i> Tickets</h1>
         </div>
         <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
           <i class="ti ti-plus" aria-hidden="true"></i> Ticket interno
@@ -113,7 +116,7 @@ onMounted(async () => {
     </header>
 
     <main class="page">
-      <div class="card">
+      <div class="card card--fill">
         <div class="card-toolbar">
           <div class="toolbar-title">
             Tickets de soporte
@@ -173,7 +176,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in listaFiltrada" :key="t.id" class="fila-ticket" @click="verTicket(t)">
+              <tr v-for="t in listaPaginada" :key="t.id" class="fila-ticket" @click="verTicket(t)">
                 <td><span class="tk-codigo">{{ t.codigo }}</span></td>
                 <td>
                   <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
@@ -194,6 +197,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
         </div>
       </div>
     </main>

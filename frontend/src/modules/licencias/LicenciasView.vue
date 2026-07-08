@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLicenciasStore } from '../../stores/licencias.js';
 import { insforgeApi } from '../../api/insforge.js';
@@ -7,6 +7,7 @@ import { revelarClaveLicencia, revelarPassword } from '../../api/passwords.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
 import LicenciaForm from './LicenciaForm.vue';
+import Pagination from '../../components/shared/Pagination.vue';
 
 const store = useLicenciasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -40,6 +41,14 @@ const listaFiltrada = computed(() => {
     (l.empresa_nombre || '').toLowerCase().includes(q) ||
     (l.cuenta_usuario || '').toLowerCase().includes(q)
   );
+});
+
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(listaFiltrada, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
 });
 
 // Barra de capacidad: comunica cercanía al tope de asientos antes de que
@@ -203,17 +212,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="licencias-page">
+  <div class="licencias-page vista-modulo">
     <header class="site-header">
       <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-license" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Licencias</span>
-          </div>
+        <div class="header-title">
+          <h1><i class="ti ti-license" aria-hidden="true"></i> Licencias</h1>
         </div>
         <button class="btn btn-primary" type="button" @click="abrirNueva">
           <i class="ti ti-plus" aria-hidden="true"></i> Nueva licencia
@@ -222,7 +225,7 @@ onMounted(async () => {
     </header>
 
     <main class="page">
-      <div class="card">
+      <div class="card card--fill">
         <div class="card-toolbar">
           <div class="toolbar-title">
             Licencias de software
@@ -263,7 +266,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="lic in listaFiltrada" :key="lic.id">
+              <tr v-for="lic in listaPaginada" :key="lic.id">
                 <td>
                   <div class="user-name">{{ lic.software }}</div>
                   <span v-if="lic.proveedor" class="lic-proveedor">{{ lic.proveedor }}</span>
@@ -376,6 +379,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
         </div>
       </div>
     </main>

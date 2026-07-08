@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
@@ -9,6 +9,24 @@ const router = useRouter();
 const auth = useAuthStore();
 
 const sidebarAbierto = ref(false);
+
+// ── Colapso del sidebar (solo desktop; en móvil manda el drawer) ──
+const CLAVE_SIDEBAR = 'sistema-ti-sidebar';
+const sidebarColapsado = ref(localStorage.getItem(CLAVE_SIDEBAR) === 'colapsado');
+
+function toggleColapso() {
+  sidebarColapsado.value = !sidebarColapsado.value;
+  localStorage.setItem(CLAVE_SIDEBAR, sidebarColapsado.value ? 'colapsado' : 'expandido');
+}
+
+const inputBusqueda = ref(null);
+
+async function expandirYBuscar() {
+  sidebarColapsado.value = false;
+  localStorage.setItem(CLAVE_SIDEBAR, 'expandido');
+  await nextTick();
+  inputBusqueda.value?.focus();
+}
 
 // ── Tema claro/oscuro ─────────────────────────────────────────
 const tema = ref(temaActual());
@@ -80,22 +98,36 @@ function irAEquipo() {
   router.push('/equipos');
 }
 
-const navItems = computed(() => {
-  const items = [
-    { path: '/dashboard', label: 'Dashboard', icon: 'ti ti-layout-dashboard' },
-    { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset' },
-    { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
-    { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
-    { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
-    { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
-  ];
-  if (auth.esJefe) {
-    items.push({ path: '/actividad', label: 'Actividad', icon: 'ti ti-activity' });
-  }
-  // Catálogos y administración (empresas, plataformas, tipos, ubicaciones, staff)
-  items.push({ path: '/configuracion', label: 'Configuración', icon: 'ti ti-settings' });
-  return items;
-});
+// Nav agrupada por frecuencia de uso: día a día arriba, inventario al
+// medio, auditoría y catálogos al fondo.
+const navGrupos = computed(() => [
+  {
+    label: null,
+    items: [
+      { path: '/dashboard', label: 'Dashboard', icon: 'ti ti-layout-dashboard' },
+      { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset' },
+    ],
+  },
+  {
+    label: 'Gestión',
+    items: [
+      { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
+      { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
+      { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
+      { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
+    ],
+  },
+  {
+    label: 'Administración',
+    items: [
+      ...(auth.esJefe
+        ? [{ path: '/actividad', label: 'Actividad', icon: 'ti ti-activity' }]
+        : []),
+      // Catálogos (empresas, plataformas, tipos, ubicaciones, staff)
+      { path: '/configuracion', label: 'Configuración', icon: 'ti ti-settings' },
+    ],
+  },
+]);
 
 const userInitial = computed(() => (auth.user?.email?.[0] ?? '?').toUpperCase());
 
@@ -122,18 +154,43 @@ async function cerrarSesion() {
     </transition>
 
     <!-- Sidebar -->
-    <aside class="sidebar" :class="{ 'sidebar--open': sidebarAbierto }" aria-label="Menú principal">
+    <aside
+      class="sidebar"
+      :class="{ 'sidebar--open': sidebarAbierto, 'sidebar--colapsado': sidebarColapsado }"
+      aria-label="Menú principal"
+    >
       <div class="sb-logo">
-        <div class="sb-logo-icon" aria-hidden="true">
-          <i class="ti ti-cpu"></i>
-        </div>
-        <span class="sb-logo-text">Sistema TI</span>
+        <img src="/logo_materen_sisti.svg" alt="Sistema TI" class="sb-logo-full">
+        <img src="/icon_sisti.svg" alt="Sistema TI" class="sb-logo-icono">
+        <button
+          class="sb-logout sb-collapse"
+          type="button"
+          :title="sidebarColapsado ? 'Expandir menú' : 'Colapsar menú'"
+          :aria-expanded="!sidebarColapsado"
+          @click="toggleColapso"
+        >
+          <i
+            :class="sidebarColapsado ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse'"
+            aria-hidden="true"
+          ></i>
+        </button>
       </div>
 
-      <!-- Búsqueda global -->
-      <div class="sb-busqueda">
+      <!-- Búsqueda global (colapsado: solo un botón que expande y enfoca) -->
+      <div class="sb-busqueda sb-busqueda--colapsada">
+        <button
+          class="sb-logout"
+          type="button"
+          title="Buscar en todo"
+          @click="expandirYBuscar"
+        >
+          <i class="ti ti-search" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="sb-busqueda sb-busqueda--full">
         <i class="ti ti-search sb-busqueda-icon" aria-hidden="true"></i>
         <input
+          ref="inputBusqueda"
           v-model="busqueda"
           type="text"
           placeholder="Buscar en todo..."
@@ -192,21 +249,29 @@ async function cerrarSesion() {
       </div>
 
       <nav class="sb-nav" aria-label="Navegación">
-        <RouterLink
-          v-for="item in navItems"
-          :key="item.path"
-          :to="item.path"
-          class="sb-nav-item"
-          active-class="sb-nav-item--active"
-          @click="cerrar"
+        <div
+          v-for="(grupo, i) in navGrupos"
+          :key="grupo.label ?? i"
+          class="sb-nav-grupo"
         >
-          <i :class="item.icon" aria-hidden="true"></i>
-          <span>{{ item.label }}</span>
-        </RouterLink>
+          <div v-if="grupo.label" class="sb-nav-titulo">{{ grupo.label }}</div>
+          <RouterLink
+            v-for="item in grupo.items"
+            :key="item.path"
+            :to="item.path"
+            class="sb-nav-item"
+            active-class="sb-nav-item--active"
+            :title="sidebarColapsado ? item.label : null"
+            @click="cerrar"
+          >
+            <i :class="item.icon" aria-hidden="true"></i>
+            <span class="sb-nav-label">{{ item.label }}</span>
+          </RouterLink>
+        </div>
       </nav>
 
       <div class="sb-footer">
-        <div class="sb-user">
+        <div class="sb-user" :title="sidebarColapsado ? auth.user?.email : null">
           <div class="sb-user-avatar" aria-hidden="true">{{ userInitial }}</div>
           <div class="sb-user-info">
             <span class="sb-user-email" :title="auth.user?.email">{{ auth.user?.email }}</span>
@@ -285,6 +350,88 @@ async function cerrarSesion() {
   overflow-y: auto;
   overflow-x: hidden;
   z-index: var(--z-nav); /* solo aplica cuando es fixed (móvil, ≤768px) */
+  transition: width 0.2s ease;
+}
+
+/* ── Colapsado (solo desktop; en móvil manda el drawer) ─────────── */
+.sb-collapse {
+  margin-left: auto;
+}
+
+.sb-busqueda--colapsada {
+  display: none;
+}
+
+@media (min-width: 769px) {
+  .sidebar--colapsado {
+    --sb-w: 64px;
+  }
+
+  .sidebar--colapsado .sb-busqueda--full {
+    display: none;
+  }
+
+  .sidebar--colapsado .sb-logo {
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 0 10px;
+  }
+
+  .sidebar--colapsado .sb-logo-full {
+    display: none;
+  }
+
+  .sidebar--colapsado .sb-logo-icono {
+    display: block;
+  }
+
+  .sidebar--colapsado .sb-collapse {
+    margin-left: 0;
+  }
+
+  .sidebar--colapsado .sb-busqueda--colapsada {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0;
+  }
+
+  .sidebar--colapsado .sb-nav {
+    padding: 10px 12px;
+  }
+
+  .sidebar--colapsado .sb-nav-item {
+    justify-content: center;
+    padding: 9px 0;
+  }
+
+  .sidebar--colapsado .sb-nav-label {
+    display: none;
+  }
+
+  /* Colapsado: sin títulos de grupo; la separación la da el gap del nav */
+  .sidebar--colapsado .sb-nav-titulo {
+    display: none;
+  }
+
+  .sidebar--colapsado .sb-footer {
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 0;
+  }
+
+  .sidebar--colapsado .sb-user {
+    flex: none;
+    justify-content: center;
+  }
+
+  .sidebar--colapsado .sb-user-info {
+    display: none;
+  }
+}
+
+/* Durante la transición de ancho los labels no deben envolver línea */
+.sb-nav-label {
+  white-space: nowrap;
 }
 
 /* ── Búsqueda global ─────────────────────────────────────────── */
@@ -402,24 +549,24 @@ async function cerrarSesion() {
   flex-shrink: 0;
 }
 
-.sb-logo-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 18px;
-  flex-shrink: 0;
+/* Lockup "materen · sistema ti" expandido; icono cuadrado colapsado.
+   El logo es verde pino: en oscuro se pasa a blanco (mismo tratamiento
+   que en el login). */
+.sb-logo-full {
+  display: block;
+  height: 26px;
+  width: auto;
 }
 
-.sb-logo-text {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--sb-text-strong);
-  letter-spacing: -0.01em;
+.sb-logo-icono {
+  display: none;
+  width: 28px;
+  height: 28px;
+}
+
+[data-theme="dark"] .sb-logo-full,
+[data-theme="dark"] .sb-logo-icono {
+  filter: brightness(0) invert(1);
 }
 
 /* ── Nav ─────────────────────────────────────────────────────── */
@@ -428,7 +575,22 @@ async function cerrarSesion() {
   padding: 10px 10px;
   display: flex;
   flex-direction: column;
+  gap: 14px; /* separación entre grupos (sin líneas divisorias) */
+}
+
+.sb-nav-grupo {
+  display: flex;
+  flex-direction: column;
   gap: 2px;
+}
+
+.sb-nav-titulo {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  padding: 0 12px 2px;
 }
 
 .sb-nav-item {
@@ -573,6 +735,11 @@ async function cerrarSesion() {
     height: 100vh;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
+  }
+
+  /* El drawer móvil siempre va completo: sin toggle de colapso */
+  .sb-collapse {
+    display: none;
   }
 
   .sidebar--open {

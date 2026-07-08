@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useEmpresasStore } from '../../stores/empresas.js';
 import { showToast } from '../../core/toast.js';
+import Pagination from '../../components/shared/Pagination.vue';
 
 const store = useEmpresasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -21,6 +22,14 @@ const listaFiltrada = computed(() => {
   return lista.value.filter((e) =>
     e.nombre.toLowerCase().includes(q) || (e.ruc || '').toLowerCase().includes(q)
   );
+});
+
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(listaFiltrada, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
 });
 
 const esEdicion = computed(() => !!empresaEditar.value?.id);
@@ -85,9 +94,9 @@ onMounted(async () => {
 
 <template>
   <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
-  <div class="empresas-page">
+  <div class="empresas-page vista-modulo">
     <main class="page">
-      <div class="card">
+      <div class="card card--fill">
         <div class="card-toolbar">
           <div class="toolbar-title">
             Empresas registradas
@@ -132,7 +141,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="emp in listaFiltrada" :key="emp.id">
+              <tr v-for="emp in listaPaginada" :key="emp.id">
                 <td>
                   <div class="user-name">{{ emp.nombre }}</div>
                 </td>
@@ -160,6 +169,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
         </div>
       </div>
     </main>

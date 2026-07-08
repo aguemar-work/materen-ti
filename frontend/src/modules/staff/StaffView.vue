@@ -1,15 +1,24 @@
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, ref, computed, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useStaffStore } from '../../stores/staff.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
+import Pagination from '../../components/shared/Pagination.vue';
 
 const store = useStaffStore();
 const authStore = useAuthStore();
 const { lista, cargando, error } = storeToRefs(store);
 
 const ROLES = ['ASISTENTE', 'JEFE'];
+
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(lista, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return lista.value.slice(inicio, inicio + TAM_PAGINA);
+});
 
 async function toggleActivo(miembro) {
   const accion = miembro.activo ? 'desactivar' : 'activar';
@@ -43,9 +52,9 @@ onMounted(async () => {
 
 <template>
   <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
-  <div class="staff-page">
+  <div class="staff-page vista-modulo">
     <main class="page">
-      <div class="card">
+      <div class="card card--fill">
         <div class="card-toolbar">
           <div class="toolbar-title">
             Miembros del staff
@@ -74,7 +83,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="miembro in lista" :key="miembro.user_id">
+              <tr v-for="miembro in listaPaginada" :key="miembro.user_id">
                 <td>
                   <div class="user-name">{{ miembro.nombre }}</div>
                 </td>
@@ -115,6 +124,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+          <Pagination v-model="paginaActual" :total-items="lista.length" :page-size="TAM_PAGINA" />
         </div>
       </div>
     </main>

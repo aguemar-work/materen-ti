@@ -16,6 +16,7 @@ const emit = defineEmits(['cerrar']);
 const store = useEmpleadosStore();
 
 const empresas = ref([]);
+const areasObras = ref([]);
 const cargandoEmpresas = ref(false);
 const guardando = ref(false);
 const error = ref('');
@@ -31,9 +32,9 @@ const form = ref({
   correo_personal: '',
   cargo: '',
   empresa_id: '',
+  area_obra_id: '',
   estado: 'Activo',
   fecha_alta: new Date().toISOString().slice(0, 10),
-  notas: '',
 });
 
 function resetForm() {
@@ -47,9 +48,9 @@ function resetForm() {
       correo_personal: props.empleado.correo_personal || '',
       cargo: props.empleado.cargo || '',
       empresa_id: props.empleado.empresa_id,
+      area_obra_id: props.empleado.area_obra_id || '',
       estado: props.empleado.estado,
       fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
-      notas: props.empleado.notas || '',
     };
   } else {
     form.value = {
@@ -61,9 +62,9 @@ function resetForm() {
       correo_personal: '',
       cargo: '',
       empresa_id: '',
+      area_obra_id: '',
       estado: 'Activo',
       fecha_alta: new Date().toISOString().slice(0, 10),
-      notas: '',
     };
   }
   error.value = '';
@@ -74,9 +75,12 @@ watch(() => props.empleado, resetForm, { immediate: true });
 onMounted(async () => {
   cargandoEmpresas.value = true;
   try {
-    empresas.value = await insforgeApi.listEmpresas();
+    [empresas.value, areasObras.value] = await Promise.all([
+      insforgeApi.listEmpresas(),
+      insforgeApi.listAreasObras(),
+    ]);
   } catch (e) {
-    error.value = e?.message || 'Error al cargar empresas';
+    error.value = e?.message || 'Error al cargar catálogos';
   } finally {
     cargandoEmpresas.value = false;
   }
@@ -198,6 +202,16 @@ async function guardar() {
         </div>
 
         <div class="form-group">
+          <label for="area-obra">Área/Obra</label>
+          <select id="area-obra" v-model="form.area_obra_id" :disabled="guardando || cargandoEmpresas">
+            <option value="">Sin asignar</option>
+            <option v-for="ao in areasObras" :key="ao.id" :value="ao.id">
+              {{ ao.nombre }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
           <label for="estado">Estado *</label>
           <select id="estado" v-model="form.estado" required :disabled="guardando">
             <option value="Activo">Activo</option>
@@ -209,11 +223,6 @@ async function guardar() {
         <div class="form-group">
           <label for="fecha-alta">Fecha de alta *</label>
           <input id="fecha-alta" v-model="form.fecha_alta" type="date" required :disabled="guardando">
-        </div>
-
-        <div class="form-group full">
-          <label for="notas">Notas</label>
-          <textarea id="notas" v-model="form.notas" :disabled="guardando"></textarea>
         </div>
 
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>

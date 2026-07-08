@@ -1,17 +1,20 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
+import { insforgeApi } from '../../api/insforge.js';
+import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { showToast } from '../../core/toast.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
+import Pagination from '../../components/shared/Pagination.vue';
 
 function exportarCSV(empleados) {
-  const cols = ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal', 'Notas'];
+  const cols = ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Área/Obra', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal'];
   const rows = empleados.map((e) => [
-    e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.cargo,
-    e.estado, e.fecha_alta, e.whatsapp, e.correo_personal, e.notas,
+    e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.area_obra_nombre, e.cargo,
+    e.estado, e.fecha_alta, e.whatsapp, e.correo_personal,
   ].map((v) => `"${(v ?? '').toString().replace(/"/g, '""')}"`));
   const csv = [cols.join(','), ...rows.map((r) => r.join(','))].join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -42,8 +45,43 @@ const listaFiltrada = computed(() => {
   });
 });
 
+const TAM_PAGINA = 20;
+const paginaActual = ref(1);
+watch(listaFiltrada, () => { paginaActual.value = 1; });
+const listaPaginada = computed(() => {
+  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
+  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
+});
+
 function nombreCompleto(emp) {
   return `${emp.nombres} ${emp.apellidos}`;
+}
+
+// ── Enviar credenciales sin entrar al perfil ──────────────────────
+// Mismo flujo que el botón de WhatsApp en la ficha (CuentasPanel):
+// enlace de entrega de un solo uso con TODAS las cuentas del empleado.
+const enviandoCredsId = ref(null);
+
+async function enviarCredenciales(emp) {
+  if (enviandoCredsId.value) return;
+  enviandoCredsId.value = emp.id;
+  try {
+    const cuentas = await insforgeApi.listCuentasPorEmpleado(emp.id);
+    if (!cuentas.length) {
+      showToast(`${nombreCompleto(emp)} no tiene cuentas registradas`, 'error');
+      return;
+    }
+    await enviarCredencialesWhatsApp({
+      empleadoId: emp.id,
+      empleadoNombre: nombreCompleto(emp),
+      whatsapp: emp.whatsapp,
+      cuentaIds: cuentas.map((c) => c.cuenta_id),
+    });
+  } catch (e) {
+    showToast(e?.message || 'Error al crear la entrega', 'error');
+  } finally {
+    enviandoCredsId.value = null;
+  }
 }
 
 function claseEstado(estado) {
@@ -104,17 +142,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="empleados-page">
+  <div class="empleados-page vista-modulo">
     <header class="site-header">
       <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-users" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Empleados</span>
-          </div>
+        <div class="header-title">
+          <h1><i class="ti ti-users" aria-hidden="true"></i> Empleados</h1>
         </div>
         <div class="header-btns">
           <button class="btn" type="button" title="Exportar CSV" @click="exportarCSV(listaFiltrada)">
@@ -128,7 +160,7 @@ onMounted(async () => {
     </header>
 
     <main class="page">
-      <div class="card">
+      <div class="card card--fill">
         <div class="card-toolbar">
           <div class="toolbar-title">
             Inventario de empleados
@@ -177,7 +209,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="emp in listaFiltrada" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
+              <tr v-for="emp in listaPaginada" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
                 <td class="text-muted">{{ emp.dni }}</td>
                 <td>
                   <div class="user-name">{{ nombreCompleto(emp) }}</div>
@@ -206,6 +238,15 @@ onMounted(async () => {
                       <i class="ti ti-pencil"></i>
                     </button>
                     <button
+                      class="icon-btn"
+                      type="button"
+                      title="Enviar credenciales por WhatsApp"
+                      :disabled="enviandoCredsId === emp.id"
+                      @click="enviarCredenciales(emp)"
+                    >
+                      <i class="ti ti-brand-whatsapp"></i>
+                    </button>
+                    <button
                       v-if="emp.estado !== 'Inactivo'"
                       class="icon-btn danger"
                       type="button"
@@ -219,6 +260,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
         </div>
       </div>
     </main>

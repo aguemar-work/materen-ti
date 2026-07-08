@@ -6,6 +6,7 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import EmpresasView from '../empresas/EmpresasView.vue';
+import AreasObrasPanel from './AreasObrasPanel.vue';
 import PlataformasView from '../plataformas/PlataformasView.vue';
 import TiposEquipoPanel from './TiposEquipoPanel.vue';
 import UbicacionesPanel from './UbicacionesPanel.vue';
@@ -19,6 +20,7 @@ const auth = useAuthStore();
 const TABS = computed(() => {
   const tabs = [
     { id: 'empresas',     label: 'Empresas',        icon: 'ti ti-building',  componente: EmpresasView },
+    { id: 'areas-obras',  label: 'Áreas/Obras',     icon: 'ti ti-building-community', componente: AreasObrasPanel },
     { id: 'plataformas',  label: 'Plataformas',     icon: 'ti ti-apps',      componente: PlataformasView },
     { id: 'tipos-equipo', label: 'Tipos de equipo', icon: 'ti ti-devices',   componente: TiposEquipoPanel },
     { id: 'ubicaciones',  label: 'Ubicaciones',     icon: 'ti ti-map-pin',   componente: UbicacionesPanel },
@@ -42,17 +44,11 @@ function irATab(tab) {
 </script>
 
 <template>
-  <div class="config-page">
+  <div class="config-page vista-modulo">
     <header class="site-header">
       <div class="header-inner">
-        <div class="brand">
-          <div class="brand-icon">
-            <i class="ti ti-settings" aria-hidden="true"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Sistema TI</h1>
-            <span>Módulo: Configuración</span>
-          </div>
+        <div class="header-title">
+          <h1><i class="ti ti-settings" aria-hidden="true"></i> Configuración</h1>
         </div>
       </div>
       <nav class="config-tabs" aria-label="Secciones de configuración">
@@ -75,12 +71,6 @@ function irATab(tab) {
 </template>
 
 <style scoped>
-.config-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
 .config-tabs {
   display: flex;
   gap: 2px;

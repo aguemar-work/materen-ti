@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Símbolo de Sistema TI: extraído de logo_materen_sisti.svg (grupo del icono) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="46.78mm" height="46.78mm" version="1.1" style="shape-rendering:geometricPrecision; fill-rule:evenodd; clip-rule:evenodd" viewBox="0 0 2517.83 2517.83">
+ <defs>
+  <style type="text/css"><![CDATA[
+   .fil2 {fill:#072E2A}
+   .fil1 {fill:#34D399}
+  ]]></style>
+ </defs>
+ <g>
+  <path class="fil1" d="M227.86 0l236.84 0 674.59 705.53 0 205.91c0,125.32 -102.53,227.85 -227.85,227.85l-683.58 0c-125.32,0 -227.86,-102.53 -227.86,-227.85l0 -683.58c0,-125.32 102.54,-227.86 227.86,-227.86z"/>
+  <path class="fil1" d="M2053.14 0l236.84 0c125.32,0 227.85,102.54 227.85,227.86l0 683.58c0,125.32 -102.53,227.85 -227.85,227.85l-683.58 0c-125.32,0 -227.86,-102.53 -227.86,-227.85l0 -205.9 674.6 -705.54z"/>
+  <rect class="fil2" x="0" y="1378.54" width="1139.29" height="1139.29" rx="227.86" ry="227.86"/>
+  <rect class="fil2" x="1378.54" y="1378.54" width="1139.29" height="1139.29" rx="227.86" ry="227.86"/>
+ </g>
+</svg>

@@ -121,7 +121,7 @@ onMounted(cargar);
 </script>
 
 <template>
-  <div class="detalle-page">
+  <div class="detalle-page vista-modulo">
     <header class="site-header">
       <div class="header-inner">
         <div class="header-left">
@@ -170,7 +170,7 @@ onMounted(cargar);
       </div>
     </header>
 
-    <main class="page detalle-body">
+    <main class="page page--padded detalle-body">
       <div v-if="cargando" class="no-results">Cargando empleado...</div>
 
       <template v-else-if="empleado">
@@ -215,6 +215,10 @@ onMounted(cargar);
               <div class="dato">
                 <dt>Cargo</dt>
                 <dd>{{ empleado.cargo || '—' }}</dd>
+              </div>
+              <div class="dato">
+                <dt>Área/Obra</dt>
+                <dd>{{ empleado.area_obra_nombre || '—' }}</dd>
               </div>
               <div class="dato">
                 <dt>Fecha de alta</dt>
