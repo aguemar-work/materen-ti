@@ -6,7 +6,7 @@ import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha, formatFechaHora } from '../../core/formatters.js';
+import { formatFechaHora } from '../../core/formatters.js';
 import { SITUACIONES_EQUIPO, situacionInfo } from '../../core/dominio-equipos.js';
 import { generarActa } from './acta.js';
 import EquipoForm from './EquipoForm.vue';
@@ -28,8 +28,6 @@ const filtroSituacion = ref('');
 const mostrarForm = ref(false);
 const equipoEditar = ref(null);
 
-const HOY = new Date().toISOString().split('T')[0];
-
 let debounceBusqueda = null;
 watch(busqueda, (q) => {
   clearTimeout(debounceBusqueda);
@@ -50,9 +48,10 @@ async function exportar() {
     const filas = await store.listaParaExportar();
     exportarCSV(
       'equipos',
-      ['Código', 'Tipo', 'Marca', 'Modelo', 'Empresa', 'Serie', 'Situación', 'Portador / Ubicación', 'Garantía'],
+      ['Código equipo', 'Código almacén', 'Tipo', 'Marca', 'Modelo', 'Empresa', 'Serie', 'Situación', 'Asignado a'],
       filas.map((eq) => [
         eq.codigo,
+        eq.codigo_almacen,
         eq.tipo_nombre,
         eq.marca,
         eq.modelo,
@@ -60,7 +59,6 @@ async function exportar() {
         eq.serie,
         badgesSituacion(eq).map((b) => b.label).join(' · '),
         eq.portador || eq.ubicacion_nombre,
-        eq.garantia_hasta,
       ]),
     );
   } catch (e) {
@@ -369,18 +367,19 @@ onMounted(async () => {
           <table aria-label="Inventario de equipos">
             <thead>
               <tr>
-                <th scope="col">Código</th>
+                <th scope="col">Código equipo</th>
+                <th scope="col">Código almacén</th>
                 <th scope="col">Equipo</th>
                 <th scope="col">Serie</th>
                 <th scope="col" class="th-situacion">Situación</th>
-                <th scope="col">Portador</th>
-                <th scope="col">Garantía</th>
+                <th scope="col">Asignado a</th>
                 <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="eq in lista" :key="eq.id">
                 <td><span class="eq-codigo">{{ eq.codigo }}</span></td>
+                <td class="eq-codigo-almacen"><TextoVacio :valor="eq.codigo_almacen" /></td>
                 <td>
                   <div class="eq-info">
                     <a v-if="eq.fotos.length" class="eq-foto" :href="eq.fotos[0].url" target="_blank" rel="noopener noreferrer" title="Ver foto" aria-label="Ver foto del equipo">
@@ -414,12 +413,6 @@ onMounted(async () => {
                   </template>
                   <span v-else-if="eq.ubicacion_nombre" class="ubicacion-nombre">
                     <i class="ti ti-map-pin"></i> {{ eq.ubicacion_nombre }}
-                  </span>
-                  <TextoVacio v-else />
-                </td>
-                <td>
-                  <span v-if="eq.garantia_hasta" :class="{ 'garantia-vencida': eq.garantia_hasta < HOY }">
-                    {{ formatFecha(eq.garantia_hasta) }}
                   </span>
                   <TextoVacio v-else />
                 </td>
@@ -687,6 +680,11 @@ onMounted(async () => {
   font-family: var(--font-mono, monospace);
 }
 
+.eq-codigo-almacen {
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-secondary);
+}
+
 .eq-modelo {
   display: block;
 }
@@ -758,8 +756,6 @@ onMounted(async () => {
      Sin peso extra: 700 se reserva para stat cards y wordmark (Materen Core #fundaciones). */
   margin-left: 6px;
 }
-
-.garantia-vencida { color: var(--color-danger-text); }
 
 .modal-sm { width: 440px; max-width: 95vw; }
 .modal-hoja { width: 560px; max-width: 95vw; }

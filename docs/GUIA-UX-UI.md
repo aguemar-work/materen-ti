@@ -391,7 +391,7 @@ Todo en `main.css` — no hay átomos Vue separados:
 
 **Contenedores:** `.card`, `.card-toolbar`, `.stat-card`, `.password-cell`/`.password-text` (credenciales en `CuentasPanel.vue`)
 
-**Formularios:** `.form-grid`, `.form-group`, `.section-label`, `.acc-chip`/`.acc-chip--on` (chips de accesorios/herramientas en `EquipoForm.vue`)
+**Formularios:** `.form-grid`, `.form-group`, `.section-label`. Accesorios de equipo: lista editable (código / descripción / cantidad) en `EquipoForm.vue` (`.acc-lista`, `.acc-fila`); ya no se usan chips.
 
 **Datos:** `.table-wrap`, `table/th/td`, `.user-name`, `.avatar`
 

@@ -1,6 +1,7 @@
 // Dominio tickets (staff): catálogo de categorías, bandeja, detalle,
 // comentarios, eventos, encuesta y actualizaciones vía RLS directo.
 import { getClient } from '../client.js';
+import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { trimText } from '../../core/formatters.js';
 
@@ -102,16 +103,16 @@ export const ticketsApi = {
   // ── Listado paginado en servidor (la tabla principal) ─────────
   async listTicketsPage({ pagina = 1, tamPagina = 20, ...filtros } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const query = await queryTickets(filtros, { conteo: true });
-    const { data, count, error } = await query.range(desde, desde + tamPagina - 1);
+    const { qb } = await queryTickets(filtros, { conteo: true });
+    const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapTicketResumen), total: count ?? 0 };
   },
 
   // Dataset filtrado completo, sin página — para exportar CSV
   async listTicketsFiltrados(filtros = {}) {
-    const query = await queryTickets(filtros);
-    const { data, error } = await query;
+    const { qb } = await queryTickets(filtros);
+    const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapTicketResumen);
   },
@@ -212,7 +213,7 @@ async function queryTickets(
     if (emps?.length) idsClause = `,empleado_id.in.(${emps.map((e) => e.id).join(',')})`;
     query = query.or(`codigo.ilike.%${qSafe}%,titulo.ilike.%${qSafe}%,contacto_ingresado.ilike.%${qSafe}%${idsClause}`);
   }
-  return query.order('created_at', { ascending: false });
+  return entregarQuery(query.order('created_at', { ascending: false }));
 }
 
 function mapTicketResumen(row) {

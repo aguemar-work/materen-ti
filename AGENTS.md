@@ -4,7 +4,7 @@
 > tickets, correos, licencias y equipos. UI en
 > `frontend/src/styles/main.css` (`--mat-*`) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
-**Vigencia**: actualizado 2026-07-09 (migración 020 áreas/obras; poda documental).
+**Vigencia**: actualizado 2026-07-09 (migración 021 accesorios/almacén; 020 áreas/obras).
 
 **Precedencia documental**: ante conflicto, `README.md` y `GUIA-UX-UI.md` describen
 intención; **ganan** los valores literales en `main.css` y el esquema real en

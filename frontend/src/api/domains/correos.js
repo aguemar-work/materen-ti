@@ -1,6 +1,7 @@
 // Dominio correos compartidos/reutilizables: catálogo asignable, CRUD
 // y asignación de cuentas existentes a empleados.
 import { getClient } from '../client.js';
+import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { cifrarPassword } from '../passwords.js';
 import { toLower, trimText } from '../../core/formatters.js';
@@ -25,7 +26,7 @@ async function queryCorreos({ q = '', tipo = '' } = {}, { conteo = false } = {})
     const extra = plats?.length ? `,plataforma_id.in.(${plats.map((p) => p.id).join(',')})` : '';
     query = query.or(`usuario.ilike.%${qSafe}%${extra}`);
   }
-  return query.order('created_at', { ascending: true });
+  return entregarQuery(query.order('created_at', { ascending: true }));
 }
 
 // ── Correos Compartidos ──────────────────────────────────────────────────────
@@ -33,15 +34,15 @@ async function queryCorreos({ q = '', tipo = '' } = {}, { conteo = false } = {})
 export const correosApi = {
   async listCorreosPage({ pagina = 1, tamPagina = 20, q = '', tipo = '' } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const query = await queryCorreos({ q, tipo }, { conteo: true });
-    const { data, count, error } = await query.range(desde, desde + tamPagina - 1);
+    const { qb } = await queryCorreos({ q, tipo }, { conteo: true });
+    const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapCorreo), total: count ?? 0 };
   },
 
   async listCorreosFiltrados({ q = '', tipo = '' } = {}) {
-    const query = await queryCorreos({ q, tipo });
-    const { data, error } = await query;
+    const { qb } = await queryCorreos({ q, tipo });
+    const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapCorreo);
   },
@@ -73,8 +74,8 @@ export const correosApi = {
   },
 
   async listCorreosCompartidos() {
-    const query = await queryCorreos();
-    const { data, error } = await query;
+    const { qb } = await queryCorreos();
+    const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapCorreo);
   },

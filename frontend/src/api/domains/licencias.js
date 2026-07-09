@@ -1,6 +1,7 @@
 // Dominio licencias: catálogo, renovaciones y asignaciones directas
 // (las licencias con login se asignan vía su correo vinculado).
 import { getClient } from '../client.js';
+import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { cifrarPassword } from '../passwords.js';
 import { trimText } from '../../core/formatters.js';
@@ -34,7 +35,7 @@ async function queryLicencias({ q = '' } = {}, { conteo = false } = {}) {
     }
     query = query.or(clauses);
   }
-  return query.order('software', { ascending: true });
+  return entregarQuery(query.order('software', { ascending: true }));
 }
 
 // ── Licencias ────────────────────────────────────────────────────────────────
@@ -42,22 +43,22 @@ async function queryLicencias({ q = '' } = {}, { conteo = false } = {}) {
 export const licenciasApi = {
   async listLicenciasPage({ pagina = 1, tamPagina = 20, q = '' } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const query = await queryLicencias({ q }, { conteo: true });
-    const { data, count, error } = await query.range(desde, desde + tamPagina - 1);
+    const { qb } = await queryLicencias({ q }, { conteo: true });
+    const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapLicencia), total: count ?? 0 };
   },
 
   async listLicenciasFiltrados({ q = '' } = {}) {
-    const query = await queryLicencias({ q });
-    const { data, error } = await query;
+    const { qb } = await queryLicencias({ q });
+    const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapLicencia);
   },
 
   async listLicencias() {
-    const query = await queryLicencias();
-    const { data, error } = await query;
+    const { qb } = await queryLicencias();
+    const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapLicencia);
   },

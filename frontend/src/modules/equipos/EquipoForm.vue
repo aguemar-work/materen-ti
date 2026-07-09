@@ -21,6 +21,7 @@ const esEdicion = computed(() => !!props.equipo?.id);
 
 const form = ref({
   codigo: '',
+  codigo_almacen: '',
   tipo_id: '',
   marca: '',
   modelo: '',
@@ -31,12 +32,19 @@ const form = ref({
   moneda: 'PEN',
   garantia_hasta: '',
   specs: {},
-  accesorios: [],
+  accesorios_lineas: [],
   fotos: [],
   notas: '',
 });
 
-const accesorioExtra = ref('');
+// Alta rápida / búsqueda en catálogo de almacén
+const busquedaAcc = ref('');
+const sugerenciasAcc = ref([]);
+const buscandoAcc = ref(false);
+const mostrarSugerencias = ref(false);
+let timerBusqueda = null;
+
+const nuevaLinea = ref({ codigo: '', descripcion: '', cantidad: 1 });
 
 // ── Fotos: comprimir y subir al seleccionar ───────────────────
 const MAX_FOTOS = 4;
@@ -74,18 +82,11 @@ async function quitarFoto(foto) {
   } catch { /* si falla, la referencia igual ya no se guardará */ }
 }
 
-// Plantilla del tipo seleccionado: campos de specs y accesorios sugeridos
 const tipoActual = computed(() => store.tipos.find((t) => t.id === form.value.tipo_id));
 const camposSpec = computed(() => tipoActual.value?.campos_spec || []);
 const accesoriosSugeridos = computed(() => tipoActual.value?.accesorios_sugeridos || []);
 
-// Accesorios marcados que no están en la plantilla (agregados a mano)
-const accesoriosExtras = computed(() =>
-  form.value.accesorios.filter((a) => !accesoriosSugeridos.value.includes(a))
-);
-
 function sugerirCodigo() {
-  // Siguiente correlativo EQ-#### según los equipos ya cargados
   const nums = store.lista
     .map((e) => /^EQ-(\d+)$/.exec(e.codigo)?.[1])
     .filter(Boolean)
@@ -94,12 +95,17 @@ function sugerirCodigo() {
   return `EQ-${String(next).padStart(4, '0')}`;
 }
 
+function lineaVacia() {
+  return { catalogo_id: null, codigo: '', descripcion: '', cantidad: 1 };
+}
+
 function resetForm() {
   error.value = '';
   if (props.equipo) {
     form.value = {
       fotos: [...(props.equipo.fotos || [])],
       codigo: props.equipo.codigo,
+      codigo_almacen: props.equipo.codigo_almacen || '',
       tipo_id: props.equipo.tipo_id,
       marca: props.equipo.marca || '',
       modelo: props.equipo.modelo || '',
@@ -110,31 +116,130 @@ function resetForm() {
       moneda: props.equipo.moneda || 'PEN',
       garantia_hasta: props.equipo.garantia_hasta || '',
       specs: { ...(props.equipo.specs || {}) },
-      accesorios: [...(props.equipo.accesorios || [])],
+      accesorios_lineas: (props.equipo.accesorios_lineas || []).map((l) => ({ ...l })),
       notas: props.equipo.notas || '',
     };
   } else {
     form.value = {
-      codigo: sugerirCodigo(), tipo_id: '', marca: '', modelo: '', serie: '',
+      codigo: sugerirCodigo(), codigo_almacen: '', tipo_id: '', marca: '', modelo: '', serie: '',
       empresa_id: '', fecha_compra: '', costo: '', moneda: 'PEN',
-      garantia_hasta: '', specs: {}, accesorios: [], fotos: [], notas: '',
+      garantia_hasta: '', specs: {}, accesorios_lineas: [], fotos: [], notas: '',
     };
   }
-  accesorioExtra.value = '';
+  busquedaAcc.value = '';
+  sugerenciasAcc.value = [];
+  nuevaLinea.value = { codigo: '', descripcion: '', cantidad: 1 };
 }
 
 watch(() => props.equipo, resetForm, { immediate: true });
 
-function toggleAccesorio(acc) {
-  const idx = form.value.accesorios.indexOf(acc);
-  if (idx === -1) form.value.accesorios.push(acc);
-  else form.value.accesorios.splice(idx, 1);
+// Al elegir tipo en equipo nuevo (o sin kit), precargar sugeridos del tipo
+watch(() => form.value.tipo_id, (tipoId, prev) => {
+  if (!tipoId || tipoId === prev) return;
+  if (esEdicion.value && form.value.accesorios_lineas.length) return;
+  const sugeridos = accesoriosSugeridos.value;
+  if (!sugeridos.length) return;
+  // Solo precarga si el kit está vacío
+  if (form.value.accesorios_lineas.length) return;
+  form.value.accesorios_lineas = sugeridos.map((descripcion) => ({
+    ...lineaVacia(),
+    descripcion,
+  }));
+});
+
+function quitarLinea(idx) {
+  form.value.accesorios_lineas.splice(idx, 1);
 }
 
-function agregarAccesorioExtra() {
-  const v = accesorioExtra.value.trim();
-  if (v && !form.value.accesorios.includes(v)) form.value.accesorios.push(v);
-  accesorioExtra.value = '';
+function yaEstaEnKit(descripcion, codigo) {
+  const d = (descripcion || '').trim().toLowerCase();
+  const c = (codigo || '').trim().toUpperCase();
+  return form.value.accesorios_lineas.some((l) => {
+    if (c && (l.codigo || '').toUpperCase() === c) return true;
+    return (l.descripcion || '').trim().toLowerCase() === d;
+  });
+}
+
+function agregarDesdeCatalogo(item) {
+  if (yaEstaEnKit(item.descripcion, item.codigo)) {
+    error.value = 'Ese accesorio ya está en el kit';
+    return;
+  }
+  form.value.accesorios_lineas.push({
+    catalogo_id: item.id,
+    codigo: item.codigo || '',
+    descripcion: item.descripcion,
+    cantidad: 1,
+  });
+  busquedaAcc.value = '';
+  sugerenciasAcc.value = [];
+  mostrarSugerencias.value = false;
+  error.value = '';
+}
+
+async function agregarLineaManual() {
+  const descripcion = (nuevaLinea.value.descripcion || '').trim();
+  const codigo = (nuevaLinea.value.codigo || '').trim().toUpperCase();
+  if (!descripcion) {
+    error.value = 'Indica la descripción del accesorio';
+    return;
+  }
+  if (yaEstaEnKit(descripcion, codigo)) {
+    error.value = 'Ese accesorio ya está en el kit';
+    return;
+  }
+  let catalogo_id = null;
+  try {
+    // Si tiene código o es nuevo, lo dejamos en el catálogo para reutilizar
+    const creado = await insforgeApi.createCatalogoAlmacen({ codigo, descripcion });
+    catalogo_id = creado.id;
+  } catch (e) {
+    // Código duplicado u otro: igual se agrega al kit sin bloquear
+    if (!String(e?.message || '').includes('uq_catalogo')) {
+      // intenta buscar por descripción/código
+      try {
+        const hallados = await insforgeApi.listCatalogoAlmacen({ q: codigo || descripcion, limite: 5 });
+        const match = hallados.find((h) =>
+          (codigo && (h.codigo || '').toUpperCase() === codigo)
+          || (h.descripcion || '').toLowerCase() === descripcion.toLowerCase()
+        );
+        if (match) catalogo_id = match.id;
+      } catch { /* ignore */ }
+    }
+  }
+  form.value.accesorios_lineas.push({
+    catalogo_id,
+    codigo,
+    descripcion,
+    cantidad: Math.min(999, Math.max(1, Number(nuevaLinea.value.cantidad) || 1)),
+  });
+  nuevaLinea.value = { codigo: '', descripcion: '', cantidad: 1 };
+  error.value = '';
+}
+
+function onBusquedaAccInput() {
+  clearTimeout(timerBusqueda);
+  const q = busquedaAcc.value.trim();
+  if (q.length < 1) {
+    sugerenciasAcc.value = [];
+    mostrarSugerencias.value = false;
+    return;
+  }
+  timerBusqueda = setTimeout(async () => {
+    buscandoAcc.value = true;
+    try {
+      sugerenciasAcc.value = await insforgeApi.listCatalogoAlmacen({ q, limite: 12 });
+      mostrarSugerencias.value = true;
+    } catch {
+      sugerenciasAcc.value = [];
+    } finally {
+      buscandoAcc.value = false;
+    }
+  }, 220);
+}
+
+function ocultarSugerencias() {
+  setTimeout(() => { mostrarSugerencias.value = false; }, 180);
 }
 
 onMounted(async () => {
@@ -156,13 +261,20 @@ async function guardar() {
   error.value = '';
   guardando.value = true;
   try {
-    // Solo se guardan los specs de la plantilla del tipo actual con valor
     const specs = {};
     for (const campo of camposSpec.value) {
       const v = (form.value.specs[campo] || '').trim();
       if (v) specs[campo] = v;
     }
-    const datos = { ...form.value, specs };
+    const lineas = form.value.accesorios_lineas
+      .map((l) => ({
+        catalogo_id: l.catalogo_id || null,
+        codigo: (l.codigo || '').trim(),
+        descripcion: (l.descripcion || '').trim(),
+        cantidad: Math.min(999, Math.max(1, Number(l.cantidad) || 1)),
+      }))
+      .filter((l) => l.descripcion);
+    const datos = { ...form.value, specs, accesorios_lineas: lineas };
     if (esEdicion.value) {
       await store.actualizar(props.equipo.id, datos);
     } else {
@@ -172,9 +284,11 @@ async function guardar() {
   } catch (e) {
     error.value = e?.message?.includes('uq_equipos_serie')
       ? 'Ya existe un equipo con ese número de serie'
-      : e?.message?.includes('codigo')
-        ? 'Ya existe un equipo con ese código'
-        : (e?.message || 'Error al guardar equipo');
+      : e?.message?.includes('uq_equipos_codigo_almacen')
+        ? 'Ya existe un equipo con ese código de almacén'
+        : e?.message?.includes('equipos_codigo') || e?.message?.includes('codigo')
+          ? 'Ya existe un equipo con ese código'
+          : (e?.message || 'Error al guardar equipo');
   } finally {
     guardando.value = false;
   }
@@ -193,8 +307,18 @@ async function guardar() {
 
       <form class="form-grid" @submit.prevent="guardar">
         <div class="form-group">
-          <label for="ef-codigo">Código de inventario *</label>
+          <label for="ef-codigo">Código de equipo *</label>
           <input id="ef-codigo" v-model="form.codigo" required placeholder="EQ-0001" :disabled="guardando">
+        </div>
+
+        <div class="form-group">
+          <label for="ef-codigo-almacen">Código de almacén</label>
+          <input
+            id="ef-codigo-almacen"
+            v-model="form.codigo_almacen"
+            placeholder="Según sistema de almacén"
+            :disabled="guardando"
+          >
         </div>
 
         <div class="form-group">
@@ -249,7 +373,6 @@ async function guardar() {
           </div>
         </div>
 
-        <!-- Specs según la plantilla del tipo -->
         <template v-if="camposSpec.length">
           <div class="form-group full section-label">
             <i class="ti ti-list-details"></i> Especificaciones ({{ tipoActual?.nombre }})
@@ -260,53 +383,120 @@ async function guardar() {
           </div>
         </template>
 
-        <!-- Accesorios: sugeridos por el tipo + libres -->
+        <!-- Kit de accesorios: lista editable con código de almacén -->
         <template v-if="form.tipo_id">
           <div class="form-group full section-label">
             <i class="ti ti-plug"></i> Accesorios incluidos
           </div>
           <div class="form-group full">
-            <div class="acc-chips">
-              <label
-                v-for="acc in accesoriosSugeridos"
-                :key="acc"
-                class="acc-chip"
-                :class="{ 'acc-chip--on': form.accesorios.includes(acc) }"
+            <div class="acc-buscar">
+              <label for="ef-acc-buscar" class="sr-only">Buscar en almacén</label>
+              <input
+                id="ef-acc-buscar"
+                v-model="busquedaAcc"
+                placeholder="Buscar en almacén por código o descripción…"
+                autocomplete="off"
+                :disabled="guardando"
+                @input="onBusquedaAccInput"
+                @focus="mostrarSugerencias = sugerenciasAcc.length > 0"
+                @blur="ocultarSugerencias"
+              >
+              <ul v-if="mostrarSugerencias && sugerenciasAcc.length" class="acc-sugerencias" role="listbox">
+                <li
+                  v-for="item in sugerenciasAcc"
+                  :key="item.id"
+                  role="option"
+                  @mousedown.prevent="agregarDesdeCatalogo(item)"
+                >
+                  <span class="acc-sug-codigo">{{ item.codigo || '—' }}</span>
+                  <span class="acc-sug-desc">{{ item.descripcion }}</span>
+                </li>
+              </ul>
+              <p v-else-if="buscandoAcc" class="field-hint">Buscando…</p>
+            </div>
+
+            <div v-if="form.accesorios_lineas.length" class="acc-lista">
+              <div class="acc-lista-head" aria-hidden="true">
+                <span>Código</span>
+                <span>Descripción</span>
+                <span>Cant.</span>
+                <span></span>
+              </div>
+              <div
+                v-for="(linea, idx) in form.accesorios_lineas"
+                :key="linea.id || `${linea.codigo}-${linea.descripcion}-${idx}`"
+                class="acc-fila"
               >
                 <input
-                  type="checkbox"
-                  :checked="form.accesorios.includes(acc)"
+                  v-model="linea.codigo"
+                  placeholder="—"
+                  aria-label="Código de almacén"
                   :disabled="guardando"
-                  @change="toggleAccesorio(acc)"
                 >
-                {{ acc }}
-              </label>
-              <span
-                v-for="acc in accesoriosExtras"
-                :key="acc"
-                class="acc-chip acc-chip--on"
-              >
-                {{ acc }}
-                <button class="chip-x" type="button" title="Quitar" @click="toggleAccesorio(acc)">
-                  <i class="ti ti-x"></i>
+                <input
+                  v-model="linea.descripcion"
+                  required
+                  placeholder="Descripción"
+                  aria-label="Descripción"
+                  :disabled="guardando"
+                >
+                <input
+                  v-model.number="linea.cantidad"
+                  type="number"
+                  min="1"
+                  max="999"
+                  aria-label="Cantidad"
+                  :disabled="guardando"
+                >
+                <button
+                  class="icon-btn"
+                  type="button"
+                  title="Quitar"
+                  aria-label="Quitar accesorio"
+                  :disabled="guardando"
+                  @click="quitarLinea(idx)"
+                >
+                  <i class="ti ti-trash" aria-hidden="true"></i>
                 </button>
-              </span>
+              </div>
             </div>
-            <div class="acc-extra">
+            <p v-else class="field-hint acc-vacio">Sin accesorios. Busca en el almacén o agrega uno abajo.</p>
+
+            <div class="acc-nueva">
               <input
-                v-model="accesorioExtra"
-                placeholder="Otro accesorio..."
+                v-model="nuevaLinea.codigo"
+                placeholder="Código almacén"
                 :disabled="guardando"
-                @keydown.enter.prevent="agregarAccesorioExtra"
+                @keydown.enter.prevent="agregarLineaManual"
               >
-              <button class="btn" type="button" :disabled="guardando || !accesorioExtra.trim()" @click="agregarAccesorioExtra">
+              <input
+                v-model="nuevaLinea.descripcion"
+                placeholder="Descripción (ej. Mouse inalámbrico)"
+                :disabled="guardando"
+                @keydown.enter.prevent="agregarLineaManual"
+              >
+              <input
+                v-model.number="nuevaLinea.cantidad"
+                type="number"
+                min="1"
+                max="999"
+                title="Cantidad"
+                aria-label="Cantidad"
+                :disabled="guardando"
+              >
+              <button
+                class="btn"
+                type="button"
+                :disabled="guardando || !nuevaLinea.descripcion.trim()"
+                @click="agregarLineaManual"
+              >
                 Agregar
               </button>
             </div>
+            <p class="field-hint">Los ítems nuevos se guardan en el catálogo de almacén para reutilizarlos.</p>
           </div>
         </template>
 
-        <!-- Fotos -->
         <div class="form-group full section-label">
           <i class="ti ti-camera"></i> Fotos ({{ form.fotos.length }}/{{ MAX_FOTOS }})
         </div>
@@ -362,7 +552,7 @@ async function guardar() {
 
 <style scoped>
 .equipo-form {
-  width: 640px;
+  width: 680px;
   max-width: 95vw;
 }
 
@@ -374,60 +564,113 @@ async function guardar() {
 .costo-inputs input { flex: 1; }
 .costo-inputs select { width: 76px; }
 
-/* Etiquetas de sección: .section-label global (main.css) */
-
-.acc-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.acc-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12.5px;
-  padding: 5px 10px;
-  border: 1.5px solid var(--color-border);
-  border-radius: 20px;
-  cursor: pointer;
-  user-select: none;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.acc-chip input[type="checkbox"] {
+.sr-only {
   position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.acc-chip:hover { border-color: var(--color-primary); }
-
-.acc-chip--on {
-  border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-  color: var(--color-primary);
-  font-weight: 600;
-}
-
-.chip-x {
-  background: none;
-  border: none;
+  width: 1px;
+  height: 1px;
   padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.acc-buscar {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.acc-buscar > input { width: 100%; }
+
+.acc-sugerencias {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--color-bg-elevated, #fff);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.acc-sugerencias li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 12px;
   cursor: pointer;
-  color: inherit;
-  display: inline-flex;
+  font-size: 13px;
+}
+
+.acc-sugerencias li:hover {
+  background: var(--color-bg-subtle);
+}
+
+.acc-sug-codigo {
+  flex: 0 0 88px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 
-.acc-extra {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
+.acc-sug-desc { flex: 1; min-width: 0; }
+
+.acc-lista {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 10px;
 }
 
-.acc-extra input { flex: 1; }
+.acc-lista-head,
+.acc-fila {
+  display: grid;
+  grid-template-columns: 100px 1fr 64px 36px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+}
+
+.acc-lista-head {
+  background: var(--color-bg-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.acc-fila + .acc-fila {
+  border-top: 1px solid var(--color-border-subtle, var(--color-border));
+}
+
+.acc-fila input {
+  width: 100%;
+  min-width: 0;
+}
+
+.acc-fila input[type="number"] {
+  text-align: center;
+}
+
+.acc-vacio { margin: 0 0 10px; }
+
+.acc-nueva {
+  display: grid;
+  grid-template-columns: 100px 1fr 64px auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.acc-nueva input { width: 100%; min-width: 0; }
+.acc-nueva input[type="number"] { text-align: center; }
 
 .fotos-grid {
   display: flex;
@@ -499,8 +742,23 @@ async function guardar() {
   color: var(--color-text-secondary);
 }
 
-
 .modal-actions.full {
   grid-column: 1 / -1;
+}
+
+@media (max-width: 560px) {
+  .acc-lista-head,
+  .acc-fila,
+  .acc-nueva {
+    grid-template-columns: 1fr 56px 36px;
+  }
+  .acc-lista-head span:first-child,
+  .acc-fila > input:first-child,
+  .acc-nueva > input:first-child {
+    display: none;
+  }
+  .acc-nueva {
+    grid-template-columns: 1fr 56px auto;
+  }
 }
 </style>

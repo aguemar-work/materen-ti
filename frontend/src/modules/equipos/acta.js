@@ -14,8 +14,15 @@ export function generarActa(equipo, empleado) {
     .map(([k, v]) => `<tr><td class="lbl">${esc(k)}</td><td>${esc(v)}</td></tr>`)
     .join('');
 
-  const accesorios = (equipo.accesorios || []).length
-    ? equipo.accesorios.map(esc).join(', ')
+  const lineas = equipo.accesorios_lineas?.length
+    ? equipo.accesorios_lineas
+    : (equipo.accesorios || []).map((d) => ({ descripcion: d, cantidad: 1 }));
+  const accesorios = lineas.length
+    ? `<ul class="acc-ul">${lineas.map((l) => {
+        const cant = (l.cantidad || 1) > 1 ? ` ×${l.cantidad}` : '';
+        const cod = l.codigo ? `<span class="acc-cod">${esc(l.codigo)}</span> ` : '';
+        return `<li>${cod}${esc(l.descripcion)}${cant}</li>`;
+      }).join('')}</ul>`
     : 'Ninguno';
 
   const html = `<!DOCTYPE html>
@@ -43,6 +50,9 @@ export function generarActa(equipo, empleado) {
   table { width: 100%; border-collapse: collapse; }
   td { padding: 4px 8px; border: 1px solid #bbb; vertical-align: top; }
   td.lbl { width: 32%; font-weight: bold; background: #f3f3f3; }
+  .acc-ul { margin: 0; padding-left: 16px; }
+  .acc-ul li { margin: 2px 0; }
+  .acc-cod { font-family: Consolas, monospace; color: #444; font-size: 11px; }
   .clausula { margin-top: 18px; font-size: 11.5px; text-align: justify; color: #222; }
   .firmas { display: flex; justify-content: space-between; gap: 40px; margin-top: 70px; }
   .firma { flex: 1; text-align: center; }
@@ -66,7 +76,8 @@ export function generarActa(equipo, empleado) {
 
   <h2>2. Datos del equipo</h2>
   <table>
-    <tr><td class="lbl">Código de inventario</td><td>${esc(equipo.codigo)}</td></tr>
+    <tr><td class="lbl">Código de equipo</td><td>${esc(equipo.codigo)}</td></tr>
+    <tr><td class="lbl">Código de almacén</td><td>${esc(equipo.codigo_almacen || '—')}</td></tr>
     <tr><td class="lbl">Tipo</td><td>${esc(equipo.tipo_nombre)}</td></tr>
     <tr><td class="lbl">Marca / Modelo</td><td>${esc(equipo.marca || '—')} ${esc(equipo.modelo || '')}</td></tr>
     <tr><td class="lbl">Número de serie</td><td>${esc(equipo.serie || '—')}</td></tr>

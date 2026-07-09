@@ -1,6 +1,7 @@
-// Dominio catálogos: empresas, plataformas, ubicaciones, áreas/obras
-// y tipos de equipo (listas maestras con CRUD y soft delete).
+// Dominio catálogos: empresas, plataformas, ubicaciones, áreas/obras,
+// tipos de equipo y catálogo de almacén (listas maestras con CRUD y soft delete).
 import { getClient } from '../client.js';
+import { sanitizarTermino } from '../sanitizar.js';
 import { toTitleCase, onlyDigits, trimText } from '../../core/formatters.js';
 
 export const catalogosApi = {
@@ -208,6 +209,62 @@ export const catalogosApi = {
   async softDeleteTipoEquipo(id) {
     const { error } = await getClient().database
       .from('tipos_equipo')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  // ── Catálogo de almacén (código + descripción para kits) ─────
+  async listCatalogoAlmacen({ q = '', limite = 30 } = {}) {
+    let query = getClient().database
+      .from('catalogo_almacen')
+      .select('id, codigo, descripcion')
+      .is('deleted_at', null)
+      .order('descripcion', { ascending: true })
+      .limit(limite);
+    const qSafe = sanitizarTermino(q);
+    if (qSafe.length >= 1) {
+      query = query.or(`codigo.ilike.%${qSafe}%,descripcion.ilike.%${qSafe}%`);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  },
+
+  async createCatalogoAlmacen({ codigo, descripcion }) {
+    const desc = trimText(descripcion);
+    if (!desc) throw new Error('La descripción es obligatoria');
+    const { data, error } = await getClient().database
+      .from('catalogo_almacen')
+      .insert([{
+        codigo: trimText(codigo)?.toUpperCase() || null,
+        descripcion: desc,
+      }])
+      .select('id, codigo, descripcion')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async updateCatalogoAlmacen(id, { codigo, descripcion }) {
+    const desc = trimText(descripcion);
+    if (!desc) throw new Error('La descripción es obligatoria');
+    const { data, error } = await getClient().database
+      .from('catalogo_almacen')
+      .update({
+        codigo: trimText(codigo)?.toUpperCase() || null,
+        descripcion: desc,
+      })
+      .eq('id', id)
+      .select('id, codigo, descripcion')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async softDeleteCatalogoAlmacen(id) {
+    const { error } = await getClient().database
+      .from('catalogo_almacen')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;

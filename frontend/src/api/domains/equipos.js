@@ -1,14 +1,16 @@
 // Dominio equipos: inventario, asignaciones a personas/ubicaciones,
 // devoluciones, fotos y hoja de vida (eventos).
 import { getClient } from '../client.js';
+import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { toTitleCase, trimText } from '../../core/formatters.js';
 
 const SELECT_EQUIPO = `
-  id, codigo, tipo_id, marca, modelo, serie, empresa_id, estado,
+  id, codigo, codigo_almacen, tipo_id, marca, modelo, serie, empresa_id, estado,
   fecha_compra, costo, moneda, garantia_hasta, specs, accesorios, fotos, notas,
   tipos_equipo(nombre),
   empresas(nombre),
+  equipo_accesorios(id, catalogo_id, codigo, descripcion, cantidad, orden),
   asignaciones_equipo(id, fecha_fin, fecha_inicio, empleado_id, ubicacion_id, condicion_entrega, empleados(nombres, apellidos, estado), ubicaciones(nombre))
 `;
 
@@ -24,7 +26,7 @@ async function idsEquiposConAsignacionActiva(filtro = {}) {
   return [...new Set((data || []).map((a) => a.equipo_id))];
 }
 
-async function aplicarFiltroSituacion(query, situacion) {
+function aplicarFiltroSituacion(query, situacion) {
   if (!situacion) return query;
   if (['en_reparacion', 'de_baja', 'perdido'].includes(situacion)) {
     return query.eq('estado', situacion);
@@ -41,13 +43,7 @@ async function aplicarFiltroSituacion(query, situacion) {
       .not('asignaciones_equipo.ubicacion_id', 'is', null)
       .is('asignaciones_equipo.fecha_fin', null);
   }
-  if (situacion === 'disponible') {
-    const ocupados = await idsEquiposConAsignacionActiva();
-    let q = query.eq('estado', 'operativo');
-    if (ocupados.length) q = q.not('id', 'in', `(${ocupados.join(',')})`);
-    return q;
-  }
-  return query;
+  return null;
 }
 
 async function queryEquipos({ q = '', tipoId = '', situacion = '' } = {}, { conteo = false } = {}) {
@@ -56,7 +52,14 @@ async function queryEquipos({ q = '', tipoId = '', situacion = '' } = {}, { cont
     .select(SELECT_EQUIPO, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
   if (tipoId) query = query.eq('tipo_id', tipoId);
-  query = await aplicarFiltroSituacion(query, situacion);
+  const filtrado = aplicarFiltroSituacion(query, situacion);
+  if (filtrado !== null) {
+    query = filtrado;
+  } else if (situacion === 'disponible') {
+    const ocupados = await idsEquiposConAsignacionActiva();
+    query = query.eq('estado', 'operativo');
+    if (ocupados.length) query = query.not('id', 'in', `(${ocupados.join(',')})`);
+  }
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     const db = getClient().database;
@@ -85,30 +88,30 @@ async function queryEquipos({ q = '', tipoId = '', situacion = '' } = {}, { cont
         idClause += `,id.in.(${idsUb.join(',')})`;
       }
     }
-    query = query.or(`codigo.ilike.%${qSafe}%,marca.ilike.%${qSafe}%,modelo.ilike.%${qSafe}%,serie.ilike.%${qSafe}%${idClause}`);
+    query = query.or(`codigo.ilike.%${qSafe}%,codigo_almacen.ilike.%${qSafe}%,marca.ilike.%${qSafe}%,modelo.ilike.%${qSafe}%,serie.ilike.%${qSafe}%${idClause}`);
   }
-  return query.order('codigo', { ascending: true });
+  return entregarQuery(query.order('codigo', { ascending: true }));
 }
 
 export const equiposApi = {
   async listEquiposPage({ pagina = 1, tamPagina = 20, q = '', tipoId = '', situacion = '' } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const query = await queryEquipos({ q, tipoId, situacion }, { conteo: true });
-    const { data, count, error } = await query.range(desde, desde + tamPagina - 1);
+    const { qb } = await queryEquipos({ q, tipoId, situacion }, { conteo: true });
+    const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapEquipo), total: count ?? 0 };
   },
 
   async listEquiposFiltrados(filtros = {}) {
-    const query = await queryEquipos(filtros);
-    const { data, error } = await query;
+    const { qb } = await queryEquipos(filtros);
+    const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapEquipo);
   },
 
   async listEquipos() {
-    const query = await queryEquipos();
-    const { data, error } = await query;
+    const { qb } = await queryEquipos();
+    const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapEquipo);
   },
@@ -148,18 +151,25 @@ export const equiposApi = {
   },
 
   async createEquipo(datos) {
-    const { error } = await getClient().database
+    const lineas = normalizarLineasAccesorios(datos.accesorios_lineas ?? datos.accesorios);
+    const { data, error } = await getClient().database
       .from('equipos')
-      .insert([equipoToRow(datos)]);
+      .insert([{ ...equipoToRow(datos), accesorios: etiquetasDesdeLineas(lineas) }])
+      .select('id')
+      .single();
     if (error) throw error;
+    await reemplazarAccesoriosEquipo(data.id, lineas);
+    return data;
   },
 
   async updateEquipo(id, datos) {
+    const lineas = normalizarLineasAccesorios(datos.accesorios_lineas ?? datos.accesorios);
     const { error } = await getClient().database
       .from('equipos')
-      .update(equipoToRow(datos))
+      .update({ ...equipoToRow(datos), accesorios: etiquetasDesdeLineas(lineas) })
       .eq('id', id);
     if (error) throw error;
+    await reemplazarAccesoriosEquipo(id, lineas);
   },
 
   // Cambio de estado físico (el trigger registra el evento en la hoja de vida)
@@ -293,6 +303,7 @@ function mapEquipo(row) {
     ubicacion_nombre: ubicacion,
     id: row.id,
     codigo: row.codigo,
+    codigo_almacen: row.codigo_almacen || '',
     tipo_id: row.tipo_id,
     tipo_nombre: row.tipos_equipo?.nombre || row.tipo_id,
     marca: row.marca || '',
@@ -311,7 +322,7 @@ function mapEquipo(row) {
     moneda: row.moneda || '',
     garantia_hasta: row.garantia_hasta,
     specs: row.specs || {},
-    accesorios: row.accesorios || [],
+    ...accesoriosDesdeRow(row),
     fotos: row.fotos || [],
     notas: row.notas || '',
     fecha_asignacion: activa?.fecha_inicio || null,
@@ -319,9 +330,90 @@ function mapEquipo(row) {
   };
 }
 
+// Fuente de verdad: equipo_accesorios. accesorios[] se mantiene como etiquetas.
+function accesoriosDesdeRow(row) {
+  const lineas = mapLineasAccesorios(row.equipo_accesorios);
+  const final = lineas.length
+    ? lineas
+    : (row.accesorios || []).map((d) => ({
+        catalogo_id: null, codigo: '', descripcion: d, cantidad: 1,
+      }));
+  return {
+    accesorios_lineas: final,
+    accesorios: etiquetasDesdeLineas(final),
+  };
+}
+
+function mapLineasAccesorios(rows) {
+  return (rows || [])
+    .slice()
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+    .map((r) => ({
+      id: r.id,
+      catalogo_id: r.catalogo_id || null,
+      codigo: r.codigo || '',
+      descripcion: r.descripcion || '',
+      cantidad: r.cantidad ?? 1,
+    }));
+}
+
+function normalizarLineasAccesorios(raw) {
+  if (!Array.isArray(raw)) return [];
+  // Compat: array de strings antiguos → líneas sin código
+  if (raw.length && typeof raw[0] === 'string') {
+    return raw
+      .map((d) => String(d || '').trim())
+      .filter(Boolean)
+      .map((descripcion) => ({
+        catalogo_id: null,
+        codigo: '',
+        descripcion,
+        cantidad: 1,
+      }));
+  }
+  return raw
+    .map((l) => ({
+      catalogo_id: l.catalogo_id || null,
+      codigo: trimText(l.codigo)?.toUpperCase() || null,
+      descripcion: trimText(l.descripcion) || '',
+      cantidad: Math.min(999, Math.max(1, Number(l.cantidad) || 1)),
+    }))
+    .filter((l) => l.descripcion);
+}
+
+function etiquetasDesdeLineas(lineas) {
+  return (lineas || []).map((l) => {
+    const base = l.descripcion;
+    if ((l.cantidad || 1) > 1) return `${base} ×${l.cantidad}`;
+    return base;
+  });
+}
+
+async function reemplazarAccesoriosEquipo(equipoId, lineas) {
+  const db = getClient().database;
+  const { error: eDel } = await db
+    .from('equipo_accesorios')
+    .delete()
+    .eq('equipo_id', equipoId);
+  if (eDel) throw eDel;
+  if (!lineas.length) return;
+  const { error: eIns } = await db
+    .from('equipo_accesorios')
+    .insert(lineas.map((l, i) => ({
+      equipo_id: equipoId,
+      catalogo_id: l.catalogo_id,
+      codigo: l.codigo,
+      descripcion: l.descripcion,
+      cantidad: l.cantidad,
+      orden: i,
+    })));
+  if (eIns) throw eIns;
+}
+
 function equipoToRow(datos) {
   return {
     codigo: trimText(datos.codigo)?.toUpperCase(),
+    codigo_almacen: trimText(datos.codigo_almacen)?.toUpperCase() || null,
     tipo_id: datos.tipo_id,
     marca: toTitleCase(datos.marca),
     modelo: trimText(datos.modelo),
@@ -332,7 +424,6 @@ function equipoToRow(datos) {
     moneda: datos.costo ? (datos.moneda || 'PEN') : null,
     garantia_hasta: datos.garantia_hasta || null,
     specs: datos.specs || {},
-    accesorios: datos.accesorios || [],
     fotos: datos.fotos || [],
     notas: trimText(datos.notas),
   };
