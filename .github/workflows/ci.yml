@@ -1,0 +1,47 @@
+# CI mínimo: build + tests unitarios en cada push/PR.
+# Los tests de triggers de BD corren solo si el repo tiene configurados
+# los secrets de InsForge (INSFORGE_ACCESS_TOKEN + INSFORGE_PROJECT_ID);
+# el SQL siempre hace rollback, no deja datos.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-y-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Tests unitarios (cifrado + validaciones de tickets)
+        run: npm test
+
+  tests-db:
+    runs-on: ubuntu-latest
+    env:
+      INSFORGE_ACCESS_TOKEN: ${{ secrets.INSFORGE_ACCESS_TOKEN }}
+      INSFORGE_PROJECT_ID: ${{ secrets.INSFORGE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Tests de triggers (se omiten si faltan secrets)
+        run: |
+          if [ -z "$INSFORGE_ACCESS_TOKEN" ]; then
+            echo "Sin INSFORGE_ACCESS_TOKEN: se omiten los tests de BD."
+            exit 0
+          fi
+          node scripts/test-db.mjs
