@@ -8,7 +8,8 @@ import { insforgeApi } from '../src/api/insforge.js';
 const METODOS = [
   'buscarGlobal',
   // empleados
-  'listEmpleadosRecientes', 'listEmpleados', 'getEmpleado', 'createEmpleado',
+  'listEmpleadosRecientes', 'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
+  'getEmpleado', 'createEmpleado',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
   // catálogos
   'listEmpresas', 'createEmpresa', 'updateEmpresa', 'softDeleteEmpresa',
@@ -35,14 +36,15 @@ const METODOS = [
   'listCategoriasTicket', 'listSubcategoriasTicket', 'createCategoriaTicket',
   'updateCategoriaTicket', 'softDeleteCategoriaTicket', 'createSubcategoriaTicket',
   'updateSubcategoriaTicket', 'softDeleteSubcategoriaTicket',
-  'listTickets', 'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
+  'listTickets', 'listTicketsPage', 'listTicketsFiltrados',
+  'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket',
   // staff
   'listStaff', 'updateStaff',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 84 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 88 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

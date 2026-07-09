@@ -1,6 +1,7 @@
 // Dominio tickets (staff): catálogo de categorías, bandeja, detalle,
 // comentarios, eventos, encuesta y actualizaciones vía RLS directo.
 import { getClient } from '../client.js';
+import { sanitizarTermino } from '../sanitizar.js';
 import { trimText } from '../../core/formatters.js';
 
 // ── Tickets (staff) ──────────────────────────────────────────────────────────
@@ -92,13 +93,25 @@ export const ticketsApi = {
   async listTickets() {
     const { data, error } = await getClient().database
       .from('tickets')
-      .select(`
-        id, codigo, titulo, estado, prioridad, vinculado, contacto_ingresado,
-        created_at, updated_at, asignado_a,
-        empleados(nombres, apellidos),
-        categorias_ticket(nombre), subcategorias_ticket(nombre)
-      `)
+      .select(SELECT_RESUMEN)
       .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapTicketResumen);
+  },
+
+  // ── Listado paginado en servidor (la tabla principal) ─────────
+  async listTicketsPage({ pagina = 1, tamPagina = 20, ...filtros } = {}) {
+    const desde = (pagina - 1) * tamPagina;
+    const query = await queryTickets(filtros, { conteo: true });
+    const { data, count, error } = await query.range(desde, desde + tamPagina - 1);
+    if (error) throw error;
+    return { items: (data || []).map(mapTicketResumen), total: count ?? 0 };
+  },
+
+  // Dataset filtrado completo, sin página — para exportar CSV
+  async listTicketsFiltrados(filtros = {}) {
+    const query = await queryTickets(filtros);
+    const { data, error } = await query;
     if (error) throw error;
     return (data || []).map(mapTicketResumen);
   },
@@ -168,6 +181,39 @@ export const ticketsApi = {
     if (error) throw error;
   },
 };
+
+const SELECT_RESUMEN = `
+  id, codigo, titulo, estado, prioridad, vinculado, contacto_ingresado,
+  created_at, updated_at, asignado_a,
+  empleados(nombres, apellidos),
+  categorias_ticket(nombre), subcategorias_ticket(nombre)
+`;
+
+// Query base del listado con filtros en servidor. El solicitante vive en
+// la tabla empleados (embed) y un .or() top-level no puede filtrar columnas
+// del embed: se preresuelven ids de empleados por nombre (cap 50 homónimos)
+// y entran al or() como empleado_id.in.(...) — los UUID no llevan comas.
+async function queryTickets(
+  { q = '', estado = '', prioridad = '', sinAsignar = false, sinVincular = false } = {},
+  { conteo = false } = {},
+) {
+  const db = getClient().database;
+  let query = db.from('tickets').select(SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined);
+  if (estado) query = query.eq('estado', estado);
+  if (prioridad) query = query.eq('prioridad', prioridad);
+  if (sinAsignar) query = query.is('asignado_a', null);
+  if (sinVincular) query = query.eq('vinculado', false);
+  const qSafe = sanitizarTermino(q);
+  if (qSafe.length >= 2) {
+    let idsClause = '';
+    const { data: emps } = await db.from('empleados').select('id')
+      .or(`nombres.ilike.%${qSafe}%,apellidos.ilike.%${qSafe}%`)
+      .limit(50);
+    if (emps?.length) idsClause = `,empleado_id.in.(${emps.map((e) => e.id).join(',')})`;
+    query = query.or(`codigo.ilike.%${qSafe}%,titulo.ilike.%${qSafe}%,contacto_ingresado.ilike.%${qSafe}%${idsClause}`);
+  }
+  return query.order('created_at', { ascending: false });
+}
 
 function mapTicketResumen(row) {
   const empleado = row.empleados;

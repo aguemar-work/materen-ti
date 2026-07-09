@@ -12,20 +12,9 @@ import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import Pagination from '../../components/shared/Pagination.vue';
 
-function exportar(empleados) {
-  exportarCSV(
-    'empleados',
-    ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Área/Obra', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal'],
-    empleados.map((e) => [
-      e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.area_obra_nombre, e.cargo,
-      e.estado, e.fecha_alta, e.whatsapp, e.correo_personal,
-    ]),
-  );
-}
-
 const router = useRouter();
 const store = useEmpleadosStore();
-const { lista, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error } = storeToRefs(store);
 
 const busqueda = ref('');
 const filtroEstado = ref('');
@@ -34,23 +23,40 @@ const empleadoEditar = ref(null);
 
 const estados = ['Activo', 'Inactivo', 'Suspendido'];
 
-const listaFiltrada = computed(() => {
-  const q = busqueda.value.trim().toLowerCase();
-  return lista.value.filter((emp) => {
-    if (filtroEstado.value && emp.estado !== filtroEstado.value) return false;
-    if (!q) return true;
-    const nombre = `${emp.nombres} ${emp.apellidos}`.toLowerCase();
-    return nombre.includes(q) || emp.dni.toLowerCase().includes(q);
-  });
+// Búsqueda y filtros viajan al servidor (paginación server-side):
+// la búsqueda con debounce, el select de estado al instante.
+let debounceBusqueda = null;
+watch(busqueda, (q) => {
+  clearTimeout(debounceBusqueda);
+  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
+});
+watch(filtroEstado, (estado) => store.aplicarFiltros({ estado }));
+
+const paginaActual = computed({
+  get: () => store.pagina,
+  set: (p) => store.irAPagina(p),
 });
 
-const TAM_PAGINA = 20;
-const paginaActual = ref(1);
-watch(listaFiltrada, () => { paginaActual.value = 1; });
-const listaPaginada = computed(() => {
-  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
-  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
-});
+// Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
+const exportando = ref(false);
+async function exportar() {
+  exportando.value = true;
+  try {
+    const filas = await store.listaParaExportar();
+    exportarCSV(
+      'empleados',
+      ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Área/Obra', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal'],
+      filas.map((e) => [
+        e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.area_obra_nombre, e.cargo,
+        e.estado, e.fecha_alta, e.whatsapp, e.correo_personal,
+      ]),
+    );
+  } catch (e) {
+    showToast(e?.message || 'Error al exportar', 'error');
+  } finally {
+    exportando.value = false;
+  }
+}
 
 // ── Enviar credenciales sin entrar al perfil ──────────────────────
 // Mismo flujo que el botón de WhatsApp en la ficha (CuentasPanel):
@@ -137,11 +143,11 @@ onMounted(async () => {
         <div class="header-title">
           <h1>
             <i class="ti ti-users" aria-hidden="true"></i> Empleados
-            <span class="badge-count">{{ listaFiltrada.length }}</span>
+            <span class="badge-count">{{ total }}</span>
           </h1>
         </div>
         <div class="header-btns">
-          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar(listaFiltrada)">
+          <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
             <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
           </button>
           <button class="btn btn-primary" type="button" @click="abrirNuevo">
@@ -172,7 +178,7 @@ onMounted(async () => {
 
         <div v-else-if="error" class="no-results empleados-error">{{ error }}</div>
 
-        <div v-else-if="listaFiltrada.length === 0" class="empty">
+        <div v-else-if="total === 0" class="empty">
           <div class="empty-icon"><i class="ti ti-users"></i></div>
           <h3>Sin empleados</h3>
           <p>{{ busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agrega el primer empleado al inventario.' }}</p>
@@ -194,7 +200,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="emp in listaPaginada" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
+              <tr v-for="emp in lista" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
                 <td>{{ emp.dni }}</td>
                 <td>
                   <div class="user-name">{{ nombreCompleto(emp) }}</div>
@@ -249,7 +255,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
+          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
       </div>
     </main>

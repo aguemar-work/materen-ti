@@ -12,7 +12,7 @@ import Pagination from '../../components/shared/Pagination.vue';
 
 const router = useRouter();
 const store = useTicketsStore();
-const { lista, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error } = storeToRefs(store);
 
 const busqueda = ref('');
 const filtroEstado = ref('');
@@ -28,43 +28,49 @@ const staffPorId = computed(() => {
   return mapa;
 });
 
-function exportar() {
-  exportarCSV(
-    'tickets',
-    ['Código', 'Solicitante', 'Título', 'Categoría', 'Estado', 'Prioridad', 'Asignado a'],
-    listaFiltrada.value.map((t) => [
-      t.codigo,
-      t.vinculado ? t.solicitante : 'Sin vincular',
-      t.titulo,
-      t.categoria,
-      estadoInfo(t.estado).label,
-      prioridadInfo(t.prioridad).label,
-      t.asignado_a ? (staffPorId.value[t.asignado_a] || 'Staff') : 'Sin asignar',
-    ]),
-  );
+// Búsqueda y filtros viajan al servidor (paginación server-side):
+// la búsqueda con debounce, los selects/checkboxes al instante.
+let debounceBusqueda = null;
+watch(busqueda, (q) => {
+  clearTimeout(debounceBusqueda);
+  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
+});
+watch(
+  [filtroEstado, filtroPrioridad, soloSinAsignar, soloSinVincular],
+  ([estado, prioridad, sinAsignar, sinVincular]) =>
+    store.aplicarFiltros({ estado, prioridad, sinAsignar, sinVincular }),
+);
+
+const paginaActual = computed({
+  get: () => store.pagina,
+  set: (p) => store.irAPagina(p),
+});
+
+// Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
+const exportando = ref(false);
+async function exportar() {
+  exportando.value = true;
+  try {
+    const filas = await store.listaParaExportar();
+    exportarCSV(
+      'tickets',
+      ['Código', 'Solicitante', 'Título', 'Categoría', 'Estado', 'Prioridad', 'Asignado a'],
+      filas.map((t) => [
+        t.codigo,
+        t.vinculado ? t.solicitante : 'Sin vincular',
+        t.titulo,
+        t.categoria,
+        estadoInfo(t.estado).label,
+        prioridadInfo(t.prioridad).label,
+        t.asignado_a ? (staffPorId.value[t.asignado_a] || 'Staff') : 'Sin asignar',
+      ]),
+    );
+  } catch (e) {
+    showToast(e?.message || 'Error al exportar', 'error');
+  } finally {
+    exportando.value = false;
+  }
 }
-
-const listaFiltrada = computed(() => {
-  const q = busqueda.value.trim().toLowerCase();
-  return lista.value.filter((t) => {
-    if (filtroEstado.value && t.estado !== filtroEstado.value) return false;
-    if (filtroPrioridad.value && t.prioridad !== filtroPrioridad.value) return false;
-    if (soloSinAsignar.value && t.asignado_a) return false;
-    if (soloSinVincular.value && t.vinculado) return false;
-    if (!q) return true;
-    return t.codigo.toLowerCase().includes(q) ||
-      t.titulo.toLowerCase().includes(q) ||
-      t.solicitante.toLowerCase().includes(q);
-  });
-});
-
-const TAM_PAGINA = 20;
-const paginaActual = ref(1);
-watch(listaFiltrada, () => { paginaActual.value = 1; });
-const listaPaginada = computed(() => {
-  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
-  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
-});
 
 function verTicket(ticket) {
   router.push(`/tickets/${ticket.id}`);
@@ -108,7 +114,7 @@ onMounted(async () => {
         <div class="header-title">
           <h1>
             <i class="ti ti-headset" aria-hidden="true"></i> Tickets
-            <span class="badge-count">{{ listaFiltrada.length }}</span>
+            <span class="badge-count">{{ total }}</span>
           </h1>
         </div>
         <div class="header-btns">
@@ -118,7 +124,7 @@ onMounted(async () => {
           <button class="btn" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
             <i class="ti ti-search" aria-hidden="true"></i> Copiar enlace de búsqueda
           </button>
-          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
+          <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
             <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
           </button>
           <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
@@ -154,7 +160,7 @@ onMounted(async () => {
         <div v-if="cargando" class="no-results">Cargando tickets...</div>
         <div v-else-if="error" class="no-results tk-error">{{ error }}</div>
 
-        <div v-else-if="listaFiltrada.length === 0" class="empty">
+        <div v-else-if="total === 0" class="empty">
           <div class="empty-icon"><i class="ti ti-headset"></i></div>
           <h3>Sin tickets</h3>
           <p>{{ busqueda || filtroEstado || filtroPrioridad ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.' }}</p>
@@ -174,7 +180,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in listaPaginada" :key="t.id" class="fila-ticket" @click="verTicket(t)">
+              <tr v-for="t in lista" :key="t.id" class="fila-ticket" @click="verTicket(t)">
                 <td><RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${t.id}`" @click.stop>{{ t.codigo }}</RouterLink></td>
                 <td>
                   <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
@@ -195,7 +201,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
+          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
       </div>
     </main>

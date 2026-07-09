@@ -1,17 +1,13 @@
 // Dominio dashboard/actividad: búsqueda global, estadísticas, pendientes
 // accionables (cuentas, licencias, equipos, tickets) y log de auditoría.
 import { getClient } from '../client.js';
+import { sanitizarTermino } from '../sanitizar.js';
 
 export const dashboardApi = {
   // Búsqueda global del panel: empleados, cuentas y equipos en una sola consulta
   async buscarGlobal(query) {
     if (!query || query.trim().length < 2) return { empleados: [], cuentas: [], equipos: [] };
-    const q = query.trim().toLowerCase();
-    // PostgREST interpreta , . ( ) * : % como sintaxis dentro del string de
-    // .or()/.ilike(); se neutralizan para que un término con esos caracteres
-    // no pueda alterar el filtro (auditoría H-07). Un buscador de nombres/
-    // códigos/DNI no los necesita.
-    const qSafe = q.replace(/[,.()*:%\\"]/g, ' ').trim();
+    const qSafe = sanitizarTermino(query); // H-07: saneado centralizado en api/sanitizar.js
     if (qSafe.length < 2) return { empleados: [], cuentas: [], equipos: [] };
     const db = getClient().database;
     const [empRes, cuentasRes, equiposRes] = await Promise.all([

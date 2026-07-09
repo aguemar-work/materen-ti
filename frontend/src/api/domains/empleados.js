@@ -1,10 +1,53 @@
 // Dominio empleados: fichas, altas/ediciones y el flujo de baja/reactivación
 // (la baja cierra asignaciones activas y da de baja cuentas personales).
 import { getClient } from '../client.js';
+import { sanitizarTermino } from '../sanitizar.js';
 import { toTitleCase, toLower, normalizarTelefono, onlyDigits } from '../../core/formatters.js';
 import { equiposApi } from './equipos.js';
 
+// Query base del listado con filtros en servidor. La búsqueda "juan perez"
+// se trocea por tokens y cada token debe matchear nombre, apellido o DNI
+// (igual que el antiguo filtro en cliente sobre el nombre concatenado).
+// OJO: PostgREST NO acepta dos parámetros or= repetidos (PGRST100); el
+// AND-de-ORs va anidado en UN solo or=(and(or(...),or(...))) — verificado
+// contra el backend real.
+function queryEmpleados({ q = '', estado = '' } = {}, { conteo = false } = {}) {
+  let query = getClient().database
+    .from('empleados')
+    .select('*, empresas(nombre), areas_obras(nombre)', conteo ? { count: 'exact' } : undefined)
+    .is('deleted_at', null);
+  if (estado) query = query.eq('estado', estado);
+  const qSafe = sanitizarTermino(q);
+  if (qSafe.length >= 2) {
+    const tokens = qSafe.split(' ');
+    const porToken = tokens.map(
+      (t) => `or(nombres.ilike.%${t}%,apellidos.ilike.%${t}%,dni.ilike.%${t}%)`,
+    );
+    query = query.or(tokens.length === 1
+      ? `nombres.ilike.%${qSafe}%,apellidos.ilike.%${qSafe}%,dni.ilike.%${qSafe}%`
+      : `and(${porToken.join(',')})`);
+  }
+  return query.order('apellidos', { ascending: true });
+}
+
 export const empleadosApi = {
+  // ── Listado paginado en servidor (la tabla principal) ─────────
+  // listEmpleados() (completo) sigue existiendo para selects de formularios.
+  async listEmpleadosPage({ pagina = 1, tamPagina = 20, q = '', estado = '' } = {}) {
+    const desde = (pagina - 1) * tamPagina;
+    const { data, count, error } = await queryEmpleados({ q, estado }, { conteo: true })
+      .range(desde, desde + tamPagina - 1);
+    if (error) throw error;
+    return { items: (data || []).map(mapEmpleado), total: count ?? 0 };
+  },
+
+  // Dataset filtrado completo, sin página — para exportar CSV
+  async listEmpleadosFiltrados({ q = '', estado = '' } = {}) {
+    const { data, error } = await queryEmpleados({ q, estado });
+    if (error) throw error;
+    return (data || []).map(mapEmpleado);
+  },
+
   async listEmpleadosRecientes(limit = 5) {
     const { data, error } = await getClient().database
       .from('empleados')
