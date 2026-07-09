@@ -5,7 +5,8 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { seguimientoTicket } from '../../api/ticketsPublicos.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, formatFechaHora } from '../../core/formatters.js';
+import { estadoInfo } from '../../core/dominio-tickets.js';
 
 const route = useRoute();
 
@@ -14,25 +15,6 @@ const estado = ref('cargando');
 const error = ref('');
 const ticket = ref(null);
 const copiado = ref(null);
-
-const ESTADOS = {
-  abierto:     { label: 'Abierto',       clase: 'badge--info' },
-  en_progreso: { label: 'En progreso',   clase: 'badge--warning' },
-  resuelto:    { label: 'Resuelto',      clase: 'badge--success' },
-  cerrado:     { label: 'Cerrado',       clase: 'badge--neutral' },
-  reabierto:   { label: 'Reabierto',     clase: 'badge--danger' },
-  rechazado:   { label: 'Rechazado',     clase: 'badge--neutral' },
-};
-
-function estadoInfo(e) {
-  return ESTADOS[e] || { label: e, clase: 'badge--neutral' };
-}
-
-function formatFechaHora(iso) {
-  return new Date(iso).toLocaleString('es-PE', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-}
 
 onMounted(async () => {
   try {

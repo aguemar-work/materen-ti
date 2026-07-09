@@ -6,21 +6,12 @@
 import { ref } from 'vue';
 import { buscarTicketsPorDni } from '../../api/ticketsPublicos.js';
 import { formatFecha } from '../../core/formatters.js';
+import { estadoInfo } from '../../core/dominio-tickets.js';
 
 const dni = ref('');
 const buscando = ref(false);
 const error = ref('');
 const resultados = ref(null); // null = aún no se buscó
-
-const ESTADOS = {
-  abierto:     { label: 'Abierto',       clase: 'badge--info' },
-  en_progreso: { label: 'En progreso',   clase: 'badge--warning' },
-  reabierto:   { label: 'Reabierto',     clase: 'badge--danger' },
-};
-
-function estadoInfo(e) {
-  return ESTADOS[e] || { label: e, clase: 'badge--neutral' };
-}
 
 async function buscar() {
   error.value = '';

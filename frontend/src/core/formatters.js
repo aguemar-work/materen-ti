@@ -72,3 +72,11 @@ export function formatFecha(val) {
   if (!y || !m || !d) return String(val);
   return `${d}/${m}/${y}`;
 }
+
+// Timestamp ISO → "02/07/2026 14:35" (hora local del navegador)
+export function formatFechaHora(iso) {
+  return new Date(iso).toLocaleString('es-PE', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}

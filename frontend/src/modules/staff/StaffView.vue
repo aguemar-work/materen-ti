@@ -1,9 +1,10 @@
 <script setup>
-import { onMounted, ref, computed, watch } from 'vue';
+import { onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useStaffStore } from '../../stores/staff.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
+import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
 
 const store = useStaffStore();
@@ -12,13 +13,7 @@ const { lista, cargando, error } = storeToRefs(store);
 
 const ROLES = ['ASISTENTE', 'JEFE'];
 
-const TAM_PAGINA = 20;
-const paginaActual = ref(1);
-watch(lista, () => { paginaActual.value = 1; });
-const listaPaginada = computed(() => {
-  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
-  return lista.value.slice(inicio, inicio + TAM_PAGINA);
-});
+const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lista);
 
 async function toggleActivo(miembro) {
   const accion = miembro.activo ? 'desactivar' : 'activar';
@@ -125,7 +120,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="lista.length" :page-size="TAM_PAGINA" />
+          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
         </div>
       </div>
     </main>

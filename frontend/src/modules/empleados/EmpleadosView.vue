@@ -7,6 +7,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
+import { claseEstado, nombreCompleto } from '../../core/dominio-empleados.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import Pagination from '../../components/shared/Pagination.vue';
@@ -51,10 +52,6 @@ const listaPaginada = computed(() => {
   return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
 });
 
-function nombreCompleto(emp) {
-  return `${emp.nombres} ${emp.apellidos}`;
-}
-
 // ── Enviar credenciales sin entrar al perfil ──────────────────────
 // Mismo flujo que el botón de WhatsApp en la ficha (CuentasPanel):
 // enlace de entrega de un solo uso con TODAS las cuentas del empleado.
@@ -80,12 +77,6 @@ async function enviarCredenciales(emp) {
   } finally {
     enviandoCredsId.value = null;
   }
-}
-
-function claseEstado(estado) {
-  if (estado === 'Activo') return 'badge--success';
-  if (estado === 'Suspendido') return 'badge--warning';
-  return 'badge--neutral';
 }
 
 function abrirNuevo() {

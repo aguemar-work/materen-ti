@@ -5,6 +5,7 @@
 import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
+import { slugDe } from '../../core/utils.js';
 
 const categorias = ref([]);
 const subcategorias = ref([]);
@@ -20,15 +21,6 @@ const errorForm = ref('');
 
 // Alta rápida de subcategoría (inline, sin modal)
 const nuevaSubPorCategoria = ref({});
-
-function slugDe(nombre) {
-  return nombre
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
 
 function subsDe(categoriaId) {
   return subcategorias.value.filter((s) => s.categoria_id === categoriaId);

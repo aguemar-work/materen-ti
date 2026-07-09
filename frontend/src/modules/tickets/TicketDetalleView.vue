@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { getClient } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, formatFechaHora } from '../../core/formatters.js';
+import { estadoInfo, OPCIONES_PRIORIDAD as PRIORIDADES, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, EVENTO_LABELS } from '../../core/dominio-tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 
 const route = useRoute();
@@ -26,36 +27,6 @@ const enviandoComentario = ref(false);
 const mostrarHoja = ref(false);
 const cargandoHoja = ref(false);
 
-const ESTADOS_INFO = {
-  abierto:     { label: 'Abierto',       clase: 'badge--info' },
-  en_progreso: { label: 'En progreso',   clase: 'badge--warning' },
-  resuelto:    { label: 'Resuelto',      clase: 'badge--success' },
-  cerrado:     { label: 'Cerrado',       clase: 'badge--neutral' },
-  reabierto:   { label: 'Reabierto',     clase: 'badge--danger' },
-  rechazado:   { label: 'Rechazado',     clase: 'badge--neutral' },
-};
-
-function estadoInfo(e) {
-  return ESTADOS_INFO[e] || { label: e, clase: 'badge--neutral' };
-}
-
-const PRIORIDADES = [
-  { valor: 'baja', label: 'Baja' },
-  { valor: 'media', label: 'Media' },
-  { valor: 'alta', label: 'Alta' },
-  { valor: 'urgente', label: 'Urgente' },
-];
-
-const NIVELES_ATENCION = [
-  { valor: 'N1', label: 'N1 — Soporte básico' },
-  { valor: 'N2', label: 'N2 — Especializado' },
-  { valor: 'N3', label: 'N3 — Experto / desarrollo' },
-];
-
-// Estados en los que el ticket ya está en curso: campos editables + botón Resuelto
-const ESTADOS_EN_CURSO = ['en_progreso', 'reabierto', 'resuelto'];
-const ESTADOS_TERMINALES = ['cerrado', 'rechazado'];
-
 const staffPorId = computed(() => {
   const mapa = {};
   for (const s of staffLista.value) mapa[s.user_id] = s.nombre;
@@ -65,23 +36,6 @@ const staffPorId = computed(() => {
 function autorDe(autorId) {
   return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
 }
-
-function formatFechaHora(iso) {
-  return new Date(iso).toLocaleString('es-PE', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-}
-
-const EVENTO_LABELS = {
-  creado: 'Ticket creado',
-  reasignado: 'Reasignado',
-  estado_cambiado: 'Cambio de estado',
-  prioridad_cambiada: 'Cambio de prioridad',
-  nivel_atencion_cambiado: 'Cambio de nivel de atención',
-  correo_fallido: 'No se pudo enviar el correo',
-  encuesta_enviada: 'Encuesta enviada',
-  encuesta_respondida: 'Encuesta respondida',
-};
 
 async function cargar() {
   cargando.value = true;

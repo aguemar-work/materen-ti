@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, formatFechaHora } from '../../core/formatters.js';
+import { usePaginacion } from '../../composables/usePaginacion.js';
 import { generarActa } from './acta.js';
 import EquipoForm from './EquipoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
@@ -45,13 +46,7 @@ const listaFiltrada = computed(() => {
   });
 });
 
-const TAM_PAGINA = 20;
-const paginaActual = ref(1);
-watch(listaFiltrada, () => { paginaActual.value = 1; });
-const listaPaginada = computed(() => {
-  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
-  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
-});
+const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaFiltrada);
 
 function situacionInfo(e) {
   return SITUACIONES[e.situacion] || { label: e.situacion, clase: '' };
@@ -302,12 +297,6 @@ async function verHoja(equipo) {
   }
 }
 
-function formatFechaHora(iso) {
-  return new Date(iso).toLocaleString('es-PE', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-}
-
 async function eliminar(equipo) {
   if (!confirm(`¿Eliminar el equipo ${equipo.codigo}?\nSu hoja de vida se conserva.`)) return;
   try {
@@ -518,7 +507,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
+          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
         </div>
       </div>
     </main>

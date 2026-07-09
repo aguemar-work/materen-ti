@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { formatFecha } from '../../core/formatters.js';
+import { claseEstado } from '../../core/dominio-empleados.js';
 
 const stats = ref(null);
 const recientes = ref([]);
@@ -24,12 +25,6 @@ const hayPendientes = computed(
     pendientesTickets.value.sinVincular.length > 0 ||
     pendientesTickets.value.abiertosViejos.length > 0
 );
-
-function claseEstado(estado) {
-  if (estado === 'Activo') return 'badge--success';
-  if (estado === 'Suspendido') return 'badge--warning';
-  return 'badge--neutral';
-}
 
 // A dónde lleva cada pendiente: cuentas personales → ficha del titular;
 // reutilizables/compartidas → módulo de correos

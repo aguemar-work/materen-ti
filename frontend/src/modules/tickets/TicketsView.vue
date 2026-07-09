@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { exportarCSV } from '../../core/exportar.js';
+import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES, estadoInfo, prioridadInfo } from '../../core/dominio-tickets.js';
 import { showToast } from '../../core/toast.js';
 import TicketInternoForm from './TicketInternoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
@@ -26,25 +27,6 @@ const staffPorId = computed(() => {
   for (const s of staffLista.value) mapa[s.user_id] = s.nombre;
   return mapa;
 });
-
-const ESTADOS = {
-  abierto:     { label: 'Abierto',      clase: 'badge--info' },
-  en_progreso: { label: 'En progreso',  clase: 'badge--warning' },
-  resuelto:    { label: 'Resuelto',     clase: 'badge--success' },
-  cerrado:     { label: 'Cerrado',      clase: 'badge--neutral' },
-  reabierto:   { label: 'Reabierto',    clase: 'badge--danger' },
-  rechazado:   { label: 'Rechazado',    clase: 'badge--neutral' },
-};
-
-const PRIORIDADES = {
-  baja:    { label: 'Baja',    clase: 'badge--neutral' },
-  media:   { label: 'Media',   clase: 'badge--info' },
-  alta:    { label: 'Alta',    clase: 'badge--warning' },
-  urgente: { label: 'Urgente', clase: 'badge--danger' },
-};
-
-function estadoInfo(e) { return ESTADOS[e] || { label: e, clase: 'badge--neutral' }; }
-function prioridadInfo(p) { return PRIORIDADES[p] || { label: p, clase: 'badge--neutral' }; }
 
 function exportar() {
   exportarCSV(

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useLicenciasStore } from '../../stores/licencias.js';
 import { insforgeApi } from '../../api/insforge.js';
@@ -7,6 +7,7 @@ import { revelarClaveLicencia, revelarPassword } from '../../api/passwords.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
+import { usePaginacion } from '../../composables/usePaginacion.js';
 import LicenciaForm from './LicenciaForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
 
@@ -44,13 +45,7 @@ const listaFiltrada = computed(() => {
   );
 });
 
-const TAM_PAGINA = 20;
-const paginaActual = ref(1);
-watch(listaFiltrada, () => { paginaActual.value = 1; });
-const listaPaginada = computed(() => {
-  const inicio = (paginaActual.value - 1) * TAM_PAGINA;
-  return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
-});
+const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaFiltrada);
 
 // Exporta lo visible según filtros; las claves nunca salen del servidor.
 function exportar() {
@@ -403,7 +398,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
+          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
         </div>
       </div>
     </main>

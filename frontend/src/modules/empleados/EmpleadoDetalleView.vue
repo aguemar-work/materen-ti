@@ -6,6 +6,7 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatTelefono } from '../../core/formatters.js';
+import { claseEstado, nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
@@ -34,19 +35,11 @@ function terminarAlta() {
   router.replace({ query: {} });
 }
 
-const nombreCompleto = computed(() =>
-  empleado.value ? `${empleado.value.nombres} ${empleado.value.apellidos}` : ''
-);
+const nombreCompleto = computed(() => nombreCompletoDe(empleado.value));
 
 const iniciales = computed(() =>
   empleado.value ? `${empleado.value.nombres[0] || ''}${empleado.value.apellidos[0] || ''}` : ''
 );
-
-function claseEstado(estado) {
-  if (estado === 'Activo') return 'badge--success';
-  if (estado === 'Suspendido') return 'badge--warning';
-  return 'badge--neutral';
-}
 
 async function cargar() {
   cargando.value = true;

@@ -18,10 +18,14 @@ export function getInitials(name) {
     .toUpperCase();
 }
 
-export function statusClass(estado) {
-  if (estado === 'Activo') return 's-activo';
-  if (estado === 'Inactivo') return 's-inactivo';
-  return 's-suspendido';
+// "Cámara de seguridad" → "camara_de_seguridad" (ids-slug de catálogos)
+export function slugDe(nombre) {
+  return nombre
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 export function uid() {

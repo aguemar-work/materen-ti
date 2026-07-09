@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { showToast } from '../../core/toast.js';
+import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
 
 const props = defineProps({
   empleado: { type: Object, required: true },
@@ -20,7 +21,7 @@ const procesando = ref(false);
 const error = ref('');
 const btnCancelar = ref(null);
 
-const nombreCompleto = computed(() => `${props.empleado.nombres} ${props.empleado.apellidos}`);
+const nombreCompleto = computed(() => nombreCompletoDe(props.empleado));
 
 const personales = computed(() => cuentas.value.filter((c) => c.tipo_cuenta === 'personal'));
 const reutilizables = computed(() => cuentas.value.filter((c) => c.tipo_cuenta === 'reutilizable'));
