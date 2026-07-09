@@ -1,21 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth.js';
+// Eager solo lo que ve toda sesión al entrar: login y el landing.
+// El resto es lazy (() => import): cada vista va a su propio chunk y las
+// rutas públicas de tickets/entrega no descargan el panel completo.
 import LoginView from '../modules/auth/LoginView.vue';
 import DashboardView from '../modules/dashboard/DashboardView.vue';
-import EmpleadosView from '../modules/empleados/EmpleadosView.vue';
-import EmpleadoDetalleView from '../modules/empleados/EmpleadoDetalleView.vue';
-import ConfiguracionView from '../modules/configuracion/ConfiguracionView.vue';
-import CorreosView from '../modules/correos/CorreosView.vue';
-import LicenciasView from '../modules/licencias/LicenciasView.vue';
-import EquiposView from '../modules/equipos/EquiposView.vue';
-import ActividadView from '../modules/actividad/ActividadView.vue';
-import EntregaView from '../modules/entregas/EntregaView.vue';
-import TicketsView from '../modules/tickets/TicketsView.vue';
-import TicketDetalleView from '../modules/tickets/TicketDetalleView.vue';
-import TicketNuevoView from '../modules/tickets/TicketNuevoView.vue';
-import TicketSeguimientoView from '../modules/tickets/TicketSeguimientoView.vue';
-import TicketSatisfaccionView from '../modules/tickets/TicketSatisfaccionView.vue';
-import TicketBuscarView from '../modules/tickets/TicketBuscarView.vue';
 
 const routes = [
   {
@@ -38,17 +27,17 @@ const routes = [
   {
     path: '/empleados',
     name: 'empleados',
-    component: EmpleadosView,
+    component: () => import('../modules/empleados/EmpleadosView.vue'),
   },
   {
     path: '/empleados/:id',
     name: 'empleado-detalle',
-    component: EmpleadoDetalleView,
+    component: () => import('../modules/empleados/EmpleadoDetalleView.vue'),
   },
   {
     path: '/configuracion',
     name: 'configuracion',
-    component: ConfiguracionView,
+    component: () => import('../modules/configuracion/ConfiguracionView.vue'),
   },
   // Rutas antiguas → sus pestañas dentro de Configuración
   { path: '/empresas', redirect: { path: '/configuracion', query: { tab: 'empresas' } } },
@@ -57,71 +46,81 @@ const routes = [
   {
     path: '/correos',
     name: 'correos',
-    component: CorreosView,
+    component: () => import('../modules/correos/CorreosView.vue'),
   },
   {
     path: '/licencias',
     name: 'licencias',
-    component: LicenciasView,
+    component: () => import('../modules/licencias/LicenciasView.vue'),
   },
   {
     path: '/equipos',
     name: 'equipos',
-    component: EquiposView,
+    component: () => import('../modules/equipos/EquiposView.vue'),
   },
   {
     path: '/actividad',
     name: 'actividad',
-    component: ActividadView,
+    component: () => import('../modules/actividad/ActividadView.vue'),
   },
   {
     path: '/tickets',
     name: 'tickets',
-    component: TicketsView,
+    component: () => import('../modules/tickets/TicketsView.vue'),
   },
   {
     path: '/tickets/:id',
     name: 'ticket-detalle',
-    component: TicketDetalleView,
+    component: () => import('../modules/tickets/TicketDetalleView.vue'),
   },
   {
     // Página pública: el empleado abre su entrega de un solo uso sin sesión
     path: '/entrega/:token',
     name: 'entrega',
-    component: EntregaView,
+    component: () => import('../modules/entregas/EntregaView.vue'),
     meta: { public: true },
   },
   {
     // Página pública: formulario de creación de ticket (?entrega=<token> opcional)
     path: '/ticket/nuevo',
     name: 'ticket-nuevo',
-    component: TicketNuevoView,
+    component: () => import('../modules/tickets/TicketNuevoView.vue'),
     meta: { public: true },
   },
   {
     // Página pública: buscar tickets ACTIVOS por DNI (sin enlace guardado)
     path: '/ticket/buscar',
     name: 'ticket-buscar',
-    component: TicketBuscarView,
+    component: () => import('../modules/tickets/TicketBuscarView.vue'),
     meta: { public: true },
   },
   {
     // Página pública: seguimiento de UN ticket por su propio token
     path: '/ticket/:token',
     name: 'ticket-seguimiento',
-    component: TicketSeguimientoView,
+    component: () => import('../modules/tickets/TicketSeguimientoView.vue'),
     meta: { public: true },
   },
   {
     // Página pública: encuesta de satisfacción, enlace enviado al cerrar
     path: '/ticket/:token/satisfaccion',
     name: 'ticket-satisfaccion',
-    component: TicketSatisfaccionView,
+    component: () => import('../modules/tickets/TicketSatisfaccionView.vue'),
     meta: { public: true },
   },
 ];
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes,
 });
+
+// Tras un deploy los chunks viejos desaparecen (hashes nuevos): si un
+// import() de vista falla, recarga dura para traer el index.html nuevo.
+router.onError((err, to) => {
+  if (/Failed to fetch dynamically imported module|error loading dynamically imported/i.test(err?.message)) {
+    window.location.assign(to.fullPath);
+  }
+});
+
+export default router;
