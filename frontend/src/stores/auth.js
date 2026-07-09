@@ -1,14 +1,14 @@
 import { defineStore } from 'pinia';
 import { getClient } from '../api/insforge.js';
 
-async function cargarRol(userId) {
+async function cargarStaff(userId) {
   const { data, error } = await getClient().database
     .from('staff')
-    .select('rol')
+    .select('rol, activo')
     .eq('user_id', userId)
     .maybeSingle();
   if (error) throw error;
-  return data?.rol ?? null;
+  return data; // null si el usuario no tiene fila de staff
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -34,8 +34,17 @@ export const useAuthStore = defineStore('auth', {
         });
         if (error) throw error;
 
+        // Autenticarse no basta: la fila de staff debe existir y estar
+        // activa (el trigger de alta crea staff con activo = false hasta
+        // que el JEFE lo apruebe — auditoría H-CRIT).
+        const staff = await cargarStaff(data.user.id);
+        if (!staff || staff.activo === false) {
+          await getClient().auth.signOut();
+          throw new Error('Tu cuenta está pendiente de activación. Contacta al administrador.');
+        }
+
         this.user = data.user;
-        this.rol = await cargarRol(data.user.id);
+        this.rol = staff.rol;
       } finally {
         this.cargando = false;
       }
@@ -77,8 +86,17 @@ export const useAuthStore = defineStore('auth', {
           return;
         }
 
+        // Sesión válida pero staff inactivo/eliminado → cerrar sesión
+        const staff = await cargarStaff(data.user.id);
+        if (!staff || staff.activo === false) {
+          await getClient().auth.signOut();
+          this.user = null;
+          this.rol = null;
+          return;
+        }
+
         this.user = data.user;
-        this.rol = await cargarRol(data.user.id);
+        this.rol = staff.rol;
       } finally {
         this.cargando = false;
         this.sesionCargada = true;

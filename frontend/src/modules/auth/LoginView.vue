@@ -39,7 +39,7 @@ const subtitulo = computed(() => ({
   'login': null, // el login va limpio: solo título, campos y CTA
   'reset-email': 'Te enviaremos un código de verificación a tu correo',
   'reset-codigo': `Ingresa el código de 6 dígitos enviado a ${email.value}`,
-  'reset-password': 'Elige tu nueva contraseña (mínimo 6 caracteres)',
+  'reset-password': 'Mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo',
 }[modo.value]));
 
 function irA(nuevoModo) {
@@ -61,7 +61,7 @@ async function onSubmit() {
 
   try {
     await auth.login(email.value, password.value);
-    await router.push('/empleados');
+    await router.push('/dashboard');
   } catch (e) {
     error.value = e?.message || 'No se pudo iniciar sesión';
   }
@@ -245,7 +245,7 @@ async function onCambiarPassword() {
             type="password"
             autocomplete="new-password"
             placeholder="••••••••"
-            minlength="6"
+            minlength="12"
             required
             :disabled="procesando"
           >
@@ -259,7 +259,7 @@ async function onCambiarPassword() {
             type="password"
             autocomplete="new-password"
             placeholder="••••••••"
-            minlength="6"
+            minlength="12"
             required
             :disabled="procesando"
           >

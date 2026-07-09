@@ -65,7 +65,8 @@ const ADJUNTO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
 // Devuelve la extensión canónica si los primeros bytes son de una imagen
 // soportada; null si no lo es (no se sube).
-function sniffImagen(b: Uint8Array): string | null {
+// export: probado en frontend/tests/tickets-validaciones.test.js
+export function sniffImagen(b: Uint8Array): string | null {
   if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
   if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
   if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'gif';
@@ -78,12 +79,27 @@ const MIME_POR_EXT: Record<string, string> = {
   jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
 };
 
-function esEmail(valor: string): boolean {
+export function esEmail(valor: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
 }
 
-function soloDigitos(valor: string): string {
+export function soloDigitos(valor: string): string {
   return valor.replace(/\D/g, '');
+}
+
+// IP de confianza del cliente. cf-connecting-ip / x-real-ip los pone el
+// edge (un solo valor, no falsificables). x-forwarded-for es el último
+// recurso y se toma su ÚLTIMO valor: los proxies AGREGAN la IP real al
+// final; el primero lo controla el cliente (auditoría H-02).
+export function ipDesdeHeaders(headers: Headers): string {
+  const xff = (headers.get('x-forwarded-for') || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  return (
+    headers.get('cf-connecting-ip') ||
+    headers.get('x-real-ip') ||
+    xff[xff.length - 1] ||
+    'desconocida'
+  );
 }
 
 // Plantilla mínima, consistente con el tono del resto del sistema
@@ -329,17 +345,9 @@ export default async function (req: Request): Promise<Response> {
     const dni = soloDigitos(String(body.dni || ''));
     if (dni.length !== 8) return json({ ok: false, code: 'dni_invalido' });
 
-    // IP del cliente: se prefieren headers de un solo valor puestos por el
-    // edge (no falsificables por el cliente); x-forwarded-for queda de último
-    // recurso. El header de confianza exacto de InsForge debe confirmarse
-    // (auditoría H-02); mientras, se refuerza con un límite por DNI que no
-    // depende de la IP.
-    const ip = (
-      req.headers.get('cf-connecting-ip') ||
-      req.headers.get('x-real-ip') ||
-      req.headers.get('x-forwarded-for') ||
-      'desconocida'
-    ).split(',')[0].trim();
+    // IP del cliente (ver ipDesdeHeaders). Se refuerza además con el
+    // límite por DNI, que no depende de la IP.
+    const ip = ipDesdeHeaders(req.headers);
     const desde = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
     // Límite por IP: frena barridos desde una sola fuente.

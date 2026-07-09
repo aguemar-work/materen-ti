@@ -72,14 +72,16 @@ function fromB64(b64: string): Uint8Array {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
-async function encryptV2(text: string): Promise<string> {
+// export: probado en frontend/tests/credenciales.test.js
+export async function encryptV2(text: string): Promise<string> {
   const key = await importKey(Deno.env.get('CRED_KEY_V2')!);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text));
   return `enc2:${toB64(iv)}:${toB64(ct)}`;
 }
 
-async function decryptAny(stored: string): Promise<string> {
+// export: probado en frontend/tests/credenciales.test.js
+export async function decryptAny(stored: string): Promise<string> {
   if (!stored) return '';
   let keyB64: string | undefined;
   let payload: string;
