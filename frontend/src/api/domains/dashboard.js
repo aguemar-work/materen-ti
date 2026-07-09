@@ -4,13 +4,15 @@ import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
 
 export const dashboardApi = {
-  // Búsqueda global del panel: empleados, cuentas y equipos en una sola consulta
+  // Búsqueda global del panel: empleados, cuentas, equipos, tickets y
+  // licencias en una sola consulta
   async buscarGlobal(query) {
-    if (!query || query.trim().length < 2) return { empleados: [], cuentas: [], equipos: [] };
+    const VACIO = { empleados: [], cuentas: [], equipos: [], tickets: [], licencias: [] };
+    if (!query || query.trim().length < 2) return VACIO;
     const qSafe = sanitizarTermino(query); // H-07: saneado centralizado en api/sanitizar.js
-    if (qSafe.length < 2) return { empleados: [], cuentas: [], equipos: [] };
+    if (qSafe.length < 2) return VACIO;
     const db = getClient().database;
-    const [empRes, cuentasRes, equiposRes] = await Promise.all([
+    const [empRes, cuentasRes, equiposRes, ticketsRes, licenciasRes] = await Promise.all([
       db.from('empleados')
         .select('id, nombres, apellidos, dni, cargo, estado, empresas(nombre)')
         .is('deleted_at', null)
@@ -25,6 +27,19 @@ export const dashboardApi = {
         .select('id, codigo, marca, modelo, serie, tipos_equipo(nombre)')
         .is('deleted_at', null)
         .or(`codigo.ilike.%${qSafe}%,marca.ilike.%${qSafe}%,modelo.ilike.%${qSafe}%,serie.ilike.%${qSafe}%`)
+        .limit(6),
+      // Tickets: TODOS los estados — el caso dominante de buscar "TCK-####"
+      // es un ticket ya cerrado; el estado se muestra en el resultado.
+      // (tickets no maneja deleted_at)
+      db.from('tickets')
+        .select('id, codigo, titulo, estado')
+        .or(`codigo.ilike.%${qSafe}%,titulo.ilike.%${qSafe}%`)
+        .order('created_at', { ascending: false })
+        .limit(6),
+      db.from('licencias')
+        .select('id, software, proveedor')
+        .is('deleted_at', null)
+        .or(`software.ilike.%${qSafe}%,proveedor.ilike.%${qSafe}%`)
         .limit(6),
     ]);
     return {
@@ -44,6 +59,12 @@ export const dashboardApi = {
         id: e.id, codigo: e.codigo,
         descripcion: `${e.tipos_equipo?.nombre || ''} ${e.marca || ''} ${e.modelo || ''}`.trim(),
         serie: e.serie || '',
+      })),
+      tickets: (ticketsRes.data || []).map((t) => ({
+        id: t.id, codigo: t.codigo, titulo: t.titulo, estado: t.estado,
+      })),
+      licencias: (licenciasRes.data || []).map((l) => ({
+        id: l.id, software: l.software, proveedor: l.proveedor || '',
       })),
     };
   },

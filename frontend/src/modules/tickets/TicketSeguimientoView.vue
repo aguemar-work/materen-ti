@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router';
 import { seguimientoTicket } from '../../api/ticketsPublicos.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
 import { estadoInfo } from '../../core/dominio-tickets.js';
+import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 const route = useRoute();
 
@@ -40,17 +41,9 @@ function enlaceSeguimiento() {
 </script>
 
 <template>
-  <div class="ticket-page">
-    <div class="ticket-card card">
-      <div class="brand ticket-brand">
-        <div class="brand-icon">
-          <i class="ti ti-headset" aria-hidden="true"></i>
-        </div>
-        <div class="brand-text">
-          <h1>Sistema TI</h1>
-          <span>Seguimiento de solicitud</span>
-        </div>
-      </div>
+  <div class="public-page">
+    <div class="card public-card">
+      <PublicBrand subtitulo="Seguimiento de solicitud" />
 
       <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
 
@@ -112,22 +105,6 @@ function enlaceSeguimiento() {
 </template>
 
 <style scoped>
-.ticket-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-}
-
-.ticket-card {
-  width: 100%;
-  max-width: 480px;
-  padding: 2rem;
-}
-
-.ticket-brand { margin-bottom: 1.5rem; }
-
 .ticket-title {
   font-size: var(--fs-xl);
   font-weight: 600;

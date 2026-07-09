@@ -7,6 +7,9 @@ import { revelarPassword } from '../../api/passwords.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 import CuentaForm from './CuentaForm.vue';
 
 const props = defineProps({
@@ -191,14 +194,16 @@ onMounted(async () => {
     <div v-if="cargando" class="no-results">Cargando cuentas...</div>
     <div v-else-if="error" class="no-results cuentas-error">{{ error }}</div>
 
-    <div v-else-if="lista.length === 0" class="empty">
-      <div class="empty-icon"><i class="ti ti-key"></i></div>
-      <h3>Sin cuentas registradas</h3>
-      <p>Agrega la primera cuenta para este empleado.</p>
+    <EmptyState
+      v-else-if="lista.length === 0"
+      icono="ti ti-key"
+      titulo="Sin cuentas registradas"
+      mensaje="Agrega la primera cuenta para este empleado."
+    >
       <button class="btn" type="button" @click="abrirNueva">
         <i class="ti ti-plus"></i> Agregar cuenta
       </button>
-    </div>
+    </EmptyState>
 
     <div v-else class="table-wrap">
       <table aria-label="Cuentas del empleado">
@@ -215,8 +220,13 @@ onMounted(async () => {
           <tr v-for="cuenta in lista" :key="cuenta.asignacion_id">
             <td>
               <span class="user-name">{{ cuenta.plataforma_nombre }}</span>
-              <span v-if="cuenta.tipo_cuenta === 'compartida'" class="badge badge--sky badge-inline" title="Cuenta compartida: varios usuarios a la vez">Compartida</span>
-              <span v-else-if="cuenta.tipo_cuenta === 'reutilizable'" class="badge badge--sky badge-inline" title="Cuenta reutilizable: se hereda entre empleados">Reutilizable</span>
+              <BadgeEstado
+                v-if="cuenta.tipo_cuenta === 'compartida' || cuenta.tipo_cuenta === 'reutilizable'"
+                tipo="tipo_cuenta"
+                :valor="cuenta.tipo_cuenta"
+                inline
+                class="badge-inline"
+              />
               <span
                 v-if="cuenta.requiere_rotacion"
                 class="badge badge--warning badge-inline"
@@ -247,7 +257,7 @@ onMounted(async () => {
               <a v-if="cuenta.url" :href="cuenta.url" target="_blank" rel="noopener noreferrer" class="url-link" :title="cuenta.url" aria-label="Abrir URL de la plataforma">
                 <i class="ti ti-external-link"></i>
               </a>
-              <span v-else class="text-muted">—</span>
+              <TextoVacio v-else />
             </td>
             <td>
               <div class="actions">

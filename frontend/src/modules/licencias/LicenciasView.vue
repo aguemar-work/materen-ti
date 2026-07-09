@@ -1,23 +1,67 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useRoute } from 'vue-router';
 import { useLicenciasStore } from '../../stores/licencias.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { revelarClaveLicencia, revelarPassword } from '../../api/passwords.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
-import { usePaginacion } from '../../composables/usePaginacion.js';
 import LicenciaForm from './LicenciaForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const store = useLicenciasStore();
-const { lista, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error } = storeToRefs(store);
 
-const busqueda = ref('');
+// Deep-link desde la búsqueda global: /licencias?q=SOFTWARE
+const route = useRoute();
+const busqueda = ref(String(route.query.q ?? ''));
+watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
+
 const mostrarForm = ref(false);
 const licenciaEditar = ref(null);
 const clavesVisibles = ref({});
+
+let debounceBusqueda = null;
+watch(busqueda, (q) => {
+  clearTimeout(debounceBusqueda);
+  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
+});
+
+const paginaActual = computed({
+  get: () => store.pagina,
+  set: (p) => store.irAPagina(p),
+});
+
+const exportando = ref(false);
+async function exportar() {
+  exportando.value = true;
+  try {
+    const filas = await store.listaParaExportar();
+    exportarCSV(
+      'licencias',
+      ['Software', 'Proveedor', 'Empresa', 'Acceso', 'Asientos usados', 'Asientos totales', 'Usuarios', 'Vencimiento'],
+      filas.map((l) => [
+        l.software,
+        l.proveedor,
+        l.empresa_nombre || 'Del grupo',
+        l.cuenta_usuario,
+        l.usados,
+        l.cantidad,
+        (l.usuarios || []).map((u) => u.nombre).join(', '),
+        l.tipo === 'perpetua' ? 'Perpetua' : l.fecha_vencimiento,
+      ]),
+    );
+  } catch (e) {
+    showToast(e?.message || 'Error al exportar', 'error');
+  } finally {
+    exportando.value = false;
+  }
+}
 
 // ── Asignación directa ────────────────────────────────────────
 const mostrarAsignar = ref(false);
@@ -34,36 +78,6 @@ const EN_30_DIAS = (() => {
   d.setDate(d.getDate() + 30);
   return d.toISOString().split('T')[0];
 })();
-
-const listaFiltrada = computed(() => {
-  const q = busqueda.value.trim().toLowerCase();
-  if (!q) return lista.value;
-  return lista.value.filter((l) =>
-    l.software.toLowerCase().includes(q) ||
-    (l.empresa_nombre || '').toLowerCase().includes(q) ||
-    (l.cuenta_usuario || '').toLowerCase().includes(q)
-  );
-});
-
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaFiltrada);
-
-// Exporta lo visible según filtros; las claves nunca salen del servidor.
-function exportar() {
-  exportarCSV(
-    'licencias',
-    ['Software', 'Proveedor', 'Empresa', 'Acceso', 'Asientos usados', 'Asientos totales', 'Usuarios', 'Vencimiento'],
-    listaFiltrada.value.map((l) => [
-      l.software,
-      l.proveedor,
-      l.empresa_nombre || 'Del grupo',
-      l.cuenta_usuario,
-      l.usados,
-      l.cantidad,
-      (l.usuarios || []).map((u) => u.nombre).join(', '),
-      l.tipo === 'perpetua' ? 'Perpetua' : l.fecha_vencimiento,
-    ]),
-  );
-}
 
 // Barra de capacidad: comunica cercanía al tope de asientos antes de que
 // el trigger de BD (check_tope_licencia) bloquee la asignación.
@@ -218,7 +232,11 @@ async function eliminar(licencia) {
 
 onMounted(async () => {
   try {
-    await store.cargar();
+    if (busqueda.value.trim()) {
+      await store.aplicarFiltros({ q: busqueda.value.trim() });
+    } else {
+      await store.cargar();
+    }
   } catch {
     showToast(error.value || 'Error al cargar licencias', 'error');
   }
@@ -227,24 +245,16 @@ onMounted(async () => {
 
 <template>
   <div class="licencias-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-title">
-          <h1>
-            <i class="ti ti-license" aria-hidden="true"></i> Licencias
-            <span class="badge-count">{{ listaFiltrada.length }}</span>
-          </h1>
-        </div>
-        <div class="header-btns">
-          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
-            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-          </button>
-          <button class="btn btn-primary" type="button" @click="abrirNueva">
-            <i class="ti ti-plus" aria-hidden="true"></i> Nueva licencia
-          </button>
-        </div>
-      </div>
-    </header>
+    <PageHeader titulo="Licencias" icono="ti ti-license" :conteo="total">
+      <template #acciones>
+        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
+          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+        </button>
+        <button class="btn btn-primary" type="button" @click="abrirNueva">
+          <i class="ti ti-plus" aria-hidden="true"></i> Nueva licencia
+        </button>
+      </template>
+    </PageHeader>
 
     <main class="page">
       <div class="card card--fill">
@@ -258,14 +268,16 @@ onMounted(async () => {
         <div v-if="cargando" class="no-results">Cargando licencias...</div>
         <div v-else-if="error" class="no-results lic-error">{{ error }}</div>
 
-        <div v-else-if="listaFiltrada.length === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-license"></i></div>
-          <h3>Sin licencias</h3>
-          <p>{{ busqueda ? 'No hay resultados con ese filtro.' : 'Registra la primera licencia para ordenar el software que pagan.' }}</p>
+        <EmptyState
+          v-else-if="total === 0"
+          icono="ti ti-license"
+          titulo="Sin licencias"
+          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra la primera licencia para ordenar el software que pagan.'"
+        >
           <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
             <i class="ti ti-plus"></i> Nueva licencia
           </button>
-        </div>
+        </EmptyState>
 
         <div v-else class="table-wrap">
           <table aria-label="Licencias de software">
@@ -281,7 +293,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="lic in listaPaginada" :key="lic.id">
+              <tr v-for="lic in lista" :key="lic.id">
                 <td>
                   <div class="user-name">{{ lic.software }}</div>
                   <span v-if="lic.proveedor" class="lic-proveedor">{{ lic.proveedor }}</span>
@@ -318,7 +330,7 @@ onMounted(async () => {
                       <i class="ti ti-copy"></i>
                     </button>
                   </div>
-                  <span v-else class="text-muted">—</span>
+                  <TextoVacio v-else />
                 </td>
                 <td>
                   <div class="capacity">
@@ -352,7 +364,7 @@ onMounted(async () => {
                       </button>
                     </span>
                   </div>
-                  <span v-else class="text-muted">Sin usuarios</span>
+                  <TextoVacio v-else placeholder="Sin usuarios" />
                 </td>
                 <td>
                   <div class="venc-cell">
@@ -398,7 +410,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
       </div>
     </main>

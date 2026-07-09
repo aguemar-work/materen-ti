@@ -1,4 +1,4 @@
-# Sistema TI — Inventario de empleados y control de accesos
+# Materen — Sistema TI
 
 Panel interno de TI para registrar empleados, administrar sus credenciales de
 acceso a plataformas (Gmail, Bitrix24, VPN, ERP, etc.) y entregarlas de forma
@@ -180,9 +180,7 @@ cuándo y si la contraseña se rotó después.
 │                           #   encuestaEstado / encuesta / enviarEncuesta
 ├── migrations/             # 001..019 — esquema completo, en orden, comentado
 ├── docs/
-│   ├── MATEREN-CORE.md     # filosofía, patrones, gobernanza compartida
-│   ├── MATEREN-DESIGN-SYSTEM.md  # tokens de producto v0.3 (verde petróleo)
-│   └── GUIA-UX-UI.md       # implementación concreta en Sistema TI
+│   └── GUIA-UX-UI.md       # design system y convenciones de UI
 ├── AGENTS.md               # contexto para agentes de código
 └── insforge.toml           # config del backend (auth por código, password min 6)
 ```
@@ -205,11 +203,12 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 
 ## Backend: migraciones y función
 
-- **Migraciones**: archivos numerados en `migrations/`, aplicados manualmente:
+- **Migraciones**: archivos numerados en `migrations/`, aplicados manualmente.
+  En Linux/macOS:
   `npx @insforge/cli db query --json -- "$(cat migrations/0XX_nombre.sql)"`.
-  No se usa el tracking de migraciones del CLI. En Windows, cuidado con el
-  límite de línea de comandos (~8 KB): para updates masivos usar un solo
-  `UPDATE ... FROM (VALUES ...)` por lote.
+  En **Windows** (límite ~8 KB por línea de comandos), usar el script:
+  `node scripts/apply-migration.mjs migrations/0XX_nombre.sql`.
+  Para updates masivos usar un solo `UPDATE ... FROM (VALUES ...)` por lote.
 - **Edge function**: editar `functions/credenciales.ts` y desplegar con
   `npx @insforge/cli functions deploy credenciales --file functions/credenciales.ts`.
   Lo mismo para `functions/tickets.ts` → `npx @insforge/cli functions deploy
@@ -242,6 +241,18 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 017 | Tickets — flujo guiado: estado `rechazado`, columna `nivel_atencion` (N1/N2/N3), trigger que exige nivel+asignado al iniciar, trigger que restringe "reabrir" al jefe, `ticket_busqueda_intentos` (rate-limit de la búsqueda pública por DNI) |
 | 018 | Seguridad (auditoría H-CRIT): el trigger de auto-alta crea el `staff` **inactivo** (`activo=false`); el JEFE lo activa. Complementa `disable_signup=true` en `insforge.toml` |
 | 019 | Seguridad (auditoría H-01/H-06): trigger que impide sacar un ticket de `cerrado`/`rechazado` salvo reabriéndolo (solo JEFE); `token`/`codigo`/`origen`/`creado_por` inmutables tras crear |
+| 020 | Áreas/obras: catálogo `areas_obras` + `empleados.area_obra_id` |
+| 021 | `areas_obras`: trazabilidad `created_by` / `updated_by` |
+
+## Checklist de deploy
+
+1. Aplicar migraciones pendientes (`node scripts/apply-migration.mjs migrations/0XX_….sql` en Windows).
+2. Redesplegar edge functions si cambiaron: `credenciales`, `tickets`.
+3. Push de `insforge.toml` si cambió auth/storage.
+4. Build frontend: `cd frontend && npm run build`.
+5. Deploy Vercel (o push a la rama conectada).
+6. Verificar CORS: `ORIGENES_PERMITIDOS` en ambas edge functions incluye el dominio de producción.
+7. Smoke test: login → dashboard → revelar contraseña → entrega pública → ticket público.
 
 ## Producción
 
@@ -260,11 +271,13 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 ## Pendientes / roadmap
 
 - [x] Desplegar el frontend → https://materen-ti.vercel.app (Vercel).
-- [ ] Tests automatizados (candidatos: triggers de BD y edge function).
+- [x] Tests automatizados (unitarios + triggers de BD con rollback; ver `.github/workflows/ci.yml`).
 - [x] Restringir CORS de la edge function al dominio del frontend.
-- [ ] Partir `api/insforge.js` por dominio a medida que crezca.
+- [x] Partir `api/insforge.js` por dominio (`api/domains/*` + barrel).
+- [x] Paginación server-side en listados principales (empleados, tickets, equipos, licencias, correos).
+- [x] Lazy loading de rutas y code-splitting por vista.
+- [x] Búsqueda global ampliada (empleados, cuentas, equipos, tickets, licencias).
 - [ ] Multitenancy y modelo de cobro (si se comercializa).
-- [x] Búsqueda global en la UI (sidebar: empleados, cuentas y equipos).
 
 Notas de equipos: el **acta de entrega imprimible** se genera desde la fila del
 equipo asignado (🖨) — HTML listo para imprimir o guardar como PDF, con datos

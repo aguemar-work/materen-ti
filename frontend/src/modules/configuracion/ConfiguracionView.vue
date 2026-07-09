@@ -12,6 +12,7 @@ import TiposEquipoPanel from './TiposEquipoPanel.vue';
 import UbicacionesPanel from './UbicacionesPanel.vue';
 import CategoriasTicketPanel from './CategoriasTicketPanel.vue';
 import StaffView from '../staff/StaffView.vue';
+import PageHeader from '../../components/shared/PageHeader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -45,12 +46,8 @@ function irATab(tab) {
 
 <template>
   <div class="config-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-title">
-          <h1><i class="ti ti-settings" aria-hidden="true"></i> Configuración</h1>
-        </div>
-      </div>
+    <PageHeader titulo="Configuración" icono="ti ti-settings">
+      <template #extra>
       <nav class="config-tabs" aria-label="Secciones de configuración">
         <button
           v-for="tab in TABS"
@@ -64,7 +61,8 @@ function irATab(tab) {
           {{ tab.label }}
         </button>
       </nav>
-    </header>
+      </template>
+    </PageHeader>
 
     <component :is="tabActual.componente" :key="tabActual.id" />
   </div>

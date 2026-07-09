@@ -23,13 +23,14 @@ const METODOS = [
   // dashboard / actividad
   'getEstadisticas', 'listPendientes', 'pendientesTickets', 'listActividad',
   // correos
-  'listCorreosAsignables', 'listCorreosCompartidos', 'createCorreo', 'updateCorreo',
+  'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados',
+  'createCorreo', 'updateCorreo',
   'softDeleteCorreo', 'asignarCuentaExistente',
   // licencias
-  'listLicencias', 'createLicencia', 'updateLicencia', 'renovarLicencia',
+  'listLicencias', 'listLicenciasPage', 'listLicenciasFiltrados', 'createLicencia', 'updateLicencia', 'renovarLicencia',
   'softDeleteLicencia', 'asignarLicencia', 'cerrarAsignacionLicencia', 'licenciasPorEmpleado',
   // equipos
-  'listEquipos', 'asignacionActivaEquipo', 'moverEquipo', 'createEquipo', 'updateEquipo',
+  'listEquipos', 'listEquiposPage', 'listEquiposFiltrados', 'asignacionActivaEquipo', 'moverEquipo', 'createEquipo', 'updateEquipo',
   'cambiarEstadoEquipo', 'softDeleteEquipo', 'asignarEquipo', 'devolverEquipo',
   'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado',
   // tickets (staff) + categorías
@@ -44,7 +45,7 @@ const METODOS = [
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 88 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 94 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

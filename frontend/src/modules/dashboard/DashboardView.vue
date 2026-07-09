@@ -3,7 +3,8 @@ import { ref, computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { formatFecha } from '../../core/formatters.js';
-import { claseEstado } from '../../core/dominio-empleados.js';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 
 const stats = ref(null);
 const recientes = ref([]);
@@ -61,65 +62,13 @@ onMounted(async () => {
 
 <template>
   <div class="dashboard-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-title">
-          <h1><i class="ti ti-layout-dashboard" aria-hidden="true"></i> Dashboard</h1>
-        </div>
-      </div>
-    </header>
+    <PageHeader titulo="Dashboard" icono="ti ti-layout-dashboard" />
 
     <main class="page page--padded dashboard-body">
       <div v-if="cargando" class="no-results">Cargando...</div>
 
       <template v-else>
-        <!-- Stats -->
-        <div class="grid-12">
-          <div class="stat-card col-2">
-            <div class="stat-icon stat-icon--blue"><i class="ti ti-users"></i></div>
-            <div class="stat-info">
-              <span class="stat-value">{{ stats.empleadosActivos }}</span>
-              <span class="stat-label">Empleados activos</span>
-            </div>
-          </div>
-          <div class="stat-card col-2">
-            <div class="stat-icon stat-icon--gray"><i class="ti ti-users-minus"></i></div>
-            <div class="stat-info">
-              <span class="stat-value">{{ stats.empleadosTotal - stats.empleadosActivos }}</span>
-              <span class="stat-label">Dados de baja</span>
-            </div>
-          </div>
-          <div class="stat-card col-2">
-            <div class="stat-icon stat-icon--indigo"><i class="ti ti-key"></i></div>
-            <div class="stat-info">
-              <span class="stat-value">{{ stats.cuentasAsignadas }}</span>
-              <span class="stat-label">Cuentas asignadas</span>
-            </div>
-          </div>
-          <div class="stat-card col-2">
-            <div class="stat-icon stat-icon--teal"><i class="ti ti-mail-share"></i></div>
-            <div class="stat-info">
-              <span class="stat-value">{{ stats.correosCompartidos }}</span>
-              <span class="stat-label">Correos compartidos</span>
-            </div>
-          </div>
-          <div class="stat-card col-2" :class="{ 'stat-card--alerta': stats.cuentasPorRotar > 0 }">
-            <div class="stat-icon stat-icon--amber"><i class="ti ti-key-off"></i></div>
-            <div class="stat-info">
-              <span class="stat-value">{{ stats.cuentasPorRotar }}</span>
-              <span class="stat-label">Contraseñas por rotar</span>
-            </div>
-          </div>
-          <div class="stat-card col-2" :class="{ 'stat-card--alerta': stats.licenciasPorVencer > 0 }">
-            <div class="stat-icon stat-icon--teal"><i class="ti ti-license"></i></div>
-            <div class="stat-info">
-              <span class="stat-value">{{ stats.licenciasPorVencer }}</span>
-              <span class="stat-label">Licencias por vencer</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pendientes accionables -->
+        <!-- Pendientes accionables (prioridad visual del dashboard) -->
         <div class="section">
           <h2 class="section-title">Pendientes</h2>
 
@@ -293,6 +242,55 @@ onMounted(async () => {
           </div>
         </div>
 
+        <!-- Resumen numérico -->
+        <div class="section section--stats">
+          <h2 class="section-title section-title--secondary">Resumen</h2>
+          <div class="grid-12">
+          <div class="stat-card col-2">
+            <div class="stat-icon stat-icon--empleados"><i class="ti ti-users"></i></div>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.empleadosActivos }}</span>
+              <span class="stat-label">Empleados activos</span>
+            </div>
+          </div>
+          <div class="stat-card col-2">
+            <div class="stat-icon stat-icon--neutral"><i class="ti ti-users-minus"></i></div>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.empleadosTotal - stats.empleadosActivos }}</span>
+              <span class="stat-label">Dados de baja</span>
+            </div>
+          </div>
+          <div class="stat-card col-2">
+            <div class="stat-icon stat-icon--accesos"><i class="ti ti-key"></i></div>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.cuentasAsignadas }}</span>
+              <span class="stat-label">Cuentas asignadas</span>
+            </div>
+          </div>
+          <div class="stat-card col-2">
+            <div class="stat-icon stat-icon--correos"><i class="ti ti-mail-share"></i></div>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.correosCompartidos }}</span>
+              <span class="stat-label">Correos compartidos</span>
+            </div>
+          </div>
+          <div class="stat-card col-2" :class="{ 'stat-card--alerta': stats.cuentasPorRotar > 0 }">
+            <div class="stat-icon stat-icon--alerta"><i class="ti ti-key-off"></i></div>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.cuentasPorRotar }}</span>
+              <span class="stat-label">Contraseñas por rotar</span>
+            </div>
+          </div>
+          <div class="stat-card col-2" :class="{ 'stat-card--alerta': stats.licenciasPorVencer > 0 }">
+            <div class="stat-icon stat-icon--licencias"><i class="ti ti-license"></i></div>
+            <div class="stat-info">
+              <span class="stat-value">{{ stats.licenciasPorVencer }}</span>
+              <span class="stat-label">Licencias por vencer</span>
+            </div>
+          </div>
+        </div>
+        </div>
+
         <!-- Últimos empleados -->
         <div class="section">
           <h2 class="section-title">Últimos empleados registrados</h2>
@@ -304,7 +302,7 @@ onMounted(async () => {
                 <span class="emp-nombre">{{ emp.nombres }} {{ emp.apellidos }}</span>
                 <span class="emp-cargo">{{ emp.cargo || emp.empresa_nombre || '—' }}</span>
               </div>
-              <span class="status" :class="claseEstado(emp.estado)">{{ emp.estado }}</span>
+              <BadgeEstado tipo="empleado" :valor="emp.estado" status />
             </div>
           </div>
         </div>
@@ -324,30 +322,42 @@ onMounted(async () => {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg, 12px);
-  padding: 20px;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   box-shadow: var(--shadow-sm);
 }
 
+.section--stats .stat-card { padding: 12px 14px; }
+
 .stat-icon {
-  width: 44px; height: 44px; border-radius: 10px;
+  width: 38px; height: 38px; border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 22px; flex-shrink: 0;
+  font-size: 19px; flex-shrink: 0;
 }
 
-.stat-icon--blue   { background: var(--color-info-border); color: var(--color-info-text); }
-.stat-icon--gray   { background: var(--color-neutral-bg); color: var(--color-text-secondary); }
-.stat-icon--indigo { background: var(--color-accent-subtle); color: var(--color-accent-hover); }
-.stat-icon--teal   { background: var(--color-teal-bg); color: var(--color-teal-text); }
-.stat-icon--amber  { background: var(--color-warning-bg-strong); color: var(--color-warning-text); }
+.stat-icon--empleados { background: var(--color-success-bg); color: var(--color-success-text); }
+.stat-icon--neutral   { background: var(--color-neutral-bg); color: var(--color-neutral-text); }
+.stat-icon--accesos   { background: var(--color-accent-subtle); color: var(--color-accent-text); }
+.stat-icon--correos   { background: var(--color-purple-bg); color: var(--color-purple-text); }
+.stat-icon--licencias { background: var(--color-teal-bg); color: var(--color-teal-text); }
+.stat-icon--alerta    { background: var(--color-warning-bg-strong); color: var(--color-warning-text); }
 
 .stat-card--alerta { border-color: var(--color-warning-border); }
 
 .stat-info { display: flex; flex-direction: column; }
+.section--stats .stat-value { font-size: 22px; }
 .stat-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1; }
 .stat-label { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; }
+
+.section-title--secondary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 /* Pendientes */
 .todo-ok {

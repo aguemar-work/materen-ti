@@ -5,6 +5,7 @@
 import { ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { abrirEntrega } from '../../api/passwords.js';
+import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 const route = useRoute();
 
@@ -38,17 +39,9 @@ async function copiar(texto, id) {
 </script>
 
 <template>
-  <div class="entrega-page">
-    <div class="entrega-card card">
-      <div class="brand entrega-brand">
-        <div class="brand-icon">
-          <i class="ti ti-shield-lock" aria-hidden="true"></i>
-        </div>
-        <div class="brand-text">
-          <h1>Sistema TI</h1>
-          <span>Entrega de accesos</span>
-        </div>
-      </div>
+  <div class="public-page">
+    <div class="card public-card">
+      <PublicBrand subtitulo="Entrega de accesos" />
 
       <!-- Estado inicial: advertir antes de revelar -->
       <template v-if="estado === 'inicial'">
@@ -127,24 +120,6 @@ async function copiar(texto, id) {
 </template>
 
 <style scoped>
-.entrega-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-}
-
-.entrega-card {
-  width: 100%;
-  max-width: 440px;
-  padding: 2rem;
-}
-
-.entrega-brand {
-  margin-bottom: 1.5rem;
-}
-
 .entrega-title {
   font-size: 19px;
   font-weight: 600;

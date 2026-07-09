@@ -102,7 +102,7 @@ export function generarActa(equipo, empleado) {
     </div>
   </div>
 
-  <p class="pie">Documento generado por Sistema TI el ${esc(hoy)} — equipo ${esc(equipo.codigo)}</p>
+  <p class="pie">Documento generado por Materen — Sistema TI el ${esc(hoy)} — equipo ${esc(equipo.codigo)}</p>
 
   <script>window.onload = function () { window.print(); };</` + `script>
 </body>

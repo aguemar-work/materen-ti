@@ -1,49 +1,66 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useRoute } from 'vue-router';
 import { useCorreosStore } from '../../stores/correos.js';
 import { revelarPassword } from '../../api/passwords.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
-import { usePaginacion } from '../../composables/usePaginacion.js';
 import CorreoForm from './CorreoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const store = useCorreosStore();
-const { lista, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error } = storeToRefs(store);
 
-const busqueda = ref('');
+// Deep-link desde la búsqueda global: /correos?q=usuario@dominio
+const route = useRoute();
+const busqueda = ref(String(route.query.q ?? ''));
+watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
+
 const filtroTipo = ref('');
 const mostrarForm = ref(false);
 const correoEditar = ref(null);
 const passwordVisibles = ref({});
 
-const listaFiltrada = computed(() => {
-  const q = busqueda.value.trim().toLowerCase();
-  return lista.value.filter((c) => {
-    if (filtroTipo.value && c.tipo_cuenta !== filtroTipo.value) return false;
-    if (!q) return true;
-    return c.usuario.toLowerCase().includes(q) || (c.plataforma_nombre || '').toLowerCase().includes(q);
-  });
+let debounceBusqueda = null;
+watch(busqueda, (q) => {
+  clearTimeout(debounceBusqueda);
+  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
+});
+watch(filtroTipo, (tipo) => store.aplicarFiltros({ tipo }));
+
+const paginaActual = computed({
+  get: () => store.pagina,
+  set: (p) => store.irAPagina(p),
 });
 
-// Exporta lo visible según filtros; las contraseñas nunca salen del servidor.
-function exportar() {
-  exportarCSV(
-    'correos',
-    ['Plataforma', 'Tipo', 'Correo / Usuario', 'Asignados', 'URL', 'Notas'],
-    listaFiltrada.value.map((c) => [
-      c.plataforma_nombre,
-      c.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable',
-      c.usuario,
-      (c.asignados || []).join(', '),
-      c.url,
-      c.notas,
-    ]),
-  );
+const exportando = ref(false);
+async function exportar() {
+  exportando.value = true;
+  try {
+    const filas = await store.listaParaExportar();
+    exportarCSV(
+      'correos',
+      ['Plataforma', 'Tipo', 'Correo / Usuario', 'Asignados', 'URL', 'Notas'],
+      filas.map((c) => [
+        c.plataforma_nombre,
+        c.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable',
+        c.usuario,
+        (c.asignados || []).join(', '),
+        c.url,
+        c.notas,
+      ]),
+    );
+  } catch (e) {
+    showToast(e?.message || 'Error al exportar', 'error');
+  } finally {
+    exportando.value = false;
+  }
 }
-
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaFiltrada);
 
 // passwordVisibles[id] guarda el texto revelado; null = oculto.
 // Cada revelado pasa por la edge function y queda auditado.
@@ -98,7 +115,11 @@ async function eliminar(correo) {
 
 onMounted(async () => {
   try {
-    await store.cargar();
+    if (busqueda.value.trim()) {
+      await store.aplicarFiltros({ q: busqueda.value.trim() });
+    } else {
+      await store.cargar();
+    }
   } catch {
     showToast(error.value || 'Error al cargar correos compartidos', 'error');
   }
@@ -107,24 +128,16 @@ onMounted(async () => {
 
 <template>
   <div class="correos-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-title">
-          <h1>
-            <i class="ti ti-mail-share" aria-hidden="true"></i> Correos
-            <span class="badge-count">{{ listaFiltrada.length }}</span>
-          </h1>
-        </div>
-        <div class="header-btns">
-          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
-            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-          </button>
-          <button class="btn btn-primary" type="button" @click="abrirNuevo">
-            <i class="ti ti-plus" aria-hidden="true"></i> Nuevo correo
-          </button>
-        </div>
-      </div>
-    </header>
+    <PageHeader titulo="Correos" icono="ti ti-mail-share" :conteo="total">
+      <template #acciones>
+        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
+          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+        </button>
+        <button class="btn btn-primary" type="button" @click="abrirNuevo">
+          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo correo
+        </button>
+      </template>
+    </PageHeader>
 
     <main class="page">
       <div class="card card--fill">
@@ -148,14 +161,16 @@ onMounted(async () => {
 
         <div v-else-if="error" class="no-results correos-error">{{ error }}</div>
 
-        <div v-else-if="listaFiltrada.length === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-mail-share"></i></div>
-          <h3>Sin correos compartidos</h3>
-          <p>{{ busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.' }}</p>
+        <EmptyState
+          v-else-if="total === 0"
+          icono="ti ti-mail-share"
+          titulo="Sin correos compartidos"
+          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.'"
+        >
           <button v-if="!busqueda" class="btn" type="button" @click="abrirNuevo">
             <i class="ti ti-plus"></i> Nuevo correo compartido
           </button>
-        </div>
+        </EmptyState>
 
         <div v-else class="table-wrap">
           <table aria-label="Correos compartidos y reutilizables">
@@ -172,15 +187,12 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="correo in listaPaginada" :key="correo.id">
+              <tr v-for="correo in lista" :key="correo.id">
                 <td>
                   <div class="user-name">{{ correo.plataforma_nombre || '—' }}</div>
                 </td>
                 <td>
-                  <span class="badge" :class="correo.tipo_cuenta === 'compartida' ? 'badge--accent' : 'badge--success'">
-                    <i :class="correo.tipo_cuenta === 'compartida' ? 'ti ti-users' : 'ti ti-transfer'"></i>
-                    {{ correo.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable' }}
-                  </span>
+                  <BadgeEstado tipo="tipo_cuenta" :valor="correo.tipo_cuenta" />
                 </td>
                 <td class="correo-usuario">{{ correo.usuario }}</td>
                 <td>
@@ -201,7 +213,7 @@ onMounted(async () => {
                       >
                         {{ correo.asignados.length }} usuario{{ correo.asignados.length === 1 ? '' : 's' }}
                       </span>
-                      <span v-else class="text-muted">Sin usuarios</span>
+                      <TextoVacio v-else placeholder="Sin usuarios" />
                     </template>
                     <span v-if="correo.requiere_rotacion" class="badge badge--warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
                       <i class="ti ti-alert-triangle"></i> Rotar contraseña
@@ -245,11 +257,11 @@ onMounted(async () => {
                   >
                     <i class="ti ti-external-link"></i>
                   </a>
-                  <span v-else class="text-muted">—</span>
+                  <TextoVacio v-else />
                 </td>
                 <td class="notas-cell">
                   <span v-if="correo.notas" :title="correo.notas">{{ correo.notas }}</span>
-                  <span v-else class="text-muted">—</span>
+                  <TextoVacio v-else />
                 </td>
                 <td>
                   <div class="actions">
@@ -264,7 +276,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
       </div>
     </main>

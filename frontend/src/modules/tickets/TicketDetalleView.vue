@@ -1,23 +1,22 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { insforgeApi } from '../../api/insforge.js';
-import { getClient } from '../../api/insforge.js';
+import { storeToRefs } from 'pinia';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
 import { estadoInfo, OPCIONES_PRIORIDAD as PRIORIDADES, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, EVENTO_LABELS } from '../../core/dominio-tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
+import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const store = useTicketDetalleStore();
 
-const ticket = ref(null);
-const comentarios = ref([]);
-const eventos = ref([]);
-const satisfaccion = ref(null);
-const staffLista = ref([]);
-const cargando = ref(true);
+const { ticket, comentarios, eventos, satisfaccion, cargando, staffActivo, staffPorId } = storeToRefs(store);
+
 const guardandoCampo = ref(false);
 
 const nuevoComentario = ref('');
@@ -27,39 +26,19 @@ const enviandoComentario = ref(false);
 const mostrarHoja = ref(false);
 const cargandoHoja = ref(false);
 
-const staffPorId = computed(() => {
-  const mapa = {};
-  for (const s of staffLista.value) mapa[s.user_id] = s.nombre;
-  return mapa;
-});
-
 function autorDe(autorId) {
   return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
 }
 
 async function cargar() {
-  cargando.value = true;
   try {
-    const [t, coms, staff] = await Promise.all([
-      insforgeApi.getTicket(route.params.id),
-      insforgeApi.listComentariosTicket(route.params.id),
-      insforgeApi.listStaff(),
-    ]);
-    if (!t) {
+    await store.cargar(route.params.id);
+    if (!ticket.value) {
       showToast('Ticket no encontrado', 'error');
       router.replace('/tickets');
-      return;
-    }
-    ticket.value = t;
-    comentarios.value = coms;
-    staffLista.value = staff.filter((s) => s.activo);
-    if (t.estado !== 'abierto') {
-      satisfaccion.value = await insforgeApi.getSatisfaccionTicket(route.params.id);
     }
   } catch (e) {
     showToast(e?.message || 'Error al cargar el ticket', 'error');
-  } finally {
-    cargando.value = false;
   }
 }
 
@@ -89,14 +68,12 @@ async function confirmarIniciar() {
   }
   iniciando.value = true;
   try {
-    const datos = {
+    await store.actualizarCampos({
       estado: 'en_progreso',
       prioridad: iniciarForm.value.prioridad,
       nivel_atencion: iniciarForm.value.nivelAtencion,
       asignado_a: iniciarForm.value.asignadoA,
-    };
-    await insforgeApi.actualizarTicket(ticket.value.id, datos);
-    Object.assign(ticket.value, datos);
+    });
     mostrarIniciar.value = false;
     showToast('Ticket en atención');
   } catch (e) {
@@ -125,10 +102,8 @@ async function confirmarRechazar() {
   }
   rechazando.value = true;
   try {
-    await insforgeApi.crearComentarioTicket(ticket.value.id, motivo, false);
-    await insforgeApi.actualizarTicket(ticket.value.id, { estado: 'rechazado' });
-    ticket.value.estado = 'rechazado';
-    comentarios.value = await insforgeApi.listComentariosTicket(ticket.value.id);
+    await store.comentar(motivo, false);
+    await store.actualizarCampos({ estado: 'rechazado' });
     mostrarRechazar.value = false;
     showToast('Ticket rechazado');
   } catch (e) {
@@ -145,17 +120,14 @@ const resolviendo = ref(false);
 async function marcarResuelto() {
   resolviendo.value = true;
   try {
-    await insforgeApi.actualizarTicket(ticket.value.id, { estado: 'resuelto' });
-    await insforgeApi.actualizarTicket(ticket.value.id, { estado: 'cerrado' });
-    ticket.value.estado = 'cerrado';
+    await store.actualizarCampos({ estado: 'resuelto' });
+    await store.actualizarCampos({ estado: 'cerrado' });
     showToast('Ticket resuelto y cerrado');
     try {
-      const { data } = await getClient().functions.invoke('tickets', {
-        body: { action: 'enviarEncuesta', ticketId: ticket.value.id },
-      });
+      const data = await store.enviarEncuesta();
       if (data?.enviado) showToast('Encuesta de satisfacción enviada al correo del empleado');
     } catch { /* mejor esfuerzo: no bloquea el cierre del ticket */ }
-    satisfaccion.value = await insforgeApi.getSatisfaccionTicket(ticket.value.id);
+    await store.recargarSatisfaccion();
   } catch (e) {
     showToast(e?.message || 'No se pudo marcar como resuelto', 'error');
   } finally {
@@ -169,8 +141,7 @@ const reabriendo = ref(false);
 async function reabrirTicket() {
   reabriendo.value = true;
   try {
-    await insforgeApi.actualizarTicket(ticket.value.id, { estado: 'reabierto' });
-    ticket.value.estado = 'reabierto';
+    await store.actualizarCampos({ estado: 'reabierto' });
     showToast('Ticket reabierto');
   } catch (e) {
     showToast(e?.message || 'No se pudo reabrir el ticket', 'error');
@@ -182,8 +153,7 @@ async function reabrirTicket() {
 async function cambiarNivelAtencion(valor) {
   guardandoCampo.value = true;
   try {
-    await insforgeApi.actualizarTicket(ticket.value.id, { nivel_atencion: valor || null });
-    ticket.value.nivel_atencion = valor || null;
+    await store.actualizarCampos({ nivel_atencion: valor || null });
   } catch (e) {
     showToast(e?.message || 'Error al cambiar el nivel de atención', 'error');
   } finally {
@@ -194,8 +164,7 @@ async function cambiarNivelAtencion(valor) {
 async function cambiarPrioridad(nuevaPrioridad) {
   guardandoCampo.value = true;
   try {
-    await insforgeApi.actualizarTicket(ticket.value.id, { prioridad: nuevaPrioridad });
-    ticket.value.prioridad = nuevaPrioridad;
+    await store.actualizarCampos({ prioridad: nuevaPrioridad });
   } catch (e) {
     showToast(e?.message || 'Error al cambiar la prioridad', 'error');
   } finally {
@@ -206,8 +175,7 @@ async function cambiarPrioridad(nuevaPrioridad) {
 async function cambiarAsignado(staffId) {
   guardandoCampo.value = true;
   try {
-    await insforgeApi.actualizarTicket(ticket.value.id, { asignado_a: staffId || null });
-    ticket.value.asignado_a = staffId || null;
+    await store.actualizarCampos({ asignado_a: staffId || null });
     showToast(staffId ? 'Ticket asignado' : 'Asignación quitada');
   } catch (e) {
     showToast(e?.message || 'Error al asignar', 'error');
@@ -219,9 +187,7 @@ async function cambiarAsignado(staffId) {
 async function toggleFlag(campo) {
   guardandoCampo.value = true;
   try {
-    const valor = !ticket.value[campo];
-    await insforgeApi.actualizarTicket(ticket.value.id, { [campo]: valor });
-    ticket.value[campo] = valor;
+    await store.actualizarCampos({ [campo]: !ticket.value[campo] });
   } catch (e) {
     showToast(e?.message || 'Error al guardar', 'error');
   } finally {
@@ -234,9 +200,8 @@ async function enviarComentario() {
   if (!mensaje) return;
   enviandoComentario.value = true;
   try {
-    await insforgeApi.crearComentarioTicket(ticket.value.id, mensaje, comentarioInterno.value);
+    await store.comentar(mensaje, comentarioInterno.value);
     nuevoComentario.value = '';
-    comentarios.value = await insforgeApi.listComentariosTicket(ticket.value.id);
   } catch (e) {
     showToast(e?.message || 'Error al comentar', 'error');
   } finally {
@@ -248,7 +213,7 @@ async function abrirHoja() {
   mostrarHoja.value = true;
   cargandoHoja.value = true;
   try {
-    eventos.value = await insforgeApi.listEventosTicket(ticket.value.id);
+    await store.cargarEventos();
   } catch (e) {
     showToast(e?.message || 'Error al cargar la hoja de vida', 'error');
   } finally {
@@ -257,31 +222,30 @@ async function abrirHoja() {
 }
 
 onMounted(cargar);
+onUnmounted(() => store.limpiar());
 </script>
 
 <template>
   <div class="ticket-detalle-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-left">
-          <button class="icon-btn btn-volver" type="button" title="Volver a tickets" @click="router.push('/tickets')">
-            <i class="ti ti-arrow-left"></i>
-          </button>
-          <template v-if="ticket">
-            <div class="header-emp">
-              <h1>
-                <span class="tk-codigo">{{ ticket.codigo }}</span>
-                {{ ticket.titulo }}
-              </h1>
-              <span class="header-sub">{{ ticket.categoria_nombre }}{{ ticket.subcategoria_nombre ? ` · ${ticket.subcategoria_nombre}` : '' }}</span>
-            </div>
-          </template>
+    <PageHeader>
+      <template #izquierda>
+        <button class="icon-btn btn-volver" type="button" title="Volver a tickets" @click="router.push('/tickets')">
+          <i class="ti ti-arrow-left"></i>
+        </button>
+        <div v-if="ticket" class="header-emp">
+          <h1>
+            <span class="tk-codigo">{{ ticket.codigo }}</span>
+            {{ ticket.titulo }}
+          </h1>
+          <span class="header-sub">{{ ticket.categoria_nombre }}{{ ticket.subcategoria_nombre ? ` · ${ticket.subcategoria_nombre}` : '' }}</span>
         </div>
-        <button v-if="ticket" class="btn" type="button" @click="abrirHoja">
+      </template>
+      <template v-if="ticket" #acciones>
+        <button class="btn" type="button" @click="abrirHoja">
           <i class="ti ti-history" aria-hidden="true"></i> Hoja de vida
         </button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <main class="page page--padded">
       <div v-if="cargando" class="no-results">Cargando ticket...</div>
@@ -318,7 +282,7 @@ onMounted(cargar);
           <div class="tk-seccion">
             <div class="datos-title">
               <i class="ti ti-adjustments"></i> Gestión
-              <span class="badge tk-estado-badge" :class="estadoInfo(ticket.estado).clase">{{ estadoInfo(ticket.estado).label }}</span>
+              <BadgeEstado tipo="ticket" :valor="ticket.estado" class="tk-estado-badge" />
             </div>
 
             <!-- abierto: Rechazar / Iniciar -->
@@ -350,7 +314,7 @@ onMounted(cargar);
                 <label for="in-asignado">Asignado a *</label>
                 <select id="in-asignado" v-model="iniciarForm.asignadoA" :disabled="iniciando">
                   <option value="" disabled>Seleccionar</option>
-                  <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">
+                  <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">
                     {{ s.user_id === auth.user?.id ? `${s.nombre} (yo)` : s.nombre }}
                   </option>
                 </select>
@@ -396,7 +360,7 @@ onMounted(cargar);
                 <label for="tk-asignado">Asignado a</label>
                 <select id="tk-asignado" :value="ticket.asignado_a || ''" :disabled="guardandoCampo" @change="cambiarAsignado($event.target.value)">
                   <option value="">Sin asignar</option>
-                  <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+                  <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
                 </select>
               </div>
               <button class="btn btn-primary tk-btn-resolver" type="button" :disabled="resolviendo" @click="marcarResuelto">

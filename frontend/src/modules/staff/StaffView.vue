@@ -6,6 +6,8 @@ import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 
 const store = useStaffStore();
 const authStore = useAuthStore();
@@ -61,11 +63,12 @@ onMounted(async () => {
 
         <div v-else-if="error" class="no-results staff-error">{{ error }}</div>
 
-        <div v-else-if="lista.length === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-users"></i></div>
-          <h3>Sin miembros</h3>
-          <p>Los miembros del staff se crean desde el panel de InsForge Auth.</p>
-        </div>
+        <EmptyState
+          v-else-if="lista.length === 0"
+          icono="ti ti-users"
+          titulo="Sin miembros"
+          mensaje="Los miembros del staff se crean desde el panel de InsForge Auth."
+        />
 
         <div v-else class="table-wrap">
           <table aria-label="Miembros del staff">
@@ -99,9 +102,7 @@ onMounted(async () => {
                   </span>
                 </td>
                 <td>
-                  <span class="status" :class="miembro.activo ? 'badge--success' : 'badge--neutral'">
-                    {{ miembro.activo ? 'Activo' : 'Inactivo' }}
-                  </span>
+                  <BadgeEstado tipo="activo_staff" :valor="miembro.activo" status />
                 </td>
                 <td>
                   <div class="actions">

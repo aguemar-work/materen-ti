@@ -2,17 +2,20 @@
 // Catálogo de tipos de equipo con sus plantillas: qué specs pide cada
 // tipo y qué accesorios sugiere al registrar/entregar un equipo.
 import { ref, computed, onMounted } from 'vue';
-import { insforgeApi } from '../../api/insforge.js';
+import { storeToRefs } from 'pinia';
+import { useTiposEquipoStore } from '../../stores/catalogos.js';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
+const store = useTiposEquipoStore();
+const { lista, cargando } = storeToRefs(store);
 const equiposStore = useEquiposStore();
 
-const lista = ref([]);
-const cargando = ref(true);
 const guardando = ref(false);
 
 const mostrarForm = ref(false);
@@ -56,14 +59,10 @@ async function guardar() {
       accesorios_sugeridos: aLista(form.value.accesorios),
     };
     if (esEdicion.value) {
-      const actualizado = await insforgeApi.updateTipoEquipo(editar.value.id, datos);
-      const idx = lista.value.findIndex((t) => t.id === editar.value.id);
-      if (idx !== -1) lista.value[idx] = actualizado;
+      await store.actualizar(editar.value.id, datos);
       showToast('Tipo de equipo actualizado');
     } else {
-      const nuevo = await insforgeApi.createTipoEquipo({ ...datos, id: slugDe(form.value.nombre) });
-      lista.value.push(nuevo);
-      lista.value.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+      await store.crear({ ...datos, id: slugDe(form.value.nombre) });
       showToast('Tipo de equipo creado');
     }
     // El formulario de equipos usa este catálogo: refrescar su copia
@@ -81,8 +80,8 @@ async function guardar() {
 async function eliminar(t) {
   if (!confirm(`¿Eliminar el tipo "${t.nombre}"?\nLos equipos existentes de este tipo no se ven afectados.`)) return;
   try {
-    await insforgeApi.softDeleteTipoEquipo(t.id);
-    lista.value = lista.value.filter((x) => x.id !== t.id);
+    await store.softDelete(t.id);
+    // El formulario de equipos usa este catálogo: refrescar su copia
     equiposStore.tipos = [...lista.value];
     showToast('Tipo eliminado');
   } catch (e) {
@@ -92,11 +91,9 @@ async function eliminar(t) {
 
 onMounted(async () => {
   try {
-    lista.value = await insforgeApi.listTiposEquipo();
+    await store.cargar();
   } catch (e) {
     showToast(e?.message || 'Error al cargar tipos de equipo', 'error');
-  } finally {
-    cargando.value = false;
   }
 });
 </script>
@@ -116,6 +113,17 @@ onMounted(async () => {
 
       <div v-if="cargando" class="no-results">Cargando tipos...</div>
 
+      <EmptyState
+        v-else-if="lista.length === 0"
+        icono="ti ti-devices"
+        titulo="Sin tipos de equipo"
+        mensaje="Crea plantillas con los campos y accesorios que pide cada tipo."
+      >
+        <button class="btn" type="button" @click="abrirNuevo">
+          <i class="ti ti-plus"></i> Nuevo tipo
+        </button>
+      </EmptyState>
+
       <div v-else class="table-wrap">
         <table aria-label="Tipos de equipo">
           <thead>
@@ -132,13 +140,13 @@ onMounted(async () => {
               <td>
                 <div class="chips">
                   <span v-for="c in t.campos_spec" :key="c" class="chip">{{ c }}</span>
-                  <span v-if="!t.campos_spec?.length" class="text-muted">—</span>
+                  <TextoVacio v-if="!t.campos_spec?.length" />
                 </div>
               </td>
               <td>
                 <div class="chips">
                   <span v-for="a in t.accesorios_sugeridos" :key="a" class="chip chip--acc">{{ a }}</span>
-                  <span v-if="!t.accesorios_sugeridos?.length" class="text-muted">—</span>
+                  <TextoVacio v-if="!t.accesorios_sugeridos?.length" />
                 </div>
               </td>
               <td>

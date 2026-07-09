@@ -5,6 +5,8 @@ import { usePlataformasStore } from '../../stores/plataformas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const store = usePlataformasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -117,14 +119,16 @@ onMounted(async () => {
 
         <div v-else-if="error" class="no-results plataformas-error">{{ error }}</div>
 
-        <div v-else-if="listaFiltrada.length === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-apps"></i></div>
-          <h3>Sin plataformas</h3>
-          <p>{{ busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera plataforma.' }}</p>
+        <EmptyState
+          v-else-if="listaFiltrada.length === 0"
+          icono="ti ti-apps"
+          titulo="Sin plataformas"
+          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera plataforma.'"
+        >
           <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
             <i class="ti ti-plus"></i> Agregar plataforma
           </button>
-        </div>
+        </EmptyState>
 
         <div v-else class="table-wrap">
           <table aria-label="Plataformas registradas">
@@ -149,7 +153,7 @@ onMounted(async () => {
                     <i :class="plat.icono" aria-hidden="true"></i>
                     <span>{{ plat.icono }}</span>
                   </span>
-                  <span v-else class="text-muted">—</span>
+                  <TextoVacio v-else />
                 </td>
                 <td>
                   <div class="actions">

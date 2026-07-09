@@ -115,7 +115,7 @@ async function onCambiarPassword() {
 <template>
   <div class="login-page">
     <div class="login-card card">
-      <img src="/logo_materen_sisti.svg" alt="Sistema TI" class="login-logo">
+      <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" class="login-logo">
 
       <h2 class="login-title">{{ titulo }}</h2>
       <p v-if="subtitulo" class="login-subtitle">{{ subtitulo }}</p>

@@ -1,21 +1,114 @@
 // Dominio equipos: inventario, asignaciones a personas/ubicaciones,
 // devoluciones, fotos y hoja de vida (eventos).
 import { getClient } from '../client.js';
+import { sanitizarTermino } from '../sanitizar.js';
 import { toTitleCase, trimText } from '../../core/formatters.js';
 
+const SELECT_EQUIPO = `
+  id, codigo, tipo_id, marca, modelo, serie, empresa_id, estado,
+  fecha_compra, costo, moneda, garantia_hasta, specs, accesorios, fotos, notas,
+  tipos_equipo(nombre),
+  empresas(nombre),
+  asignaciones_equipo(id, fecha_fin, fecha_inicio, empleado_id, ubicacion_id, condicion_entrega, empleados(nombres, apellidos, estado), ubicaciones(nombre))
+`;
+
+async function idsEquiposConAsignacionActiva(filtro = {}) {
+  let q = getClient().database
+    .from('asignaciones_equipo')
+    .select('equipo_id')
+    .is('fecha_fin', null);
+  if (filtro.empleado_id) q = q.not('empleado_id', 'is', null);
+  if (filtro.ubicacion_id) q = q.not('ubicacion_id', 'is', null);
+  const { data, error } = await q;
+  if (error) throw error;
+  return [...new Set((data || []).map((a) => a.equipo_id))];
+}
+
+async function aplicarFiltroSituacion(query, situacion) {
+  if (!situacion) return query;
+  if (['en_reparacion', 'de_baja', 'perdido'].includes(situacion)) {
+    return query.eq('estado', situacion);
+  }
+  if (situacion === 'asignado') {
+    return query
+      .eq('estado', 'operativo')
+      .not('asignaciones_equipo.empleado_id', 'is', null)
+      .is('asignaciones_equipo.fecha_fin', null);
+  }
+  if (situacion === 'en_ubicacion') {
+    return query
+      .eq('estado', 'operativo')
+      .not('asignaciones_equipo.ubicacion_id', 'is', null)
+      .is('asignaciones_equipo.fecha_fin', null);
+  }
+  if (situacion === 'disponible') {
+    const ocupados = await idsEquiposConAsignacionActiva();
+    let q = query.eq('estado', 'operativo');
+    if (ocupados.length) q = q.not('id', 'in', `(${ocupados.join(',')})`);
+    return q;
+  }
+  return query;
+}
+
+async function queryEquipos({ q = '', tipoId = '', situacion = '' } = {}, { conteo = false } = {}) {
+  let query = getClient().database
+    .from('equipos')
+    .select(SELECT_EQUIPO, conteo ? { count: 'exact' } : undefined)
+    .is('deleted_at', null);
+  if (tipoId) query = query.eq('tipo_id', tipoId);
+  query = await aplicarFiltroSituacion(query, situacion);
+  const qSafe = sanitizarTermino(q);
+  if (qSafe.length >= 2) {
+    const db = getClient().database;
+    let idClause = '';
+    const { data: emps } = await db.from('empleados').select('id')
+      .or(`nombres.ilike.%${qSafe}%,apellidos.ilike.%${qSafe}%`)
+      .limit(50);
+    if (emps?.length) {
+      const { data: asigs } = await db.from('asignaciones_equipo').select('equipo_id')
+        .in('empleado_id', emps.map((e) => e.id))
+        .is('fecha_fin', null);
+      if (asigs?.length) {
+        const ids = [...new Set(asigs.map((a) => a.equipo_id))];
+        idClause += `,id.in.(${ids.join(',')})`;
+      }
+    }
+    const { data: ubs } = await db.from('ubicaciones').select('id')
+      .ilike('nombre', `%${qSafe}%`)
+      .limit(30);
+    if (ubs?.length) {
+      const { data: asigsUb } = await db.from('asignaciones_equipo').select('equipo_id')
+        .in('ubicacion_id', ubs.map((u) => u.id))
+        .is('fecha_fin', null);
+      if (asigsUb?.length) {
+        const idsUb = [...new Set(asigsUb.map((a) => a.equipo_id))];
+        idClause += `,id.in.(${idsUb.join(',')})`;
+      }
+    }
+    query = query.or(`codigo.ilike.%${qSafe}%,marca.ilike.%${qSafe}%,modelo.ilike.%${qSafe}%,serie.ilike.%${qSafe}%${idClause}`);
+  }
+  return query.order('codigo', { ascending: true });
+}
+
 export const equiposApi = {
+  async listEquiposPage({ pagina = 1, tamPagina = 20, q = '', tipoId = '', situacion = '' } = {}) {
+    const desde = (pagina - 1) * tamPagina;
+    const query = await queryEquipos({ q, tipoId, situacion }, { conteo: true });
+    const { data, count, error } = await query.range(desde, desde + tamPagina - 1);
+    if (error) throw error;
+    return { items: (data || []).map(mapEquipo), total: count ?? 0 };
+  },
+
+  async listEquiposFiltrados(filtros = {}) {
+    const query = await queryEquipos(filtros);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map(mapEquipo);
+  },
+
   async listEquipos() {
-    const { data, error } = await getClient().database
-      .from('equipos')
-      .select(`
-        id, codigo, tipo_id, marca, modelo, serie, empresa_id, estado,
-        fecha_compra, costo, moneda, garantia_hasta, specs, accesorios, fotos, notas,
-        tipos_equipo(nombre),
-        empresas(nombre),
-        asignaciones_equipo(id, fecha_fin, fecha_inicio, empleado_id, ubicacion_id, condicion_entrega, empleados(nombres, apellidos, estado), ubicaciones(nombre))
-      `)
-      .is('deleted_at', null)
-      .order('codigo', { ascending: true });
+    const query = await queryEquipos();
+    const { data, error } = await query;
     if (error) throw error;
     return (data || []).map(mapEquipo);
   },

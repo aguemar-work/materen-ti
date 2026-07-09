@@ -1,9 +1,15 @@
 import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
 
+// Paginación server-side en la lista; tipos y ubicaciones se cachean
+// (catálogos pequeños, no cambian con cada página).
 export const useEquiposStore = defineStore('equipos', {
   state: () => ({
     lista: [],
+    total: 0,
+    pagina: 1,
+    tamPagina: 20,
+    filtros: { q: '', tipoId: '', situacion: '' },
     tipos: [],
     ubicaciones: [],
     cargando: false,
@@ -15,12 +21,17 @@ export const useEquiposStore = defineStore('equipos', {
       this.cargando = true;
       this.error = null;
       try {
-        const [lista, tipos, ubicaciones] = await Promise.all([
-          insforgeApi.listEquipos(),
+        const [pageRes, tipos, ubicaciones] = await Promise.all([
+          insforgeApi.listEquiposPage({
+            pagina: this.pagina,
+            tamPagina: this.tamPagina,
+            ...this.filtros,
+          }),
           this.tipos.length ? Promise.resolve(this.tipos) : insforgeApi.listTiposEquipo(),
-          insforgeApi.listUbicaciones(),
+          this.ubicaciones.length ? Promise.resolve(this.ubicaciones) : insforgeApi.listUbicaciones(),
         ]);
-        this.lista = lista;
+        this.lista = pageRes.items;
+        this.total = pageRes.total;
         this.tipos = tipos;
         this.ubicaciones = ubicaciones;
       } catch (e) {
@@ -29,6 +40,21 @@ export const useEquiposStore = defineStore('equipos', {
       } finally {
         this.cargando = false;
       }
+    },
+
+    async irAPagina(pagina) {
+      this.pagina = pagina;
+      await this.cargar();
+    },
+
+    async aplicarFiltros(filtros) {
+      this.filtros = { ...this.filtros, ...filtros };
+      this.pagina = 1;
+      await this.cargar();
+    },
+
+    async listaParaExportar() {
+      return insforgeApi.listEquiposFiltrados(this.filtros);
     },
 
     async crear(datos) {
@@ -52,7 +78,7 @@ export const useEquiposStore = defineStore('equipos', {
     async softDelete(id) {
       this.error = null;
       await insforgeApi.softDeleteEquipo(id);
-      this.lista = this.lista.filter((e) => e.id !== id);
+      await this.cargar();
     },
 
     async asignar(equipoId, empleadoId, condicionEntrega) {

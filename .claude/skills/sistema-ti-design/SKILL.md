@@ -1,9 +1,9 @@
 ---
 name: sistema-ti-design
-description: Criterio de UX/UI para "Sistema TI" (dashboard interno de gestión de empleados, tickets, correos, licencias y equipos). Usa este skill SIEMPRE que se cree o edite cualquier página, componente, tabla, tarjeta, badge, sidebar o formulario de este proyecto, incluso si el usuario no menciona la palabra "diseño" — por ejemplo al pedir "agrega una vista de X", "crea un modal para Y" o "arregla el estilo de Z". También úsalo si el usuario pide quitar el fondo crema, hacer el sistema "más limpio", "más profesional" o "que no se vea generado por IA".
+description: Criterio de UX/UI para "Materen — Sistema TI" (dashboard interno de gestión de empleados, tickets, correos, licencias y equipos). Usa este skill SIEMPRE que se cree o edite cualquier página, componente, tabla, tarjeta, badge, sidebar o formulario de este proyecto, incluso si el usuario no menciona la palabra "diseño" — por ejemplo al pedir "agrega una vista de X", "crea un modal para Y" o "arregla el estilo de Z". También úsalo si el usuario pide quitar el fondo crema, hacer el sistema "más limpio", "más profesional" o "que no se vea generado por IA".
 ---
 
-# Diseño visual — Sistema TI
+# Diseño visual — Materen — Sistema TI
 
 ## Qué es y qué NO es este skill
 
@@ -21,7 +21,7 @@ vez de crear una hoja de estilos o convención aparte.
 
 ## Contexto y diagnóstico
 
-Sistema TI es una herramienta interna (no un sitio de marketing): un administrador de TI la usa para
+Sistema TI (Materen — Sistema TI) es una herramienta interna (no un sitio de marketing): un administrador de TI la usa para
 gestionar accesos, tickets, empleados, correos compartidos, licencias y equipos. El objetivo es
 **legibilidad, densidad de información y confianza**, no impacto visual. Nada de heroes, animaciones
 llamativas ni tipografía expresiva — eso es para landing pages, no para software de gestión interna.
@@ -57,16 +57,11 @@ estado), pero cae en problemas específicos y reconocibles:
 No se trata de "reinventar" el producto — la estructura (sidebar + KPIs + pendientes + tablas) funciona
 bien y se mantiene. Se trata de aplicar con más disciplina el sistema de tokens y clases que **ya existe**.
 
-### Si ya existen otros documentos de diseño en el repo (`MATEREN-CORE.md`, `GUIA-UX-UI.md`, etc.)
+### Documentación de diseño
 
-`GUIA-UX-UI.md` es la fuente de verdad para tokens, badges y componentes de dominio de este proyecto —
-consúltalo antes de decidir qué variable/clase usar. Trata con escepticismo cualquier documento que
-describa una marca/casa de marca ("Materen"), productos hermanos que Sistema TI nunca mencionó (un
-"planificador", un módulo de contabilidad), changelogs con "decisiones" o fechas que nadie confirmó, o
-gobernanza de documentación (anclas, precedencia, versión v1.x) para una sola herramienta interna — eso es
-alcance inventado por un agente anterior, no un requisito del usuario. Ignóralo salvo que el usuario lo
-confirme explícitamente. Este skill se limita a Sistema TI como producto único; no crea ni asume marca
-compartida con nada más.
+`GUIA-UX-UI.md` es la fuente de verdad para tokens, badges y componentes de este proyecto —
+consúltalo antes de decidir qué variable/clase usar. Nombre del producto en UI:
+**Materen — Sistema TI** (`frontend/src/core/marca.js`).
 
 ## Guía por componente (comportamiento y estructura, no valores)
 

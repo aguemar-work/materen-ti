@@ -9,6 +9,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { catalogoTickets, crearTicket } from '../../api/ticketsPublicos.js';
 import { comprimirImagen, archivoABase64 } from '../../core/imagenes.js';
+import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 const route = useRoute();
 const tokenEntrega = route.query.entrega ? String(route.query.entrega) : '';
@@ -105,17 +106,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="ticket-page">
-    <div class="ticket-card card">
-      <div class="brand ticket-brand">
-        <div class="brand-icon">
-          <i class="ti ti-headset" aria-hidden="true"></i>
-        </div>
-        <div class="brand-text">
-          <h1>Sistema TI</h1>
-          <span>Soporte técnico</span>
-        </div>
-      </div>
+  <div class="public-page">
+    <div class="card public-card">
+      <PublicBrand subtitulo="Soporte técnico" />
 
       <template v-if="estado === 'cargando_catalogo'">
         <p class="ticket-texto">Cargando formulario...</p>
@@ -227,8 +220,12 @@ onMounted(async () => {
         <RouterLink class="ticket-link" :to="`/ticket/${resultado.token}`">
           {{ resultado.codigo }} — Ver seguimiento
         </RouterLink>
+        <p class="aviso-correo-off">
+          <i class="ti ti-info-circle" aria-hidden="true"></i>
+          <span>Guarda el enlace de arriba: es tu comprobante. El correo automático puede no enviarse; el seguimiento siempre funciona desde este enlace o buscando por DNI.</span>
+        </p>
         <p v-if="resultado.vinculado" class="ticket-texto ticket-nota">
-          Si dejaste un correo, también te enviamos este enlace por si lo necesitas después.
+          Si dejaste un correo, intentamos enviarte este enlace — no dependas solo del correo.
         </p>
         <p v-else class="ticket-texto ticket-nota">
           No pudimos identificarte automáticamente — un agente revisará tu caso a la brevedad.
@@ -242,24 +239,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.ticket-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-}
-
-.ticket-card {
-  width: 100%;
-  max-width: 480px;
-  padding: 2rem;
-}
-
-.ticket-brand {
-  margin-bottom: 1.5rem;
-}
-
 .ticket-title {
   font-size: var(--fs-xl);
   font-weight: 600;

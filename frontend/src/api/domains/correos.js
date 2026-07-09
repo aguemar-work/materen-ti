@@ -1,13 +1,51 @@
 // Dominio correos compartidos/reutilizables: catálogo asignable, CRUD
 // y asignación de cuentas existentes a empleados.
 import { getClient } from '../client.js';
+import { sanitizarTermino } from '../sanitizar.js';
 import { cifrarPassword } from '../passwords.js';
 import { toLower, trimText } from '../../core/formatters.js';
 import { mapAsignacion } from './cuentas.js';
 
+const SELECT_CORREO = 'id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono), asignaciones_cuenta(fecha_fin, empleados(nombres, apellidos))';
+
+async function queryCorreos({ q = '', tipo = '' } = {}, { conteo = false } = {}) {
+  let query = getClient().database
+    .from('cuentas')
+    .select(SELECT_CORREO, conteo ? { count: 'exact' } : undefined)
+    .in('tipo_cuenta', ['reutilizable', 'compartida'])
+    .is('deleted_at', null);
+  if (tipo) query = query.eq('tipo_cuenta', tipo);
+  const qSafe = sanitizarTermino(q);
+  if (qSafe.length >= 2) {
+    const { data: plats } = await getClient().database
+      .from('plataformas')
+      .select('id')
+      .ilike('nombre', `%${qSafe}%`)
+      .limit(30);
+    const extra = plats?.length ? `,plataforma_id.in.(${plats.map((p) => p.id).join(',')})` : '';
+    query = query.or(`usuario.ilike.%${qSafe}%${extra}`);
+  }
+  return query.order('created_at', { ascending: true });
+}
+
 // ── Correos Compartidos ──────────────────────────────────────────────────────
 
 export const correosApi = {
+  async listCorreosPage({ pagina = 1, tamPagina = 20, q = '', tipo = '' } = {}) {
+    const desde = (pagina - 1) * tamPagina;
+    const query = await queryCorreos({ q, tipo }, { conteo: true });
+    const { data, count, error } = await query.range(desde, desde + tamPagina - 1);
+    if (error) throw error;
+    return { items: (data || []).map(mapCorreo), total: count ?? 0 };
+  },
+
+  async listCorreosFiltrados({ q = '', tipo = '' } = {}) {
+    const query = await queryCorreos({ q, tipo });
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map(mapCorreo);
+  },
+
   async listCorreosAsignables() {
     const db = getClient().database;
 
@@ -35,15 +73,10 @@ export const correosApi = {
   },
 
   async listCorreosCompartidos() {
-    const { data, error } = await getClient().database
-      .from('cuentas')
-      .select('id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono), asignaciones_cuenta(fecha_fin, empleados(nombres, apellidos))')
-      .in('tipo_cuenta', ['reutilizable', 'compartida'])
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true });
+    const query = await queryCorreos();
+    const { data, error } = await query;
     if (error) throw error;
-    const items = (data || []).map(mapCorreo);
-    return items;
+    return (data || []).map(mapCorreo);
   },
 
   async createCorreo(datos) {

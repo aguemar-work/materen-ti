@@ -3,11 +3,17 @@
 // Mismo patrón de catálogo editable que Tipos de equipo/Ubicaciones,
 // con un nivel anidado extra.
 import { ref, onMounted } from 'vue';
+import { storeToRefs } from 'pinia';
 import { insforgeApi } from '../../api/insforge.js';
+import { useCategoriasTicketStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
+import EmptyState from '../../components/shared/EmptyState.vue';
 
-const categorias = ref([]);
+// Las categorías viven en el store de catálogos; las subcategorías son
+// un detalle de este panel y se quedan locales (insforgeApi directo).
+const catStore = useCategoriasTicketStore();
+const { lista: categorias } = storeToRefs(catStore);
 const subcategorias = ref([]);
 const cargando = ref(true);
 const guardando = ref(false);
@@ -49,14 +55,10 @@ async function guardarCategoria() {
   guardando.value = true;
   try {
     if (catEditar.value) {
-      const actualizada = await insforgeApi.updateCategoriaTicket(catEditar.value.id, catForm.value);
-      const idx = categorias.value.findIndex((c) => c.id === catEditar.value.id);
-      if (idx !== -1) categorias.value[idx] = actualizada;
+      await catStore.actualizar(catEditar.value.id, catForm.value);
       showToast('Categoría actualizada');
     } else {
-      const nueva = await insforgeApi.createCategoriaTicket({ id: slugDe(catForm.value.nombre), nombre: catForm.value.nombre });
-      categorias.value.push(nueva);
-      categorias.value.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+      await catStore.crear({ id: slugDe(catForm.value.nombre), nombre: catForm.value.nombre });
       showToast('Categoría creada');
     }
     mostrarCatForm.value = false;
@@ -74,8 +76,7 @@ async function eliminarCategoria(cat) {
   }
   if (!confirm(`¿Eliminar la categoría "${cat.nombre}"? Los tickets existentes conservan su historial.`)) return;
   try {
-    await insforgeApi.softDeleteCategoriaTicket(cat.id);
-    categorias.value = categorias.value.filter((c) => c.id !== cat.id);
+    await catStore.softDelete(cat.id);
     showToast('Categoría eliminada');
   } catch (e) {
     showToast(e?.message || 'Error al eliminar', 'error');
@@ -107,11 +108,10 @@ async function eliminarSubcategoria(sub) {
 
 onMounted(async () => {
   try {
-    const [cats, subs] = await Promise.all([
-      insforgeApi.listCategoriasTicket(),
+    const [, subs] = await Promise.all([
+      catStore.cargar(),
       insforgeApi.listSubcategoriasTicket(),
     ]);
-    categorias.value = cats;
     subcategorias.value = subs;
   } catch (e) {
     showToast(e?.message || 'Error al cargar categorías', 'error');
@@ -136,11 +136,16 @@ onMounted(async () => {
 
       <div v-if="cargando" class="no-results">Cargando categorías...</div>
 
-      <div v-else-if="categorias.length === 0" class="empty">
-        <div class="empty-icon"><i class="ti ti-headset"></i></div>
-        <h3>Sin categorías</h3>
-        <p>Crea la primera categoría para clasificar los tickets.</p>
-      </div>
+      <EmptyState
+        v-else-if="categorias.length === 0"
+        icono="ti ti-headset"
+        titulo="Sin categorías"
+        mensaje="Crea la primera categoría para clasificar los tickets."
+      >
+        <button class="btn" type="button" @click="abrirNuevaCategoria">
+          <i class="ti ti-plus"></i> Nueva categoría
+        </button>
+      </EmptyState>
 
       <div v-else class="cat-lista">
         <div v-for="cat in categorias" :key="cat.id" class="cat-item">

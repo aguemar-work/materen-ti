@@ -6,7 +6,10 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatTelefono } from '../../core/formatters.js';
-import { claseEstado, nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
+import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
@@ -115,53 +118,52 @@ onMounted(cargar);
 
 <template>
   <div class="detalle-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-left">
-          <button class="icon-btn btn-volver" type="button" title="Volver a empleados" @click="router.push('/empleados')">
-            <i class="ti ti-arrow-left"></i>
-          </button>
-          <template v-if="empleado">
-            <div class="emp-avatar">{{ iniciales }}</div>
-            <div class="header-emp">
-              <h1>
-                {{ nombreCompleto }}
-                <span class="status" :class="claseEstado(empleado.estado)">{{ empleado.estado }}</span>
-              </h1>
-              <span class="header-sub">
-                {{ empleado.cargo || 'Sin cargo' }}{{ empleado.empresa_nombre ? ` · ${empleado.empresa_nombre}` : '' }}
-              </span>
-            </div>
-          </template>
-          <div v-else class="header-emp">
-            <h1>Empleado</h1>
+    <PageHeader>
+      <template #izquierda>
+        <button class="icon-btn btn-volver" type="button" title="Volver a empleados" @click="router.push('/empleados')">
+          <i class="ti ti-arrow-left"></i>
+        </button>
+        <template v-if="empleado">
+          <div class="emp-avatar">{{ iniciales }}</div>
+          <div class="header-emp">
+            <h1>
+              {{ nombreCompleto }}
+              <BadgeEstado tipo="empleado" :valor="empleado.estado" status />
+            </h1>
+            <span class="header-sub">
+              <TextoVacio :valor="empleado.cargo" placeholder="Sin cargo" />
+              <template v-if="empleado.empresa_nombre"> · {{ empleado.empresa_nombre }}</template>
+            </span>
           </div>
+        </template>
+        <div v-else class="header-emp">
+          <h1>Empleado</h1>
         </div>
-        <div v-if="empleado" class="header-btns">
-          <button class="btn" type="button" :disabled="procesando" @click="mostrarForm = true">
-            <i class="ti ti-pencil" aria-hidden="true"></i> Editar
-          </button>
-          <button
-            v-if="empleado.estado !== 'Inactivo'"
-            class="btn btn-baja"
-            type="button"
-            :disabled="procesando"
-            @click="mostrarBaja = true"
-          >
-            <i class="ti ti-user-off" aria-hidden="true"></i> Dar de baja
-          </button>
-          <button
-            v-else
-            class="btn btn-primary"
-            type="button"
-            :disabled="procesando"
-            @click="reactivar"
-          >
-            <i class="ti ti-user-check" aria-hidden="true"></i> Reactivar
-          </button>
-        </div>
-      </div>
-    </header>
+      </template>
+      <template v-if="empleado" #acciones>
+        <button class="btn" type="button" :disabled="procesando" @click="mostrarForm = true">
+          <i class="ti ti-pencil" aria-hidden="true"></i> Editar
+        </button>
+        <button
+          v-if="empleado.estado !== 'Inactivo'"
+          class="btn btn-baja"
+          type="button"
+          :disabled="procesando"
+          @click="mostrarBaja = true"
+        >
+          <i class="ti ti-user-off" aria-hidden="true"></i> Dar de baja
+        </button>
+        <button
+          v-else
+          class="btn btn-primary"
+          type="button"
+          :disabled="procesando"
+          @click="reactivar"
+        >
+          <i class="ti ti-user-check" aria-hidden="true"></i> Reactivar
+        </button>
+      </template>
+    </PageHeader>
 
     <main class="page page--padded detalle-body">
       <div v-if="cargando" class="no-results">Cargando empleado...</div>

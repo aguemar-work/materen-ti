@@ -5,6 +5,7 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { responderEncuesta, encuestaYaRespondida } from '../../api/ticketsPublicos.js';
+import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 const route = useRoute();
 
@@ -59,17 +60,9 @@ async function enviar() {
 </script>
 
 <template>
-  <div class="ticket-page">
-    <div class="ticket-card card">
-      <div class="brand ticket-brand">
-        <div class="brand-icon">
-          <i class="ti ti-headset" aria-hidden="true"></i>
-        </div>
-        <div class="brand-text">
-          <h1>Sistema TI</h1>
-          <span>Encuesta de satisfacción</span>
-        </div>
-      </div>
+  <div class="public-page">
+    <div class="card public-card">
+      <PublicBrand subtitulo="Encuesta de satisfacción" />
 
       <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
 
@@ -132,22 +125,6 @@ async function enviar() {
 </template>
 
 <style scoped>
-.ticket-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-}
-
-.ticket-card {
-  width: 100%;
-  max-width: 440px;
-  padding: 2rem;
-}
-
-.ticket-brand { margin-bottom: 1.5rem; }
-
 .ticket-title {
   font-size: var(--fs-xl);
   font-weight: 600;

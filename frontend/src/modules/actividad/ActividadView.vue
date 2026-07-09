@@ -9,6 +9,9 @@ import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const registros = ref([]);
 const cargando = ref(true);
@@ -62,21 +65,13 @@ onMounted(async () => {
 
 <template>
   <div class="actividad-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-title">
-          <h1>
-            <i class="ti ti-activity" aria-hidden="true"></i> Actividad
-            <span class="badge-count">{{ listaFiltrada.length }}</span>
-          </h1>
-        </div>
-        <div class="header-btns">
-          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
-            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-          </button>
-        </div>
-      </div>
-    </header>
+    <PageHeader titulo="Actividad" icono="ti ti-activity" :conteo="listaFiltrada.length">
+      <template #acciones>
+        <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
+          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+        </button>
+      </template>
+    </PageHeader>
 
     <main class="page">
       <div class="card card--fill">
@@ -92,11 +87,12 @@ onMounted(async () => {
 
         <div v-if="cargando" class="no-results">Cargando actividad...</div>
 
-        <div v-else-if="listaFiltrada.length === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-activity"></i></div>
-          <h3>Sin actividad registrada</h3>
-          <p>Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña.</p>
-        </div>
+        <EmptyState
+          v-else-if="listaFiltrada.length === 0"
+          icono="ti ti-activity"
+          titulo="Sin actividad registrada"
+          mensaje="Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña."
+        />
 
         <div v-else class="table-wrap">
           <table aria-label="Auditoría de accesos a contraseñas">
@@ -121,10 +117,10 @@ onMounted(async () => {
                   </span>
                 </td>
                 <td class="cuenta-cell">{{ r.cuenta_usuario }}</td>
-                <td :class="{ 'text-muted': !r.plataforma }">{{ r.plataforma || '—' }}</td>
+                <td><TextoVacio :valor="r.plataforma" /></td>
                 <td class="detalle-cell">
                   <span v-if="r.detalle" :title="r.detalle">{{ r.detalle }}</span>
-                  <span v-else class="text-muted">—</span>
+                  <TextoVacio v-else />
                 </td>
               </tr>
             </tbody>

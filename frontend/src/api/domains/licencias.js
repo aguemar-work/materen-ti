@@ -1,24 +1,63 @@
 // Dominio licencias: catálogo, renovaciones y asignaciones directas
 // (las licencias con login se asignan vía su correo vinculado).
 import { getClient } from '../client.js';
+import { sanitizarTermino } from '../sanitizar.js';
 import { cifrarPassword } from '../passwords.js';
 import { trimText } from '../../core/formatters.js';
+
+const SELECT_LICENCIA = `
+  id, software, tipo, cantidad, empresa_id, proveedor, fecha_vencimiento,
+  renovacion_meses, costo, moneda, cuenta_id, clave, notas,
+  empresas(nombre),
+  cuentas(id, usuario, asignaciones_cuenta(id, fecha_fin, empleados(nombres, apellidos))),
+  asignaciones_licencia(id, fecha_fin, empleados(nombres, apellidos))
+`;
+
+async function queryLicencias({ q = '' } = {}, { conteo = false } = {}) {
+  let query = getClient().database
+    .from('licencias')
+    .select(SELECT_LICENCIA, conteo ? { count: 'exact' } : undefined)
+    .is('deleted_at', null);
+  const qSafe = sanitizarTermino(q);
+  if (qSafe.length >= 2) {
+    const db = getClient().database;
+    const [empRes, cuentaRes] = await Promise.all([
+      db.from('empresas').select('id').ilike('nombre', `%${qSafe}%`).limit(30),
+      db.from('cuentas').select('id').ilike('usuario', `%${qSafe}%`).limit(30),
+    ]);
+    let clauses = `software.ilike.%${qSafe}%,proveedor.ilike.%${qSafe}%`;
+    if (empRes.data?.length) {
+      clauses += `,empresa_id.in.(${empRes.data.map((e) => e.id).join(',')})`;
+    }
+    if (cuentaRes.data?.length) {
+      clauses += `,cuenta_id.in.(${cuentaRes.data.map((c) => c.id).join(',')})`;
+    }
+    query = query.or(clauses);
+  }
+  return query.order('software', { ascending: true });
+}
 
 // ── Licencias ────────────────────────────────────────────────────────────────
 
 export const licenciasApi = {
+  async listLicenciasPage({ pagina = 1, tamPagina = 20, q = '' } = {}) {
+    const desde = (pagina - 1) * tamPagina;
+    const query = await queryLicencias({ q }, { conteo: true });
+    const { data, count, error } = await query.range(desde, desde + tamPagina - 1);
+    if (error) throw error;
+    return { items: (data || []).map(mapLicencia), total: count ?? 0 };
+  },
+
+  async listLicenciasFiltrados({ q = '' } = {}) {
+    const query = await queryLicencias({ q });
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map(mapLicencia);
+  },
+
   async listLicencias() {
-    const { data, error } = await getClient().database
-      .from('licencias')
-      .select(`
-        id, software, tipo, cantidad, empresa_id, proveedor, fecha_vencimiento,
-        renovacion_meses, costo, moneda, cuenta_id, clave, notas,
-        empresas(nombre),
-        cuentas(id, usuario, asignaciones_cuenta(id, fecha_fin, empleados(nombres, apellidos))),
-        asignaciones_licencia(id, fecha_fin, empleados(nombres, apellidos))
-      `)
-      .is('deleted_at', null)
-      .order('software', { ascending: true });
+    const query = await queryLicencias();
+    const { data, error } = await query;
     if (error) throw error;
     return (data || []).map(mapLicencia);
   },

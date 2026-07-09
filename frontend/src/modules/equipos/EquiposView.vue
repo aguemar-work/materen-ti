@@ -1,20 +1,28 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
+import { useRoute } from 'vue-router';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { usePaginacion } from '../../composables/usePaginacion.js';
+import { SITUACIONES_EQUIPO, situacionInfo } from '../../core/dominio-equipos.js';
 import { generarActa } from './acta.js';
 import EquipoForm from './EquipoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const store = useEquiposStore();
-const { lista, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error } = storeToRefs(store);
 
-const busqueda = ref('');
+// Deep-link desde la búsqueda global: /equipos?q=CODIGO precarga el buscador.
+const route = useRoute();
+const busqueda = ref(String(route.query.q ?? ''));
+watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
+
 const filtroTipo = ref('');
 const filtroSituacion = ref('');
 const mostrarForm = ref(false);
@@ -22,34 +30,44 @@ const equipoEditar = ref(null);
 
 const HOY = new Date().toISOString().split('T')[0];
 
-const SITUACIONES = {
-  disponible:    { label: 'Disponible',     clase: 'badge--success' },
-  asignado:      { label: 'Asignado',       clase: 'badge--info' },
-  en_ubicacion:  { label: 'En ubicación',   clase: 'badge--purple' },
-  en_reparacion: { label: 'En reparación',  clase: 'badge--warning' },
-  de_baja:       { label: 'De baja',        clase: 'badge--neutral' },
-  perdido:       { label: 'Robado/Perdido', clase: 'badge--danger' },
-};
+let debounceBusqueda = null;
+watch(busqueda, (q) => {
+  clearTimeout(debounceBusqueda);
+  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
+});
+watch(filtroTipo, (tipoId) => store.aplicarFiltros({ tipoId }));
+watch(filtroSituacion, (situacion) => store.aplicarFiltros({ situacion }));
 
-const listaFiltrada = computed(() => {
-  const q = busqueda.value.trim().toLowerCase();
-  return lista.value.filter((e) => {
-    if (filtroTipo.value && e.tipo_id !== filtroTipo.value) return false;
-    if (filtroSituacion.value && e.situacion !== filtroSituacion.value) return false;
-    if (!q) return true;
-    return e.codigo.toLowerCase().includes(q) ||
-      e.marca.toLowerCase().includes(q) ||
-      e.modelo.toLowerCase().includes(q) ||
-      e.serie.toLowerCase().includes(q) ||
-      e.portador.toLowerCase().includes(q) ||
-      e.ubicacion_nombre.toLowerCase().includes(q);
-  });
+const paginaActual = computed({
+  get: () => store.pagina,
+  set: (p) => store.irAPagina(p),
 });
 
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaFiltrada);
-
-function situacionInfo(e) {
-  return SITUACIONES[e.situacion] || { label: e.situacion, clase: '' };
+const exportando = ref(false);
+async function exportar() {
+  exportando.value = true;
+  try {
+    const filas = await store.listaParaExportar();
+    exportarCSV(
+      'equipos',
+      ['Código', 'Tipo', 'Marca', 'Modelo', 'Empresa', 'Serie', 'Situación', 'Portador / Ubicación', 'Garantía'],
+      filas.map((eq) => [
+        eq.codigo,
+        eq.tipo_nombre,
+        eq.marca,
+        eq.modelo,
+        eq.empresa_nombre,
+        eq.serie,
+        badgesSituacion(eq).map((b) => b.label).join(' · '),
+        eq.portador || eq.ubicacion_nombre,
+        eq.garantia_hasta,
+      ]),
+    );
+  } catch (e) {
+    showToast(e?.message || 'Error al exportar', 'error');
+  } finally {
+    exportando.value = false;
+  }
 }
 
 // Un equipo tiene estado FÍSICO (operativo/en_reparacion/de_baja/perdido) y
@@ -59,32 +77,14 @@ function situacionInfo(e) {
 // Si no está operativo, el estado físico ya lo dice todo (un solo badge).
 function badgesSituacion(eq) {
   if (eq.estado === 'operativo' && (eq.situacion === 'asignado' || eq.situacion === 'en_ubicacion')) {
-    const derivado = situacionInfo(eq);
+    const derivado = situacionInfo(eq.situacion);
     return [
       { label: 'Operativo', clase: 'badge--success', fisico: true },
       { label: derivado.label, clase: derivado.clase, fisico: false },
     ];
   }
-  const info = situacionInfo(eq);
+  const info = situacionInfo(eq.situacion);
   return [{ label: info.label, clase: info.clase, fisico: false }];
-}
-
-function exportar() {
-  exportarCSV(
-    'equipos',
-    ['Código', 'Tipo', 'Marca', 'Modelo', 'Empresa', 'Serie', 'Situación', 'Portador / Ubicación', 'Garantía'],
-    listaFiltrada.value.map((eq) => [
-      eq.codigo,
-      eq.tipo_nombre,
-      eq.marca,
-      eq.modelo,
-      eq.empresa_nombre,
-      eq.serie,
-      badgesSituacion(eq).map((b) => b.label).join(' · '),
-      eq.portador || eq.ubicacion_nombre,
-      eq.garantia_hasta,
-    ]),
-  );
 }
 
 // ── Formulario ────────────────────────────────────────────────
@@ -309,7 +309,12 @@ async function eliminar(equipo) {
 
 onMounted(async () => {
   try {
-    await store.cargar();
+    const q = busqueda.value.trim();
+    if (q) {
+      await store.aplicarFiltros({ q });
+    } else {
+      await store.cargar();
+    }
   } catch {
     showToast(error.value || 'Error al cargar equipos', 'error');
   }
@@ -318,24 +323,16 @@ onMounted(async () => {
 
 <template>
   <div class="equipos-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-title">
-          <h1>
-            <i class="ti ti-devices" aria-hidden="true"></i> Equipos
-            <span class="badge-count">{{ listaFiltrada.length }}</span>
-          </h1>
-        </div>
-        <div class="header-btns">
-          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
-            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-          </button>
-          <button class="btn btn-primary" type="button" @click="abrirNuevo">
-            <i class="ti ti-plus" aria-hidden="true"></i> Nuevo equipo
-          </button>
-        </div>
-      </div>
-    </header>
+    <PageHeader titulo="Equipos" icono="ti ti-devices" :conteo="total">
+      <template #acciones>
+        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
+          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+        </button>
+        <button class="btn btn-primary" type="button" @click="abrirNuevo">
+          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo equipo
+        </button>
+      </template>
+    </PageHeader>
 
     <main class="page">
       <div class="card card--fill">
@@ -350,21 +347,23 @@ onMounted(async () => {
           </select>
           <select v-model="filtroSituacion">
             <option value="">Todas las situaciones</option>
-            <option v-for="(s, k) in SITUACIONES" :key="k" :value="k">{{ s.label }}</option>
+            <option v-for="(s, k) in SITUACIONES_EQUIPO" :key="k" :value="k">{{ s.label }}</option>
           </select>
         </div>
 
         <div v-if="cargando" class="no-results">Cargando equipos...</div>
         <div v-else-if="error" class="no-results eq-error">{{ error }}</div>
 
-        <div v-else-if="listaFiltrada.length === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-devices"></i></div>
-          <h3>Sin equipos</h3>
-          <p>{{ busqueda || filtroTipo || filtroSituacion ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer equipo del inventario.' }}</p>
+        <EmptyState
+          v-else-if="total === 0"
+          icono="ti ti-devices"
+          titulo="Sin equipos"
+          :mensaje="busqueda || filtroTipo || filtroSituacion ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer equipo del inventario.'"
+        >
           <button v-if="!busqueda && !filtroTipo && !filtroSituacion" class="btn" type="button" @click="abrirNuevo">
             <i class="ti ti-plus"></i> Nuevo equipo
           </button>
-        </div>
+        </EmptyState>
 
         <div v-else class="table-wrap">
           <table aria-label="Inventario de equipos">
@@ -380,7 +379,7 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="eq in listaPaginada" :key="eq.id">
+              <tr v-for="eq in lista" :key="eq.id">
                 <td><span class="eq-codigo">{{ eq.codigo }}</span></td>
                 <td>
                   <div class="eq-info">
@@ -393,7 +392,7 @@ onMounted(async () => {
                     </div>
                   </div>
                 </td>
-                <td class="eq-serie" :class="{ 'text-muted': !eq.serie }">{{ eq.serie || '—' }}</td>
+                <td class="eq-serie"><TextoVacio :valor="eq.serie" /></td>
                 <td>
                   <span class="badge-group" :title="badgesSituacion(eq).map(b => b.label).join(' · ')">
                     <span
@@ -416,13 +415,13 @@ onMounted(async () => {
                   <span v-else-if="eq.ubicacion_nombre" class="ubicacion-nombre">
                     <i class="ti ti-map-pin"></i> {{ eq.ubicacion_nombre }}
                   </span>
-                  <span v-else class="text-muted">—</span>
+                  <TextoVacio v-else />
                 </td>
                 <td>
                   <span v-if="eq.garantia_hasta" :class="{ 'garantia-vencida': eq.garantia_hasta < HOY }">
                     {{ formatFecha(eq.garantia_hasta) }}
                   </span>
-                  <span v-else class="text-muted">—</span>
+                  <TextoVacio v-else />
                 </td>
                 <td>
                   <div class="actions">
@@ -507,7 +506,7 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
       </div>
     </main>

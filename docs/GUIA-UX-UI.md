@@ -1,34 +1,32 @@
-# Guía UX/UI del Sistema TI
+# Guía UX/UI — Materen · Sistema TI
 
-> Este documento implementa, para Sistema TI, la fórmula y los patrones
-> definidos en [`MATEREN-CORE.md`](MATEREN-CORE.md) y
-> [`MATEREN-DESIGN-SYSTEM.md`](MATEREN-DESIGN-SYSTEM.md). Lo de acá abajo son los
-> **valores concretos** implementados en Sistema TI.
+> Documentación visual del panel **Materen — Sistema TI**. Los tokens canónicos
+> viven en [`main.css`](../frontend/src/styles/main.css) (`--mat-*` y alias
+> `--color-*`); este archivo describe cómo usarlos en las vistas.
 
-**Vigencia**: actualizado 2026-07-07 — superficies **gris neutro** en ambos temas
-(la marca solo vive en el acento `#157955`/`#34D399` y el logo), estética tipo
-shadcn en CSS custom (bordes, sin sombras).
-Tokens `--mat-*` en [`main.css`](../frontend/src/styles/main.css). Especificación:
-[`MATEREN-DESIGN-SYSTEM.md`](MATEREN-DESIGN-SYSTEM.md).
+**Vigencia**: actualizado 2026-07-09 — componentes compartidos (`PageHeader`,
+`BadgeEstado`, `EmptyState`, `TextoVacio`) y `.text-muted` en terciario para
+celdas vacías.
 
 Documentación del sistema visual del panel: colores, tipografías, layout y
-convenciones de componentes. Útil para mantener coherencia al añadir pantallas
-o ajustar la identidad de marca.
+convenciones de componentes. Útil para mantener coherencia al añadir pantallas.
 
-### Sincronización con Materen Core
+## Componentes compartidos (`frontend/src/components/shared/`)
 
-Para no mantener dos especificaciones que divergen con el tiempo, lo canónico
-vive en [`MATEREN-CORE.md`](MATEREN-CORE.md); acá solo la implementación de
-Sistema TI. Patrones ya **promovidos** al documento madre:
+Vistas de listado usan estos wrappers en lugar de copiar el markup del header
+o del estado vacío:
 
-| Tema en esta guía | Especificación canónica | Qué queda acá |
-|---|---|---|
-| Escala z-index | [Fundaciones → Interacción](MATEREN-CORE.md#fundaciones) | Valores `--z-*` en `main.css` |
-| Radios (`--radius-pill`, etc.) | [Fundaciones → Radios](MATEREN-CORE.md#fundaciones) | Tokens en `main.css` |
-| Un acento por vista (+ excepción modal) | [Fundaciones → Interacción](MATEREN-CORE.md#fundaciones) | Corrección jul 2026 en 7 vistas |
-| Badge base + modificadores, ajustes locales | [Patrones → Badge](MATEREN-CORE.md#patrones-de-componente) | Modificadores de dominio (`--purple`, `--sky`, etc.) |
-| Capacity, timeline, confirmación, `.form-error` | [Patrones de componente](MATEREN-CORE.md#patrones-de-componente) | Markup de referencia de este repo |
-| `.badge-group` | [Patrón candidato](MATEREN-CORE.md#patrones-de-componente) — **no generalizado** | Solo Equipos; no copiar hasta segunda ocurrencia |
+| Componente | Uso |
+|------------|-----|
+| `PageHeader` | Título + icono Tabler + conteo opcional; slots `#acciones`, `#izquierda` (detalle con volver) y `#extra` (p. ej. tabs de Configuración) |
+| `EmptyState` | Tabla sin filas: icono, título, mensaje y slot para CTA secundario (`.btn`, no primario) |
+| `BadgeEstado` | Badge semántico vía `core/badges.js` (`tipo`: `empleado`, `ticket`, `prioridad`, `situacion`, `tipo_cuenta`) |
+| `TextoVacio` | Celda vacía con placeholder `—` y clase `.text-muted` automática |
+| `Pagination` | Paginación client/server (ya documentada abajo) |
+| `PublicBrand` | Cabecera de páginas públicas (empleados sin sesión) |
+
+Los mapas de color por dominio siguen en `core/dominio-*.js`; `core/badges.js`
+solo despacha hacia ellos.
 
 ## Arquitectura general
 
@@ -217,12 +215,11 @@ Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
 --radius-pill: 999px  (badges, capacity-bar, timeline-dot)
 ```
 
-Escala canónica en [Fundaciones → Radios](MATEREN-CORE.md#fundaciones).
+Escala en `main.css` (`--radius-*`).
 
 ### Escala de z-index
 
-Especificación canónica en [Fundaciones → Interacción](MATEREN-CORE.md#fundaciones)
-("capas, no números sueltos"). Valores concretos de Sistema TI:
+Especificación en `main.css` (`--z-*`).
 
 ```
 --z-header: 50           site-header sticky de cada vista
@@ -237,7 +234,7 @@ Especificación canónica en [Fundaciones → Interacción](MATEREN-CORE.md#fund
 Antes de este ajuste, `.modal-bg` estaba en `z-index: 100` y el drawer móvil
 en `200` — un modal podía quedar **debajo** del sidebar en móvil. Corregido
 al fijar la escala (promovida a
-[Materen Core → Fundaciones](MATEREN-CORE.md#fundaciones)). Los dropdowns internos de un modal (`.combo-lista` en
+Los dropdowns internos de un modal (`.combo-lista` en
 Equipos/Licencias, `z-index: 20`) no participan de esta escala: compiten
 solo dentro del stacking context que crea su propio `.modal-bg`, no contra
 el sidebar ni el header.
@@ -277,7 +274,7 @@ Tokens en `main.css` — **usar en pantallas nuevas** en lugar de px sueltos:
 | `--mat-fs-2xl` | 20px | Títulos de página/login |
 | `--mat-fs-stat` | 26px | Valores en stat cards |
 
-Pesos: **600** botones/nav/labels/badges (Materen Core), **700** solo stats y
+Pesos: **600** botones/nav/labels/badges, **700** solo stats y
 marca. Uppercase con letter-spacing `0.04–0.06em`.
 
 ---
@@ -506,9 +503,7 @@ Umbrales: `--ok` <70% ocupado, `--warning` 70-99%, `--full` =100%. En uso en
 
 ### Badge doble (`.badge-group`)
 
-> **Patrón candidato en Materen Core** — visto una sola vez en este repo; no
-> generalizar hasta que un segundo módulo lo necesite. Ver
-> [Patrones de componente → candidatos](MATEREN-CORE.md#patrones-de-componente).
+> Patrón visto solo en Equipos — no generalizar hasta que un segundo módulo lo necesite.
 
 Para entidades con **dos estados simultáneos e independientes** — un equipo
 tiene estado físico (operativo/en_reparación/de_baja/perdido) y situación
@@ -608,8 +603,9 @@ pocas filas, sin buscador), no un listado global.
   `border-collapse: separate` — con `collapse`, los bordes del header se
   quedan atrás al scrollear. Resultado: header de módulo, toolbar y
   filtros siempre visibles; solo las filas se desplazan.
-- **Valores vacíos** ("—", "Sin usuarios"): siempre `.text-muted`. Si la
-  celda a veces tiene valor, condicional: `:class="{ 'text-muted': !campo }"`.
+- **Valores vacíos** ("—", "Sin usuarios"): preferir `<TextoVacio :valor="campo" />`
+  o `.text-muted` (color `--color-text-tertiary`). Si la celda a veces tiene
+  valor, condicional: `:class="{ 'text-muted': !campo }"`.
 - **Números**: `table` define `font-variant-numeric: tabular-nums` — DNI,
   fechas y conteos alinean dígito a dígito sin nada extra por vista.
 - **Tipografía uniforme (decisión JEFE jul 2026)**: ningún dato de tabla
@@ -664,8 +660,7 @@ separación por **bordes** (sin sombras en contenedores), y clases globales en
 - **Minimalista**: no sobresaturar la vista ni agobiar con información.
 - Estados hover/activo **sin bordes** — solo fondos muy tenues.
 - Preferir fusión de superficies sobre paneles/bloques delimitados.
-- **Un solo acento visible por vista**
-  ([Fundaciones → Interacción](MATEREN-CORE.md#fundaciones)). El botón `.btn-primary`
+- **Un solo acento visible por vista** — el botón `.btn-primary`
   del header/toolbar de cada módulo (ej. "Nueva licencia") es el acento fijo
   de esa vista. **Corrección (jul 2026)**: en 7 vistas (Empleados, Correos,
   Empresas, Plataformas, Licencias, Equipos, Cuentas) el estado vacío

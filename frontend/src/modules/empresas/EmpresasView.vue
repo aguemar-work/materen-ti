@@ -5,6 +5,8 @@ import { useEmpresasStore } from '../../stores/empresas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const store = useEmpresasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -117,14 +119,16 @@ onMounted(async () => {
 
         <div v-else-if="error" class="no-results empresas-error">{{ error }}</div>
 
-        <div v-else-if="listaFiltrada.length === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-building"></i></div>
-          <h3>Sin empresas</h3>
-          <p>{{ busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera empresa.' }}</p>
+        <EmptyState
+          v-else-if="listaFiltrada.length === 0"
+          icono="ti ti-building"
+          titulo="Sin empresas"
+          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera empresa.'"
+        >
           <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
             <i class="ti ti-plus"></i> Agregar empresa
           </button>
-        </div>
+        </EmptyState>
 
         <div v-else class="table-wrap">
           <table aria-label="Empresas registradas">
@@ -140,7 +144,7 @@ onMounted(async () => {
                 <td>
                   <div class="user-name">{{ emp.nombre }}</div>
                 </td>
-                <td :class="{ 'text-muted': !emp.ruc }">{{ emp.ruc || '—' }}</td>
+                <td><TextoVacio :valor="emp.ruc" /></td>
                 <td>
                   <div class="actions">
                     <button

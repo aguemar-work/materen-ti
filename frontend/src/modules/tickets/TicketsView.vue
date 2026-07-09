@@ -9,6 +9,10 @@ import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES, estadoInf
 import { showToast } from '../../core/toast.js';
 import TicketInternoForm from './TicketInternoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const router = useRouter();
 const store = useTicketsStore();
@@ -109,30 +113,22 @@ onMounted(async () => {
 
 <template>
   <div class="tickets-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-title">
-          <h1>
-            <i class="ti ti-headset" aria-hidden="true"></i> Tickets
-            <span class="badge-count">{{ total }}</span>
-          </h1>
-        </div>
-        <div class="header-btns">
-          <button class="btn" type="button" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
-            <i class="ti ti-link" aria-hidden="true"></i> Copiar enlace para reportar
-          </button>
-          <button class="btn" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
-            <i class="ti ti-search" aria-hidden="true"></i> Copiar enlace de búsqueda
-          </button>
-          <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-          </button>
-          <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
-            <i class="ti ti-plus" aria-hidden="true"></i> Ticket interno
-          </button>
-        </div>
-      </div>
-    </header>
+    <PageHeader titulo="Tickets" icono="ti ti-headset" :conteo="total">
+      <template #acciones>
+        <button class="btn" type="button" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
+          <i class="ti ti-link" aria-hidden="true"></i> Copiar enlace para reportar
+        </button>
+        <button class="btn" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
+          <i class="ti ti-search" aria-hidden="true"></i> Copiar enlace de búsqueda
+        </button>
+        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
+          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+        </button>
+        <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
+          <i class="ti ti-plus" aria-hidden="true"></i> Ticket interno
+        </button>
+      </template>
+    </PageHeader>
 
     <main class="page">
       <div class="card card--fill">
@@ -160,11 +156,12 @@ onMounted(async () => {
         <div v-if="cargando" class="no-results">Cargando tickets...</div>
         <div v-else-if="error" class="no-results tk-error">{{ error }}</div>
 
-        <div v-else-if="total === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-headset"></i></div>
-          <h3>Sin tickets</h3>
-          <p>{{ busqueda || filtroEstado || filtroPrioridad ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.' }}</p>
-        </div>
+        <EmptyState
+          v-else-if="total === 0"
+          icono="ti ti-headset"
+          titulo="Sin tickets"
+          :mensaje="busqueda || filtroEstado || filtroPrioridad ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
+        />
 
         <div v-else class="table-wrap">
           <table aria-label="Tickets de soporte">
@@ -186,14 +183,17 @@ onMounted(async () => {
                   <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
                     <i class="ti ti-alert-triangle"></i> Sin vincular
                   </span>
-                  <span v-else :class="{ 'text-muted': !t.solicitante }">{{ t.solicitante || '—' }}</span>
+                  <TextoVacio v-else :valor="t.solicitante" />
                 </td>
                 <td>
                   <div class="user-name">{{ t.titulo }}</div>
                 </td>
-                <td><span v-if="t.categoria" class="badge badge--sky">{{ t.categoria }}</span><span v-else class="text-muted">—</span></td>
-                <td><span class="badge" :class="estadoInfo(t.estado).clase">{{ estadoInfo(t.estado).label }}</span></td>
-                <td><span class="badge" :class="prioridadInfo(t.prioridad).clase">{{ prioridadInfo(t.prioridad).label }}</span></td>
+                <td>
+                  <span v-if="t.categoria" class="badge badge--sky">{{ t.categoria }}</span>
+                  <TextoVacio v-else />
+                </td>
+                <td><BadgeEstado tipo="ticket" :valor="t.estado" /></td>
+                <td><BadgeEstado tipo="prioridad" :valor="t.prioridad" /></td>
                 <td>
                   <span v-if="!t.asignado_a" class="badge badge--neutral">Sin asignar</span>
                   <template v-else>{{ staffPorId[t.asignado_a] || 'Staff' }}</template>

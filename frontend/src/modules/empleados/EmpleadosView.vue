@@ -7,10 +7,14 @@ import { insforgeApi } from '../../api/insforge.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
-import { claseEstado, nombreCompleto } from '../../core/dominio-empleados.js';
+import { nombreCompleto } from '../../core/dominio-empleados.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import PageHeader from '../../components/shared/PageHeader.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const router = useRouter();
 const store = useEmpleadosStore();
@@ -138,24 +142,16 @@ onMounted(async () => {
 
 <template>
   <div class="empleados-page vista-modulo">
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="header-title">
-          <h1>
-            <i class="ti ti-users" aria-hidden="true"></i> Empleados
-            <span class="badge-count">{{ total }}</span>
-          </h1>
-        </div>
-        <div class="header-btns">
-          <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-          </button>
-          <button class="btn btn-primary" type="button" @click="abrirNuevo">
-            <i class="ti ti-plus" aria-hidden="true"></i> Nuevo empleado
-          </button>
-        </div>
-      </div>
-    </header>
+    <PageHeader titulo="Empleados" icono="ti ti-users" :conteo="total">
+      <template #acciones>
+        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
+          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+        </button>
+        <button class="btn btn-primary" type="button" @click="abrirNuevo">
+          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo empleado
+        </button>
+      </template>
+    </PageHeader>
 
     <main class="page">
       <div class="card card--fill">
@@ -178,14 +174,16 @@ onMounted(async () => {
 
         <div v-else-if="error" class="no-results empleados-error">{{ error }}</div>
 
-        <div v-else-if="total === 0" class="empty">
-          <div class="empty-icon"><i class="ti ti-users"></i></div>
-          <h3>Sin empleados</h3>
-          <p>{{ busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agrega el primer empleado al inventario.' }}</p>
+        <EmptyState
+          v-else-if="total === 0"
+          icono="ti ti-users"
+          titulo="Sin empleados"
+          :mensaje="busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agrega el primer empleado al inventario.'"
+        >
           <button v-if="!busqueda && !filtroEstado" class="btn" type="button" @click="abrirNuevo">
             <i class="ti ti-plus"></i> Agregar empleado
           </button>
-        </div>
+        </EmptyState>
 
         <div v-else class="table-wrap">
           <table aria-label="Inventario de empleados">
@@ -205,10 +203,10 @@ onMounted(async () => {
                 <td>
                   <div class="user-name">{{ nombreCompleto(emp) }}</div>
                 </td>
-                <td :class="{ 'text-muted': !emp.cargo }">{{ emp.cargo || '—' }}</td>
-                <td :class="{ 'text-muted': !emp.empresa_nombre }">{{ emp.empresa_nombre || '—' }}</td>
+                <td><TextoVacio :valor="emp.cargo" /></td>
+                <td><TextoVacio :valor="emp.empresa_nombre" /></td>
                 <td>
-                  <span class="status" :class="claseEstado(emp.estado)">{{ emp.estado }}</span>
+                  <BadgeEstado tipo="empleado" :valor="emp.estado" status />
                 </td>
                 <td @click.stop>
                   <div class="actions">

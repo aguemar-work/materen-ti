@@ -2,15 +2,18 @@
 // Catálogo de ubicaciones (almacenes, áreas, sedes, obras...)
 // usado por el módulo de Equipos para asignar equipos a lugares.
 import { ref, onMounted } from 'vue';
-import { insforgeApi } from '../../api/insforge.js';
+import { storeToRefs } from 'pinia';
+import { useUbicacionesStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
-const lista = ref([]);
-const cargando = ref(true);
+const store = useUbicacionesStore();
+const { lista, cargando } = storeToRefs(store);
 const guardando = ref(false);
 
 const porEliminar = ref(null);
@@ -40,14 +43,10 @@ async function guardar() {
   guardando.value = true;
   try {
     if (editar.value) {
-      const actualizada = await insforgeApi.updateUbicacion(editar.value.id, form.value);
-      const idx = lista.value.findIndex((u) => u.id === editar.value.id);
-      if (idx !== -1) lista.value[idx] = actualizada;
+      await store.actualizar(editar.value.id, form.value);
       showToast('Ubicación actualizada');
     } else {
-      const nueva = await insforgeApi.createUbicacion(form.value.nombre, form.value.descripcion);
-      lista.value.push(nueva);
-      lista.value.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+      await store.crear(form.value.nombre, form.value.descripcion);
       showToast('Ubicación creada');
     }
     mostrarForm.value = false;
@@ -63,8 +62,7 @@ async function confirmarEliminar() {
   if (!u) return;
   eliminando.value = true;
   try {
-    await insforgeApi.softDeleteUbicacion(u.id);
-    lista.value = lista.value.filter((x) => x.id !== u.id);
+    await store.softDelete(u.id);
     showToast('Ubicación eliminada');
     porEliminar.value = null;
   } catch (e) {
@@ -76,11 +74,9 @@ async function confirmarEliminar() {
 
 onMounted(async () => {
   try {
-    lista.value = await insforgeApi.listUbicaciones();
+    await store.cargar();
   } catch (e) {
     showToast(e?.message || 'Error al cargar ubicaciones', 'error');
-  } finally {
-    cargando.value = false;
   }
 });
 
@@ -102,11 +98,12 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
 
       <div v-if="cargando" class="no-results">Cargando ubicaciones...</div>
 
-      <div v-else-if="lista.length === 0" class="empty">
-        <div class="empty-icon"><i class="ti ti-map-pin"></i></div>
-        <h3>Sin ubicaciones</h3>
-        <p>Crea almacenes, áreas u obras para asignarles equipos.</p>
-      </div>
+      <EmptyState
+        v-else-if="lista.length === 0"
+        icono="ti ti-map-pin"
+        titulo="Sin ubicaciones"
+        mensaje="Crea almacenes, áreas u obras para asignarles equipos."
+      />
 
       <div v-else class="table-wrap">
         <table aria-label="Ubicaciones">
@@ -120,7 +117,7 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
           <tbody>
             <tr v-for="u in listaPaginada" :key="u.id">
               <td><span class="user-name"><i class="ti ti-map-pin ub-icon"></i> {{ u.nombre }}</span></td>
-              <td :class="{ 'text-muted': !u.descripcion }">{{ u.descripcion || '—' }}</td>
+              <td><TextoVacio :valor="u.descripcion" /></td>
               <td>
                 <div class="actions">
                   <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(u)">

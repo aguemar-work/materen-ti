@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { estadoInfo } from '../../core/dominio-tickets.js';
 import { temaActual, alternarTema } from '../../core/tema.js';
 
 const router = useRouter();
@@ -36,8 +37,9 @@ function toggleTema() {
 }
 
 // ── Búsqueda global ───────────────────────────────────────────
+const SIN_RESULTADOS = { empleados: [], cuentas: [], equipos: [], tickets: [], licencias: [] };
 const busqueda = ref('');
-const resultados = ref({ empleados: [], cuentas: [], equipos: [] });
+const resultados = ref({ ...SIN_RESULTADOS });
 const buscando = ref(false);
 const busquedaAbierta = ref(false);
 let debounceTimer = null;
@@ -45,13 +47,15 @@ let debounceTimer = null;
 const hayResultados = computed(() =>
   resultados.value.empleados.length ||
   resultados.value.cuentas.length ||
-  resultados.value.equipos.length
+  resultados.value.equipos.length ||
+  resultados.value.tickets.length ||
+  resultados.value.licencias.length
 );
 
 watch(busqueda, (q) => {
   clearTimeout(debounceTimer);
   if (q.trim().length < 2) {
-    resultados.value = { empleados: [], cuentas: [], equipos: [] };
+    resultados.value = { ...SIN_RESULTADOS };
     busquedaAbierta.value = false;
     return;
   }
@@ -61,7 +65,7 @@ watch(busqueda, (q) => {
     try {
       resultados.value = await insforgeApi.buscarGlobal(q);
     } catch {
-      resultados.value = { empleados: [], cuentas: [], equipos: [] };
+      resultados.value = { ...SIN_RESULTADOS };
     } finally {
       buscando.value = false;
     }
@@ -85,17 +89,30 @@ function irAEmpleado(emp) {
 
 function irACuenta(cuenta) {
   limpiarBusqueda();
-  // Personal con titular → su ficha; compartida/reutilizable → módulo Correos
+  // Personal con titular → su ficha; compartida/reutilizable → Correos
+  // prefiltrado con el usuario de la cuenta
   if (cuenta.tipo_cuenta === 'personal' && cuenta.titular_id) {
     router.push(`/empleados/${cuenta.titular_id}`);
   } else {
-    router.push('/correos');
+    router.push({ path: '/correos', query: { q: cuenta.usuario } });
   }
 }
 
-function irAEquipo() {
+// Deep-links: la vista de lista lee ?q= y precarga su buscador, dejando
+// visible el registro concreto (no hay vistas de detalle para estos).
+function irAEquipo(eq) {
   limpiarBusqueda();
-  router.push('/equipos');
+  router.push({ path: '/equipos', query: { q: eq.codigo } });
+}
+
+function irATicket(t) {
+  limpiarBusqueda();
+  router.push(`/tickets/${t.id}`);
+}
+
+function irALicencia(lic) {
+  limpiarBusqueda();
+  router.push({ path: '/licencias', query: { q: lic.software } });
 }
 
 // Nav agrupada por frecuencia de uso: día a día arriba, inventario al
@@ -160,8 +177,8 @@ async function cerrarSesion() {
       aria-label="Menú principal"
     >
       <div class="sb-logo">
-        <img src="/logo_materen_sisti.svg" alt="Sistema TI" class="sb-logo-full">
-        <img src="/icon_sisti.svg" alt="Sistema TI" class="sb-logo-icono">
+        <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" class="sb-logo-full">
+        <img src="/icon_sisti.svg" alt="Materen — Sistema TI" class="sb-logo-icono">
         <button
           class="sb-logout sb-collapse"
           type="button"
@@ -236,11 +253,39 @@ async function cerrarSesion() {
                 :key="eq.id"
                 type="button"
                 class="sb-res-item"
-                @mousedown.prevent="irAEquipo()"
+                @mousedown.prevent="irAEquipo(eq)"
               >
                 <i class="ti ti-devices"></i>
                 <span class="sb-res-main">{{ eq.codigo }}</span>
                 <span class="sb-res-sec">{{ eq.descripcion }}</span>
+              </button>
+            </template>
+            <template v-if="resultados.tickets.length">
+              <div class="sb-res-grupo">Tickets</div>
+              <button
+                v-for="t in resultados.tickets"
+                :key="t.id"
+                type="button"
+                class="sb-res-item"
+                @mousedown.prevent="irATicket(t)"
+              >
+                <i class="ti ti-headset"></i>
+                <span class="sb-res-main">{{ t.titulo }}</span>
+                <span class="sb-res-sec">{{ t.codigo }} · {{ estadoInfo(t.estado).label }}</span>
+              </button>
+            </template>
+            <template v-if="resultados.licencias.length">
+              <div class="sb-res-grupo">Licencias</div>
+              <button
+                v-for="lic in resultados.licencias"
+                :key="lic.id"
+                type="button"
+                class="sb-res-item"
+                @mousedown.prevent="irALicencia(lic)"
+              >
+                <i class="ti ti-license"></i>
+                <span class="sb-res-main">{{ lic.software }}</span>
+                <span class="sb-res-sec">{{ lic.proveedor }}</span>
               </button>
             </template>
           </template>
@@ -309,7 +354,7 @@ async function cerrarSesion() {
         >
           <i class="ti ti-menu-2" aria-hidden="true"></i>
         </button>
-        <span class="topbar-title">Sistema TI</span>
+        <span class="topbar-title">Materen — Sistema TI</span>
       </div>
 
       <slot />
@@ -345,6 +390,7 @@ async function cerrarSesion() {
   flex-shrink: 0;
   height: 100vh;
   background: var(--sb-bg);
+  border-right: 1px solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
