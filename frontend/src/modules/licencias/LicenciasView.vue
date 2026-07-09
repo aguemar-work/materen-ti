@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useLicenciasStore } from '../../stores/licencias.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { revelarClaveLicencia, revelarPassword } from '../../api/passwords.js';
+import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
 import LicenciaForm from './LicenciaForm.vue';
@@ -50,6 +51,24 @@ const listaPaginada = computed(() => {
   const inicio = (paginaActual.value - 1) * TAM_PAGINA;
   return listaFiltrada.value.slice(inicio, inicio + TAM_PAGINA);
 });
+
+// Exporta lo visible según filtros; las claves nunca salen del servidor.
+function exportar() {
+  exportarCSV(
+    'licencias',
+    ['Software', 'Proveedor', 'Empresa', 'Acceso', 'Asientos usados', 'Asientos totales', 'Usuarios', 'Vencimiento'],
+    listaFiltrada.value.map((l) => [
+      l.software,
+      l.proveedor,
+      l.empresa_nombre || 'Del grupo',
+      l.cuenta_usuario,
+      l.usados,
+      l.cantidad,
+      (l.usuarios || []).map((u) => u.nombre).join(', '),
+      l.tipo === 'perpetua' ? 'Perpetua' : l.fecha_vencimiento,
+    ]),
+  );
+}
 
 // Barra de capacidad: comunica cercanía al tope de asientos antes de que
 // el trigger de BD (check_tope_licencia) bloquee la asignación.
@@ -216,23 +235,24 @@ onMounted(async () => {
     <header class="site-header">
       <div class="header-inner">
         <div class="header-title">
-          <h1><i class="ti ti-license" aria-hidden="true"></i> Licencias</h1>
+          <h1>
+            <i class="ti ti-license" aria-hidden="true"></i> Licencias
+            <span class="badge-count">{{ listaFiltrada.length }}</span>
+          </h1>
         </div>
-        <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva licencia
-        </button>
+        <div class="header-btns">
+          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
+            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          </button>
+          <button class="btn btn-primary" type="button" @click="abrirNueva">
+            <i class="ti ti-plus" aria-hidden="true"></i> Nueva licencia
+          </button>
+        </div>
       </div>
     </header>
 
     <main class="page">
       <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Licencias de software
-            <span class="badge-count">{{ listaFiltrada.length }} licencias</span>
-          </div>
-        </div>
-
         <div class="filters">
           <div class="search-wrap">
             <i class="ti ti-search"></i>
@@ -253,16 +273,16 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Licencias de software">
             <thead>
               <tr>
-                <th>Software</th>
-                <th>Empresa</th>
-                <th>Acceso</th>
-                <th>Asientos</th>
-                <th>Usuarios</th>
-                <th>Vencimiento</th>
-                <th></th>
+                <th scope="col">Software</th>
+                <th scope="col">Empresa</th>
+                <th scope="col">Acceso</th>
+                <th scope="col">Asientos</th>
+                <th scope="col">Usuarios</th>
+                <th scope="col">Vencimiento</th>
+                <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -283,11 +303,12 @@ onMounted(async () => {
                         class="icon-btn"
                         type="button"
                         :title="clavesVisibles[lic.id] ? 'Ocultar' : (lic.tiene_clave ? 'Mostrar contraseña del software' : 'Mostrar contraseña del correo')"
+                        :aria-label="clavesVisibles[lic.id] ? 'Ocultar' : (lic.tiene_clave ? 'Mostrar contraseña del software' : 'Mostrar contraseña del correo')"
                         @click="toggleClave(lic)"
                       >
                         <i :class="clavesVisibles[lic.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
                       </button>
-                      <button class="icon-btn" type="button" title="Copiar contraseña" @click="copiarClave(lic)">
+                      <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click="copiarClave(lic)">
                         <i class="ti ti-copy"></i>
                       </button>
                       <span class="clave-origen">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
@@ -295,10 +316,10 @@ onMounted(async () => {
                   </div>
                   <div v-else-if="lic.tiene_clave" class="clave-cell">
                     <span class="clave-text">{{ clavesVisibles[lic.id] || '••••••••' }}</span>
-                    <button class="icon-btn" type="button" :title="clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave'" @click="toggleClave(lic)">
+                    <button class="icon-btn" type="button" :title="clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave'" :aria-label="clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave'" @click="toggleClave(lic)">
                       <i :class="clavesVisibles[lic.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
                     </button>
-                    <button class="icon-btn" type="button" title="Copiar clave" @click="copiarClave(lic)">
+                    <button class="icon-btn" type="button" title="Copiar clave" aria-label="Copiar clave" @click="copiarClave(lic)">
                       <i class="ti ti-copy"></i>
                     </button>
                   </div>
@@ -329,6 +350,7 @@ onMounted(async () => {
                         class="chip-x"
                         type="button"
                         title="Liberar asiento"
+                        aria-label="Liberar asiento"
                         @click="liberar(lic, u)"
                       >
                         <i class="ti ti-x"></i>
@@ -354,6 +376,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Renovar (corre el vencimiento un periodo)"
+                      aria-label="Renovar (corre el vencimiento un periodo)"
                       @click="renovar(lic)"
                     >
                       <i class="ti ti-refresh"></i>
@@ -363,15 +386,16 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Asignar asiento a un empleado"
+                      aria-label="Asignar asiento a un empleado"
                       :disabled="lic.usados >= lic.cantidad"
                       @click="abrirAsignar(lic)"
                     >
                       <i class="ti ti-user-plus"></i>
                     </button>
-                    <button class="icon-btn" type="button" title="Editar" @click="abrirEditar(lic)">
+                    <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(lic)">
                       <i class="ti ti-pencil"></i>
                     </button>
-                    <button class="icon-btn danger" type="button" title="Eliminar" @click="eliminar(lic)">
+                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminar(lic)">
                       <i class="ti ti-trash"></i>
                     </button>
                   </div>
@@ -441,8 +465,6 @@ onMounted(async () => {
 
 .lic-proveedor {
   display: block;
-  font-size: 11.5px;
-  color: var(--color-text-secondary);
 }
 
 .lic-acceso {

@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useCorreosStore } from '../../stores/correos.js';
 import { revelarPassword } from '../../api/passwords.js';
+import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import CorreoForm from './CorreoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
@@ -24,6 +25,22 @@ const listaFiltrada = computed(() => {
     return c.usuario.toLowerCase().includes(q) || (c.plataforma_nombre || '').toLowerCase().includes(q);
   });
 });
+
+// Exporta lo visible según filtros; las contraseñas nunca salen del servidor.
+function exportar() {
+  exportarCSV(
+    'correos',
+    ['Plataforma', 'Tipo', 'Correo / Usuario', 'Asignados', 'URL', 'Notas'],
+    listaFiltrada.value.map((c) => [
+      c.plataforma_nombre,
+      c.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable',
+      c.usuario,
+      (c.asignados || []).join(', '),
+      c.url,
+      c.notas,
+    ]),
+  );
+}
 
 const TAM_PAGINA = 20;
 const paginaActual = ref(1);
@@ -98,23 +115,24 @@ onMounted(async () => {
     <header class="site-header">
       <div class="header-inner">
         <div class="header-title">
-          <h1><i class="ti ti-mail-share" aria-hidden="true"></i> Correos</h1>
+          <h1>
+            <i class="ti ti-mail-share" aria-hidden="true"></i> Correos
+            <span class="badge-count">{{ listaFiltrada.length }}</span>
+          </h1>
         </div>
-        <button class="btn btn-primary" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo correo
-        </button>
+        <div class="header-btns">
+          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
+            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          </button>
+          <button class="btn btn-primary" type="button" @click="abrirNuevo">
+            <i class="ti ti-plus" aria-hidden="true"></i> Nuevo correo
+          </button>
+        </div>
       </div>
     </header>
 
     <main class="page">
       <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Correos reutilizables y compartidos
-            <span class="badge-count">{{ listaFiltrada.length }} correos</span>
-          </div>
-        </div>
-
         <div class="filters">
           <div class="search-wrap">
             <i class="ti ti-search"></i>
@@ -145,17 +163,17 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Correos compartidos y reutilizables">
             <thead>
               <tr>
-                <th>Plataforma</th>
-                <th>Tipo</th>
-                <th>Correo / Usuario</th>
-                <th>Asignado a</th>
-                <th>Contraseña</th>
-                <th>URL</th>
-                <th>Notas</th>
-                <th></th>
+                <th scope="col">Plataforma</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Correo / Usuario</th>
+                <th scope="col">Asignado a</th>
+                <th scope="col">Contraseña</th>
+                <th scope="col">URL</th>
+                <th scope="col">Notas</th>
+                <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -204,6 +222,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       :title="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
+                      :aria-label="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
                       @click="togglePassword(correo)"
                     >
                       <i :class="passwordVisibles[correo.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
@@ -212,6 +231,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Copiar contraseña"
+                      aria-label="Copiar contraseña"
                       @click="copiarPassword(correo)"
                     >
                       <i class="ti ti-copy"></i>
@@ -226,6 +246,7 @@ onMounted(async () => {
                     rel="noopener noreferrer"
                     class="url-link"
                     :title="correo.url"
+                    aria-label="Abrir URL de la plataforma"
                   >
                     <i class="ti ti-external-link"></i>
                   </a>
@@ -237,10 +258,10 @@ onMounted(async () => {
                 </td>
                 <td>
                   <div class="actions">
-                    <button class="icon-btn" type="button" title="Editar" @click="abrirEditar(correo)">
+                    <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(correo)">
                       <i class="ti ti-pencil"></i>
                     </button>
-                    <button class="icon-btn danger" type="button" title="Eliminar" @click="eliminar(correo)">
+                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminar(correo)">
                       <i class="ti ti-trash"></i>
                     </button>
                   </div>

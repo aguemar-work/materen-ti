@@ -201,22 +201,22 @@ onMounted(async () => {
     </div>
 
     <div v-else class="table-wrap">
-      <table>
+      <table aria-label="Cuentas del empleado">
         <thead>
           <tr>
-            <th>Plataforma</th>
-            <th>Usuario</th>
-            <th>Contraseña</th>
-            <th>URL</th>
-            <th></th>
+            <th scope="col">Plataforma</th>
+            <th scope="col">Usuario</th>
+            <th scope="col">Contraseña</th>
+            <th scope="col">URL</th>
+            <th scope="col"><span class="sr-only">Acciones</span></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="cuenta in lista" :key="cuenta.asignacion_id">
             <td>
               <span class="user-name">{{ cuenta.plataforma_nombre }}</span>
-              <span v-if="cuenta.tipo_cuenta === 'compartida'" class="badge badge--sky badge-inline" title="Cuenta compartida: varios usuarios a la vez">compartida</span>
-              <span v-else-if="cuenta.tipo_cuenta === 'reutilizable'" class="badge badge--sky badge-inline" title="Cuenta reutilizable: se hereda entre empleados">reutilizable</span>
+              <span v-if="cuenta.tipo_cuenta === 'compartida'" class="badge badge--sky badge-inline" title="Cuenta compartida: varios usuarios a la vez">Compartida</span>
+              <span v-else-if="cuenta.tipo_cuenta === 'reutilizable'" class="badge badge--sky badge-inline" title="Cuenta reutilizable: se hereda entre empleados">Reutilizable</span>
               <span
                 v-if="cuenta.requiere_rotacion"
                 class="badge badge--warning badge-inline"
@@ -233,27 +233,28 @@ onMounted(async () => {
                   class="icon-btn"
                   type="button"
                   :title="passwordVisibles[cuenta.asignacion_id] ? 'Ocultar' : 'Mostrar'"
+                  :aria-label="passwordVisibles[cuenta.asignacion_id] ? 'Ocultar' : 'Mostrar'"
                   @click="togglePassword(cuenta)"
                 >
                   <i :class="passwordVisibles[cuenta.asignacion_id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
                 </button>
-                <button class="icon-btn" type="button" title="Copiar contraseña" @click="copiarPassword(cuenta)">
+                <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click="copiarPassword(cuenta)">
                   <i class="ti ti-copy"></i>
                 </button>
               </div>
             </td>
             <td>
-              <a v-if="cuenta.url" :href="cuenta.url" target="_blank" rel="noopener noreferrer" class="url-link" :title="cuenta.url">
+              <a v-if="cuenta.url" :href="cuenta.url" target="_blank" rel="noopener noreferrer" class="url-link" :title="cuenta.url" aria-label="Abrir URL de la plataforma">
                 <i class="ti ti-external-link"></i>
               </a>
               <span v-else class="text-muted">—</span>
             </td>
             <td>
               <div class="actions">
-                <button class="icon-btn" type="button" title="Historial" @click="verHistorial(cuenta)">
+                <button class="icon-btn" type="button" title="Historial" aria-label="Historial" @click="verHistorial(cuenta)">
                   <i class="ti ti-history"></i>
                 </button>
-                <button class="icon-btn" type="button" title="Editar" @click="abrirEditar(cuenta)">
+                <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(cuenta)">
                   <i class="ti ti-pencil"></i>
                 </button>
                 <button
@@ -261,6 +262,7 @@ onMounted(async () => {
                   class="icon-btn"
                   type="button"
                   title="Traspasar a otro empleado"
+                  aria-label="Traspasar a otro empleado"
                   @click="abrirTraspaso(cuenta)"
                 >
                   <i class="ti ti-transfer"></i>
@@ -269,6 +271,7 @@ onMounted(async () => {
                   class="icon-btn danger"
                   type="button"
                   :title="cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar'"
+                  :aria-label="cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar'"
                   @click="revocar(cuenta)"
                 >
                   <i class="ti ti-user-minus"></i>

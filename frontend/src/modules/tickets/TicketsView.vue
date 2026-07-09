@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import TicketInternoForm from './TicketInternoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
@@ -44,6 +45,22 @@ const PRIORIDADES = {
 
 function estadoInfo(e) { return ESTADOS[e] || { label: e, clase: 'badge--neutral' }; }
 function prioridadInfo(p) { return PRIORIDADES[p] || { label: p, clase: 'badge--neutral' }; }
+
+function exportar() {
+  exportarCSV(
+    'tickets',
+    ['Código', 'Solicitante', 'Título', 'Categoría', 'Estado', 'Prioridad', 'Asignado a'],
+    listaFiltrada.value.map((t) => [
+      t.codigo,
+      t.vinculado ? t.solicitante : 'Sin vincular',
+      t.titulo,
+      t.categoria,
+      estadoInfo(t.estado).label,
+      prioridadInfo(t.prioridad).label,
+      t.asignado_a ? (staffPorId.value[t.asignado_a] || 'Staff') : 'Sin asignar',
+    ]),
+  );
+}
 
 const listaFiltrada = computed(() => {
   const q = busqueda.value.trim().toLowerCase();
@@ -107,31 +124,30 @@ onMounted(async () => {
     <header class="site-header">
       <div class="header-inner">
         <div class="header-title">
-          <h1><i class="ti ti-headset" aria-hidden="true"></i> Tickets</h1>
+          <h1>
+            <i class="ti ti-headset" aria-hidden="true"></i> Tickets
+            <span class="badge-count">{{ listaFiltrada.length }}</span>
+          </h1>
         </div>
-        <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
-          <i class="ti ti-plus" aria-hidden="true"></i> Ticket interno
-        </button>
+        <div class="header-btns">
+          <button class="btn" type="button" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
+            <i class="ti ti-link" aria-hidden="true"></i> Copiar enlace para reportar
+          </button>
+          <button class="btn" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
+            <i class="ti ti-search" aria-hidden="true"></i> Copiar enlace de búsqueda
+          </button>
+          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
+            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          </button>
+          <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
+            <i class="ti ti-plus" aria-hidden="true"></i> Ticket interno
+          </button>
+        </div>
       </div>
     </header>
 
     <main class="page">
       <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Tickets de soporte
-            <span class="badge-count">{{ listaFiltrada.length }}</span>
-          </div>
-          <div class="toolbar-actions">
-            <button class="btn" type="button" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
-              <i class="ti ti-link" aria-hidden="true"></i> Copiar enlace para reportar
-            </button>
-            <button class="btn" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
-              <i class="ti ti-search" aria-hidden="true"></i> Copiar enlace de búsqueda
-            </button>
-          </div>
-        </div>
-
         <div class="filters">
           <div class="search-wrap">
             <i class="ti ti-search"></i>
@@ -163,31 +179,31 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Tickets de soporte">
             <thead>
               <tr>
-                <th>Código</th>
-                <th>Solicitante</th>
-                <th>Título</th>
-                <th>Categoría</th>
-                <th>Estado</th>
-                <th>Prioridad</th>
-                <th>Asignado a</th>
+                <th scope="col">Código</th>
+                <th scope="col">Solicitante</th>
+                <th scope="col">Título</th>
+                <th scope="col">Categoría</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Prioridad</th>
+                <th scope="col">Asignado a</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="t in listaPaginada" :key="t.id" class="fila-ticket" @click="verTicket(t)">
-                <td><span class="tk-codigo">{{ t.codigo }}</span></td>
+                <td><RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${t.id}`" @click.stop>{{ t.codigo }}</RouterLink></td>
                 <td>
                   <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
                     <i class="ti ti-alert-triangle"></i> Sin vincular
                   </span>
-                  <span v-else>{{ t.solicitante || '—' }}</span>
+                  <span v-else :class="{ 'text-muted': !t.solicitante }">{{ t.solicitante || '—' }}</span>
                 </td>
                 <td>
                   <div class="user-name">{{ t.titulo }}</div>
                 </td>
-                <td><span v-if="t.categoria" class="badge badge--sky">{{ t.categoria }}</span></td>
+                <td><span v-if="t.categoria" class="badge badge--sky">{{ t.categoria }}</span><span v-else class="text-muted">—</span></td>
                 <td><span class="badge" :class="estadoInfo(t.estado).clase">{{ estadoInfo(t.estado).label }}</span></td>
                 <td><span class="badge" :class="prioridadInfo(t.prioridad).clase">{{ prioridadInfo(t.prioridad).label }}</span></td>
                 <td>
@@ -211,8 +227,16 @@ onMounted(async () => {
 
 .tk-codigo {
   font-family: var(--font-mono, monospace);
-  font-size: 12.5px;
-  font-weight: 600;
+  white-space: nowrap; /* el código nunca se parte en dos líneas */
+}
+
+.tk-codigo-link {
+  color: inherit;
+  text-decoration: none;
+}
+.tk-codigo-link:hover,
+.tk-codigo-link:focus-visible {
+  text-decoration: underline;
 }
 
 .filtro-check {

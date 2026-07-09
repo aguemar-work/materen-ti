@@ -152,15 +152,23 @@ onMounted(async () => {
 
       <div v-else class="cat-lista">
         <div v-for="cat in categorias" :key="cat.id" class="cat-item">
-          <div class="cat-fila" @click="toggleExpandir(cat.id)">
+          <div
+            class="cat-fila"
+            role="button"
+            tabindex="0"
+            :aria-expanded="expandidoId === cat.id"
+            @click="toggleExpandir(cat.id)"
+            @keydown.enter.prevent="toggleExpandir(cat.id)"
+            @keydown.space.prevent="toggleExpandir(cat.id)"
+          >
             <i class="ti cat-chevron" :class="expandidoId === cat.id ? 'ti-chevron-down' : 'ti-chevron-right'"></i>
             <span class="user-name">{{ cat.nombre }}</span>
             <span class="cat-count">{{ subsDe(cat.id).length }} subcategorías</span>
             <div class="actions" @click.stop>
-              <button class="icon-btn" type="button" title="Editar" @click="abrirEditarCategoria(cat)">
+              <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditarCategoria(cat)">
                 <i class="ti ti-pencil"></i>
               </button>
-              <button class="icon-btn danger" type="button" title="Eliminar" @click="eliminarCategoria(cat)">
+              <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminarCategoria(cat)">
                 <i class="ti ti-trash"></i>
               </button>
             </div>
@@ -169,7 +177,7 @@ onMounted(async () => {
           <div v-if="expandidoId === cat.id" class="cat-subs">
             <div v-for="sub in subsDe(cat.id)" :key="sub.id" class="cat-sub-fila">
               <span>{{ sub.nombre }}</span>
-              <button class="icon-btn danger" type="button" title="Eliminar" @click="eliminarSubcategoria(sub)">
+              <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminarSubcategoria(sub)">
                 <i class="ti ti-trash"></i>
               </button>
             </div>
@@ -232,6 +240,11 @@ onMounted(async () => {
 }
 
 .cat-fila:hover { background: var(--color-bg-hover); }
+
+.cat-fila:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
 
 .cat-chevron { color: var(--color-text-secondary); font-size: 15px; }
 

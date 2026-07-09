@@ -114,24 +114,24 @@ const listaPaginada = computed(() => {
       </div>
 
       <div v-else class="table-wrap">
-        <table>
+        <table aria-label="Ubicaciones">
           <thead>
             <tr>
-              <th>Nombre</th>
-              <th>Descripción</th>
-              <th></th>
+              <th scope="col">Nombre</th>
+              <th scope="col">Descripción</th>
+              <th scope="col"><span class="sr-only">Acciones</span></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="u in listaPaginada" :key="u.id">
               <td><span class="user-name"><i class="ti ti-map-pin ub-icon"></i> {{ u.nombre }}</span></td>
-              <td class="text-muted">{{ u.descripcion || '—' }}</td>
+              <td :class="{ 'text-muted': !u.descripcion }">{{ u.descripcion || '—' }}</td>
               <td>
                 <div class="actions">
-                  <button class="icon-btn" type="button" title="Editar" @click="abrirEditar(u)">
+                  <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(u)">
                     <i class="ti ti-pencil"></i>
                   </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" @click="porEliminar = u">
+                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = u">
                     <i class="ti ti-trash"></i>
                   </button>
                 </div>

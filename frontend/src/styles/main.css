@@ -316,6 +316,14 @@
       gap: 8px;
     }
 
+    /* Acciones del header (Exportar, + Nuevo...) — parte del shell */
+    .header-btns {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
     .brand {
       display: flex;
       align-items: center;
@@ -353,11 +361,15 @@
        full-bleed (sin padding) y el contenido decide:
        - listados: .card--fill ocupa todo ancho/alto, sin borde
        - multi-card (dashboard, detalle): main.page.page--padded */
+    /* min-height: 0 en toda la cadena para que el scroll viva DENTRO
+       del módulo (tabla o page--padded) y el header/toolbar/filtros
+       queden siempre visibles. */
     .vista-modulo {
       flex: 1;
       display: flex;
       flex-direction: column;
       min-width: 0;
+      min-height: 0;
     }
 
     .page {
@@ -365,10 +377,12 @@
       display: flex;
       flex-direction: column;
       min-width: 0;
+      min-height: 0;
     }
 
     .page--padded {
       padding: 1.5rem;
+      overflow-y: auto;
     }
 
     /* ── Grilla de 12 columnas ───────────────────────────────────
@@ -471,10 +485,20 @@
       min-height: 0;
       border: 0;
       border-radius: 0;
+      overflow: auto; /* contenido no-tabla (ej. acordeón) scrollea dentro */
     }
 
+    /* La tabla scrollea internamente y el thead queda fijo arriba */
     .card--fill .table-wrap {
       flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .card--fill thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
 
     .card-toolbar {
@@ -687,8 +711,13 @@
 
     table {
       width: 100%;
-      border-collapse: collapse;
+      /* separate (no collapse): con thead sticky, los bordes colapsados
+         se quedan atrás al scrollear; con separate viajan con la celda */
+      border-collapse: separate;
+      border-spacing: 0;
       font-size: 13px;
+      /* dígitos de ancho fijo: DNI, fechas y conteos alinean en columna */
+      font-variant-numeric: tabular-nums;
     }
 
     th {
@@ -728,7 +757,10 @@
       gap: 10px;
     }
 
-    .user-name { font-weight: 600; font-size: 13px; }
+    /* Datos de tabla uniformes (decisión JEFE jul 2026): ningún dato en
+       negrita; mismo peso, tamaño y color en todas las celdas. La
+       jerarquía la dan los badges y el layout, no la tipografía. */
+    .user-name { font-weight: 400; font-size: 13px; }
     .user-login { font-size: 12px; color: var(--color-text-secondary); }
 
     .area-main { font-weight: 500; }

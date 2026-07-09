@@ -197,11 +197,6 @@ async function guardar() {
         </div>
 
         <div class="form-group">
-          <label for="cargo">Cargo</label>
-          <input id="cargo" v-model="form.cargo" :disabled="guardando">
-        </div>
-
-        <div class="form-group">
           <label for="area-obra">Área/Obra</label>
           <select id="area-obra" v-model="form.area_obra_id" :disabled="guardando || cargandoEmpresas">
             <option value="">Sin asignar</option>
@@ -212,18 +207,18 @@ async function guardar() {
         </div>
 
         <div class="form-group">
-          <label for="estado">Estado *</label>
-          <select id="estado" v-model="form.estado" required :disabled="guardando">
-            <option value="Activo">Activo</option>
-            <option value="Inactivo">Inactivo</option>
-            <option value="Suspendido">Suspendido</option>
-          </select>
+          <label for="cargo">Cargo</label>
+          <input id="cargo" v-model="form.cargo" :disabled="guardando">
         </div>
 
         <div class="form-group">
           <label for="fecha-alta">Fecha de alta *</label>
           <input id="fecha-alta" v-model="form.fecha_alta" type="date" required :disabled="guardando">
         </div>
+
+        <!-- Sin campo Estado: el alta siempre es "Activo"; al editar se
+             conserva el estado actual. Cambiarlo es un flujo aparte
+             (Dar de baja / Reactivar en la ficha). -->
 
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 

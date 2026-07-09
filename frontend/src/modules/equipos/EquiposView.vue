@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
 import { generarActa } from './acta.js';
@@ -71,6 +72,24 @@ function badgesSituacion(eq) {
   }
   const info = situacionInfo(eq);
   return [{ label: info.label, clase: info.clase, fisico: false }];
+}
+
+function exportar() {
+  exportarCSV(
+    'equipos',
+    ['Código', 'Tipo', 'Marca', 'Modelo', 'Empresa', 'Serie', 'Situación', 'Portador / Ubicación', 'Garantía'],
+    listaFiltrada.value.map((eq) => [
+      eq.codigo,
+      eq.tipo_nombre,
+      eq.marca,
+      eq.modelo,
+      eq.empresa_nombre,
+      eq.serie,
+      badgesSituacion(eq).map((b) => b.label).join(' · '),
+      eq.portador || eq.ubicacion_nombre,
+      eq.garantia_hasta,
+    ]),
+  );
 }
 
 // ── Formulario ────────────────────────────────────────────────
@@ -313,23 +332,24 @@ onMounted(async () => {
     <header class="site-header">
       <div class="header-inner">
         <div class="header-title">
-          <h1><i class="ti ti-devices" aria-hidden="true"></i> Equipos</h1>
+          <h1>
+            <i class="ti ti-devices" aria-hidden="true"></i> Equipos
+            <span class="badge-count">{{ listaFiltrada.length }}</span>
+          </h1>
         </div>
-        <button class="btn btn-primary" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo equipo
-        </button>
+        <div class="header-btns">
+          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
+            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          </button>
+          <button class="btn btn-primary" type="button" @click="abrirNuevo">
+            <i class="ti ti-plus" aria-hidden="true"></i> Nuevo equipo
+          </button>
+        </div>
       </div>
     </header>
 
     <main class="page">
       <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Inventario de equipos
-            <span class="badge-count">{{ listaFiltrada.length }} equipos</span>
-          </div>
-        </div>
-
         <div class="filters">
           <div class="search-wrap">
             <i class="ti ti-search"></i>
@@ -358,16 +378,16 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Inventario de equipos">
             <thead>
               <tr>
-                <th>Código</th>
-                <th>Equipo</th>
-                <th>Serie</th>
-                <th class="th-situacion">Situación</th>
-                <th>Portador</th>
-                <th>Garantía</th>
-                <th></th>
+                <th scope="col">Código</th>
+                <th scope="col">Equipo</th>
+                <th scope="col">Serie</th>
+                <th scope="col" class="th-situacion">Situación</th>
+                <th scope="col">Portador</th>
+                <th scope="col">Garantía</th>
+                <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -375,7 +395,7 @@ onMounted(async () => {
                 <td><span class="eq-codigo">{{ eq.codigo }}</span></td>
                 <td>
                   <div class="eq-info">
-                    <a v-if="eq.fotos.length" class="eq-foto" :href="eq.fotos[0].url" target="_blank" rel="noopener noreferrer" title="Ver foto">
+                    <a v-if="eq.fotos.length" class="eq-foto" :href="eq.fotos[0].url" target="_blank" rel="noopener noreferrer" title="Ver foto" aria-label="Ver foto del equipo">
                       <img :src="eq.fotos[0].url" alt="">
                     </a>
                     <div>
@@ -384,7 +404,7 @@ onMounted(async () => {
                     </div>
                   </div>
                 </td>
-                <td class="eq-serie">{{ eq.serie || '—' }}</td>
+                <td class="eq-serie" :class="{ 'text-muted': !eq.serie }">{{ eq.serie || '—' }}</td>
                 <td>
                   <span class="badge-group" :title="badgesSituacion(eq).map(b => b.label).join(' · ')">
                     <span
@@ -422,6 +442,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Entregar a un empleado"
+                      aria-label="Entregar a un empleado"
                       @click="abrirAsignar(eq)"
                     >
                       <i class="ti ti-user-plus"></i>
@@ -431,6 +452,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Mover a una ubicación"
+                      aria-label="Mover a una ubicación"
                       @click="abrirMover(eq)"
                     >
                       <i class="ti ti-map-pin"></i>
@@ -440,6 +462,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Imprimir acta de entrega"
+                      aria-label="Imprimir acta de entrega"
                       @click="imprimirActa(eq)"
                     >
                       <i class="ti ti-printer"></i>
@@ -449,6 +472,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Registrar devolución"
+                      aria-label="Registrar devolución"
                       @click="abrirDevolver(eq)"
                     >
                       <i class="ti ti-arrow-back-up"></i>
@@ -458,6 +482,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Enviar a reparación"
+                      aria-label="Enviar a reparación"
                       @click="cambiarEstado(eq, 'en_reparacion', 'En reparación')"
                     >
                       <i class="ti ti-tool"></i>
@@ -467,14 +492,15 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Marcar reparado (operativo)"
+                      aria-label="Marcar reparado (operativo)"
                       @click="cambiarEstado(eq, 'operativo', 'Operativo')"
                     >
                       <i class="ti ti-circle-check"></i>
                     </button>
-                    <button class="icon-btn" type="button" title="Hoja de vida" @click="verHoja(eq)">
+                    <button class="icon-btn" type="button" title="Hoja de vida" aria-label="Hoja de vida" @click="verHoja(eq)">
                       <i class="ti ti-history"></i>
                     </button>
-                    <button class="icon-btn" type="button" title="Editar" @click="abrirEditar(eq)">
+                    <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(eq)">
                       <i class="ti ti-pencil"></i>
                     </button>
                     <button
@@ -482,6 +508,7 @@ onMounted(async () => {
                       class="icon-btn danger"
                       type="button"
                       title="Dar de baja el equipo"
+                      aria-label="Dar de baja el equipo"
                       @click="cambiarEstado(eq, 'de_baja', 'De baja')"
                     >
                       <i class="ti ti-circle-off"></i>
@@ -666,16 +693,14 @@ onMounted(async () => {
 <style scoped>
 .eq-error { color: var(--color-danger); }
 
+/* Datos uniformes: solo cambia la familia (mono para identificadores),
+   nunca el peso/tamaño/color */
 .eq-codigo {
   font-family: var(--font-mono, monospace);
-  font-size: 12.5px;
-  font-weight: 600;
 }
 
 .eq-modelo {
   display: block;
-  font-size: 11.5px;
-  color: var(--color-text-secondary);
 }
 
 .eq-info {
@@ -702,8 +727,6 @@ onMounted(async () => {
 
 .eq-serie {
   font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  color: var(--color-text-secondary);
 }
 
 /* Estructura y color: sistema de badges global (.badge + .badge--X) */
@@ -721,9 +744,10 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
-  color: var(--color-purple-text);
 }
+
+/* Solo el icono conserva el color de la familia "ubicaciones" */
+.ubicacion-nombre i { color: var(--color-purple-text); }
 
 .nueva-ubicacion {
   display: flex;

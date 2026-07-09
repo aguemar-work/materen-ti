@@ -331,7 +331,10 @@ JEFE jul 2026):
   <header class="site-header">
     <div class="header-inner">
       <div class="header-title">
-        <h1><i class="ti ti-users" aria-hidden="true"></i> Empleados</h1>
+        <h1>
+          <i class="ti ti-users" aria-hidden="true"></i> Empleados
+          <span class="badge-count">{{ listaFiltrada.length }}</span>
+        </h1>
       </div>
       <div class="header-btns">…acciones (único .btn-primary de la vista)…</div>
     </div>
@@ -345,12 +348,16 @@ entrega, tickets públicos), donde no hay sidebar que muestre la marca.
 
 ### Página tipo listado (empleados, equipos, etc.)
 
-1. Shell de arriba, con las acciones del módulo en `.header-btns`
+1. Shell de arriba, con las acciones del módulo en `.header-btns` y el
+   **contador (`.badge-count`) dentro del `h1`** — la fila `.card-toolbar`
+   con título+contador se eliminó de los módulos (jul 2026): era
+   redundante con el header. Los paneles de Configuración SÍ conservan su
+   `.card-toolbar` porque no tienen header propio (ahí viven su título,
+   contador y botón de crear).
 2. `main.page` → `.card.card--fill` — el card se estira a todo el
    ancho/alto disponible, **sin borde ni radio** (full-bleed)
-3. `.card-toolbar` (título + acciones)
-4. `.filters` (búsqueda + selects)
-5. `.table-wrap` > `table` o `.empty`
+3. `.filters` (búsqueda + selects)
+4. `.table-wrap` > `table` o `.empty`
 
 ### Página multi-card (dashboard, detalle de empleado/ticket)
 
@@ -582,6 +589,36 @@ Plataformas, Empresas, Correos, Actividad, Staff, y los paneles de
 Ubicaciones/Tipos de equipo en Configuración). Se descartó a propósito en
 `CuentasPanel.vue`: es una lista de cuentas de un solo empleado (unas
 pocas filas, sin buscador), no un listado global.
+
+### Reglas de tabla (jul 2026, tras auditoría de accesibilidad)
+
+- **Semántica**: todo `<th>` lleva `scope="col"`; toda `<table>` lleva
+  `aria-label` descriptivo; la columna de acciones usa
+  `<th scope="col"><span class="sr-only">Acciones</span></th>` — nunca un
+  `<th>` vacío.
+- **Botones de icono**: siempre `title` **y** `aria-label` con el mismo
+  texto (o `:aria-label` con la misma expresión si el title es dinámico).
+  Aplica también a links solo-icono (URL externa, foto).
+- **Filas clicables**: el click en la fila es un atajo de mouse; siempre
+  debe existir un elemento enfocable dentro de la fila que haga lo mismo
+  (botón "Ver ficha" en Empleados; el código como `RouterLink` en Tickets).
+- **Thead sticky**: dentro de `.card--fill` la tabla scrollea internamente
+  (`.table-wrap` con `overflow-y: auto`) y el `thead` queda fijo
+  (`position: sticky; top: 0`). Por eso `table` usa
+  `border-collapse: separate` — con `collapse`, los bordes del header se
+  quedan atrás al scrollear. Resultado: header de módulo, toolbar y
+  filtros siempre visibles; solo las filas se desplazan.
+- **Valores vacíos** ("—", "Sin usuarios"): siempre `.text-muted`. Si la
+  celda a veces tiene valor, condicional: `:class="{ 'text-muted': !campo }"`.
+- **Números**: `table` define `font-variant-numeric: tabular-nums` — DNI,
+  fechas y conteos alinean dígito a dígito sin nada extra por vista.
+- **Tipografía uniforme (decisión JEFE jul 2026)**: ningún dato de tabla
+  va en negrita; todas las celdas comparten peso (400), tamaño (13px) y
+  color (`--color-text-primary`). `.user-name` es peso 400. Lo único que
+  puede variar es la **familia** (mono para identificadores: códigos,
+  series, correos). La jerarquía la dan los badges y el layout, no la
+  tipografía. Excepciones: badges/chips (son estado, no dato) y los
+  vacíos "—" en `.text-muted`.
 
 ### Errores de formulario/acción (`.form-error`)
 

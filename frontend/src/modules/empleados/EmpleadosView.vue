@@ -5,23 +5,21 @@ import { useRouter } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
+import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import Pagination from '../../components/shared/Pagination.vue';
 
-function exportarCSV(empleados) {
-  const cols = ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Área/Obra', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal'];
-  const rows = empleados.map((e) => [
-    e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.area_obra_nombre, e.cargo,
-    e.estado, e.fecha_alta, e.whatsapp, e.correo_personal,
-  ].map((v) => `"${(v ?? '').toString().replace(/"/g, '""')}"`));
-  const csv = [cols.join(','), ...rows.map((r) => r.join(','))].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'empleados.csv'; a.click();
-  URL.revokeObjectURL(url);
+function exportar(empleados) {
+  exportarCSV(
+    'empleados',
+    ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Área/Obra', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal'],
+    empleados.map((e) => [
+      e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.area_obra_nombre, e.cargo,
+      e.estado, e.fecha_alta, e.whatsapp, e.correo_personal,
+    ]),
+  );
 }
 
 const router = useRouter();
@@ -146,10 +144,13 @@ onMounted(async () => {
     <header class="site-header">
       <div class="header-inner">
         <div class="header-title">
-          <h1><i class="ti ti-users" aria-hidden="true"></i> Empleados</h1>
+          <h1>
+            <i class="ti ti-users" aria-hidden="true"></i> Empleados
+            <span class="badge-count">{{ listaFiltrada.length }}</span>
+          </h1>
         </div>
         <div class="header-btns">
-          <button class="btn" type="button" title="Exportar CSV" @click="exportarCSV(listaFiltrada)">
+          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar(listaFiltrada)">
             <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
           </button>
           <button class="btn btn-primary" type="button" @click="abrirNuevo">
@@ -161,13 +162,6 @@ onMounted(async () => {
 
     <main class="page">
       <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Inventario de empleados
-            <span class="badge-count">{{ listaFiltrada.length }} empleados</span>
-          </div>
-        </div>
-
         <div class="filters">
           <div class="search-wrap">
             <i class="ti ti-search"></i>
@@ -197,25 +191,25 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Inventario de empleados">
             <thead>
               <tr>
-                <th>DNI</th>
-                <th>Nombre</th>
-                <th>Cargo</th>
-                <th>Empresa</th>
-                <th>Estado</th>
-                <th>Acciones</th>
+                <th scope="col">DNI</th>
+                <th scope="col">Nombre</th>
+                <th scope="col">Cargo</th>
+                <th scope="col">Empresa</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Acciones</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="emp in listaPaginada" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
-                <td class="text-muted">{{ emp.dni }}</td>
+                <td>{{ emp.dni }}</td>
                 <td>
                   <div class="user-name">{{ nombreCompleto(emp) }}</div>
                 </td>
-                <td class="text-muted">{{ emp.cargo || '—' }}</td>
-                <td>{{ emp.empresa_nombre || '—' }}</td>
+                <td :class="{ 'text-muted': !emp.cargo }">{{ emp.cargo || '—' }}</td>
+                <td :class="{ 'text-muted': !emp.empresa_nombre }">{{ emp.empresa_nombre || '—' }}</td>
                 <td>
                   <span class="status" :class="claseEstado(emp.estado)">{{ emp.estado }}</span>
                 </td>
@@ -225,6 +219,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Ver ficha"
+                      aria-label="Ver ficha"
                       @click="verFicha(emp)"
                     >
                       <i class="ti ti-eye"></i>
@@ -233,6 +228,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Editar"
+                      aria-label="Editar"
                       @click="abrirEditar(emp)"
                     >
                       <i class="ti ti-pencil"></i>
@@ -241,6 +237,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Enviar credenciales por WhatsApp"
+                      aria-label="Enviar credenciales por WhatsApp"
                       :disabled="enviandoCredsId === emp.id"
                       @click="enviarCredenciales(emp)"
                     >
@@ -251,6 +248,7 @@ onMounted(async () => {
                       class="icon-btn danger"
                       type="button"
                       title="Dar de baja"
+                      aria-label="Dar de baja"
                       @click="darDeBaja(emp)"
                     >
                       <i class="ti ti-user-off"></i>
@@ -281,7 +279,6 @@ onMounted(async () => {
 
 <style scoped>
 .empleados-error { color: var(--color-danger); }
-.header-btns { display: flex; gap: 8px; align-items: center; }
 
 .fila-empleado { cursor: pointer; }
 .fila-empleado:hover td { background: var(--color-bg-hover, var(--color-bg-subtle)); }

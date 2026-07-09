@@ -131,13 +131,13 @@ onMounted(async () => {
       <div v-if="cargando" class="no-results">Cargando tipos...</div>
 
       <div v-else class="table-wrap">
-        <table>
+        <table aria-label="Tipos de equipo">
           <thead>
             <tr>
-              <th>Tipo</th>
-              <th>Specs que pide</th>
-              <th>Accesorios sugeridos</th>
-              <th></th>
+              <th scope="col">Tipo</th>
+              <th scope="col">Specs que pide</th>
+              <th scope="col">Accesorios sugeridos</th>
+              <th scope="col"><span class="sr-only">Acciones</span></th>
             </tr>
           </thead>
           <tbody>
@@ -157,10 +157,10 @@ onMounted(async () => {
               </td>
               <td>
                 <div class="actions">
-                  <button class="icon-btn" type="button" title="Editar plantilla" @click="abrirEditar(t)">
+                  <button class="icon-btn" type="button" title="Editar plantilla" aria-label="Editar plantilla" @click="abrirEditar(t)">
                     <i class="ti ti-pencil"></i>
                   </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" @click="eliminar(t)">
+                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminar(t)">
                     <i class="ti ti-trash"></i>
                   </button>
                 </div>

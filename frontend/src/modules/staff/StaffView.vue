@@ -73,13 +73,13 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Miembros del staff">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Rol</th>
-                <th>Estado</th>
-                <th></th>
+                <th scope="col">Nombre</th>
+                <th scope="col">Rol</th>
+                <th scope="col">Estado</th>
+                <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -115,6 +115,7 @@ onMounted(async () => {
                       :class="miembro.activo ? 'danger' : ''"
                       type="button"
                       :title="miembro.activo ? 'Desactivar' : 'Activar'"
+                      :aria-label="miembro.activo ? 'Desactivar' : 'Activar'"
                       @click="toggleActivo(miembro)"
                     >
                       <i :class="miembro.activo ? 'ti ti-user-off' : 'ti ti-user-check'"></i>

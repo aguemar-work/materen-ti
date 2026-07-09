@@ -366,13 +366,6 @@ onMounted(cargar);
   color: var(--color-text-secondary);
 }
 
-.header-btns {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
 .btn-baja {
   color: var(--color-danger-text);
   border-color: var(--color-danger-border);

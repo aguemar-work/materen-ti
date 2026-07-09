@@ -4,6 +4,7 @@
 // ni borrarlos desde el cliente.
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
+import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import Pagination from '../../components/shared/Pagination.vue';
 
@@ -37,6 +38,21 @@ function infoAccion(accion) {
   return ACCIONES[accion] || { label: accion, icon: 'ti ti-activity', clase: '' };
 }
 
+function exportar() {
+  exportarCSV(
+    'actividad',
+    ['Fecha', 'Quién', 'Acción', 'Cuenta', 'Plataforma', 'Detalle'],
+    listaFiltrada.value.map((r) => [
+      formatFechaHora(r.created_at),
+      r.user_email || '(empleado, vía enlace)',
+      infoAccion(r.accion).label,
+      r.cuenta_usuario,
+      r.plataforma,
+      r.detalle,
+    ]),
+  );
+}
+
 function formatFechaHora(iso) {
   const d = new Date(iso);
   return d.toLocaleString('es-PE', {
@@ -61,20 +77,21 @@ onMounted(async () => {
     <header class="site-header">
       <div class="header-inner">
         <div class="header-title">
-          <h1><i class="ti ti-activity" aria-hidden="true"></i> Actividad</h1>
+          <h1>
+            <i class="ti ti-activity" aria-hidden="true"></i> Actividad
+            <span class="badge-count">{{ listaFiltrada.length }}</span>
+          </h1>
+        </div>
+        <div class="header-btns">
+          <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
+            <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          </button>
         </div>
       </div>
     </header>
 
     <main class="page">
       <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Auditoría de accesos a contraseñas
-            <span class="badge-count">{{ listaFiltrada.length }} registros</span>
-          </div>
-        </div>
-
         <div class="filters">
           <select v-model="filtroAccion">
             <option value="">Todas las acciones</option>
@@ -94,20 +111,20 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Auditoría de accesos a contraseñas">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Quién</th>
-                <th>Acción</th>
-                <th>Cuenta</th>
-                <th>Plataforma</th>
-                <th>Detalle</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Quién</th>
+                <th scope="col">Acción</th>
+                <th scope="col">Cuenta</th>
+                <th scope="col">Plataforma</th>
+                <th scope="col">Detalle</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="r in listaPaginada" :key="r.id">
-                <td class="text-muted fecha-cell">{{ formatFechaHora(r.created_at) }}</td>
+                <td class="fecha-cell">{{ formatFechaHora(r.created_at) }}</td>
                 <td>{{ r.user_email || '(empleado, vía enlace)' }}</td>
                 <td>
                   <span class="badge" :class="infoAccion(r.accion).clase">
@@ -116,10 +133,10 @@ onMounted(async () => {
                   </span>
                 </td>
                 <td class="cuenta-cell">{{ r.cuenta_usuario }}</td>
-                <td>{{ r.plataforma || '—' }}</td>
-                <td class="text-muted detalle-cell">
+                <td :class="{ 'text-muted': !r.plataforma }">{{ r.plataforma || '—' }}</td>
+                <td class="detalle-cell">
                   <span v-if="r.detalle" :title="r.detalle">{{ r.detalle }}</span>
-                  <span v-else>—</span>
+                  <span v-else class="text-muted">—</span>
                 </td>
               </tr>
             </tbody>
@@ -132,11 +149,11 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.fecha-cell { white-space: nowrap; font-size: 12.5px; }
+/* Datos uniformes: solo cambia la familia (mono para identificadores) */
+.fecha-cell { white-space: nowrap; }
 
 .cuenta-cell {
   font-family: var(--font-mono, monospace);
-  font-size: 12.5px;
 }
 
 .detalle-cell {
@@ -144,7 +161,6 @@ onMounted(async () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12.5px;
 }
 
 /* Estructura y color: sistema de badges global (.badge + .badge--X) */

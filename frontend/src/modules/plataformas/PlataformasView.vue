@@ -132,13 +132,13 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Plataformas registradas">
             <thead>
               <tr>
-                <th>Slug</th>
-                <th>Nombre</th>
-                <th>Ícono</th>
-                <th></th>
+                <th scope="col">Slug</th>
+                <th scope="col">Nombre</th>
+                <th scope="col">Ícono</th>
+                <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -152,7 +152,7 @@ onMounted(async () => {
                 <td>
                   <span v-if="plat.icono" class="icono-preview">
                     <i :class="plat.icono" aria-hidden="true"></i>
-                    <span class="text-muted icono-texto">{{ plat.icono }}</span>
+                    <span>{{ plat.icono }}</span>
                   </span>
                   <span v-else class="text-muted">—</span>
                 </td>
@@ -162,6 +162,7 @@ onMounted(async () => {
                       class="icon-btn"
                       type="button"
                       title="Editar"
+                      aria-label="Editar"
                       @click="abrirEditar(plat)"
                     >
                       <i class="ti ti-pencil"></i>
@@ -170,6 +171,7 @@ onMounted(async () => {
                       class="icon-btn danger"
                       type="button"
                       title="Dar de baja"
+                      aria-label="Dar de baja"
                       @click="darDeBaja(plat)"
                     >
                       <i class="ti ti-trash"></i>
@@ -248,12 +250,11 @@ onMounted(async () => {
   color: var(--color-danger);
 }
 
+/* Datos uniformes: el chip conserva fondo/borde, no cambia tipografía */
 .slug {
-  font-size: 12px;
   background: var(--color-surface-2, var(--color-bg-hover));
   padding: 2px 6px;
   border-radius: 4px;
-  color: var(--color-text-muted, #666);
 }
 
 .icono-preview {
@@ -263,9 +264,6 @@ onMounted(async () => {
   font-size: 16px;
 }
 
-.icono-texto {
-  font-size: 12px;
-}
 
 .icono-row {
   display: flex;
@@ -285,7 +283,7 @@ onMounted(async () => {
 
 .label-hint {
   font-size: 11px;
-  color: var(--color-text-muted, #888);
+  color: var(--color-text-secondary);
   font-weight: 400;
   margin-left: 6px;
 }

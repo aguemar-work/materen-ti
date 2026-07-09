@@ -132,12 +132,12 @@ onMounted(async () => {
         </div>
 
         <div v-else class="table-wrap">
-          <table>
+          <table aria-label="Empresas registradas">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>RUC</th>
-                <th></th>
+                <th scope="col">Nombre</th>
+                <th scope="col">RUC</th>
+                <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -145,13 +145,14 @@ onMounted(async () => {
                 <td>
                   <div class="user-name">{{ emp.nombre }}</div>
                 </td>
-                <td class="text-muted">{{ emp.ruc || '—' }}</td>
+                <td :class="{ 'text-muted': !emp.ruc }">{{ emp.ruc || '—' }}</td>
                 <td>
                   <div class="actions">
                     <button
                       class="icon-btn"
                       type="button"
                       title="Editar"
+                      aria-label="Editar"
                       @click="abrirEditar(emp)"
                     >
                       <i class="ti ti-pencil"></i>
@@ -160,6 +161,7 @@ onMounted(async () => {
                       class="icon-btn danger"
                       type="button"
                       title="Dar de baja"
+                      aria-label="Dar de baja"
                       @click="darDeBaja(emp)"
                     >
                       <i class="ti ti-building-off"></i>
