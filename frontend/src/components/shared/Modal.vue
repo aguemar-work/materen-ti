@@ -15,8 +15,21 @@ const props = defineProps({
   overlayClass: { type: String, default: '' },
   cerrarEnBackdrop: { type: Boolean, default: true },
   mostrarCerrar: { type: Boolean, default: true },
+  // 'modal-anim' (estándar) | 'modal-anim-rapida' (diálogos sobre otro modal)
+  transicion: { type: String, default: 'modal-anim' },
 });
 const emit = defineEmits(['close']);
+
+// El cierre anima primero y emite 'close' al terminar (@after-leave); así
+// el padre puede quitar su v-if sin cortar la animación de salida. Los
+// cierres directos por v-if del padre (ej. tras confirmar) no animan.
+const visible = ref(true);
+
+function cerrar() {
+  visible.value = false;
+}
+
+defineExpose({ cerrar });
 
 const tituloId = useId();
 const panel = ref(null);
@@ -34,7 +47,7 @@ function focusables() {
 function onKeydown(e) {
   if (e.key === 'Escape') {
     e.stopPropagation();
-    emit('close');
+    cerrar();
     return;
   }
   if (e.key !== 'Tab') return;
@@ -74,13 +87,14 @@ onBeforeUnmount(() => {
 });
 
 function onBackdrop() {
-  if (props.cerrarEnBackdrop) emit('close');
+  if (props.cerrarEnBackdrop) cerrar();
 }
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="modal-bg" :class="overlayClass" @click.self="onBackdrop">
+    <Transition :name="transicion" appear @after-leave="emit('close')">
+    <div v-if="visible" class="modal-bg" :class="overlayClass" @click.self="onBackdrop">
       <div
         ref="panel"
         class="modal"
@@ -102,11 +116,14 @@ function onBackdrop() {
             <i class="ti ti-x" aria-hidden="true"></i>
           </button>
         </div>
-        <slot />
+        <div class="modal-body">
+          <slot />
+        </div>
         <div v-if="$slots.acciones" class="modal-actions">
           <slot name="acciones" />
         </div>
       </div>
     </div>
+    </Transition>
   </Teleport>
 </template>

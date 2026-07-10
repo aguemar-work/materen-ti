@@ -324,6 +324,16 @@
       flex-wrap: wrap;
     }
 
+    /* Lado izquierdo del header en vistas de detalle (volver + avatar + título).
+       Vive acá y no en las vistas: el div es interno de PageHeader y los
+       estilos scoped de la vista no lo alcanzan. */
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
     .brand {
       display: flex;
       align-items: center;
@@ -678,6 +688,7 @@
       font-family: var(--font-sans);
       transition: background 0.15s, border-color 0.15s, color 0.15s;
       white-space: nowrap;
+      text-decoration: none; /* también se usa como <a> (RouterLink) */
     }
 
     .btn:hover {
@@ -869,6 +880,7 @@
       align-items: center;
       font-size: 17px;
       transition: background 0.12s, color 0.12s;
+      text-decoration: none; /* también se usa como <a> (RouterLink) */
     }
 
     .icon-btn:hover {
@@ -1108,17 +1120,6 @@
       justify-content: center;
       z-index: var(--z-modal);
       padding: 1rem;
-      animation: fadeIn 0.2s ease;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-
-    @keyframes slideUp {
-      from { opacity: 0; transform: translateY(12px) scale(0.98); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
     }
 
     .modal {
@@ -1129,8 +1130,84 @@
       width: 100%;
       max-width: 540px;
       max-height: 90vh;
+      /* Tres regiones (Fase 5b): título y .modal-actions fijos; solo
+         .modal-body scrollea. El límite sigue siendo el max-height. */
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Un <form> hijo directo hereda el layout de columna para que sus
+       .modal-body/.modal-actions se comporten igual que fuera de un form */
+    .modal > form {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .modal .modal-body {
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
-      animation: slideUp 0.25s ease;
+    }
+
+    .modal .modal-title,
+    .modal .modal-actions {
+      flex-shrink: 0;
+    }
+
+    /* ── Escala de anchos de modal (Fase 5) ──
+       sm 440 (confirmaciones y forms cortos) / base 540 (forms medianos) /
+       detail 620 (listas de datos, timelines) / lg 680 (forms grandes con
+       secciones). Solo max-width: el width:100% de .modal más el padding
+       del fondo ya resuelven el responsive en pantallas angostas — no hace
+       falta repetir max-width:95vw por archivo. */
+    .modal.modal-sm { max-width: 440px; }
+    .modal.modal-detail { max-width: 620px; }
+    .modal.modal-lg { max-width: 680px; }
+
+    /* ── Animación compartida de modales (Fase 3) ──
+       Un solo lugar para las 22 instancias: cada modal envuelve su v-if en
+       <Transition name="modal-anim"> (o "modal-anim-rapida" para diálogos
+       que aparecen SOBRE otro modal, como ConfirmDialog). Dos capas:
+       el fondo solo funde opacity; el panel .modal entra creciendo desde
+       scale(0.95). Solo opacity/transform — nunca propiedades de layout.
+       Apertura 190ms / cierre 130ms (el cierre se siente más inmediato). */
+    .modal-anim-enter-active { transition: opacity 190ms ease-out; }
+    .modal-anim-leave-active { transition: opacity 130ms ease-in; }
+    .modal-anim-enter-active .modal { transition: transform 190ms cubic-bezier(0.2, 0, 0, 1); }
+    .modal-anim-leave-active .modal { transition: transform 130ms ease-in; }
+    .modal-anim-enter-from,
+    .modal-anim-leave-to { opacity: 0; }
+    .modal-anim-enter-from .modal,
+    .modal-anim-leave-to .modal { transform: scale(0.95); }
+
+    /* Variante corta: interrupción puntual sobre un modal ya abierto */
+    .modal-anim-rapida-enter-active { transition: opacity 110ms ease-out; }
+    .modal-anim-rapida-leave-active { transition: opacity 100ms ease-in; }
+    .modal-anim-rapida-enter-active .modal { transition: transform 110ms ease-out; }
+    .modal-anim-rapida-leave-active .modal { transition: transform 100ms ease-in; }
+    .modal-anim-rapida-enter-from,
+    .modal-anim-rapida-leave-to { opacity: 0; }
+    .modal-anim-rapida-enter-from .modal,
+    .modal-anim-rapida-leave-to .modal { transform: scale(0.97); }
+
+    /* Accesibilidad: con "reducir movimiento" activo, nada de escala y
+       el fade queda casi instantáneo */
+    @media (prefers-reduced-motion: reduce) {
+      .modal-anim-enter-active,
+      .modal-anim-leave-active,
+      .modal-anim-rapida-enter-active,
+      .modal-anim-rapida-leave-active,
+      .modal-anim-enter-active .modal,
+      .modal-anim-leave-active .modal,
+      .modal-anim-rapida-enter-active .modal,
+      .modal-anim-rapida-leave-active .modal { transition-duration: 1ms; }
+
+      .modal-anim-enter-from .modal,
+      .modal-anim-leave-to .modal,
+      .modal-anim-rapida-enter-from .modal,
+      .modal-anim-rapida-leave-to .modal { transform: none; }
     }
 
     .modal-title {
@@ -1361,8 +1438,6 @@
       th, td { padding: 10px 12px; }
     }
   
-.modal.modal-lg { max-width: 680px; }
-.modal.modal-detail { max-width: 620px; }
 .mode-badge { font-size: 11px; padding: 3px 8px; border-radius: 20px; background: var(--color-neutral-bg); color: var(--color-neutral-text); font-weight: 600; }
 .mode-badge.cloud { background: var(--color-success-bg); color: var(--color-success-text); }
 .cred-list { display: flex; flex-direction: column; gap: 10px; }

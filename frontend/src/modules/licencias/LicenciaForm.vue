@@ -2,6 +2,10 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useLicenciasStore } from '../../stores/licencias.js';
+import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
+import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
   licencia: { type: Object, default: null },
@@ -9,10 +13,29 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
+// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
+// emit real sale en @after-leave, así el padre desmonta sin cortarla.
+const visible = ref(true);
+let resultadoCierre = false;
+
+function cerrar(resultado) {
+  resultadoCierre = resultado;
+  visible.value = false;
+}
+
+function emitirCierre() {
+  emit('cerrar', resultadoCierre);
+}
+
+// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
+const panelModal = ref(null);
+useFocoAtrapado(panelModal);
+
 const store = useLicenciasStore();
 
 const empresas = ref([]);
 const correos = ref([]);
+const plataformas = ref([]);
 const cargandoCatalogos = ref(false);
 const guardando = ref(false);
 const error = ref('');
@@ -52,6 +75,11 @@ const form = ref({
 const busquedaCorreo = ref('');
 const listaCorreosAbierta = ref(false);
 
+// Registro en línea de un correo que aún no existe en el módulo Correos
+const registrandoCorreo = ref(false);
+const nuevoCorreo = ref({ plataforma_id: '', tipo_cuenta: 'compartida', password: '' });
+const passwordCorreoVisible = ref(false);
+
 const correosFiltrados = computed(() => {
   const q = busquedaCorreo.value.trim().toLowerCase();
   const base = q
@@ -62,15 +90,33 @@ const correosFiltrados = computed(() => {
   return base.slice(0, 8);
 });
 
+const correoEscritoValido = computed(() =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(busquedaCorreo.value.trim())
+);
+
+// Si ya existe exactamente ese correo, no tiene sentido ofrecer registrarlo
+const correoYaRegistrado = computed(() => {
+  const q = busquedaCorreo.value.trim().toLowerCase();
+  return correos.value.some((c) => c.usuario.toLowerCase() === q);
+});
+
 function seleccionarCorreo(c) {
   form.value.cuenta_id = c.id;
   busquedaCorreo.value = c.usuario;
+  registrandoCorreo.value = false;
+  listaCorreosAbierta.value = false;
+}
+
+function elegirRegistrarCorreo() {
+  busquedaCorreo.value = busquedaCorreo.value.trim().toLowerCase();
+  registrandoCorreo.value = true;
   listaCorreosAbierta.value = false;
 }
 
 function onBuscarCorreo() {
   // Escribir invalida la selección anterior hasta elegir de la lista
   form.value.cuenta_id = '';
+  registrandoCorreo.value = false;
   listaCorreosAbierta.value = true;
 }
 
@@ -78,6 +124,18 @@ function cerrarListaCorreos() {
   // Pequeño retraso para que el clic en una opción alcance a ejecutarse
   setTimeout(() => { listaCorreosAbierta.value = false; }, 150);
 }
+
+// Además del form entran el modo de acceso, el correo buscado/escrito y los
+// datos del correo nuevo en línea — todo es captura del usuario.
+const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
+  form: form.value,
+  modoAcceso: modoAcceso.value,
+  busquedaCorreo: busquedaCorreo.value,
+  registrandoCorreo: registrandoCorreo.value,
+  nuevoCorreo: nuevoCorreo.value,
+}));
+const confirmarDescarte = ref(false);
+const dialogoDescarte = ref(null);
 
 function resetForm() {
   error.value = '';
@@ -110,6 +168,10 @@ function resetForm() {
     modoAcceso.value = 'ninguno';
     busquedaCorreo.value = '';
   }
+  registrandoCorreo.value = false;
+  nuevoCorreo.value = { plataforma_id: '', tipo_cuenta: 'compartida', password: '' };
+  // El snapshot se toma con el form ya poblado (edición) o en blanco (alta)
+  tomarSnapshot();
 }
 
 watch(() => props.licencia, resetForm, { immediate: true });
@@ -117,12 +179,14 @@ watch(() => props.licencia, resetForm, { immediate: true });
 onMounted(async () => {
   cargandoCatalogos.value = true;
   try {
-    const [emp, corr] = await Promise.all([
+    const [emp, corr, plats] = await Promise.all([
       insforgeApi.listEmpresas(),
       insforgeApi.listCorreosCompartidos(),
+      insforgeApi.listPlataformas(),
     ]);
     empresas.value = emp;
     correos.value = corr;
+    plataformas.value = plats;
   } catch (e) {
     error.value = e?.message || 'Error al cargar catálogos';
   } finally {
@@ -130,18 +194,59 @@ onMounted(async () => {
   }
 });
 
+// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
+// confirmación antes de descartar; limpio cierra directo.
 function cancelar() {
-  emit('cerrar', false);
+  if (!visible.value) return;
+  if (estaSucio.value) {
+    confirmarDescarte.value = true;
+    return;
+  }
+  cerrar(false);
 }
+
+function descartarCambios() {
+  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
+  // mientras el formulario inicia su propia salida en paralelo
+  dialogoDescarte.value?.cerrar();
+  cerrar(false);
+}
+
+// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
+// solo Cancelar, la X o Escape.
+useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
 async function guardar() {
   error.value = '';
-  if (modoAcceso.value === 'login' && !form.value.cuenta_id) {
+  if (modoAcceso.value === 'login' && !form.value.cuenta_id && !registrandoCorreo.value) {
     error.value = 'Selecciona el correo que da acceso a la licencia';
     return;
   }
+  if (modoAcceso.value === 'login' && registrandoCorreo.value) {
+    if (!correoEscritoValido.value) {
+      error.value = 'Escribe un correo válido para registrarlo';
+      return;
+    }
+    if (!nuevoCorreo.value.plataforma_id) {
+      error.value = 'Selecciona la plataforma del correo nuevo';
+      return;
+    }
+  }
   guardando.value = true;
   try {
+    // Correo no registrado: se crea primero en Correos y se vincula.
+    // Al lograrlo queda seleccionado, así un reintento no lo duplica.
+    if (modoAcceso.value === 'login' && registrandoCorreo.value) {
+      const creado = await insforgeApi.createCorreo({
+        plataforma_id: nuevoCorreo.value.plataforma_id,
+        usuario: busquedaCorreo.value,
+        password: nuevoCorreo.value.password,
+        tipo_cuenta: nuevoCorreo.value.tipo_cuenta,
+      });
+      correos.value.push(creado);
+      form.value.cuenta_id = creado.id;
+      registrandoCorreo.value = false;
+    }
     // En modo login, clave = contraseña propia del software (opcional:
     // vacía significa que se entra con la contraseña del correo)
     const conClave = modoAcceso.value === 'clave' || modoAcceso.value === 'login';
@@ -156,7 +261,8 @@ async function guardar() {
     } else {
       await store.crear(datos);
     }
-    emit('cerrar', true);
+    tomarSnapshot();
+    cerrar(true);
   } catch (e) {
     error.value = e?.message || 'Error al guardar licencia';
   } finally {
@@ -166,8 +272,9 @@ async function guardar() {
 </script>
 
 <template>
-  <div class="modal-bg" @click.self="cancelar">
-    <div class="modal licencia-form" role="dialog" aria-labelledby="lic-form-title">
+  <Transition name="modal-anim" appear @after-leave="emitirCierre">
+  <div v-if="visible" class="modal-bg">
+    <div ref="panelModal" class="modal modal-lg licencia-form" role="dialog" aria-modal="true" aria-labelledby="lic-form-title" tabindex="-1">
       <div class="modal-title">
         <span id="lic-form-title">{{ esEdicion ? 'Editar licencia' : 'Nueva licencia' }}</span>
         <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
@@ -175,7 +282,8 @@ async function guardar() {
         </button>
       </div>
 
-      <form class="form-grid" @submit.prevent="guardar">
+      <form @submit.prevent="guardar">
+        <div class="modal-body form-grid">
         <div class="form-group full">
           <label for="lf-software">Software *</label>
           <input id="lf-software" v-model="form.software" required placeholder="ej: Microsoft 365 Business" :disabled="guardando">
@@ -281,9 +389,10 @@ async function guardar() {
                 @blur="cerrarListaCorreos"
               >
               <i v-if="form.cuenta_id" class="ti ti-circle-check-filled combo-check" aria-hidden="true"></i>
-              <ul v-if="listaCorreosAbierta && !form.cuenta_id" class="combo-lista">
-                <li v-if="correosFiltrados.length === 0" class="combo-vacio">
-                  Sin resultados. Regístralo primero en el módulo Correos.
+              <i v-else-if="registrandoCorreo" class="ti ti-circle-plus combo-check combo-check--nuevo" aria-hidden="true"></i>
+              <ul v-if="listaCorreosAbierta && !form.cuenta_id && !registrandoCorreo" class="combo-lista">
+                <li v-if="correosFiltrados.length === 0 && !correoEscritoValido" class="combo-vacio">
+                  Sin resultados. Escribe el correo completo para registrarlo desde aquí.
                 </li>
                 <li
                   v-for="c in correosFiltrados"
@@ -293,12 +402,60 @@ async function guardar() {
                   <span class="combo-usuario">{{ c.usuario }}</span>
                   <span class="combo-plataforma">{{ c.plataforma_nombre }}</span>
                 </li>
+                <li
+                  v-if="correoEscritoValido && !correoYaRegistrado"
+                  class="combo-registrar"
+                  @mousedown.prevent="elegirRegistrarCorreo"
+                >
+                  <i class="ti ti-circle-plus" aria-hidden="true"></i>
+                  <span>Registrar <strong>{{ busquedaCorreo.trim().toLowerCase() }}</strong> como correo nuevo</span>
+                </li>
               </ul>
             </div>
             <p class="field-hint">
               Los usuarios de la licencia se asignan a través de ese correo (desde la ficha
               del empleado). El sistema no permitirá más personas que asientos comprados.
             </p>
+          </div>
+
+          <!-- Datos mínimos del correo que se registrará en Correos -->
+          <div v-if="registrandoCorreo" class="form-group full nuevo-correo-panel">
+            <p class="nuevo-correo-titulo">
+              <i class="ti ti-mail-plus" aria-hidden="true"></i>
+              Este correo no existe todavía: se registrará en el módulo Correos al guardar.
+            </p>
+            <div class="nuevo-correo-campos">
+              <div class="form-group">
+                <label for="lf-nc-plataforma">Plataforma *</label>
+                <select id="lf-nc-plataforma" v-model="nuevoCorreo.plataforma_id" required :disabled="guardando">
+                  <option value="" disabled>Seleccionar plataforma</option>
+                  <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="lf-nc-tipo">Tipo de correo</label>
+                <select id="lf-nc-tipo" v-model="nuevoCorreo.tipo_cuenta" :disabled="guardando">
+                  <option value="compartida">Compartido (varios a la vez)</option>
+                  <option value="reutilizable">Reutilizable (uno a la vez)</option>
+                </select>
+              </div>
+              <div class="form-group full">
+                <label for="lf-nc-password">Contraseña del correo</label>
+                <div class="input-with-action">
+                  <input
+                    id="lf-nc-password"
+                    v-model="nuevoCorreo.password"
+                    :type="passwordCorreoVisible ? 'text' : 'password'"
+                    autocomplete="new-password"
+                    placeholder="Opcional, se puede completar después en Correos"
+                    :disabled="guardando"
+                  >
+                  <button type="button" class="icon-btn" :title="passwordCorreoVisible ? 'Ocultar' : 'Mostrar'" @click="passwordCorreoVisible = !passwordCorreoVisible">
+                    <i :class="passwordCorreoVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="form-group full">
@@ -345,6 +502,8 @@ async function guardar() {
           <textarea id="lf-notas" v-model="form.notas" :disabled="guardando"></textarea>
         </div>
 
+        </div>
+
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
         <div class="modal-actions full">
@@ -356,13 +515,23 @@ async function guardar() {
       </form>
     </div>
   </div>
+  </Transition>
+
+  <ConfirmDialog
+    v-if="confirmarDescarte"
+    ref="dialogoDescarte"
+    destructivo
+    titulo="Cambios sin guardar"
+    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    confirmar-label="Descartar y salir"
+    cancelar-label="Seguir editando"
+    @cancel="confirmarDescarte = false"
+    @confirm="descartarCambios"
+  />
 </template>
 
 <style scoped>
-.licencia-form {
-  width: 560px;
-  max-width: 95vw;
-}
+/* Ancho: .modal-lg de la escala centralizada (main.css) */
 
 .costo-inputs {
   display: flex;
@@ -497,6 +666,58 @@ async function guardar() {
   color: var(--color-text-secondary);
   cursor: default !important;
   font-size: 12.5px;
+}
+
+.combo-registrar {
+  justify-content: flex-start !important;
+  color: var(--color-primary);
+  font-size: 12.5px;
+}
+
+.combo-registrar i {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.combo-registrar strong {
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+}
+
+.combo-check--nuevo {
+  color: var(--color-primary);
+}
+
+.nuevo-correo-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle, var(--color-bg));
+  padding: 12px;
+}
+
+.nuevo-correo-titulo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+}
+
+.nuevo-correo-titulo i {
+  font-size: 15px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.nuevo-correo-campos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.nuevo-correo-campos .full {
+  grid-column: 1 / -1;
 }
 
 .combo-vacio:hover {

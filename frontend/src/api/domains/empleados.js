@@ -108,6 +108,43 @@ export const empleadosApi = {
     if (error) throw error;
   },
 
+  // Conteo de vínculos activos (cuentas, equipos y licencias) para una página
+  // de empleados — queries batch, se ignoran entidades borradas.
+  async conteosVinculos(empleadoIds) {
+    if (!empleadoIds.length) return {};
+    const db = getClient().database;
+    const [cuentasRes, equiposRes, licenciasRes] = await Promise.all([
+      db.from('asignaciones_cuenta')
+        .select('empleado_id, cuentas(deleted_at)')
+        .in('empleado_id', empleadoIds)
+        .is('fecha_fin', null),
+      db.from('asignaciones_equipo')
+        .select('empleado_id, equipos(deleted_at)')
+        .in('empleado_id', empleadoIds)
+        .is('fecha_fin', null),
+      db.from('asignaciones_licencia')
+        .select('empleado_id, licencias(deleted_at)')
+        .in('empleado_id', empleadoIds)
+        .is('fecha_fin', null),
+    ]);
+    if (cuentasRes.error) throw cuentasRes.error;
+    if (equiposRes.error) throw equiposRes.error;
+    if (licenciasRes.error) throw licenciasRes.error;
+    const conteos = Object.fromEntries(
+      empleadoIds.map((id) => [id, { cuentas: 0, equipos: 0, licencias: 0 }]),
+    );
+    for (const a of cuentasRes.data || []) {
+      if (a.cuentas && !a.cuentas.deleted_at && conteos[a.empleado_id]) conteos[a.empleado_id].cuentas += 1;
+    }
+    for (const a of equiposRes.data || []) {
+      if (a.equipos && !a.equipos.deleted_at && conteos[a.empleado_id]) conteos[a.empleado_id].equipos += 1;
+    }
+    for (const a of licenciasRes.data || []) {
+      if (a.licencias && !a.licencias.deleted_at && conteos[a.empleado_id]) conteos[a.empleado_id].licencias += 1;
+    }
+    return conteos;
+  },
+
   // Accesos activos del empleado (cuentas + licencias directas),
   // clasificados para el resumen previo a la baja
   async resumenBaja(empleadoId) {

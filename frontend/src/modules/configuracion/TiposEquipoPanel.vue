@@ -9,6 +9,7 @@ import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 
@@ -22,6 +23,10 @@ const mostrarForm = ref(false);
 const editar = ref(null);
 const form = ref({ nombre: '', specs: '', accesorios: '' });
 const errorForm = ref('');
+
+// Foco atrapado mientras el modal está abierto (Fase 4)
+const panelForm = ref(null);
+useFocoAtrapado(panelForm, mostrarForm);
 
 const esEdicion = computed(() => !!editar.value);
 
@@ -167,13 +172,15 @@ onMounted(async () => {
     </div>
 
     <!-- Modal -->
+    <Transition name="modal-anim">
     <div v-if="mostrarForm" class="modal-bg" @click.self="mostrarForm = false">
-      <div class="modal modal-sm" role="dialog">
+      <div ref="panelForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="tipo-eq-title" tabindex="-1">
         <div class="modal-title">
-          <span>{{ esEdicion ? `Editar "${editar.nombre}"` : 'Nuevo tipo de equipo' }}</span>
-          <button class="icon-btn" type="button" @click="mostrarForm = false"><i class="ti ti-x"></i></button>
+          <span id="tipo-eq-title">{{ esEdicion ? `Editar "${editar.nombre}"` : 'Nuevo tipo de equipo' }}</span>
+          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarForm = false"><i class="ti ti-x"></i></button>
         </div>
-        <form class="modal-body" @submit.prevent="guardar">
+        <form @submit.prevent="guardar">
+          <div class="modal-body">
           <div class="form-group">
             <label for="te-nombre">Nombre *</label>
             <input id="te-nombre" v-model="form.nombre" required placeholder="ej: Cámara de seguridad" :disabled="guardando">
@@ -187,6 +194,7 @@ onMounted(async () => {
             <label for="te-acc">Accesorios sugeridos (separados por coma)</label>
             <input id="te-acc" v-model="form.accesorios" placeholder="ej: Fuente de poder, Soporte" :disabled="guardando">
           </div>
+          </div>
           <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
           <div class="modal-actions">
             <button class="btn" type="button" :disabled="guardando" @click="mostrarForm = false">Cancelar</button>
@@ -197,6 +205,7 @@ onMounted(async () => {
         </form>
       </div>
     </div>
+    </Transition>
   </main>
 </template>
 
@@ -215,7 +224,7 @@ onMounted(async () => {
 
 .chip--acc { background: var(--color-success-bg); color: var(--color-success-text); }
 
-.modal-sm { width: 460px; max-width: 95vw; }
+/* Ancho: .modal-sm de la escala centralizada (main.css) */
 .modal-title { display: flex; align-items: center; justify-content: space-between; }
 .modal-body { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 12px; }
 

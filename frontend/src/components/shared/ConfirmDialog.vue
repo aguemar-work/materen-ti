@@ -26,6 +26,16 @@ const motivoId = useId();
 const motivo = ref('');
 const error = ref('');
 
+// Cancelar cierra con animación: Modal emite 'close' al terminar la salida
+// y eso ya está mapeado a 'cancel'. Confirmar no cierra acá — el padre
+// mantiene el diálogo abierto mientras procesa (cargando); al terminar debe
+// llamar cerrar() (expuesto abajo) en vez de desmontar con v-if, para que
+// la salida anime igual que Cancelar/X/Escape. El 'cancel' que se emite al
+// final de esa animación es quien baja el v-if del padre.
+const modalRef = ref(null);
+
+defineExpose({ cerrar: () => modalRef.value?.cerrar() });
+
 function confirmar() {
   if (props.requiereMotivo) {
     if (motivo.value.trim().length < props.motivoMin) {
@@ -41,8 +51,10 @@ function confirmar() {
 
 <template>
   <Modal
+    ref="modalRef"
     :titulo="titulo"
     size="sm"
+    transicion="modal-anim-rapida"
     :overlay-class="destructivo ? 'confirm-dialog--destructive' : ''"
     @close="emit('cancel')"
   >
@@ -63,7 +75,7 @@ function confirmar() {
     <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="cargando" @click="emit('cancel')">
+      <button class="btn" type="button" :disabled="cargando" @click="modalRef?.cerrar()">
         {{ cancelarLabel }}
       </button>
       <button

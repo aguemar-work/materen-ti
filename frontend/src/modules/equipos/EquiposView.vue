@@ -14,6 +14,8 @@ import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const store = useEquiposStore();
 const { lista, total, cargando, error } = storeToRefs(store);
@@ -241,6 +243,16 @@ async function confirmarMover() {
   }
 }
 
+// Los modales de captura (entregar/devolver/mover) no se cierran con clic
+// fuera para no perder lo escrito; Escape sí los cierra. El de hoja de
+// impresión (informativo) conserva el cierre por clic en el fondo.
+useCerrarConEscape(() => {
+  if (procesando.value) return;
+  if (mostrarAsignar.value) mostrarAsignar.value = false;
+  else if (mostrarDevolver.value) mostrarDevolver.value = false;
+  else if (mostrarMover.value) mostrarMover.value = false;
+});
+
 // ── Cambiar estado físico ─────────────────────────────────────
 async function cambiarEstado(equipo, estado, label) {
   if (equipo.situacion === 'asignado' && (estado === 'de_baja' || estado === 'perdido')) {
@@ -279,6 +291,17 @@ const EVENTO_ICONS = {
   devuelto: 'ti ti-arrow-back-up',
   estado_cambiado: 'ti ti-refresh',
 };
+
+// Foco atrapado por modal inline (Fase 4): cada uno sigue su flag de
+// apertura; al cerrarse, el foco vuelve al botón que lo abrió
+const panelAsignar = ref(null);
+const panelDevolver = ref(null);
+const panelMover = ref(null);
+const panelHoja = ref(null);
+useFocoAtrapado(panelAsignar, mostrarAsignar);
+useFocoAtrapado(panelDevolver, mostrarDevolver);
+useFocoAtrapado(panelMover, mostrarMover);
+useFocoAtrapado(panelHoja, mostrarHoja);
 
 async function verHoja(equipo) {
   equipoHoja.value = equipo;
@@ -507,11 +530,12 @@ onMounted(async () => {
     <EquipoForm v-if="mostrarForm" :equipo="equipoEditar" @cerrar="onFormCerrado" />
 
     <!-- Modal: entregar equipo -->
-    <div v-if="mostrarAsignar" class="modal-bg" @click.self="mostrarAsignar = false">
-      <div class="modal modal-sm" role="dialog">
+    <Transition name="modal-anim">
+    <div v-if="mostrarAsignar" class="modal-bg">
+      <div ref="panelAsignar" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="asignar-title" tabindex="-1">
         <div class="modal-title">
-          <span><i class="ti ti-user-plus" aria-hidden="true"></i> Entregar {{ equipoAsignar?.codigo }}</span>
-          <button class="icon-btn" type="button" @click="mostrarAsignar = false"><i class="ti ti-x"></i></button>
+          <span id="asignar-title"><i class="ti ti-user-plus" aria-hidden="true"></i> Entregar {{ equipoAsignar?.codigo }}</span>
+          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarAsignar = false"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body">
           <p class="modal-info">{{ equipoAsignar?.tipo_nombre }} {{ equipoAsignar?.marca }} {{ equipoAsignar?.modelo }}</p>
@@ -547,24 +571,27 @@ onMounted(async () => {
             <input id="asig-cond" v-model="condicionEntrega" placeholder="ej: nuevo, con cargador y mochila" :disabled="procesando">
           </div>
 
-          <p v-if="errorAsignar" class="form-error" role="alert">{{ errorAsignar }}</p>
+        </div>
 
-          <div class="modal-actions">
-            <button class="btn" type="button" :disabled="procesando" @click="mostrarAsignar = false">Cancelar</button>
-            <button class="btn btn-primary" type="button" :disabled="procesando || !empleadoSelId" @click="confirmarAsignar">
-              {{ procesando ? 'Entregando...' : 'Entregar' }}
-            </button>
-          </div>
+        <p v-if="errorAsignar" class="form-error" role="alert">{{ errorAsignar }}</p>
+
+        <div class="modal-actions">
+          <button class="btn" type="button" :disabled="procesando" @click="mostrarAsignar = false">Cancelar</button>
+          <button class="btn btn-primary" type="button" :disabled="procesando || !empleadoSelId" @click="confirmarAsignar">
+            {{ procesando ? 'Entregando...' : 'Entregar' }}
+          </button>
         </div>
       </div>
     </div>
+    </Transition>
 
     <!-- Modal: registrar devolución -->
-    <div v-if="mostrarDevolver" class="modal-bg" @click.self="mostrarDevolver = false">
-      <div class="modal modal-sm" role="dialog">
+    <Transition name="modal-anim">
+    <div v-if="mostrarDevolver" class="modal-bg">
+      <div ref="panelDevolver" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="devolver-title" tabindex="-1">
         <div class="modal-title">
-          <span><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Devolución de {{ equipoDevolver?.codigo }}</span>
-          <button class="icon-btn" type="button" @click="mostrarDevolver = false"><i class="ti ti-x"></i></button>
+          <span id="devolver-title"><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Devolución de {{ equipoDevolver?.codigo }}</span>
+          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarDevolver = false"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body">
           <p class="modal-info">Lo tiene: <strong>{{ equipoDevolver?.portador }}</strong></p>
@@ -589,22 +616,25 @@ onMounted(async () => {
             Volvió dañado — enviarlo a reparación
           </label>
 
-          <div class="modal-actions">
-            <button class="btn" type="button" :disabled="procesando" @click="mostrarDevolver = false">Cancelar</button>
-            <button class="btn btn-primary" type="button" :disabled="procesando || !condicionDevolucion.trim()" @click="confirmarDevolver">
-              {{ procesando ? 'Registrando...' : 'Registrar devolución' }}
-            </button>
-          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn" type="button" :disabled="procesando" @click="mostrarDevolver = false">Cancelar</button>
+          <button class="btn btn-primary" type="button" :disabled="procesando || !condicionDevolucion.trim()" @click="confirmarDevolver">
+            {{ procesando ? 'Registrando...' : 'Registrar devolución' }}
+          </button>
         </div>
       </div>
     </div>
+    </Transition>
 
     <!-- Modal: mover a ubicación -->
-    <div v-if="mostrarMover" class="modal-bg" @click.self="mostrarMover = false">
-      <div class="modal modal-sm" role="dialog">
+    <Transition name="modal-anim">
+    <div v-if="mostrarMover" class="modal-bg">
+      <div ref="panelMover" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="mover-title" tabindex="-1">
         <div class="modal-title">
-          <span><i class="ti ti-map-pin" aria-hidden="true"></i> Mover {{ equipoMover?.codigo }}</span>
-          <button class="icon-btn" type="button" @click="mostrarMover = false"><i class="ti ti-x"></i></button>
+          <span id="mover-title"><i class="ti ti-map-pin" aria-hidden="true"></i> Mover {{ equipoMover?.codigo }}</span>
+          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarMover = false"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body">
           <p class="modal-info">
@@ -636,22 +666,25 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="modal-actions">
-            <button class="btn" type="button" :disabled="procesando" @click="mostrarMover = false">Cancelar</button>
-            <button class="btn btn-primary" type="button" :disabled="procesando || !ubicacionSelId" @click="confirmarMover">
-              {{ procesando ? 'Moviendo...' : 'Mover' }}
-            </button>
-          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn" type="button" :disabled="procesando" @click="mostrarMover = false">Cancelar</button>
+          <button class="btn btn-primary" type="button" :disabled="procesando || !ubicacionSelId" @click="confirmarMover">
+            {{ procesando ? 'Moviendo...' : 'Mover' }}
+          </button>
         </div>
       </div>
     </div>
+    </Transition>
 
     <!-- Modal: hoja de vida -->
+    <Transition name="modal-anim">
     <div v-if="mostrarHoja" class="modal-bg" @click.self="mostrarHoja = false">
-      <div class="modal modal-hoja" role="dialog">
+      <div ref="panelHoja" class="modal modal-detail" role="dialog" aria-modal="true" aria-labelledby="hoja-title" tabindex="-1">
         <div class="modal-title">
-          <span><i class="ti ti-history" aria-hidden="true"></i> Hoja de vida — {{ equipoHoja?.codigo }}</span>
-          <button class="icon-btn" type="button" @click="mostrarHoja = false"><i class="ti ti-x"></i></button>
+          <span id="hoja-title"><i class="ti ti-history" aria-hidden="true"></i> Hoja de vida — {{ equipoHoja?.codigo }}</span>
+          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarHoja = false"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body">
           <p class="modal-info">{{ equipoHoja?.tipo_nombre }} {{ equipoHoja?.marca }} {{ equipoHoja?.modelo }}</p>
@@ -668,6 +701,7 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+    </Transition>
   </div>
 </template>
 
@@ -757,8 +791,7 @@ onMounted(async () => {
   margin-left: 6px;
 }
 
-.modal-sm { width: 440px; max-width: 95vw; }
-.modal-hoja { width: 560px; max-width: 95vw; }
+/* Anchos: .modal-sm / .modal-detail de la escala centralizada (main.css) */
 
 .modal-title { display: flex; align-items: center; justify-content: space-between; }
 

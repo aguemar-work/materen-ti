@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/auth.js';
 import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +26,10 @@ const enviandoComentario = ref(false);
 
 const mostrarHoja = ref(false);
 const cargandoHoja = ref(false);
+
+// Foco atrapado mientras el modal está abierto (Fase 4)
+const panelHoja = ref(null);
+useFocoAtrapado(panelHoja, mostrarHoja);
 
 function autorDe(autorId) {
   return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
@@ -447,11 +452,12 @@ onUnmounted(() => store.limpiar());
     </main>
 
     <!-- Modal: hoja de vida -->
+    <Transition name="modal-anim">
     <div v-if="mostrarHoja" class="modal-bg" @click.self="mostrarHoja = false">
-      <div class="modal modal-hoja" role="dialog">
+      <div ref="panelHoja" class="modal modal-detail" role="dialog" aria-modal="true" aria-labelledby="hoja-title" tabindex="-1">
         <div class="modal-title">
-          <span><i class="ti ti-history" aria-hidden="true"></i> Hoja de vida — {{ ticket?.codigo }}</span>
-          <button class="icon-btn" type="button" @click="mostrarHoja = false"><i class="ti ti-x"></i></button>
+          <span id="hoja-title"><i class="ti ti-history" aria-hidden="true"></i> Hoja de vida — {{ ticket?.codigo }}</span>
+          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarHoja = false"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body">
           <div v-if="cargandoHoja" class="no-results">Cargando...</div>
@@ -466,25 +472,12 @@ onUnmounted(() => store.limpiar());
         </div>
       </div>
     </div>
+    </Transition>
   </div>
 </template>
 
 <style scoped>
-.header-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
+/* .header-left/.header-inner se estilan en main.css (shell de PageHeader) */
 .btn-volver { flex-shrink: 0; }
 
 .header-emp h1 {
@@ -634,7 +627,7 @@ onUnmounted(() => store.limpiar());
 
 .tk-comentario-acciones .check-inline { margin-top: 0; }
 
-.modal-hoja { width: 560px; max-width: 95vw; }
+/* Ancho: .modal-detail de la escala centralizada (main.css) */
 .modal-title { display: flex; align-items: center; justify-content: space-between; }
 .modal-body { padding: 16px 24px 24px; }
 

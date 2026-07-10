@@ -29,6 +29,17 @@ export const useEmpleadosStore = defineStore('empleados', {
         });
         this.lista = items;
         this.total = total;
+        // Conteos de cuentas/equipos vinculados de la página; si fallan,
+        // la columna "Vínculos" queda vacía pero el listado no se cae.
+        try {
+          const conteos = await insforgeApi.conteosVinculos(items.map((e) => e.id));
+          this.lista = items.map((e) => ({
+            ...e,
+            n_cuentas: conteos[e.id]?.cuentas ?? 0,
+            n_equipos: conteos[e.id]?.equipos ?? 0,
+            n_licencias: conteos[e.id]?.licencias ?? 0,
+          }));
+        } catch { /* columna sin datos */ }
       } catch (e) {
         this.error = e?.message || 'Error al cargar empleados';
         throw e;

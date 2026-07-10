@@ -18,11 +18,17 @@ const guardando = ref(false);
 
 const porEliminar = ref(null);
 const eliminando = ref(false);
+// Al terminar la eliminación se cierra el diálogo con su animación de
+// salida (cerrar()); el @cancel que emite al final baja porEliminar.
+const dialogoEliminar = ref(null);
 
 const mostrarForm = ref(false);
 const editar = ref(null);
 const form = ref({ nombre: '', descripcion: '' });
 const errorForm = ref('');
+// Cerrar vía Modal.cerrar() reproduce la animación de salida;
+// el @close del Modal es quien baja mostrarForm.
+const modalForm = ref(null);
 
 function abrirNueva() {
   editar.value = null;
@@ -49,7 +55,7 @@ async function guardar() {
       await store.crear(form.value.nombre, form.value.descripcion);
       showToast('Ubicación creada');
     }
-    mostrarForm.value = false;
+    modalForm.value?.cerrar();
   } catch (e) {
     errorForm.value = e?.message || 'Error al guardar';
   } finally {
@@ -64,7 +70,7 @@ async function confirmarEliminar() {
   try {
     await store.softDelete(u.id);
     showToast('Ubicación eliminada');
-    porEliminar.value = null;
+    dialogoEliminar.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al eliminar', 'error');
   } finally {
@@ -138,11 +144,12 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
     <!-- Formulario (Modal accesible compartido) -->
     <Modal
       v-if="mostrarForm"
+      ref="modalForm"
       :titulo="editar ? 'Editar ubicación' : 'Nueva ubicación'"
       size="sm"
       @close="mostrarForm = false"
     >
-      <form class="ub-form" @submit.prevent="guardar">
+      <form id="ub-form" class="ub-form" @submit.prevent="guardar">
         <div class="form-group">
           <label for="ub-nombre">Nombre *</label>
           <input id="ub-nombre" v-model="form.nombre" required placeholder="ej: Almacén de TI, Recepción, Obra Norte" :disabled="guardando">
@@ -152,18 +159,19 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
           <input id="ub-desc" v-model="form.descripcion" :disabled="guardando">
         </div>
         <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
-        <div class="modal-actions">
-          <button class="btn" type="button" :disabled="guardando" @click="mostrarForm = false">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            {{ guardando ? 'Guardando...' : 'Guardar' }}
-          </button>
-        </div>
       </form>
+      <template #acciones>
+        <button class="btn" type="button" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
+        <button class="btn btn-primary" type="submit" form="ub-form" :disabled="guardando">
+          {{ guardando ? 'Guardando...' : 'Guardar' }}
+        </button>
+      </template>
     </Modal>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
       v-if="porEliminar"
+      ref="dialogoEliminar"
       destructivo
       icono="ti-trash"
       titulo="Eliminar ubicación"

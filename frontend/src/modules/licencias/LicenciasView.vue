@@ -13,6 +13,8 @@ import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const store = useLicenciasStore();
 const { lista, total, cargando, error } = storeToRefs(store);
@@ -71,6 +73,16 @@ const empleadoAsignarId = ref('');
 const cargandoEmpleados = ref(false);
 const asignando = ref(false);
 const errorAsignar = ref('');
+
+// Modal de captura: clic fuera NO cierra (se perdería la selección);
+// solo Cancelar, la X o Escape.
+useCerrarConEscape(() => {
+  if (mostrarAsignar.value && !asignando.value) mostrarAsignar.value = false;
+});
+
+// Foco atrapado mientras el modal está abierto (Fase 4)
+const panelAsignar = ref(null);
+useFocoAtrapado(panelAsignar, mostrarAsignar);
 
 const HOY = new Date().toISOString().split('T')[0];
 const EN_30_DIAS = (() => {
@@ -422,11 +434,12 @@ onMounted(async () => {
     />
 
     <!-- Modal: asignar asiento -->
-    <div v-if="mostrarAsignar" class="modal-bg" @click.self="mostrarAsignar = false">
-      <div class="modal modal-asignar" role="dialog">
+    <Transition name="modal-anim">
+    <div v-if="mostrarAsignar" class="modal-bg">
+      <div ref="panelAsignar" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="asignar-title" tabindex="-1">
         <div class="modal-title">
-          <span><i class="ti ti-user-plus" aria-hidden="true"></i> Asignar asiento</span>
-          <button class="icon-btn" type="button" @click="mostrarAsignar = false">
+          <span id="asignar-title"><i class="ti ti-user-plus" aria-hidden="true"></i> Asignar asiento</span>
+          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarAsignar = false">
             <i class="ti ti-x"></i>
           </button>
         </div>
@@ -454,16 +467,18 @@ onMounted(async () => {
               </option>
             </select>
           </div>
-          <p v-if="errorAsignar" class="form-error" role="alert">{{ errorAsignar }}</p>
-          <div class="modal-actions">
-            <button class="btn" type="button" :disabled="asignando" @click="mostrarAsignar = false">Cancelar</button>
-            <button class="btn btn-primary" type="button" :disabled="asignando || !empleadoAsignarId" @click="confirmarAsignar">
-              {{ asignando ? 'Asignando...' : 'Asignar' }}
-            </button>
-          </div>
+        </div>
+
+        <p v-if="errorAsignar" class="form-error" role="alert">{{ errorAsignar }}</p>
+        <div class="modal-actions">
+          <button class="btn" type="button" :disabled="asignando" @click="mostrarAsignar = false">Cancelar</button>
+          <button class="btn btn-primary" type="button" :disabled="asignando || !empleadoAsignarId" @click="confirmarAsignar">
+            {{ asignando ? 'Asignando...' : 'Asignar' }}
+          </button>
         </div>
       </div>
     </div>
+    </Transition>
   </div>
 </template>
 
@@ -575,10 +590,7 @@ onMounted(async () => {
   color: var(--color-text-secondary);
 }
 
-.modal-asignar {
-  width: 420px;
-  max-width: 95vw;
-}
+/* Ancho: .modal-sm de la escala centralizada (main.css) */
 
 .modal-title {
   display: flex;

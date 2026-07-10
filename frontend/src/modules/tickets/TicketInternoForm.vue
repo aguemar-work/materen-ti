@@ -6,9 +6,31 @@
 import { ref, computed, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { crearTicket } from '../../api/ticketsPublicos.js';
+import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
+import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import { showToast } from '../../core/toast.js';
 
 const emit = defineEmits(['cerrar']);
+
+// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
+// emit real sale en @after-leave, así el padre desmonta sin cortarla.
+const visible = ref(true);
+let resultadoCierre = false;
+
+function cerrar(resultado) {
+  resultadoCierre = resultado;
+  visible.value = false;
+}
+
+function emitirCierre() {
+  emit('cerrar', resultadoCierre);
+}
+
+// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
+const panelModal = ref(null);
+useFocoAtrapado(panelModal);
 
 const cargandoCatalogo = ref(true);
 const guardando = ref(false);
@@ -29,6 +51,17 @@ const esParaEmpleado = ref(false);
 const busquedaEmpleado = ref('');
 const empleadoSelId = ref('');
 const listaEmpAbierta = ref(false);
+
+// Solo creación: el snapshot inicial es el form en blanco. El buscador de
+// empleado es transitorio; la selección (empleadoSelId) sí cuenta.
+const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
+  form: form.value,
+  esParaEmpleado: esParaEmpleado.value,
+  empleadoSelId: empleadoSelId.value,
+}));
+tomarSnapshot();
+const confirmarDescarte = ref(false);
+const dialogoDescarte = ref(null);
 
 const subcategoriasFiltradas = computed(() =>
   subcategorias.value.filter((s) => s.categoria_id === form.value.categoriaId)
@@ -53,9 +86,27 @@ function cerrarListaEmpleados() {
   setTimeout(() => { listaEmpAbierta.value = false; }, 150);
 }
 
+// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
+// confirmación antes de descartar; limpio cierra directo.
 function cancelar() {
-  emit('cerrar', false);
+  if (!visible.value) return;
+  if (estaSucio.value) {
+    confirmarDescarte.value = true;
+    return;
+  }
+  cerrar(false);
 }
+
+function descartarCambios() {
+  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
+  // mientras el formulario inicia su propia salida en paralelo
+  dialogoDescarte.value?.cerrar();
+  cerrar(false);
+}
+
+// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
+// solo Cancelar, la X o Escape.
+useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
 async function guardar() {
   error.value = '';
@@ -73,7 +124,8 @@ async function guardar() {
       origen: esParaEmpleado.value ? undefined : 'staff_interno',
       empleadoIdManual: esParaEmpleado.value ? empleadoSelId.value || null : null,
     });
-    emit('cerrar', true);
+    tomarSnapshot();
+    cerrar(true);
   } catch (e) {
     error.value = e?.message || 'Error al crear el ticket';
   } finally {
@@ -100,8 +152,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="modal-bg" @click.self="cancelar">
-    <div class="modal ticket-interno-form" role="dialog" aria-labelledby="ti-title">
+  <Transition name="modal-anim" appear @after-leave="emitirCierre">
+  <div v-if="visible" class="modal-bg">
+    <div ref="panelModal" class="modal ticket-interno-form" role="dialog" aria-modal="true" aria-labelledby="ti-title" tabindex="-1">
       <div class="modal-title">
         <span id="ti-title">Nuevo ticket interno</span>
         <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
@@ -109,7 +162,8 @@ onMounted(async () => {
         </button>
       </div>
 
-      <form class="form-grid" @submit.prevent="guardar">
+      <form @submit.prevent="guardar">
+        <div class="modal-body form-grid">
         <div class="form-group full">
           <label class="check-inline">
             <input v-model="esParaEmpleado" type="checkbox" :disabled="guardando">
@@ -169,6 +223,8 @@ onMounted(async () => {
           <textarea id="ti-descripcion" v-model="form.descripcion" required rows="4" :disabled="guardando"></textarea>
         </div>
 
+        </div>
+
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
         <div class="modal-actions full">
@@ -180,13 +236,23 @@ onMounted(async () => {
       </form>
     </div>
   </div>
+  </Transition>
+
+  <ConfirmDialog
+    v-if="confirmarDescarte"
+    ref="dialogoDescarte"
+    destructivo
+    titulo="Cambios sin guardar"
+    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    confirmar-label="Descartar y salir"
+    cancelar-label="Seguir editando"
+    @cancel="confirmarDescarte = false"
+    @confirm="descartarCambios"
+  />
 </template>
 
 <style scoped>
-.ticket-interno-form {
-  width: 520px;
-  max-width: 95vw;
-}
+/* Ancho: .modal base (540px) de la escala centralizada (main.css) */
 
 .check-inline {
   display: flex;

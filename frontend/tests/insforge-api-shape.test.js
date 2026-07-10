@@ -11,12 +11,14 @@ const METODOS = [
   'listEmpleadosRecientes', 'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
   'getEmpleado', 'createEmpleado',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
+  'conteosVinculos',
   // catálogos
   'listEmpresas', 'createEmpresa', 'updateEmpresa', 'softDeleteEmpresa',
   'listPlataformas', 'createPlataforma', 'updatePlataforma', 'softDeletePlataforma',
   'listUbicaciones', 'createUbicacion', 'updateUbicacion', 'softDeleteUbicacion',
   'listAreasObras', 'createAreaObra', 'updateAreaObra', 'softDeleteAreaObra',
   'listTiposEquipo', 'createTipoEquipo', 'updateTipoEquipo', 'softDeleteTipoEquipo',
+  'listCatalogoAlmacen', 'createCatalogoAlmacen', 'updateCatalogoAlmacen', 'softDeleteCatalogoAlmacen',
   // cuentas
   'listCuentasPorEmpleado', 'createCuenta', 'updateCuenta', 'traspasarCuenta',
   'historialCuenta', 'cerrarAsignacion',
@@ -45,7 +47,7 @@ const METODOS = [
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 94 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 99 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

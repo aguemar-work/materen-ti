@@ -4,12 +4,33 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const props = defineProps({
   empleado: { type: Object, required: true },
 });
 
 const emit = defineEmits(['cerrar']);
+
+// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
+// emit real sale en @after-leave, así el padre desmonta sin cortarla.
+const visible = ref(true);
+let resultadoCierre = false;
+
+function cerrar(resultado) {
+  resultadoCierre = resultado;
+  visible.value = false;
+}
+
+function emitirCierre() {
+  emit('cerrar', resultadoCierre);
+}
+
+// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió.
+// El foco inicial cae en Cancelar (primer foco-able que no es la "X"),
+// coherente con la confirmación de nivel Base.
+const panelModal = ref(null);
+useFocoAtrapado(panelModal);
 
 const store = useEmpleadosStore();
 
@@ -49,7 +70,7 @@ onMounted(async () => {
 });
 
 function cancelar() {
-  emit('cerrar', false);
+  cerrar(false);
 }
 
 async function confirmarBaja() {
@@ -58,7 +79,7 @@ async function confirmarBaja() {
   try {
     await store.darDeBaja(props.empleado.id);
     showToast(`${nombreCompleto.value} dado de baja`);
-    emit('cerrar', true);
+    cerrar(true);
   } catch (e) {
     error.value = e?.message || 'Error al dar de baja';
   } finally {
@@ -68,8 +89,9 @@ async function confirmarBaja() {
 </script>
 
 <template>
-  <div class="modal-bg confirm-dialog--destructive" @click.self="cancelar">
-    <div class="modal baja-modal" role="dialog" aria-labelledby="baja-title">
+  <Transition name="modal-anim" appear @after-leave="emitirCierre">
+  <div v-if="visible" class="modal-bg confirm-dialog--destructive" @click.self="cancelar">
+    <div ref="panelModal" class="modal modal-sm baja-modal" role="dialog" aria-modal="true" aria-labelledby="baja-title" tabindex="-1">
       <div class="modal-title">
         <span id="baja-title" class="baja-title-con-icono">
           <span class="modal-icon"><i class="ti ti-user-off" aria-hidden="true"></i></span>
@@ -80,7 +102,7 @@ async function confirmarBaja() {
         </button>
       </div>
 
-      <div class="baja-body">
+      <div class="modal-body baja-body">
         <div v-if="cargando" class="baja-cargando">Cargando resumen de accesos...</div>
 
         <template v-else>
@@ -192,12 +214,11 @@ async function confirmarBaja() {
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <style scoped>
-.baja-modal {
-  max-width: 480px;
-}
+/* Ancho: .modal-sm de la escala centralizada (main.css) */
 
 .baja-title-con-icono {
   display: flex;

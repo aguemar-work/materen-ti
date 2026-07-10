@@ -15,6 +15,18 @@ const pendientes = ref({
 const pendientesTickets = ref({ sinAsignar: [], sinVincular: [], abiertosViejos: [] });
 const cargando = ref(true);
 
+// Cada caja de pendientes muestra hasta 5 filas; "Ver más" la expande
+const LIMITE_PENDIENTES = 5;
+const pendExpandidos = ref({});
+
+function itemsPendientes(lista, clave) {
+  return pendExpandidos.value[clave] ? lista : lista.slice(0, LIMITE_PENDIENTES);
+}
+
+function togglePendientes(clave) {
+  pendExpandidos.value[clave] = !pendExpandidos.value[clave];
+}
+
 const hayPendientes = computed(
   () =>
     pendientes.value.porRotar.length > 0 ||
@@ -84,7 +96,7 @@ onMounted(async () => {
                 <span class="pend-count">{{ pendientes.equiposSinDevolver.length }}</span>
               </div>
               <RouterLink
-                v-for="item in pendientes.equiposSinDevolver"
+                v-for="item in itemsPendientes(pendientes.equiposSinDevolver, 'equiposSinDevolver')"
                 :key="item.asignacion_id"
                 class="pend-item"
                 to="/equipos"
@@ -95,6 +107,14 @@ onMounted(async () => {
                 </div>
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
+              <button
+                v-if="pendientes.equiposSinDevolver.length > LIMITE_PENDIENTES"
+                type="button"
+                class="pend-vermas"
+                @click="togglePendientes('equiposSinDevolver')"
+              >
+                {{ pendExpandidos.equiposSinDevolver ? 'Ver menos' : `Ver ${pendientes.equiposSinDevolver.length - LIMITE_PENDIENTES} más` }}
+              </button>
             </div>
 
             <div v-if="pendientes.porRotar.length" class="pend-card col-4">
@@ -104,7 +124,7 @@ onMounted(async () => {
                 <span class="pend-count">{{ pendientes.porRotar.length }}</span>
               </div>
               <RouterLink
-                v-for="item in pendientes.porRotar"
+                v-for="item in itemsPendientes(pendientes.porRotar, 'porRotar')"
                 :key="item.cuenta_id"
                 class="pend-item"
                 :to="destinoPendiente(item)"
@@ -115,6 +135,14 @@ onMounted(async () => {
                 </div>
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
+              <button
+                v-if="pendientes.porRotar.length > LIMITE_PENDIENTES"
+                type="button"
+                class="pend-vermas"
+                @click="togglePendientes('porRotar')"
+              >
+                {{ pendExpandidos.porRotar ? 'Ver menos' : `Ver ${pendientes.porRotar.length - LIMITE_PENDIENTES} más` }}
+              </button>
             </div>
 
             <div v-if="pendientes.sinPassword.length" class="pend-card col-4">
@@ -124,7 +152,7 @@ onMounted(async () => {
                 <span class="pend-count">{{ pendientes.sinPassword.length }}</span>
               </div>
               <RouterLink
-                v-for="item in pendientes.sinPassword"
+                v-for="item in itemsPendientes(pendientes.sinPassword, 'sinPassword')"
                 :key="item.cuenta_id"
                 class="pend-item"
                 :to="destinoPendiente(item)"
@@ -135,6 +163,14 @@ onMounted(async () => {
                 </div>
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
+              <button
+                v-if="pendientes.sinPassword.length > LIMITE_PENDIENTES"
+                type="button"
+                class="pend-vermas"
+                @click="togglePendientes('sinPassword')"
+              >
+                {{ pendExpandidos.sinPassword ? 'Ver menos' : `Ver ${pendientes.sinPassword.length - LIMITE_PENDIENTES} más` }}
+              </button>
             </div>
 
             <div v-if="pendientes.licenciasPorVencer.length" class="pend-card col-4">
@@ -144,7 +180,7 @@ onMounted(async () => {
                 <span class="pend-count">{{ pendientes.licenciasPorVencer.length }}</span>
               </div>
               <RouterLink
-                v-for="item in pendientes.licenciasPorVencer"
+                v-for="item in itemsPendientes(pendientes.licenciasPorVencer, 'licenciasPorVencer')"
                 :key="item.licencia_id"
                 class="pend-item"
                 to="/licencias"
@@ -158,6 +194,14 @@ onMounted(async () => {
                 </div>
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
+              <button
+                v-if="pendientes.licenciasPorVencer.length > LIMITE_PENDIENTES"
+                type="button"
+                class="pend-vermas"
+                @click="togglePendientes('licenciasPorVencer')"
+              >
+                {{ pendExpandidos.licenciasPorVencer ? 'Ver menos' : `Ver ${pendientes.licenciasPorVencer.length - LIMITE_PENDIENTES} más` }}
+              </button>
             </div>
 
             <div v-if="pendientes.garantiasPorVencer.length" class="pend-card col-4">
@@ -167,7 +211,7 @@ onMounted(async () => {
                 <span class="pend-count">{{ pendientes.garantiasPorVencer.length }}</span>
               </div>
               <RouterLink
-                v-for="item in pendientes.garantiasPorVencer"
+                v-for="item in itemsPendientes(pendientes.garantiasPorVencer, 'garantiasPorVencer')"
                 :key="item.equipo_id"
                 class="pend-item"
                 to="/equipos"
@@ -178,6 +222,14 @@ onMounted(async () => {
                 </div>
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
+              <button
+                v-if="pendientes.garantiasPorVencer.length > LIMITE_PENDIENTES"
+                type="button"
+                class="pend-vermas"
+                @click="togglePendientes('garantiasPorVencer')"
+              >
+                {{ pendExpandidos.garantiasPorVencer ? 'Ver menos' : `Ver ${pendientes.garantiasPorVencer.length - LIMITE_PENDIENTES} más` }}
+              </button>
             </div>
 
             <div v-if="pendientesTickets.sinAsignar.length" class="pend-card col-4">
@@ -187,7 +239,7 @@ onMounted(async () => {
                 <span class="pend-count">{{ pendientesTickets.sinAsignar.length }}</span>
               </div>
               <RouterLink
-                v-for="item in pendientesTickets.sinAsignar"
+                v-for="item in itemsPendientes(pendientesTickets.sinAsignar, 'tkSinAsignar')"
                 :key="item.ticket_id"
                 class="pend-item"
                 :to="`/tickets/${item.ticket_id}`"
@@ -198,6 +250,14 @@ onMounted(async () => {
                 </div>
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
+              <button
+                v-if="pendientesTickets.sinAsignar.length > LIMITE_PENDIENTES"
+                type="button"
+                class="pend-vermas"
+                @click="togglePendientes('tkSinAsignar')"
+              >
+                {{ pendExpandidos.tkSinAsignar ? 'Ver menos' : `Ver ${pendientesTickets.sinAsignar.length - LIMITE_PENDIENTES} más` }}
+              </button>
             </div>
 
             <div v-if="pendientesTickets.sinVincular.length" class="pend-card col-4">
@@ -207,7 +267,7 @@ onMounted(async () => {
                 <span class="pend-count">{{ pendientesTickets.sinVincular.length }}</span>
               </div>
               <RouterLink
-                v-for="item in pendientesTickets.sinVincular"
+                v-for="item in itemsPendientes(pendientesTickets.sinVincular, 'tkSinVincular')"
                 :key="item.ticket_id"
                 class="pend-item"
                 :to="`/tickets/${item.ticket_id}`"
@@ -218,6 +278,14 @@ onMounted(async () => {
                 </div>
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
+              <button
+                v-if="pendientesTickets.sinVincular.length > LIMITE_PENDIENTES"
+                type="button"
+                class="pend-vermas"
+                @click="togglePendientes('tkSinVincular')"
+              >
+                {{ pendExpandidos.tkSinVincular ? 'Ver menos' : `Ver ${pendientesTickets.sinVincular.length - LIMITE_PENDIENTES} más` }}
+              </button>
             </div>
 
             <div v-if="pendientesTickets.abiertosViejos.length" class="pend-card col-4">
@@ -227,7 +295,7 @@ onMounted(async () => {
                 <span class="pend-count">{{ pendientesTickets.abiertosViejos.length }}</span>
               </div>
               <RouterLink
-                v-for="item in pendientesTickets.abiertosViejos"
+                v-for="item in itemsPendientes(pendientesTickets.abiertosViejos, 'tkAbiertosViejos')"
                 :key="item.ticket_id"
                 class="pend-item"
                 :to="`/tickets/${item.ticket_id}`"
@@ -238,6 +306,14 @@ onMounted(async () => {
                 </div>
                 <i class="ti ti-chevron-right"></i>
               </RouterLink>
+              <button
+                v-if="pendientesTickets.abiertosViejos.length > LIMITE_PENDIENTES"
+                type="button"
+                class="pend-vermas"
+                @click="togglePendientes('tkAbiertosViejos')"
+              >
+                {{ pendExpandidos.tkAbiertosViejos ? 'Ver menos' : `Ver ${pendientesTickets.abiertosViejos.length - LIMITE_PENDIENTES} más` }}
+              </button>
             </div>
           </div>
         </div>
@@ -448,6 +524,24 @@ onMounted(async () => {
 .pend-item > i {
   color: var(--color-text-secondary);
   flex-shrink: 0;
+}
+
+.pend-vermas {
+  display: block;
+  width: 100%;
+  padding: 9px 14px;
+  border: none;
+  background: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-accent-text, var(--color-accent));
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.pend-vermas:hover {
+  background: var(--color-bg-hover, var(--color-bg-subtle));
 }
 
 /* Sección recientes */

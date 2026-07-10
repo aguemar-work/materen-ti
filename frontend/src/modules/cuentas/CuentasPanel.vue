@@ -11,6 +11,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import CuentaForm from './CuentaForm.vue';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const props = defineProps({
   empleadoId: { type: String, required: true },
@@ -39,6 +40,13 @@ const mostrarHistorial = ref(false);
 const cuentaHistorial = ref(null);
 const historialItems = ref([]);
 const cargandoHistorial = ref(false);
+
+// Foco atrapado por modal inline (Fase 4): cada uno sigue su flag de
+// apertura; al cerrarse, el foco vuelve al botón que lo abrió
+const panelTraspaso = ref(null);
+const panelHistorial = ref(null);
+useFocoAtrapado(panelTraspaso, mostrarTraspaso);
+useFocoAtrapado(panelHistorial, mostrarHistorial);
 
 // passwordVisibles[asignacion_id] guarda el texto revelado; null = oculto.
 // Cada revelado pasa por la edge function y queda auditado.
@@ -302,11 +310,12 @@ onMounted(async () => {
   />
 
   <!-- Modal: Traspasar cuenta -->
+  <Transition name="modal-anim">
   <div v-if="mostrarTraspaso" class="modal-bg" @click.self="mostrarTraspaso = false">
-    <div class="modal modal-sm" role="dialog">
+    <div ref="panelTraspaso" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="traspaso-title" tabindex="-1">
       <div class="modal-title">
-        <span><i class="ti ti-transfer" aria-hidden="true"></i> Traspasar cuenta</span>
-        <button class="icon-btn" type="button" @click="mostrarTraspaso = false">
+        <span id="traspaso-title"><i class="ti ti-transfer" aria-hidden="true"></i> Traspasar cuenta</span>
+        <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarTraspaso = false">
           <i class="ti ti-x"></i>
         </button>
       </div>
@@ -330,22 +339,25 @@ onMounted(async () => {
             <input id="tr-notas" v-model="notasTraspaso" placeholder="ej: rotación de contraseña previa" :disabled="guardandoTraspaso">
           </div>
         </template>
-        <div class="modal-actions">
-          <button class="btn" type="button" :disabled="guardandoTraspaso" @click="mostrarTraspaso = false">Cancelar</button>
-          <button class="btn btn-primary" type="button" :disabled="guardandoTraspaso || !nuevoEmpleadoId" @click="confirmarTraspaso">
-            {{ guardandoTraspaso ? 'Traspasando...' : 'Traspasar' }}
-          </button>
-        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn" type="button" :disabled="guardandoTraspaso" @click="mostrarTraspaso = false">Cancelar</button>
+        <button class="btn btn-primary" type="button" :disabled="guardandoTraspaso || !nuevoEmpleadoId" @click="confirmarTraspaso">
+          {{ guardandoTraspaso ? 'Traspasando...' : 'Traspasar' }}
+        </button>
       </div>
     </div>
   </div>
+  </Transition>
 
   <!-- Modal: Historial de asignaciones -->
+  <Transition name="modal-anim">
   <div v-if="mostrarHistorial" class="modal-bg" @click.self="mostrarHistorial = false">
-    <div class="modal modal-historial" role="dialog">
+    <div ref="panelHistorial" class="modal modal-detail" role="dialog" aria-modal="true" aria-labelledby="historial-title" tabindex="-1">
       <div class="modal-title">
-        <span><i class="ti ti-history" aria-hidden="true"></i> Historial — {{ cuentaHistorial?.plataforma_nombre }}</span>
-        <button class="icon-btn" type="button" @click="mostrarHistorial = false">
+        <span id="historial-title"><i class="ti ti-history" aria-hidden="true"></i> Historial — {{ cuentaHistorial?.plataforma_nombre }}</span>
+        <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarHistorial = false">
           <i class="ti ti-x"></i>
         </button>
       </div>
@@ -372,6 +384,7 @@ onMounted(async () => {
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <style scoped>
@@ -405,15 +418,7 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
-.modal-sm {
-  width: 420px;
-  max-width: 95vw;
-}
-
-.modal-historial {
-  width: 640px;
-  max-width: 95vw;
-}
+/* Anchos: .modal-sm / .modal-detail de la escala centralizada (main.css) */
 
 .modal-title {
   display: flex;

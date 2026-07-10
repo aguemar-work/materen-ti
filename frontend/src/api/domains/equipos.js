@@ -282,6 +282,7 @@ export const equiposApi = {
         tipo: a.equipos.tipos_equipo?.nombre || '',
         marca: a.equipos.marca || '',
         modelo: a.equipos.modelo || '',
+        estado: a.equipos.estado,
         fecha_inicio: a.fecha_inicio,
       }));
   },

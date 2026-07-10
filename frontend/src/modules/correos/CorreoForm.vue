@@ -2,12 +2,34 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useCorreosStore } from '../../stores/correos.js';
+import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
+import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
   correo: { type: Object, default: null },
 });
 
 const emit = defineEmits(['cerrar']);
+
+// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
+// emit real sale en @after-leave, así el padre desmonta sin cortarla.
+const visible = ref(true);
+let resultadoCierre = false;
+
+function cerrar(resultado) {
+  resultadoCierre = resultado;
+  visible.value = false;
+}
+
+function emitirCierre() {
+  emit('cerrar', resultadoCierre);
+}
+
+// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
+const panelModal = ref(null);
+useFocoAtrapado(panelModal);
 
 const store = useCorreosStore();
 
@@ -28,6 +50,10 @@ const form = ref({
   tipo_cuenta: 'compartida',
 });
 
+const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => form.value);
+const confirmarDescarte = ref(false);
+const dialogoDescarte = ref(null);
+
 function resetForm() {
   error.value = '';
   if (props.correo) {
@@ -44,6 +70,8 @@ function resetForm() {
   } else {
     form.value = { plataforma_id: '', usuario: '', password: '', url: '', notas: '', tipo_cuenta: 'compartida' };
   }
+  // El snapshot se toma con el form ya poblado (edición) o en blanco (alta)
+  tomarSnapshot();
 }
 
 watch(() => props.correo, resetForm, { immediate: true });
@@ -59,9 +87,27 @@ onMounted(async () => {
   }
 });
 
+// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
+// confirmación antes de descartar; limpio cierra directo.
 function cancelar() {
-  emit('cerrar', false);
+  if (!visible.value) return;
+  if (estaSucio.value) {
+    confirmarDescarte.value = true;
+    return;
+  }
+  cerrar(false);
 }
+
+function descartarCambios() {
+  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
+  // mientras el formulario inicia su propia salida en paralelo
+  dialogoDescarte.value?.cerrar();
+  cerrar(false);
+}
+
+// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
+// solo Cancelar, la X o Escape.
+useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
 async function guardar() {
   error.value = '';
@@ -77,7 +123,8 @@ async function guardar() {
     } else {
       await store.crear(form.value);
     }
-    emit('cerrar', true);
+    tomarSnapshot();
+    cerrar(true);
   } catch (e) {
     error.value = e?.message || 'Error al guardar';
   } finally {
@@ -87,8 +134,9 @@ async function guardar() {
 </script>
 
 <template>
-  <div class="modal-bg" @click.self="cancelar">
-    <div class="modal correo-form" role="dialog" aria-labelledby="correo-form-title">
+  <Transition name="modal-anim" appear @after-leave="emitirCierre">
+  <div v-if="visible" class="modal-bg">
+    <div ref="panelModal" class="modal correo-form" role="dialog" aria-modal="true" aria-labelledby="correo-form-title" tabindex="-1">
       <div class="modal-title">
         <span id="correo-form-title">{{ esEdicion ? 'Editar correo compartido' : 'Nuevo correo compartido' }}</span>
         <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
@@ -96,7 +144,8 @@ async function guardar() {
         </button>
       </div>
 
-      <form class="form-grid" @submit.prevent="guardar">
+      <form @submit.prevent="guardar">
+        <div class="modal-body form-grid">
         <div class="form-group full">
           <label>Tipo de correo *</label>
           <div class="tipo-options">
@@ -169,6 +218,8 @@ async function guardar() {
           <textarea id="cf-notas" v-model="form.notas" :disabled="guardando"></textarea>
         </div>
 
+        </div>
+
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
         <div class="modal-actions full">
@@ -180,6 +231,19 @@ async function guardar() {
       </form>
     </div>
   </div>
+  </Transition>
+
+  <ConfirmDialog
+    v-if="confirmarDescarte"
+    ref="dialogoDescarte"
+    destructivo
+    titulo="Cambios sin guardar"
+    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    confirmar-label="Descartar y salir"
+    cancelar-label="Seguir editando"
+    @cancel="confirmarDescarte = false"
+    @confirm="descartarCambios"
+  />
 </template>
 
 <style scoped>

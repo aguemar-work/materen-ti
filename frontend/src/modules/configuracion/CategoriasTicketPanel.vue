@@ -9,6 +9,7 @@ import { useCategoriasTicketStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 // Las categorías viven en el store de catálogos; las subcategorías son
 // un detalle de este panel y se quedan locales (insforgeApi directo).
@@ -24,6 +25,10 @@ const mostrarCatForm = ref(false);
 const catEditar = ref(null);
 const catForm = ref({ id: '', nombre: '' });
 const errorForm = ref('');
+
+// Foco atrapado mientras el modal está abierto (Fase 4)
+const panelCatForm = ref(null);
+useFocoAtrapado(panelCatForm, mostrarCatForm);
 
 // Alta rápida de subcategoría (inline, sin modal)
 const nuevaSubPorCategoria = ref({});
@@ -192,16 +197,19 @@ onMounted(async () => {
     </div>
 
     <!-- Modal categoría -->
+    <Transition name="modal-anim">
     <div v-if="mostrarCatForm" class="modal-bg" @click.self="mostrarCatForm = false">
-      <div class="modal modal-sm" role="dialog">
+      <div ref="panelCatForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="cat-form-title" tabindex="-1">
         <div class="modal-title">
-          <span>{{ catEditar ? 'Editar categoría' : 'Nueva categoría' }}</span>
-          <button class="icon-btn" type="button" @click="mostrarCatForm = false"><i class="ti ti-x"></i></button>
+          <span id="cat-form-title">{{ catEditar ? 'Editar categoría' : 'Nueva categoría' }}</span>
+          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarCatForm = false"><i class="ti ti-x"></i></button>
         </div>
-        <form class="modal-body" @submit.prevent="guardarCategoria">
+        <form @submit.prevent="guardarCategoria">
+          <div class="modal-body">
           <div class="form-group">
             <label for="cat-nombre">Nombre *</label>
             <input id="cat-nombre" v-model="catForm.nombre" required placeholder="ej: Accesos y Cuentas" :disabled="guardando">
+          </div>
           </div>
           <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
           <div class="modal-actions">
@@ -213,6 +221,7 @@ onMounted(async () => {
         </form>
       </div>
     </div>
+    </Transition>
   </main>
 </template>
 
@@ -275,7 +284,7 @@ onMounted(async () => {
 
 .cat-sub-nueva input { flex: 1; }
 
-.modal-sm { width: 420px; max-width: 95vw; }
+/* Ancho: .modal-sm de la escala centralizada (main.css) */
 .modal-title { display: flex; align-items: center; justify-content: space-between; }
 .modal-body { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 12px; }
 </style>

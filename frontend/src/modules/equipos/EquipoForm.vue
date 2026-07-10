@@ -3,12 +3,34 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { comprimirImagen } from '../../core/imagenes.js';
+import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
+import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
   equipo: { type: Object, default: null },
 });
 
 const emit = defineEmits(['cerrar']);
+
+// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
+// emit real sale en @after-leave, así el padre desmonta sin cortarla.
+const visible = ref(true);
+let resultadoCierre = false;
+
+function cerrar(resultado) {
+  resultadoCierre = resultado;
+  visible.value = false;
+}
+
+function emitirCierre() {
+  emit('cerrar', resultadoCierre);
+}
+
+// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
+const panelModal = ref(null);
+useFocoAtrapado(panelModal);
 
 const store = useEquiposStore();
 
@@ -99,6 +121,15 @@ function lineaVacia() {
   return { catalogo_id: null, codigo: '', descripcion: '', cantidad: 1 };
 }
 
+// El buscador del catálogo (busquedaAcc) es transitorio y no cuenta como
+// cambio; la línea manual a medio escribir (nuevaLinea) sí.
+const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
+  form: form.value,
+  nuevaLinea: nuevaLinea.value,
+}));
+const confirmarDescarte = ref(false);
+const dialogoDescarte = ref(null);
+
 function resetForm() {
   error.value = '';
   if (props.equipo) {
@@ -129,6 +160,8 @@ function resetForm() {
   busquedaAcc.value = '';
   sugerenciasAcc.value = [];
   nuevaLinea.value = { codigo: '', descripcion: '', cantidad: 1 };
+  // El snapshot se toma con el form ya poblado (edición) o en blanco (alta)
+  tomarSnapshot();
 }
 
 watch(() => props.equipo, resetForm, { immediate: true });
@@ -253,9 +286,27 @@ onMounted(async () => {
   }
 });
 
+// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
+// confirmación antes de descartar; limpio cierra directo.
 function cancelar() {
-  emit('cerrar', false);
+  if (!visible.value) return;
+  if (estaSucio.value) {
+    confirmarDescarte.value = true;
+    return;
+  }
+  cerrar(false);
 }
+
+function descartarCambios() {
+  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
+  // mientras el formulario inicia su propia salida en paralelo
+  dialogoDescarte.value?.cerrar();
+  cerrar(false);
+}
+
+// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
+// solo Cancelar, la X o Escape.
+useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
 async function guardar() {
   error.value = '';
@@ -280,7 +331,8 @@ async function guardar() {
     } else {
       await store.crear(datos);
     }
-    emit('cerrar', true);
+    tomarSnapshot();
+    cerrar(true);
   } catch (e) {
     error.value = e?.message?.includes('uq_equipos_serie')
       ? 'Ya existe un equipo con ese número de serie'
@@ -296,8 +348,9 @@ async function guardar() {
 </script>
 
 <template>
-  <div class="modal-bg" @click.self="cancelar">
-    <div class="modal equipo-form" role="dialog" aria-labelledby="eq-form-title">
+  <Transition name="modal-anim" appear @after-leave="emitirCierre">
+  <div v-if="visible" class="modal-bg">
+    <div ref="panelModal" class="modal modal-lg equipo-form" role="dialog" aria-modal="true" aria-labelledby="eq-form-title" tabindex="-1">
       <div class="modal-title">
         <span id="eq-form-title">{{ esEdicion ? 'Editar equipo' : 'Nuevo equipo' }}</span>
         <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
@@ -305,7 +358,8 @@ async function guardar() {
         </button>
       </div>
 
-      <form class="form-grid" @submit.prevent="guardar">
+      <form @submit.prevent="guardar">
+        <div class="modal-body form-grid">
         <div class="form-group">
           <label for="ef-codigo">Código de equipo *</label>
           <input id="ef-codigo" v-model="form.codigo" required placeholder="EQ-0001" :disabled="guardando">
@@ -537,6 +591,8 @@ async function guardar() {
           <textarea id="ef-notas" v-model="form.notas" :disabled="guardando"></textarea>
         </div>
 
+        </div>
+
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
         <div class="modal-actions full">
@@ -548,13 +604,23 @@ async function guardar() {
       </form>
     </div>
   </div>
+  </Transition>
+
+  <ConfirmDialog
+    v-if="confirmarDescarte"
+    ref="dialogoDescarte"
+    destructivo
+    titulo="Cambios sin guardar"
+    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    confirmar-label="Descartar y salir"
+    cancelar-label="Seguir editando"
+    @cancel="confirmarDescarte = false"
+    @confirm="descartarCambios"
+  />
 </template>
 
 <style scoped>
-.equipo-form {
-  width: 680px;
-  max-width: 95vw;
-}
+/* Ancho: .modal-lg de la escala centralizada (main.css) */
 
 .costo-inputs {
   display: flex;

@@ -66,6 +66,22 @@ async function cargar() {
   }
 }
 
+// Mismos umbrales de vencimiento que LicenciasView (30 días); aquí solo
+// se badgea lo problemático — una licencia sana no necesita señal.
+const HOY = new Date().toISOString().split('T')[0];
+const EN_30_DIAS = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().split('T')[0];
+})();
+
+function vencimientoLicencia(lic) {
+  if (lic.tipo === 'perpetua' || !lic.fecha_vencimiento) return null;
+  if (lic.fecha_vencimiento < HOY) return { clase: 'badge--danger', texto: 'Vencida' };
+  if (lic.fecha_vencimiento <= EN_30_DIAS) return { clase: 'badge--warning', texto: 'Por vencer' };
+  return null;
+}
+
 async function liberarLicencia(lic) {
   if (!confirm(`¿Liberar el asiento de "${lic.software}" de este empleado?`)) return;
   try {
@@ -247,48 +263,122 @@ onMounted(cargar);
                 <dd>{{ empleado.notas }}</dd>
               </div>
             </dl>
+          </div>
 
-            <!-- Equipos que porta (la devolución se registra en el módulo Equipos) -->
-            <div v-if="equipos.length" class="lic-seccion">
-              <div class="datos-title lic-title">
-                <i class="ti ti-devices" aria-hidden="true"></i> Equipos
-              </div>
-              <div v-for="eq in equipos" :key="eq.asignacion_id" class="lic-item">
-                <div class="lic-info">
-                  <span class="lic-software">{{ eq.codigo }} — {{ eq.tipo }} {{ eq.marca }}</span>
-                  <span class="lic-fecha">{{ eq.modelo || '' }} · desde {{ formatFecha(eq.fecha_inicio) }}</span>
-                </div>
-                <RouterLink class="icon-btn" to="/equipos" title="Gestionar en el módulo Equipos">
-                  <i class="ti ti-external-link"></i>
-                </RouterLink>
-              </div>
-            </div>
+          <!-- Vínculos: Accesos + Equipos + Licencias -->
+          <div class="col-vinculos">
+            <CuentasPanel
+              :key="empleado.id"
+              class="accesos-panel"
+              :empleado-id="empleado.id"
+              :empleado-nombre="nombreCompleto"
+              :empleado-whatsapp="empleado.whatsapp || ''"
+            />
 
-            <!-- Licencias directas (las de login aparecen como cuentas en Accesos) -->
-            <div v-if="licencias.length" class="lic-seccion">
-              <div class="datos-title lic-title">
-                <i class="ti ti-license" aria-hidden="true"></i> Licencias
-              </div>
-              <div v-for="lic in licencias" :key="lic.asignacion_id" class="lic-item">
-                <div class="lic-info">
-                  <span class="lic-software">{{ lic.software }}</span>
-                  <span class="lic-fecha">desde {{ formatFecha(lic.fecha_inicio) }}</span>
+            <div class="paneles-duo">
+              <!-- Equipos que porta (entrega/devolución se registran en el módulo Equipos) -->
+              <div class="card panel-card">
+                <div class="panel-toolbar">
+                  <div class="panel-title">
+                    <i class="ti ti-devices" aria-hidden="true"></i>
+                    Equipos
+                    <span class="badge-count">{{ equipos.length }}</span>
+                  </div>
+                  <RouterLink class="btn" to="/equipos" title="La entrega se registra en el módulo Equipos">
+                    <i class="ti ti-plus" aria-hidden="true"></i> Asignar
+                  </RouterLink>
                 </div>
-                <button class="icon-btn danger" type="button" title="Liberar asiento" @click="liberarLicencia(lic)">
-                  <i class="ti ti-user-minus"></i>
-                </button>
+
+                <p v-if="equipos.length === 0" class="panel-vacio">
+                  Sin equipos asignados — la entrega se registra en el módulo Equipos.
+                </p>
+                <ul v-else class="panel-lista">
+                  <li v-for="eq in equipos" :key="eq.asignacion_id" class="panel-item">
+                    <div class="panel-item-info">
+                      <span class="panel-item-titulo">
+                        <span class="mono">{{ eq.codigo }}</span>
+                        · {{ [eq.tipo, eq.marca, eq.modelo].filter(Boolean).join(' ') }}
+                        <BadgeEstado
+                          v-if="eq.estado && eq.estado !== 'operativo'"
+                          tipo="situacion"
+                          :valor="eq.estado"
+                          inline
+                          class="badge-inline"
+                        />
+                      </span>
+                      <span class="panel-item-meta">Desde {{ formatFecha(eq.fecha_inicio) }}</span>
+                    </div>
+                    <div class="actions">
+                      <RouterLink
+                        class="icon-btn"
+                        :to="{ path: '/equipos', query: { q: eq.codigo } }"
+                        title="Gestionar en el módulo Equipos"
+                        aria-label="Gestionar en el módulo Equipos"
+                      >
+                        <i class="ti ti-external-link"></i>
+                      </RouterLink>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Licencias directas (las de login aparecen como cuentas en Accesos) -->
+              <div class="card panel-card">
+                <div class="panel-toolbar">
+                  <div class="panel-title">
+                    <i class="ti ti-license" aria-hidden="true"></i>
+                    Licencias
+                    <span class="badge-count">{{ licencias.length }}</span>
+                  </div>
+                  <RouterLink class="btn" to="/licencias" title="Los asientos se asignan en el módulo Licencias">
+                    <i class="ti ti-plus" aria-hidden="true"></i> Asignar
+                  </RouterLink>
+                </div>
+
+                <p v-if="licencias.length === 0" class="panel-vacio">
+                  Sin licencias directas — las de login aparecen como cuentas en Accesos.
+                </p>
+                <ul v-else class="panel-lista">
+                  <li v-for="lic in licencias" :key="lic.asignacion_id" class="panel-item">
+                    <div class="panel-item-info">
+                      <span class="panel-item-titulo">
+                        {{ lic.software }}
+                        <span
+                          v-if="vencimientoLicencia(lic)"
+                          class="badge badge-inline"
+                          :class="vencimientoLicencia(lic).clase"
+                        >{{ vencimientoLicencia(lic).texto }}</span>
+                      </span>
+                      <span class="panel-item-meta">
+                        Desde {{ formatFecha(lic.fecha_inicio) }}
+                        <template v-if="lic.tipo === 'perpetua'"> · perpetua</template>
+                        <template v-else-if="lic.fecha_vencimiento"> · vence {{ formatFecha(lic.fecha_vencimiento) }}</template>
+                      </span>
+                    </div>
+                    <div class="actions">
+                      <RouterLink
+                        class="icon-btn"
+                        :to="{ path: '/licencias', query: { q: lic.software } }"
+                        title="Ver en el módulo Licencias"
+                        aria-label="Ver en el módulo Licencias"
+                      >
+                        <i class="ti ti-external-link"></i>
+                      </RouterLink>
+                      <button
+                        class="icon-btn danger"
+                        type="button"
+                        title="Liberar asiento"
+                        aria-label="Liberar asiento"
+                        @click="liberarLicencia(lic)"
+                      >
+                        <i class="ti ti-user-minus"></i>
+                      </button>
+                    </div>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
-
-          <!-- Accesos -->
-          <CuentasPanel
-            :key="empleado.id"
-            class="accesos-panel"
-            :empleado-id="empleado.id"
-            :empleado-nombre="nombreCompleto"
-            :empleado-whatsapp="empleado.whatsapp || ''"
-          />
         </div>
       </template>
     </main>
@@ -308,21 +398,7 @@ onMounted(cargar);
 </template>
 
 <style scoped>
-.header-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
+/* .header-left/.header-inner se estilan en main.css (shell de PageHeader) */
 .btn-volver {
   flex-shrink: 0;
 }
@@ -493,38 +569,95 @@ onMounted(cargar);
   text-decoration: underline;
 }
 
-.lic-seccion {
-  margin-top: 18px;
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
+/* Columna derecha: Accesos arriba, Equipos + Licencias en dúo debajo */
+.col-vinculos {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 
-.lic-title {
-  margin-bottom: 10px;
+.paneles-duo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
-.lic-item {
+/* Misma estructura de toolbar que el panel de Accesos (CuentasPanel) */
+.panel-card {
+  padding: 0 0 6px;
+}
+
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* Vacío compacto: estos paneles son secundarios, no ameritan el EmptyState grande */
+.panel-vacio {
+  margin: 0;
+  padding: 18px 20px;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+}
+
+.panel-lista {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px;
+}
+
+.panel-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
 }
 
-.lic-info {
+.panel-item:hover {
+  background: var(--color-bg-subtle);
+}
+
+.panel-item-info {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.lic-software {
+.panel-item-titulo {
   font-size: 13px;
-  font-weight: 600;
   color: var(--color-text-primary);
 }
 
-.lic-fecha {
+.panel-item-meta {
   font-size: 11.5px;
   color: var(--color-text-secondary);
+}
+
+/* Identificadores en mono — solo cambia la familia, nunca peso/color */
+.mono {
+  font-family: var(--font-mono, monospace);
+}
+
+.badge-inline {
+  margin-left: 6px;
+  vertical-align: middle;
 }
 </style>

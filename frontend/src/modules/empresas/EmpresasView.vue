@@ -5,6 +5,7 @@ import { useEmpresasStore } from '../../stores/empresas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
+import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 
@@ -16,6 +17,10 @@ const mostrarForm = ref(false);
 const empresaEditar = ref(null);
 const guardando = ref(false);
 const errorForm = ref('');
+
+// Foco atrapado mientras el modal está abierto (Fase 4)
+const panelForm = ref(null);
+useFocoAtrapado(panelForm, mostrarForm);
 
 const form = ref({ nombre: '', ruc: '' });
 
@@ -176,8 +181,9 @@ onMounted(async () => {
     </main>
 
     <!-- Modal empresa -->
+    <Transition name="modal-anim">
     <div v-if="mostrarForm" class="modal-bg" @click.self="cerrarForm">
-      <div class="modal" role="dialog" aria-labelledby="empresa-form-title">
+      <div ref="panelForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="empresa-form-title" tabindex="-1">
         <div class="modal-title">
           <span id="empresa-form-title">{{ esEdicion ? 'Editar empresa' : 'Nueva empresa' }}</span>
           <button class="icon-btn" type="button" aria-label="Cerrar" @click="cerrarForm">
@@ -185,7 +191,8 @@ onMounted(async () => {
           </button>
         </div>
 
-        <form class="form-grid" @submit.prevent="guardar">
+        <form @submit.prevent="guardar">
+          <div class="modal-body form-grid">
           <div class="form-group full">
             <label for="emp-nombre">Nombre *</label>
             <input id="emp-nombre" v-model="form.nombre" required :disabled="guardando">
@@ -194,6 +201,8 @@ onMounted(async () => {
           <div class="form-group full">
             <label for="emp-ruc">RUC</label>
             <input id="emp-ruc" v-model="form.ruc" :disabled="guardando">
+          </div>
+
           </div>
 
           <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
@@ -207,6 +216,7 @@ onMounted(async () => {
         </form>
       </div>
     </div>
+    </Transition>
   </div>
 </template>
 

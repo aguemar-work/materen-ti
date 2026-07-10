@@ -193,6 +193,7 @@ onMounted(async () => {
                 <th scope="col">Nombre</th>
                 <th scope="col">Cargo</th>
                 <th scope="col">Empresa</th>
+                <th scope="col">Vínculos</th>
                 <th scope="col">Estado</th>
                 <th scope="col">Acciones</th>
               </tr>
@@ -205,6 +206,32 @@ onMounted(async () => {
                 </td>
                 <td><TextoVacio :valor="emp.cargo" /></td>
                 <td><TextoVacio :valor="emp.empresa_nombre" /></td>
+                <td>
+                  <div v-if="emp.n_cuentas != null" class="vinculos">
+                    <span
+                      class="vinculo"
+                      :class="{ 'vinculo--cero': !emp.n_cuentas }"
+                      :title="`${emp.n_cuentas} cuenta(s) activa(s)`"
+                    >
+                      <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
+                    </span>
+                    <span
+                      class="vinculo"
+                      :class="{ 'vinculo--cero': !emp.n_equipos }"
+                      :title="`${emp.n_equipos} equipo(s) asignado(s)`"
+                    >
+                      <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
+                    </span>
+                    <span
+                      class="vinculo"
+                      :class="{ 'vinculo--cero': !emp.n_licencias }"
+                      :title="`${emp.n_licencias} licencia(s) directa(s)`"
+                    >
+                      <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
+                    </span>
+                  </div>
+                  <TextoVacio v-else />
+                </td>
                 <td>
                   <BadgeEstado tipo="empleado" :valor="emp.estado" status />
                 </td>
@@ -277,4 +304,22 @@ onMounted(async () => {
 
 .fila-empleado { cursor: pointer; }
 .fila-empleado:hover td { background: var(--color-bg-hover, var(--color-bg-subtle)); }
+
+/* Conteos de cuentas/equipos: dato secundario, no badge (no es estado) */
+.vinculos {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.vinculo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-secondary);
+}
+
+.vinculo i { font-size: 14px; }
+
+.vinculo--cero { color: var(--color-text-tertiary); }
 </style>
