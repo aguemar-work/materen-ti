@@ -121,10 +121,7 @@ onMounted(async () => {
       </template>
 
       <template v-else-if="estado === 'formulario' || estado === 'enviando'">
-        <h2 class="ticket-title">Reportar un problema</h2>
-        <p class="ticket-subtitulo">
-          Cuéntanos qué pasó y te ayudamos a resolverlo.
-        </p>
+        <h2 class="ticket-title">Generar un nuevo ticket</h2>
         <RouterLink class="ticket-ver-mios" to="/ticket/buscar">
           <i class="ti ti-search" aria-hidden="true"></i> ¿Ya reportaste algo? Busca tu ticket
         </RouterLink>
@@ -139,7 +136,6 @@ onMounted(async () => {
               placeholder="tu@empresa.com o tu DNI"
               :disabled="estado === 'enviando'"
             >
-            <p class="field-hint">Así podemos ubicarte y avisarte cuando resolvamos tu caso.</p>
           </div>
           <div v-else class="ticket-identificado">
             <i class="ti ti-user-check"></i> Te identificamos automáticamente.
@@ -246,12 +242,6 @@ onMounted(async () => {
   margin: 0 0 4px;
 }
 
-.ticket-subtitulo {
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  margin: 0 0 16px;
-}
-
 .ticket-texto {
   font-size: var(--fs-base);
   color: var(--color-text-secondary);
@@ -277,12 +267,6 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.field-hint {
-  margin: 4px 0 0;
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
 }
 
 .ticket-identificado {
