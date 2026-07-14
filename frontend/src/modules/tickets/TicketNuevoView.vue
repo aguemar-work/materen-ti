@@ -128,12 +128,12 @@ onMounted(async () => {
 
         <form class="ticket-form" @submit.prevent="enviar">
           <div v-if="!tokenEntrega" class="form-group full">
-            <label for="tk-contacto">Correo institucional o DNI *</label>
+            <label for="tk-contacto">DNI *</label>
             <input
               id="tk-contacto"
               v-model="form.contacto"
               type="text"
-              placeholder="tu@empresa.com o tu DNI"
+              placeholder="Tu DNI"
               :disabled="estado === 'enviando'"
             >
           </div>
