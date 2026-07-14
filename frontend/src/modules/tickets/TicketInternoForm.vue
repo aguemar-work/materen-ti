@@ -186,7 +186,7 @@ onMounted(async () => {
               @focus="listaEmpAbierta = true"
               @blur="cerrarListaEmpleados"
             >
-            <i v-if="empleadoSelId" class="ti ti-circle-check-filled combo-check"></i>
+            <i v-if="empleadoSelId" class="ti ti-circle-check combo-check"></i>
             <ul v-if="listaEmpAbierta && !empleadoSelId" class="combo-lista">
               <li v-if="empleadosFiltrados.length === 0" class="combo-vacio">Sin resultados</li>
               <li v-for="e in empleadosFiltrados" :key="e.id" @mousedown.prevent="seleccionarEmpleado(e)">

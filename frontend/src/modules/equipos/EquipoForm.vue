@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { comprimirImagen } from '../../core/imagenes.js';
@@ -34,8 +34,6 @@ useFocoAtrapado(panelModal);
 
 const store = useEquiposStore();
 
-const empresas = ref([]);
-const cargandoEmpresas = ref(false);
 const guardando = ref(false);
 const error = ref('');
 
@@ -48,6 +46,8 @@ const form = ref({
   marca: '',
   modelo: '',
   serie: '',
+  // Sin campo en el formulario (se quitó "Empresa dueña"); se conserva en el
+  // estado para no borrar el dato de equipos antiguos al editarlos
   empresa_id: '',
   fecha_compra: '',
   costo: '',
@@ -275,17 +275,6 @@ function ocultarSugerencias() {
   setTimeout(() => { mostrarSugerencias.value = false; }, 180);
 }
 
-onMounted(async () => {
-  cargandoEmpresas.value = true;
-  try {
-    empresas.value = await insforgeApi.listEmpresas();
-  } catch (e) {
-    error.value = e?.message || 'Error al cargar empresas';
-  } finally {
-    cargandoEmpresas.value = false;
-  }
-});
-
 // Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
 // confirmación antes de descartar; limpio cierra directo.
 function cancelar() {
@@ -396,14 +385,6 @@ async function guardar() {
         <div class="form-group">
           <label for="ef-serie">Número de serie</label>
           <input id="ef-serie" v-model="form.serie" :disabled="guardando">
-        </div>
-
-        <div class="form-group">
-          <label for="ef-empresa">Empresa dueña</label>
-          <select id="ef-empresa" v-model="form.empresa_id" :disabled="guardando || cargandoEmpresas">
-            <option value="">Del grupo (sin empresa)</option>
-            <option v-for="e in empresas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
-          </select>
         </div>
 
         <div class="form-group">

@@ -12,6 +12,7 @@ import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const store = useCorreosStore();
 const { lista, total, cargando, error } = storeToRefs(store);
@@ -103,13 +104,23 @@ function onFormCerrado(guardado) {
   if (guardado) showToast(fueEdicion ? 'Correo actualizado' : 'Correo compartido creado');
 }
 
-async function eliminar(correo) {
-  if (!confirm(`¿Eliminar el correo compartido "${correo.usuario}"?\nLas asignaciones activas quedarán en el historial.`)) return;
+// Confirmación destructiva (ConfirmDialog compartido, tier base)
+const porEliminar = ref(null);
+const eliminando = ref(false);
+const dialogoEliminar = ref(null);
+
+async function confirmarEliminar() {
+  const c = porEliminar.value;
+  if (!c) return;
+  eliminando.value = true;
   try {
-    await store.softDelete(correo.id);
+    await store.softDelete(c.id);
     showToast('Correo eliminado');
+    dialogoEliminar.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al eliminar', 'error');
+  } finally {
+    eliminando.value = false;
   }
 }
 
@@ -268,7 +279,7 @@ onMounted(async () => {
                     <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(correo)">
                       <i class="ti ti-pencil"></i>
                     </button>
-                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminar(correo)">
+                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = correo">
                       <i class="ti ti-trash"></i>
                     </button>
                   </div>
@@ -285,6 +296,20 @@ onMounted(async () => {
       v-if="mostrarForm"
       :correo="correoEditar"
       @cerrar="onFormCerrado"
+    />
+
+    <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
+    <ConfirmDialog
+      v-if="porEliminar"
+      ref="dialogoEliminar"
+      destructivo
+      icono="ti-trash"
+      titulo="Eliminar correo compartido"
+      :mensaje="`¿Eliminar el correo compartido “${porEliminar.usuario}”? Las asignaciones activas quedarán en el historial.`"
+      confirmar-label="Eliminar"
+      :cargando="eliminando"
+      @cancel="porEliminar = null"
+      @confirm="confirmarEliminar"
     />
   </div>
 </template>

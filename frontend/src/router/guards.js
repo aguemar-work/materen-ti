@@ -19,6 +19,10 @@ export function setupGuards(router) {
       return { path: '/dashboard' };
     }
 
+    if (to.path === '/accesos-sensibles' && !auth.esJefe) {
+      return { path: '/dashboard' };
+    }
+
     // La pestaña Staff de Configuración es solo para el JEFE
     if (to.path === '/configuracion' && to.query.tab === 'staff' && !auth.esJefe) {
       return { path: '/configuracion' };

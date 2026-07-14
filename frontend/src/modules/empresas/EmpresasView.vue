@@ -8,6 +8,7 @@ import Pagination from '../../components/shared/Pagination.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const store = useEmpresasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -75,13 +76,23 @@ async function guardar() {
   }
 }
 
-async function darDeBaja(empresa) {
-  if (!confirm(`¿Dar de baja a "${empresa.nombre}"? El registro se eliminará lógicamente.`)) return;
+// Confirmación destructiva (ConfirmDialog compartido, tier base)
+const porDarDeBaja = ref(null);
+const dandoDeBaja = ref(false);
+const dialogoBaja = ref(null);
+
+async function confirmarBaja() {
+  const emp = porDarDeBaja.value;
+  if (!emp) return;
+  dandoDeBaja.value = true;
   try {
-    await store.softDelete(empresa.id);
-    showToast(`"${empresa.nombre}" dada de baja`);
+    await store.softDelete(emp.id);
+    showToast(`"${emp.nombre}" dada de baja`);
+    dialogoBaja.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al dar de baja', 'error');
+  } finally {
+    dandoDeBaja.value = false;
   }
 }
 
@@ -166,7 +177,7 @@ onMounted(async () => {
                       type="button"
                       title="Dar de baja"
                       aria-label="Dar de baja"
-                      @click="darDeBaja(emp)"
+                      @click="porDarDeBaja = emp"
                     >
                       <i class="ti ti-building-off"></i>
                     </button>
@@ -217,6 +228,20 @@ onMounted(async () => {
       </div>
     </div>
     </Transition>
+
+    <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
+    <ConfirmDialog
+      v-if="porDarDeBaja"
+      ref="dialogoBaja"
+      destructivo
+      icono="ti-building-off"
+      titulo="Dar de baja empresa"
+      :mensaje="`¿Dar de baja a “${porDarDeBaja.nombre}”? El registro se eliminará lógicamente.`"
+      confirmar-label="Dar de baja"
+      :cargando="dandoDeBaja"
+      @cancel="porDarDeBaja = null"
+      @confirm="confirmarBaja"
+    />
   </div>
 </template>
 

@@ -13,6 +13,7 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -82,14 +83,24 @@ function vencimientoLicencia(lic) {
   return null;
 }
 
-async function liberarLicencia(lic) {
-  if (!confirm(`¿Liberar el asiento de "${lic.software}" de este empleado?`)) return;
+// Confirmación destructiva (ConfirmDialog compartido, tier base)
+const porLiberarLicencia = ref(null);
+const liberandoLicencia = ref(false);
+const dialogoLiberarLicencia = ref(null);
+
+async function confirmarLiberarLicencia() {
+  const lic = porLiberarLicencia.value;
+  if (!lic) return;
+  liberandoLicencia.value = true;
   try {
     await insforgeApi.cerrarAsignacionLicencia(lic.asignacion_id);
     licencias.value = licencias.value.filter((l) => l.asignacion_id !== lic.asignacion_id);
     showToast('Asiento liberado');
+    dialogoLiberarLicencia.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al liberar', 'error');
+  } finally {
+    liberandoLicencia.value = false;
   }
 }
 
@@ -115,13 +126,18 @@ async function onBajaCerrada(guardado) {
   }
 }
 
-async function reactivar() {
-  if (!confirm(`¿Reactivar a ${nombreCompleto.value}? Volverá al estado Activo.`)) return;
+// Confirmación no destructiva (ConfirmDialog compartido): "Reactivar" es lo
+// opuesto de "Dar de baja" — usa el botón primario, no btn-danger.
+const mostrarReactivar = ref(false);
+const dialogoReactivar = ref(null);
+
+async function confirmarReactivar() {
   procesando.value = true;
   try {
     empleado.value = await insforgeApi.reactivarEmpleado(empleado.value.id);
     sincronizarStore();
     showToast(`${nombreCompleto.value} reactivado`);
+    dialogoReactivar.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al reactivar', 'error');
   } finally {
@@ -174,7 +190,7 @@ onMounted(cargar);
           class="btn btn-primary"
           type="button"
           :disabled="procesando"
-          @click="reactivar"
+          @click="mostrarReactivar = true"
         >
           <i class="ti ti-user-check" aria-hidden="true"></i> Reactivar
         </button>
@@ -189,12 +205,12 @@ onMounted(cargar);
         <div v-if="modoAlta" class="alta-banner">
           <div class="alta-pasos">
             <div class="alta-paso alta-paso--hecho">
-              <i class="ti ti-circle-check-filled"></i>
+              <i class="ti ti-circle-check"></i>
               <span><strong>1.</strong> Empleado registrado</span>
             </div>
             <i class="ti ti-chevron-right alta-sep"></i>
             <div class="alta-paso" :class="{ 'alta-paso--hecho': tieneAccesos }">
-              <i :class="tieneAccesos ? 'ti ti-circle-check-filled' : 'ti ti-circle-2'"></i>
+              <i :class="tieneAccesos ? 'ti ti-circle-check' : 'ti ti-circle-2'"></i>
               <span><strong>2.</strong> Asignar sus accesos</span>
             </div>
             <i class="ti ti-chevron-right alta-sep"></i>
@@ -301,7 +317,7 @@ onMounted(cargar);
                         <BadgeEstado
                           v-if="eq.estado && eq.estado !== 'operativo'"
                           tipo="situacion"
-                          :valor="eq.estado"
+                          :valor="eq.situacion"
                           inline
                           class="badge-inline"
                         />
@@ -369,7 +385,7 @@ onMounted(cargar);
                         type="button"
                         title="Liberar asiento"
                         aria-label="Liberar asiento"
-                        @click="liberarLicencia(lic)"
+                        @click="porLiberarLicencia = lic"
                       >
                         <i class="ti ti-user-minus"></i>
                       </button>
@@ -393,6 +409,32 @@ onMounted(cargar);
       v-if="mostrarBaja"
       :empleado="empleado"
       @cerrar="onBajaCerrada"
+    />
+
+    <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
+    <ConfirmDialog
+      v-if="porLiberarLicencia"
+      ref="dialogoLiberarLicencia"
+      destructivo
+      icono="ti-user-minus"
+      titulo="Liberar asiento"
+      :mensaje="`¿Liberar el asiento de “${porLiberarLicencia.software}” de este empleado?`"
+      confirmar-label="Liberar"
+      :cargando="liberandoLicencia"
+      @cancel="porLiberarLicencia = null"
+      @confirm="confirmarLiberarLicencia"
+    />
+
+    <!-- Confirmación no destructiva (ConfirmDialog compartido) -->
+    <ConfirmDialog
+      v-if="mostrarReactivar"
+      ref="dialogoReactivar"
+      titulo="Reactivar empleado"
+      :mensaje="`¿Reactivar a ${nombreCompleto}? Volverá al estado Activo.`"
+      confirmar-label="Reactivar"
+      :cargando="procesando"
+      @cancel="mostrarReactivar = false"
+      @confirm="confirmarReactivar"
     />
   </div>
 </template>

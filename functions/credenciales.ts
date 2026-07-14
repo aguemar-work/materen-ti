@@ -11,9 +11,18 @@
 //   entregaCrear         staff   { empleadoId, cuentaIds } → { token, expiresAt }  (audita)
 //   entregaAbrir         público { token }                 → { empleadoNombre, credenciales }  (un solo uso, audita)
 //
+//   -- Módulo "accesos sensibles" (más estricto que lo de arriba: no
+//      alcanza con ser staff activo, hace falta ser JEFE Y estar en
+//      accesos_sensibles_permisos para ese acceso_id) --
+//   encryptSensible       JEFE    { value, accesoId? }      → { encrypted }
+//     (accesoId ausente = credencial nueva, cualquier JEFE puede cifrar
+//      para crearla; accesoId presente = edición, exige permiso sobre esa fila)
+//   revelarAccesoSensible JEFE+permiso { accesoId, motivo } → { password }  (audita)
+//
 // Formatos de cifrado:
-//   enc2:<iv>:<ct>  AES-256-GCM con CRED_KEY_V2 (actual, servidor)
+//   enc2:<iv>:<ct>  AES-256-GCM con CRED_KEY_V2 (actual, servidor — Cuentas/Licencias)
 //   enc:<iv>:<ct>   AES-256-GCM con CRED_KEY_LEGACY (histórico, cliente)
+//   sens1:<iv>:<ct> AES-256-GCM con CRED_KEY_SENSIBLE (clave aislada, solo accesos_sensibles)
 //   otro            texto plano histórico, se devuelve tal cual
 // ============================================================
 
@@ -97,6 +106,31 @@ export async function decryptAny(stored: string): Promise<string> {
   try {
     const [ivB64, ctB64] = payload.split(':');
     const key = await importKey(keyB64!);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(ivB64) }, key, fromB64(ctB64));
+    return new TextDecoder().decode(plain);
+  } catch {
+    return '(error al descifrar)';
+  }
+}
+
+// ── Cifrado aislado para "accesos sensibles" ─────────────────
+// Clave propia (CRED_KEY_SENSIBLE) y prefijo propio (sens1:), separados
+// de CRED_KEY_V2/enc2: — si esa clave general se viera comprometida
+// alguna vez, esta tabla no cae con ella (y viceversa).
+
+async function encryptSensible(text: string): Promise<string> {
+  const key = await importKey(Deno.env.get('CRED_KEY_SENSIBLE')!);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text));
+  return `sens1:${toB64(iv)}:${toB64(ct)}`;
+}
+
+async function decryptSensible(stored: string): Promise<string> {
+  if (!stored) return '';
+  if (!stored.startsWith('sens1:')) return '(formato desconocido)';
+  try {
+    const [ivB64, ctB64] = stored.slice(6).split(':');
+    const key = await importKey(Deno.env.get('CRED_KEY_SENSIBLE')!);
     const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(ivB64) }, key, fromB64(ctB64));
     return new TextDecoder().decode(plain);
   } catch {
@@ -229,6 +263,81 @@ export default async function (req: Request): Promise<Response> {
     if (!value) return json({ ok: true, encrypted: null });
     if (value.length > 500) return json({ ok: false, code: 'valor_muy_largo' });
     return json({ ok: true, encrypted: await encryptV2(value) });
+  }
+
+  // ── Acciones del módulo "accesos sensibles" ────────────────
+  // Más estrictas que todo lo de arriba: no alcanza con staffRow.activo
+  // (eso ya se chequeó arriba para llegar hasta acá) — hace falta además
+  // rol === 'JEFE', y para tocar una fila puntual, estar en
+  // accesos_sensibles_permisos para ese acceso_id. La RLS ya protege la
+  // tabla en sí; este chequeo protege específicamente el descifrado
+  // (que corre con el cliente admin, fuera del alcance de la RLS).
+
+  // encryptSensible: cifrar antes de guardar (crear o editar una credencial)
+  if (body.action === 'encryptSensible') {
+    if (staffRow.rol !== 'JEFE') return json({ ok: false, code: 'no_autorizado' }, 403);
+
+    const value = String(body.value || '');
+    if (!value) return json({ ok: true, encrypted: null });
+    if (value.length > 500) return json({ ok: false, code: 'valor_muy_largo' });
+
+    // accesoId presente = está editando una fila existente: exige permiso
+    // sobre ESA fila. Ausente = está creando una nueva: cualquier JEFE puede
+    // (el propio creador queda con permiso automático vía trigger de BD).
+    const accesoId = body.accesoId ? String(body.accesoId) : null;
+    if (accesoId) {
+      const { data: permiso } = await admin.database
+        .from('accesos_sensibles_permisos')
+        .select('acceso_id')
+        .eq('acceso_id', accesoId)
+        .eq('staff_user_id', user.id)
+        .maybeSingle();
+      if (!permiso) return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
+    return json({ ok: true, encrypted: await encryptSensible(value) });
+  }
+
+  // revelarAccesoSensible: descifrar (audita, mismo rate-limit que revelar)
+  if (body.action === 'revelarAccesoSensible') {
+    const accesoId = String(body.accesoId || '');
+    const motivo = body.motivo === 'copiar' ? 'copiar' : 'ver';
+    if (!accesoId) return json({ ok: false, code: 'acceso_requerido' });
+
+    if (staffRow.rol !== 'JEFE') return json({ ok: false, code: 'no_autorizado' }, 403);
+
+    const { data: permiso } = await admin.database
+      .from('accesos_sensibles_permisos')
+      .select('acceso_id')
+      .eq('acceso_id', accesoId)
+      .eq('staff_user_id', user.id)
+      .maybeSingle();
+    if (!permiso) return json({ ok: false, code: 'no_autorizado' }, 403);
+
+    if (await reveladosRecientes(user.id) >= REVELADO_MAX) {
+      return json({ ok: false, code: 'demasiados_revelados' }, 429);
+    }
+
+    const { data: acceso } = await admin.database
+      .from('accesos_sensibles')
+      .select('id, nombre, categoria, password')
+      .eq('id', accesoId)
+      .maybeSingle();
+    if (!acceso) return json({ ok: false, code: 'no_existe' });
+
+    const password = acceso.password ? await decryptSensible(acceso.password) : '';
+
+    await log({
+      user_id: user.id,
+      user_email: user.email || null,
+      cuenta_id: null,
+      cuenta_usuario: acceso.nombre,
+      plataforma: acceso.categoria,
+      accion: motivo,
+      detalle: `Acceso sensible id=${acceso.id}`,
+    });
+
+    return json({ ok: true, password });
   }
 
   // revelar: devolver la contraseña de una cuenta (audita quién y por qué)

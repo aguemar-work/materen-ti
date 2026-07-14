@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { badgeInfo } from '../../core/badges.js';
 
 const props = defineProps({
-  /** empleado | ticket | prioridad | situacion | tipo_cuenta */
+  /** empleado | ticket | prioridad | situacion | tipo_cuenta | categoria_acceso_sensible */
   tipo: { type: String, required: true },
   valor: { type: [String, Boolean], default: '' },
   /** Usa .status (pill más compacta) en tablas de empleados */

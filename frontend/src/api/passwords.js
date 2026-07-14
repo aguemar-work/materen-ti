@@ -14,6 +14,7 @@ function mensajeError(code) {
   const mensajes = {
     no_autenticado: 'Sesión expirada — vuelve a iniciar sesión',
     no_es_staff: 'No tienes permisos para esta acción',
+    no_autorizado: 'No tienes permiso para ver esta credencial',
     no_existe: 'El registro no existe',
     ya_abierta: 'Este enlace ya fue utilizado',
     expirada: 'Este enlace expiró',
@@ -51,4 +52,24 @@ export async function crearEntrega(empleadoId, cuentaIds, horas = 24) {
 export async function abrirEntrega(token) {
   const data = await invoke({ action: 'entregaAbrir', token });
   return { empleadoNombre: data.empleadoNombre, credenciales: data.credenciales };
+}
+
+// ── Módulo "accesos sensibles" ────────────────────────────────
+// Clave de cifrado aislada (CRED_KEY_SENSIBLE) y control de acceso propio:
+// solo JEFE, y solo con permiso explícito por fila (ver migración 024).
+
+// Cifra un valor antes de guardarlo. accesoId: pasalo al editar una fila
+// existente (la edge function exige permiso sobre ESA fila); omitilo al
+// crear una credencial nueva (cualquier JEFE puede).
+export async function cifrarAccesoSensible(value, accesoId = null) {
+  if (!value) return null;
+  const data = await invoke({ action: 'encryptSensible', value, accesoId });
+  return data.encrypted;
+}
+
+// Revela la contraseña de un acceso sensible. motivo: 'ver' | 'copiar'
+// (queda auditado en accesos_log, igual que revelarPassword).
+export async function revelarAccesoSensible(accesoId, motivo = 'ver') {
+  const data = await invoke({ action: 'revelarAccesoSensible', accesoId, motivo });
+  return data.password;
 }

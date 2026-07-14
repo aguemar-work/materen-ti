@@ -12,6 +12,7 @@ import Pagination from '../../components/shared/Pagination.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const store = useTiposEquipoStore();
 const { lista, cargando } = storeToRefs(store);
@@ -82,15 +83,25 @@ async function guardar() {
   }
 }
 
-async function eliminar(t) {
-  if (!confirm(`¿Eliminar el tipo "${t.nombre}"?\nLos equipos existentes de este tipo no se ven afectados.`)) return;
+// Confirmación destructiva (ConfirmDialog compartido, tier base)
+const porEliminar = ref(null);
+const eliminando = ref(false);
+const dialogoEliminar = ref(null);
+
+async function confirmarEliminar() {
+  const t = porEliminar.value;
+  if (!t) return;
+  eliminando.value = true;
   try {
     await store.softDelete(t.id);
     // El formulario de equipos usa este catálogo: refrescar su copia
     equiposStore.tipos = [...lista.value];
     showToast('Tipo eliminado');
+    dialogoEliminar.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al eliminar', 'error');
+  } finally {
+    eliminando.value = false;
   }
 }
 
@@ -159,7 +170,7 @@ onMounted(async () => {
                   <button class="icon-btn" type="button" title="Editar plantilla" aria-label="Editar plantilla" @click="abrirEditar(t)">
                     <i class="ti ti-pencil"></i>
                   </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminar(t)">
+                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = t">
                     <i class="ti ti-trash"></i>
                   </button>
                 </div>
@@ -206,6 +217,20 @@ onMounted(async () => {
       </div>
     </div>
     </Transition>
+
+    <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
+    <ConfirmDialog
+      v-if="porEliminar"
+      ref="dialogoEliminar"
+      destructivo
+      icono="ti-trash"
+      titulo="Eliminar tipo de equipo"
+      :mensaje="`¿Eliminar el tipo “${porEliminar.nombre}”? Los equipos existentes de este tipo no se ven afectados.`"
+      confirmar-label="Eliminar"
+      :cargando="eliminando"
+      @cancel="porEliminar = null"
+      @confirm="confirmarEliminar"
+    />
   </main>
 </template>
 

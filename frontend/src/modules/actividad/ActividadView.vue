@@ -22,7 +22,7 @@ const ACCIONES = {
   copiar:          { label: 'Copió la contraseña', icon: 'ti ti-copy',             clase: 'badge--accent' },
   enviar:          { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'badge--success' },
   entrega_creada:  { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'badge--success' },
-  entrega_abierta: { label: 'Entrega abierta',     icon: 'ti ti-mailbox-opened',   clase: 'badge--warning' },
+  entrega_abierta: { label: 'Entrega abierta',     icon: 'ti ti-mail-opened',     clase: 'badge--warning' },
 };
 
 const listaFiltrada = computed(() =>

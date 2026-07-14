@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, onMounted } from 'vue';
+import { reactive, ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { insforgeApi } from '../../api/insforge.js';
@@ -11,6 +11,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import CuentaForm from './CuentaForm.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const props = defineProps({
@@ -90,16 +91,37 @@ function onFormCerrado(guardado) {
   if (guardado) showToast(fueEdicion ? 'Cuenta actualizada' : 'Cuenta creada');
 }
 
-async function revocar(cuenta) {
-  const msg = cuenta.tipo_cuenta === 'compartida'
-    ? `¿Revocar acceso de este empleado a "${cuenta.plataforma_nombre}"? La cuenta seguirá existiendo para otros.`
-    : `¿Revocar la cuenta de ${cuenta.plataforma_nombre}? Se cerrará la asignación.`;
-  if (!confirm(msg)) return;
+// Confirmación destructiva (ConfirmDialog compartido, tier base). El
+// mensaje/título varían según el tipo de cuenta, igual que en el confirm()
+// nativo que reemplaza.
+const porRevocar = ref(null);
+const revocando = ref(false);
+const dialogoRevocar = ref(null);
+
+const tituloRevocar = computed(() =>
+  porRevocar.value?.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar cuenta'
+);
+
+const mensajeRevocar = computed(() => {
+  const c = porRevocar.value;
+  if (!c) return '';
+  return c.tipo_cuenta === 'compartida'
+    ? `¿Revocar acceso de este empleado a “${c.plataforma_nombre}”? La cuenta seguirá existiendo para otros.`
+    : `¿Revocar la cuenta de ${c.plataforma_nombre}? Se cerrará la asignación.`;
+});
+
+async function confirmarRevocar() {
+  const c = porRevocar.value;
+  if (!c) return;
+  revocando.value = true;
   try {
-    await store.revocarAsignacion(cuenta.asignacion_id);
+    await store.revocarAsignacion(c.asignacion_id);
     showToast('Asignación revocada');
+    dialogoRevocar.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al revocar', 'error');
+  } finally {
+    revocando.value = false;
   }
 }
 
@@ -290,7 +312,7 @@ onMounted(async () => {
                   type="button"
                   :title="cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar'"
                   :aria-label="cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar'"
-                  @click="revocar(cuenta)"
+                  @click="porRevocar = cuenta"
                 >
                   <i class="ti ti-user-minus"></i>
                 </button>
@@ -385,6 +407,20 @@ onMounted(async () => {
     </div>
   </div>
   </Transition>
+
+  <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
+  <ConfirmDialog
+    v-if="porRevocar"
+    ref="dialogoRevocar"
+    destructivo
+    icono="ti-user-minus"
+    :titulo="tituloRevocar"
+    :mensaje="mensajeRevocar"
+    confirmar-label="Revocar"
+    :cargando="revocando"
+    @cancel="porRevocar = null"
+    @confirm="confirmarRevocar"
+  />
 </template>
 
 <style scoped>

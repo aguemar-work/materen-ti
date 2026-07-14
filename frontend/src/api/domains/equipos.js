@@ -228,7 +228,15 @@ export const equiposApi = {
       .is('fecha_fin', null);
     if (e1) throw e1;
 
-    if (aReparacion) {
+    // Pérdida/robo prevalece sobre "volvió dañado": si el equipo ya no está
+    // en posesión de la empresa, no tiene sentido marcarlo en reparación.
+    if (motivo === 'perdida') {
+      const { error: e2 } = await db
+        .from('equipos')
+        .update({ estado: 'perdido' })
+        .eq('id', equipoId);
+      if (e2) throw e2;
+    } else if (aReparacion) {
       const { error: e2 } = await db
         .from('equipos')
         .update({ estado: 'en_reparacion' })
@@ -283,6 +291,10 @@ export const equiposApi = {
         marca: a.equipos.marca || '',
         modelo: a.equipos.modelo || '',
         estado: a.equipos.estado,
+        // Situación derivada (misma regla que mapEquipo): acá la consulta ya
+        // filtra por asignación activa de ESTE empleado, así que operativo
+        // solo puede significar "asignado" (no aplica ubicación).
+        situacion: a.equipos.estado === 'operativo' ? 'asignado' : a.equipos.estado,
         fecha_inicio: a.fecha_inicio,
       }));
   },

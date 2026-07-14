@@ -13,6 +13,7 @@ import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
@@ -127,15 +128,41 @@ function proximaFecha(l) {
   return d.toISOString().split('T')[0];
 }
 
-async function renovar(lic) {
-  const nueva = proximaFecha(lic);
-  if (!confirm(`¿Renovar "${lic.software}"?\n\nNuevo vencimiento: ${formatFecha(nueva)} (${periodoLabel(lic.renovacion_meses).toLowerCase()})`)) return;
-  try {
-    await store.renovar(lic.id, nueva);
-    showToast(`${lic.software} renovada hasta ${formatFecha(nueva)}`);
-  } catch (e) {
-    showToast(e?.message || 'Error al renovar', 'error');
+// Confirmación (ConfirmDialog compartido): una sola instancia para las 3
+// acciones de esta vista (eliminar/liberar/renovar), diferenciadas por
+// `tipo`. Renovar no es destructiva — usa el botón primario, no btn-danger.
+const accionPendiente = ref(null); // { tipo: 'eliminar'|'liberar'|'renovar', licencia, usuario?, nuevaFecha? }
+const procesandoAccion = ref(false);
+const dialogoAccion = ref(null);
+
+const tituloAccion = computed(() => {
+  const tipo = accionPendiente.value?.tipo;
+  if (tipo === 'liberar') return 'Liberar asiento';
+  if (tipo === 'renovar') return 'Renovar licencia';
+  return 'Eliminar licencia';
+});
+
+const mensajeAccion = computed(() => {
+  const a = accionPendiente.value;
+  if (!a) return '';
+  if (a.tipo === 'liberar') return `¿Liberar el asiento de ${a.usuario.nombre} en “${a.licencia.software}”?`;
+  if (a.tipo === 'renovar') {
+    return `¿Renovar “${a.licencia.software}”? Nuevo vencimiento: ${formatFecha(a.nuevaFecha)} (${periodoLabel(a.licencia.renovacion_meses).toLowerCase()}).`;
   }
+  return `¿Eliminar la licencia “${a.licencia.software}”? El historial de asignaciones se conserva.`;
+});
+
+const confirmarLabelAccion = computed(() => {
+  const tipo = accionPendiente.value?.tipo;
+  if (tipo === 'liberar') return 'Liberar';
+  if (tipo === 'renovar') return 'Renovar';
+  return 'Eliminar';
+});
+
+const iconoAccion = computed(() => (accionPendiente.value?.tipo === 'liberar' ? 'ti-user-minus' : 'ti-trash'));
+
+function pedirRenovar(lic) {
+  accionPendiente.value = { tipo: 'renovar', licencia: lic, nuevaFecha: proximaFecha(lic) };
 }
 
 function abrirNueva() {
@@ -222,23 +249,35 @@ async function confirmarAsignar() {
   }
 }
 
-async function liberar(licencia, usuario) {
-  if (!confirm(`¿Liberar el asiento de ${usuario.nombre} en "${licencia.software}"?`)) return;
-  try {
-    await store.liberar(usuario.asignacion_id);
-    showToast('Asiento liberado');
-  } catch (e) {
-    showToast(e?.message || 'Error al liberar', 'error');
-  }
+function pedirLiberar(licencia, usuario) {
+  accionPendiente.value = { tipo: 'liberar', licencia, usuario };
 }
 
-async function eliminar(licencia) {
-  if (!confirm(`¿Eliminar la licencia "${licencia.software}"?\nEl historial de asignaciones se conserva.`)) return;
+function pedirEliminar(licencia) {
+  accionPendiente.value = { tipo: 'eliminar', licencia };
+}
+
+async function confirmarAccionPendiente() {
+  const a = accionPendiente.value;
+  if (!a) return;
+  procesandoAccion.value = true;
   try {
-    await store.softDelete(licencia.id);
-    showToast('Licencia eliminada');
+    if (a.tipo === 'liberar') {
+      await store.liberar(a.usuario.asignacion_id);
+      showToast('Asiento liberado');
+    } else if (a.tipo === 'renovar') {
+      await store.renovar(a.licencia.id, a.nuevaFecha);
+      showToast(`${a.licencia.software} renovada hasta ${formatFecha(a.nuevaFecha)}`);
+    } else {
+      await store.softDelete(a.licencia.id);
+      showToast('Licencia eliminada');
+    }
+    dialogoAccion.value?.cerrar();
   } catch (e) {
-    showToast(e?.message || 'Error al eliminar', 'error');
+    const verbo = a.tipo === 'liberar' ? 'liberar' : a.tipo === 'renovar' ? 'renovar' : 'eliminar';
+    showToast(e?.message || `Error al ${verbo}`, 'error');
+  } finally {
+    procesandoAccion.value = false;
   }
 }
 
@@ -370,7 +409,7 @@ onMounted(async () => {
                         type="button"
                         title="Liberar asiento"
                         aria-label="Liberar asiento"
-                        @click="liberar(lic, u)"
+                        @click="pedirLiberar(lic, u)"
                       >
                         <i class="ti ti-x"></i>
                       </button>
@@ -396,7 +435,7 @@ onMounted(async () => {
                       type="button"
                       title="Renovar (corre el vencimiento un periodo)"
                       aria-label="Renovar (corre el vencimiento un periodo)"
-                      @click="renovar(lic)"
+                      @click="pedirRenovar(lic)"
                     >
                       <i class="ti ti-refresh"></i>
                     </button>
@@ -414,7 +453,7 @@ onMounted(async () => {
                     <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(lic)">
                       <i class="ti ti-pencil"></i>
                     </button>
-                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminar(lic)">
+                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="pedirEliminar(lic)">
                       <i class="ti ti-trash"></i>
                     </button>
                   </div>
@@ -479,6 +518,21 @@ onMounted(async () => {
       </div>
     </div>
     </Transition>
+
+    <!-- Confirmación (ConfirmDialog compartido): eliminar/liberar son
+         destructivas (btn-danger); renovar no (btn-primary). -->
+    <ConfirmDialog
+      v-if="accionPendiente"
+      ref="dialogoAccion"
+      :destructivo="accionPendiente.tipo !== 'renovar'"
+      :icono="iconoAccion"
+      :titulo="tituloAccion"
+      :mensaje="mensajeAccion"
+      :confirmar-label="confirmarLabelAccion"
+      :cargando="procesandoAccion"
+      @cancel="accionPendiente = null"
+      @confirm="confirmarAccionPendiente"
+    />
   </div>
 </template>
 

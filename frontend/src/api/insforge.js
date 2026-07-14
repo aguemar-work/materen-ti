@@ -12,6 +12,7 @@ import { catalogosApi } from './domains/catalogos.js';
 import { ticketsApi } from './domains/tickets.js';
 import { dashboardApi } from './domains/dashboard.js';
 import { staffApi } from './domains/staff.js';
+import { accesosSensiblesApi } from './domains/accesosSensibles.js';
 
 export const insforgeApi = {
   mode: 'insforge',
@@ -24,4 +25,5 @@ export const insforgeApi = {
   ...ticketsApi,
   ...dashboardApi,
   ...staffApi,
+  ...accesosSensiblesApi,
 };

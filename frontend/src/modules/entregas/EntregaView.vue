@@ -39,18 +39,20 @@ async function copiar(texto, id) {
 </script>
 
 <template>
-  <div class="public-page">
+  <div class="public-page" :class="{ 'entrega-page--centro': estado !== 'revelado' }">
     <div class="card public-card">
       <PublicBrand subtitulo="Entrega de accesos" />
 
       <!-- Estado inicial: advertir antes de revelar -->
       <template v-if="estado === 'inicial'">
-        <h2 class="entrega-title">Tus accesos están listos</h2>
-        <p class="entrega-texto">
-          Este enlace se puede abrir <strong>una sola vez</strong>. Antes de continuar,
-          asegúrate de poder guardar tus credenciales (ten a la mano dónde anotarlas
-          o toma captura de pantalla).
-        </p>
+        <div class="entrega-centro">
+          <h2 class="entrega-title">Tus accesos están listos</h2>
+          <p class="entrega-texto">
+            Este enlace se puede abrir <strong>una sola vez</strong>. Antes de continuar,
+            asegúrate de poder guardar tus credenciales (ten a la mano dónde anotarlas
+            o toma captura de pantalla).
+          </p>
+        </div>
         <button class="btn btn-primary entrega-btn" type="button" @click="revelar">
           <i class="ti ti-lock-open" aria-hidden="true"></i> Ver mis accesos
         </button>
@@ -96,16 +98,30 @@ async function copiar(texto, id) {
 
       <!-- Error: enlace usado, expirado o inexistente -->
       <template v-else>
-        <div class="entrega-error-icon"><i class="ti ti-link-off"></i></div>
-        <h2 class="entrega-title">Enlace no disponible</h2>
-        <p class="entrega-texto">{{ error }}</p>
-        <p class="entrega-texto entrega-nota">
-          Solicita un nuevo enlace de acceso mediante un ticket de soporte.
-        </p>
+        <div class="entrega-centro">
+          <div class="entrega-error-icon"><i class="ti ti-link-off"></i></div>
+          <h2 class="entrega-title">Enlace no disponible</h2>
+          <p class="entrega-texto">{{ error }}</p>
+        </div>
+        <div class="entrega-acciones">
+          <p class="entrega-texto entrega-acciones-texto">
+            Si no guardaste tus credenciales o necesitas un nuevo enlace, crea un ticket.
+            Si ya reportaste el caso, puedes buscarlo con tu DNI.
+          </p>
+          <RouterLink
+            class="btn btn-primary entrega-accion-primaria"
+            :to="`/ticket/nuevo?entrega=${route.params.token}`"
+          >
+            <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
+          </RouterLink>
+          <RouterLink class="entrega-accion-secundaria" to="/ticket/buscar">
+            <i class="ti ti-search" aria-hidden="true"></i> Buscar ticket por DNI
+          </RouterLink>
+        </div>
       </template>
 
-      <!-- Aviso de soporte (política de atención por ticket) -->
-      <div v-if="estado === 'revelado' || estado === 'error'" class="soporte-aviso">
+      <!-- Aviso de soporte (solo tras revelar credenciales) -->
+      <div v-if="estado === 'revelado'" class="soporte-aviso">
         <p class="soporte-texto">
           <strong>⚠️ IMPORTANTE:</strong> Toda solicitud de soporte debe realizarse
           exclusivamente a través de ticket. No se atenderán consultas por WhatsApp
@@ -120,6 +136,14 @@ async function copiar(texto, id) {
 </template>
 
 <style scoped>
+.public-page.entrega-page--centro {
+  align-items: center;
+}
+
+.entrega-centro {
+  text-align: center;
+}
+
 .entrega-title {
   font-size: 19px;
   font-weight: 600;
@@ -151,7 +175,9 @@ async function copiar(texto, id) {
 .entrega-aviso {
   display: flex;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   color: var(--color-warning-text-strong);
   background: var(--color-warning-bg);
   border: 1px solid var(--color-warning-border);
@@ -159,7 +185,7 @@ async function copiar(texto, id) {
   padding: 10px 12px;
 }
 
-.entrega-aviso i { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.entrega-aviso i { font-size: 16px; flex-shrink: 0; }
 
 .cred-lista {
   display: flex;
@@ -214,16 +240,48 @@ async function copiar(texto, id) {
 
 .cred-url:hover { text-decoration: underline; }
 
-.entrega-nota {
-  font-size: 12.5px;
-  margin-bottom: 0;
-}
-
 .entrega-error-icon {
   font-size: 40px;
   color: var(--color-text-secondary);
   text-align: center;
   margin-bottom: 8px;
+}
+
+.entrega-acciones {
+  margin-top: 4px;
+}
+
+.entrega-acciones-texto {
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.entrega-accion-primaria {
+  width: 100%;
+  justify-content: center;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  text-decoration: none;
+}
+
+.entrega-accion-secundaria {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary, var(--color-accent));
+  border: 1.5px solid var(--color-primary, var(--color-accent));
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.entrega-accion-secundaria:hover {
+  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent);
 }
 
 .soporte-aviso {
@@ -235,6 +293,7 @@ async function copiar(texto, id) {
 .soporte-texto {
   font-size: 12.5px;
   line-height: 1.5;
+  text-align: center;
   color: var(--color-warning-text-strong);
   background: var(--color-warning-bg);
   border: 1px solid var(--color-warning-border);

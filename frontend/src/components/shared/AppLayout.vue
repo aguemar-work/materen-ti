@@ -138,7 +138,10 @@ const navGrupos = computed(() => [
     label: 'Administración',
     items: [
       ...(auth.esJefe
-        ? [{ path: '/actividad', label: 'Actividad', icon: 'ti ti-activity' }]
+        ? [
+            { path: '/actividad', label: 'Actividad', icon: 'ti ti-activity' },
+            { path: '/accesos-sensibles', label: 'Accesos sensibles', icon: 'ti ti-shield-lock' },
+          ]
         : []),
       // Catálogos (empresas, plataformas, tipos, ubicaciones, staff)
       { path: '/configuracion', label: 'Configuración', icon: 'ti ti-settings' },

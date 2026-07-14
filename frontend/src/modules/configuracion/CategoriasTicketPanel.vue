@@ -2,13 +2,14 @@
 // Catálogo de dos niveles: categoría de ticket → subcategorías.
 // Mismo patrón de catálogo editable que Tipos de equipo/Ubicaciones,
 // con un nivel anidado extra.
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { insforgeApi } from '../../api/insforge.js';
 import { useCategoriasTicketStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 // Las categorías viven en el store de catálogos; las subcategorías son
@@ -32,6 +33,24 @@ useFocoAtrapado(panelCatForm, mostrarCatForm);
 
 // Alta rápida de subcategoría (inline, sin modal)
 const nuevaSubPorCategoria = ref({});
+
+// Confirmación destructiva (ConfirmDialog compartido): una sola instancia
+// para ambos niveles (categoría/subcategoría), diferenciados por `tipo`.
+const pendienteEliminar = ref(null); // { tipo: 'categoria' | 'subcategoria', item }
+const eliminando = ref(false);
+const dialogoEliminar = ref(null);
+
+const tituloEliminar = computed(() =>
+  pendienteEliminar.value?.tipo === 'subcategoria' ? 'Eliminar subcategoría' : 'Eliminar categoría'
+);
+
+const mensajeEliminar = computed(() => {
+  const p = pendienteEliminar.value;
+  if (!p) return '';
+  return p.tipo === 'subcategoria'
+    ? `¿Eliminar la subcategoría “${p.item.nombre}”?`
+    : `¿Eliminar la categoría “${p.item.nombre}”? Los tickets existentes conservan su historial.`;
+});
 
 function subsDe(categoriaId) {
   return subcategorias.value.filter((s) => s.categoria_id === categoriaId);
@@ -74,18 +93,12 @@ async function guardarCategoria() {
   }
 }
 
-async function eliminarCategoria(cat) {
+function pedirEliminarCategoria(cat) {
   if (subsDe(cat.id).length) {
     showToast('Elimina primero sus subcategorías', 'error');
     return;
   }
-  if (!confirm(`¿Eliminar la categoría "${cat.nombre}"? Los tickets existentes conservan su historial.`)) return;
-  try {
-    await catStore.softDelete(cat.id);
-    showToast('Categoría eliminada');
-  } catch (e) {
-    showToast(e?.message || 'Error al eliminar', 'error');
-  }
+  pendienteEliminar.value = { tipo: 'categoria', item: cat };
 }
 
 async function agregarSubcategoria(categoriaId) {
@@ -100,14 +113,28 @@ async function agregarSubcategoria(categoriaId) {
   }
 }
 
-async function eliminarSubcategoria(sub) {
-  if (!confirm(`¿Eliminar la subcategoría "${sub.nombre}"?`)) return;
+function pedirEliminarSubcategoria(sub) {
+  pendienteEliminar.value = { tipo: 'subcategoria', item: sub };
+}
+
+async function confirmarEliminarPendiente() {
+  const p = pendienteEliminar.value;
+  if (!p) return;
+  eliminando.value = true;
   try {
-    await insforgeApi.softDeleteSubcategoriaTicket(sub.id);
-    subcategorias.value = subcategorias.value.filter((s) => s.id !== sub.id);
-    showToast('Subcategoría eliminada');
+    if (p.tipo === 'subcategoria') {
+      await insforgeApi.softDeleteSubcategoriaTicket(p.item.id);
+      subcategorias.value = subcategorias.value.filter((s) => s.id !== p.item.id);
+      showToast('Subcategoría eliminada');
+    } else {
+      await catStore.softDelete(p.item.id);
+      showToast('Categoría eliminada');
+    }
+    dialogoEliminar.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al eliminar', 'error');
+  } finally {
+    eliminando.value = false;
   }
 }
 
@@ -170,7 +197,7 @@ onMounted(async () => {
               <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditarCategoria(cat)">
                 <i class="ti ti-pencil"></i>
               </button>
-              <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminarCategoria(cat)">
+              <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="pedirEliminarCategoria(cat)">
                 <i class="ti ti-trash"></i>
               </button>
             </div>
@@ -179,7 +206,7 @@ onMounted(async () => {
           <div v-if="expandidoId === cat.id" class="cat-subs">
             <div v-for="sub in subsDe(cat.id)" :key="sub.id" class="cat-sub-fila">
               <span>{{ sub.nombre }}</span>
-              <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="eliminarSubcategoria(sub)">
+              <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="pedirEliminarSubcategoria(sub)">
                 <i class="ti ti-trash"></i>
               </button>
             </div>
@@ -222,6 +249,20 @@ onMounted(async () => {
       </div>
     </div>
     </Transition>
+
+    <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
+    <ConfirmDialog
+      v-if="pendienteEliminar"
+      ref="dialogoEliminar"
+      destructivo
+      icono="ti-trash"
+      :titulo="tituloEliminar"
+      :mensaje="mensajeEliminar"
+      confirmar-label="Eliminar"
+      :cargando="eliminando"
+      @cancel="pendienteEliminar = null"
+      @confirm="confirmarEliminarPendiente"
+    />
   </main>
 </template>
 

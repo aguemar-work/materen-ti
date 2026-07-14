@@ -324,7 +324,7 @@ onUnmounted(() => store.limpiar());
                   </option>
                 </select>
               </div>
-              <div class="tk-form-acciones">
+              <div class="modal-actions">
                 <button class="btn" type="button" :disabled="iniciando" @click="mostrarIniciar = false">Cancelar</button>
                 <button class="btn btn-primary" type="button" :disabled="iniciando" @click="confirmarIniciar">
                   {{ iniciando ? 'Iniciando...' : 'Confirmar inicio' }}
@@ -338,7 +338,7 @@ onUnmounted(() => store.limpiar());
                 <label for="re-motivo">Motivo del rechazo *</label>
                 <textarea id="re-motivo" v-model="motivoRechazo" rows="3" placeholder="El empleado verá este motivo en su seguimiento" :disabled="rechazando"></textarea>
               </div>
-              <div class="tk-form-acciones">
+              <div class="modal-actions">
                 <button class="btn" type="button" :disabled="rechazando" @click="mostrarRechazar = false">Cancelar</button>
                 <button class="btn btn-danger" type="button" :disabled="rechazando" @click="confirmarRechazar">
                   {{ rechazando ? 'Rechazando...' : 'Confirmar rechazo' }}
@@ -544,12 +544,6 @@ onUnmounted(() => store.limpiar());
 
 .tk-form-inline textarea {
   width: 100%;
-}
-
-.tk-form-acciones {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .tk-btn-resolver {

@@ -200,7 +200,7 @@ async function confirmarBaja() {
         </template>
       </div>
 
-      <div class="modal-actions baja-actions">
+      <div class="modal-actions">
         <button ref="btnCancelar" class="btn" type="button" :disabled="procesando" @click="cancelar">Cancelar</button>
         <button
           class="btn btn-danger"
@@ -323,25 +323,5 @@ async function confirmarBaja() {
   font-size: 16px;
   flex-shrink: 0;
   margin-top: 1px;
-}
-
-.baja-actions {
-  padding: 0 24px 20px;
-}
-
-.btn-danger {
-  background: var(--color-danger);
-  border-color: var(--color-danger);
-  color: #fff;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: var(--color-danger-text);
-  border-color: var(--color-danger-text);
-}
-
-.btn-danger:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
 }
 </style>

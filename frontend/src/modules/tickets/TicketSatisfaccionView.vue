@@ -110,13 +110,13 @@ async function enviar() {
       </template>
 
       <template v-else-if="estado === 'gracias'">
-        <div class="ticket-ok-icon"><i class="ti ti-circle-check-filled"></i></div>
+        <div class="ticket-ok-icon"><i class="ti ti-circle-check"></i></div>
         <h2 class="ticket-title">¡Gracias por tu respuesta!</h2>
         <p class="ticket-texto">Tu opinión quedó registrada.</p>
       </template>
 
       <template v-else-if="estado === 'ya_respondida'">
-        <div class="ticket-ok-icon"><i class="ti ti-circle-check-filled"></i></div>
+        <div class="ticket-ok-icon"><i class="ti ti-circle-check"></i></div>
         <h2 class="ticket-title">Ya registramos tu respuesta</h2>
         <p class="ticket-texto">Gracias por contarnos cómo te fue — no es necesario volver a responder.</p>
       </template>

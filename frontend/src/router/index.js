@@ -64,6 +64,12 @@ const routes = [
     component: () => import('../modules/actividad/ActividadView.vue'),
   },
   {
+    // Solo JEFE — ver guard en router/guards.js
+    path: '/accesos-sensibles',
+    name: 'accesos-sensibles',
+    component: () => import('../modules/accesosSensibles/AccesosSensiblesView.vue'),
+  },
+  {
     path: '/tickets',
     name: 'tickets',
     component: () => import('../modules/tickets/TicketsView.vue'),

@@ -85,7 +85,7 @@ onMounted(async () => {
           <h2 class="section-title">Pendientes</h2>
 
           <div v-if="!hayPendientes" class="todo-ok">
-            <i class="ti ti-circle-check-filled"></i> Todo al día: sin contraseñas por rotar, licencias por vencer, equipos sin devolver ni tickets pendientes.
+            <i class="ti ti-circle-check"></i> Todo al día: sin contraseñas por rotar, licencias por vencer, equipos sin devolver ni tickets pendientes.
           </div>
 
           <div v-else class="grid-12">

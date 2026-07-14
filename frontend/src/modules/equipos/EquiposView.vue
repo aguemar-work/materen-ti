@@ -14,6 +14,7 @@ import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
@@ -178,6 +179,13 @@ const condicionDevolucion = ref('');
 const motivoCierre = ref('devolucion');
 const aReparacion = ref(false);
 
+// "Perdida/robo" y "volvió dañado" son contradictorios (el backend ya le da
+// prioridad a perdida, pero mejor que el form ni permita capturar la mezcla):
+// al elegir ese motivo, el checkbox se desmarca y se deshabilita solo.
+watch(motivoCierre, (motivo) => {
+  if (motivo === 'perdida') aReparacion.value = false;
+});
+
 function abrirDevolver(equipo) {
   equipoDevolver.value = equipo;
   condicionDevolucion.value = '';
@@ -254,17 +262,79 @@ useCerrarConEscape(() => {
 });
 
 // ── Cambiar estado físico ─────────────────────────────────────
-async function cambiarEstado(equipo, estado, label) {
+// Confirmación (ConfirmDialog compartido): una sola instancia para las 5
+// transiciones (a reparación / reparado / de baja / reactivar / recuperar).
+// Solo "de_baja" es destructiva (btn-danger); las demás (incluidas
+// reactivar/recuperar, que devuelven el equipo a servicio) usan el botón
+// primario, mismo criterio que "Renovar licencia"/"Reactivar empleado".
+const accionPendiente = ref(null); // { equipo, estado, estadoLabel, titulo, mensaje, confirmarLabel, destructivo }
+const procesandoAccion = ref(false);
+const dialogoAccion = ref(null);
+
+const tituloAccion = computed(() => accionPendiente.value?.titulo || '');
+const mensajeAccion = computed(() => accionPendiente.value?.mensaje || '');
+const destructivoAccion = computed(() => !!accionPendiente.value?.destructivo);
+const confirmarLabelAccion = computed(() => accionPendiente.value?.confirmarLabel || 'Confirmar');
+
+function pedirCambiarEstado(equipo, estado, label) {
   if (equipo.situacion === 'asignado' && (estado === 'de_baja' || estado === 'perdido')) {
     showToast('Registra primero la devolución (o ciérrala con motivo pérdida)', 'error');
     return;
   }
-  if (!confirm(`¿Marcar ${equipo.codigo} como "${label}"?`)) return;
+  accionPendiente.value = {
+    equipo,
+    estado,
+    estadoLabel: label,
+    titulo: `Marcar como “${label}”`,
+    mensaje: `¿Marcar ${equipo.codigo} como “${label}”?`,
+    confirmarLabel: label,
+    destructivo: estado === 'de_baja',
+  };
+}
+
+// Reactivar (de_baja → operativo) y recuperar (perdido → operativo): un
+// equipo de_baja/perdido nunca tiene asignación activa a un empleado (todas
+// las vías que llevan a esos estados cierran o bloquean esa asignación
+// primero), así que no hace falta ninguna validación extra acá. Si el
+// equipo conservaba una asignación activa a UBICACIÓN, vuelve a esa
+// ubicación en vez de "disponible" — mismo comportamiento ya aceptado hoy
+// para "Marcar reparado".
+function pedirReactivar(equipo) {
+  accionPendiente.value = {
+    equipo,
+    estado: 'operativo',
+    estadoLabel: 'Operativo',
+    titulo: 'Reactivar equipo',
+    mensaje: '¿Reactivar este equipo? Volverá a estar disponible.',
+    confirmarLabel: 'Reactivar',
+    destructivo: false,
+  };
+}
+
+function pedirRecuperar(equipo) {
+  accionPendiente.value = {
+    equipo,
+    estado: 'operativo',
+    estadoLabel: 'Operativo',
+    titulo: 'Marcar como recuperado',
+    mensaje: '¿Marcar este equipo como recuperado? Volverá a estar disponible.',
+    confirmarLabel: 'Marcar recuperado',
+    destructivo: false,
+  };
+}
+
+async function confirmarAccionPendiente() {
+  const a = accionPendiente.value;
+  if (!a) return;
+  procesandoAccion.value = true;
   try {
-    await store.cambiarEstado(equipo.id, estado);
-    showToast(`${equipo.codigo} → ${label}`);
+    await store.cambiarEstado(a.equipo.id, a.estado);
+    showToast(`${a.equipo.codigo} → ${a.estadoLabel}`);
+    dialogoAccion.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al cambiar estado', 'error');
+  } finally {
+    procesandoAccion.value = false;
   }
 }
 
@@ -315,16 +385,6 @@ async function verHoja(equipo) {
     mostrarHoja.value = false;
   } finally {
     cargandoEventos.value = false;
-  }
-}
-
-async function eliminar(equipo) {
-  if (!confirm(`¿Eliminar el equipo ${equipo.codigo}?\nSu hoja de vida se conserva.`)) return;
-  try {
-    await store.softDelete(equipo.id);
-    showToast('Equipo eliminado');
-  } catch (e) {
-    showToast(e?.message || 'Error al eliminar', 'error');
   }
 }
 
@@ -487,7 +547,7 @@ onMounted(async () => {
                       type="button"
                       title="Enviar a reparación"
                       aria-label="Enviar a reparación"
-                      @click="cambiarEstado(eq, 'en_reparacion', 'En reparación')"
+                      @click="pedirCambiarEstado(eq, 'en_reparacion', 'En reparación')"
                     >
                       <i class="ti ti-tool"></i>
                     </button>
@@ -497,7 +557,7 @@ onMounted(async () => {
                       type="button"
                       title="Marcar reparado (operativo)"
                       aria-label="Marcar reparado (operativo)"
-                      @click="cambiarEstado(eq, 'operativo', 'Operativo')"
+                      @click="pedirCambiarEstado(eq, 'operativo', 'Operativo')"
                     >
                       <i class="ti ti-circle-check"></i>
                     </button>
@@ -513,9 +573,29 @@ onMounted(async () => {
                       type="button"
                       title="Dar de baja el equipo"
                       aria-label="Dar de baja el equipo"
-                      @click="cambiarEstado(eq, 'de_baja', 'De baja')"
+                      @click="pedirCambiarEstado(eq, 'de_baja', 'De baja')"
                     >
                       <i class="ti ti-circle-off"></i>
+                    </button>
+                    <button
+                      v-if="eq.situacion === 'de_baja'"
+                      class="icon-btn"
+                      type="button"
+                      title="Reactivar equipo"
+                      aria-label="Reactivar equipo"
+                      @click="pedirReactivar(eq)"
+                    >
+                      <i class="ti ti-refresh"></i>
+                    </button>
+                    <button
+                      v-if="eq.situacion === 'perdido'"
+                      class="icon-btn"
+                      type="button"
+                      title="Marcar como recuperado"
+                      aria-label="Marcar como recuperado"
+                      @click="pedirRecuperar(eq)"
+                    >
+                      <i class="ti ti-circle-check"></i>
                     </button>
                   </div>
                 </td>
@@ -555,7 +635,7 @@ onMounted(async () => {
                 @focus="listaEmpAbierta = true"
                 @blur="cerrarListaEmpleados"
               >
-              <i v-if="empleadoSelId" class="ti ti-circle-check-filled combo-check"></i>
+              <i v-if="empleadoSelId" class="ti ti-circle-check combo-check"></i>
               <ul v-if="listaEmpAbierta && !empleadoSelId" class="combo-lista">
                 <li v-if="empleadosFiltrados.length === 0" class="combo-vacio">Sin resultados</li>
                 <li v-for="e in empleadosFiltrados" :key="e.id" @mousedown.prevent="seleccionarEmpleado(e)">
@@ -611,10 +691,13 @@ onMounted(async () => {
             </select>
           </div>
 
-          <label class="check-reparacion">
-            <input v-model="aReparacion" type="checkbox" :disabled="procesando">
+          <label class="check-reparacion" :class="{ 'check-reparacion--disabled': motivoCierre === 'perdida' }">
+            <input v-model="aReparacion" type="checkbox" :disabled="procesando || motivoCierre === 'perdida'">
             Volvió dañado — enviarlo a reparación
           </label>
+          <p v-if="motivoCierre === 'perdida'" class="check-reparacion-hint">
+            No aplica si el equipo se reporta como perdido/robado.
+          </p>
 
         </div>
 
@@ -688,6 +771,20 @@ onMounted(async () => {
         </div>
         <div class="modal-body">
           <p class="modal-info">{{ equipoHoja?.tipo_nombre }} {{ equipoHoja?.marca }} {{ equipoHoja?.modelo }}</p>
+          <span
+            v-if="equipoHoja"
+            class="badge-group"
+            :title="badgesSituacion(equipoHoja).map(b => b.label).join(' · ')"
+          >
+            <span
+              v-for="b in badgesSituacion(equipoHoja)"
+              :key="b.label"
+              class="badge"
+              :class="[b.clase, { 'badge-fisico': b.fisico }]"
+            >
+              {{ b.label }}
+            </span>
+          </span>
           <div v-if="cargandoEventos" class="no-results">Cargando...</div>
           <ul v-else class="hoja-lista">
             <li v-for="ev in eventos" :key="ev.id">
@@ -702,6 +799,22 @@ onMounted(async () => {
       </div>
     </div>
     </Transition>
+
+    <!-- Confirmación (ConfirmDialog compartido): "de_baja" y "eliminar" son
+         destructivas (btn-danger); las demás transiciones usan el botón
+         primario, igual que "renovar" en Licencias. -->
+    <ConfirmDialog
+      v-if="accionPendiente"
+      ref="dialogoAccion"
+      :destructivo="destructivoAccion"
+      icono="ti-trash"
+      :titulo="tituloAccion"
+      :mensaje="mensajeAccion"
+      :confirmar-label="confirmarLabelAccion"
+      :cargando="procesandoAccion"
+      @cancel="accionPendiente = null"
+      @confirm="confirmarAccionPendiente"
+    />
   </div>
 </template>
 
@@ -815,6 +928,17 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--color-text-primary);
   cursor: pointer;
+}
+
+.check-reparacion--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.check-reparacion-hint {
+  margin: 2px 0 0 24px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 
 /* Combobox empleado */

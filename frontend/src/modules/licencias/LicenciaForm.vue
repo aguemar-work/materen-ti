@@ -388,7 +388,7 @@ async function guardar() {
                 @focus="listaCorreosAbierta = true"
                 @blur="cerrarListaCorreos"
               >
-              <i v-if="form.cuenta_id" class="ti ti-circle-check-filled combo-check" aria-hidden="true"></i>
+              <i v-if="form.cuenta_id" class="ti ti-circle-check combo-check" aria-hidden="true"></i>
               <i v-else-if="registrandoCorreo" class="ti ti-circle-plus combo-check combo-check--nuevo" aria-hidden="true"></i>
               <ul v-if="listaCorreosAbierta && !form.cuenta_id && !registrandoCorreo" class="combo-lista">
                 <li v-if="correosFiltrados.length === 0 && !correoEscritoValido" class="combo-vacio">

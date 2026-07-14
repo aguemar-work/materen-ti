@@ -209,7 +209,7 @@ onMounted(async () => {
       </template>
 
       <template v-else-if="estado === 'confirmacion'">
-        <div class="ticket-ok-icon"><i class="ti ti-circle-check-filled"></i></div>
+        <div class="ticket-ok-icon"><i class="ti ti-circle-check"></i></div>
         <h2 class="ticket-title">Solicitud registrada</h2>
         <p class="ticket-texto">
           Tu código de seguimiento es <strong>{{ resultado.codigo }}</strong>.
