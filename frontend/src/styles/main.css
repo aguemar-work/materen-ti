@@ -988,6 +988,14 @@
     .timeline-dot--active { background: var(--color-success-text); }
     .timeline-dot--closed { background: var(--color-text-tertiary); }
 
+    /* Variantes semánticas (mismo significado que .badge--*): para
+       timelines de hitos de estado, ej. historial de ticket. */
+    .timeline-dot--info { background: var(--color-info-text); }
+    .timeline-dot--warning { background: var(--color-warning-text); }
+    .timeline-dot--success { background: var(--color-success-text); }
+    .timeline-dot--danger { background: var(--color-danger-text); }
+    .timeline-dot--neutral { background: var(--color-neutral-text); }
+
     .timeline-content { font-size: var(--fs-base); flex: 1; min-width: 0; }
 
     .timeline-title {

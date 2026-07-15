@@ -42,12 +42,16 @@ const METODOS = [
   'listTickets', 'listTicketsPage', 'listTicketsFiltrados',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket',
+  'obtenerReporteTickets',
   // staff
   'listStaff', 'updateStaff',
+  // accesos sensibles
+  'listAccesosSensibles', 'permisosDeAcceso', 'crearAccesoSensible',
+  'actualizarAccesoSensible', 'eliminarAccesoSensible',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 99 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 105 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

@@ -5,6 +5,8 @@ import { useCuentasStore } from '../../stores/cuentas.js';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { generarPassword } from '../../core/generarPassword.js';
+import { showToast } from '../../core/toast.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
@@ -133,6 +135,19 @@ function descartarCambios() {
 // solo Cancelar, la X o Escape.
 useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
+function generar() {
+  form.value.password = generarPassword();
+}
+
+async function copiarGenerada() {
+  try {
+    await navigator.clipboard.writeText(form.value.password);
+    showToast('Contraseña copiada');
+  } catch {
+    showToast('No se pudo copiar. Selecciónala manualmente', 'error');
+  }
+}
+
 async function guardar() {
   error.value = '';
   guardando.value = true;
@@ -244,13 +259,29 @@ async function guardar() {
 
           <div class="form-group full">
             <label for="cf-password">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
-            <input
-              id="cf-password"
-              v-model="form.password"
-              autocomplete="new-password"
-              :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-              :disabled="guardando"
-            >
+            <div class="password-wrap">
+              <input
+                id="cf-password"
+                v-model="form.password"
+                autocomplete="new-password"
+                :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+                :disabled="guardando"
+              >
+              <button class="icon-btn" type="button" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+                <i class="ti ti-refresh" aria-hidden="true"></i>
+              </button>
+              <button
+                v-if="form.password"
+                class="icon-btn"
+                type="button"
+                title="Copiar contraseña"
+                aria-label="Copiar contraseña"
+                :disabled="guardando"
+                @click="copiarGenerada"
+              >
+                <i class="ti ti-copy" aria-hidden="true"></i>
+              </button>
+            </div>
           </div>
 
           <div class="form-group full">
@@ -333,6 +364,14 @@ async function guardar() {
   color: var(--color-text-secondary, var(--color-text-secondary));
   padding: 8px 0;
 }
+
+.password-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.password-wrap input { flex: 1; min-width: 0; }
 
 .field-hint {
   margin: 4px 0 0;

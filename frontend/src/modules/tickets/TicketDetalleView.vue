@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../../core/toast.js';
@@ -27,6 +27,13 @@ function autorDe(autorId) {
   return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
 }
 
+// El color de cada hito viene del MISMO estadoInfo() que pintan los badges
+// de estado en el resto de la app — un estado siempre significa el mismo
+// color, nunca un mapeo de color aparte solo para esta lista.
+function colorDeEstado(estado) {
+  return estadoInfo(estado).clase.replace('badge--', '');
+}
+
 // Historial esencial: solo hitos del ciclo de vida (creado → inicio de
 // atención/asignado → resuelto → cerrado, etc), no cada evento crudo de
 // ticket_eventos (prioridad, nivel de atención, correos, encuesta...).
@@ -34,7 +41,7 @@ const historialEsencial = computed(() => {
   const hitos = [];
   for (const ev of eventos.value) {
     if (ev.evento === 'creado') {
-      hitos.push({ id: ev.id, label: 'Ticket creado', fecha: ev.created_at });
+      hitos.push({ id: ev.id, label: 'Ticket creado', fecha: ev.created_at, color: colorDeEstado('abierto') });
     } else if (ev.evento === 'estado_cambiado') {
       const nuevoEstado = /a "(\w+)"/.exec(ev.detalle || '')?.[1];
       const label = HITO_LABELS[nuevoEstado];
@@ -42,7 +49,7 @@ const historialEsencial = computed(() => {
       const asignado = nuevoEstado === 'en_progreso' && ticket.value?.asignado_a
         ? ` · Asignado a ${staffPorId.value[ticket.value.asignado_a] || 'Staff'}`
         : '';
-      hitos.push({ id: ev.id, label: label + asignado, fecha: ev.created_at });
+      hitos.push({ id: ev.id, label: label + asignado, fecha: ev.created_at, color: colorDeEstado(nuevoEstado) });
     }
   }
   return hitos;
@@ -448,14 +455,15 @@ onUnmounted(() => store.limpiar());
         <!-- Historial (hoja de vida): esencial, siempre visible, sin modal -->
         <div class="card col-3 tk-historial">
           <div class="datos-title"><i class="ti ti-history"></i> Historial</div>
-          <ul v-if="historialEsencial.length" class="hoja-lista hoja-lista--compacta">
-            <li v-for="h in historialEsencial" :key="h.id">
-              <div class="hoja-info">
-                <span class="hoja-detalle">{{ h.label }}</span>
-                <span class="hoja-meta">{{ formatFechaHora(h.fecha) }}</span>
+          <div v-if="historialEsencial.length" class="timeline tk-historial-timeline">
+            <div v-for="h in historialEsencial" :key="h.id" class="timeline-item">
+              <span class="timeline-dot" :class="`timeline-dot--${h.color}`"></span>
+              <div class="timeline-content">
+                <div class="timeline-title">{{ h.label }}</div>
+                <div class="timeline-meta">{{ formatFechaHora(h.fecha) }}</div>
               </div>
-            </li>
-          </ul>
+            </div>
+          </div>
           <p v-else class="tk-nota">Sin hitos todavía.</p>
         </div>
       </div>
@@ -608,14 +616,9 @@ onUnmounted(() => store.limpiar());
 
 .tk-comentario-acciones .check-inline { margin-top: 0; }
 
-.hoja-lista { list-style: none; margin: 0; padding: 0; }
-.hoja-lista li { display: flex; padding: 9px 0; border-bottom: 1px solid var(--color-border); }
-.hoja-lista li:last-child { border-bottom: none; }
-.hoja-info { display: flex; flex-direction: column; }
-.hoja-detalle { font-size: var(--fs-base); color: var(--color-text-primary); }
-.hoja-meta { font-size: var(--fs-sm); color: var(--color-text-secondary); }
-
-.hoja-lista--compacta li { padding: 7px 0; }
-.hoja-lista--compacta .hoja-detalle { font-size: var(--fs-sm); }
-.hoja-lista--compacta .hoja-meta { font-size: 11px; }
+/* Historial: misma .timeline global (main.css), más compacta por ser
+   una columna angosta — título más chico, menos separación entre hitos. */
+.tk-historial-timeline .timeline-item { padding-bottom: 12px; }
+.tk-historial-timeline .timeline-title { font-size: var(--fs-sm); font-weight: 600; }
+.tk-historial-timeline .timeline-meta { font-size: 11px; margin-top: 1px; }
 </style>
