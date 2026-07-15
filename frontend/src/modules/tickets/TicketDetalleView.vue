@@ -4,12 +4,11 @@ import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { estadoInfo, OPCIONES_PRIORIDAD as PRIORIDADES, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, EVENTO_LABELS } from '../../core/dominio-tickets.js';
+import { estadoInfo, OPCIONES_PRIORIDAD as PRIORIDADES, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS } from '../../core/dominio-tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -24,16 +23,30 @@ const nuevoComentario = ref('');
 const comentarioInterno = ref(true);
 const enviandoComentario = ref(false);
 
-const mostrarHoja = ref(false);
-const cargandoHoja = ref(false);
-
-// Foco atrapado mientras el modal está abierto (Fase 4)
-const panelHoja = ref(null);
-useFocoAtrapado(panelHoja, mostrarHoja);
-
 function autorDe(autorId) {
   return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
 }
+
+// Historial esencial: solo hitos del ciclo de vida (creado → inicio de
+// atención/asignado → resuelto → cerrado, etc), no cada evento crudo de
+// ticket_eventos (prioridad, nivel de atención, correos, encuesta...).
+const historialEsencial = computed(() => {
+  const hitos = [];
+  for (const ev of eventos.value) {
+    if (ev.evento === 'creado') {
+      hitos.push({ id: ev.id, label: 'Ticket creado', fecha: ev.created_at });
+    } else if (ev.evento === 'estado_cambiado') {
+      const nuevoEstado = /a "(\w+)"/.exec(ev.detalle || '')?.[1];
+      const label = HITO_LABELS[nuevoEstado];
+      if (!label) continue;
+      const asignado = nuevoEstado === 'en_progreso' && ticket.value?.asignado_a
+        ? ` · Asignado a ${staffPorId.value[ticket.value.asignado_a] || 'Staff'}`
+        : '';
+      hitos.push({ id: ev.id, label: label + asignado, fecha: ev.created_at });
+    }
+  }
+  return hitos;
+});
 
 async function cargar() {
   try {
@@ -214,18 +227,6 @@ async function enviarComentario() {
   }
 }
 
-async function abrirHoja() {
-  mostrarHoja.value = true;
-  cargandoHoja.value = true;
-  try {
-    await store.cargarEventos();
-  } catch (e) {
-    showToast(e?.message || 'Error al cargar la hoja de vida', 'error');
-  } finally {
-    cargandoHoja.value = false;
-  }
-}
-
 onMounted(cargar);
 onUnmounted(() => store.limpiar());
 </script>
@@ -245,11 +246,6 @@ onUnmounted(() => store.limpiar());
           <span class="header-sub">{{ ticket.categoria_nombre }}{{ ticket.subcategoria_nombre ? ` · ${ticket.subcategoria_nombre}` : '' }}</span>
         </div>
       </template>
-      <template v-if="ticket" #acciones>
-        <button class="btn" type="button" @click="abrirHoja">
-          <i class="ti ti-history" aria-hidden="true"></i> Hoja de vida
-        </button>
-      </template>
     </PageHeader>
 
     <main class="page page--padded">
@@ -257,7 +253,7 @@ onUnmounted(() => store.limpiar());
 
       <div v-else-if="ticket" class="grid-12">
         <!-- Columna de datos -->
-        <div class="card col-4 tk-datos">
+        <div class="card col-3 tk-datos">
           <div class="datos-title"><i class="ti ti-info-circle"></i> Solicitante</div>
           <div v-if="ticket.vinculado && ticket.empleado_nombre" class="tk-solicitante">
             <span class="tk-nombre">{{ ticket.empleado_nombre }}</span>
@@ -406,7 +402,7 @@ onUnmounted(() => store.limpiar());
         </div>
 
         <!-- Conversación -->
-        <div class="card col-8 tk-conversacion">
+        <div class="card col-6 tk-conversacion">
           <div class="datos-title"><i class="ti ti-message-circle"></i> Conversación</div>
           <p class="tk-descripcion">{{ ticket.descripcion }}</p>
 
@@ -448,31 +444,22 @@ onUnmounted(() => store.limpiar());
             Ticket {{ estadoInfo(ticket.estado).label.toLowerCase() }} — {{ auth.esJefe ? 'reábrelo para seguir comentando.' : 'solo el jefe puede reabrirlo para seguir comentando.' }}
           </p>
         </div>
-      </div>
-    </main>
 
-    <!-- Modal: hoja de vida -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarHoja" class="modal-bg" @click.self="mostrarHoja = false">
-      <div ref="panelHoja" class="modal modal-detail" role="dialog" aria-modal="true" aria-labelledby="hoja-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="hoja-title"><i class="ti ti-history" aria-hidden="true"></i> Hoja de vida — {{ ticket?.codigo }}</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarHoja = false"><i class="ti ti-x"></i></button>
-        </div>
-        <div class="modal-body">
-          <div v-if="cargandoHoja" class="no-results">Cargando...</div>
-          <ul v-else class="hoja-lista">
-            <li v-for="ev in eventos" :key="ev.id">
+        <!-- Historial (hoja de vida): esencial, siempre visible, sin modal -->
+        <div class="card col-3 tk-historial">
+          <div class="datos-title"><i class="ti ti-history"></i> Historial</div>
+          <ul v-if="historialEsencial.length" class="hoja-lista hoja-lista--compacta">
+            <li v-for="h in historialEsencial" :key="h.id">
               <div class="hoja-info">
-                <span class="hoja-detalle">{{ EVENTO_LABELS[ev.evento] || ev.evento }}{{ ev.detalle ? ` — ${ev.detalle}` : '' }}</span>
-                <span class="hoja-meta">{{ formatFechaHora(ev.created_at) }}{{ ev.user_email ? ` · ${ev.user_email}` : '' }}</span>
+                <span class="hoja-detalle">{{ h.label }}</span>
+                <span class="hoja-meta">{{ formatFechaHora(h.fecha) }}</span>
               </div>
             </li>
           </ul>
+          <p v-else class="tk-nota">Sin hitos todavía.</p>
         </div>
       </div>
-    </div>
-    </Transition>
+    </main>
   </div>
 </template>
 
@@ -500,7 +487,7 @@ onUnmounted(() => store.limpiar());
   color: var(--color-text-secondary);
 }
 
-.tk-datos, .tk-conversacion {
+.tk-datos, .tk-conversacion, .tk-historial {
   padding: 16px 20px 20px;
 }
 
@@ -621,14 +608,14 @@ onUnmounted(() => store.limpiar());
 
 .tk-comentario-acciones .check-inline { margin-top: 0; }
 
-/* Ancho: .modal-detail de la escala centralizada (main.css) */
-.modal-title { display: flex; align-items: center; justify-content: space-between; }
-.modal-body { padding: 16px 24px 24px; }
-
 .hoja-lista { list-style: none; margin: 0; padding: 0; }
 .hoja-lista li { display: flex; padding: 9px 0; border-bottom: 1px solid var(--color-border); }
 .hoja-lista li:last-child { border-bottom: none; }
 .hoja-info { display: flex; flex-direction: column; }
 .hoja-detalle { font-size: var(--fs-base); color: var(--color-text-primary); }
 .hoja-meta { font-size: var(--fs-sm); color: var(--color-text-secondary); }
+
+.hoja-lista--compacta li { padding: 7px 0; }
+.hoja-lista--compacta .hoja-detalle { font-size: var(--fs-sm); }
+.hoja-lista--compacta .hoja-meta { font-size: 11px; }
 </style>

@@ -29,15 +29,17 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
       this.cargando = true;
       this.error = null;
       try {
-        const [t, coms, staff] = await Promise.all([
+        const [t, coms, staff, eventos] = await Promise.all([
           insforgeApi.getTicket(id),
           insforgeApi.listComentariosTicket(id),
           insforgeApi.listStaff(),
+          insforgeApi.listEventosTicket(id),
         ]);
         // Si el ticket no existe, ticket queda en null (la vista decide el redirect).
         this.ticket = t || null;
         this.comentarios = coms;
         this.staffLista = staff;
+        this.eventos = eventos;
         if (t && t.estado !== 'abierto') {
           this.satisfaccion = await insforgeApi.getSatisfaccionTicket(id);
         }
@@ -53,14 +55,16 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
       this.comentarios = await insforgeApi.listComentariosTicket(this.ticket.id);
     },
 
-    // Lazy: la vista lo llama al abrir la hoja de vida
-    async cargarEventos() {
+    // El historial (hoja de vida) se muestra siempre visible en la vista, así
+    // que se refresca cada vez que un cambio de campo pudo generar un evento.
+    async recargarEventos() {
       this.eventos = await insforgeApi.listEventosTicket(this.ticket.id);
     },
 
     async actualizarCampos(datos) {
       await insforgeApi.actualizarTicket(this.ticket.id, datos);
       Object.assign(this.ticket, datos);
+      await this.recargarEventos();
     },
 
     async comentar(mensaje, interno) {

@@ -43,6 +43,17 @@ export const EVENTO_LABELS = {
   encuesta_respondida: 'Encuesta respondida',
 };
 
+// Hitos del historial esencial (TicketDetalleView): a qué estado se
+// transicionó un evento "estado_cambiado", en lenguaje de hito de
+// atención (no el nombre técnico del estado).
+export const HITO_LABELS = {
+  en_progreso: 'Inicio de atención',
+  resuelto: 'Resuelto',
+  cerrado: 'Cerrado',
+  reabierto: 'Reabierto',
+  rechazado: 'Rechazado',
+};
+
 export function estadoInfo(e) {
   return ESTADOS_TICKET[e] || { label: e, clase: 'badge--neutral' };
 }

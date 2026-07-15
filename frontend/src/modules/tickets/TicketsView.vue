@@ -6,8 +6,10 @@ import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES, estadoInfo, prioridadInfo } from '../../core/dominio-tickets.js';
+import { formatFechaHora } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import TicketInternoForm from './TicketInternoForm.vue';
+import ReporteTicketsModal from './ReporteTicketsModal.vue';
 import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
@@ -24,6 +26,7 @@ const filtroPrioridad = ref('');
 const soloSinAsignar = ref(false);
 const soloSinVincular = ref(false);
 const mostrarNuevo = ref(false);
+const mostrarReporte = ref(false);
 const staffLista = ref([]);
 
 const staffPorId = computed(() => {
@@ -58,9 +61,10 @@ async function exportar() {
     const filas = await store.listaParaExportar();
     exportarCSV(
       'tickets',
-      ['Código', 'Solicitante', 'Título', 'Categoría', 'Estado', 'Prioridad', 'Asignado a'],
+      ['Código', 'Fecha', 'Solicitante', 'Título', 'Categoría', 'Estado', 'Prioridad', 'Asignado a'],
       filas.map((t) => [
         t.codigo,
+        formatFechaHora(t.created_at),
         t.vinculado ? t.solicitante : 'Sin vincular',
         t.titulo,
         t.categoria,
@@ -124,6 +128,9 @@ onMounted(async () => {
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
           <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
         </button>
+        <button class="btn" type="button" @click="mostrarReporte = true">
+          <i class="ti ti-report" aria-hidden="true"></i> Reporte
+        </button>
         <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
           <i class="ti ti-plus" aria-hidden="true"></i> Ticket interno
         </button>
@@ -168,6 +175,7 @@ onMounted(async () => {
             <thead>
               <tr>
                 <th scope="col">Código</th>
+                <th scope="col">Fecha</th>
                 <th scope="col">Solicitante</th>
                 <th scope="col">Título</th>
                 <th scope="col">Categoría</th>
@@ -179,6 +187,7 @@ onMounted(async () => {
             <tbody>
               <tr v-for="t in lista" :key="t.id" class="fila-ticket" @click="verTicket(t)">
                 <td><RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${t.id}`" @click.stop>{{ t.codigo }}</RouterLink></td>
+                <td class="fecha-cell">{{ formatFechaHora(t.created_at) }}</td>
                 <td>
                   <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
                     <i class="ti ti-alert-triangle"></i> Sin vincular
@@ -207,6 +216,7 @@ onMounted(async () => {
     </main>
 
     <TicketInternoForm v-if="mostrarNuevo" @cerrar="onNuevoCerrado" />
+    <ReporteTicketsModal v-if="mostrarReporte" :staff-por-id="staffPorId" @cerrar="mostrarReporte = false" />
   </div>
 </template>
 
@@ -217,6 +227,8 @@ onMounted(async () => {
   font-family: var(--font-mono, monospace);
   white-space: nowrap; /* el código nunca se parte en dos líneas */
 }
+
+.fecha-cell { white-space: nowrap; }
 
 .tk-codigo-link {
   color: inherit;
