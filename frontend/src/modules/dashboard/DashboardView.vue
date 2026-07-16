@@ -233,7 +233,7 @@ onMounted(async () => {
             </div>
 
             <div v-if="pendientesTickets.sinAsignar.length" class="pend-card col-4">
-              <div class="pend-header pend-header--rotar">
+              <div class="pend-header pend-header--tk-sinasignar">
                 <i class="ti ti-headset"></i>
                 Tickets sin asignar
                 <span class="pend-count">{{ pendientesTickets.sinAsignar.length }}</span>
@@ -261,7 +261,7 @@ onMounted(async () => {
             </div>
 
             <div v-if="pendientesTickets.sinVincular.length" class="pend-card col-4">
-              <div class="pend-header pend-header--sinpw">
+              <div class="pend-header pend-header--tk-sinvincular">
                 <i class="ti ti-user-question"></i>
                 Tickets sin vincular
                 <span class="pend-count">{{ pendientesTickets.sinVincular.length }}</span>
@@ -289,7 +289,7 @@ onMounted(async () => {
             </div>
 
             <div v-if="pendientesTickets.abiertosViejos.length" class="pend-card col-4">
-              <div class="pend-header pend-header--lic">
+              <div class="pend-header pend-header--tk-viejos">
                 <i class="ti ti-clock-exclamation"></i>
                 Tickets abiertos hace +3 días
                 <span class="pend-count">{{ pendientesTickets.abiertosViejos.length }}</span>
@@ -473,6 +473,9 @@ onMounted(async () => {
 .pend-header--lic      { background: var(--color-info-bg); color: var(--color-info-text); }
 .pend-header--equipos  { background: var(--color-danger-bg); color: var(--color-danger-text); }
 .pend-header--garantia { background: var(--color-teal-bg-subtle); color: var(--color-teal-text); }
+.pend-header--tk-sinasignar  { background: var(--color-purple-bg); color: var(--color-purple-text); }
+.pend-header--tk-sinvincular { background: var(--color-accent-subtle); color: var(--color-accent-text); }
+.pend-header--tk-viejos      { background: var(--color-warning-bg); color: var(--color-warning-text); }
 
 .pend-count {
   margin-left: auto;

@@ -10,6 +10,7 @@ import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
 import { showToast } from '../../core/toast.js';
 
 const emit = defineEmits(['cerrar']);
@@ -48,9 +49,7 @@ const form = ref({
 });
 
 const esParaEmpleado = ref(false);
-const busquedaEmpleado = ref('');
 const empleadoSelId = ref('');
-const listaEmpAbierta = ref(false);
 
 // Solo creación: el snapshot inicial es el form en blanco. El buscador de
 // empleado es transitorio; la selección (empleadoSelId) sí cuenta.
@@ -66,25 +65,6 @@ const dialogoDescarte = ref(null);
 const subcategoriasFiltradas = computed(() =>
   subcategorias.value.filter((s) => s.categoria_id === form.value.categoriaId)
 );
-
-const empleadosFiltrados = computed(() => {
-  const q = busquedaEmpleado.value.trim().toLowerCase();
-  const base = q
-    ? empleadosActivos.value.filter((e) =>
-        `${e.nombres} ${e.apellidos}`.toLowerCase().includes(q) || e.dni.includes(q))
-    : empleadosActivos.value;
-  return base.slice(0, 8);
-});
-
-function seleccionarEmpleado(e) {
-  empleadoSelId.value = e.id;
-  busquedaEmpleado.value = `${e.nombres} ${e.apellidos}`;
-  listaEmpAbierta.value = false;
-}
-
-function cerrarListaEmpleados() {
-  setTimeout(() => { listaEmpAbierta.value = false; }, 150);
-}
 
 // Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
 // confirmación antes de descartar; limpio cierra directo.
@@ -171,30 +151,9 @@ onMounted(async () => {
           </label>
         </div>
 
-        <div v-if="esParaEmpleado" class="form-group full combo-emp">
+        <div v-if="esParaEmpleado" class="form-group full">
           <label for="ti-empleado">Empleado</label>
-          <div class="combo-wrap">
-            <i class="ti ti-search combo-icon"></i>
-            <input
-              id="ti-empleado"
-              v-model="busquedaEmpleado"
-              type="text"
-              autocomplete="off"
-              placeholder="Buscar por nombre o DNI..."
-              :class="{ 'combo-ok': empleadoSelId }"
-              @input="empleadoSelId = ''; listaEmpAbierta = true"
-              @focus="listaEmpAbierta = true"
-              @blur="cerrarListaEmpleados"
-            >
-            <i v-if="empleadoSelId" class="ti ti-circle-check combo-check"></i>
-            <ul v-if="listaEmpAbierta && !empleadoSelId" class="combo-lista">
-              <li v-if="empleadosFiltrados.length === 0" class="combo-vacio">Sin resultados</li>
-              <li v-for="e in empleadosFiltrados" :key="e.id" @mousedown.prevent="seleccionarEmpleado(e)">
-                <span>{{ e.nombres }} {{ e.apellidos }}</span>
-                <span class="combo-sec">{{ e.dni }}</span>
-              </li>
-            </ul>
-          </div>
+          <BuscadorEmpleado id="ti-empleado" v-model="empleadoSelId" :empleados="empleadosActivos" :disabled="guardando" />
         </div>
 
         <div class="form-group full">
@@ -262,35 +221,6 @@ onMounted(async () => {
   color: var(--color-text-primary);
   cursor: pointer;
 }
-
-.combo-wrap { position: relative; }
-.combo-icon {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--color-text-secondary); font-size: 15px; pointer-events: none;
-}
-.combo-wrap input { width: 100%; padding-left: 32px; padding-right: 32px; }
-.combo-wrap input.combo-ok { border-color: var(--color-success); }
-.combo-check {
-  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--color-success); font-size: 16px; pointer-events: none;
-}
-.combo-lista {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: var(--z-popover);
-  margin: 0; padding: 4px; list-style: none;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  max-height: 220px; overflow-y: auto;
-}
-.combo-lista li {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: var(--fs-base);
-}
-.combo-lista li:hover { background: var(--color-accent-subtle); }
-.combo-vacio { color: var(--color-text-secondary); cursor: default !important; font-size: var(--fs-sm); }
-.combo-vacio:hover { background: none !important; }
-.combo-sec { font-size: var(--fs-sm); color: var(--color-text-secondary); }
 
 .modal-actions.full { grid-column: 1 / -1; }
 </style>

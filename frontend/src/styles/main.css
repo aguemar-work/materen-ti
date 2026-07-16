@@ -97,6 +97,9 @@
       --mat-shadow-md: none;
       --mat-shadow-lg: none;
 
+      /* Sombra del indicador de scroll horizontal en .table-wrap */
+      --mat-scroll-shadow: rgba(15, 23, 42, 0.14);
+
       /* Radios: 8px controles · 14px contenedores */
       --mat-radius-sm: 6px;
       --mat-radius-md: 8px;
@@ -252,6 +255,8 @@
       --mat-color-teal-text: #6EE7B7;
       --mat-color-teal-bg-subtle: rgba(18, 107, 82, 0.1);
       --mat-color-teal-border: rgba(18, 107, 82, 0.32);
+
+      --mat-scroll-shadow: rgba(0, 0, 0, 0.55);
     }
 
     html[data-theme="dark"] { color-scheme: dark; }
@@ -366,12 +371,12 @@
     }
 
     /* ── Páginas públicas (empleados sin sesión) ─────────────────
-       Shell distinto al panel: fondo sutil, tarjeta centrada, logo
-       completo de Materen — Sistema TI (no el icono del sidebar). */
+       Shell distinto al panel: fondo sutil, tarjeta centrada vertical
+       y horizontalmente, logo completo de Materen — Sistema TI (no el
+       icono del sidebar). */
     .public-page {
       min-height: 100vh;
       display: flex;
-      align-items: flex-start;
       justify-content: center;
       padding: 2rem 1rem 3rem;
       background: var(--color-bg-subtle);
@@ -381,6 +386,9 @@
       width: 100%;
       max-width: 480px;
       padding: 2rem;
+      /* auto centra vertical y cae a 0 cuando la tarjeta es más alta
+         que la pantalla — así nunca se recorta el inicio del contenido */
+      margin: auto 0;
     }
 
     .brand--public {
@@ -481,7 +489,7 @@
       .col-8 { grid-column: span 12; }
     }
 
-    @media (max-width: 700px) {
+    @media (max-width: 768px) {
       .col-2 { grid-column: span 6; }
       .col-3, .col-4, .col-6 { grid-column: span 12; }
     }
@@ -562,6 +570,14 @@
 
     /* La tabla scrollea internamente y el thead queda fijo arriba */
     .card--fill .table-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    /* En móvil la lista de tarjetas ocupa el lugar de la tabla y scrollea
+       igual, dejando filtros y paginación siempre visibles. */
+    .card--fill .lista-tarjetas {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
@@ -780,7 +796,19 @@
     }
 
     /* ── Table ── */
-    .table-wrap { overflow-x: auto; }
+    /* Sombras de scroll horizontal: los gradientes "cover" (attachment local)
+       viajan con el contenido y tapan la sombra cuando se llega al borde;
+       los "shadow" (scroll) quedan fijos al contenedor. Sin JS. */
+    .table-wrap {
+      overflow-x: auto;
+      background:
+        linear-gradient(90deg, var(--color-bg-elevated) 40%, transparent) left / 28px 100%,
+        linear-gradient(270deg, var(--color-bg-elevated) 40%, transparent) right / 28px 100%,
+        radial-gradient(farthest-side at 0 50%, var(--mat-scroll-shadow), transparent) left / 12px 100%,
+        radial-gradient(farthest-side at 100% 50%, var(--mat-scroll-shadow), transparent) right / 12px 100%;
+      background-repeat: no-repeat;
+      background-attachment: local, local, scroll, scroll;
+    }
 
     table {
       width: 100%;
@@ -1415,6 +1443,7 @@
       position: fixed;
       bottom: 24px;
       right: 24px;
+      max-width: min(400px, calc(100vw - 32px));
       background: var(--color-bg-elevated);
       color: var(--color-text-primary);
       padding: 10px 18px;
@@ -1431,12 +1460,77 @@
 
     .toast i { font-size: 16px; color: var(--color-accent); }
 
+    /* ── Lista de tarjetas (reemplazo móvil de tablas en módulos operativos) ── */
+    /* Dual render: la vista mantiene su <table> (.solo-escritorio) y agrega
+       una <ul class="lista-tarjetas solo-movil"> sobre la misma lista paginada. */
+    .lista-tarjetas {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .tarjeta-fila {
+      padding: 12px 1rem;
+      border-bottom: 1px solid var(--color-border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .tarjeta-fila:last-child { border-bottom: none; }
+
+    .tarjeta-fila--clic { cursor: pointer; }
+    .tarjeta-fila--clic:active { background: var(--color-bg-hover); }
+
+    /* Cabecera: dato identificador (código/mono) + dato de contexto a la derecha */
+    .tarjeta-fila__cab {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: var(--fs-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .tarjeta-fila__principal {
+      font-size: var(--fs-base);
+      color: var(--color-text-primary);
+      overflow-wrap: anywhere;
+    }
+
+    .tarjeta-fila__sec {
+      font-size: var(--fs-sm);
+      color: var(--color-text-secondary);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+      align-items: center;
+    }
+
+    .tarjeta-fila__badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    /* Pie con badges a la izquierda y menú ⋮ a la derecha */
+    .tarjeta-fila__pie {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    /* ── Utilidades de visibilidad (corte móvil = 768px) ── */
+    .solo-movil { display: none !important; }
+
     /* ── Responsive ── */
     @media (max-width: 900px) {
       .stats-row { grid-template-columns: repeat(2, 1fr); }
     }
 
-    @media (max-width: 600px) {
+    @media (max-width: 768px) {
       .page--padded { padding: 1rem; }
       .stats-row { grid-template-columns: 1fr 1fr; }
       .form-grid { grid-template-columns: 1fr; }
@@ -1444,6 +1538,31 @@
       .detail-header { flex-wrap: wrap; }
       .detail-header .status { margin-left: 0; }
       th, td { padding: 10px 12px; }
+
+      .solo-movil { display: block !important; }
+      .solo-movil--flex { display: flex !important; }
+      .solo-escritorio { display: none !important; }
+
+      /* Header de vista compacto bajo la topbar móvil */
+      .header-inner { padding: 8px 1rem; }
+      .header-btns { gap: 6px; }
+
+      /* Filtros apilados: buscador a fila completa, selects a media fila */
+      .filters .search-wrap { flex-basis: 100%; }
+      .filters select { flex: 1 1 45%; }
+
+      /* Toast a lo ancho, legible en pantallas angostas */
+      .toast {
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        max-width: none;
+      }
+    }
+
+    /* Targets táctiles: solo dispositivos sin puntero fino */
+    @media (pointer: coarse) {
+      .icon-btn { padding: 10px; }
     }
   
 .mode-badge { font-size: 11px; padding: 3px 8px; border-radius: 20px; background: var(--color-neutral-bg); color: var(--color-neutral-text); font-weight: 600; }

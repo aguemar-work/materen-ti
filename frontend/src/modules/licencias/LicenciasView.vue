@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useLicenciasStore } from '../../stores/licencias.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { revelarClaveLicencia, revelarPassword } from '../../api/passwords.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
@@ -14,11 +15,14 @@ import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const store = useLicenciasStore();
 const { lista, total, cargando, error } = storeToRefs(store);
+
+useRealtimeRefresco('licencias:list', () => store.cargar());
 
 // Deep-link desde la búsqueda global: /licencias?q=SOFTWARE
 const route = useRoute();
@@ -103,10 +107,10 @@ function capacidadInfo(l) {
 }
 
 function estadoVencimiento(l) {
-  if (l.tipo === 'perpetua' || !l.fecha_vencimiento) return { clase: 'venc-ok', texto: 'Perpetua' };
-  if (l.fecha_vencimiento < HOY) return { clase: 'venc-vencida', texto: `Venció ${formatFecha(l.fecha_vencimiento)}` };
-  if (l.fecha_vencimiento <= EN_30_DIAS) return { clase: 'venc-pronto', texto: `Vence ${formatFecha(l.fecha_vencimiento)}` };
-  return { clase: 'venc-ok', texto: formatFecha(l.fecha_vencimiento) };
+  if (l.tipo === 'perpetua' || !l.fecha_vencimiento) return { clase: 'badge--success', texto: 'Perpetua' };
+  if (l.fecha_vencimiento < HOY) return { clase: 'badge--danger', texto: `Venció ${formatFecha(l.fecha_vencimiento)}` };
+  if (l.fecha_vencimiento <= EN_30_DIAS) return { clase: 'badge--warning', texto: `Vence ${formatFecha(l.fecha_vencimiento)}` };
+  return { clase: 'badge--success', texto: formatFecha(l.fecha_vencimiento) };
 }
 
 const PERIODO_LABELS = {
@@ -419,7 +423,7 @@ onMounted(async () => {
                 </td>
                 <td>
                   <div class="venc-cell">
-                    <span class="venc-badge" :class="estadoVencimiento(lic).clase">
+                    <span class="badge" :class="estadoVencimiento(lic).clase">
                       {{ estadoVencimiento(lic).texto }}
                     </span>
                     <span v-if="lic.tipo === 'suscripcion' && lic.renovacion_meses" class="venc-periodo">
@@ -499,12 +503,7 @@ onMounted(async () => {
           <div v-if="cargandoEmpleados" class="no-results">Cargando empleados...</div>
           <div v-else class="form-group">
             <label for="as-empleado">Empleado *</label>
-            <select id="as-empleado" v-model="empleadoAsignarId" :disabled="asignando">
-              <option value="" disabled>Seleccionar empleado</option>
-              <option v-for="emp in empleadosActivos" :key="emp.id" :value="emp.id">
-                {{ emp.nombres }} {{ emp.apellidos }}
-              </option>
-            </select>
+            <BuscadorEmpleado id="as-empleado" v-model="empleadoAsignarId" :empleados="empleadosActivos" :disabled="asignando" />
           </div>
         </div>
 
@@ -577,7 +576,7 @@ onMounted(async () => {
 }
 
 .clave-text {
-  font-family: monospace;
+  font-family: var(--font-mono, monospace);
   font-size: 12.5px;
   letter-spacing: 0.05em;
   min-width: 72px;
@@ -615,19 +614,6 @@ onMounted(async () => {
 }
 
 .chip-x:hover { color: var(--color-danger, var(--color-danger)); }
-
-.venc-badge {
-  display: inline-block;
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
-
-.venc-ok      { background: var(--color-success-bg); color: var(--color-success-text); }
-.venc-pronto  { background: var(--color-warning-bg); color: var(--color-warning-text); border: 1px solid var(--color-warning-border); }
-.venc-vencida { background: var(--color-danger-bg); color: var(--color-danger-text); border: 1px solid var(--color-danger-border); }
 
 .venc-cell {
   display: flex;

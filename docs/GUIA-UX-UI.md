@@ -370,16 +370,67 @@ Sin sidebar: card centrada a pantalla completa, reutilizando `.card`, `.brand`, 
 
 ### Breakpoints responsive
 
+**Escala única (jul 2026): 1200 / 900 / 768.** Todo corte "móvil" nuevo debe
+usar **768px** — es donde el shell cambia a drawer + topbar, y el contenido
+debe cambiar con él (antes convivían cortes en 560/600/700 y quedaba una
+franja 601-768px con drawer móvil pero contenido de escritorio).
+
 | Ancho | Comportamiento |
 |-------|----------------|
-| ≤900px | Stats grid a 2 columnas |
-| ≤768px | Sidebar off-canvas + topbar móvil 48px |
-| ≤600px | Formularios 1 columna, padding reducido |
+| ≤1200px | Grid-12: spans se ensanchan |
+| ≤900px | Stats grid a 2 columnas; Equipos oculta `.badge-fisico` |
+| ≤768px | Sidebar off-canvas + topbar móvil 48px; grid-12 apila; formularios 1 columna; padding reducido; header compacto; filtros apilados (buscador a fila completa); toast a lo ancho; tablas de módulos operativos → tarjetas |
 
 Constantes: `--header-h: 64px` (ahora `min-height` — el header crece si lleva
 tabs, como en Configuración). `--max-w` se eliminó (estaba definido pero
 ningún selector lo usaba; el contenido es de ancho completo). `.page` ya no
 tiene padding — el respiro en vistas multi-card lo da `.page--padded`.
+
+**Utilidades de visibilidad:** `.solo-escritorio` (se oculta en ≤768px) y
+`.solo-movil` (solo visible en ≤768px; variante `.solo-movil--flex` cuando el
+elemento necesita `display:flex`). Son la base del dual render de tablas.
+
+**Targets táctiles:** `@media (pointer: coarse)` sube el padding de
+`.icon-btn` a 10px (~40px de target) sin afectar la densidad en escritorio.
+
+### Patrón tabla → tarjetas (módulos operativos en móvil)
+
+En ≤768px las tablas de **Tickets, Empleados y Equipos** se reemplazan por
+tarjetas apiladas (dual render: el `<table>` lleva `.solo-escritorio` y a su
+lado vive una `<ul class="lista-tarjetas solo-movil">` sobre la **misma
+lista paginada**; `<Pagination>` queda fuera de ambos para no ocultarse).
+El resto de vistas de lista (Correos, Licencias, Actividad, Accesos
+sensibles, Configuración) conserva la tabla con scroll horizontal — el
+`.table-wrap` global ya pinta sombras de scroll en los bordes como
+indicador (sin JS, `background-attachment: local`).
+
+Anatomía de `.tarjeta-fila` (todas las zonas son opcionales):
+
+```html
+<li class="tarjeta-fila tarjeta-fila--clic">      <!-- --clic si navega -->
+  <div class="tarjeta-fila__cab">…</div>          <!-- código mono + fecha -->
+  <div class="tarjeta-fila__principal">…</div>    <!-- dato principal -->
+  <div class="tarjeta-fila__sec">…</div>          <!-- secundarios con "·" -->
+  <div class="tarjeta-fila__pie">                 <!-- badges + menú ⋮ -->
+    <div class="tarjeta-fila__badges">…</div>
+    <MenuAcciones :acciones="accionesDe(fila)" />
+  </div>
+</li>
+```
+
+### MenuAcciones.vue (menú contextual ⋮)
+
+`src/components/shared/MenuAcciones.vue`. Condensa acciones por fila en las
+tarjetas móviles (≥3 acciones) o botones de toolbar que no caben en móvil
+(ej. el "Más" del header de Tickets). API: prop
+`acciones: [{ icono, label, danger?, disabled?, visible?, separador?, onClick }]`;
+prop `texto` para trigger tipo `.btn` (toolbar) — sin texto usa `.icon-btn`.
+Accesible: `role="menu"`, `aria-haspopup`/`aria-expanded`, flechas ↑↓,
+Escape devuelve el foco al trigger; cierra con clic fuera, scroll y resize.
+Panel con `Teleport` a body + `--z-popover` (`.card` tiene `overflow:hidden`
+y recortaría un popover absoluto). En Equipos la fuente única de las 11
+acciones condicionales es `accionesDe(eq)` (EquiposView.vue) — la consumen
+los icon-btn de escritorio y el menú móvil; no dupliques condiciones.
 
 ---
 
@@ -393,11 +444,11 @@ Todo en `main.css` — no hay átomos Vue separados:
 
 **Formularios:** `.form-grid`, `.form-group`, `.section-label`. Accesorios de equipo: lista editable (código / descripción / cantidad) en `EquipoForm.vue` (`.acc-lista`, `.acc-fila`); ya no se usan chips.
 
-**Datos:** `.table-wrap`, `table/th/td`, `.user-name`, `.avatar`
+**Datos:** `.table-wrap`, `table/th/td`, `.user-name`, `.avatar`, `.lista-tarjetas`/`.tarjeta-fila` (render móvil de tablas, ver patrón arriba)
 
 **Estado:** `.status`, `.badge`/`.badge--*` (ver sistema unificado abajo), `.badge-count`
 
-**Interacción:** `.icon-btn`, `.actions`, `.filters`, `.search-wrap`
+**Interacción:** `.icon-btn`, `.actions`, `.filters`, `.search-wrap`, `MenuAcciones.vue` (menú ⋮, ver arriba)
 
 **Overlays:** `.modal-bg`, `.modal`, `.modal-lg`, `.modal-actions`
 

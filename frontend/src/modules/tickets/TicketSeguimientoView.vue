@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router';
 import { seguimientoTicket } from '../../api/ticketsPublicos.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
 import { estadoInfo } from '../../core/dominio-tickets.js';
+import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 const route = useRoute();
@@ -17,15 +18,25 @@ const error = ref('');
 const ticket = ref(null);
 const copiado = ref(null);
 
-onMounted(async () => {
+async function cargar() {
   try {
     ticket.value = await seguimientoTicket(route.params.token);
     estado.value = 'listo';
   } catch (e) {
-    error.value = e?.message || 'No se pudo cargar el ticket';
-    estado.value = 'error';
+    // Un refresco en segundo plano que falla (red) no debe tumbar una
+    // vista que ya mostraba el ticket correctamente.
+    if (estado.value !== 'listo') {
+      error.value = e?.message || 'No se pudo cargar el ticket';
+      estado.value = 'error';
+    }
   }
-});
+}
+
+onMounted(cargar);
+
+// Recarga sola cuando cambia el estado o llega una respuesta pública nueva,
+// sin que el empleado tenga que refrescar la página.
+useRealtimeRefresco(`ticket:${route.params.token}`, cargar);
 
 async function copiar(texto, id) {
   try {

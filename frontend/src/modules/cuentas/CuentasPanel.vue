@@ -12,6 +12,7 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import CuentaForm from './CuentaForm.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const props = defineProps({
@@ -349,12 +350,7 @@ onMounted(async () => {
         <template v-else>
           <div class="form-group">
             <label for="tr-empleado">Asignar a *</label>
-            <select id="tr-empleado" v-model="nuevoEmpleadoId" :disabled="guardandoTraspaso">
-              <option value="" disabled>Seleccionar empleado</option>
-              <option v-for="emp in empleadosDestino" :key="emp.id" :value="emp.id">
-                {{ emp.nombres }} {{ emp.apellidos }}
-              </option>
-            </select>
+            <BuscadorEmpleado id="tr-empleado" v-model="nuevoEmpleadoId" :empleados="empleadosDestino" :disabled="guardandoTraspaso" />
           </div>
           <div class="form-group">
             <label for="tr-notas">Notas</label>
@@ -469,7 +465,7 @@ onMounted(async () => {
 }
 
 .password-text {
-  font-family: monospace;
+  font-family: var(--font-mono, monospace);
   letter-spacing: 0.05em;
   min-width: 72px;
 }

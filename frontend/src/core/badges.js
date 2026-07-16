@@ -6,9 +6,9 @@ import { situacionInfo } from './dominio-equipos.js';
 import { categoriaAccesoSensibleInfo } from './dominio-accesos-sensibles.js';
 
 const TIPOS_CUENTA = {
-  compartida: { label: 'Compartido', clase: 'badge--accent' },
-  reutilizable: { label: 'Reutilizable', clase: 'badge--success' },
-  personal: { label: 'Personal', clase: 'badge--teal' },
+  compartida: { label: 'Compartido', clase: 'badge--sky' },
+  reutilizable: { label: 'Reutilizable', clase: 'badge--sky' },
+  personal: { label: 'Personal', clase: 'badge--sky' },
 };
 
 /** @returns {{ label: string, clase: string }} */

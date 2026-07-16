@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
@@ -11,6 +12,7 @@ import { nombreCompleto } from '../../core/dominio-empleados.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -19,6 +21,8 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 const router = useRouter();
 const store = useEmpleadosStore();
 const { lista, total, cargando, error } = storeToRefs(store);
+
+useRealtimeRefresco('empleados:list', () => store.cargar());
 
 const busqueda = ref('');
 const filtroEstado = ref('');
@@ -131,6 +135,28 @@ function onBajaCerrada() {
   empleadoBaja.value = null;
 }
 
+// Acciones por fila para el menú ⋮ de las tarjetas móviles — mismas
+// condiciones que los icon-btn de la tabla de escritorio.
+function accionesDe(emp) {
+  return [
+    { icono: 'ti-eye', label: 'Ver ficha', onClick: () => verFicha(emp) },
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(emp) },
+    {
+      icono: 'ti-brand-whatsapp',
+      label: 'Enviar credenciales por WhatsApp',
+      disabled: enviandoCredsId.value === emp.id,
+      onClick: () => enviarCredenciales(emp),
+    },
+    {
+      icono: 'ti-user-off',
+      label: 'Dar de baja',
+      danger: true,
+      visible: emp.estado !== 'Inactivo',
+      onClick: () => darDeBaja(emp),
+    },
+  ];
+}
+
 onMounted(async () => {
   try {
     await store.cargar();
@@ -185,7 +211,8 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else class="table-wrap">
+        <template v-else>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Inventario de empleados">
             <thead>
               <tr>
@@ -280,8 +307,39 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul class="lista-tarjetas solo-movil" aria-label="Inventario de empleados">
+          <li v-for="emp in lista" :key="emp.id" class="tarjeta-fila tarjeta-fila--clic" @click="verFicha(emp)">
+            <div class="tarjeta-fila__principal user-name">{{ nombreCompleto(emp) }}</div>
+            <div class="tarjeta-fila__sec">
+              <span>{{ emp.dni }}</span>
+              <template v-if="emp.cargo"><span aria-hidden="true">·</span><span>{{ emp.cargo }}</span></template>
+              <template v-if="emp.empresa_nombre"><span aria-hidden="true">·</span><span>{{ emp.empresa_nombre }}</span></template>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <div class="tarjeta-fila__badges">
+                <BadgeEstado tipo="empleado" :valor="emp.estado" status />
+                <div v-if="emp.n_cuentas != null" class="vinculos vinculos--tarjeta">
+                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_cuentas }" :title="`${emp.n_cuentas} cuenta(s) activa(s)`">
+                    <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
+                  </span>
+                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_equipos }" :title="`${emp.n_equipos} equipo(s) asignado(s)`">
+                    <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
+                  </span>
+                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_licencias }" :title="`${emp.n_licencias} licencia(s) directa(s)`">
+                    <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
+                  </span>
+                </div>
+              </div>
+              <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        </template>
       </div>
     </main>
 

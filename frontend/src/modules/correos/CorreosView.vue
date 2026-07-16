@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useCorreosStore } from '../../stores/correos.js';
 import { revelarPassword } from '../../api/passwords.js';
+import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import CorreoForm from './CorreoForm.vue';
@@ -16,6 +17,8 @@ import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const store = useCorreosStore();
 const { lista, total, cargando, error } = storeToRefs(store);
+
+useRealtimeRefresco('cuentas:list', () => store.cargar());
 
 // Deep-link desde la búsqueda global: /correos?q=usuario@dominio
 const route = useRoute();
@@ -346,7 +349,7 @@ onMounted(async () => {
 }
 
 .password-text {
-  font-family: monospace;
+  font-family: var(--font-mono, monospace);
   letter-spacing: 0.05em;
   min-width: 80px;
 }

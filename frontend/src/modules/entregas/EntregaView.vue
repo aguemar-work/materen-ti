@@ -39,7 +39,7 @@ async function copiar(texto, id) {
 </script>
 
 <template>
-  <div class="public-page" :class="{ 'entrega-page--centro': estado !== 'revelado' }">
+  <div class="public-page">
     <div class="card public-card">
       <PublicBrand subtitulo="Entrega de accesos" />
 
@@ -136,10 +136,6 @@ async function copiar(texto, id) {
 </template>
 
 <style scoped>
-.public-page.entrega-page--centro {
-  align-items: center;
-}
-
 .entrega-centro {
   text-align: center;
 }

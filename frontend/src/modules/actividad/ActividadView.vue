@@ -116,7 +116,7 @@ onMounted(async () => {
                     {{ infoAccion(r.accion).label }}
                   </span>
                 </td>
-                <td class="cuenta-cell">{{ r.cuenta_usuario }}</td>
+                <td class="cuenta-cell"><TextoVacio :valor="r.cuenta_usuario" /></td>
                 <td><TextoVacio :valor="r.plataforma" /></td>
                 <td class="detalle-cell">
                   <span v-if="r.detalle" :title="r.detalle">{{ r.detalle }}</span>

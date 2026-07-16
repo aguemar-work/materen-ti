@@ -17,6 +17,15 @@ function filasTecnicos(items) {
   return items.map((t) => `<tr><td>${esc(t.nombre)}</td><td class="num">${t.cantidad}</td></tr>`).join('');
 }
 
+const ENCUESTA_LABELS = { respondida: 'Respondida', pendiente: 'Pendiente' };
+
+function filasTicketsPeriodo(items) {
+  if (!items.length) return '<tr><td colspan="3" class="vacio">Sin tickets creados en el periodo</td></tr>';
+  return items.map((t) =>
+    `<tr><td class="codigo">${esc(t.codigo)}</td><td>${esc(t.solicitante || '—')}</td><td>${ENCUESTA_LABELS[t.encuesta] || '—'}</td></tr>`,
+  ).join('');
+}
+
 export function generarReporteTickets(datos, periodoLabel, rangoLabel) {
   const hoy = formatFecha(new Date().toISOString());
   const tasaRespuesta = datos.encuestasEnviadas
@@ -54,6 +63,7 @@ export function generarReporteTickets(datos, periodoLabel, rangoLabel) {
   table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
   td, th { padding: 4px 8px; border: 1px solid #bbb; vertical-align: top; text-align: left; }
   td.num, th.num { text-align: right; width: 90px; }
+  td.codigo { font-family: 'Courier New', monospace; white-space: nowrap; width: 110px; }
   .vacio { color: #777; font-style: italic; text-align: center; }
   .kpis { display: flex; gap: 14px; margin-bottom: 14px; }
   .kpi { flex: 1; border: 1px solid #bbb; border-radius: 4px; padding: 10px; text-align: center; }
@@ -89,6 +99,12 @@ export function generarReporteTickets(datos, periodoLabel, rangoLabel) {
   <h2>Desempeño por técnico (resueltos en el periodo)</h2>
   <table><tbody>${filasTecnicos(datos.porTecnicoNombres)}</tbody></table>
 
+  <h2>Tickets del periodo</h2>
+  <table>
+    <thead><tr><th>Ticket</th><th>Solicitante</th><th>Encuesta</th></tr></thead>
+    <tbody>${filasTicketsPeriodo(datos.ticketsPeriodo)}</tbody>
+  </table>
+
   <h2>Satisfacción del servicio</h2>
   <table>
     <tr><td>Encuestas enviadas</td><td class="num">${datos.encuestasEnviadas}</td></tr>
@@ -106,7 +122,7 @@ export function generarReporteTickets(datos, periodoLabel, rangoLabel) {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank', 'noopener,width=850,height=1000');
+  const win = window.open('', '_blank', 'width=850,height=1000');
   if (!win) throw new Error('El navegador bloqueó la ventana de impresión. Permite ventanas emergentes.');
   win.document.write(html);
   win.document.close();

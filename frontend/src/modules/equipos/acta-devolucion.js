@@ -1,4 +1,4 @@
-// Acta de entrega de equipo — documento imprimible para firma física.
+// Acta de devolución de equipo — documento imprimible para firma física.
 // Se abre en una ventana nueva lista para imprimir o guardar como PDF.
 import { formatFecha } from '../../core/formatters.js';
 
@@ -6,9 +6,17 @@ function esc(v) {
   return String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-export function generarActa(equipo, empleado) {
+const MOTIVO_LABELS = {
+  devolucion: 'Devolución normal',
+  cambio_equipo: 'Cambio de equipo',
+  baja_empleado: 'Baja del empleado',
+  perdida: 'Pérdida / robo',
+};
+
+export function generarActaDevolucion(equipo, empleado, datosDevolucion) {
   const hoy = formatFecha(new Date().toISOString());
-  const fechaEntrega = equipo.fecha_asignacion ? formatFecha(equipo.fecha_asignacion) : hoy;
+  const fechaDevolucion = datosDevolucion.fecha ? formatFecha(datosDevolucion.fecha) : hoy;
+  const motivoLabel = MOTIVO_LABELS[datosDevolucion.motivo] || datosDevolucion.motivo || '—';
 
   const lineas = equipo.accesorios_lineas?.length
     ? equipo.accesorios_lineas
@@ -25,7 +33,7 @@ export function generarActa(equipo, empleado) {
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Acta de entrega — ${esc(equipo.codigo)}</title>
+<title>Acta de devolución — ${esc(equipo.codigo)}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -59,10 +67,10 @@ export function generarActa(equipo, empleado) {
 </style>
 </head>
 <body>
-  <h1>Acta de Entrega de Equipo</h1>
-  <p class="subtitulo">${esc(equipo.empresa_nombre || 'Sistema TI')} — ${esc(fechaEntrega)}</p>
+  <h1>Acta de Devolución de Equipo</h1>
+  <p class="subtitulo">${esc(equipo.empresa_nombre || 'Sistema TI')} — ${esc(fechaDevolucion)}</p>
 
-  <h2>1. Datos del receptor</h2>
+  <h2>1. Datos de quien devuelve</h2>
   <table>
     <tr><td class="lbl">Nombre completo</td><td>${esc(empleado.nombres)} ${esc(empleado.apellidos)}</td></tr>
     <tr><td class="lbl">DNI</td><td>${esc(empleado.dni)}</td></tr>
@@ -77,33 +85,38 @@ export function generarActa(equipo, empleado) {
     <tr><td class="lbl">Tipo</td><td>${esc(equipo.tipo_nombre)}</td></tr>
     <tr><td class="lbl">Marca / Modelo</td><td>${esc(equipo.marca || '—')} ${esc(equipo.modelo || '')}</td></tr>
     <tr><td class="lbl">Número de serie</td><td>${esc(equipo.serie || '—')}</td></tr>
-    <tr><td class="lbl">Accesorios entregados</td><td>${accesorios}</td></tr>
-    <tr><td class="lbl">Condición de entrega</td><td>${esc(equipo.condicion_entrega || 'Operativo')}</td></tr>
-    <tr><td class="lbl">Fecha de entrega</td><td>${esc(fechaEntrega)}</td></tr>
+    <tr><td class="lbl">Accesorios devueltos</td><td>${accesorios}</td></tr>
+  </table>
+
+  <h2>3. Datos de la devolución</h2>
+  <table>
+    <tr><td class="lbl">Condición de devolución</td><td>${esc(datosDevolucion.condicion || '—')}</td></tr>
+    <tr><td class="lbl">Motivo</td><td>${esc(motivoLabel)}</td></tr>
+    <tr><td class="lbl">¿Enviado a reparación?</td><td>${datosDevolucion.aReparacion ? 'Sí' : 'No'}</td></tr>
+    <tr><td class="lbl">Fecha de devolución</td><td>${esc(fechaDevolucion)}</td></tr>
   </table>
 
   <p class="clausula">
-    Declaro haber recibido el equipo descrito en la presente acta, junto con los
-    accesorios detallados, en la condición indicada, y me comprometo a: (a) darle
-    uso exclusivamente laboral; (b) custodiarlo y mantenerlo en buen estado;
-    (c) reportar de inmediato al área de TI cualquier falla, daño, pérdida o robo;
-    y (d) devolverlo con todos sus accesorios al término de la relación laboral o
-    cuando el área de TI lo requiera. Asumo responsabilidad por los daños o
-    pérdidas atribuibles a negligencia en su uso o custodia.
+    Declaro haber devuelto el equipo descrito en la presente acta, junto con los
+    accesorios detallados, en la condición indicada, quedando liberado de la
+    responsabilidad de custodia asumida al momento de la entrega. El área de TI
+    verificará el estado del equipo y, de existir daños o faltantes no reportados
+    en este documento, se reserva el derecho de determinar la responsabilidad
+    correspondiente.
   </p>
 
   <div class="firmas">
     <div class="firma">
       <div class="linea">
-        <span class="rol">Entrega — Área de TI</span><br>
-        Nombre y firma
+        <span class="rol">Entrega conforme</span><br>
+        ${esc(empleado.nombres)} ${esc(empleado.apellidos)}<br>
+        DNI: ${esc(empleado.dni)}
       </div>
     </div>
     <div class="firma">
       <div class="linea">
-        <span class="rol">Recibe conforme</span><br>
-        ${esc(empleado.nombres)} ${esc(empleado.apellidos)}<br>
-        DNI: ${esc(empleado.dni)}
+        <span class="rol">Recibe — Área de TI</span><br>
+        Nombre y firma
       </div>
     </div>
   </div>

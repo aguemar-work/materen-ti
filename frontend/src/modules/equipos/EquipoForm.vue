@@ -793,7 +793,7 @@ async function guardar() {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 768px) {
   .acc-lista-head,
   .acc-fila,
   .acc-nueva {

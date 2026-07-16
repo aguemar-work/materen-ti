@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES, estadoInfo, prioridadInfo } from '../../core/dominio-tickets.js';
 import { formatFechaHora } from '../../core/formatters.js';
@@ -11,6 +12,7 @@ import { showToast } from '../../core/toast.js';
 import TicketInternoForm from './TicketInternoForm.vue';
 import ReporteTicketsModal from './ReporteTicketsModal.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -19,6 +21,8 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 const router = useRouter();
 const store = useTicketsStore();
 const { lista, total, cargando, error } = storeToRefs(store);
+
+useRealtimeRefresco('tickets:list', () => store.cargar());
 
 const busqueda = ref('');
 const filtroEstado = ref('');
@@ -97,6 +101,23 @@ async function copiarEnlace(ruta, mensaje) {
   }
 }
 
+// En móvil los 4 botones secundarios del header se condensan en un menú
+// "Más" (patrón mobile); en escritorio siguen como botones sueltos.
+const accionesMas = computed(() => [
+  {
+    icono: 'ti-link',
+    label: 'Copiar enlace para reportar',
+    onClick: () => copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado'),
+  },
+  {
+    icono: 'ti-search',
+    label: 'Copiar enlace de búsqueda',
+    onClick: () => copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado'),
+  },
+  { icono: 'ti-table-export', label: 'Exportar', disabled: exportando.value, onClick: exportar },
+  { icono: 'ti-report', label: 'Reporte', onClick: () => { mostrarReporte.value = true; } },
+]);
+
 function onNuevoCerrado(creado) {
   mostrarNuevo.value = false;
   if (creado) {
@@ -119,18 +140,19 @@ onMounted(async () => {
   <div class="tickets-page vista-modulo">
     <PageHeader titulo="Tickets" icono="ti ti-headset" :conteo="total">
       <template #acciones>
-        <button class="btn" type="button" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
+        <button class="btn solo-escritorio" type="button" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
           <i class="ti ti-link" aria-hidden="true"></i> Copiar enlace para reportar
         </button>
-        <button class="btn" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
+        <button class="btn solo-escritorio" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
           <i class="ti ti-search" aria-hidden="true"></i> Copiar enlace de búsqueda
         </button>
-        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
+        <button class="btn solo-escritorio" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
           <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
         </button>
-        <button class="btn" type="button" @click="mostrarReporte = true">
+        <button class="btn solo-escritorio" type="button" @click="mostrarReporte = true">
           <i class="ti ti-report" aria-hidden="true"></i> Reporte
         </button>
+        <MenuAcciones class="solo-movil solo-movil--flex" texto="Más" label="Más acciones" :acciones="accionesMas" />
         <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
           <i class="ti ti-plus" aria-hidden="true"></i> Ticket interno
         </button>
@@ -170,7 +192,8 @@ onMounted(async () => {
           :mensaje="busqueda || filtroEstado || filtroPrioridad ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
         />
 
-        <div v-else class="table-wrap">
+        <template v-else>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Tickets de soporte">
             <thead>
               <tr>
@@ -198,20 +221,47 @@ onMounted(async () => {
                   <div class="user-name">{{ t.titulo }}</div>
                 </td>
                 <td>
-                  <span v-if="t.categoria" class="badge badge--sky">{{ t.categoria }}</span>
+                  <span v-if="t.categoria" class="badge badge--accent">{{ t.categoria }}</span>
                   <TextoVacio v-else />
                 </td>
                 <td><BadgeEstado tipo="ticket" :valor="t.estado" /></td>
                 <td><BadgeEstado tipo="prioridad" :valor="t.prioridad" /></td>
                 <td>
-                  <span v-if="!t.asignado_a" class="badge badge--neutral">Sin asignar</span>
+                  <TextoVacio v-if="!t.asignado_a" placeholder="Sin asignar" />
                   <template v-else>{{ staffPorId[t.asignado_a] || 'Staff' }}</template>
                 </td>
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul class="lista-tarjetas solo-movil" aria-label="Tickets de soporte">
+          <li v-for="t in lista" :key="t.id" class="tarjeta-fila tarjeta-fila--clic" @click="verTicket(t)">
+            <div class="tarjeta-fila__cab">
+              <RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${t.id}`" @click.stop>{{ t.codigo }}</RouterLink>
+              <span class="fecha-cell">{{ formatFechaHora(t.created_at) }}</span>
+            </div>
+            <div class="tarjeta-fila__principal">{{ t.titulo }}</div>
+            <div class="tarjeta-fila__sec">
+              <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
+                <i class="ti ti-alert-triangle"></i> Sin vincular
+              </span>
+              <TextoVacio v-else :valor="t.solicitante" />
+              <span aria-hidden="true">·</span>
+              <TextoVacio v-if="!t.asignado_a" placeholder="Sin asignar" />
+              <template v-else>{{ staffPorId[t.asignado_a] || 'Staff' }}</template>
+            </div>
+            <div class="tarjeta-fila__badges">
+              <BadgeEstado tipo="ticket" :valor="t.estado" />
+              <BadgeEstado tipo="prioridad" :valor="t.prioridad" />
+              <span v-if="t.categoria" class="badge badge--accent">{{ t.categoria }}</span>
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        </template>
       </div>
     </main>
 

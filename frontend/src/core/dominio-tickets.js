@@ -11,10 +11,13 @@ export const ESTADOS_TICKET = {
   rechazado:   { label: 'Rechazado',     clase: 'badge--neutral' },
 };
 
+// Paleta propia, separada de ESTADOS_TICKET — Estado y Prioridad se pintan
+// una junto a la otra en la misma fila y no pueden compartir color con
+// significado distinto (ver GUIA-UX-UI.md).
 export const PRIORIDADES_TICKET = {
   baja:    { label: 'Baja',    clase: 'badge--neutral' },
-  media:   { label: 'Media',   clase: 'badge--info' },
-  alta:    { label: 'Alta',    clase: 'badge--warning' },
+  media:   { label: 'Media',   clase: 'badge--teal' },
+  alta:    { label: 'Alta',    clase: 'badge--purple' },
   urgente: { label: 'Urgente', clase: 'badge--danger' },
 };
 

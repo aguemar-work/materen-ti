@@ -1,7 +1,9 @@
 <script setup>
 // Cabecera de módulo: título + slot de acciones (un solo .btn-primary por vista).
+// El título puede venir por prop o por el slot #izquierda (vistas de detalle),
+// por eso la prop no es required.
 defineProps({
-  titulo: { type: String, required: true },
+  titulo: { type: String, default: '' },
   icono: { type: String, default: '' },
   conteo: { type: [Number, String], default: null },
 });

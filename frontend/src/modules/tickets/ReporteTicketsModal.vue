@@ -11,6 +11,7 @@ import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import { showToast } from '../../core/toast.js';
 import { generarReporteTickets } from './reporte.js';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 const props = defineProps({
   staffPorId: { type: Object, default: () => ({}) },
@@ -182,6 +183,25 @@ onMounted(cargar);
             </div>
 
             <div class="rep-seccion">
+              <div class="datos-title">Tickets del periodo</div>
+              <table class="rep-tabla">
+                <thead><tr><th>Ticket</th><th>Solicitante</th><th>Encuesta</th></tr></thead>
+                <tbody>
+                  <tr v-for="t in datos.ticketsPeriodo" :key="t.codigo">
+                    <td class="rep-codigo">{{ t.codigo }}</td>
+                    <td><TextoVacio :valor="t.solicitante" /></td>
+                    <td>
+                      <span v-if="t.encuesta === 'respondida'" class="badge badge--success">Respondida</span>
+                      <span v-else-if="t.encuesta === 'pendiente'" class="badge badge--warning">Pendiente</span>
+                      <TextoVacio v-else />
+                    </td>
+                  </tr>
+                  <tr v-if="!datos.ticketsPeriodo.length"><td colspan="3" class="rep-vacio">Sin tickets creados en el periodo</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="rep-seccion">
               <div class="datos-title">Satisfacción del servicio</div>
               <p class="tk-detalle">{{ datos.encuestasRespondidas }} de {{ datos.encuestasEnviadas }} encuestas respondidas ({{ tasaRespuesta }}%)</p>
               <ul v-if="datos.comentarios.length" class="rep-comentarios">
@@ -221,12 +241,13 @@ onMounted(cargar);
 .rep-tabla th, .rep-tabla td { padding: 5px 8px; border-bottom: 1px solid var(--color-border); text-align: left; }
 .rep-tabla .num { text-align: right; }
 .rep-vacio { color: var(--color-text-tertiary); font-style: italic; text-align: center; }
+.rep-codigo { font-family: var(--font-mono, monospace); white-space: nowrap; }
 
 .rep-comentarios { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .rep-comentarios li { font-size: var(--fs-base); border-bottom: 1px solid var(--color-border); padding-bottom: 6px; }
 .rep-fecha { color: var(--color-text-tertiary); font-size: var(--fs-sm); }
 
-@media (max-width: 700px) {
+@media (max-width: 768px) {
   .rep-cols { grid-template-columns: 1fr; }
   .rep-kpis { grid-template-columns: repeat(2, 1fr); }
 }

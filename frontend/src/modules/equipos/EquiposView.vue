@@ -4,22 +4,28 @@ import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
 import { SITUACIONES_EQUIPO, situacionInfo } from '../../core/dominio-equipos.js';
 import { generarActa } from './acta.js';
+import { generarActaDevolucion } from './acta-devolucion.js';
 import EquipoForm from './EquipoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const store = useEquiposStore();
 const { lista, total, cargando, error } = storeToRefs(store);
+
+useRealtimeRefresco('equipos:list', () => store.cargar());
 
 // Deep-link desde la búsqueda global: /equipos?q=CODIGO precarga el buscador.
 const route = useRoute();
@@ -110,37 +116,14 @@ function onFormCerrado(guardado) {
 const mostrarAsignar = ref(false);
 const equipoAsignar = ref(null);
 const empleadosActivos = ref([]);
-const busquedaEmpleado = ref('');
 const empleadoSelId = ref('');
-const listaEmpAbierta = ref(false);
 const condicionEntrega = ref('');
 const procesando = ref(false);
 const errorAsignar = ref('');
 
-const empleadosFiltrados = computed(() => {
-  const q = busquedaEmpleado.value.trim().toLowerCase();
-  const base = q
-    ? empleadosActivos.value.filter((e) =>
-        `${e.nombres} ${e.apellidos}`.toLowerCase().includes(q) || e.dni.includes(q))
-    : empleadosActivos.value;
-  return base.slice(0, 8);
-});
-
-function seleccionarEmpleado(e) {
-  empleadoSelId.value = e.id;
-  busquedaEmpleado.value = `${e.nombres} ${e.apellidos}`;
-  listaEmpAbierta.value = false;
-}
-
-function cerrarListaEmpleados() {
-  // Pequeño retraso para que el clic en una opción alcance a ejecutarse
-  setTimeout(() => { listaEmpAbierta.value = false; }, 150);
-}
-
 async function abrirAsignar(equipo) {
   equipoAsignar.value = equipo;
   empleadoSelId.value = '';
-  busquedaEmpleado.value = '';
   condicionEntrega.value = '';
   errorAsignar.value = '';
   mostrarAsignar.value = true;
@@ -197,13 +180,26 @@ function abrirDevolver(equipo) {
 async function confirmarDevolver() {
   procesando.value = true;
   try {
-    await store.devolver(equipoDevolver.value.asignacion_id, equipoDevolver.value.id, {
+    const datosDevolucion = {
       condicion: condicionDevolucion.value,
       motivo: motivoCierre.value,
       aReparacion: aReparacion.value,
+      fecha: new Date().toISOString(),
+    };
+    await store.devolver(equipoDevolver.value.asignacion_id, equipoDevolver.value.id, {
+      condicion: datosDevolucion.condicion,
+      motivo: datosDevolucion.motivo,
+      aReparacion: datosDevolucion.aReparacion,
     });
+    const equipoDevuelto = equipoDevolver.value;
     mostrarDevolver.value = false;
-    showToast(`${equipoDevolver.value.codigo} devuelto${aReparacion.value ? ' — enviado a reparación' : ''}`);
+    showToast(`${equipoDevuelto.codigo} devuelto${aReparacion.value ? ' — enviado a reparación' : ''}`);
+    try {
+      const empleado = await insforgeApi.getEmpleado(equipoDevuelto.empleado_id);
+      if (empleado) generarActaDevolucion(equipoDevuelto, empleado, datosDevolucion);
+    } catch (e) {
+      showToast(e?.message || 'No se pudo generar el acta de devolución', 'error');
+    }
   } catch (e) {
     showToast(e?.message || 'Error al registrar devolución', 'error');
   } finally {
@@ -388,6 +384,37 @@ async function verHoja(equipo) {
   }
 }
 
+// ── Acciones por equipo ───────────────────────────────────────
+// Fuente única de las acciones condicionales por fila: la tabla de
+// escritorio las pinta como icon-btn y las tarjetas móviles como menú ⋮.
+// Las condiciones `visible` replican el estado físico/derivado del equipo.
+function accionesDe(eq) {
+  const enAlmacen = eq.situacion === 'disponible' || eq.situacion === 'en_ubicacion';
+  return [
+    { icono: 'ti-user-plus', label: 'Entregar a un empleado', visible: enAlmacen, onClick: () => abrirAsignar(eq) },
+    { icono: 'ti-map-pin', label: 'Mover a una ubicación', visible: enAlmacen, onClick: () => abrirMover(eq) },
+    { icono: 'ti-printer', label: 'Imprimir acta de entrega', visible: eq.situacion === 'asignado', onClick: () => imprimirActa(eq) },
+    { icono: 'ti-arrow-back-up', label: 'Registrar devolución', visible: eq.situacion === 'asignado', onClick: () => abrirDevolver(eq) },
+    { icono: 'ti-tool', label: 'Enviar a reparación', visible: enAlmacen, onClick: () => pedirCambiarEstado(eq, 'en_reparacion', 'En reparación') },
+    { icono: 'ti-circle-check', label: 'Marcar reparado (operativo)', visible: eq.situacion === 'en_reparacion', onClick: () => pedirCambiarEstado(eq, 'operativo', 'Operativo') },
+    { icono: 'ti-history', label: 'Hoja de vida', onClick: () => verHoja(eq) },
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(eq) },
+    {
+      icono: 'ti-circle-off',
+      label: 'Dar de baja el equipo',
+      danger: true,
+      visible: eq.situacion !== 'asignado' && eq.estado !== 'de_baja',
+      onClick: () => pedirCambiarEstado(eq, 'de_baja', 'De baja'),
+    },
+    { icono: 'ti-refresh', label: 'Reactivar equipo', visible: eq.situacion === 'de_baja', onClick: () => pedirReactivar(eq) },
+    { icono: 'ti-circle-check', label: 'Marcar como recuperado', visible: eq.situacion === 'perdido', onClick: () => pedirRecuperar(eq) },
+  ];
+}
+
+function accionesVisibles(eq) {
+  return accionesDe(eq).filter((a) => a.visible !== false);
+}
+
 onMounted(async () => {
   try {
     const q = busqueda.value.trim();
@@ -446,7 +473,8 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else class="table-wrap">
+        <template v-else>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Inventario de equipos">
             <thead>
               <tr>
@@ -470,7 +498,7 @@ onMounted(async () => {
                     </a>
                     <div>
                       <div class="user-name">{{ eq.tipo_nombre }} {{ eq.marca }}</div>
-                      <span class="eq-modelo">{{ eq.modelo || '—' }}{{ eq.empresa_nombre ? ` · ${eq.empresa_nombre}` : '' }}</span>
+                      <span class="eq-modelo"><TextoVacio :valor="eq.modelo" />{{ eq.empresa_nombre ? ` · ${eq.empresa_nombre}` : '' }}</span>
                     </div>
                   </div>
                 </td>
@@ -502,108 +530,68 @@ onMounted(async () => {
                 <td>
                   <div class="actions">
                     <button
-                      v-if="eq.situacion === 'disponible' || eq.situacion === 'en_ubicacion'"
+                      v-for="a in accionesVisibles(eq)"
+                      :key="a.label"
                       class="icon-btn"
+                      :class="{ danger: a.danger }"
                       type="button"
-                      title="Entregar a un empleado"
-                      aria-label="Entregar a un empleado"
-                      @click="abrirAsignar(eq)"
+                      :title="a.label"
+                      :aria-label="a.label"
+                      @click="a.onClick"
                     >
-                      <i class="ti ti-user-plus"></i>
-                    </button>
-                    <button
-                      v-if="eq.situacion === 'disponible' || eq.situacion === 'en_ubicacion'"
-                      class="icon-btn"
-                      type="button"
-                      title="Mover a una ubicación"
-                      aria-label="Mover a una ubicación"
-                      @click="abrirMover(eq)"
-                    >
-                      <i class="ti ti-map-pin"></i>
-                    </button>
-                    <button
-                      v-if="eq.situacion === 'asignado'"
-                      class="icon-btn"
-                      type="button"
-                      title="Imprimir acta de entrega"
-                      aria-label="Imprimir acta de entrega"
-                      @click="imprimirActa(eq)"
-                    >
-                      <i class="ti ti-printer"></i>
-                    </button>
-                    <button
-                      v-if="eq.situacion === 'asignado'"
-                      class="icon-btn"
-                      type="button"
-                      title="Registrar devolución"
-                      aria-label="Registrar devolución"
-                      @click="abrirDevolver(eq)"
-                    >
-                      <i class="ti ti-arrow-back-up"></i>
-                    </button>
-                    <button
-                      v-if="eq.situacion === 'disponible' || eq.situacion === 'en_ubicacion'"
-                      class="icon-btn"
-                      type="button"
-                      title="Enviar a reparación"
-                      aria-label="Enviar a reparación"
-                      @click="pedirCambiarEstado(eq, 'en_reparacion', 'En reparación')"
-                    >
-                      <i class="ti ti-tool"></i>
-                    </button>
-                    <button
-                      v-if="eq.situacion === 'en_reparacion'"
-                      class="icon-btn"
-                      type="button"
-                      title="Marcar reparado (operativo)"
-                      aria-label="Marcar reparado (operativo)"
-                      @click="pedirCambiarEstado(eq, 'operativo', 'Operativo')"
-                    >
-                      <i class="ti ti-circle-check"></i>
-                    </button>
-                    <button class="icon-btn" type="button" title="Hoja de vida" aria-label="Hoja de vida" @click="verHoja(eq)">
-                      <i class="ti ti-history"></i>
-                    </button>
-                    <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(eq)">
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button
-                      v-if="eq.situacion !== 'asignado' && eq.estado !== 'de_baja'"
-                      class="icon-btn danger"
-                      type="button"
-                      title="Dar de baja el equipo"
-                      aria-label="Dar de baja el equipo"
-                      @click="pedirCambiarEstado(eq, 'de_baja', 'De baja')"
-                    >
-                      <i class="ti ti-circle-off"></i>
-                    </button>
-                    <button
-                      v-if="eq.situacion === 'de_baja'"
-                      class="icon-btn"
-                      type="button"
-                      title="Reactivar equipo"
-                      aria-label="Reactivar equipo"
-                      @click="pedirReactivar(eq)"
-                    >
-                      <i class="ti ti-refresh"></i>
-                    </button>
-                    <button
-                      v-if="eq.situacion === 'perdido'"
-                      class="icon-btn"
-                      type="button"
-                      title="Marcar como recuperado"
-                      aria-label="Marcar como recuperado"
-                      @click="pedirRecuperar(eq)"
-                    >
-                      <i class="ti ti-circle-check"></i>
+                      <i class="ti" :class="a.icono"></i>
                     </button>
                   </div>
                 </td>
               </tr>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul class="lista-tarjetas solo-movil" aria-label="Inventario de equipos">
+          <li v-for="eq in lista" :key="eq.id" class="tarjeta-fila">
+            <div class="tarjeta-fila__cab">
+              <span class="eq-codigo">{{ eq.codigo }}</span>
+              <a v-if="eq.fotos.length" class="eq-foto" :href="eq.fotos[0].url" target="_blank" rel="noopener noreferrer" title="Ver foto" aria-label="Ver foto del equipo">
+                <img :src="eq.fotos[0].url" alt="">
+              </a>
+            </div>
+            <div class="tarjeta-fila__principal user-name">{{ eq.tipo_nombre }} {{ eq.marca }}</div>
+            <div class="tarjeta-fila__sec">
+              <TextoVacio :valor="eq.modelo" />
+              <template v-if="eq.empresa_nombre"><span aria-hidden="true">·</span><span>{{ eq.empresa_nombre }}</span></template>
+              <template v-if="eq.serie"><span aria-hidden="true">·</span><span class="eq-serie">{{ eq.serie }}</span></template>
+            </div>
+            <div v-if="eq.portador || eq.ubicacion_nombre" class="tarjeta-fila__sec">
+              <template v-if="eq.portador">
+                <RouterLink class="portador-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
+                <span v-if="eq.portador_inactivo" class="badge badge--danger badge-sin-devolver" title="Este empleado fue dado de baja y no ha devuelto el equipo">
+                  <i class="ti ti-alert-triangle"></i> Sin devolver
+                </span>
+              </template>
+              <span v-else class="ubicacion-nombre">
+                <i class="ti ti-map-pin"></i> {{ eq.ubicacion_nombre }}
+              </span>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <span class="badge-group" :title="badgesSituacion(eq).map(b => b.label).join(' · ')">
+                <span
+                  v-for="b in badgesSituacion(eq)"
+                  :key="b.label"
+                  class="badge"
+                  :class="[b.clase, { 'badge-fisico': b.fisico }]"
+                >
+                  {{ b.label }}
+                </span>
+              </span>
+              <MenuAcciones :acciones="accionesDe(eq)" :label="`Acciones de ${eq.codigo}`" />
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        </template>
       </div>
     </main>
 
@@ -620,30 +608,9 @@ onMounted(async () => {
         <div class="modal-body">
           <p class="modal-info">{{ equipoAsignar?.tipo_nombre }} {{ equipoAsignar?.marca }} {{ equipoAsignar?.modelo }}</p>
 
-          <div class="form-group combo-emp">
+          <div class="form-group">
             <label for="asig-emp">Empleado *</label>
-            <div class="combo-wrap">
-              <i class="ti ti-search combo-icon"></i>
-              <input
-                id="asig-emp"
-                v-model="busquedaEmpleado"
-                type="text"
-                autocomplete="off"
-                placeholder="Buscar por nombre o DNI..."
-                :class="{ 'combo-ok': empleadoSelId }"
-                @input="empleadoSelId = ''; listaEmpAbierta = true"
-                @focus="listaEmpAbierta = true"
-                @blur="cerrarListaEmpleados"
-              >
-              <i v-if="empleadoSelId" class="ti ti-circle-check combo-check"></i>
-              <ul v-if="listaEmpAbierta && !empleadoSelId" class="combo-lista">
-                <li v-if="empleadosFiltrados.length === 0" class="combo-vacio">Sin resultados</li>
-                <li v-for="e in empleadosFiltrados" :key="e.id" @mousedown.prevent="seleccionarEmpleado(e)">
-                  <span>{{ e.nombres }} {{ e.apellidos }}</span>
-                  <span class="combo-sec">{{ e.dni }}</span>
-                </li>
-              </ul>
-            </div>
+            <BuscadorEmpleado id="asig-emp" v-model="empleadoSelId" :empleados="empleadosActivos" :disabled="procesando" />
           </div>
 
           <div class="form-group">
@@ -940,36 +907,6 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--color-text-secondary);
 }
-
-/* Combobox empleado */
-.combo-wrap { position: relative; }
-.combo-icon {
-  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--color-text-secondary); font-size: 15px; pointer-events: none;
-}
-.combo-wrap input { width: 100%; padding-left: 32px; padding-right: 32px; }
-.combo-wrap input.combo-ok { border-color: var(--color-success); }
-.combo-check {
-  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--color-success); font-size: 16px; pointer-events: none;
-}
-.combo-lista {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
-  margin: 0; padding: 4px; list-style: none;
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  max-height: 240px; overflow-y: auto;
-}
-.combo-lista li {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px;
-}
-.combo-lista li:hover { background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent); }
-.combo-vacio { color: var(--color-text-secondary); cursor: default !important; font-size: 12.5px; }
-.combo-vacio:hover { background: none !important; }
-.combo-sec { font-size: 11.5px; color: var(--color-text-secondary); }
 
 /* Hoja de vida */
 .hoja-lista {

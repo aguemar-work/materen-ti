@@ -237,23 +237,23 @@ onMounted(cargar);
               </div>
               <div class="dato">
                 <dt>Empresa</dt>
-                <dd>{{ empleado.empresa_nombre || '—' }}</dd>
+                <dd><TextoVacio :valor="empleado.empresa_nombre" /></dd>
               </div>
               <div class="dato">
                 <dt>Cargo</dt>
-                <dd>{{ empleado.cargo || '—' }}</dd>
+                <dd><TextoVacio :valor="empleado.cargo" /></dd>
               </div>
               <div class="dato">
                 <dt>Área/Obra</dt>
-                <dd>{{ empleado.area_obra_nombre || '—' }}</dd>
+                <dd><TextoVacio :valor="empleado.area_obra_nombre" /></dd>
               </div>
               <div class="dato">
                 <dt>Fecha de alta</dt>
-                <dd>{{ formatFecha(empleado.fecha_alta) || '—' }}</dd>
+                <dd><TextoVacio :valor="formatFecha(empleado.fecha_alta)" /></dd>
               </div>
               <div class="dato">
                 <dt>Teléfono</dt>
-                <dd>{{ formatTelefono(empleado.telefono) || '—' }}</dd>
+                <dd><TextoVacio :valor="formatTelefono(empleado.telefono)" /></dd>
               </div>
               <div class="dato">
                 <dt>WhatsApp</dt>
@@ -267,12 +267,12 @@ onMounted(cargar);
                   >
                     <i class="ti ti-brand-whatsapp"></i> {{ formatTelefono(empleado.whatsapp) }}
                   </a>
-                  <template v-else>—</template>
+                  <TextoVacio v-else />
                 </dd>
               </div>
               <div class="dato">
                 <dt>Correo personal</dt>
-                <dd class="dato-truncar" :title="empleado.correo_personal">{{ empleado.correo_personal || '—' }}</dd>
+                <dd class="dato-truncar" :title="empleado.correo_personal"><TextoVacio :valor="empleado.correo_personal" /></dd>
               </div>
               <div v-if="empleado.notas" class="dato dato--notas">
                 <dt>Notas</dt>
@@ -621,7 +621,9 @@ onMounted(cargar);
 
 .paneles-duo {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* min(320px, 100%): en teléfonos angostos (<352px de viewport) la
+     columna cede en lugar de desbordar horizontalmente */
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
   align-items: start;
 }

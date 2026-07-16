@@ -1,13 +1,25 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { getClient } from '../../api/client.js';
 import { estadoInfo } from '../../core/dominio-tickets.js';
 import { temaActual, alternarTema } from '../../core/tema.js';
 
 const router = useRouter();
 const auth = useAuthStore();
+
+// Conexión realtime única por sesión: las vistas solo se suscriben/
+// desuscriben a sus canales (ver useRealtimeRefresco), este layout
+// abre y cierra el socket mientras dure la sesión de staff.
+onMounted(() => {
+  getClient().realtime.connect();
+});
+
+onUnmounted(() => {
+  getClient().realtime.disconnect();
+});
 
 const sidebarAbierto = ref(false);
 

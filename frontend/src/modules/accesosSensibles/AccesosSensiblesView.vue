@@ -227,7 +227,7 @@ onMounted(async () => {
 }
 
 .password-text {
-  font-family: monospace;
+  font-family: var(--font-mono, monospace);
   letter-spacing: 0.05em;
   min-width: 72px;
 }
