@@ -23,6 +23,7 @@ export function useRealtimeRefresco(canal, callback) {
         console.warn(`[realtime] no se pudo suscribir a "${canal}":`, res.error);
         return;
       }
+      console.info(`[realtime] suscrito a "${canal}"`);
       rt.on('changed', alCambiar);
     } catch (e) {
       // Sin auto-refresco; la vista sigue operando con carga inicial.

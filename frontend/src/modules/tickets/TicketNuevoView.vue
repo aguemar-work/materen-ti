@@ -208,24 +208,11 @@ onMounted(async () => {
         <div class="ticket-ok-icon"><i class="ti ti-circle-check"></i></div>
         <h2 class="ticket-title">Solicitud registrada</h2>
         <p class="ticket-texto">
-          Tu código de seguimiento es <strong>{{ resultado.codigo }}</strong>.
-        </p>
-        <p class="ticket-texto">
-          Guarda este enlace para ver el estado de tu solicitud en cualquier momento:
+          Código: <strong>{{ resultado.codigo }}</strong>
         </p>
         <RouterLink class="ticket-link" :to="`/ticket/${resultado.token}`">
-          {{ resultado.codigo }} — Ver seguimiento
+          Ver seguimiento
         </RouterLink>
-        <p class="aviso-correo-off">
-          <i class="ti ti-info-circle" aria-hidden="true"></i>
-          <span>Guarda el enlace de arriba: es tu comprobante. El correo automático puede no enviarse; el seguimiento siempre funciona desde este enlace o buscando por DNI.</span>
-        </p>
-        <p v-if="resultado.vinculado" class="ticket-texto ticket-nota">
-          Si dejaste un correo, intentamos enviarte este enlace — no dependas solo del correo.
-        </p>
-        <p v-else class="ticket-texto ticket-nota">
-          No pudimos identificarte automáticamente — un agente revisará tu caso a la brevedad.
-        </p>
         <p class="ticket-texto ticket-nota">
           Si pierdes este enlace, puedes <RouterLink to="/ticket/buscar">buscar tu ticket por DNI</RouterLink>.
         </p>

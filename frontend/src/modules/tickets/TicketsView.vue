@@ -104,18 +104,18 @@ async function copiarEnlace(ruta, mensaje) {
 // En móvil los 4 botones secundarios del header se condensan en un menú
 // "Más" (patrón mobile); en escritorio siguen como botones sueltos.
 const accionesMas = computed(() => [
+  { icono: 'ti-table-export', label: 'Exportar', disabled: exportando.value, onClick: exportar },
+  { icono: 'ti-report', label: 'Reporte', onClick: () => { mostrarReporte.value = true; } },
   {
     icono: 'ti-link',
-    label: 'Copiar enlace para reportar',
+    label: 'Enlace ticket',
     onClick: () => copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado'),
   },
   {
     icono: 'ti-search',
-    label: 'Copiar enlace de búsqueda',
+    label: 'Enlace búsqueda',
     onClick: () => copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado'),
   },
-  { icono: 'ti-table-export', label: 'Exportar', disabled: exportando.value, onClick: exportar },
-  { icono: 'ti-report', label: 'Reporte', onClick: () => { mostrarReporte.value = true; } },
 ]);
 
 function onNuevoCerrado(creado) {
@@ -140,17 +140,17 @@ onMounted(async () => {
   <div class="tickets-page vista-modulo">
     <PageHeader titulo="Tickets" icono="ti ti-headset" :conteo="total">
       <template #acciones>
-        <button class="btn solo-escritorio" type="button" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
-          <i class="ti ti-link" aria-hidden="true"></i> Copiar enlace para reportar
-        </button>
-        <button class="btn solo-escritorio" type="button" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
-          <i class="ti ti-search" aria-hidden="true"></i> Copiar enlace de búsqueda
-        </button>
         <button class="btn solo-escritorio" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
           <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
         </button>
         <button class="btn solo-escritorio" type="button" @click="mostrarReporte = true">
           <i class="ti ti-report" aria-hidden="true"></i> Reporte
+        </button>
+        <button class="btn solo-escritorio" type="button" title="Copiar enlace para reportar un ticket" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
+          <i class="ti ti-link" aria-hidden="true"></i> Enlace ticket
+        </button>
+        <button class="btn solo-escritorio" type="button" title="Copiar enlace de búsqueda por DNI" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
+          <i class="ti ti-search" aria-hidden="true"></i> Enlace búsqueda
         </button>
         <MenuAcciones class="solo-movil solo-movil--flex" texto="Más" label="Más acciones" :acciones="accionesMas" />
         <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
