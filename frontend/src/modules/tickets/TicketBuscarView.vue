@@ -38,10 +38,10 @@ async function buscar() {
     <div class="card public-card">
       <PublicBrand subtitulo="Buscar mis tickets" />
 
-      <h2 class="ticket-title">¿Perdiste el enlace de tu ticket?</h2>
+      <h2 class="ticket-title">Busca tu ticket</h2>
       <p class="ticket-subtitulo">
-        Ingresa tu DNI para ver tus solicitudes activas y las que tengan
-        una encuesta de satisfacción pendiente.
+        Ingresa tu DNI para consultar tus tickets activos y tus encuestas
+        de satisfacción pendientes.
       </p>
 
       <form class="ticket-form" @submit.prevent="buscar">

@@ -16,8 +16,15 @@ const auth = useAuthStore();
 // Conexión realtime única por sesión: las vistas solo se suscriben/
 // desuscriben a sus canales (ver useRealtimeRefresco), este layout
 // abre y cierra el socket mientras dure la sesión de staff.
+// Logs de diagnóstico: no rompen nada, solo ayudan a ver en consola si
+// el socket llegó a conectar o por qué no.
 onMounted(() => {
-  getClient().realtime.connect();
+  const rt = getClient().realtime;
+  rt.on('connect', () => console.info('[realtime] conectado'));
+  rt.on('connect_error', (err) => console.warn('[realtime] connect_error:', err));
+  rt.on('disconnect', (reason) => console.info('[realtime] desconectado:', reason));
+  rt.on('error', (err) => console.warn('[realtime] error:', err));
+  rt.connect().catch((err) => console.warn('[realtime] connect() rechazado:', err));
 });
 
 onUnmounted(() => {

@@ -18,10 +18,15 @@ export function useRealtimeRefresco(canal, callback) {
       const rt = getClient().realtime;
       if (!rt.isConnected) await rt.connect();
       const res = await rt.subscribe(canal);
-      if (!activo || !res.ok) return;
+      if (!activo) return;
+      if (!res.ok) {
+        console.warn(`[realtime] no se pudo suscribir a "${canal}":`, res.error);
+        return;
+      }
       rt.on('changed', alCambiar);
-    } catch {
+    } catch (e) {
       // Sin auto-refresco; la vista sigue operando con carga inicial.
+      console.warn(`[realtime] error al conectar/suscribir a "${canal}":`, e);
     }
   });
 
