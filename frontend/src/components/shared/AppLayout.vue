@@ -2,10 +2,13 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
+import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { getClient } from '../../api/client.js';
 import { estadoInfo } from '../../core/dominio-tickets.js';
 import { temaActual, alternarTema } from '../../core/tema.js';
+import { reproducirNotificacion } from '../../core/notificacionSonido.js';
+import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -19,6 +22,17 @@ onMounted(() => {
 
 onUnmounted(() => {
   getClient().realtime.disconnect();
+});
+
+// Suscripción única a tickets:list, vivida aquí (no en TicketsView) para
+// que el sonido de "ticket nuevo" suene sin importar qué pantalla esté
+// viendo el staff. El store es un singleton Pinia: llamar cargar() desde
+// aquí ya refresca TicketsView si está montada, sin que ella necesite su
+// propia suscripción al mismo canal.
+const ticketsStore = useTicketsStore();
+useRealtimeRefresco('tickets:list', (payload) => {
+  if (payload?.op === 'INSERT') reproducirNotificacion();
+  ticketsStore.cargar();
 });
 
 const sidebarAbierto = ref(false);

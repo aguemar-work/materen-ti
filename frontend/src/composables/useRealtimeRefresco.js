@@ -10,7 +10,7 @@ export function useRealtimeRefresco(canal, callback) {
 
   function alCambiar(payload) {
     if (payload?.meta?.channel !== canal) return;
-    callback();
+    callback(payload);
   }
 
   onMounted(async () => {

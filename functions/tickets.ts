@@ -338,9 +338,11 @@ export default async function (req: Request): Promise<Response> {
   }
 
   // ── buscarPorDni: público, para quien perdió el enlace de seguimiento ──
-  // Solo devuelve tickets ACTIVOS (nunca cerrados/rechazados/resueltos) y
-  // nunca revela si el DNI corresponde o no a un empleado real. Limitado
-  // por IP para frenar enumeración de DNIs (8 dígitos es poco espacio).
+  // Devuelve tickets ACTIVOS más los CERRADOS con encuesta de satisfacción
+  // pendiente (para que el empleado la complete aunque el envío automático
+  // haya fallado); nunca el resto del historial cerrado. Nunca revela si
+  // el DNI corresponde o no a un empleado real. Limitado por IP para
+  // frenar enumeración de DNIs (8 dígitos es poco espacio).
   if (body.action === 'buscarPorDni') {
     const dni = soloDigitos(String(body.dni || ''));
     if (dni.length !== 8) return json({ ok: false, code: 'dni_invalido' });
@@ -377,19 +379,44 @@ export default async function (req: Request): Promise<Response> {
       .from('empleados').select('id').eq('dni', dni).is('deleted_at', null).maybeSingle();
     if (!empleado) return json({ ok: true, tickets: [] });
 
-    const { data: tickets } = await admin.database
+    const { data: activos } = await admin.database
       .from('tickets')
       .select('codigo, titulo, estado, created_at, token')
       .eq('empleado_id', empleado.id)
       .in('estado', ['abierto', 'en_progreso', 'reabierto'])
       .order('created_at', { ascending: false });
 
-    return json({
-      ok: true,
-      tickets: (tickets || []).map((t) => ({
+    const { data: cerrados } = await admin.database
+      .from('tickets')
+      .select('id, codigo, titulo, estado, created_at, token')
+      .eq('empleado_id', empleado.id)
+      .eq('estado', 'cerrado')
+      .order('created_at', { ascending: false });
+
+    let pendientesEncuesta: typeof cerrados = [];
+    if (cerrados?.length) {
+      const idsCerrados = cerrados.map((t) => t.id);
+      const { data: encuestas } = await admin.database
+        .from('ticket_satisfaccion')
+        .select('ticket_id')
+        .in('ticket_id', idsCerrados)
+        .is('fecha_envio', null);
+      const idsPendientes = new Set((encuestas || []).map((e) => e.ticket_id));
+      pendientesEncuesta = cerrados.filter((t) => idsPendientes.has(t.id));
+    }
+
+    const tickets = [
+      ...(activos || []).map((t) => ({
         codigo: t.codigo, titulo: t.titulo, estado: t.estado, creado: t.created_at, token: t.token,
+        encuestaPendiente: false,
       })),
-    });
+      ...pendientesEncuesta.map((t) => ({
+        codigo: t.codigo, titulo: t.titulo, estado: t.estado, creado: t.created_at, token: t.token,
+        encuestaPendiente: true,
+      })),
+    ];
+
+    return json({ ok: true, tickets });
   }
 
   // ── encuesta: público, respuesta a la encuesta de satisfacción ──────

@@ -1,8 +1,9 @@
 <script setup>
 // Página PÚBLICA (sin sesión): para quien reportó un problema y perdió
-// el enlace de seguimiento. Solo muestra tickets ACTIVOS (nunca cerrados/
-// rechazados/resueltos) del DNI ingresado — la edge function nunca revela
-// si el DNI corresponde o no a un empleado real.
+// el enlace de seguimiento. Muestra tickets ACTIVOS del DNI ingresado más
+// los CERRADOS con encuesta de satisfacción pendiente (nunca el resto del
+// historial cerrado) — la edge function nunca revela si el DNI
+// corresponde o no a un empleado real.
 import { ref } from 'vue';
 import { buscarTicketsPorDni } from '../../api/ticketsPublicos.js';
 import { formatFecha } from '../../core/formatters.js';
@@ -39,7 +40,8 @@ async function buscar() {
 
       <h2 class="ticket-title">¿Perdiste el enlace de tu ticket?</h2>
       <p class="ticket-subtitulo">
-        Ingresa tu DNI para ver tus solicitudes activas.
+        Ingresa tu DNI para ver tus solicitudes activas y las que tengan
+        una encuesta de satisfacción pendiente.
       </p>
 
       <form class="ticket-form" @submit.prevent="buscar">
@@ -63,19 +65,22 @@ async function buscar() {
 
       <div v-if="resultados !== null" class="buscar-resultados">
         <p v-if="!resultados.length" class="ticket-texto ticket-nota">
-          No encontramos solicitudes activas para ese DNI. Si tu caso ya fue
-          resuelto o cerrado, no aparecerá aquí.
+          No encontramos solicitudes activas ni encuestas pendientes para
+          ese DNI.
         </p>
         <div v-else class="buscar-lista">
           <RouterLink
             v-for="t in resultados"
             :key="t.token"
             class="buscar-item"
-            :to="`/ticket/${t.token}`"
+            :to="t.encuestaPendiente ? `/ticket/${t.token}/satisfaccion` : `/ticket/${t.token}`"
           >
             <div class="buscar-item-head">
               <span class="segui-codigo">{{ t.codigo }}</span>
-              <span class="badge" :class="estadoInfo(t.estado).clase">{{ estadoInfo(t.estado).label }}</span>
+              <span v-if="t.encuestaPendiente" class="badge badge--accent">
+                <i class="ti ti-mood-smile" aria-hidden="true"></i> Encuesta pendiente
+              </span>
+              <span v-else class="badge" :class="estadoInfo(t.estado).clase">{{ estadoInfo(t.estado).label }}</span>
             </div>
             <div class="buscar-item-titulo">{{ t.titulo }}</div>
             <div class="buscar-item-fecha">Creado el {{ formatFecha(t.creado) }}</div>

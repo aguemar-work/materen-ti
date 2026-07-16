@@ -4,7 +4,6 @@ import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES, estadoInfo, prioridadInfo } from '../../core/dominio-tickets.js';
 import { formatFechaHora } from '../../core/formatters.js';
@@ -22,7 +21,8 @@ const router = useRouter();
 const store = useTicketsStore();
 const { lista, total, cargando, error } = storeToRefs(store);
 
-useRealtimeRefresco('tickets:list', () => store.cargar());
+// El auto-refresco de tickets:list vive en AppLayout.vue (suscripción
+// única, así el sonido de "ticket nuevo" suena en cualquier pantalla).
 
 const busqueda = ref('');
 const filtroEstado = ref('');
