@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../../core/toast.js';
@@ -22,6 +22,18 @@ const guardandoCampo = ref(false);
 const nuevoComentario = ref('');
 const comentarioInterno = ref(true);
 const enviandoComentario = ref(false);
+
+// Auto-crece con el texto hasta un tope (igual que un chat); pasado ese
+// tope, scrollea adentro en vez de seguir empujando el layout de la página.
+const comentarioTextarea = ref(null);
+const ALTURA_MAX_TEXTAREA = 160;
+
+function autoCrecerTextarea() {
+  const el = comentarioTextarea.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${Math.min(el.scrollHeight, ALTURA_MAX_TEXTAREA)}px`;
+}
 
 function autorDe(autorId) {
   return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
@@ -227,6 +239,8 @@ async function enviarComentario() {
   try {
     await store.comentar(mensaje, comentarioInterno.value);
     nuevoComentario.value = '';
+    await nextTick();
+    autoCrecerTextarea();
   } catch (e) {
     showToast(e?.message || 'Error al comentar', 'error');
   } finally {
@@ -416,7 +430,7 @@ onUnmounted(() => store.limpiar());
           <div v-if="comentarios.length" class="timeline tk-timeline">
             <div v-for="c in comentarios" :key="c.id" class="timeline-item">
               <span class="timeline-dot" :class="c.interno ? 'timeline-dot--closed' : 'timeline-dot--active'"></span>
-              <div class="timeline-content">
+              <div class="timeline-content tk-comentario-bubble" :class="c.interno ? 'tk-comentario-bubble--interno' : 'tk-comentario-bubble--visible'">
                 <div class="timeline-title">
                   {{ autorDe(c.autor_id) }}
                   <span class="badge badge-inline" :class="c.interno ? 'badge--neutral' : 'badge--success'">
@@ -432,10 +446,13 @@ onUnmounted(() => store.limpiar());
 
           <div v-if="!ESTADOS_TERMINALES.includes(ticket.estado)" class="tk-nuevo-comentario">
             <textarea
+              ref="comentarioTextarea"
               v-model="nuevoComentario"
-              rows="3"
+              rows="1"
+              class="tk-comentario-input"
               placeholder="Escribe una nota interna o una respuesta para el empleado..."
               :disabled="enviandoComentario"
+              @input="autoCrecerTextarea"
             ></textarea>
             <div class="tk-comentario-acciones">
               <label class="check-inline">
@@ -591,6 +608,17 @@ onUnmounted(() => store.limpiar());
 
 .tk-timeline { margin-bottom: 16px; }
 
+/* Mismo par de colores que sus badges (--success = visible, --neutral =
+   interna): un vistazo a la burbuja ya dice qué vio el empleado, sin
+   depender de leer el badge de texto. */
+.tk-comentario-bubble {
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+
+.tk-comentario-bubble--interno { background: var(--color-neutral-bg); }
+.tk-comentario-bubble--visible { background: var(--color-success-bg); }
+
 .tk-mensaje {
   margin: 4px 0 0;
   font-size: var(--fs-base);
@@ -604,6 +632,31 @@ onUnmounted(() => store.limpiar());
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Crece con el texto (como un chat) hasta un tope, luego scrollea
+   adentro — nunca se arrastra a mano ni sigue empujando la página. */
+.tk-comentario-input {
+  width: 100%;
+  min-height: 40px;
+  max-height: 160px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-base);
+  font-family: var(--font-sans);
+  line-height: 1.4;
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+  resize: none;
+  overflow-y: auto;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.tk-comentario-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--mat-ring);
 }
 
 .tk-comentario-acciones {

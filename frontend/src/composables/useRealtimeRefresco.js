@@ -9,7 +9,10 @@ export function useRealtimeRefresco(canal, callback) {
   let activo = true;
 
   function alCambiar(payload) {
-    if (payload?.meta?.channel !== canal) return;
+    // El SDK entrega meta.channel con prefijo "realtime:" (ej.
+    // "realtime:ticket:<token>"); se acepta con y sin prefijo.
+    const ch = payload?.meta?.channel;
+    if (ch !== canal && ch !== `realtime:${canal}`) return;
     callback(payload);
   }
 
