@@ -10,9 +10,9 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
     <div class="card public-card">
       <PublicBrand subtitulo="Soporte de TI" />
 
-      <h2 class="soporte-title">¿En qué te ayudamos?</h2>
+      <h2 class="soporte-title">Solicitudes de soporte</h2>
       <p class="soporte-subtitulo">
-        Reporta un problema o consulta el estado de tus solicitudes.
+        Registro y seguimiento de incidencias técnicas.
       </p>
 
       <nav class="soporte-acciones" aria-label="Acciones de soporte">
@@ -23,7 +23,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
           <span class="soporte-accion-texto">
             <span class="soporte-accion-titulo">Reportar un problema</span>
             <span class="soporte-accion-desc">
-              Cuéntanos qué pasó y recibe un enlace para seguir tu solicitud.
+              Registra el incidente y obtén un código de seguimiento.
             </span>
           </span>
           <i class="ti ti-chevron-right soporte-accion-chevron" aria-hidden="true"></i>
@@ -36,7 +36,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
           <span class="soporte-accion-texto">
             <span class="soporte-accion-titulo">Seguir mis tickets</span>
             <span class="soporte-accion-desc">
-              Consulta tus solicitudes activas con tu DNI.
+              Búsqueda de solicitudes por DNI.
             </span>
           </span>
           <i class="ti ti-chevron-right soporte-accion-chevron" aria-hidden="true"></i>
@@ -47,7 +47,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
           </span>
           <span class="soporte-accion-texto">
             <span class="soporte-accion-titulo">
-              Consultar mis equipos
+              Equipos asignados
               <span class="badge badge--neutral">Próximamente</span>
             </span>
             <span class="soporte-accion-desc">

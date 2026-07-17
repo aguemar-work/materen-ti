@@ -121,10 +121,7 @@ onMounted(async () => {
       </template>
 
       <template v-else-if="estado === 'formulario' || estado === 'enviando'">
-        <h2 class="ticket-title">Generar un nuevo ticket</h2>
-        <RouterLink class="ticket-ver-mios" to="/ticket/buscar">
-          <i class="ti ti-search" aria-hidden="true"></i> ¿Ya reportaste algo? Busca tu ticket
-        </RouterLink>
+        <h2 class="ticket-title">Nuevo ticket</h2>
 
         <form class="ticket-form" @submit.prevent="enviar">
           <div v-if="!tokenEntrega" class="form-group full">
@@ -133,7 +130,7 @@ onMounted(async () => {
               id="tk-contacto"
               v-model="form.contacto"
               type="text"
-              placeholder="Tu DNI"
+              placeholder="Ingrese número de DNI"
               :disabled="estado === 'enviando'"
             >
           </div>
@@ -175,7 +172,7 @@ onMounted(async () => {
               v-model="form.descripcion"
               required
               rows="4"
-              placeholder="Describe qué pasó, desde cuándo y cualquier detalle que ayude"
+              placeholder="Indique el problema, fecha de inicio y detalles relevantes"
               :disabled="estado === 'enviando'"
             ></textarea>
           </div>
@@ -230,7 +227,7 @@ onMounted(async () => {
   font-size: var(--fs-xl);
   font-weight: 600;
   letter-spacing: -0.01em;
-  margin: 0 0 4px;
+  margin: 0 0 16px;
 }
 
 .ticket-texto {
@@ -238,20 +235,6 @@ onMounted(async () => {
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 10px;
-}
-
-.ticket-ver-mios {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  color: var(--color-accent-text);
-  text-decoration: none;
-  margin-bottom: 16px;
-}
-
-.ticket-ver-mios:hover {
-  text-decoration: underline;
 }
 
 .ticket-form {

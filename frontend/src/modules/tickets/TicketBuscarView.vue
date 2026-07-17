@@ -36,9 +36,9 @@ async function buscar() {
 <template>
   <div class="public-page">
     <div class="card public-card">
-      <PublicBrand subtitulo="Buscar mis tickets" />
+      <PublicBrand subtitulo="Buscar tickets" />
 
-      <h2 class="ticket-title">Busca tu ticket</h2>
+      <h2 class="ticket-title">Consulta de tickets</h2>
       <p class="ticket-subtitulo">
         Ingresa tu DNI para consultar tus tickets activos y tus encuestas
         de satisfacción pendientes.
