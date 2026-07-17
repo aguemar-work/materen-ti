@@ -87,6 +87,10 @@ async function buscar() {
           </RouterLink>
         </div>
       </div>
+
+      <RouterLink class="public-volver" to="/soporte">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
+      </RouterLink>
     </div>
   </div>
 </template>

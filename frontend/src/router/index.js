@@ -87,6 +87,16 @@ const routes = [
     meta: { public: true },
   },
   {
+    // Página pública: landing de soporte (punto de entrada memorable
+    // hacia reportar/buscar tickets; apta para QR o comunicado interno)
+    path: '/soporte',
+    name: 'soporte',
+    component: () => import('../modules/soporte/SoporteView.vue'),
+    meta: { public: true },
+  },
+  // Para quien escribe la ruta a medias
+  { path: '/ticket', redirect: '/soporte' },
+  {
     // Página pública: formulario de creación de ticket (?entrega=<token> opcional)
     path: '/ticket/nuevo',
     name: 'ticket-nuevo',

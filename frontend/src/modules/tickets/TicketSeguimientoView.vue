@@ -65,6 +65,9 @@ function enlaceSeguimiento() {
         <RouterLink class="ticket-link" to="/ticket/buscar">
           <i class="ti ti-search" aria-hidden="true"></i> Buscar mis tickets por DNI
         </RouterLink>
+        <RouterLink class="public-volver" to="/soporte">
+          <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
+        </RouterLink>
       </template>
 
       <template v-else>

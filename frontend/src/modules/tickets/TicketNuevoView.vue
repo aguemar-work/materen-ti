@@ -217,6 +217,10 @@ onMounted(async () => {
           Si pierdes este enlace, puedes <RouterLink to="/ticket/buscar">buscar tu ticket por DNI</RouterLink>.
         </p>
       </template>
+
+      <RouterLink class="public-volver" to="/soporte">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
+      </RouterLink>
     </div>
   </div>
 </template>
