@@ -47,7 +47,7 @@ async function copiar(texto, id) {
 }
 
 function enlaceSeguimiento() {
-  return `${window.location.origin}/ticket/${route.params.token}`;
+  return `${window.location.origin}/soporte/${route.params.token}`;
 }
 </script>
 
@@ -62,7 +62,7 @@ function enlaceSeguimiento() {
         <div class="ticket-error-icon"><i class="ti ti-link-off"></i></div>
         <h2 class="ticket-title">No disponible</h2>
         <p class="ticket-texto">{{ error }}</p>
-        <RouterLink class="ticket-link" to="/ticket/buscar">
+        <RouterLink class="ticket-link" :to="{ name: 'ticket-buscar' }">
           <i class="ti ti-search" aria-hidden="true"></i> Buscar mis tickets por DNI
         </RouterLink>
         <RouterLink class="public-volver" to="/soporte">
@@ -109,7 +109,7 @@ function enlaceSeguimiento() {
         <RouterLink
           v-if="ticket.estado === 'cerrado'"
           class="ticket-link"
-          :to="`/ticket/${route.params.token}/satisfaccion`"
+          :to="{ name: 'ticket-satisfaccion', params: { token: route.params.token } }"
         >
           <i class="ti ti-mood-smile" aria-hidden="true"></i> Contarnos cómo te fue
         </RouterLink>

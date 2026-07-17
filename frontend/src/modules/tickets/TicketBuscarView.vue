@@ -73,7 +73,7 @@ async function buscar() {
             v-for="t in resultados"
             :key="t.token"
             class="buscar-item"
-            :to="t.encuestaPendiente ? `/ticket/${t.token}/satisfaccion` : `/ticket/${t.token}`"
+            :to="{ name: t.encuestaPendiente ? 'ticket-satisfaccion' : 'ticket-seguimiento', params: { token: t.token } }"
           >
             <div class="buscar-item-head">
               <span class="segui-codigo">{{ t.codigo }}</span>

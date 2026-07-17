@@ -110,11 +110,11 @@ async function copiar(texto, id) {
           </p>
           <RouterLink
             class="btn btn-primary entrega-accion-primaria"
-            :to="`/ticket/nuevo?entrega=${route.params.token}`"
+            :to="{ name: 'ticket-nuevo', query: { entrega: route.params.token } }"
           >
             <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
           </RouterLink>
-          <RouterLink class="entrega-accion-secundaria" to="/ticket/buscar">
+          <RouterLink class="entrega-accion-secundaria" :to="{ name: 'ticket-buscar' }">
             <i class="ti ti-search" aria-hidden="true"></i> Buscar ticket por DNI
           </RouterLink>
         </div>
@@ -127,7 +127,7 @@ async function copiar(texto, id) {
           exclusivamente a través de ticket. No se atenderán consultas por WhatsApp
           ni por ningún otro canal.
         </p>
-        <RouterLink class="soporte-btn" :to="`/ticket/nuevo?entrega=${route.params.token}`">
+        <RouterLink class="soporte-btn" :to="{ name: 'ticket-nuevo', query: { entrega: route.params.token } }">
           <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
         </RouterLink>
       </div>

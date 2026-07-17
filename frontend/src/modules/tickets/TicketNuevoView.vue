@@ -207,11 +207,11 @@ onMounted(async () => {
         <p class="ticket-texto">
           Código: <strong>{{ resultado.codigo }}</strong>
         </p>
-        <RouterLink class="ticket-link" :to="`/ticket/${resultado.token}`">
+        <RouterLink class="ticket-link" :to="{ name: 'ticket-seguimiento', params: { token: resultado.token } }">
           Ver seguimiento
         </RouterLink>
         <p class="ticket-texto ticket-nota">
-          Si pierdes este enlace, puedes <RouterLink to="/ticket/buscar">buscar tu ticket por DNI</RouterLink>.
+          Si pierdes este enlace, puedes <RouterLink :to="{ name: 'ticket-buscar' }">buscar tu ticket por DNI</RouterLink>.
         </p>
       </template>
 

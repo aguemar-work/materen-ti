@@ -16,7 +16,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
       </p>
 
       <nav class="soporte-acciones" aria-label="Acciones de soporte">
-        <RouterLink class="soporte-accion" to="/ticket/nuevo">
+        <RouterLink class="soporte-accion" :to="{ name: 'ticket-nuevo' }">
           <span class="soporte-accion-icono soporte-accion-icono--accent">
             <i class="ti ti-tool" aria-hidden="true"></i>
           </span>
@@ -29,7 +29,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
           <i class="ti ti-chevron-right soporte-accion-chevron" aria-hidden="true"></i>
         </RouterLink>
 
-        <RouterLink class="soporte-accion" to="/ticket/buscar">
+        <RouterLink class="soporte-accion" :to="{ name: 'ticket-buscar' }">
           <span class="soporte-accion-icono">
             <i class="ti ti-search" aria-hidden="true"></i>
           </span>

@@ -50,7 +50,7 @@ cuándo y si la contraseña se rotó después.
   en el Dashboard. La baja de empleado también libera sus asientos.
 
 - **Ticket**: reporte de soporte, público y sin sesión (el empleado **nunca**
-  entra al sistema). Se crea desde `/ticket/nuevo` de dos formas: (a) con el
+  entra al sistema). Se crea desde `/soporte/nuevo` de dos formas: (a) con el
   **token de entrega** en la URL → se autorresuelve el empleado, sin pedirle
   datos; (b) sin token → intenta emparejar por correo/DNI contra `empleados`
   (si no hay match único, el ticket se crea igual con `vinculado = false` para
@@ -59,11 +59,11 @@ cuándo y si la contraseña se rotó después.
   del reporte): son dos tokens distintos con propósitos distintos. El staff
   también puede abrir tickets internos desde `/tickets` (a nombre propio o de
   un empleado), donde además tiene botones para copiar los enlaces públicos
-  de reportar (`/ticket/nuevo`) y de búsqueda por DNI (`/ticket/buscar`) para
+  de reportar (`/soporte/nuevo`) y de búsqueda por DNI (`/soporte/buscar`) para
   difundirlos a los empleados. Cada ticket tiene código (`TCK-####`) y token
-  propio; con el token el empleado sigue su caso en `/ticket/:token` (solo ve
+  propio; con el token el empleado sigue su caso en `/soporte/:token` (solo ve
   comentarios no internos) sin volver a autenticarse, con CTAs para copiar el
-  enlace/código, o puede recuperarlo en `/ticket/buscar` (por DNI, solo
+  enlace/código, o puede recuperarlo en `/soporte/buscar` (por DNI, solo
   tickets activos, limitado por IP). Flujo de estados guiado por botones (no
   un select libre):
   desde `abierto`, el staff elige **Rechazar** (estado terminal `rechazado`,
@@ -75,7 +75,7 @@ cuándo y si la contraseña se rotó después.
   **Reabrir** un ticket cerrado/rechazado (reforzado también por trigger en
   BD, no solo en la UI) — conserva prioridad/nivel/asignado previos. Al
   cerrarse con empleado vinculado, se reutiliza el **mismo token** del ticket
-  para el enlace de encuesta (`/ticket/:token/satisfaccion`) — a diferencia de
+  para el enlace de encuesta (`/soporte/:token/satisfaccion`) — a diferencia de
   Bitrix24, el empleado no tiene que anotar ningún ID. Esa página consulta
   primero si ya se respondió (`encuestaEstado`) antes de mostrar el
   formulario, para que un refresco después de enviar no la haga parecer
@@ -108,7 +108,7 @@ cuándo y si la contraseña se rotó después.
    "Rotar contraseña".
 3. **Auditoría**: cada vez que alguien **ve, copia o envía** una contraseña
    queda registrado en `accesos_log`. El JEFE lo consulta en `/actividad`.
-4. **Soporte por ticket**: el empleado reporta un problema en `/ticket/nuevo`
+4. **Soporte por ticket**: el empleado reporta un problema en `/soporte/nuevo`
    (con o sin token de entrega) → recibe su código y token en pantalla y por
    correo (best-effort) → el staff lo triaga en `/tickets` (asignar,
    priorizar, comentar interno/visible vía Timeline) → al cerrar, se dispara
@@ -128,7 +128,7 @@ cuándo y si la contraseña se rotó después.
 - En formularios de edición, el campo contraseña vacío significa "mantener la
   actual" — la contraseña vigente nunca se precarga.
 - La página `/entrega/:token` es pública (sin sesión) e incluye la política de
-  soporte: solo por ticket, con enlace a `/ticket/nuevo` (token de entrega ya
+  soporte: solo por ticket, con enlace a `/soporte/nuevo` (token de entrega ya
   en la URL) — ya no enlaza al helpdesk externo de Bitrix24.
 - Las tablas `tickets` y `ticket_satisfaccion` no tienen política de INSERT
   para clientes: solo la edge function `tickets` (cliente admin) escribe,

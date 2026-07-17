@@ -285,7 +285,7 @@ export default async function (req: Request): Promise<Response> {
     if (!correoDestino && contacto && esEmail(contacto)) correoDestino = contacto;
 
     if (correoDestino) {
-      const link = `${origenFrontend}/ticket/${token}`;
+      const link = `${origenFrontend}/soporte/${token}`;
       const { error: eCorreo } = await admin.emails.send({
         to: correoDestino,
         subject: `Ticket ${codigo} registrado`,
@@ -483,7 +483,7 @@ export default async function (req: Request): Promise<Response> {
       || (ticket.contacto_ingresado && esEmail(ticket.contacto_ingresado) ? ticket.contacto_ingresado : null);
     if (!correoDestino) return json({ ok: true, enviado: false });
 
-    const link = `${origenFrontend}/ticket/${ticket.token}/satisfaccion`;
+    const link = `${origenFrontend}/soporte/${ticket.token}/satisfaccion`;
     const { error: eCorreo } = await admin.emails.send({
       to: correoDestino,
       subject: `¿Cómo te fue con tu ticket ${ticket.codigo}?`,

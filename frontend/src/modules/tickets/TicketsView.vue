@@ -89,10 +89,11 @@ function verTicket(ticket) {
 }
 
 // Enlaces públicos que el staff comparte con los empleados (o abre para
-// probar) — se copian con window.location.origin para que funcionen igual
-// en desarrollo y en producción.
-async function copiarEnlace(ruta, mensaje) {
-  const link = `${window.location.origin}${ruta}`;
+// probar) — se resuelven por nombre de ruta (el path real vive en el
+// router) y se copian con window.location.origin para que funcionen
+// igual en desarrollo y en producción.
+async function copiarEnlace(nombreRuta, mensaje) {
+  const link = `${window.location.origin}${router.resolve({ name: nombreRuta }).href}`;
   try {
     await navigator.clipboard.writeText(link);
     showToast(mensaje);
@@ -109,12 +110,12 @@ const accionesMas = computed(() => [
   {
     icono: 'ti-link',
     label: 'Enlace ticket',
-    onClick: () => copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado'),
+    onClick: () => copiarEnlace('ticket-nuevo', 'Enlace para reportar copiado'),
   },
   {
     icono: 'ti-search',
     label: 'Enlace búsqueda',
-    onClick: () => copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado'),
+    onClick: () => copiarEnlace('ticket-buscar', 'Enlace de búsqueda por DNI copiado'),
   },
 ]);
 
@@ -146,10 +147,10 @@ onMounted(async () => {
         <button class="btn solo-escritorio" type="button" @click="mostrarReporte = true">
           <i class="ti ti-report" aria-hidden="true"></i> Reporte
         </button>
-        <button class="btn solo-escritorio" type="button" title="Copiar enlace para reportar un ticket" @click="copiarEnlace('/ticket/nuevo', 'Enlace para reportar copiado')">
+        <button class="btn solo-escritorio" type="button" title="Copiar enlace para reportar un ticket" @click="copiarEnlace('ticket-nuevo', 'Enlace para reportar copiado')">
           <i class="ti ti-link" aria-hidden="true"></i> Enlace ticket
         </button>
-        <button class="btn solo-escritorio" type="button" title="Copiar enlace de búsqueda por DNI" @click="copiarEnlace('/ticket/buscar', 'Enlace de búsqueda por DNI copiado')">
+        <button class="btn solo-escritorio" type="button" title="Copiar enlace de búsqueda por DNI" @click="copiarEnlace('ticket-buscar', 'Enlace de búsqueda por DNI copiado')">
           <i class="ti ti-search" aria-hidden="true"></i> Enlace búsqueda
         </button>
         <MenuAcciones class="solo-movil solo-movil--flex" texto="Más" label="Más acciones" :acciones="accionesMas" />

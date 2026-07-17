@@ -2,46 +2,30 @@
 // Centro de configuración: catálogos y administración del sistema.
 // Los módulos operativos (Empleados, Correos, Licencias, Equipos)
 // viven en el sidebar; aquí va lo que se toca de vez en cuando.
+// Layout de pestañas: cada pestaña es una ruta hija (/configuracion/<seccion>,
+// ver router/routes/config.routes.js) que se renderiza en el RouterView.
 import { computed } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
-import EmpresasView from '../empresas/EmpresasView.vue';
-import AreasObrasPanel from './AreasObrasPanel.vue';
-import PlataformasView from '../plataformas/PlataformasView.vue';
-import TiposEquipoPanel from './TiposEquipoPanel.vue';
-import UbicacionesPanel from './UbicacionesPanel.vue';
-import CategoriasTicketPanel from './CategoriasTicketPanel.vue';
-import StaffView from '../staff/StaffView.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 
 const route = useRoute();
-const router = useRouter();
 const auth = useAuthStore();
 
 const TABS = computed(() => {
   const tabs = [
-    { id: 'empresas',     label: 'Empresas',        icon: 'ti ti-building',  componente: EmpresasView },
-    { id: 'areas-obras',  label: 'Áreas/Obras',     icon: 'ti ti-building-community', componente: AreasObrasPanel },
-    { id: 'plataformas',  label: 'Plataformas',     icon: 'ti ti-apps',      componente: PlataformasView },
-    { id: 'tipos-equipo', label: 'Tipos de equipo', icon: 'ti ti-devices',   componente: TiposEquipoPanel },
-    { id: 'ubicaciones',  label: 'Ubicaciones',     icon: 'ti ti-map-pin',   componente: UbicacionesPanel },
-    { id: 'categorias-ticket', label: 'Categorías de tickets', icon: 'ti ti-headset', componente: CategoriasTicketPanel },
+    { name: 'configuracion-empresas',          label: 'Empresas',        icon: 'ti ti-building' },
+    { name: 'configuracion-areas-obras',       label: 'Áreas/Obras',     icon: 'ti ti-building-community' },
+    { name: 'configuracion-plataformas',       label: 'Plataformas',     icon: 'ti ti-apps' },
+    { name: 'configuracion-tipos-equipo',      label: 'Tipos de equipo', icon: 'ti ti-devices' },
+    { name: 'configuracion-ubicaciones',       label: 'Ubicaciones',     icon: 'ti ti-map-pin' },
+    { name: 'configuracion-categorias-ticket', label: 'Categorías de tickets', icon: 'ti ti-headset' },
   ];
   if (auth.esJefe) {
-    tabs.push({ id: 'staff', label: 'Staff y roles', icon: 'ti ti-shield', componente: StaffView });
+    tabs.push({ name: 'configuracion-staff', label: 'Staff y roles', icon: 'ti ti-shield' });
   }
   return tabs;
 });
-
-// La pestaña vive en la URL (?tab=) para poder enlazar directo
-const tabActual = computed(() => {
-  const id = route.query.tab;
-  return TABS.value.find((t) => t.id === id) || TABS.value[0];
-});
-
-function irATab(tab) {
-  router.replace({ query: { tab: tab.id } });
-}
 </script>
 
 <template>
@@ -49,22 +33,23 @@ function irATab(tab) {
     <PageHeader titulo="Configuración" icono="ti ti-settings">
       <template #extra>
       <nav class="config-tabs" aria-label="Secciones de configuración">
-        <button
+        <!-- replace: cambiar de pestaña no apila entradas en el historial -->
+        <RouterLink
           v-for="tab in TABS"
-          :key="tab.id"
-          type="button"
+          :key="tab.name"
+          :to="{ name: tab.name }"
+          replace
           class="config-tab"
-          :class="{ 'config-tab--activa': tab.id === tabActual.id }"
-          @click="irATab(tab)"
+          :class="{ 'config-tab--activa': route.name === tab.name }"
         >
           <i :class="tab.icon" aria-hidden="true"></i>
           {{ tab.label }}
-        </button>
+        </RouterLink>
       </nav>
       </template>
     </PageHeader>
 
-    <component :is="tabActual.componente" :key="tabActual.id" />
+    <RouterView />
   </div>
 </template>
 
@@ -85,6 +70,7 @@ function irATab(tab) {
   background: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
+  text-decoration: none;
   font-size: 13px;
   font-weight: 500;
   color: var(--color-text-secondary);

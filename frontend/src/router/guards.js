@@ -24,8 +24,8 @@ export function setupGuards(router) {
     }
 
     // La pestaña Staff de Configuración es solo para el JEFE
-    if (to.path === '/configuracion' && to.query.tab === 'staff' && !auth.esJefe) {
-      return { path: '/configuracion' };
+    if (to.name === 'configuracion-staff' && !auth.esJefe) {
+      return { name: 'configuracion-empresas' };
     }
   });
 }
