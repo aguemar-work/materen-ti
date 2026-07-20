@@ -388,7 +388,8 @@ onMounted(async () => {
             <span class="timeline-dot" :class="h.activa ? 'timeline-dot--active' : 'timeline-dot--closed'"></span>
             <div class="timeline-content">
               <div class="timeline-title">
-                {{ h.empleado_nombre }}
+                <RouterLink v-if="h.empleado_id" class="empleado-link" :to="`/empleados/${h.empleado_id}`">{{ h.empleado_nombre }}</RouterLink>
+                <template v-else>{{ h.empleado_nombre }}</template>
                 <span v-if="h.activa" class="badge badge--success badge-inline">Activa</span>
               </div>
               <div class="timeline-meta">

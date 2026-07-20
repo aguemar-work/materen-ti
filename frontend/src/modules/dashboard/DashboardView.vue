@@ -372,14 +372,14 @@ onMounted(async () => {
           <h2 class="section-title">Últimos empleados registrados</h2>
           <div v-if="recientes.length === 0" class="no-results">Sin empleados aún.</div>
           <div v-else class="grid-12">
-            <div v-for="emp in recientes" :key="emp.id" class="emp-card col-3">
+            <RouterLink v-for="emp in recientes" :key="emp.id" class="emp-card col-3" :to="`/empleados/${emp.id}`">
               <div class="emp-avatar">{{ emp.nombres[0] }}{{ emp.apellidos[0] }}</div>
               <div class="emp-info">
                 <span class="emp-nombre">{{ emp.nombres }} {{ emp.apellidos }}</span>
                 <span class="emp-cargo">{{ emp.cargo || emp.empresa_nombre || '—' }}</span>
               </div>
               <BadgeEstado tipo="empleado" :valor="emp.estado" status />
-            </div>
+            </RouterLink>
           </div>
         </div>
       </template>
@@ -563,7 +563,12 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  transition: box-shadow 0.12s;
 }
+
+.emp-card:hover,
+.emp-card:focus-visible { box-shadow: var(--shadow-md, var(--shadow-sm)); }
 
 .emp-avatar {
   width: 36px; height: 36px; border-radius: 50%;

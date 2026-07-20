@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
+import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatTelefono } from '../../core/formatters.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
@@ -19,6 +20,7 @@ const route = useRoute();
 const router = useRouter();
 const empleadosStore = useEmpleadosStore();
 const cuentasStore = useCuentasStore();
+const { volver } = useVolverContextual();
 
 const empleado = ref(null);
 const licencias = ref([]);
@@ -152,7 +154,7 @@ onMounted(cargar);
   <div class="detalle-page vista-modulo">
     <PageHeader>
       <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver a empleados" @click="router.push('/empleados')">
+        <button class="icon-btn btn-volver" type="button" title="Volver" @click="volver('/empleados')">
           <i class="ti ti-arrow-left"></i>
         </button>
         <template v-if="empleado">

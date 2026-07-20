@@ -289,9 +289,9 @@ export default async function (req: Request): Promise<Response> {
       const { error: eCorreo } = await admin.emails.send({
         to: correoDestino,
         subject: `Ticket ${codigo} registrado`,
-        html: plantillaCorreo('Tu solicitud fue registrada', `
+        html: plantillaCorreo('Solicitud registrada', `
           <p>Código: <strong>${codigo}</strong></p>
-          <p>Puedes hacer seguimiento en cualquier momento con este enlace:</p>
+          <p>El seguimiento puede realizarse en cualquier momento desde este enlace:</p>
           <p><a href="${link}">${link}</a></p>
         `),
       });
@@ -486,9 +486,10 @@ export default async function (req: Request): Promise<Response> {
     const link = `${origenFrontend}/soporte/${ticket.token}/satisfaccion`;
     const { error: eCorreo } = await admin.emails.send({
       to: correoDestino,
-      subject: `¿Cómo te fue con tu ticket ${ticket.codigo}?`,
-      html: plantillaCorreo('Tu opinión nos ayuda a mejorar', `
-        <p>Cerramos tu ticket <strong>${ticket.codigo}</strong>. Cuéntanos cómo te fue:</p>
+      subject: `Encuesta de satisfacción — ticket ${ticket.codigo}`,
+      html: plantillaCorreo('Calificación del servicio', `
+        <p>El ticket <strong>${ticket.codigo}</strong> fue cerrado. La encuesta de
+        satisfacción está disponible en el siguiente enlace:</p>
         <p><a href="${link}">${link}</a></p>
       `),
     });

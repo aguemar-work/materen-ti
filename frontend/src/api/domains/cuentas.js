@@ -139,6 +139,9 @@ export const cuentasApi = {
       const emp = a.empleados || {};
       return {
         id: a.id,
+        // Sin `empleados` resuelto (registro eliminado del todo, no solo
+        // dado de baja) no hay ficha a la que enlazar.
+        empleado_id: a.empleados ? a.empleado_id : null,
         empleado_nombre: `${emp.nombres || ''} ${emp.apellidos || ''}`.trim() || 'Empleado eliminado',
         fecha_inicio: a.fecha_inicio,
         fecha_fin: a.fecha_fin,

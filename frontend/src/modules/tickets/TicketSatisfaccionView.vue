@@ -38,7 +38,7 @@ const NIVELES = [
 
 async function enviar() {
   if (!nivel.value) {
-    error.value = 'Elige un nivel de satisfacción';
+    error.value = 'Seleccione un nivel de satisfacción';
     return;
   }
   error.value = '';
@@ -53,7 +53,7 @@ async function enviar() {
       estado.value = 'ya_respondida';
       return;
     }
-    error.value = e?.message || 'No se pudo enviar tu respuesta';
+    error.value = e?.message || 'No se pudo enviar la respuesta';
     estado.value = 'formulario';
   }
 }
@@ -67,14 +67,14 @@ async function enviar() {
       <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
 
       <template v-else-if="estado === 'error'">
-        <div class="ticket-error-icon"><i class="ti ti-link-off"></i></div>
+        <div class="ticket-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
         <h2 class="ticket-title">No disponible</h2>
         <p class="ticket-texto">{{ error }}</p>
       </template>
 
       <template v-else-if="estado === 'formulario' || estado === 'enviando'">
-        <h2 class="ticket-title">¿Cómo te fue?</h2>
-        <p class="ticket-texto">Tu opinión nos ayuda a mejorar el soporte.</p>
+        <h2 class="ticket-title">Calificación del servicio</h2>
+        <p class="ticket-texto">Su respuesta contribuye a mejorar el servicio de soporte.</p>
 
         <div class="niveles">
           <button
@@ -85,9 +85,11 @@ async function enviar() {
             :class="{ 'nivel-btn--activo': nivel === n.valor }"
             :disabled="estado === 'enviando'"
             :title="n.label"
+            :aria-label="n.label"
+            :aria-pressed="nivel === n.valor"
             @click="nivel = n.valor"
           >
-            <i :class="`ti ${n.icono}`"></i>
+            <i :class="`ti ${n.icono}`" aria-hidden="true"></i>
           </button>
         </div>
 
@@ -97,7 +99,7 @@ async function enviar() {
             id="ts-comentario"
             v-model="comentario"
             rows="3"
-            placeholder="¿Algo que quieras contarnos?"
+            placeholder="Observaciones adicionales..."
             :disabled="estado === 'enviando'"
           ></textarea>
         </div>
@@ -110,15 +112,15 @@ async function enviar() {
       </template>
 
       <template v-else-if="estado === 'gracias'">
-        <div class="ticket-ok-icon"><i class="ti ti-circle-check"></i></div>
-        <h2 class="ticket-title">¡Gracias por tu respuesta!</h2>
-        <p class="ticket-texto">Tu opinión quedó registrada.</p>
+        <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
+        <h2 class="ticket-title">Respuesta registrada</h2>
+        <p class="ticket-texto">Gracias por completar la encuesta de satisfacción.</p>
       </template>
 
       <template v-else-if="estado === 'ya_respondida'">
-        <div class="ticket-ok-icon"><i class="ti ti-circle-check"></i></div>
-        <h2 class="ticket-title">Ya registramos tu respuesta</h2>
-        <p class="ticket-texto">Gracias por contarnos cómo te fue — no es necesario volver a responder.</p>
+        <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
+        <h2 class="ticket-title">Respuesta ya registrada</h2>
+        <p class="ticket-texto">La encuesta ya fue completada — no es necesario volver a responder.</p>
       </template>
     </div>
   </div>

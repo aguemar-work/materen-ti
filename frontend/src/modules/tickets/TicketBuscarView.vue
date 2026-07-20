@@ -4,26 +4,47 @@
 // los CERRADOS con encuesta de satisfacción pendiente (nunca el resto del
 // historial cerrado) — la edge function nunca revela si el DNI
 // corresponde o no a un empleado real.
-import { ref } from 'vue';
-import { buscarTicketsPorDni } from '../../api/ticketsPublicos.js';
+import { ref, computed } from 'vue';
+import { buscarTicketsPorDni, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { formatFecha } from '../../core/formatters.js';
 import { estadoInfo } from '../../core/dominio-tickets.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 const dni = ref('');
+const dniTocado = ref(false);
 const buscando = ref(false);
 const error = ref('');
 const resultados = ref(null); // null = aún no se buscó
 
+const dniValido = computed(() => dni.value.length === 8);
+
+// Aviso en vivo: aparece al salir del campo con menos de 8 dígitos y se
+// apaga solo al completarlos. Mismo texto que la validación del servidor.
+const errorDni = computed(() =>
+  dniTocado.value && !dniValido.value ? MENSAJES_ERROR_TICKETS.dni_invalido : ''
+);
+
+// inputmode/maxlength son solo pistas de teclado: el filtrado real es este.
+// Se reescribe también e.target.value porque si lo tipeado no cambia el
+// valor ya saneado (ej. una letra al final), Vue no re-renderiza y la
+// letra quedaría visible en el input.
+function onDniInput(e) {
+  const limpio = e.target.value.replace(/\D/g, '').slice(0, 8);
+  e.target.value = limpio;
+  dni.value = limpio;
+}
+
 async function buscar() {
   error.value = '';
-  if (dni.value.replace(/\D/g, '').length !== 8) {
-    error.value = 'Ingresa un DNI válido (8 dígitos)';
+  // El botón ya se deshabilita sin 8 dígitos; esto cubre el submit
+  // implícito con Enter, que algún navegador puede seguir disparando.
+  if (!dniValido.value) {
+    dniTocado.value = true;
     return;
   }
   buscando.value = true;
   try {
-    resultados.value = await buscarTicketsPorDni(dni.value.trim());
+    resultados.value = await buscarTicketsPorDni(dni.value);
   } catch (e) {
     error.value = e?.message || 'No se pudo realizar la búsqueda';
     resultados.value = null;
@@ -40,7 +61,7 @@ async function buscar() {
 
       <h2 class="ticket-title">Consulta de tickets</h2>
       <p class="ticket-subtitulo">
-        Ingresa tu DNI para consultar tus tickets activos y tus encuestas
+        Ingrese su número de DNI para consultar tickets activos y encuestas
         de satisfacción pendientes.
       </p>
 
@@ -49,23 +70,26 @@ async function buscar() {
           <label for="tk-dni">DNI</label>
           <input
             id="tk-dni"
-            v-model="dni"
+            :value="dni"
             type="text"
             inputmode="numeric"
             maxlength="8"
             placeholder="8 dígitos"
             :disabled="buscando"
+            :aria-invalid="errorDni ? 'true' : undefined"
+            @input="onDniInput"
+            @blur="dniTocado = true"
           >
         </div>
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-        <button class="btn btn-primary ticket-submit" type="submit" :disabled="buscando">
+        <p v-if="errorDni || error" class="form-error" role="alert">{{ errorDni || error }}</p>
+        <button class="btn btn-primary ticket-submit" type="submit" :disabled="buscando || !dniValido">
           {{ buscando ? 'Buscando...' : 'Buscar' }}
         </button>
       </form>
 
       <div v-if="resultados !== null" class="buscar-resultados">
         <p v-if="!resultados.length" class="ticket-texto ticket-nota">
-          No encontramos solicitudes activas ni encuestas pendientes para
+          No se encontraron solicitudes activas ni encuestas pendientes para
           ese DNI.
         </p>
         <div v-else class="buscar-lista">

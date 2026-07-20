@@ -63,7 +63,7 @@ async function enviar() {
     return;
   }
   if (!tokenEntrega && !form.value.contacto.trim()) {
-    error.value = 'Ingresa tu correo institucional o tu DNI para poder ubicarte';
+    error.value = 'Ingrese su correo institucional o DNI para la identificación';
     return;
   }
   estado.value = 'enviando';
@@ -87,7 +87,7 @@ async function enviar() {
     });
     estado.value = 'confirmacion';
   } catch (e) {
-    error.value = e?.message || 'No se pudo registrar tu solicitud';
+    error.value = e?.message || 'No se pudo registrar la solicitud';
     estado.value = 'formulario';
   }
 }
@@ -115,7 +115,7 @@ onMounted(async () => {
       </template>
 
       <template v-else-if="estado === 'error_catalogo'">
-        <div class="ticket-error-icon"><i class="ti ti-plug-connected-x"></i></div>
+        <div class="ticket-error-icon"><i class="ti ti-plug-connected-x" aria-hidden="true"></i></div>
         <h2 class="ticket-title">No se pudo cargar el formulario</h2>
         <p class="ticket-texto">{{ error }}</p>
       </template>
@@ -135,7 +135,7 @@ onMounted(async () => {
             >
           </div>
           <div v-else class="ticket-identificado">
-            <i class="ti ti-user-check"></i> Te identificamos automáticamente.
+            <i class="ti ti-user-check" aria-hidden="true"></i> Empleado identificado automáticamente.
           </div>
 
           <div class="form-group full">
@@ -147,7 +147,7 @@ onMounted(async () => {
           </div>
 
           <div v-if="subcategoriasFiltradas.length" class="form-group full">
-            <label for="tk-subcategoria">¿Sobre qué específicamente?</label>
+            <label for="tk-subcategoria">Subcategoría</label>
             <select id="tk-subcategoria" v-model="form.subcategoriaId" :disabled="estado === 'enviando'">
               <option value="">Seleccionar (opcional)</option>
               <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
@@ -160,7 +160,7 @@ onMounted(async () => {
               id="tk-titulo"
               v-model="form.titulo"
               required
-              placeholder="ej: No puedo entrar a mi correo"
+              placeholder="Ej.: sin acceso al correo institucional"
               :disabled="estado === 'enviando'"
             >
           </div>
@@ -186,8 +186,8 @@ onMounted(async () => {
             </div>
             <div v-else class="ticket-preview">
               <img :src="previewUrl" alt="Captura adjunta">
-              <button type="button" class="icon-btn" title="Quitar" :disabled="estado === 'enviando'" @click="quitarArchivo">
-                <i class="ti ti-x"></i>
+              <button type="button" class="icon-btn" title="Quitar" aria-label="Quitar la captura adjunta" :disabled="estado === 'enviando'" @click="quitarArchivo">
+                <i class="ti ti-x" aria-hidden="true"></i>
               </button>
             </div>
             <input ref="inputArchivo" type="file" accept="image/*" style="display: none" @change="onArchivoSeleccionado">
@@ -202,7 +202,7 @@ onMounted(async () => {
       </template>
 
       <template v-else-if="estado === 'confirmacion'">
-        <div class="ticket-ok-icon"><i class="ti ti-circle-check"></i></div>
+        <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
         <h2 class="ticket-title">Solicitud registrada</h2>
         <p class="ticket-texto">
           Código: <strong>{{ resultado.codigo }}</strong>
@@ -211,7 +211,7 @@ onMounted(async () => {
           Ver seguimiento
         </RouterLink>
         <p class="ticket-texto ticket-nota">
-          Si pierdes este enlace, puedes <RouterLink :to="{ name: 'ticket-buscar' }">buscar tu ticket por DNI</RouterLink>.
+          Si el enlace se pierde, el ticket puede <RouterLink :to="{ name: 'ticket-buscar' }">recuperarse con el DNI</RouterLink>.
         </p>
       </template>
 

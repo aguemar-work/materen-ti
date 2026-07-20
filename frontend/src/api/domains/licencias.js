@@ -10,8 +10,8 @@ const SELECT_LICENCIA = `
   id, software, tipo, cantidad, empresa_id, proveedor, fecha_vencimiento,
   renovacion_meses, costo, moneda, cuenta_id, clave, notas,
   empresas(nombre),
-  cuentas(id, usuario, asignaciones_cuenta(id, fecha_fin, empleados(nombres, apellidos))),
-  asignaciones_licencia(id, fecha_fin, empleados(nombres, apellidos))
+  cuentas(id, usuario, asignaciones_cuenta(id, fecha_fin, empleado_id, empleados(nombres, apellidos))),
+  asignaciones_licencia(id, fecha_fin, empleado_id, empleados(nombres, apellidos))
 `;
 
 async function queryLicencias({ q = '' } = {}, { conteo = false } = {}) {
@@ -156,12 +156,14 @@ function mapLicencia(row) {
         .filter((a) => !a.fecha_fin && a.empleados)
         .map((a) => ({
           asignacion_id: null, // se gestiona desde el correo, no aquí
+          empleado_id: a.empleado_id,
           nombre: `${a.empleados.nombres} ${a.empleados.apellidos}`.trim(),
         }))
     : (row.asignaciones_licencia || [])
         .filter((a) => !a.fecha_fin && a.empleados)
         .map((a) => ({
           asignacion_id: a.id,
+          empleado_id: a.empleado_id,
           nombre: `${a.empleados.nombres} ${a.empleados.apellidos}`.trim(),
         }));
   return {

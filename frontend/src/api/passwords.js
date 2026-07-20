@@ -2,23 +2,40 @@
 // "credenciales": la clave de cifrado vive en el servidor y cada
 // revelado queda registrado en la auditoría (accesos_log).
 import { getClient } from './insforge.js';
+import { esErrorRed, esperarReintento, MENSAJE_ERROR_RED } from '../core/error-red.js';
 
-async function invoke(body) {
+// reintentarRed: false para llamadas en segundo plano (ej. auditoría fire
+// and forget) que no deben disparar el fallback global de "sin conexión".
+async function invoke(body, { reintentarRed = true } = {}) {
   const { data, error } = await getClient().functions.invoke('credenciales', { body });
-  if (error) throw new Error(error.message || 'Error en el servidor de credenciales');
+  if (error) {
+    // Fallo de transporte (sin red, DNS caído, timeout): fallback global
+    // con reintento de ESTA misma petición (core/error-red.js). Distinto
+    // de un error de negocio { ok:false, code }, que maneja cada vista.
+    if (esErrorRed(error)) {
+      if (!reintentarRed) throw new Error(MENSAJE_ERROR_RED);
+      try {
+        await esperarReintento();
+      } catch {
+        throw new Error(MENSAJE_ERROR_RED);
+      }
+      return invoke(body);
+    }
+    throw new Error(error.message || 'Error en el servidor de credenciales');
+  }
   if (!data?.ok) throw new Error(mensajeError(data?.code));
   return data;
 }
 
 function mensajeError(code) {
   const mensajes = {
-    no_autenticado: 'Sesión expirada — vuelve a iniciar sesión',
-    no_es_staff: 'No tienes permisos para esta acción',
-    no_autorizado: 'No tienes permiso para ver esta credencial',
+    no_autenticado: 'Sesión expirada — vuelva a iniciar sesión',
+    no_es_staff: 'Sin permisos para esta acción',
+    no_autorizado: 'Sin permiso para ver esta credencial',
     no_existe: 'El registro no existe',
     ya_abierta: 'Este enlace ya fue utilizado',
     expirada: 'Este enlace expiró',
-    demasiados_revelados: 'Demasiadas contraseñas reveladas en poco tiempo. Espera unos minutos.',
+    demasiados_revelados: 'Demasiadas contraseñas reveladas en poco tiempo. Espere unos minutos.',
   };
   return mensajes[code] || `Error de credenciales (${code || 'desconocido'})`;
 }
@@ -52,6 +69,13 @@ export async function crearEntrega(empleadoId, cuentaIds, horas = 24) {
 export async function abrirEntrega(token) {
   const data = await invoke({ action: 'entregaAbrir', token });
   return { empleadoNombre: data.empleadoNombre, credenciales: data.credenciales };
+}
+
+// Registra (fire and forget) un intento de acceso a una ruta restringida
+// por rol, bloqueado por el guard del router. No se espera ni lanza: la
+// auditoría no debe agregar latencia al redirect ni romper la navegación.
+export function registrarAccesoDenegado(ruta) {
+  invoke({ action: 'accesoDenegado', ruta }, { reintentarRed: false }).catch(() => {});
 }
 
 // ── Módulo "accesos sensibles" ────────────────────────────────

@@ -10,6 +10,7 @@
 //   revelarClaveLicencia staff   { licenciaId, motivo }    → { clave }  (audita)
 //   entregaCrear         staff   { empleadoId, cuentaIds } → { token, expiresAt }  (audita)
 //   entregaAbrir         público { token }                 → { empleadoNombre, credenciales }  (un solo uso, audita)
+//   accesoDenegado       staff   { ruta }                  → { ok }  (audita un bloqueo por rol del router)
 //
 //   -- Módulo "accesos sensibles" (más estricto que lo de arriba: no
 //      alcanza con ser staff activo, hace falta ser JEFE Y estar en
@@ -256,6 +257,28 @@ export default async function (req: Request): Promise<Response> {
     .eq('user_id', user.id)
     .maybeSingle();
   if (!staffRow?.activo) return json({ ok: false, code: 'no_es_staff' }, 403);
+
+  // accesoDenegado: el guard del router bloqueó una ruta restringida por
+  // rol (ej. /accesos-sensibles para un ASISTENTE) y lo reporta acá para
+  // que quede rastro en accesos_log (migración 030). Usuario y rol salen
+  // del token y de la fila de staff, no del body — el cliente solo aporta
+  // la ruta, así no puede fabricar registros a nombre de otro.
+  if (body.action === 'accesoDenegado') {
+    const ruta = String(body.ruta || '');
+    if (!ruta.startsWith('/') || ruta.length > 200) {
+      return json({ ok: false, code: 'ruta_invalida' });
+    }
+    await log({
+      user_id: user.id,
+      user_email: user.email || null,
+      cuenta_id: null,
+      cuenta_usuario: ruta,
+      plataforma: null,
+      accion: 'acceso_denegado',
+      detalle: `Bloqueado por rol ${staffRow.rol}`,
+    });
+    return json({ ok: true });
+  }
 
   // encrypt: cifrar un valor antes de guardarlo (no audita: es escritura)
   if (body.action === 'encrypt') {

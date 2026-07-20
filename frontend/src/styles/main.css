@@ -885,6 +885,21 @@
 
     .text-muted { color: var(--color-text-tertiary); }
 
+    /* Nombre de empleado como link a su ficha (/empleados/:id) — mismo
+       tratamiento en toda la app: color neutro, subrayado solo al pasar
+       el cursor, para no competir con el acento de los botones primarios.
+       Sin font-size propio a propósito: hereda el tamaño de su contexto
+       (celda de tabla, chip, encabezado de ficha, etc). */
+    .empleado-link {
+      color: inherit;
+      text-decoration: none;
+    }
+    .empleado-link:hover,
+    .empleado-link:focus-visible {
+      color: var(--color-primary);
+      text-decoration: underline;
+    }
+
     /* ── Status & pills ──
        Definiciones movidas al sistema de badges unificado (arriba).
        .pills sigue viva como wrapper de layout (no es un badge en sí). */

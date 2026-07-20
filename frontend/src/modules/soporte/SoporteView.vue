@@ -23,7 +23,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
           <span class="soporte-accion-texto">
             <span class="soporte-accion-titulo">Reportar un problema</span>
             <span class="soporte-accion-desc">
-              Registra el incidente y obtén un código de seguimiento.
+              Registro del incidente con código de seguimiento.
             </span>
           </span>
           <i class="ti ti-chevron-right soporte-accion-chevron" aria-hidden="true"></i>
@@ -34,7 +34,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
             <i class="ti ti-search" aria-hidden="true"></i>
           </span>
           <span class="soporte-accion-texto">
-            <span class="soporte-accion-titulo">Seguir mis tickets</span>
+            <span class="soporte-accion-titulo">Seguimiento de tickets</span>
             <span class="soporte-accion-desc">
               Búsqueda de solicitudes por DNI.
             </span>
@@ -51,7 +51,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
               <span class="badge badge--neutral">Próximamente</span>
             </span>
             <span class="soporte-accion-desc">
-              Revisa qué equipos tienes asignados.
+              Consulta de equipos asignados.
             </span>
           </span>
         </div>

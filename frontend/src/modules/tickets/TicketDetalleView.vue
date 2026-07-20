@@ -7,6 +7,7 @@ import { formatFecha, formatFechaHora } from '../../core/formatters.js';
 import { estadoInfo, OPCIONES_PRIORIDAD as PRIORIDADES, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS } from '../../core/dominio-tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
+import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 
@@ -14,6 +15,7 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const store = useTicketDetalleStore();
+const { volver } = useVolverContextual();
 
 const { ticket, comentarios, eventos, satisfaccion, cargando, staffActivo, staffPorId } = storeToRefs(store);
 
@@ -256,7 +258,7 @@ onUnmounted(() => store.limpiar());
   <div class="ticket-detalle-page vista-modulo">
     <PageHeader>
       <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver a tickets" @click="router.push('/tickets')">
+        <button class="icon-btn btn-volver" type="button" title="Volver" @click="volver('/tickets')">
           <i class="ti ti-arrow-left"></i>
         </button>
         <div v-if="ticket" class="header-emp">
@@ -277,7 +279,7 @@ onUnmounted(() => store.limpiar());
         <div class="card col-3 tk-datos">
           <div class="datos-title"><i class="ti ti-info-circle"></i> Solicitante</div>
           <div v-if="ticket.vinculado && ticket.empleado_nombre" class="tk-solicitante">
-            <span class="tk-nombre">{{ ticket.empleado_nombre }}</span>
+            <RouterLink class="tk-nombre empleado-link" :to="`/empleados/${ticket.empleado_id}`">{{ ticket.empleado_nombre }}</RouterLink>
             <span class="tk-detalle">DNI {{ ticket.empleado_dni }}</span>
             <span v-if="ticket.empleado_correo" class="tk-detalle">{{ ticket.empleado_correo }}</span>
           </div>

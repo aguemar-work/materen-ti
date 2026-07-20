@@ -517,7 +517,7 @@ onMounted(async () => {
                 </td>
                 <td>
                   <template v-if="eq.portador">
-                    <RouterLink class="portador-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
+                    <RouterLink class="empleado-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
                     <span v-if="eq.portador_inactivo" class="badge badge--danger badge-sin-devolver" title="Este empleado fue dado de baja y no ha devuelto el equipo">
                       <i class="ti ti-alert-triangle"></i> Sin devolver
                     </span>
@@ -565,7 +565,7 @@ onMounted(async () => {
             </div>
             <div v-if="eq.portador || eq.ubicacion_nombre" class="tarjeta-fila__sec">
               <template v-if="eq.portador">
-                <RouterLink class="portador-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
+                <RouterLink class="empleado-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
                 <span v-if="eq.portador_inactivo" class="badge badge--danger badge-sin-devolver" title="Este empleado fue dado de baja y no ha devuelto el equipo">
                   <i class="ti ti-alert-triangle"></i> Sin devolver
                 </span>
@@ -855,14 +855,6 @@ onMounted(async () => {
 }
 
 .nueva-ubicacion input { flex: 1; }
-
-.portador-link {
-  color: var(--color-text-primary);
-  text-decoration: none;
-  font-size: 13px;
-}
-
-.portador-link:hover { color: var(--color-primary); text-decoration: underline; }
 
 .badge-sin-devolver {
   /* Estructura y color: sistema de badges global (.badge + .badge--danger);

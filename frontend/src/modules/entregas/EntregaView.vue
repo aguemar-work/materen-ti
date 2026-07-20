@@ -46,15 +46,15 @@ async function copiar(texto, id) {
       <!-- Estado inicial: advertir antes de revelar -->
       <template v-if="estado === 'inicial'">
         <div class="entrega-centro">
-          <h2 class="entrega-title">Tus accesos están listos</h2>
+          <h2 class="entrega-title">Accesos listos para entrega</h2>
           <p class="entrega-texto">
             Este enlace se puede abrir <strong>una sola vez</strong>. Antes de continuar,
-            asegúrate de poder guardar tus credenciales (ten a la mano dónde anotarlas
-            o toma captura de pantalla).
+            asegúrese de poder guardar las credenciales (anótelas o tome una
+            captura de pantalla).
           </p>
         </div>
         <button class="btn btn-primary entrega-btn" type="button" @click="revelar">
-          <i class="ti ti-lock-open" aria-hidden="true"></i> Ver mis accesos
+          <i class="ti ti-lock-open" aria-hidden="true"></i> Ver accesos
         </button>
       </template>
 
@@ -64,10 +64,10 @@ async function copiar(texto, id) {
 
       <!-- Credenciales reveladas -->
       <template v-else-if="estado === 'revelado'">
-        <h2 class="entrega-title">Hola, {{ empleadoNombre }}</h2>
+        <h2 class="entrega-title">Accesos de {{ empleadoNombre }}</h2>
         <p class="entrega-texto entrega-aviso">
-          <i class="ti ti-alert-triangle"></i>
-          Guarda estos datos ahora: al cerrar esta página no podrás volver a verlos.
+          <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+          Guarde estos datos ahora: al cerrar esta página no será posible volver a verlos.
         </p>
 
         <div class="cred-lista">
@@ -76,15 +76,15 @@ async function copiar(texto, id) {
             <div class="cred-fila">
               <span class="cred-label">Usuario</span>
               <span class="cred-valor">{{ c.usuario }}</span>
-              <button class="icon-btn" type="button" title="Copiar usuario" @click="copiar(c.usuario, `u${i}`)">
-                <i :class="copiado === `u${i}` ? 'ti ti-check' : 'ti ti-copy'"></i>
+              <button class="icon-btn" type="button" title="Copiar usuario" aria-label="Copiar usuario" @click="copiar(c.usuario, `u${i}`)">
+                <i :class="copiado === `u${i}` ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i>
               </button>
             </div>
             <div v-if="c.password" class="cred-fila">
               <span class="cred-label">Contraseña</span>
               <span class="cred-valor">{{ c.password }}</span>
-              <button class="icon-btn" type="button" title="Copiar contraseña" @click="copiar(c.password, `p${i}`)">
-                <i :class="copiado === `p${i}` ? 'ti ti-check' : 'ti ti-copy'"></i>
+              <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click="copiar(c.password, `p${i}`)">
+                <i :class="copiado === `p${i}` ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i>
               </button>
             </div>
             <div v-if="c.url" class="cred-fila">
@@ -99,14 +99,14 @@ async function copiar(texto, id) {
       <!-- Error: enlace usado, expirado o inexistente -->
       <template v-else>
         <div class="entrega-centro">
-          <div class="entrega-error-icon"><i class="ti ti-link-off"></i></div>
+          <div class="entrega-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
           <h2 class="entrega-title">Enlace no disponible</h2>
           <p class="entrega-texto">{{ error }}</p>
         </div>
         <div class="entrega-acciones">
           <p class="entrega-texto entrega-acciones-texto">
-            Si no guardaste tus credenciales o necesitas un nuevo enlace, crea un ticket.
-            Si ya reportaste el caso, puedes buscarlo con tu DNI.
+            Si las credenciales no fueron guardadas o se requiere un nuevo enlace,
+            cree un ticket de soporte. Si el caso ya fue reportado, puede consultarse por DNI.
           </p>
           <RouterLink
             class="btn btn-primary entrega-accion-primaria"

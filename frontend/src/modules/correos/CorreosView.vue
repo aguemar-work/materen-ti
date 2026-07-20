@@ -54,7 +54,7 @@ async function exportar() {
         c.plataforma_nombre,
         c.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable',
         c.usuario,
-        (c.asignados || []).join(', '),
+        (c.asignados || []).map((a) => a.nombre).join(', '),
         c.url,
         c.notas,
       ]),
@@ -212,9 +212,14 @@ onMounted(async () => {
                 <td>
                   <div class="asignado-cell">
                     <template v-if="correo.tipo_cuenta === 'reutilizable'">
-                      <span v-if="correo.asignados?.length" class="asignado-nombre" :title="correo.asignados.join(', ')">
-                        {{ correo.asignados[0] }}
-                      </span>
+                      <RouterLink
+                        v-if="correo.asignados?.length"
+                        class="asignado-nombre empleado-link"
+                        :to="`/empleados/${correo.asignados[0].id}`"
+                        :title="correo.asignados.map((a) => a.nombre).join(', ')"
+                      >
+                        {{ correo.asignados[0].nombre }}
+                      </RouterLink>
                       <span v-else class="badge badge--success">
                         <i class="ti ti-circle-check"></i> Libre
                       </span>
@@ -223,7 +228,7 @@ onMounted(async () => {
                       <span
                         v-if="correo.asignados?.length"
                         class="asignado-nombre"
-                        :title="correo.asignados.join(', ')"
+                        :title="correo.asignados.map((a) => a.nombre).join(', ')"
                       >
                         {{ correo.asignados.length }} usuario{{ correo.asignados.length === 1 ? '' : 's' }}
                       </span>

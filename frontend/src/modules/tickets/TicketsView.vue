@@ -216,6 +216,7 @@ onMounted(async () => {
                   <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
                     <i class="ti ti-alert-triangle"></i> Sin vincular
                   </span>
+                  <RouterLink v-else-if="t.solicitante_id" class="empleado-link" :to="`/empleados/${t.solicitante_id}`" @click.stop>{{ t.solicitante }}</RouterLink>
                   <TextoVacio v-else :valor="t.solicitante" />
                 </td>
                 <td>
@@ -248,6 +249,7 @@ onMounted(async () => {
               <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
                 <i class="ti ti-alert-triangle"></i> Sin vincular
               </span>
+              <RouterLink v-else-if="t.solicitante_id" class="empleado-link" :to="`/empleados/${t.solicitante_id}`" @click.stop>{{ t.solicitante }}</RouterLink>
               <TextoVacio v-else :valor="t.solicitante" />
               <span aria-hidden="true">·</span>
               <TextoVacio v-if="!t.asignado_a" placeholder="Sin asignar" />

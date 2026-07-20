@@ -59,11 +59,11 @@ function enlaceSeguimiento() {
       <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
 
       <template v-else-if="estado === 'error'">
-        <div class="ticket-error-icon"><i class="ti ti-link-off"></i></div>
+        <div class="ticket-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
         <h2 class="ticket-title">No disponible</h2>
         <p class="ticket-texto">{{ error }}</p>
         <RouterLink class="ticket-link" :to="{ name: 'ticket-buscar' }">
-          <i class="ti ti-search" aria-hidden="true"></i> Buscar mis tickets por DNI
+          <i class="ti ti-search" aria-hidden="true"></i> Buscar tickets por DNI
         </RouterLink>
         <RouterLink class="public-volver" to="/soporte">
           <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
@@ -111,7 +111,7 @@ function enlaceSeguimiento() {
           class="ticket-link"
           :to="{ name: 'ticket-satisfaccion', params: { token: route.params.token } }"
         >
-          <i class="ti ti-mood-smile" aria-hidden="true"></i> Contarnos cómo te fue
+          <i class="ti ti-mood-smile" aria-hidden="true"></i> Calificar el servicio
         </RouterLink>
       </template>
     </div>

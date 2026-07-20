@@ -7,7 +7,7 @@ import { cifrarPassword } from '../passwords.js';
 import { toLower, trimText } from '../../core/formatters.js';
 import { mapAsignacion } from './cuentas.js';
 
-const SELECT_CORREO = 'id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono), asignaciones_cuenta(fecha_fin, empleados(nombres, apellidos))';
+const SELECT_CORREO = 'id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono), asignaciones_cuenta(fecha_fin, empleado_id, empleados(nombres, apellidos))';
 
 async function queryCorreos({ q = '', tipo = '' } = {}, { conteo = false } = {}) {
   let query = getClient().database
@@ -164,7 +164,7 @@ function mapCorreo(row) {
   const asignados = row.asignaciones_cuenta
     ? row.asignaciones_cuenta
         .filter((a) => !a.fecha_fin && a.empleados)
-        .map((a) => `${a.empleados.nombres} ${a.empleados.apellidos}`.trim())
+        .map((a) => ({ id: a.empleado_id, nombre: `${a.empleados.nombres} ${a.empleados.apellidos}`.trim() }))
     : null;
   return {
     id: row.id,

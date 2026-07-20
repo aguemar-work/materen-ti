@@ -478,7 +478,7 @@ una sola base + modificador, definida una vez en `main.css`:
 |-------------|---------|------------|
 | `.badge--success` | verde | Activo, disponible, reutilizable libre |
 | `.badge--warning` | ámbar | Suspendido, rotar contraseña, en reparación, entrega abierta |
-| `.badge--danger` | rojo | Perdido/robado, sin devolver |
+| `.badge--danger` | rojo | Perdido/robado, sin devolver, acceso denegado (auditoría) |
 | `.badge--info` | azul | Asignado, "vio contraseña" |
 | `.badge--purple` | morado | Ubicaciones, rol JEFE |
 | `.badge--sky` | celeste | Tipo de cuenta (compartida/reutilizable en la ficha) |

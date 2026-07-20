@@ -21,6 +21,15 @@ const routes = [
   ...ticketsRoutes,
   ...actividadRoutes,
   ...soporteRoutes,
+  // Catch-all: SIEMPRE al final para no interceptar ninguna ruta real.
+  // Sin esto, una URL mal escrita no matchea nada y Vue Router no
+  // renderiza componente alguno (pantalla en blanco).
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('../modules/errores/NotFoundView.vue'),
+    meta: { public: true },
+  },
 ];
 
 const router = createRouter({

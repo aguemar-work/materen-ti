@@ -23,6 +23,7 @@ const ACCIONES = {
   enviar:          { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'badge--success' },
   entrega_creada:  { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'badge--success' },
   entrega_abierta: { label: 'Entrega abierta',     icon: 'ti ti-mail-opened',     clase: 'badge--warning' },
+  acceso_denegado: { label: 'Acceso denegado',     icon: 'ti ti-shield-x',        clase: 'badge--danger' },
 };
 
 const listaFiltrada = computed(() =>
@@ -82,6 +83,7 @@ onMounted(async () => {
             <option value="copiar">Copió contraseña</option>
             <option value="enviar">Creó entrega</option>
             <option value="entrega_abierta">Entrega abierta</option>
+            <option value="acceso_denegado">Acceso denegado</option>
           </select>
         </div>
 

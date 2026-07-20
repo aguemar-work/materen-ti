@@ -5,7 +5,18 @@
 const MAX_LADO = 1280;
 const CALIDAD_JPEG = 0.8;
 
+// Tope del archivo DE ENTRADA (la compresión ocurre después): por encima
+// de esto ni siquiera se intenta decodificar.
+const MAX_BYTES_ENTRADA = 20 * 1024 * 1024; // 20MB
+
 export async function comprimirImagen(file) {
+  // Chequeo barato y síncrono antes de decodificar: con un archivo que no
+  // es imagen o es desmesurado, createImageBitmap puede colgar el
+  // navegador varios segundos antes de fallar.
+  if (!file?.type?.startsWith('image/') || file.size > MAX_BYTES_ENTRADA) {
+    throw new Error('No se pudo procesar la imagen');
+  }
+
   const bitmap = await createImageBitmap(file);
 
   let { width, height } = bitmap;

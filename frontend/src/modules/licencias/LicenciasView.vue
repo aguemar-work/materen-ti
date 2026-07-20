@@ -406,7 +406,8 @@ onMounted(async () => {
                       :key="i"
                       class="usuario-chip"
                     >
-                      {{ u.nombre }}
+                      <RouterLink v-if="u.empleado_id" class="empleado-link" :to="`/empleados/${u.empleado_id}`">{{ u.nombre }}</RouterLink>
+                      <template v-else>{{ u.nombre }}</template>
                       <button
                         v-if="u.asignacion_id"
                         class="chip-x"
