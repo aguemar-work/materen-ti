@@ -552,7 +552,7 @@ async function guardar() {
               :disabled="guardando || subiendoFoto"
               @click="inputFotos?.click()"
             >
-              <i :class="subiendoFoto ? 'ti ti-loader-2' : 'ti ti-camera-plus'"></i>
+              <i :class="subiendoFoto ? 'ti ti-loader-2 spinner-icon' : 'ti ti-camera-plus'"></i>
               <span>{{ subiendoFoto ? 'Subiendo...' : 'Agregar' }}</span>
             </button>
           </div>
@@ -579,6 +579,7 @@ async function guardar() {
         <div class="modal-actions full">
           <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
           <button class="btn btn-primary" type="submit" :disabled="guardando">
+            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
             {{ guardando ? 'Guardando...' : 'Guardar' }}
           </button>
         </div>

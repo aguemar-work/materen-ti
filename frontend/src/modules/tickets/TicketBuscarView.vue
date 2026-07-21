@@ -83,6 +83,7 @@ async function buscar() {
         </div>
         <p v-if="errorDni || error" class="form-error" role="alert">{{ errorDni || error }}</p>
         <button class="btn btn-primary ticket-submit" type="submit" :disabled="buscando || !dniValido">
+          <i v-if="buscando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ buscando ? 'Buscando...' : 'Buscar' }}
         </button>
       </form>

@@ -208,7 +208,7 @@ async function confirmarBaja() {
           :disabled="cargando || procesando"
           @click="confirmarBaja"
         >
-          <i class="ti ti-user-off" aria-hidden="true"></i>
+          <i :class="procesando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-user-off'" aria-hidden="true"></i>
           {{ procesando ? 'Procesando...' : 'Confirmar baja' }}
         </button>
       </div>

@@ -8,6 +8,7 @@ import { usePaginacion } from '../../composables/usePaginacion.js';
 import Pagination from '../../components/shared/Pagination.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 
 const store = useStaffStore();
 const authStore = useAuthStore();
@@ -59,18 +60,17 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="cargando" class="no-results">Cargando staff...</div>
-
-        <div v-else-if="error" class="no-results staff-error">{{ error }}</div>
+        <div v-if="error" class="no-results staff-error">{{ error }}</div>
 
         <EmptyState
-          v-else-if="lista.length === 0"
+          v-else-if="!cargando && lista.length === 0"
           icono="ti ti-users"
           titulo="Sin miembros"
           mensaje="Los miembros del staff se crean desde el panel de InsForge Auth."
         />
 
-        <div v-else class="table-wrap">
+        <div v-else-if="cargando || lista.length > 0" class="table-wrap">
+          <p v-if="cargando" class="sr-only" role="status">Cargando staff…</p>
           <table aria-label="Miembros del staff">
             <thead>
               <tr>
@@ -81,6 +81,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="4" />
+              <template v-else>
               <tr v-for="miembro in listaPaginada" :key="miembro.user_id">
                 <td>
                   <div class="user-name">{{ miembro.nombre }}</div>
@@ -119,9 +121,10 @@ onMounted(async () => {
                   </div>
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
         </div>
       </div>
     </main>

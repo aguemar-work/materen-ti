@@ -13,6 +13,7 @@ import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 
 const store = useTiposEquipoStore();
 const { lista, cargando } = storeToRefs(store);
@@ -127,10 +128,8 @@ onMounted(async () => {
         </button>
       </div>
 
-      <div v-if="cargando" class="no-results">Cargando tipos...</div>
-
       <EmptyState
-        v-else-if="lista.length === 0"
+        v-if="!cargando && lista.length === 0"
         icono="ti ti-devices"
         titulo="Sin tipos de equipo"
         mensaje="Crea plantillas con los campos y accesorios que pide cada tipo."
@@ -141,6 +140,7 @@ onMounted(async () => {
       </EmptyState>
 
       <div v-else class="table-wrap">
+        <p v-if="cargando" class="sr-only" role="status">Cargando tipos de equipo…</p>
         <table aria-label="Tipos de equipo">
           <thead>
             <tr>
@@ -151,6 +151,8 @@ onMounted(async () => {
             </tr>
           </thead>
           <tbody>
+            <SkeletonTabla v-if="cargando" :columnas="4" />
+            <template v-else>
             <tr v-for="t in listaPaginada" :key="t.id">
               <td><span class="user-name">{{ t.nombre }}</span></td>
               <td>
@@ -176,9 +178,10 @@ onMounted(async () => {
                 </div>
               </td>
             </tr>
+            </template>
           </tbody>
         </table>
-        <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
       </div>
     </div>
 
@@ -210,6 +213,7 @@ onMounted(async () => {
           <div class="modal-actions">
             <button class="btn" type="button" :disabled="guardando" @click="mostrarForm = false">Cancelar</button>
             <button class="btn btn-primary" type="submit" :disabled="guardando">
+              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
               {{ guardando ? 'Guardando...' : 'Guardar' }}
             </button>
           </div>

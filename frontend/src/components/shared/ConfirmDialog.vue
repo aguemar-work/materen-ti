@@ -84,6 +84,7 @@ function confirmar() {
         :disabled="cargando"
         @click="confirmar"
       >
+        <i v-if="cargando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
         {{ cargando ? 'Procesando...' : confirmarLabel }}
       </button>
     </template>

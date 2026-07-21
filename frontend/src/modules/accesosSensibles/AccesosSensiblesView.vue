@@ -10,6 +10,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import AccesoSensibleForm from './AccesoSensibleForm.vue';
 
 const auth = useAuthStore();
@@ -107,11 +108,10 @@ onMounted(async () => {
 
     <main class="page">
       <div class="card card--fill">
-        <div v-if="cargando" class="no-results">Cargando accesos sensibles...</div>
-        <div v-else-if="error" class="no-results acc-error">{{ error }}</div>
+        <div v-if="error" class="no-results acc-error">{{ error }}</div>
 
         <EmptyState
-          v-else-if="lista.length === 0"
+          v-else-if="!cargando && lista.length === 0"
           icono="ti ti-shield-lock"
           titulo="Sin accesos sensibles"
           mensaje="Registra credenciales de alta sensibilidad (equipos, correos de gerencia/TI...) con visibilidad restringida por JEFE."
@@ -121,7 +121,8 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else class="table-wrap">
+        <div v-else-if="cargando || lista.length > 0" class="table-wrap">
+          <p v-if="cargando" class="sr-only" role="status">Cargando accesos sensibles…</p>
           <table aria-label="Accesos sensibles">
             <thead>
               <tr>
@@ -134,6 +135,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="6" />
+              <template v-else>
               <tr v-for="a in lista" :key="a.id">
                 <td><span class="user-name">{{ a.nombre }}</span></td>
                 <td><BadgeEstado tipo="categoria_acceso_sensible" :valor="a.categoria" /></td>
@@ -189,6 +192,7 @@ onMounted(async () => {
                   </div>
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
         </div>

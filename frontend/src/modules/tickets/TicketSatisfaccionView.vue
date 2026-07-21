@@ -107,6 +107,7 @@ async function enviar() {
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
         <button class="btn btn-primary ticket-submit" type="button" :disabled="estado === 'enviando'" @click="enviar">
+          <i v-if="estado === 'enviando'" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}
         </button>
       </template>

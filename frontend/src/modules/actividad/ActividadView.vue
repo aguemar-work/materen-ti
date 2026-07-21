@@ -12,6 +12,7 @@ import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 
 const registros = ref([]);
 const cargando = ref(true);
@@ -87,16 +88,15 @@ onMounted(async () => {
           </select>
         </div>
 
-        <div v-if="cargando" class="no-results">Cargando actividad...</div>
-
         <EmptyState
-          v-else-if="listaFiltrada.length === 0"
+          v-if="!cargando && listaFiltrada.length === 0"
           icono="ti ti-activity"
           titulo="Sin actividad registrada"
           mensaje="Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña."
         />
 
         <div v-else class="table-wrap">
+          <p v-if="cargando" class="sr-only" role="status">Cargando actividad…</p>
           <table aria-label="Auditoría de accesos a contraseñas">
             <thead>
               <tr>
@@ -109,6 +109,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="6" />
+              <template v-else>
               <tr v-for="r in listaPaginada" :key="r.id">
                 <td class="fecha-cell">{{ formatFechaHora(r.created_at) }}</td>
                 <td>{{ r.user_email || '(empleado, vía enlace)' }}</td>
@@ -125,9 +127,10 @@ onMounted(async () => {
                   <TextoVacio v-else />
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
         </div>
       </div>
     </main>

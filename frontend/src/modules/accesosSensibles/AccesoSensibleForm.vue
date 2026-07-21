@@ -242,6 +242,7 @@ async function guardar() {
         <div class="modal-actions full">
           <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
           <button class="btn btn-primary" type="submit" :disabled="guardando || cargandoJefes">
+            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
             {{ guardando ? 'Guardando...' : 'Guardar' }}
           </button>
         </div>

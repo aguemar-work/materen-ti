@@ -196,6 +196,7 @@ onMounted(async () => {
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
           <button class="btn btn-primary ticket-submit" type="submit" :disabled="estado === 'enviando'">
+            <i v-if="estado === 'enviando'" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
             {{ estado === 'enviando' ? 'Enviando...' : 'Enviar solicitud' }}
           </button>
         </form>

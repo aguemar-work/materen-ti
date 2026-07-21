@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
@@ -13,6 +13,9 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
+// Carga diferida: html2canvas + los logos embebidos pesan ~500 KB y la
+// mayoría de visitas a una ficha no generan una firma.
+const FirmaCorreoModal = defineAsyncComponent(() => import('./FirmaCorreoModal.vue'));
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
@@ -29,6 +32,7 @@ const cargando = ref(true);
 const procesando = ref(false);
 const mostrarForm = ref(false);
 const mostrarBaja = ref(false);
+const mostrarFirma = ref(false);
 
 // Alta guiada: se llega con ?nuevo=1 desde "Nuevo empleado"
 const modoAlta = ref(route.query.nuevo === '1');
@@ -177,6 +181,9 @@ onMounted(cargar);
       <template v-if="empleado" #acciones>
         <button class="btn" type="button" :disabled="procesando" @click="mostrarForm = true">
           <i class="ti ti-pencil" aria-hidden="true"></i> Editar
+        </button>
+        <button class="btn" type="button" :disabled="procesando" @click="mostrarFirma = true">
+          <i class="ti ti-signature" aria-hidden="true"></i> Generar firma
         </button>
         <button
           v-if="empleado.estado !== 'Inactivo'"
@@ -411,6 +418,12 @@ onMounted(cargar);
       v-if="mostrarBaja"
       :empleado="empleado"
       @cerrar="onBajaCerrada"
+    />
+
+    <FirmaCorreoModal
+      v-if="mostrarFirma"
+      :empleado="empleado"
+      @cerrar="mostrarFirma = false"
     />
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->

@@ -9,6 +9,7 @@ import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 
 const store = usePlataformasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -131,12 +132,10 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="cargando" class="no-results">Cargando plataformas...</div>
-
-        <div v-else-if="error" class="no-results plataformas-error">{{ error }}</div>
+        <div v-if="error" class="no-results plataformas-error">{{ error }}</div>
 
         <EmptyState
-          v-else-if="listaFiltrada.length === 0"
+          v-else-if="!cargando && listaFiltrada.length === 0"
           icono="ti ti-apps"
           titulo="Sin plataformas"
           :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera plataforma.'"
@@ -146,7 +145,8 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else class="table-wrap">
+        <div v-else-if="cargando || listaFiltrada.length > 0" class="table-wrap">
+          <p v-if="cargando" class="sr-only" role="status">Cargando plataformas…</p>
           <table aria-label="Plataformas registradas">
             <thead>
               <tr>
@@ -157,6 +157,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="4" />
+              <template v-else>
               <tr v-for="plat in listaPaginada" :key="plat.id">
                 <td>
                   <code class="slug">{{ plat.id }}</code>
@@ -194,9 +196,10 @@ onMounted(async () => {
                   </div>
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
         </div>
       </div>
     </main>
@@ -255,6 +258,7 @@ onMounted(async () => {
           <div class="modal-actions full">
             <button class="btn" type="button" :disabled="guardando" @click="cerrarForm">Cancelar</button>
             <button class="btn btn-primary" type="submit" :disabled="guardando">
+              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
               {{ guardando ? 'Guardando...' : 'Guardar' }}
             </button>
           </div>

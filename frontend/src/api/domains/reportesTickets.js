@@ -9,6 +9,9 @@
 //   cerrar el ticket) y fecha_envio es la fecha de RESPUESTA del empleado
 //   (NULL = pendiente). "Enviadas en el periodo" filtra por created_at.
 import { getClient } from '../client.js';
+import { ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
+
+const ESTADOS_RESUELTO = ['resuelto', ...ESTADOS_TERMINALES];
 
 export const reportesTicketsApi = {
   async obtenerReporteTickets({ desde, hasta }) {
@@ -73,13 +76,7 @@ export const reportesTicketsApi = {
       porPrioridad: contarPor(creados, (t) => t.prioridad),
       porEstado: contarPor(creados, (t) => t.estado),
       porTecnico,
-      ticketsPeriodo: creados.map((t) => ({
-        codigo: t.codigo,
-        solicitante: t.vinculado
-          ? (t.empleados ? `${t.empleados.nombres} ${t.empleados.apellidos}`.trim() : (t.contacto_ingresado || ''))
-          : 'Sin vincular',
-        encuesta: encuestaPorTicket.get(t.id) || null,
-      })),
+      porSolicitante: resumenPorSolicitante(creados, encuestaPorTicket),
       encuestasEnviadas: encuestas.length,
       encuestasRespondidas: respondidas.length,
       promedioSatisfaccion,
@@ -90,6 +87,29 @@ export const reportesTicketsApi = {
     };
   },
 };
+
+// Resumen por solicitante: total de tickets creados en el periodo,
+// resueltos/sin resolver y encuestas contestadas/pendientes.
+function resumenPorSolicitante(creados, encuestaPorTicket) {
+  const mapa = new Map();
+  for (const t of creados) {
+    const solicitante = t.vinculado
+      ? (t.empleados ? `${t.empleados.nombres} ${t.empleados.apellidos}`.trim() : (t.contacto_ingresado || ''))
+      : 'Sin vincular';
+    const clave = solicitante || 'Sin vincular';
+    if (!mapa.has(clave)) {
+      mapa.set(clave, { solicitante: clave, total: 0, resueltos: 0, sinResolver: 0, encuestasContestadas: 0, encuestasPendientes: 0 });
+    }
+    const fila = mapa.get(clave);
+    fila.total += 1;
+    if (ESTADOS_RESUELTO.includes(t.estado)) fila.resueltos += 1;
+    else fila.sinResolver += 1;
+    const encuesta = encuestaPorTicket.get(t.id);
+    if (encuesta === 'respondida') fila.encuestasContestadas += 1;
+    else if (encuesta === 'pendiente') fila.encuestasPendientes += 1;
+  }
+  return [...mapa.values()].sort((a, b) => b.total - a.total);
+}
 
 function contarPor(lista, fnClave) {
   const mapa = {};

@@ -19,6 +19,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
@@ -434,7 +435,7 @@ onMounted(async () => {
     <PageHeader titulo="Equipos" icono="ti ti-devices" :conteo="total">
       <template #acciones>
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
         </button>
         <button class="btn btn-primary" type="button" @click="abrirNuevo">
           <i class="ti ti-plus" aria-hidden="true"></i> Nuevo equipo
@@ -459,11 +460,11 @@ onMounted(async () => {
           </select>
         </div>
 
-        <div v-if="cargando" class="no-results">Cargando equipos...</div>
+        <div v-if="cargando" class="no-results solo-movil">Cargando equipos...</div>
         <div v-else-if="error" class="no-results eq-error">{{ error }}</div>
 
         <EmptyState
-          v-else-if="total === 0"
+          v-else-if="!cargando && total === 0"
           icono="ti ti-devices"
           titulo="Sin equipos"
           :mensaje="busqueda || filtroTipo || filtroSituacion ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer equipo del inventario.'"
@@ -473,7 +474,8 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <template v-else>
+        <template v-if="!error && (cargando || total > 0)">
+        <p v-if="cargando" class="sr-only" role="status">Cargando equipos…</p>
         <div class="table-wrap solo-escritorio">
           <table aria-label="Inventario de equipos">
             <thead>
@@ -488,6 +490,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="7" />
+              <template v-else>
               <tr v-for="eq in lista" :key="eq.id">
                 <td><span class="eq-codigo">{{ eq.codigo }}</span></td>
                 <td class="eq-codigo-almacen"><TextoVacio :valor="eq.codigo_almacen" /></td>
@@ -544,12 +548,13 @@ onMounted(async () => {
                   </div>
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
         </div>
 
         <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul class="lista-tarjetas solo-movil" aria-label="Inventario de equipos">
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Inventario de equipos">
           <li v-for="eq in lista" :key="eq.id" class="tarjeta-fila">
             <div class="tarjeta-fila__cab">
               <span class="eq-codigo">{{ eq.codigo }}</span>
@@ -590,7 +595,7 @@ onMounted(async () => {
           </li>
         </ul>
 
-        <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </template>
       </div>
     </main>
@@ -625,6 +630,7 @@ onMounted(async () => {
         <div class="modal-actions">
           <button class="btn" type="button" :disabled="procesando" @click="mostrarAsignar = false">Cancelar</button>
           <button class="btn btn-primary" type="button" :disabled="procesando || !empleadoSelId" @click="confirmarAsignar">
+            <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
             {{ procesando ? 'Entregando...' : 'Entregar' }}
           </button>
         </div>
@@ -671,6 +677,7 @@ onMounted(async () => {
         <div class="modal-actions">
           <button class="btn" type="button" :disabled="procesando" @click="mostrarDevolver = false">Cancelar</button>
           <button class="btn btn-primary" type="button" :disabled="procesando || !condicionDevolucion.trim()" @click="confirmarDevolver">
+            <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
             {{ procesando ? 'Registrando...' : 'Registrar devolución' }}
           </button>
         </div>
@@ -721,6 +728,7 @@ onMounted(async () => {
         <div class="modal-actions">
           <button class="btn" type="button" :disabled="procesando" @click="mostrarMover = false">Cancelar</button>
           <button class="btn btn-primary" type="button" :disabled="procesando || !ubicacionSelId" @click="confirmarMover">
+            <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
             {{ procesando ? 'Moviendo...' : 'Mover' }}
           </button>
         </div>

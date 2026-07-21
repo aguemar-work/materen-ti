@@ -165,6 +165,7 @@ async function onCambiarPassword() {
           type="submit"
           :disabled="cargando"
         >
+          <i v-if="cargando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ cargando ? 'Ingresando...' : 'Ingresar' }}
         </button>
 
@@ -192,6 +193,7 @@ async function onCambiarPassword() {
         </div>
 
         <button class="btn btn-primary login-submit" type="submit" :disabled="procesando">
+          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ procesando ? 'Enviando...' : 'Enviar código' }}
         </button>
 
@@ -221,6 +223,7 @@ async function onCambiarPassword() {
         </div>
 
         <button class="btn btn-primary login-submit" type="submit" :disabled="procesando || codigo.trim().length < 6">
+          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ procesando ? 'Verificando...' : 'Verificar código' }}
         </button>
 
@@ -266,6 +269,7 @@ async function onCambiarPassword() {
         </div>
 
         <button class="btn btn-primary login-submit" type="submit" :disabled="procesando">
+          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ procesando ? 'Guardando...' : 'Cambiar contraseña' }}
         </button>
 

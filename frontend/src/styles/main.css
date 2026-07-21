@@ -868,6 +868,34 @@
       border-bottom: none;
     }
 
+    /* ── Skeleton de carga para tablas (ver SkeletonTabla.vue) ── */
+    .skeleton-fila td {
+      cursor: default;
+    }
+
+    .skeleton-bar {
+      display: inline-block;
+      height: 13px;
+      width: 70%;
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-subtle);
+      animation: skeleton-pulso 1.4s ease-in-out infinite;
+    }
+
+    @keyframes skeleton-pulso {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ── Spinner de carga para botones (enviar/guardar/eliminar) ── */
+    .spinner-icon {
+      animation: spinner-girar 0.7s linear infinite;
+    }
+
+    @keyframes spinner-girar {
+      to { transform: rotate(360deg); }
+    }
+
     .user-cell {
       display: flex;
       align-items: center;
@@ -1275,6 +1303,10 @@
       .modal-anim-leave-to .modal,
       .modal-anim-rapida-enter-from .modal,
       .modal-anim-rapida-leave-to .modal { transform: none; }
+
+      .skeleton-bar { animation: none; opacity: 0.6; }
+
+      .spinner-icon { animation-duration: 1.6s; }
     }
 
     .modal-title {

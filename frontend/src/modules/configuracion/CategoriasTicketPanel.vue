@@ -242,6 +242,7 @@ onMounted(async () => {
           <div class="modal-actions">
             <button class="btn" type="button" :disabled="guardando" @click="mostrarCatForm = false">Cancelar</button>
             <button class="btn btn-primary" type="submit" :disabled="guardando">
+              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
               {{ guardando ? 'Guardando...' : 'Guardar' }}
             </button>
           </div>

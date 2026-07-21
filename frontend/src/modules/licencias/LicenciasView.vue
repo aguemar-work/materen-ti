@@ -16,6 +16,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
@@ -303,7 +304,7 @@ onMounted(async () => {
     <PageHeader titulo="Licencias" icono="ti ti-license" :conteo="total">
       <template #acciones>
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
         </button>
         <button class="btn btn-primary" type="button" @click="abrirNueva">
           <i class="ti ti-plus" aria-hidden="true"></i> Nueva licencia
@@ -320,11 +321,10 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="cargando" class="no-results">Cargando licencias...</div>
-        <div v-else-if="error" class="no-results lic-error">{{ error }}</div>
+        <div v-if="error" class="no-results lic-error">{{ error }}</div>
 
         <EmptyState
-          v-else-if="total === 0"
+          v-else-if="!cargando && total === 0"
           icono="ti ti-license"
           titulo="Sin licencias"
           :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra la primera licencia para ordenar el software que pagan.'"
@@ -334,7 +334,8 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else class="table-wrap">
+        <div v-else-if="cargando || total > 0" class="table-wrap">
+          <p v-if="cargando" class="sr-only" role="status">Cargando licencias…</p>
           <table aria-label="Licencias de software">
             <thead>
               <tr>
@@ -348,6 +349,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="7" />
+              <template v-else>
               <tr v-for="lic in lista" :key="lic.id">
                 <td>
                   <div class="user-name">{{ lic.software }}</div>
@@ -464,9 +467,10 @@ onMounted(async () => {
                   </div>
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
       </div>
     </main>
@@ -512,6 +516,7 @@ onMounted(async () => {
         <div class="modal-actions">
           <button class="btn" type="button" :disabled="asignando" @click="mostrarAsignar = false">Cancelar</button>
           <button class="btn btn-primary" type="button" :disabled="asignando || !empleadoAsignarId" @click="confirmarAsignar">
+            <i v-if="asignando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
             {{ asignando ? 'Asignando...' : 'Asignar' }}
           </button>
         </div>

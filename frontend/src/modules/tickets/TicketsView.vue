@@ -16,6 +16,7 @@ import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 
 const router = useRouter();
 const store = useTicketsStore();
@@ -142,7 +143,7 @@ onMounted(async () => {
     <PageHeader titulo="Tickets" icono="ti ti-headset" :conteo="total">
       <template #acciones>
         <button class="btn solo-escritorio" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
         </button>
         <button class="btn solo-escritorio" type="button" @click="mostrarReporte = true">
           <i class="ti ti-report" aria-hidden="true"></i> Reporte
@@ -183,17 +184,18 @@ onMounted(async () => {
           </label>
         </div>
 
-        <div v-if="cargando" class="no-results">Cargando tickets...</div>
+        <div v-if="cargando" class="no-results solo-movil">Cargando tickets...</div>
         <div v-else-if="error" class="no-results tk-error">{{ error }}</div>
 
         <EmptyState
-          v-else-if="total === 0"
+          v-else-if="!cargando && total === 0"
           icono="ti ti-headset"
           titulo="Sin tickets"
           :mensaje="busqueda || filtroEstado || filtroPrioridad ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
         />
 
-        <template v-else>
+        <template v-if="!error && (cargando || total > 0)">
+        <p v-if="cargando" class="sr-only" role="status">Cargando tickets…</p>
         <div class="table-wrap solo-escritorio">
           <table aria-label="Tickets de soporte">
             <thead>
@@ -209,6 +211,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="8" />
+              <template v-else>
               <tr v-for="t in lista" :key="t.id" class="fila-ticket" @click="verTicket(t)">
                 <td><RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${t.id}`" @click.stop>{{ t.codigo }}</RouterLink></td>
                 <td class="fecha-cell">{{ formatFechaHora(t.created_at) }}</td>
@@ -233,12 +237,13 @@ onMounted(async () => {
                   <template v-else>{{ staffPorId[t.asignado_a] || 'Staff' }}</template>
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
         </div>
 
         <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul class="lista-tarjetas solo-movil" aria-label="Tickets de soporte">
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Tickets de soporte">
           <li v-for="t in lista" :key="t.id" class="tarjeta-fila tarjeta-fila--clic" @click="verTicket(t)">
             <div class="tarjeta-fila__cab">
               <RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${t.id}`" @click.stop>{{ t.codigo }}</RouterLink>
@@ -263,7 +268,7 @@ onMounted(async () => {
           </li>
         </ul>
 
-        <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </template>
       </div>
     </main>

@@ -17,12 +17,10 @@ function filasTecnicos(items) {
   return items.map((t) => `<tr><td>${esc(t.nombre)}</td><td class="num">${t.cantidad}</td></tr>`).join('');
 }
 
-const ENCUESTA_LABELS = { respondida: 'Respondida', pendiente: 'Pendiente' };
-
-function filasTicketsPeriodo(items) {
-  if (!items.length) return '<tr><td colspan="3" class="vacio">Sin tickets creados en el periodo</td></tr>';
-  return items.map((t) =>
-    `<tr><td class="codigo">${esc(t.codigo)}</td><td>${esc(t.solicitante || '—')}</td><td>${ENCUESTA_LABELS[t.encuesta] || '—'}</td></tr>`,
+function filasPorSolicitante(items) {
+  if (!items.length) return '<tr><td colspan="6" class="vacio">Sin tickets creados en el periodo</td></tr>';
+  return items.map((s) =>
+    `<tr><td>${esc(s.solicitante)}</td><td class="num">${s.total}</td><td class="num">${s.resueltos}</td><td class="num">${s.sinResolver}</td><td class="num">${s.encuestasContestadas}</td><td class="num">${s.encuestasPendientes}</td></tr>`,
   ).join('');
 }
 
@@ -99,10 +97,10 @@ export function generarReporteTickets(datos, periodoLabel, rangoLabel) {
   <h2>Desempeño por técnico (resueltos en el periodo)</h2>
   <table><tbody>${filasTecnicos(datos.porTecnicoNombres)}</tbody></table>
 
-  <h2>Tickets del periodo</h2>
+  <h2>Tickets del periodo por solicitante</h2>
   <table>
-    <thead><tr><th>Ticket</th><th>Solicitante</th><th>Encuesta</th></tr></thead>
-    <tbody>${filasTicketsPeriodo(datos.ticketsPeriodo)}</tbody>
+    <thead><tr><th>Solicitante</th><th class="num">Total tickets</th><th class="num">Resueltos</th><th class="num">Sin resolver</th><th class="num">Enc. contestadas</th><th class="num">Enc. pendientes</th></tr></thead>
+    <tbody>${filasPorSolicitante(datos.porSolicitante)}</tbody>
   </table>
 
   <h2>Satisfacción del servicio</h2>

@@ -346,6 +346,7 @@ onUnmounted(() => store.limpiar());
               <div class="modal-actions">
                 <button class="btn" type="button" :disabled="iniciando" @click="mostrarIniciar = false">Cancelar</button>
                 <button class="btn btn-primary" type="button" :disabled="iniciando" @click="confirmarIniciar">
+                  <i v-if="iniciando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
                   {{ iniciando ? 'Iniciando...' : 'Confirmar inicio' }}
                 </button>
               </div>
@@ -360,6 +361,7 @@ onUnmounted(() => store.limpiar());
               <div class="modal-actions">
                 <button class="btn" type="button" :disabled="rechazando" @click="mostrarRechazar = false">Cancelar</button>
                 <button class="btn btn-danger" type="button" :disabled="rechazando" @click="confirmarRechazar">
+                  <i v-if="rechazando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
                   {{ rechazando ? 'Rechazando...' : 'Confirmar rechazo' }}
                 </button>
               </div>
@@ -388,7 +390,7 @@ onUnmounted(() => store.limpiar());
                 </select>
               </div>
               <button class="btn btn-primary tk-btn-resolver" type="button" :disabled="resolviendo" @click="marcarResuelto">
-                <i class="ti ti-circle-check" aria-hidden="true"></i>
+                <i :class="resolviendo ? 'ti ti-loader-2 spinner-icon' : 'ti ti-circle-check'" aria-hidden="true"></i>
                 {{ resolviendo ? 'Cerrando...' : 'Marcar como resuelto' }}
               </button>
             </template>
@@ -399,7 +401,7 @@ onUnmounted(() => store.limpiar());
               <p class="tk-detalle">Nivel de atención: {{ NIVELES_ATENCION.find((n) => n.valor === ticket.nivel_atencion)?.label || 'Sin definir' }}</p>
               <p class="tk-detalle">Asignado a: {{ staffPorId[ticket.asignado_a] || 'Sin asignar' }}</p>
               <button v-if="auth.esJefe" class="btn tk-btn-reabrir" type="button" :disabled="reabriendo" @click="reabrirTicket">
-                <i class="ti ti-refresh" aria-hidden="true"></i> {{ reabriendo ? 'Reabriendo...' : 'Reabrir ticket' }}
+                <i :class="reabriendo ? 'ti ti-loader-2 spinner-icon' : 'ti ti-refresh'" aria-hidden="true"></i> {{ reabriendo ? 'Reabriendo...' : 'Reabrir ticket' }}
               </button>
               <p v-else class="tk-nota">Solo el jefe puede reabrir este ticket.</p>
             </template>
@@ -462,6 +464,7 @@ onUnmounted(() => store.limpiar());
                 Nota interna (no visible para el empleado)
               </label>
               <button class="btn btn-primary" type="button" :disabled="enviandoComentario || !nuevoComentario.trim()" @click="enviarComentario">
+                <i v-if="enviandoComentario" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
                 {{ enviandoComentario ? 'Enviando...' : 'Comentar' }}
               </button>
             </div>

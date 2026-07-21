@@ -183,20 +183,28 @@ onMounted(cargar);
             </div>
 
             <div class="rep-seccion">
-              <div class="datos-title">Tickets del periodo</div>
+              <div class="datos-title">Tickets del periodo por solicitante</div>
               <table class="rep-tabla">
-                <thead><tr><th>Ticket</th><th>Solicitante</th><th>Encuesta</th></tr></thead>
-                <tbody>
-                  <tr v-for="t in datos.ticketsPeriodo" :key="t.codigo">
-                    <td class="rep-codigo">{{ t.codigo }}</td>
-                    <td><TextoVacio :valor="t.solicitante" /></td>
-                    <td>
-                      <span v-if="t.encuesta === 'respondida'" class="badge badge--success">Respondida</span>
-                      <span v-else-if="t.encuesta === 'pendiente'" class="badge badge--warning">Pendiente</span>
-                      <TextoVacio v-else />
-                    </td>
+                <thead>
+                  <tr>
+                    <th>Solicitante</th>
+                    <th class="num">Total tickets</th>
+                    <th class="num">Resueltos</th>
+                    <th class="num">Sin resolver</th>
+                    <th class="num">Encuestas contestadas</th>
+                    <th class="num">Encuestas pendientes</th>
                   </tr>
-                  <tr v-if="!datos.ticketsPeriodo.length"><td colspan="3" class="rep-vacio">Sin tickets creados en el periodo</td></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in datos.porSolicitante" :key="s.solicitante">
+                    <td><TextoVacio :valor="s.solicitante" /></td>
+                    <td class="num">{{ s.total }}</td>
+                    <td class="num">{{ s.resueltos }}</td>
+                    <td class="num">{{ s.sinResolver }}</td>
+                    <td class="num">{{ s.encuestasContestadas }}</td>
+                    <td class="num">{{ s.encuestasPendientes }}</td>
+                  </tr>
+                  <tr v-if="!datos.porSolicitante.length"><td colspan="6" class="rep-vacio">Sin tickets creados en el periodo</td></tr>
                 </tbody>
               </table>
             </div>

@@ -17,6 +17,7 @@ import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 
 const router = useRouter();
 const store = useEmpleadosStore();
@@ -171,7 +172,7 @@ onMounted(async () => {
     <PageHeader titulo="Empleados" icono="ti ti-users" :conteo="total">
       <template #acciones>
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
         </button>
         <button class="btn btn-primary" type="button" @click="abrirNuevo">
           <i class="ti ti-plus" aria-hidden="true"></i> Nuevo empleado
@@ -196,7 +197,7 @@ onMounted(async () => {
           </select>
         </div>
 
-        <div v-if="cargando" class="no-results">Cargando empleados...</div>
+        <div v-if="cargando" class="no-results solo-movil">Cargando empleados...</div>
 
         <div v-else-if="error" class="no-results empleados-error">{{ error }}</div>
 
@@ -211,7 +212,8 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <template v-else>
+        <template v-if="!error && (cargando || total > 0)">
+        <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
         <div class="table-wrap solo-escritorio">
           <table aria-label="Inventario de empleados">
             <thead>
@@ -226,6 +228,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="7" />
+              <template v-else>
               <tr v-for="emp in lista" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
                 <td>{{ emp.dni }}</td>
                 <td>
@@ -290,7 +294,7 @@ onMounted(async () => {
                       :disabled="enviandoCredsId === emp.id"
                       @click="enviarCredenciales(emp)"
                     >
-                      <i class="ti ti-brand-whatsapp"></i>
+                      <i :class="enviandoCredsId === emp.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'"></i>
                     </button>
                     <button
                       v-if="emp.estado !== 'Inactivo'"
@@ -305,12 +309,13 @@ onMounted(async () => {
                   </div>
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
         </div>
 
         <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul class="lista-tarjetas solo-movil" aria-label="Inventario de empleados">
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Inventario de empleados">
           <li v-for="emp in lista" :key="emp.id" class="tarjeta-fila tarjeta-fila--clic" @click="verFicha(emp)">
             <div class="tarjeta-fila__principal user-name">{{ nombreCompleto(emp) }}</div>
             <div class="tarjeta-fila__sec">
@@ -338,7 +343,7 @@ onMounted(async () => {
           </li>
         </ul>
 
-        <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </template>
       </div>
     </main>

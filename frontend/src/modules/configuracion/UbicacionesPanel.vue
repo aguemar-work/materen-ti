@@ -11,6 +11,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 
 const store = useUbicacionesStore();
 const { lista, cargando } = storeToRefs(store);
@@ -102,16 +103,15 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
         </button>
       </div>
 
-      <div v-if="cargando" class="no-results">Cargando ubicaciones...</div>
-
       <EmptyState
-        v-else-if="lista.length === 0"
+        v-if="!cargando && lista.length === 0"
         icono="ti ti-map-pin"
         titulo="Sin ubicaciones"
         mensaje="Crea almacenes, áreas u obras para asignarles equipos."
       />
 
       <div v-else class="table-wrap">
+        <p v-if="cargando" class="sr-only" role="status">Cargando ubicaciones…</p>
         <table aria-label="Ubicaciones">
           <thead>
             <tr>
@@ -121,6 +121,8 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
             </tr>
           </thead>
           <tbody>
+            <SkeletonTabla v-if="cargando" :columnas="3" />
+            <template v-else>
             <tr v-for="u in listaPaginada" :key="u.id">
               <td><span class="user-name"><i class="ti ti-map-pin ub-icon"></i> {{ u.nombre }}</span></td>
               <td><TextoVacio :valor="u.descripcion" /></td>
@@ -135,9 +137,10 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
                 </div>
               </td>
             </tr>
+            </template>
           </tbody>
         </table>
-        <Pagination v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
       </div>
     </div>
 
@@ -163,6 +166,7 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
       <template #acciones>
         <button class="btn" type="button" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
         <button class="btn btn-primary" type="submit" form="ub-form" :disabled="guardando">
+          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ guardando ? 'Guardando...' : 'Guardar' }}
         </button>
       </template>

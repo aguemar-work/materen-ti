@@ -13,6 +13,7 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 import CuentaForm from './CuentaForm.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const props = defineProps({
@@ -213,7 +214,7 @@ onMounted(async () => {
       </div>
       <div class="panel-actions">
         <button v-if="lista.length" class="btn btn-whatsapp" type="button" :disabled="creandoEntrega" @click="enviarWhatsApp">
-          <i class="ti ti-brand-whatsapp" aria-hidden="true"></i>
+          <i :class="creandoEntrega ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'" aria-hidden="true"></i>
           {{ creandoEntrega ? 'Generando enlace...' : 'Enviar por WhatsApp' }}
         </button>
         <button class="btn btn-primary" type="button" @click="abrirNueva">
@@ -222,11 +223,10 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-if="cargando" class="no-results">Cargando cuentas...</div>
-    <div v-else-if="error" class="no-results cuentas-error">{{ error }}</div>
+    <div v-if="error" class="no-results cuentas-error">{{ error }}</div>
 
     <EmptyState
-      v-else-if="lista.length === 0"
+      v-else-if="!cargando && lista.length === 0"
       icono="ti ti-key"
       titulo="Sin cuentas registradas"
       mensaje="Agrega la primera cuenta para este empleado."
@@ -236,7 +236,8 @@ onMounted(async () => {
       </button>
     </EmptyState>
 
-    <div v-else class="table-wrap">
+    <div v-else-if="cargando || lista.length > 0" class="table-wrap">
+      <p v-if="cargando" class="sr-only" role="status">Cargando cuentas…</p>
       <table aria-label="Cuentas del empleado">
         <thead>
           <tr>
@@ -248,6 +249,8 @@ onMounted(async () => {
           </tr>
         </thead>
         <tbody>
+          <SkeletonTabla v-if="cargando" :columnas="5" />
+          <template v-else>
           <tr v-for="cuenta in lista" :key="cuenta.asignacion_id">
             <td>
               <span class="user-name">{{ cuenta.plataforma_nombre }}</span>
@@ -320,6 +323,7 @@ onMounted(async () => {
               </div>
             </td>
           </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -362,6 +366,7 @@ onMounted(async () => {
       <div class="modal-actions">
         <button class="btn" type="button" :disabled="guardandoTraspaso" @click="mostrarTraspaso = false">Cancelar</button>
         <button class="btn btn-primary" type="button" :disabled="guardandoTraspaso || !nuevoEmpleadoId" @click="confirmarTraspaso">
+          <i v-if="guardandoTraspaso" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ guardandoTraspaso ? 'Traspasando...' : 'Traspasar' }}
         </button>
       </div>

@@ -14,6 +14,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 
 const store = useCorreosStore();
 const { lista, total, cargando, error } = storeToRefs(store);
@@ -145,7 +146,7 @@ onMounted(async () => {
     <PageHeader titulo="Correos" icono="ti ti-mail-share" :conteo="total">
       <template #acciones>
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
+          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
         </button>
         <button class="btn btn-primary" type="button" @click="abrirNuevo">
           <i class="ti ti-plus" aria-hidden="true"></i> Nuevo correo
@@ -171,12 +172,10 @@ onMounted(async () => {
           </select>
         </div>
 
-        <div v-if="cargando" class="no-results">Cargando correos compartidos...</div>
-
-        <div v-else-if="error" class="no-results correos-error">{{ error }}</div>
+        <div v-if="error" class="no-results correos-error">{{ error }}</div>
 
         <EmptyState
-          v-else-if="total === 0"
+          v-else-if="!cargando && total === 0"
           icono="ti ti-mail-share"
           titulo="Sin correos compartidos"
           :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.'"
@@ -186,7 +185,8 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else class="table-wrap">
+        <div v-else-if="cargando || total > 0" class="table-wrap">
+          <p v-if="cargando" class="sr-only" role="status">Cargando correos compartidos…</p>
           <table aria-label="Correos compartidos y reutilizables">
             <thead>
               <tr>
@@ -201,6 +201,8 @@ onMounted(async () => {
               </tr>
             </thead>
             <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="8" />
+              <template v-else>
               <tr v-for="correo in lista" :key="correo.id">
                 <td>
                   <div class="user-name">{{ correo.plataforma_nombre || '—' }}</div>
@@ -293,9 +295,10 @@ onMounted(async () => {
                   </div>
                 </td>
               </tr>
+              </template>
             </tbody>
           </table>
-          <Pagination v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
       </div>
     </main>
