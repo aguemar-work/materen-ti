@@ -4,12 +4,14 @@ import { storeToRefs } from 'pinia';
 import { usePlataformasStore } from '../../stores/plataformas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
+import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import Pagination from '../../components/shared/Pagination.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const store = usePlataformasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -34,7 +36,8 @@ const listaFiltrada = computed(() => {
   );
 });
 
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaFiltrada);
+const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
+const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
 
 const esEdicion = computed(() => !!plataformaEditar.value?.id);
 
@@ -150,8 +153,8 @@ onMounted(async () => {
           <table aria-label="Plataformas registradas">
             <thead>
               <tr>
-                <th scope="col">Slug</th>
-                <th scope="col">Nombre</th>
+                <ThOrdenable clave="id" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Slug</ThOrdenable>
+                <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
                 <th scope="col">Ícono</th>
                 <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>

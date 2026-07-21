@@ -8,12 +8,14 @@ import { useEquiposStore } from '../../stores/equipos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
+import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import Pagination from '../../components/shared/Pagination.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const store = useTiposEquipoStore();
 const { lista, cargando } = storeToRefs(store);
@@ -32,7 +34,8 @@ useFocoAtrapado(panelForm, mostrarForm);
 
 const esEdicion = computed(() => !!editar.value);
 
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lista);
+const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
+const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
 
 function aLista(texto) {
   return texto.split(',').map((s) => s.trim()).filter(Boolean);
@@ -144,7 +147,7 @@ onMounted(async () => {
         <table aria-label="Tipos de equipo">
           <thead>
             <tr>
-              <th scope="col">Tipo</th>
+              <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Tipo</ThOrdenable>
               <th scope="col">Specs que pide</th>
               <th scope="col">Accesorios sugeridos</th>
               <th scope="col"><span class="sr-only">Acciones</span></th>

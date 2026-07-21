@@ -20,11 +20,14 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const store = useEquiposStore();
-const { lista, total, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error, orden } = storeToRefs(store);
+const ordenColumna = computed(() => orden.value?.columna || '');
+const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 useRealtimeRefresco('equipos:list', () => store.cargar());
 
@@ -417,6 +420,7 @@ function accionesVisibles(eq) {
 }
 
 onMounted(async () => {
+  store.resetearFiltros();
   try {
     const q = busqueda.value.trim();
     if (q) {
@@ -480,10 +484,10 @@ onMounted(async () => {
           <table aria-label="Inventario de equipos">
             <thead>
               <tr>
-                <th scope="col">Código equipo</th>
-                <th scope="col">Código almacén</th>
+                <ThOrdenable clave="codigo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Código equipo</ThOrdenable>
+                <ThOrdenable clave="codigo_almacen" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Código almacén</ThOrdenable>
                 <th scope="col">Equipo</th>
-                <th scope="col">Serie</th>
+                <ThOrdenable clave="serie" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Serie</ThOrdenable>
                 <th scope="col" class="th-situacion">Situación</th>
                 <th scope="col">Asignado a</th>
                 <th scope="col"><span class="sr-only">Acciones</span></th>

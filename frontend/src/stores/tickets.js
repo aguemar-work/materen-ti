@@ -10,6 +10,7 @@ export const useTicketsStore = defineStore('tickets', {
     pagina: 1,
     tamPagina: 20,
     filtros: { q: '', estado: '', prioridad: '', sinAsignar: false, sinVincular: false },
+    orden: null,
     cargando: false,
     error: null,
   }),
@@ -23,6 +24,7 @@ export const useTicketsStore = defineStore('tickets', {
           pagina: this.pagina,
           tamPagina: this.tamPagina,
           ...this.filtros,
+          orden: this.orden,
         });
         this.lista = items;
         this.total = total;
@@ -41,6 +43,23 @@ export const useTicketsStore = defineStore('tickets', {
 
     async aplicarFiltros(filtros) {
       this.filtros = { ...this.filtros, ...filtros };
+      this.pagina = 1;
+      await this.cargar();
+    },
+
+    // Se llama al montar la vista: ver nota en stores/empleados.js.
+    resetearFiltros() {
+      this.filtros = { q: '', estado: '', prioridad: '', sinAsignar: false, sinVincular: false };
+      this.orden = null;
+      this.pagina = 1;
+    },
+
+    async ordenarPor(columna) {
+      if (this.orden?.columna === columna) {
+        this.orden = { columna, direccion: this.orden.direccion === 'asc' ? 'desc' : 'asc' };
+      } else {
+        this.orden = { columna, direccion: 'asc' };
+      }
       this.pagina = 1;
       await this.cargar();
     },

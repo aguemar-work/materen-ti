@@ -15,9 +15,12 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const store = useCorreosStore();
-const { lista, total, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error, orden } = storeToRefs(store);
+const ordenColumna = computed(() => orden.value?.columna || '');
+const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 useRealtimeRefresco('cuentas:list', () => store.cargar());
 
@@ -129,6 +132,7 @@ async function confirmarEliminar() {
 }
 
 onMounted(async () => {
+  store.resetearFiltros();
   try {
     if (busqueda.value.trim()) {
       await store.aplicarFiltros({ q: busqueda.value.trim() });
@@ -191,12 +195,12 @@ onMounted(async () => {
             <thead>
               <tr>
                 <th scope="col">Plataforma</th>
-                <th scope="col">Tipo</th>
-                <th scope="col">Correo / Usuario</th>
+                <ThOrdenable clave="tipo_cuenta" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Tipo</ThOrdenable>
+                <ThOrdenable clave="usuario" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Correo / Usuario</ThOrdenable>
                 <th scope="col">Asignado a</th>
                 <th scope="col">Contraseña</th>
-                <th scope="col">URL</th>
-                <th scope="col">Notas</th>
+                <ThOrdenable clave="url" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">URL</ThOrdenable>
+                <ThOrdenable clave="notas" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Notas</ThOrdenable>
                 <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>

@@ -8,11 +8,13 @@ import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
+import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const registros = ref([]);
 const cargando = ref(true);
@@ -33,7 +35,8 @@ const listaFiltrada = computed(() =>
     : registros.value
 );
 
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaFiltrada);
+const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
+const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
 
 function infoAccion(accion) {
   return ACCIONES[accion] || { label: accion, icon: 'ti ti-activity', clase: '' };
@@ -100,11 +103,11 @@ onMounted(async () => {
           <table aria-label="Auditoría de accesos a contraseñas">
             <thead>
               <tr>
-                <th scope="col">Fecha</th>
-                <th scope="col">Quién</th>
-                <th scope="col">Acción</th>
-                <th scope="col">Cuenta</th>
-                <th scope="col">Plataforma</th>
+                <ThOrdenable clave="created_at" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Fecha</ThOrdenable>
+                <ThOrdenable clave="user_email" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Quién</ThOrdenable>
+                <ThOrdenable clave="accion" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Acción</ThOrdenable>
+                <ThOrdenable clave="cuenta_usuario" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Cuenta</ThOrdenable>
+                <ThOrdenable clave="plataforma" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Plataforma</ThOrdenable>
                 <th scope="col">Detalle</th>
               </tr>
             </thead>

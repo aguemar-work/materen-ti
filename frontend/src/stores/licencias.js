@@ -9,6 +9,7 @@ export const useLicenciasStore = defineStore('licencias', {
     pagina: 1,
     tamPagina: 20,
     filtros: { q: '' },
+    orden: null,
     cargando: false,
     error: null,
   }),
@@ -22,6 +23,7 @@ export const useLicenciasStore = defineStore('licencias', {
           pagina: this.pagina,
           tamPagina: this.tamPagina,
           ...this.filtros,
+          orden: this.orden,
         });
         this.lista = items;
         this.total = total;
@@ -40,6 +42,23 @@ export const useLicenciasStore = defineStore('licencias', {
 
     async aplicarFiltros(filtros) {
       this.filtros = { ...this.filtros, ...filtros };
+      this.pagina = 1;
+      await this.cargar();
+    },
+
+    // Se llama al montar la vista: ver nota en stores/empleados.js.
+    resetearFiltros() {
+      this.filtros = { q: '' };
+      this.orden = null;
+      this.pagina = 1;
+    },
+
+    async ordenarPor(columna) {
+      if (this.orden?.columna === columna) {
+        this.orden = { columna, direccion: this.orden.direccion === 'asc' ? 'desc' : 'asc' };
+      } else {
+        this.orden = { columna, direccion: 'asc' };
+      }
       this.pagina = 1;
       await this.cargar();
     },

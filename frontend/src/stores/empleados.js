@@ -13,6 +13,7 @@ export const useEmpleadosStore = defineStore('empleados', {
     pagina: 1,
     tamPagina: 20,
     filtros: { q: '', estado: '' },
+    orden: null, // { columna, direccion } — null = orden por defecto del servidor
     cargando: false,
     error: null,
   }),
@@ -26,6 +27,7 @@ export const useEmpleadosStore = defineStore('empleados', {
           pagina: this.pagina,
           tamPagina: this.tamPagina,
           ...this.filtros,
+          orden: this.orden,
         });
         this.lista = items;
         this.total = total;
@@ -55,6 +57,26 @@ export const useEmpleadosStore = defineStore('empleados', {
 
     async aplicarFiltros(filtros) {
       this.filtros = { ...this.filtros, ...filtros };
+      this.pagina = 1;
+      await this.cargar();
+    },
+
+    // Se llama al montar la vista: los filtros viven en el store (no en el
+    // componente) y sobreviven a la navegación — sin este reset, al volver
+    // a entrar la caja de búsqueda se ve vacía pero el filtro anterior
+    // sigue aplicado (bug reportado jul 2026).
+    resetearFiltros() {
+      this.filtros = { q: '', estado: '' };
+      this.orden = null;
+      this.pagina = 1;
+    },
+
+    async ordenarPor(columna) {
+      if (this.orden?.columna === columna) {
+        this.orden = { columna, direccion: this.orden.direccion === 'asc' ? 'desc' : 'asc' };
+      } else {
+        this.orden = { columna, direccion: 'asc' };
+      }
       this.pagina = 1;
       await this.cargar();
     },

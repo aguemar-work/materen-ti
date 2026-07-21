@@ -3,8 +3,14 @@
 import { getClient } from '../client.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
+import { ordenValido } from '../ordenPermitido.js';
 import { cifrarPassword } from '../passwords.js';
 import { trimText } from '../../core/formatters.js';
+
+// Columnas de "licencias" ordenables desde la tabla (excluye empresa/acceso/
+// usuarios, que vienen de joins, y asientos, que es calculado).
+const ORDEN_COLUMNAS = ['software', 'proveedor', 'fecha_vencimiento', 'costo'];
+const ORDEN_DEFECTO = { columna: 'software', ascending: true };
 
 const SELECT_LICENCIA = `
   id, software, tipo, cantidad, empresa_id, proveedor, fecha_vencimiento,
@@ -14,7 +20,7 @@ const SELECT_LICENCIA = `
   asignaciones_licencia(id, fecha_fin, empleado_id, empleados(nombres, apellidos))
 `;
 
-async function queryLicencias({ q = '' } = {}, { conteo = false } = {}) {
+async function queryLicencias({ q = '', orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('licencias')
     .select(SELECT_LICENCIA, conteo ? { count: 'exact' } : undefined)
@@ -35,15 +41,16 @@ async function queryLicencias({ q = '' } = {}, { conteo = false } = {}) {
     }
     query = query.or(clauses);
   }
-  return entregarQuery(query.order('software', { ascending: true }));
+  const { columna, ascending } = ordenValido(orden, ORDEN_COLUMNAS, ORDEN_DEFECTO);
+  return entregarQuery(query.order(columna, { ascending }));
 }
 
 // ── Licencias ────────────────────────────────────────────────────────────────
 
 export const licenciasApi = {
-  async listLicenciasPage({ pagina = 1, tamPagina = 20, q = '' } = {}) {
+  async listLicenciasPage({ pagina = 1, tamPagina = 20, q = '', orden } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryLicencias({ q }, { conteo: true });
+    const { qb } = await queryLicencias({ q, orden }, { conteo: true });
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapLicencia), total: count ?? 0 };

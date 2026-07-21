@@ -10,6 +10,7 @@ export const useEquiposStore = defineStore('equipos', {
     pagina: 1,
     tamPagina: 20,
     filtros: { q: '', tipoId: '', situacion: '' },
+    orden: null,
     tipos: [],
     ubicaciones: [],
     cargando: false,
@@ -26,6 +27,7 @@ export const useEquiposStore = defineStore('equipos', {
             pagina: this.pagina,
             tamPagina: this.tamPagina,
             ...this.filtros,
+            orden: this.orden,
           }),
           this.tipos.length ? Promise.resolve(this.tipos) : insforgeApi.listTiposEquipo(),
           this.ubicaciones.length ? Promise.resolve(this.ubicaciones) : insforgeApi.listUbicaciones(),
@@ -49,6 +51,23 @@ export const useEquiposStore = defineStore('equipos', {
 
     async aplicarFiltros(filtros) {
       this.filtros = { ...this.filtros, ...filtros };
+      this.pagina = 1;
+      await this.cargar();
+    },
+
+    // Se llama al montar la vista: ver nota en stores/empleados.js.
+    resetearFiltros() {
+      this.filtros = { q: '', tipoId: '', situacion: '' };
+      this.orden = null;
+      this.pagina = 1;
+    },
+
+    async ordenarPor(columna) {
+      if (this.orden?.columna === columna) {
+        this.orden = { columna, direccion: this.orden.direccion === 'asc' ? 'desc' : 'asc' };
+      } else {
+        this.orden = { columna, direccion: 'asc' };
+      }
       this.pagina = 1;
       await this.cargar();
     },

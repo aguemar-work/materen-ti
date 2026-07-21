@@ -6,12 +6,14 @@ import { storeToRefs } from 'pinia';
 import { useAreasObrasStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
+import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import Pagination from '../../components/shared/Pagination.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const store = useAreasObrasStore();
 const { lista, cargando } = storeToRefs(store);
@@ -87,7 +89,8 @@ onMounted(async () => {
   }
 });
 
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lista);
+const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
+const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
 </script>
 
 <template>
@@ -115,8 +118,8 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
         <table aria-label="Áreas/Obras">
           <thead>
             <tr>
-              <th scope="col">Nombre</th>
-              <th scope="col">Descripción</th>
+              <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
+              <ThOrdenable clave="descripcion" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Descripción</ThOrdenable>
               <th scope="col"><span class="sr-only">Acciones</span></th>
             </tr>
           </thead>

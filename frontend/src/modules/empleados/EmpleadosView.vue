@@ -18,10 +18,13 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const router = useRouter();
 const store = useEmpleadosStore();
-const { lista, total, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error, orden } = storeToRefs(store);
+const ordenColumna = computed(() => orden.value?.columna || '');
+const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 useRealtimeRefresco('empleados:list', () => store.cargar());
 
@@ -159,6 +162,7 @@ function accionesDe(emp) {
 }
 
 onMounted(async () => {
+  store.resetearFiltros();
   try {
     await store.cargar();
   } catch {
@@ -218,12 +222,12 @@ onMounted(async () => {
           <table aria-label="Inventario de empleados">
             <thead>
               <tr>
-                <th scope="col">DNI</th>
-                <th scope="col">Nombre</th>
-                <th scope="col">Cargo</th>
+                <ThOrdenable clave="dni" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">DNI</ThOrdenable>
+                <ThOrdenable clave="apellidos" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Nombre</ThOrdenable>
+                <ThOrdenable clave="cargo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Cargo</ThOrdenable>
                 <th scope="col">Empresa</th>
                 <th scope="col">Vínculos</th>
-                <th scope="col">Estado</th>
+                <ThOrdenable clave="estado" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Estado</ThOrdenable>
                 <th scope="col">Acciones</th>
               </tr>
             </thead>

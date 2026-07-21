@@ -5,10 +5,12 @@ import { useStaffStore } from '../../stores/staff.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
+import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import Pagination from '../../components/shared/Pagination.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const store = useStaffStore();
 const authStore = useAuthStore();
@@ -16,7 +18,8 @@ const { lista, cargando, error } = storeToRefs(store);
 
 const ROLES = ['ASISTENTE', 'JEFE'];
 
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lista);
+const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
+const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
 
 async function toggleActivo(miembro) {
   const accion = miembro.activo ? 'desactivar' : 'activar';
@@ -74,9 +77,9 @@ onMounted(async () => {
           <table aria-label="Miembros del staff">
             <thead>
               <tr>
-                <th scope="col">Nombre</th>
-                <th scope="col">Rol</th>
-                <th scope="col">Estado</th>
+                <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
+                <ThOrdenable clave="rol" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Rol</ThOrdenable>
+                <ThOrdenable clave="activo" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Estado</ThOrdenable>
                 <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>

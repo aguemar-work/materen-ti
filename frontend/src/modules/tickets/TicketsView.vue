@@ -17,10 +17,13 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const router = useRouter();
 const store = useTicketsStore();
-const { lista, total, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error, orden } = storeToRefs(store);
+const ordenColumna = computed(() => orden.value?.columna || '');
+const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 // El auto-refresco de tickets:list vive en AppLayout.vue (suscripción
 // única, así el sonido de "ticket nuevo" suena en cualquier pantalla).
@@ -129,6 +132,7 @@ function onNuevoCerrado(creado) {
 }
 
 onMounted(async () => {
+  store.resetearFiltros();
   try {
     const [, staff] = await Promise.all([store.cargar(), insforgeApi.listStaff()]);
     staffLista.value = staff;
@@ -200,13 +204,13 @@ onMounted(async () => {
           <table aria-label="Tickets de soporte">
             <thead>
               <tr>
-                <th scope="col">Código</th>
-                <th scope="col">Fecha</th>
+                <ThOrdenable clave="codigo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Código</ThOrdenable>
+                <ThOrdenable clave="created_at" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Fecha</ThOrdenable>
                 <th scope="col">Solicitante</th>
-                <th scope="col">Título</th>
+                <ThOrdenable clave="titulo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Título</ThOrdenable>
                 <th scope="col">Categoría</th>
-                <th scope="col">Estado</th>
-                <th scope="col">Prioridad</th>
+                <ThOrdenable clave="estado" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Estado</ThOrdenable>
+                <ThOrdenable clave="prioridad" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Prioridad</ThOrdenable>
                 <th scope="col">Asignado a</th>
               </tr>
             </thead>

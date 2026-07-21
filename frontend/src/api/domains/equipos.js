@@ -3,7 +3,13 @@
 import { getClient } from '../client.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
+import { ordenValido } from '../ordenPermitido.js';
 import { toTitleCase, trimText } from '../../core/formatters.js';
+
+// Columnas de "equipos" ordenables desde la tabla (excluye tipo/empresa,
+// que vienen de joins, y situación/asignado a, que son calculados).
+const ORDEN_COLUMNAS = ['codigo', 'codigo_almacen', 'marca', 'modelo', 'serie', 'estado'];
+const ORDEN_DEFECTO = { columna: 'codigo', ascending: true };
 
 const SELECT_EQUIPO = `
   id, codigo, codigo_almacen, tipo_id, marca, modelo, serie, empresa_id, estado,
@@ -46,7 +52,7 @@ function aplicarFiltroSituacion(query, situacion) {
   return null;
 }
 
-async function queryEquipos({ q = '', tipoId = '', situacion = '' } = {}, { conteo = false } = {}) {
+async function queryEquipos({ q = '', tipoId = '', situacion = '', orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('equipos')
     .select(SELECT_EQUIPO, conteo ? { count: 'exact' } : undefined)
@@ -90,13 +96,14 @@ async function queryEquipos({ q = '', tipoId = '', situacion = '' } = {}, { cont
     }
     query = query.or(`codigo.ilike.%${qSafe}%,codigo_almacen.ilike.%${qSafe}%,marca.ilike.%${qSafe}%,modelo.ilike.%${qSafe}%,serie.ilike.%${qSafe}%${idClause}`);
   }
-  return entregarQuery(query.order('codigo', { ascending: true }));
+  const { columna, ascending } = ordenValido(orden, ORDEN_COLUMNAS, ORDEN_DEFECTO);
+  return entregarQuery(query.order(columna, { ascending }));
 }
 
 export const equiposApi = {
-  async listEquiposPage({ pagina = 1, tamPagina = 20, q = '', tipoId = '', situacion = '' } = {}) {
+  async listEquiposPage({ pagina = 1, tamPagina = 20, q = '', tipoId = '', situacion = '', orden } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryEquipos({ q, tipoId, situacion }, { conteo: true });
+    const { qb } = await queryEquipos({ q, tipoId, situacion, orden }, { conteo: true });
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapEquipo), total: count ?? 0 };

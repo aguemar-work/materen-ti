@@ -2,8 +2,14 @@
 // (la baja cierra asignaciones activas y da de baja cuentas personales).
 import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
+import { ordenValido } from '../ordenPermitido.js';
 import { toTitleCase, toLower, normalizarTelefono, onlyDigits } from '../../core/formatters.js';
 import { equiposApi } from './equipos.js';
+
+// Columnas de "empleados" ordenables desde la tabla (excluye empresa/área,
+// que vienen de un join, y los conteos de vínculos, que son calculados).
+const ORDEN_COLUMNAS = ['dni', 'apellidos', 'cargo', 'estado', 'fecha_alta'];
+const ORDEN_DEFECTO = { columna: 'apellidos', ascending: true };
 
 // Query base del listado con filtros en servidor. La búsqueda "juan perez"
 // se trocea por tokens y cada token debe matchear nombre, apellido o DNI
@@ -11,7 +17,7 @@ import { equiposApi } from './equipos.js';
 // OJO: PostgREST NO acepta dos parámetros or= repetidos (PGRST100); el
 // AND-de-ORs va anidado en UN solo or=(and(or(...),or(...))) — verificado
 // contra el backend real.
-function queryEmpleados({ q = '', estado = '' } = {}, { conteo = false } = {}) {
+function queryEmpleados({ q = '', estado = '', orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('empleados')
     .select('*, empresas(nombre), areas_obras(nombre)', conteo ? { count: 'exact' } : undefined)
@@ -27,15 +33,16 @@ function queryEmpleados({ q = '', estado = '' } = {}, { conteo = false } = {}) {
       ? `nombres.ilike.%${qSafe}%,apellidos.ilike.%${qSafe}%,dni.ilike.%${qSafe}%`
       : `and(${porToken.join(',')})`);
   }
-  return query.order('apellidos', { ascending: true });
+  const { columna, ascending } = ordenValido(orden, ORDEN_COLUMNAS, ORDEN_DEFECTO);
+  return query.order(columna, { ascending });
 }
 
 export const empleadosApi = {
   // ── Listado paginado en servidor (la tabla principal) ─────────
   // listEmpleados() (completo) sigue existiendo para selects de formularios.
-  async listEmpleadosPage({ pagina = 1, tamPagina = 20, q = '', estado = '' } = {}) {
+  async listEmpleadosPage({ pagina = 1, tamPagina = 20, q = '', estado = '', orden } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { data, count, error } = await queryEmpleados({ q, estado }, { conteo: true })
+    const { data, count, error } = await queryEmpleados({ q, estado, orden }, { conteo: true })
       .range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapEmpleado), total: count ?? 0 };

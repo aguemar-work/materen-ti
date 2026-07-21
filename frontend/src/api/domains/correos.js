@@ -3,13 +3,19 @@
 import { getClient } from '../client.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
+import { ordenValido } from '../ordenPermitido.js';
 import { cifrarPassword } from '../passwords.js';
 import { toLower, trimText } from '../../core/formatters.js';
 import { mapAsignacion } from './cuentas.js';
 
 const SELECT_CORREO = 'id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono), asignaciones_cuenta(fecha_fin, empleado_id, empleados(nombres, apellidos))';
 
-async function queryCorreos({ q = '', tipo = '' } = {}, { conteo = false } = {}) {
+// Columnas de "cuentas" ordenables desde la tabla (excluye plataforma y
+// asignados, que vienen de joins).
+const ORDEN_COLUMNAS = ['usuario', 'tipo_cuenta', 'url', 'notas'];
+const ORDEN_DEFECTO = { columna: 'created_at', ascending: true };
+
+async function queryCorreos({ q = '', tipo = '', orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('cuentas')
     .select(SELECT_CORREO, conteo ? { count: 'exact' } : undefined)
@@ -26,15 +32,16 @@ async function queryCorreos({ q = '', tipo = '' } = {}, { conteo = false } = {})
     const extra = plats?.length ? `,plataforma_id.in.(${plats.map((p) => p.id).join(',')})` : '';
     query = query.or(`usuario.ilike.%${qSafe}%${extra}`);
   }
-  return entregarQuery(query.order('created_at', { ascending: true }));
+  const { columna, ascending } = ordenValido(orden, ORDEN_COLUMNAS, ORDEN_DEFECTO);
+  return entregarQuery(query.order(columna, { ascending }));
 }
 
 // ── Correos Compartidos ──────────────────────────────────────────────────────
 
 export const correosApi = {
-  async listCorreosPage({ pagina = 1, tamPagina = 20, q = '', tipo = '' } = {}) {
+  async listCorreosPage({ pagina = 1, tamPagina = 20, q = '', tipo = '', orden } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryCorreos({ q, tipo }, { conteo: true });
+    const { qb } = await queryCorreos({ q, tipo, orden }, { conteo: true });
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapCorreo), total: count ?? 0 };

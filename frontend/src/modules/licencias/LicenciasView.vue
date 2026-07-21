@@ -17,11 +17,14 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
 const store = useLicenciasStore();
-const { lista, total, cargando, error } = storeToRefs(store);
+const { lista, total, cargando, error, orden } = storeToRefs(store);
+const ordenColumna = computed(() => orden.value?.columna || '');
+const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 useRealtimeRefresco('licencias:list', () => store.cargar());
 
@@ -287,6 +290,7 @@ async function confirmarAccionPendiente() {
 }
 
 onMounted(async () => {
+  store.resetearFiltros();
   try {
     if (busqueda.value.trim()) {
       await store.aplicarFiltros({ q: busqueda.value.trim() });
@@ -339,12 +343,12 @@ onMounted(async () => {
           <table aria-label="Licencias de software">
             <thead>
               <tr>
-                <th scope="col">Software</th>
+                <ThOrdenable clave="software" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Software</ThOrdenable>
                 <th scope="col">Empresa</th>
                 <th scope="col">Acceso</th>
                 <th scope="col">Asientos</th>
                 <th scope="col">Usuarios</th>
-                <th scope="col">Vencimiento</th>
+                <ThOrdenable clave="fecha_vencimiento" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Vencimiento</ThOrdenable>
                 <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>

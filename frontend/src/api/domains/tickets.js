@@ -3,7 +3,14 @@
 import { getClient } from '../client.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
+import { ordenValido } from '../ordenPermitido.js';
 import { trimText } from '../../core/formatters.js';
+
+// Columnas de "tickets" ordenables desde la tabla (excluye solicitante y
+// asignado_a: el primero viene de un join y el segundo es un UUID sin
+// significado alfabético).
+const ORDEN_COLUMNAS = ['codigo', 'titulo', 'estado', 'prioridad', 'created_at'];
+const ORDEN_DEFECTO = { columna: 'created_at', ascending: false };
 
 // ── Tickets (staff) ──────────────────────────────────────────────────────────
 // La creación pública, el seguimiento y la encuesta viven en
@@ -101,6 +108,7 @@ export const ticketsApi = {
   },
 
   // ── Listado paginado en servidor (la tabla principal) ─────────
+  // (`filtros` puede incluir `orden: { columna, direccion }`, ver queryTickets)
   async listTicketsPage({ pagina = 1, tamPagina = 20, ...filtros } = {}) {
     const desde = (pagina - 1) * tamPagina;
     const { qb } = await queryTickets(filtros, { conteo: true });
@@ -195,7 +203,7 @@ const SELECT_RESUMEN = `
 // del embed: se preresuelven ids de empleados por nombre (cap 50 homónimos)
 // y entran al or() como empleado_id.in.(...) — los UUID no llevan comas.
 async function queryTickets(
-  { q = '', estado = '', prioridad = '', sinAsignar = false, sinVincular = false } = {},
+  { q = '', estado = '', prioridad = '', sinAsignar = false, sinVincular = false, orden } = {},
   { conteo = false } = {},
 ) {
   const db = getClient().database;
@@ -213,7 +221,8 @@ async function queryTickets(
     if (emps?.length) idsClause = `,empleado_id.in.(${emps.map((e) => e.id).join(',')})`;
     query = query.or(`codigo.ilike.%${qSafe}%,titulo.ilike.%${qSafe}%,contacto_ingresado.ilike.%${qSafe}%${idsClause}`);
   }
-  return entregarQuery(query.order('created_at', { ascending: false }));
+  const { columna, ascending } = ordenValido(orden, ORDEN_COLUMNAS, ORDEN_DEFECTO);
+  return entregarQuery(query.order(columna, { ascending }));
 }
 
 function mapTicketResumen(row) {
