@@ -71,30 +71,27 @@ export const dashboardApi = {
 
   async getEstadisticas() {
     const db = getClient().database;
-    const [empRes, asigRes, compartidaRes, reutilizableRes, sinPwRes, rotacionRes, licVencenRes] = await Promise.all([
+    const [empRes, asigRes, compartidaRes, rotacionRes, licVencenRes, equiposRes, ticketsRes] = await Promise.all([
       db.from('empleados').select('id, estado').is('deleted_at', null),
       db.from('asignaciones_cuenta').select('id, cuenta_id').is('fecha_fin', null),
       db.from('cuentas').select('id').eq('tipo_cuenta', 'compartida').is('deleted_at', null),
-      db.from('cuentas').select('id').eq('tipo_cuenta', 'reutilizable').is('deleted_at', null),
-      db.from('cuentas').select('id').is('password', null).is('deleted_at', null),
       db.from('cuentas').select('id').eq('requiere_rotacion', true).is('deleted_at', null),
       db.from('licencias').select('id')
         .lte('fecha_vencimiento', fechaEnDias(30))
         .is('deleted_at', null),
+      db.from('equipos').select('id').is('deleted_at', null),
+      db.from('tickets').select('id').not('estado', 'in', '("resuelto","cerrado","rechazado")'),
     ]);
-
-    const ocupadas = new Set((asigRes.data || []).map((a) => a.cuenta_id));
-    const reutilizablesLibres = (reutilizableRes.data || []).filter((c) => !ocupadas.has(c.id)).length;
 
     return {
       empleadosActivos: (empRes.data || []).filter((e) => e.estado === 'Activo').length,
       empleadosTotal: (empRes.data || []).length,
       cuentasAsignadas: (asigRes.data || []).length,
       correosCompartidos: (compartidaRes.data || []).length,
-      reutilizablesLibres,
-      cuentasSinPassword: (sinPwRes.data || []).length,
       cuentasPorRotar: (rotacionRes.data || []).length,
       licenciasPorVencer: (licVencenRes.data || []).length,
+      equiposTotal: (equiposRes.data || []).length,
+      ticketsAbiertos: (ticketsRes.data || []).length,
     };
   },
 
@@ -179,12 +176,12 @@ export const dashboardApi = {
     const db = getClient().database;
     const [sinAsignarRes, sinVincularRes, viejosRes] = await Promise.all([
       db.from('tickets')
-        .select('id, codigo, titulo')
+        .select('id, codigo, titulo, created_at')
         .is('asignado_a', null)
         .not('estado', 'in', '("resuelto","cerrado","rechazado")')
         .order('created_at', { ascending: true }),
       db.from('tickets')
-        .select('id, codigo, titulo')
+        .select('id, codigo, titulo, created_at')
         .eq('vinculado', false)
         .not('estado', 'in', '("resuelto","cerrado","rechazado")')
         .order('created_at', { ascending: true }),
@@ -195,8 +192,8 @@ export const dashboardApi = {
         .order('created_at', { ascending: true }),
     ]);
     return {
-      sinAsignar: (sinAsignarRes.data || []).map((t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo })),
-      sinVincular: (sinVincularRes.data || []).map((t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo })),
+      sinAsignar: (sinAsignarRes.data || []).map((t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at })),
+      sinVincular: (sinVincularRes.data || []).map((t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at })),
       abiertosViejos: (viejosRes.data || []).map((t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at })),
     };
   },

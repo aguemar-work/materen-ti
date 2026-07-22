@@ -1155,7 +1155,7 @@
        No aplica a "revelar contraseña": es de lectura y ya queda
        auditada en Actividad, no necesita este tratamiento. */
     .confirm-dialog--destructive .modal {
-      border-top: 3px solid var(--color-danger-text);
+      border-top: 2px solid var(--color-danger-text);
     }
 
     .confirm-dialog--destructive .modal-icon {

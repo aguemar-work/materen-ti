@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
@@ -21,6 +21,7 @@ import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const router = useRouter();
+const route = useRoute();
 const store = useEmpleadosStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
@@ -29,7 +30,8 @@ const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 useRealtimeRefresco('empleados:list', () => store.cargar());
 
 const busqueda = ref('');
-const filtroEstado = ref('');
+// Precarga desde el link del Dashboard (ej. /empleados?estado=Inactivo)
+const filtroEstado = ref(route.query.estado || '');
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
 
@@ -162,9 +164,14 @@ function accionesDe(emp) {
 }
 
 onMounted(async () => {
-  store.resetearFiltros();
   try {
-    await store.cargar();
+    if (filtroEstado.value) {
+      // Llega con un filtro desde el link del Dashboard: no resetear.
+      await store.aplicarFiltros({ estado: filtroEstado.value });
+    } else {
+      store.resetearFiltros();
+      await store.cargar();
+    }
   } catch {
     showToast(error.value || 'Error al cargar empleados', 'error');
   }

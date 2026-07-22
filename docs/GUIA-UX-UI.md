@@ -711,6 +711,17 @@ separación por **bordes** (sin sombras en contenedores), y clases globales en
 - **Minimalista**: no sobresaturar la vista ni agobiar con información.
 - Estados hover/activo **sin bordes** — solo fondos muy tenues.
 - Preferir fusión de superficies sobre paneles/bloques delimitados.
+- **Sin bordes de acento en los costados de un componente**: para marcar
+  severidad/estado en una fila o tarjeta, usar **color de ícono + badge**,
+  nunca un borde lateral (izquierdo/derecho) de color. Es el mismo principio
+  que ya rige hover/activo ("sin bordes, solo fondos tenues") aplicado
+  también a indicadores de severidad — ningún otro componente del sistema
+  usa un borde de costado, así que introducir uno rompe la consistencia
+  aunque el color sea correcto. Ver `.feed-item` (Dashboard): la severidad
+  se lee por el color del ícono y el texto del badge, sin borde. Los bordes
+  que sí existen (contenedores `.card`/`.stat-card`, `1px solid
+  --color-border`) delimitan la superficie completa, no un costado; no
+  confundir ese patrón con un acento de estado.
 - **Un solo acento visible por vista** — el botón `.btn-primary`
   del header/toolbar de cada módulo (ej. "Nueva licencia") es el acento fijo
   de esa vista. **Corrección (jul 2026)**: en 7 vistas (Empleados, Correos,
