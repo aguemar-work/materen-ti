@@ -2,6 +2,7 @@
 // para compartir con el área de control y gerencia. Mismo patrón que
 // equipos/acta.js: HTML standalone que se abre en ventana nueva y se imprime.
 import { formatFecha } from '../../core/formatters.js';
+import { todayISO } from '../../core/utils.js';
 
 function esc(v) {
   return String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -30,6 +31,11 @@ export function generarReporteTickets(datos, periodoLabel, rangoLabel) {
     ? Math.round((datos.encuestasRespondidas / datos.encuestasEnviadas) * 100)
     : 0;
 
+  // Nombre sugerido al "Guardar como PDF": los navegadores toman el <title>
+  // del documento como nombre de archivo por defecto. Sin espacios ni "/"
+  // (formatFecha usa dd/mm/yyyy, inválido en un nombre de archivo).
+  const nombreArchivo = `Reporte${periodoLabel}_${todayISO()}`;
+
   const comentariosHtml = datos.comentarios.length
     ? datos.comentarios.map((c) =>
         `<li><strong>${c.nivel}/5</strong> — ${esc(c.comentario)} <span class="fecha-com">(${esc(formatFecha(c.fecha))})</span></li>`,
@@ -40,7 +46,7 @@ export function generarReporteTickets(datos, periodoLabel, rangoLabel) {
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Reporte de tickets — ${esc(periodoLabel)}</title>
+<title>${esc(nombreArchivo)}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
