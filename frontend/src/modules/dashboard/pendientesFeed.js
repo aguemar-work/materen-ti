@@ -27,7 +27,9 @@ function destinoCuenta(item) {
   if (item.tipo_cuenta === 'personal' && item.titulares.length) {
     return `/empleados/${item.titulares[0].id}`;
   }
-  return '/correos';
+  // Sin titular personal: no hay ficha propia, así que se apunta a Correos
+  // ya filtrado por el usuario de la cuenta (mismo input que la búsqueda de esa vista).
+  return `/correos?q=${encodeURIComponent(item.usuario)}`;
 }
 
 function contextoCuenta(item) {
@@ -62,7 +64,7 @@ export function construirFeedPendientes(pendientes, pendientesTickets) {
       categoriaLabel: 'Equipo sin devolver',
       titulo: `${e.codigo} — ${e.equipo}`,
       contexto: `Lo tiene ${e.empleado} (dado de baja)`,
-      destino: '/equipos',
+      destino: `/equipos?q=${encodeURIComponent(e.codigo)}`,
       diasUrgencia: null,
     });
   }
@@ -76,7 +78,7 @@ export function construirFeedPendientes(pendientes, pendientesTickets) {
       categoriaLabel: 'Licencia',
       titulo: l.software,
       contexto: `${l.vencida ? 'VENCIDA el' : 'Vence el'} ${formatFecha(l.fecha_vencimiento)}${l.empresa ? ` · ${l.empresa}` : ''}`,
-      destino: '/licencias',
+      destino: `/licencias?q=${encodeURIComponent(l.software)}`,
       diasUrgencia: diasDesde(l.fecha_vencimiento),
     });
   }
@@ -90,7 +92,7 @@ export function construirFeedPendientes(pendientes, pendientesTickets) {
       categoriaLabel: 'Garantía',
       titulo: `${g.codigo} — ${g.equipo}`,
       contexto: `${g.vencida ? 'Venció el' : 'Vence el'} ${formatFecha(g.garantia_hasta)}`,
-      destino: '/equipos',
+      destino: `/equipos?q=${encodeURIComponent(g.codigo)}`,
       diasUrgencia: diasDesde(g.garantia_hasta),
     });
   }
