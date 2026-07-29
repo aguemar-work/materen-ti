@@ -166,6 +166,7 @@ const navGrupos = computed(() => [
       { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
       { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
       { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books' },
+      { path: '/problemas', label: 'Problemas', icon: 'ti ti-alert-hexagon' },
     ],
   },
   {

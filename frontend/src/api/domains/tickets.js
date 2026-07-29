@@ -130,7 +130,7 @@ export const ticketsApi = {
       .from('tickets')
       .select(`
         id, codigo, titulo, descripcion, estado, prioridad, nivel_atencion, origen, vinculado,
-        contacto_ingresado, asignado_a, es_leccion_aprendida,
+        contacto_ingresado, asignado_a,
         adjunto_url, created_at, updated_at,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
         categoria_id, categorias_ticket(nombre),
@@ -259,7 +259,6 @@ function mapTicketDetalle(row) {
     vinculado: row.vinculado,
     contacto_ingresado: row.contacto_ingresado || '',
     asignado_a: row.asignado_a,
-    es_leccion_aprendida: row.es_leccion_aprendida,
     adjunto_url: row.adjunto_url,
     created_at: row.created_at,
     updated_at: row.updated_at,

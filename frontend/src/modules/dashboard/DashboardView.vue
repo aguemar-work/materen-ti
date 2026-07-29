@@ -13,14 +13,15 @@ const pendientes = ref({
   equiposSinDevolver: [], garantiasPorVencer: [],
 });
 const pendientesTickets = ref({ sinAsignar: [], sinVincular: [], abiertosViejos: [] });
+const pendientesProblemas = ref({ categoriasRecurrentes: [], accionesVencidas: [] });
 const cargando = ref(true);
 
-// El feed mezcla las 8 categorías y las ordena por urgencia real
+// El feed mezcla las 10 categorías y las ordena por urgencia real
 // (ver pendientesFeed.js); acá solo se corta a un tamaño mostrable.
 const LIMITE_FEED = 10;
 const feedExpandido = ref(false);
 
-const feedPendientes = computed(() => construirFeedPendientes(pendientes.value, pendientesTickets.value));
+const feedPendientes = computed(() => construirFeedPendientes(pendientes.value, pendientesTickets.value, pendientesProblemas.value));
 const feedMostrado = computed(() =>
   feedExpandido.value ? feedPendientes.value : feedPendientes.value.slice(0, LIMITE_FEED)
 );
@@ -33,16 +34,18 @@ function irAFeedPendientes() {
 
 onMounted(async () => {
   try {
-    const [est, emp, pend, pendTk] = await Promise.all([
+    const [est, emp, pend, pendTk, pendProb] = await Promise.all([
       insforgeApi.getEstadisticas(),
       insforgeApi.listEmpleadosRecientes(6),
       insforgeApi.listPendientes(),
       insforgeApi.pendientesTickets(),
+      insforgeApi.pendientesProblemas(),
     ]);
     stats.value = est;
     recientes.value = emp;
     pendientes.value = pend;
     pendientesTickets.value = pendTk;
+    pendientesProblemas.value = pendProb;
   } finally {
     cargando.value = false;
   }

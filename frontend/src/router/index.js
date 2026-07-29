@@ -9,6 +9,7 @@ import staffRoutes from './routes/staff.routes.js';
 import configRoutes from './routes/config.routes.js';
 import inventarioRoutes from './routes/inventario.routes.js';
 import kbRoutes from './routes/kb.routes.js';
+import problemasRoutes from './routes/problemas.routes.js';
 import ticketsRoutes from './routes/tickets.routes.js';
 import soporteRoutes from './routes/soporte.routes.js';
 import actividadRoutes from './routes/actividad.routes.js';
@@ -20,6 +21,7 @@ const routes = [
   ...configRoutes,
   ...inventarioRoutes,
   ...kbRoutes,
+  ...problemasRoutes,
   ...ticketsRoutes,
   ...actividadRoutes,
   ...soporteRoutes,

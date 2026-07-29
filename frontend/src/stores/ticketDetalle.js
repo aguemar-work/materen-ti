@@ -12,6 +12,7 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
     satisfaccion: null,
     equiposEmpleado: [],
     articulosRelacionados: [],
+    problemaVinculado: null,
     staffLista: [],
     cargando: false,
     error: null,
@@ -54,6 +55,9 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
         this.articulosRelacionados = t?.categoria_id
           ? await insforgeApi.listArticulosRelacionados({ categoriaId: t.categoria_id })
           : [];
+        // Gestión de Problemas: badge si este ticket ya está vinculado a un
+        // problema todavía abierto (migración 033).
+        this.problemaVinculado = t ? await insforgeApi.getProblemaAbiertoDeTicket(t.id) : null;
       } catch (e) {
         this.error = e?.message || 'Error al cargar el ticket';
         throw e;
@@ -92,6 +96,10 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
 
     async recargarSatisfaccion() {
       this.satisfaccion = await insforgeApi.getSatisfaccionTicket(this.ticket.id);
+    },
+
+    async recargarProblemaVinculado() {
+      this.problemaVinculado = await insforgeApi.getProblemaAbiertoDeTicket(this.ticket.id);
     },
 
     // Al cerrar el ticket, guarda la solución como borrador de KB (queda

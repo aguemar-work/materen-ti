@@ -10,6 +10,7 @@ import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import ProblemaForm from '../problemas/ProblemaForm.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -17,7 +18,7 @@ const auth = useAuthStore();
 const store = useTicketDetalleStore();
 const { volver } = useVolverContextual();
 
-const { ticket, comentarios, eventos, satisfaccion, equiposEmpleado, articulosRelacionados, cargando, staffActivo, staffPorId } = storeToRefs(store);
+const { ticket, comentarios, eventos, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId } = storeToRefs(store);
 
 const guardandoCampo = ref(false);
 
@@ -240,14 +241,15 @@ async function cambiarAsignado(staffId) {
   }
 }
 
-async function toggleFlag(campo) {
-  guardandoCampo.value = true;
-  try {
-    await store.actualizarCampos({ [campo]: !ticket.value[campo] });
-  } catch (e) {
-    showToast(e?.message || 'Error al guardar', 'error');
-  } finally {
-    guardandoCampo.value = false;
+// ── Gestión de Problemas: "Marcar como problema" (reemplaza el viejo
+// checkbox de lección aprendida, columna retirada en la migración 033) ──
+const mostrarProblemaForm = ref(false);
+
+function onProblemaFormCerrado(creado) {
+  mostrarProblemaForm.value = false;
+  if (creado) {
+    showToast('Problema creado');
+    store.recargarProblemaVinculado();
   }
 }
 
@@ -442,10 +444,14 @@ onUnmounted(() => store.limpiar());
               <p v-else class="tk-nota">Solo el jefe puede reabrir este ticket.</p>
             </template>
 
-            <label class="check-inline">
-              <input type="checkbox" :checked="ticket.es_leccion_aprendida" :disabled="guardandoCampo" @change="toggleFlag('es_leccion_aprendida')">
-              Es lección aprendida
-            </label>
+            <div class="tk-problema-vinculado">
+              <RouterLink v-if="problemaVinculado" :to="`/problemas/${problemaVinculado.id}`" class="badge badge--danger badge-inline">
+                <i class="ti ti-alert-hexagon" aria-hidden="true"></i> Problema abierto: {{ problemaVinculado.titulo }}
+              </RouterLink>
+              <button v-else class="btn" type="button" @click="mostrarProblemaForm = true">
+                <i class="ti ti-alert-hexagon" aria-hidden="true"></i> Marcar como problema
+              </button>
+            </div>
           </div>
 
           <div v-if="satisfaccion" class="tk-seccion">
@@ -523,6 +529,12 @@ onUnmounted(() => store.limpiar());
         </div>
       </div>
     </main>
+
+    <ProblemaForm
+      v-if="mostrarProblemaForm"
+      :ticket-disparador="{ id: ticket.id, codigo: ticket.codigo, titulo: ticket.titulo, descripcion: ticket.descripcion }"
+      @cerrar="onProblemaFormCerrado"
+    />
   </div>
 </template>
 
@@ -632,6 +644,8 @@ onUnmounted(() => store.limpiar());
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
 }
+
+.tk-problema-vinculado { margin-top: 10px; }
 
 .check-inline {
   display: flex;

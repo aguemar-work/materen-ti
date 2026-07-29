@@ -18,6 +18,18 @@ const { volver } = useVolverContextual();
 const cargando = ref(true);
 const articulo = ref(null);
 const categorias = ref([]);
+const staffLista = ref([]);
+
+const staffPorId = computed(() => {
+  const mapa = {};
+  for (const s of staffLista.value) mapa[s.user_id] = s.nombre;
+  return mapa;
+});
+
+const autorNombre = computed(() => {
+  if (!articulo.value?.created_by) return 'Sistema';
+  return staffPorId.value[articulo.value.created_by] || 'Staff';
+});
 
 // El autor solo edita mientras siga en borrador/en_revision (igual que la
 // RLS de la migración 031); el JEFE, en cualquier estado.
@@ -136,8 +148,11 @@ async function eliminar() {
 onMounted(async () => {
   await cargar();
   try {
-    categorias.value = await insforgeApi.listCategoriasTicket();
-  } catch { /* el select de categoría queda vacío, no bloquea la vista */ }
+    [categorias.value, staffLista.value] = await Promise.all([
+      insforgeApi.listCategoriasTicket(),
+      insforgeApi.listStaff(),
+    ]);
+  } catch { /* el select de categoría y el nombre del autor quedan vacíos, no bloquea la vista */ }
 });
 </script>
 
@@ -159,13 +174,10 @@ onMounted(async () => {
       <div v-if="cargando" class="no-results">Cargando artículo...</div>
 
       <div v-else-if="articulo" class="grid-12">
-        <div class="card col-9 kb-contenido">
+        <div class="card col-8 kb-contenido">
           <div class="kb-encabezado">
             <BadgeEstado tipo="kb_estado" :valor="articulo.estado" />
             <span class="kb-fecha">Actualizado {{ formatFechaHora(articulo.updated_at) }}</span>
-            <RouterLink v-if="articulo.ticket_origen_id" class="kb-ticket-origen" :to="`/tickets/${articulo.ticket_origen_id}`">
-              <i class="ti ti-ticket" aria-hidden="true"></i> Ver ticket de origen
-            </RouterLink>
           </div>
 
           <template v-if="!editando">
@@ -256,14 +268,30 @@ onMounted(async () => {
           </form>
         </div>
 
-        <div class="card col-3 kb-meta">
+        <div class="card col-4 kb-meta">
           <div class="datos-title"><i class="ti ti-info-circle"></i> Detalle</div>
-          <p class="tk-detalle">Estado: {{ articulo.estado }}</p>
+          <p class="tk-detalle">Autor: {{ autorNombre }}</p>
+          <p v-if="articulo.categoria_nombre" class="tk-detalle">Categoría: {{ articulo.categoria_nombre }}</p>
           <p class="tk-detalle">Creado {{ formatFechaHora(articulo.created_at) }}</p>
           <p class="tk-detalle">Actualizado {{ formatFechaHora(articulo.updated_at) }}</p>
-          <p v-if="!puedeEditar && articulo.estado !== 'publicado' && articulo.estado !== 'obsoleto'" class="tk-nota">
+          <p v-if="!puedeEditar && !['publicado', 'obsoleto'].includes(articulo.estado)" class="tk-nota">
             Solo el autor o el JEFE pueden ver/editar este artículo mientras no esté publicado.
           </p>
+
+          <div class="tk-seccion">
+            <div class="datos-title"><i class="ti ti-thumb-up" aria-hidden="true"></i> Feedback</div>
+            <p v-if="articulo.util_si + articulo.util_no > 0" class="tk-detalle">
+              {{ articulo.util_si }} de {{ articulo.util_si + articulo.util_no }} lo encontraron útil
+            </p>
+            <p v-else class="tk-nota">Todavía sin votos.</p>
+          </div>
+
+          <div v-if="articulo.ticket_origen_id" class="tk-seccion">
+            <div class="datos-title"><i class="ti ti-ticket" aria-hidden="true"></i> Origen</div>
+            <RouterLink class="tk-kb-relacionado" :to="`/tickets/${articulo.ticket_origen_id}`">
+              Ver ticket de origen
+            </RouterLink>
+          </div>
         </div>
       </div>
     </main>
@@ -312,14 +340,6 @@ onMounted(async () => {
   color: var(--color-text-tertiary);
 }
 
-.kb-ticket-origen {
-  margin-left: auto;
-  font-size: var(--fs-sm);
-  color: var(--color-accent-text);
-  text-decoration: none;
-}
-.kb-ticket-origen:hover { text-decoration: underline; }
-
 .kb-bloque { margin-bottom: 20px; }
 
 .kb-texto {
@@ -360,4 +380,34 @@ onMounted(async () => {
   flex-direction: column;
   gap: 14px;
 }
+
+/* Mismo patrón que TicketDetalleView (columna de datos): título de sección
+   con ícono, bloques separados por borde superior sutil, texto secundario
+   para el detalle y terciario/itálica para las notas vacías. */
+.datos-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 10px;
+}
+
+.tk-seccion {
+  margin-top: 16px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+}
+
+.tk-detalle { font-size: var(--fs-sm); color: var(--color-text-secondary); margin: 2px 0; }
+.tk-nota { font-size: var(--fs-sm); color: var(--color-text-tertiary); font-style: italic; margin: 4px 0 0; }
+
+.tk-kb-relacionado {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--color-accent-text);
+  text-decoration: none;
+}
+.tk-kb-relacionado:hover { text-decoration: underline; }
 </style>

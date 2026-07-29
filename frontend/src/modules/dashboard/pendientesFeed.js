@@ -38,7 +38,7 @@ function contextoCuenta(item) {
   return 'Sin titular activo';
 }
 
-export function construirFeedPendientes(pendientes, pendientesTickets) {
+export function construirFeedPendientes(pendientes, pendientesTickets, pendientesProblemas = {}) {
   const items = [];
 
   for (const c of pendientes.sinPassword || []) {
@@ -150,6 +150,36 @@ export function construirFeedPendientes(pendientes, pendientesTickets) {
       contexto: `${t.titulo} · desde ${formatFecha(t.desde)}`,
       destino: `/tickets/${t.ticket_id}`,
       diasUrgencia: diasDesde(t.desde),
+    });
+  }
+
+  // ── Gestión de Problemas (migración 033): sin tabla de notificaciones,
+  // se computa en vivo cada carga — mismo criterio que el resto del feed.
+  for (const a of pendientesProblemas.accionesVencidas || []) {
+    items.push({
+      key: `accion-vencida-${a.accion_id}`,
+      tier: 1,
+      icono: 'ti ti-list-check',
+      colorFamilia: 'danger',
+      categoriaLabel: 'Acción correctiva vencida',
+      titulo: a.descripcion,
+      contexto: `${a.problema_titulo} · venció el ${formatFecha(a.fecha_limite)}`,
+      destino: `/problemas/${a.problema_id}`,
+      diasUrgencia: diasDesde(a.fecha_limite),
+    });
+  }
+
+  for (const c of pendientesProblemas.categoriasRecurrentes || []) {
+    items.push({
+      key: `recurrencia-${c.categoria_id}`,
+      tier: 2,
+      icono: 'ti ti-repeat',
+      colorFamilia: 'warning',
+      categoriaLabel: 'Posible problema recurrente',
+      titulo: c.categoria_nombre || c.categoria_id,
+      contexto: `${c.tickets.length} tickets en los últimos 30 días sin un problema abierto`,
+      destino: '/tickets',
+      diasUrgencia: null,
     });
   }
 

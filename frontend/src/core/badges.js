@@ -5,6 +5,7 @@ import { estadoInfo, prioridadInfo } from './dominio-tickets.js';
 import { situacionInfo } from './dominio-equipos.js';
 import { categoriaAccesoSensibleInfo } from './dominio-accesos-sensibles.js';
 import { estadoKbInfo } from './dominio-kb.js';
+import { estadoProblemaInfo, severidadProblemaInfo, estadoAccionInfo } from './dominio-problemas.js';
 
 const TIPOS_CUENTA = {
   compartida: { label: 'Compartido', clase: 'badge--sky' },
@@ -27,6 +28,12 @@ export function badgeInfo(tipo, valor) {
       return categoriaAccesoSensibleInfo(valor);
     case 'kb_estado':
       return estadoKbInfo(valor);
+    case 'problema_estado':
+      return estadoProblemaInfo(valor);
+    case 'problema_severidad':
+      return severidadProblemaInfo(valor);
+    case 'accion_estado':
+      return estadoAccionInfo(valor);
     case 'tipo_cuenta':
       return TIPOS_CUENTA[valor] || { label: valor, clase: 'badge--neutral' };
     case 'activo_staff': {

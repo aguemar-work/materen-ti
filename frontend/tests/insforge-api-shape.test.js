@@ -51,10 +51,15 @@ const METODOS = [
   // base de conocimiento
   'listKbPage', 'getKbArticulo', 'listArticulosRelacionados',
   'crearKbArticulo', 'actualizarKbArticulo', 'softDeleteKbArticulo', 'votarKbArticulo',
+  // gestión de problemas
+  'listProblemasPage', 'getProblema', 'crearProblema', 'actualizarProblema', 'softDeleteProblema',
+  'listTicketsVinculados', 'vincularTicket', 'desvincularTicket',
+  'listAccionesCorrectivas', 'crearAccionCorrectiva', 'actualizarAccionCorrectiva', 'softDeleteAccionCorrectiva',
+  'getProblemaAbiertoDeTicket', 'listCategoriasRecurrentes', 'listAccionesCorrectivasVencidas', 'pendientesProblemas',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 112 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 128 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();
