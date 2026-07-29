@@ -5,13 +5,20 @@
 // compartir con control/gerencia — ver reporte.js.
 import { ref, computed, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
+import { useTicketsStore } from '../../stores/tickets.js';
 import { estadoInfo, prioridadInfo } from '../../core/dominio-tickets.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, formatFechaHora } from '../../core/formatters.js';
+import { exportarCSV } from '../../core/exportar.js';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import { showToast } from '../../core/toast.js';
 import { generarReporteTickets } from './reporte.js';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+
+// Exportar CSV y "Descargar reporte" (PDF) cumplen la misma finalidad
+// (sacar información de tickets para compartir/analizar) — viven juntos
+// en este modal en vez de un botón aparte en el toolbar de la bandeja.
+const ticketsStore = useTicketsStore();
 
 const props = defineProps({
   staffPorId: { type: Object, default: () => ({}) },
@@ -104,6 +111,34 @@ function descargar() {
     );
   } catch (e) {
     showToast(e?.message || 'No se pudo generar el reporte', 'error');
+  }
+}
+
+// Exporta el dataset de la BANDEJA con los filtros que el staff tenía
+// aplicados (no el periodo del reporte, que es un recorte distinto).
+const exportando = ref(false);
+async function exportarCsv() {
+  exportando.value = true;
+  try {
+    const filas = await ticketsStore.listaParaExportar();
+    exportarCSV(
+      'tickets',
+      ['Código', 'Fecha', 'Solicitante', 'Título', 'Categoría', 'Estado', 'Prioridad', 'Asignado a'],
+      filas.map((t) => [
+        t.codigo,
+        formatFechaHora(t.created_at),
+        t.vinculado ? t.solicitante : 'Sin vincular',
+        t.titulo,
+        t.categoria,
+        estadoInfo(t.estado).label,
+        prioridadInfo(t.prioridad).label,
+        t.asignado_a ? (props.staffPorId[t.asignado_a] || 'Staff') : 'Sin asignar',
+      ]),
+    );
+  } catch (e) {
+    showToast(e?.message || 'Error al exportar', 'error');
+  } finally {
+    exportando.value = false;
   }
 }
 
@@ -222,6 +257,10 @@ onMounted(cargar);
 
         <div class="modal-actions">
           <button class="btn" type="button" @click="cerrar">Cerrar</button>
+          <button class="btn" type="button" :disabled="exportando" @click="exportarCsv">
+            <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i>
+            {{ exportando ? 'Exportando...' : 'Exportar CSV' }}
+          </button>
           <button class="btn btn-primary" type="button" :disabled="cargando || !datos" @click="descargar">
             <i class="ti ti-download" aria-hidden="true"></i> Descargar reporte
           </button>

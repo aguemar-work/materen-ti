@@ -57,6 +57,22 @@ cuándo y si la contraseña se rotó después.
 - **Windows + `db query`**: límite de línea de comandos ~8 KB y ejecución poco
  fiable de múltiples statements DML en una llamada. Para updates masivos:
  un solo `UPDATE ... FROM (VALUES ...)` por lote.
+- **Gotcha del CLI en Windows (jul 2026, migración 031)**: `db query` (incluso
+ vía `scripts/apply-migration.mjs`, que ya evita el límite de línea de
+ comandos con un here-string de PowerShell) puede rechazar DDL con
+ `Query could not be parsed and was rejected for security reasons` sin
+ razón aparente — pasó incluso con un `CREATE TABLE` mínimo. `db import
+ <archivo.sql>` (sin `--truncate`) es más confiable para DDL, pero puede
+ crashear (`Assertion failed ... src\win\async.c`) con archivos grandes que
+ mezclan CREATE TABLE + RLS + DML en un solo archivo. Mitigación que
+ funcionó: partir la migración en archivos temporales por concepto (tabla+
+ triggers, políticas RLS, backfill de datos, ALTER final) y aplicar cada uno
+ por separado con `db import`. El archivo único en `migrations/` se
+ conserva igual como fuente de verdad — el fraccionamiento es solo para la
+ ejecución, no cambia la convención de un archivo por migración.
+ **Verificar siempre después de aplicar** (`db query "select ..."` sobre la
+ tabla/columna afectada): un `db import` que reporta error igual puede haber
+ ejecutado parte de los statements antes de crashear.
 - **Edge function**: `functions/credenciales.ts` → desplegar con
  `npx @insforge/cli functions deploy credenciales --file functions/credenciales.ts`.
  Secrets que usa: `CRED_KEY_V2`, `CRED_KEY_LEGACY`, `API_KEY`,

@@ -195,11 +195,12 @@ export default async function (req: Request): Promise<Response> {
     } else if (staff && body.empleadoIdManual) {
       empleadoId = String(body.empleadoIdManual);
     } else if (origen === 'empleado' && contacto) {
-      const esCorreo = esEmail(contacto);
-      const query = admin.database.from('empleados').select('id').is('deleted_at', null);
-      const { data: coincidencias } = esCorreo
-        ? await query.ilike('correo_personal', contacto)
-        : await query.eq('dni', soloDigitos(contacto));
+      // Identificación SOLO por DNI: un correo puede repetirse entre
+      // empleados o una persona tener varios, el DNI no. La UI ya valida
+      // 8 dígitos, pero esta rama es la autoridad real (endpoint público).
+      const { data: coincidencias } = await admin.database
+        .from('empleados').select('id').is('deleted_at', null)
+        .eq('dni', soloDigitos(contacto));
       if (coincidencias?.length === 1) {
         empleadoId = coincidencias[0].id;
         vinculado = true;

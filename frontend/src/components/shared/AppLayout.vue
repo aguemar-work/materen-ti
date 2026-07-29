@@ -165,6 +165,7 @@ const navGrupos = computed(() => [
       { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
       { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
       { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
+      { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books' },
     ],
   },
   {

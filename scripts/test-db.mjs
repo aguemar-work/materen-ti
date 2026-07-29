@@ -35,7 +35,7 @@ ${sql}
 const salida = `${r.stdout || ''}\n${r.stderr || ''}`;
 
 if (salida.includes('TESTS_OK')) {
-  console.log('✓ Tests de triggers OK (008 exclusividad, 009 rotación, 017 reabrir, 019 transiciones) — rollback aplicado');
+  console.log('✓ Tests de triggers OK (008 exclusividad, 009 rotación, 017 reabrir, 019 transiciones, 031/032 kb_articulos) — rollback aplicado');
   process.exit(0);
 }
 

@@ -130,7 +130,7 @@ export const ticketsApi = {
       .from('tickets')
       .select(`
         id, codigo, titulo, descripcion, estado, prioridad, nivel_atencion, origen, vinculado,
-        contacto_ingresado, asignado_a, es_base_conocimiento, es_leccion_aprendida,
+        contacto_ingresado, asignado_a, es_leccion_aprendida,
         adjunto_url, created_at, updated_at,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
         categoria_id, categorias_ticket(nombre),
@@ -203,7 +203,7 @@ const SELECT_RESUMEN = `
 // del embed: se preresuelven ids de empleados por nombre (cap 50 homónimos)
 // y entran al or() como empleado_id.in.(...) — los UUID no llevan comas.
 async function queryTickets(
-  { q = '', estado = '', prioridad = '', sinAsignar = false, sinVincular = false, orden } = {},
+  { q = '', estado = '', prioridad = '', sinAsignar = false, sinVincular = false, asignadoA = '', orden } = {},
   { conteo = false } = {},
 ) {
   const db = getClient().database;
@@ -211,6 +211,7 @@ async function queryTickets(
   if (estado) query = query.eq('estado', estado);
   if (prioridad) query = query.eq('prioridad', prioridad);
   if (sinAsignar) query = query.is('asignado_a', null);
+  else if (asignadoA) query = query.eq('asignado_a', asignadoA);
   if (sinVincular) query = query.eq('vinculado', false);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
@@ -258,7 +259,6 @@ function mapTicketDetalle(row) {
     vinculado: row.vinculado,
     contacto_ingresado: row.contacto_ingresado || '',
     asignado_a: row.asignado_a,
-    es_base_conocimiento: row.es_base_conocimiento,
     es_leccion_aprendida: row.es_leccion_aprendida,
     adjunto_url: row.adjunto_url,
     created_at: row.created_at,

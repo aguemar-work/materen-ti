@@ -10,6 +10,8 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
     comentarios: [],
     eventos: [],
     satisfaccion: null,
+    equiposEmpleado: [],
+    articulosRelacionados: [],
     staffLista: [],
     cargando: false,
     error: null,
@@ -43,6 +45,15 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
         if (t && t.estado !== 'abierto') {
           this.satisfaccion = await insforgeApi.getSatisfaccionTicket(id);
         }
+        // Equipos que tiene ASIGNADOS el solicitante (contexto para el
+        // técnico), no el equipo/cuenta/licencia que el ticket referencia
+        // (eso es "Enlazado a", un dato distinto).
+        this.equiposEmpleado = t?.empleado_id ? await insforgeApi.equiposPorEmpleado(t.empleado_id) : [];
+        // Base de Conocimiento: sugerencias por categoría del ticket, para
+        // que el técnico resuelva más rápido sin salir de la ficha.
+        this.articulosRelacionados = t?.categoria_id
+          ? await insforgeApi.listArticulosRelacionados({ categoriaId: t.categoria_id })
+          : [];
       } catch (e) {
         this.error = e?.message || 'Error al cargar el ticket';
         throw e;
@@ -81,6 +92,17 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
 
     async recargarSatisfaccion() {
       this.satisfaccion = await insforgeApi.getSatisfaccionTicket(this.ticket.id);
+    },
+
+    // Al cerrar el ticket, guarda la solución como borrador de KB (queda
+    // pendiente de completar/revisar — ver migración 031).
+    async guardarComoBorradorKb() {
+      return insforgeApi.crearKbArticulo({
+        titulo: this.ticket.titulo,
+        categoria_id: this.ticket.categoria_id,
+        ticket_origen_id: this.ticket.id,
+        estado: 'borrador',
+      });
     },
 
     limpiar() {

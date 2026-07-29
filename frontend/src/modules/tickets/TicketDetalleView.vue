@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { estadoInfo, OPCIONES_PRIORIDAD as PRIORIDADES, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS } from '../../core/dominio-tickets.js';
+import { estadoInfo, prioridadInfo, OPCIONES_PRIORIDAD as PRIORIDADES, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS } from '../../core/dominio-tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
@@ -17,7 +17,7 @@ const auth = useAuthStore();
 const store = useTicketDetalleStore();
 const { volver } = useVolverContextual();
 
-const { ticket, comentarios, eventos, satisfaccion, cargando, staffActivo, staffPorId } = storeToRefs(store);
+const { ticket, comentarios, eventos, satisfaccion, equiposEmpleado, articulosRelacionados, cargando, staffActivo, staffPorId } = storeToRefs(store);
 
 const guardandoCampo = ref(false);
 
@@ -48,9 +48,11 @@ function colorDeEstado(estado) {
   return estadoInfo(estado).clase.replace('badge--', '');
 }
 
-// Historial esencial: solo hitos del ciclo de vida (creado → inicio de
-// atención/asignado → resuelto → cerrado, etc), no cada evento crudo de
-// ticket_eventos (prioridad, nivel de atención, correos, encuesta...).
+// Historial: hitos del ciclo de vida (creado → inicio de atención/asignado
+// → resuelto → cerrado) más los eventos auxiliares de ticket_eventos que
+// antes se descartaban en silencio (reasignaciones, cambios de prioridad,
+// avisos de correo fallido, encuesta) — ver GUIA-UX-UI / análisis de
+// tickets: nadie se enteraba si el correo de confirmación/encuesta fallaba.
 const historialEsencial = computed(() => {
   const hitos = [];
   for (const ev of eventos.value) {
@@ -64,10 +66,27 @@ const historialEsencial = computed(() => {
         ? ` · Asignado a ${staffPorId.value[ticket.value.asignado_a] || 'Staff'}`
         : '';
       hitos.push({ id: ev.id, label: label + asignado, fecha: ev.created_at, color: colorDeEstado(nuevoEstado) });
+    } else if (ev.evento === 'reasignado') {
+      hitos.push({ id: ev.id, label: EVENTO_LABELS.reasignado, fecha: ev.created_at, color: 'neutral' });
+    } else if (ev.evento === 'prioridad_cambiada') {
+      const nuevaPrioridad = /a "(\w+)"/.exec(ev.detalle || '')?.[1];
+      hitos.push({ id: ev.id, label: `Prioridad cambiada a ${prioridadInfo(nuevaPrioridad).label}`, fecha: ev.created_at, color: 'info' });
+    } else if (ev.evento === 'correo_fallido') {
+      hitos.push({ id: ev.id, label: EVENTO_LABELS.correo_fallido, detalle: ev.detalle, fecha: ev.created_at, color: 'warning' });
+    } else if (ev.evento === 'encuesta_enviada') {
+      hitos.push({ id: ev.id, label: EVENTO_LABELS.encuesta_enviada, fecha: ev.created_at, color: 'neutral' });
+    } else if (ev.evento === 'encuesta_respondida') {
+      hitos.push({ id: ev.id, label: EVENTO_LABELS.encuesta_respondida, fecha: ev.created_at, color: 'success' });
     }
   }
   return hitos;
 });
+
+// ── Iniciar atención (abierto -> en_progreso): los campos (prioridad,
+// nivel, asignado) se ven directo al entrar — no detrás de un botón que
+// primero "revela" el formulario. Rechazar sigue sin pedir nada de esto.
+const atencionForm = ref({ prioridad: 'media', nivelAtencion: 'N1', asignadoA: '' });
+const iniciando = ref(false);
 
 async function cargar() {
   try {
@@ -75,33 +94,25 @@ async function cargar() {
     if (!ticket.value) {
       showToast('Ticket no encontrado', 'error');
       router.replace('/tickets');
+      return;
+    }
+    // Precarga los 3 campos de una vez (sin un paso de "revelar" el
+    // formulario aparte): al entrar al ticket ya se ven, listos para
+    // ajustar y confirmar en un solo clic con "Iniciar atención".
+    if (ticket.value.estado === 'abierto') {
+      atencionForm.value = {
+        prioridad: ticket.value.prioridad || 'media',
+        nivelAtencion: 'N1',
+        asignadoA: auth.user?.id || '',
+      };
     }
   } catch (e) {
     showToast(e?.message || 'Error al cargar el ticket', 'error');
   }
 }
 
-// ── Iniciar atención (abierto -> en_progreso): pide prioridad + nivel +
-// asignado, todo junto, precargando "asignado a" con quien hace clic ──────
-const mostrarIniciar = ref(false);
-const iniciarForm = ref({ prioridad: 'media', nivelAtencion: '', asignadoA: '' });
-const iniciando = ref(false);
-
-function abrirIniciar() {
-  iniciarForm.value = {
-    prioridad: ticket.value.prioridad || 'media',
-    nivelAtencion: '',
-    asignadoA: auth.user?.id || '',
-  };
-  mostrarIniciar.value = true;
-}
-
 async function confirmarIniciar() {
-  if (!iniciarForm.value.nivelAtencion) {
-    showToast('Selecciona un nivel de atención', 'error');
-    return;
-  }
-  if (!iniciarForm.value.asignadoA) {
+  if (!atencionForm.value.asignadoA) {
     showToast('Selecciona a quién se asigna el ticket', 'error');
     return;
   }
@@ -109,11 +120,10 @@ async function confirmarIniciar() {
   try {
     await store.actualizarCampos({
       estado: 'en_progreso',
-      prioridad: iniciarForm.value.prioridad,
-      nivel_atencion: iniciarForm.value.nivelAtencion,
-      asignado_a: iniciarForm.value.asignadoA,
+      prioridad: atencionForm.value.prioridad,
+      nivel_atencion: atencionForm.value.nivelAtencion,
+      asignado_a: atencionForm.value.asignadoA,
     });
-    mostrarIniciar.value = false;
     showToast('Ticket en atención');
   } catch (e) {
     showToast(e?.message || 'No se pudo iniciar el ticket', 'error');
@@ -155,6 +165,7 @@ async function confirmarRechazar() {
 // ── Marcar como resuelto: encadena resuelto -> cerrado en un solo clic
 // (queda igual registrado en la hoja de vida) y dispara la encuesta ─────
 const resolviendo = ref(false);
+const guardarComoKb = ref(false);
 
 async function marcarResuelto() {
   resolviendo.value = true;
@@ -167,6 +178,12 @@ async function marcarResuelto() {
       if (data?.enviado) showToast('Encuesta de satisfacción enviada al correo del empleado');
     } catch { /* mejor esfuerzo: no bloquea el cierre del ticket */ }
     await store.recargarSatisfaccion();
+    if (guardarComoKb.value) {
+      try {
+        await store.guardarComoBorradorKb();
+        showToast('Solución guardada como borrador en la Base de Conocimiento');
+      } catch { /* mejor esfuerzo: no bloquea el cierre del ticket */ }
+    }
   } catch (e) {
     showToast(e?.message || 'No se pudo marcar como resuelto', 'error');
   } finally {
@@ -289,6 +306,14 @@ onUnmounted(() => store.limpiar());
             <p class="tk-nota">Revisa manualmente quién es y, si corresponde, vincúlalo desde comentarios.</p>
           </div>
 
+          <div v-if="equiposEmpleado.length" class="tk-seccion">
+            <div class="datos-title"><i class="ti ti-devices"></i> Equipos asignados</div>
+            <p v-for="eq in equiposEmpleado" :key="eq.equipo_id" class="tk-detalle">
+              <i class="ti ti-device-desktop"></i> {{ eq.codigo }} — {{ eq.marca }} {{ eq.modelo }}
+              <BadgeEstado tipo="situacion" :valor="eq.situacion" class="badge-inline" />
+            </p>
+          </div>
+
           <div v-if="ticket.equipo_desc || ticket.cuenta_desc || ticket.licencia_desc" class="tk-seccion">
             <div class="datos-title"><i class="ti ti-link"></i> Enlazado a</div>
             <p v-if="ticket.equipo_desc" class="tk-detalle"><i class="ti ti-devices"></i> {{ ticket.equipo_desc }}</p>
@@ -303,54 +328,61 @@ onUnmounted(() => store.limpiar());
             </a>
           </div>
 
+          <div v-if="ticket.categoria_id" class="tk-seccion">
+            <div class="datos-title"><i class="ti ti-books"></i> Artículos relacionados</div>
+            <template v-if="articulosRelacionados.length">
+              <RouterLink
+                v-for="a in articulosRelacionados"
+                :key="a.id"
+                class="tk-kb-relacionado"
+                :to="`/base-conocimiento/${a.id}`"
+              >
+                {{ a.titulo }}
+              </RouterLink>
+            </template>
+            <p v-else class="tk-nota">Sin artículos publicados en esta categoría todavía.</p>
+          </div>
+
           <div class="tk-seccion">
             <div class="datos-title">
               <i class="ti ti-adjustments"></i> Gestión
               <BadgeEstado tipo="ticket" :valor="ticket.estado" class="tk-estado-badge" />
             </div>
 
-            <!-- abierto: Rechazar / Iniciar -->
-            <div v-if="ticket.estado === 'abierto' && !mostrarIniciar && !mostrarRechazar" class="tk-acciones-estado">
-              <button class="btn btn-danger" type="button" @click="abrirRechazar">
-                <i class="ti ti-x" aria-hidden="true"></i> Rechazar
-              </button>
-              <button class="btn btn-primary" type="button" @click="abrirIniciar">
-                <i class="ti ti-player-play" aria-hidden="true"></i> Iniciar atención
-              </button>
-            </div>
-
-            <!-- Formulario: Iniciar atención -->
-            <div v-if="mostrarIniciar" class="tk-form-inline">
+            <!-- abierto: campos de atención visibles directo (sin paso de
+                 "revelar" el formulario) + Rechazar / Iniciar atención -->
+            <template v-if="ticket.estado === 'abierto' && !mostrarRechazar">
               <div class="form-group">
                 <label for="in-prioridad">Prioridad</label>
-                <select id="in-prioridad" v-model="iniciarForm.prioridad" :disabled="iniciando">
+                <select id="in-prioridad" v-model="atencionForm.prioridad" :disabled="iniciando">
                   <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
                 </select>
               </div>
               <div class="form-group">
-                <label for="in-nivel">Nivel de atención *</label>
-                <select id="in-nivel" v-model="iniciarForm.nivelAtencion" :disabled="iniciando">
-                  <option value="" disabled>Seleccionar</option>
+                <label for="in-nivel">Nivel de atención</label>
+                <select id="in-nivel" v-model="atencionForm.nivelAtencion" :disabled="iniciando">
                   <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
                 </select>
               </div>
               <div class="form-group">
-                <label for="in-asignado">Asignado a *</label>
-                <select id="in-asignado" v-model="iniciarForm.asignadoA" :disabled="iniciando">
+                <label for="in-asignado">Asignado a</label>
+                <select id="in-asignado" v-model="atencionForm.asignadoA" :disabled="iniciando">
                   <option value="" disabled>Seleccionar</option>
                   <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">
                     {{ s.user_id === auth.user?.id ? `${s.nombre} (yo)` : s.nombre }}
                   </option>
                 </select>
               </div>
-              <div class="modal-actions">
-                <button class="btn" type="button" :disabled="iniciando" @click="mostrarIniciar = false">Cancelar</button>
+              <div class="tk-acciones-estado">
+                <button class="btn btn-danger" type="button" :disabled="iniciando" @click="abrirRechazar">
+                  <i class="ti ti-x" aria-hidden="true"></i> Rechazar
+                </button>
                 <button class="btn btn-primary" type="button" :disabled="iniciando" @click="confirmarIniciar">
-                  <i v-if="iniciando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-                  {{ iniciando ? 'Iniciando...' : 'Confirmar inicio' }}
+                  <i :class="iniciando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-player-play'" aria-hidden="true"></i>
+                  {{ iniciando ? 'Iniciando...' : 'Iniciar atención' }}
                 </button>
               </div>
-            </div>
+            </template>
 
             <!-- Formulario: Rechazar -->
             <div v-if="mostrarRechazar" class="tk-form-inline">
@@ -389,6 +421,10 @@ onUnmounted(() => store.limpiar());
                   <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
                 </select>
               </div>
+              <label class="check-inline">
+                <input v-model="guardarComoKb" type="checkbox" :disabled="resolviendo">
+                ¿Guardar esta solución en la Base de Conocimiento?
+              </label>
               <button class="btn btn-primary tk-btn-resolver" type="button" :disabled="resolviendo" @click="marcarResuelto">
                 <i :class="resolviendo ? 'ti ti-loader-2 spinner-icon' : 'ti ti-circle-check'" aria-hidden="true"></i>
                 {{ resolviendo ? 'Cerrando...' : 'Marcar como resuelto' }}
@@ -406,10 +442,6 @@ onUnmounted(() => store.limpiar());
               <p v-else class="tk-nota">Solo el jefe puede reabrir este ticket.</p>
             </template>
 
-            <label class="check-inline">
-              <input type="checkbox" :checked="ticket.es_base_conocimiento" :disabled="guardandoCampo" @change="toggleFlag('es_base_conocimiento')">
-              Es base de conocimiento
-            </label>
             <label class="check-inline">
               <input type="checkbox" :checked="ticket.es_leccion_aprendida" :disabled="guardandoCampo" @change="toggleFlag('es_leccion_aprendida')">
               Es lección aprendida
@@ -483,6 +515,7 @@ onUnmounted(() => store.limpiar());
               <div class="timeline-content">
                 <div class="timeline-title">{{ h.label }}</div>
                 <div class="timeline-meta">{{ formatFechaHora(h.fecha) }}</div>
+                <div v-if="h.detalle" class="timeline-detalle">{{ h.detalle }}</div>
               </div>
             </div>
           </div>
@@ -580,6 +613,15 @@ onUnmounted(() => store.limpiar());
   flex-direction: column;
   gap: 3px;
 }
+
+.tk-kb-relacionado {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--color-accent-text);
+  text-decoration: none;
+  margin-bottom: 6px;
+}
+.tk-kb-relacionado:hover { text-decoration: underline; }
 
 .tk-nombre { font-size: var(--fs-base); font-weight: 600; color: var(--color-text-primary); }
 .tk-detalle { font-size: var(--fs-sm); color: var(--color-text-secondary); margin: 2px 0; }
@@ -679,4 +721,5 @@ onUnmounted(() => store.limpiar());
 .tk-historial-timeline .timeline-item { padding-bottom: 12px; }
 .tk-historial-timeline .timeline-title { font-size: var(--fs-sm); font-weight: 600; }
 .tk-historial-timeline .timeline-meta { font-size: 11px; margin-top: 1px; }
+.tk-historial-timeline .timeline-detalle { font-size: 11px; color: var(--color-warning-text); margin-top: 2px; }
 </style>

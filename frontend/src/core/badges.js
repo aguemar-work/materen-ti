@@ -4,6 +4,7 @@ import { claseEstado } from './dominio-empleados.js';
 import { estadoInfo, prioridadInfo } from './dominio-tickets.js';
 import { situacionInfo } from './dominio-equipos.js';
 import { categoriaAccesoSensibleInfo } from './dominio-accesos-sensibles.js';
+import { estadoKbInfo } from './dominio-kb.js';
 
 const TIPOS_CUENTA = {
   compartida: { label: 'Compartido', clase: 'badge--sky' },
@@ -24,6 +25,8 @@ export function badgeInfo(tipo, valor) {
       return situacionInfo(valor);
     case 'categoria_acceso_sensible':
       return categoriaAccesoSensibleInfo(valor);
+    case 'kb_estado':
+      return estadoKbInfo(valor);
     case 'tipo_cuenta':
       return TIPOS_CUENTA[valor] || { label: valor, clase: 'badge--neutral' };
     case 'activo_staff': {

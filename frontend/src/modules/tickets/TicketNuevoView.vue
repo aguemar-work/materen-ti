@@ -3,11 +3,12 @@
 // Dos rutas de entrada:
 //   - Con ?entrega=<token>: el empleado llega desde /entrega/:token,
 //     el backend resuelve quién es sin pedir nada más.
-//   - Sin token: se pide correo o DNI para intentar el match automático
-//     (si no hay match, el ticket se crea igual, sin bloquear).
+//   - Sin token: se pide el DNI para intentar el match automático (un
+//     correo puede repetirse entre empleados o una persona tener varios,
+//     el DNI no — si no hay match, el ticket se crea igual, sin bloquear).
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { catalogoTickets, crearTicket } from '../../api/ticketsPublicos.js';
+import { catalogoTickets, crearTicket, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { comprimirImagen, archivoABase64 } from '../../core/imagenes.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 
@@ -28,6 +29,19 @@ const form = ref({
   titulo: '',
   descripcion: '',
 });
+
+// Identificación SOLO por DNI (igual que TicketBuscarView): un correo puede
+// repetirse entre empleados o una persona tener varios, el DNI no.
+const dniTocado = ref(false);
+const dniValido = computed(() => !!tokenEntrega || form.value.contacto.length === 8);
+const errorDni = computed(() =>
+  dniTocado.value && !dniValido.value ? MENSAJES_ERROR_TICKETS.dni_invalido : ''
+);
+function onDniInput(e) {
+  const limpio = e.target.value.replace(/\D/g, '').slice(0, 8);
+  e.target.value = limpio;
+  form.value.contacto = limpio;
+}
 
 const subcategoriasFiltradas = computed(() =>
   subcategorias.value.filter((s) => s.categoria_id === form.value.categoriaId)
@@ -62,8 +76,9 @@ async function enviar() {
     error.value = 'Selecciona el tipo de solicitud';
     return;
   }
-  if (!tokenEntrega && !form.value.contacto.trim()) {
-    error.value = 'Ingrese su correo institucional o DNI para la identificación';
+  if (!dniValido.value) {
+    dniTocado.value = true;
+    error.value = MENSAJES_ERROR_TICKETS.dni_invalido;
     return;
   }
   estado.value = 'enviando';
@@ -128,11 +143,17 @@ onMounted(async () => {
             <label for="tk-contacto">DNI *</label>
             <input
               id="tk-contacto"
-              v-model="form.contacto"
+              :value="form.contacto"
               type="text"
-              placeholder="Ingrese número de DNI"
+              inputmode="numeric"
+              maxlength="8"
+              placeholder="8 dígitos"
               :disabled="estado === 'enviando'"
+              :aria-invalid="errorDni ? 'true' : undefined"
+              @input="onDniInput"
+              @blur="dniTocado = true"
             >
+            <p v-if="errorDni" class="form-error" role="alert">{{ errorDni }}</p>
           </div>
           <div v-else class="ticket-identificado">
             <i class="ti ti-user-check" aria-hidden="true"></i> Empleado identificado automáticamente.
@@ -195,7 +216,7 @@ onMounted(async () => {
 
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
-          <button class="btn btn-primary ticket-submit" type="submit" :disabled="estado === 'enviando'">
+          <button class="btn btn-primary ticket-submit" type="submit" :disabled="estado === 'enviando' || !dniValido">
             <i v-if="estado === 'enviando'" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
             {{ estado === 'enviando' ? 'Enviando...' : 'Enviar solicitud' }}
           </button>

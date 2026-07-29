@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "vitest run tests/integration/tickets-api.smoke.test.js"
   },
   "dependencies": {
     "@insforge/sdk": "^1.4.0",

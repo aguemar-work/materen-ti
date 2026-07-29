@@ -1,15 +1,16 @@
 import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
 
-// Paginación server-side: `lista` es SOLO la página actual; búsqueda y
-// filtros viajan al servidor (mismo patrón que stores/empleados.js).
-export const useTicketsStore = defineStore('tickets', {
+// Paginación server-side (mismo patrón que stores/correos.js). La
+// visibilidad de borrador/en_revision ya la resuelve RLS — este store no
+// filtra nada por autoría, solo pasa los filtros de UI al servidor.
+export const useKbStore = defineStore('kb', {
   state: () => ({
     lista: [],
     total: 0,
     pagina: 1,
     tamPagina: 20,
-    filtros: { q: '', estado: '', prioridad: '', sinAsignar: false, sinVincular: false, asignadoA: '' },
+    filtros: { q: '', categoriaId: '', estado: '' },
     orden: null,
     cargando: false,
     error: null,
@@ -20,7 +21,7 @@ export const useTicketsStore = defineStore('tickets', {
       this.cargando = true;
       this.error = null;
       try {
-        const { items, total } = await insforgeApi.listTicketsPage({
+        const { items, total } = await insforgeApi.listKbPage({
           pagina: this.pagina,
           tamPagina: this.tamPagina,
           ...this.filtros,
@@ -29,7 +30,7 @@ export const useTicketsStore = defineStore('tickets', {
         this.lista = items;
         this.total = total;
       } catch (e) {
-        this.error = e?.message || 'Error al cargar tickets';
+        this.error = e?.message || 'Error al cargar la base de conocimiento';
         throw e;
       } finally {
         this.cargando = false;
@@ -47,9 +48,8 @@ export const useTicketsStore = defineStore('tickets', {
       await this.cargar();
     },
 
-    // Se llama al montar la vista: ver nota en stores/empleados.js.
     resetearFiltros() {
-      this.filtros = { q: '', estado: '', prioridad: '', sinAsignar: false, sinVincular: false, asignadoA: '' };
+      this.filtros = { q: '', categoriaId: '', estado: '' };
       this.orden = null;
       this.pagina = 1;
     },
@@ -64,16 +64,11 @@ export const useTicketsStore = defineStore('tickets', {
       await this.cargar();
     },
 
-    // Dataset filtrado completo (sin página) — para exportar CSV
-    async listaParaExportar() {
-      return insforgeApi.listTicketsFiltrados(this.filtros);
-    },
-
-    async actualizar(id, datos) {
+    async crear(datos) {
       this.error = null;
-      await insforgeApi.actualizarTicket(id, datos);
-      const idx = this.lista.findIndex((t) => t.id === id);
-      if (idx !== -1) Object.assign(this.lista[idx], datos);
+      const articulo = await insforgeApi.crearKbArticulo(datos);
+      await this.cargar();
+      return articulo;
     },
   },
 });

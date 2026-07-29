@@ -48,10 +48,13 @@ const METODOS = [
   // accesos sensibles
   'listAccesosSensibles', 'permisosDeAcceso', 'crearAccesoSensible',
   'actualizarAccesoSensible', 'eliminarAccesoSensible',
+  // base de conocimiento
+  'listKbPage', 'getKbArticulo', 'listArticulosRelacionados',
+  'crearKbArticulo', 'actualizarKbArticulo', 'softDeleteKbArticulo', 'votarKbArticulo',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 105 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 112 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

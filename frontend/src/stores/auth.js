@@ -86,10 +86,16 @@ export const useAuthStore = defineStore('auth', {
           return;
         }
 
-        // Sesión válida pero staff inactivo/eliminado → cerrar sesión
-        const staff = await cargarStaff(data.user.id);
+        // Sesión válida pero staff inactivo/eliminado, o la consulta falla
+        // porque el token venció y no hubo refresh posible → cerrar sesión.
+        let staff;
+        try {
+          staff = await cargarStaff(data.user.id);
+        } catch {
+          staff = null;
+        }
         if (!staff || staff.activo === false) {
-          await getClient().auth.signOut();
+          await getClient().auth.signOut().catch(() => {});
           this.user = null;
           this.rol = null;
           return;

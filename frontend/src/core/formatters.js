@@ -80,3 +80,16 @@ export function formatFechaHora(iso) {
     hour: '2-digit', minute: '2-digit',
   });
 }
+
+// Timestamp ISO → "hace 5 min" / "hace 3 h" / "hace 2 d" (edad relativa,
+// para señalar de un vistazo cuánto lleva algo sin moverse — ej. tickets).
+export function formatAntiguedad(iso) {
+  if (!iso) return '';
+  const minutos = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutos < 1) return 'Recién';
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  const dias = Math.floor(horas / 24);
+  return `hace ${dias} d`;
+}

@@ -8,11 +8,19 @@ export function setupGuards(router) {
 
     const auth = useAuthStore();
 
-    if (!auth.sesionCargada) {
-      await auth.cargarSesion();
+    // Se revalida en cada navegación, no solo la primera vez: el token
+    // puede vencer con la pestaña abierta y nada más se entera (el SDK
+    // guarda la sesión en memoria, sin evento que avise al store).
+    await auth.cargarSesion();
+
+    if (to.path === '/login') {
+      // Ya autenticado y yendo a /login (pestaña vieja, botón atrás):
+      // al panel, no tiene sentido mostrar el login con el sidebar detrás.
+      if (auth.esStaff) return { path: '/dashboard' };
+      return;
     }
 
-    if (to.path !== '/login' && !auth.esStaff) {
+    if (!auth.esStaff) {
       return { path: '/login' };
     }
 

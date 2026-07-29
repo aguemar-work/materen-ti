@@ -3,10 +3,10 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { exportarCSV } from '../../core/exportar.js';
-import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES, estadoInfo, prioridadInfo } from '../../core/dominio-tickets.js';
-import { formatFechaHora } from '../../core/formatters.js';
+import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES } from '../../core/dominio-tickets.js';
+import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import TicketInternoForm from './TicketInternoForm.vue';
 import ReporteTicketsModal from './ReporteTicketsModal.vue';
@@ -21,6 +21,7 @@ import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const router = useRouter();
 const store = useTicketsStore();
+const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
@@ -33,6 +34,7 @@ const filtroEstado = ref('');
 const filtroPrioridad = ref('');
 const soloSinAsignar = ref(false);
 const soloSinVincular = ref(false);
+const misTickets = ref(false);
 const mostrarNuevo = ref(false);
 const mostrarReporte = ref(false);
 const staffLista = ref([]);
@@ -43,17 +45,28 @@ const staffPorId = computed(() => {
   return mapa;
 });
 
+// "Mis tickets" y "Sin asignar" se excluyen entre sí (un ticket no puede
+// ser ambas cosas): activar uno apaga el otro.
+function toggleMisTickets() {
+  misTickets.value = !misTickets.value;
+  if (misTickets.value) soloSinAsignar.value = false;
+}
+function toggleSinAsignar() {
+  soloSinAsignar.value = !soloSinAsignar.value;
+  if (soloSinAsignar.value) misTickets.value = false;
+}
+
 // Búsqueda y filtros viajan al servidor (paginación server-side):
-// la búsqueda con debounce, los selects/checkboxes al instante.
+// la búsqueda con debounce, los chips/selects al instante.
 let debounceBusqueda = null;
 watch(busqueda, (q) => {
   clearTimeout(debounceBusqueda);
   debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
 });
 watch(
-  [filtroEstado, filtroPrioridad, soloSinAsignar, soloSinVincular],
-  ([estado, prioridad, sinAsignar, sinVincular]) =>
-    store.aplicarFiltros({ estado, prioridad, sinAsignar, sinVincular }),
+  [filtroEstado, filtroPrioridad, soloSinAsignar, soloSinVincular, misTickets],
+  ([estado, prioridad, sinAsignar, sinVincular, mios]) =>
+    store.aplicarFiltros({ estado, prioridad, sinAsignar, sinVincular, asignadoA: mios ? (auth.user?.id || '') : '' }),
 );
 
 const paginaActual = computed({
@@ -61,66 +74,36 @@ const paginaActual = computed({
   set: (p) => store.irAPagina(p),
 });
 
-// Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
-const exportando = ref(false);
-async function exportar() {
-  exportando.value = true;
-  try {
-    const filas = await store.listaParaExportar();
-    exportarCSV(
-      'tickets',
-      ['Código', 'Fecha', 'Solicitante', 'Título', 'Categoría', 'Estado', 'Prioridad', 'Asignado a'],
-      filas.map((t) => [
-        t.codigo,
-        formatFechaHora(t.created_at),
-        t.vinculado ? t.solicitante : 'Sin vincular',
-        t.titulo,
-        t.categoria,
-        estadoInfo(t.estado).label,
-        prioridadInfo(t.prioridad).label,
-        t.asignado_a ? (staffPorId.value[t.asignado_a] || 'Staff') : 'Sin asignar',
-      ]),
-    );
-  } catch (e) {
-    showToast(e?.message || 'Error al exportar', 'error');
-  } finally {
-    exportando.value = false;
-  }
+// Antigüedad: siempre visible bajo la fecha; se resalta cuando señala
+// riesgo operativo (abierto sin atender >24h, en curso sin novedad >3 días).
+function ticketEnvejecido(t) {
+  const horas = (Date.now() - new Date(t.created_at).getTime()) / 3600000;
+  if (t.estado === 'abierto') return horas > 24;
+  if (t.estado === 'en_progreso' || t.estado === 'reabierto') return horas > 72;
+  return false;
 }
 
 function verTicket(ticket) {
   router.push(`/tickets/${ticket.id}`);
 }
 
-// Enlaces públicos que el staff comparte con los empleados (o abre para
-// probar) — se resuelven por nombre de ruta (el path real vive en el
-// router) y se copian con window.location.origin para que funcionen
-// igual en desarrollo y en producción.
-async function copiarEnlace(nombreRuta, mensaje) {
-  const link = `${window.location.origin}${router.resolve({ name: nombreRuta }).href}`;
+// Enlace público único (landing /soporte): desde ahí el empleado elige
+// reportar o buscar por DNI — reemplaza los dos enlaces sueltos de antes.
+async function copiarEnlaceSoporte() {
+  const link = `${window.location.origin}${router.resolve({ name: 'soporte' }).href}`;
   try {
     await navigator.clipboard.writeText(link);
-    showToast(mensaje);
+    showToast('Enlace de soporte copiado');
   } catch {
     showToast('No se pudo copiar. Copia manualmente: ' + link, 'error');
   }
 }
 
-// En móvil los 4 botones secundarios del header se condensan en un menú
+// En móvil los botones secundarios del header se condensan en un menú
 // "Más" (patrón mobile); en escritorio siguen como botones sueltos.
 const accionesMas = computed(() => [
-  { icono: 'ti-table-export', label: 'Exportar', disabled: exportando.value, onClick: exportar },
   { icono: 'ti-report', label: 'Reporte', onClick: () => { mostrarReporte.value = true; } },
-  {
-    icono: 'ti-link',
-    label: 'Enlace ticket',
-    onClick: () => copiarEnlace('ticket-nuevo', 'Enlace para reportar copiado'),
-  },
-  {
-    icono: 'ti-search',
-    label: 'Enlace búsqueda',
-    onClick: () => copiarEnlace('ticket-buscar', 'Enlace de búsqueda por DNI copiado'),
-  },
+  { icono: 'ti-link', label: 'Enlace soporte', onClick: copiarEnlaceSoporte },
 ]);
 
 function onNuevoCerrado(creado) {
@@ -146,17 +129,11 @@ onMounted(async () => {
   <div class="tickets-page vista-modulo">
     <PageHeader titulo="Tickets" icono="ti ti-headset" :conteo="total">
       <template #acciones>
-        <button class="btn solo-escritorio" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </button>
         <button class="btn solo-escritorio" type="button" @click="mostrarReporte = true">
           <i class="ti ti-report" aria-hidden="true"></i> Reporte
         </button>
-        <button class="btn solo-escritorio" type="button" title="Copiar enlace para reportar un ticket" @click="copiarEnlace('ticket-nuevo', 'Enlace para reportar copiado')">
-          <i class="ti ti-link" aria-hidden="true"></i> Enlace ticket
-        </button>
-        <button class="btn solo-escritorio" type="button" title="Copiar enlace de búsqueda por DNI" @click="copiarEnlace('ticket-buscar', 'Enlace de búsqueda por DNI copiado')">
-          <i class="ti ti-search" aria-hidden="true"></i> Enlace búsqueda
+        <button class="btn solo-escritorio" type="button" title="Copiar enlace de soporte (reportar o buscar tickets)" @click="copiarEnlaceSoporte">
+          <i class="ti ti-link" aria-hidden="true"></i> Enlace soporte
         </button>
         <MenuAcciones class="solo-movil solo-movil--flex" texto="Más" label="Más acciones" :acciones="accionesMas" />
         <button class="btn btn-primary" type="button" @click="mostrarNuevo = true">
@@ -180,12 +157,17 @@ onMounted(async () => {
             <option value="">Toda prioridad</option>
             <option v-for="(v, k) in PRIORIDADES" :key="k" :value="k">{{ v.label }}</option>
           </select>
-          <label class="filtro-check">
-            <input v-model="soloSinAsignar" type="checkbox"> Sin asignar
-          </label>
-          <label class="filtro-check">
-            <input v-model="soloSinVincular" type="checkbox"> Sin vincular
-          </label>
+          <div class="chips-filtro">
+            <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': misTickets }" @click="toggleMisTickets">
+              <i class="ti ti-user" aria-hidden="true"></i> Mis tickets
+            </button>
+            <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': soloSinAsignar }" @click="toggleSinAsignar">
+              Sin asignar
+            </button>
+            <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': soloSinVincular }" @click="soloSinVincular = !soloSinVincular">
+              Sin vincular
+            </button>
+          </div>
         </div>
 
         <div v-if="cargando" class="no-results solo-movil">Cargando tickets...</div>
@@ -219,7 +201,10 @@ onMounted(async () => {
               <template v-else>
               <tr v-for="t in lista" :key="t.id" class="fila-ticket" @click="verTicket(t)">
                 <td><RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${t.id}`" @click.stop>{{ t.codigo }}</RouterLink></td>
-                <td class="fecha-cell">{{ formatFechaHora(t.created_at) }}</td>
+                <td class="fecha-cell">
+                  {{ formatFechaHora(t.created_at) }}
+                  <div class="tk-antiguedad" :class="{ 'tk-antiguedad--alerta': ticketEnvejecido(t) }">{{ formatAntiguedad(t.created_at) }}</div>
+                </td>
                 <td>
                   <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
                     <i class="ti ti-alert-triangle"></i> Sin vincular
@@ -251,7 +236,10 @@ onMounted(async () => {
           <li v-for="t in lista" :key="t.id" class="tarjeta-fila tarjeta-fila--clic" @click="verTicket(t)">
             <div class="tarjeta-fila__cab">
               <RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${t.id}`" @click.stop>{{ t.codigo }}</RouterLink>
-              <span class="fecha-cell">{{ formatFechaHora(t.created_at) }}</span>
+              <span class="fecha-cell">
+                {{ formatFechaHora(t.created_at) }}
+                <span class="tk-antiguedad" :class="{ 'tk-antiguedad--alerta': ticketEnvejecido(t) }">· {{ formatAntiguedad(t.created_at) }}</span>
+              </span>
             </div>
             <div class="tarjeta-fila__principal">{{ t.titulo }}</div>
             <div class="tarjeta-fila__sec">
@@ -292,6 +280,13 @@ onMounted(async () => {
 
 .fecha-cell { white-space: nowrap; }
 
+/* En la tarjeta móvil, fecha + antigüedad pueden partirse en dos líneas
+   si no caben (a diferencia de la celda de tabla, que sí fuerza una sola). */
+.tarjeta-fila__cab .fecha-cell {
+  white-space: normal;
+  text-align: right;
+}
+
 .tk-codigo-link {
   color: inherit;
   text-decoration: none;
@@ -301,14 +296,45 @@ onMounted(async () => {
   text-decoration: underline;
 }
 
-.filtro-check {
+.chips-filtro {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
+
+/* Mismo par tenue-acento que el ítem activo del sidebar (GUIA-UX-UI):
+   sin bordes, solo fondo/color de acento cuando el filtro está activo. */
+.chip-filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chip-filtro:hover { background: var(--color-bg-hover); }
+
+.chip-filtro--activo {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+}
+
+.tk-antiguedad {
+  font-size: var(--fs-sm);
+  color: var(--color-text-tertiary);
+}
+
+.tk-antiguedad--alerta { color: var(--color-warning-text); }
 
 .fila-ticket { cursor: pointer; }
 .fila-ticket:hover td { background: var(--color-bg-hover); }
