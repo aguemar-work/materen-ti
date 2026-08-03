@@ -31,7 +31,7 @@ export const ticketsApi = {
   async listSubcategoriasTicket(categoriaId = null) {
     let query = getClient().database
       .from('subcategorias_ticket')
-      .select('id, categoria_id, nombre')
+      .select('id, categoria_id, nombre, tipo_sugerido')
       .is('deleted_at', null)
       .order('nombre', { ascending: true });
     if (categoriaId) query = query.eq('categoria_id', categoriaId);
@@ -69,22 +69,32 @@ export const ticketsApi = {
     if (error) throw error;
   },
 
-  async createSubcategoriaTicket(categoriaId, nombre) {
+  // tipoSugerido es obligatorio en la práctica: lo exige la UI de alta
+  // rápida (CategoriasTicketPanel.vue), no un NOT NULL en columna (los 3
+  // casos históricos ambiguos siguen con tipo_sugerido NULL).
+  async createSubcategoriaTicket(categoriaId, nombre, tipoSugerido) {
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
-      .insert([{ categoria_id: categoriaId, nombre: trimText(nombre) }])
-      .select('id, categoria_id, nombre')
+      .insert([{ categoria_id: categoriaId, nombre: trimText(nombre), tipo_sugerido: tipoSugerido }])
+      .select('id, categoria_id, nombre, tipo_sugerido')
       .single();
     if (error) throw error;
     return data;
   },
 
-  async updateSubcategoriaTicket(id, nombre) {
+  // tipoSugerido es opcional a propósito (a diferencia del alta): omitirlo
+  // no toca la columna, así renombrar una subcategoría no obliga a fijar
+  // (o borrar) su clasificación. Pasarlo explícito — incluido null/'' — sí
+  // la actualiza. Sin llamador todavía: no hay UI de edición de
+  // subcategorías, solo alta rápida y borrado.
+  async updateSubcategoriaTicket(id, nombre, tipoSugerido) {
+    const datos = { nombre: trimText(nombre) };
+    if (tipoSugerido !== undefined) datos.tipo_sugerido = tipoSugerido || null;
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
-      .update({ nombre: trimText(nombre) })
+      .update(datos)
       .eq('id', id)
-      .select('id, categoria_id, nombre')
+      .select('id, categoria_id, nombre, tipo_sugerido')
       .single();
     if (error) throw error;
     return data;
@@ -129,12 +139,12 @@ export const ticketsApi = {
     const { data, error } = await getClient().database
       .from('tickets')
       .select(`
-        id, codigo, titulo, descripcion, estado, prioridad, nivel_atencion, origen, vinculado,
+        id, codigo, titulo, descripcion, estado, prioridad, nivel_atencion, tipo, origen, vinculado,
         contacto_ingresado, asignado_a,
         adjunto_url, created_at, updated_at,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
         categoria_id, categorias_ticket(nombre),
-        subcategoria_id, subcategorias_ticket(nombre),
+        subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido),
         equipo_id, equipos(codigo, marca, modelo),
         cuenta_id, cuentas(usuario, plataformas(nombre)),
         licencia_id, licencias(software)
@@ -255,6 +265,7 @@ function mapTicketDetalle(row) {
     estado: row.estado,
     prioridad: row.prioridad,
     nivel_atencion: row.nivel_atencion,
+    tipo: row.tipo,
     origen: row.origen,
     vinculado: row.vinculado,
     contacto_ingresado: row.contacto_ingresado || '',
@@ -271,6 +282,7 @@ function mapTicketDetalle(row) {
     categoria_nombre: row.categorias_ticket?.nombre || '',
     subcategoria_id: row.subcategoria_id,
     subcategoria_nombre: row.subcategorias_ticket?.nombre || '',
+    subcategoria_tipo_sugerido: row.subcategorias_ticket?.tipo_sugerido || null,
     equipo_id: row.equipo_id,
     equipo_desc: row.equipos ? `${row.equipos.codigo} — ${row.equipos.marca || ''} ${row.equipos.modelo || ''}`.trim() : '',
     cuenta_id: row.cuenta_id,

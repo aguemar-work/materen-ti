@@ -25,6 +25,14 @@ export const PRIORIDADES_TICKET = {
 export const OPCIONES_PRIORIDAD = Object.entries(PRIORIDADES_TICKET)
   .map(([valor, v]) => ({ valor, label: v.label }));
 
+// Incidente/solicitud (migración 035). Sin color propio todavía: no se
+// pinta como badge en ningún lado hasta que haga falta mostrarlo (bandeja,
+// reporte) — acá solo el vocabulario para los selects de triage.
+export const OPCIONES_TIPO = [
+  { valor: 'incidente', label: 'Incidente' },
+  { valor: 'solicitud', label: 'Solicitud' },
+];
+
 export const NIVELES_ATENCION = [
   { valor: 'N1', label: 'N1 — Soporte básico' },
   { valor: 'N2', label: 'N2 — Especializado' },

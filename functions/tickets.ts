@@ -162,7 +162,7 @@ export default async function (req: Request): Promise<Response> {
   if (body.action === 'catalogo') {
     const [{ data: categorias }, { data: subcategorias }] = await Promise.all([
       admin.database.from('categorias_ticket').select('id, nombre').is('deleted_at', null).order('nombre'),
-      admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre').is('deleted_at', null).order('nombre'),
+      admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre, tipo_sugerido').is('deleted_at', null).order('nombre'),
     ]);
     return json({ ok: true, categorias: categorias || [], subcategorias: subcategorias || [] });
   }
@@ -248,6 +248,29 @@ export default async function (req: Request): Promise<Response> {
       }
     }
 
+    // Clasificación incidente/solicitud: se hereda del default de la
+    // subcategoría (nunca del cliente, mismo criterio que categoria_id/
+    // subcategoria_id). Si no hay subcategoría, o la elegida es una de las
+    // ambiguas a propósito (tipo_sugerido NULL — "Otro", "Accesorio dañado
+    // o faltante", "Seguridad...backup"), el ticket entra sin clasificar:
+    // check_iniciar_completo() ya exige tipo antes de pasar a en_progreso.
+    let tipoTicket: string | null = null;
+    if (subcategoriaId) {
+      const { data: subcategoria } = await admin.database
+        .from('subcategorias_ticket')
+        .select('tipo_sugerido')
+        .eq('id', subcategoriaId)
+        .maybeSingle();
+      tipoTicket = subcategoria?.tipo_sugerido || null;
+    }
+    // El staff que crea un ticket interno puede corregir la clasificación
+    // sugerida por la subcategoría (TicketInternoForm.vue). El formulario
+    // público nunca manda `tipo` — si lo mandara, se ignora igual porque
+    // `staff` es null sin sesión.
+    if (staff && (body.tipo === 'incidente' || body.tipo === 'solicitud')) {
+      tipoTicket = body.tipo;
+    }
+
     const { data: ticket, error: eInsert } = await admin.database
       .from('tickets')
       .insert([{
@@ -262,6 +285,7 @@ export default async function (req: Request): Promise<Response> {
         creado_por: staff?.id || null,
         categoria_id: categoriaId,
         subcategoria_id: subcategoriaId,
+        tipo: tipoTicket,
         equipo_id: body.equipoId || null,
         cuenta_id: body.cuentaId || null,
         licencia_id: body.licenciaId || null,

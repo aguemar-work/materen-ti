@@ -8,6 +8,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useCategoriasTicketStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
+import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
@@ -33,6 +34,9 @@ useFocoAtrapado(panelCatForm, mostrarCatForm);
 
 // Alta rápida de subcategoría (inline, sin modal)
 const nuevaSubPorCategoria = ref({});
+// tipo_sugerido obligatorio para subcategorías nuevas (a diferencia de los
+// 3 casos históricos ambiguos, que son excepción cerrada y no se repiten).
+const nuevoTipoPorCategoria = ref({});
 
 // Confirmación destructiva (ConfirmDialog compartido): una sola instancia
 // para ambos niveles (categoría/subcategoría), diferenciados por `tipo`.
@@ -104,10 +108,16 @@ function pedirEliminarCategoria(cat) {
 async function agregarSubcategoria(categoriaId) {
   const nombre = (nuevaSubPorCategoria.value[categoriaId] || '').trim();
   if (!nombre) return;
+  const tipoSugerido = nuevoTipoPorCategoria.value[categoriaId] || '';
+  if (!tipoSugerido) {
+    showToast('Selecciona si es Incidente o Solicitud', 'error');
+    return;
+  }
   try {
-    const nueva = await insforgeApi.createSubcategoriaTicket(categoriaId, nombre);
+    const nueva = await insforgeApi.createSubcategoriaTicket(categoriaId, nombre, tipoSugerido);
     subcategorias.value.push(nueva);
     nuevaSubPorCategoria.value[categoriaId] = '';
+    nuevoTipoPorCategoria.value[categoriaId] = '';
   } catch (e) {
     showToast(e?.message || 'Error al agregar subcategoría', 'error');
   }
@@ -216,6 +226,10 @@ onMounted(async () => {
                 placeholder="Nueva subcategoría..."
                 @keydown.enter.prevent="agregarSubcategoria(cat.id)"
               >
+              <select v-model="nuevoTipoPorCategoria[cat.id]">
+                <option value="" disabled>Tipo</option>
+                <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+              </select>
               <button class="btn" type="button" @click="agregarSubcategoria(cat.id)">Agregar</button>
             </div>
           </div>

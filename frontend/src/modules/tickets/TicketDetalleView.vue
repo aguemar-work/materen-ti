@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { estadoInfo, prioridadInfo, OPCIONES_PRIORIDAD as PRIORIDADES, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS } from '../../core/dominio-tickets.js';
+import { estadoInfo, prioridadInfo, OPCIONES_PRIORIDAD as PRIORIDADES, OPCIONES_TIPO as TIPOS, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS } from '../../core/dominio-tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
@@ -86,7 +86,7 @@ const historialEsencial = computed(() => {
 // ── Iniciar atención (abierto -> en_progreso): los campos (prioridad,
 // nivel, asignado) se ven directo al entrar — no detrás de un botón que
 // primero "revela" el formulario. Rechazar sigue sin pedir nada de esto.
-const atencionForm = ref({ prioridad: 'media', nivelAtencion: 'N1', asignadoA: '' });
+const atencionForm = ref({ prioridad: 'media', nivelAtencion: 'N1', asignadoA: '', tipo: '' });
 const iniciando = ref(false);
 
 async function cargar() {
@@ -105,6 +105,11 @@ async function cargar() {
         prioridad: ticket.value.prioridad || 'media',
         nivelAtencion: 'N1',
         asignadoA: auth.user?.id || '',
+        // Precarga con el tipo ya asignado si lo tiene; si no, con el default
+        // de la subcategoría (tipo_sugerido). Si ninguno existe (los 3 casos
+        // ambiguos: Accesorio dañado/faltante, Otro, Seguridad/backup) queda
+        // vacío a propósito — el select fuerza a elegir antes de iniciar.
+        tipo: ticket.value.tipo || ticket.value.subcategoria_tipo_sugerido || '',
       };
     }
   } catch (e) {
@@ -117,6 +122,10 @@ async function confirmarIniciar() {
     showToast('Selecciona a quién se asigna el ticket', 'error');
     return;
   }
+  if (!atencionForm.value.tipo) {
+    showToast('Selecciona si es un incidente o una solicitud', 'error');
+    return;
+  }
   iniciando.value = true;
   try {
     await store.actualizarCampos({
@@ -124,6 +133,9 @@ async function confirmarIniciar() {
       prioridad: atencionForm.value.prioridad,
       nivel_atencion: atencionForm.value.nivelAtencion,
       asignado_a: atencionForm.value.asignadoA,
+      // Explícito siempre, aunque el ticket ya traiga tipo precargado: no
+      // depender de que un UPDATE parcial "conserve" el valor previo.
+      tipo: atencionForm.value.tipo,
     });
     showToast('Ticket en atención');
   } catch (e) {
@@ -236,6 +248,17 @@ async function cambiarAsignado(staffId) {
     showToast(staffId ? 'Ticket asignado' : 'Asignación quitada');
   } catch (e) {
     showToast(e?.message || 'Error al asignar', 'error');
+  } finally {
+    guardandoCampo.value = false;
+  }
+}
+
+async function cambiarTipo(nuevoTipo) {
+  guardandoCampo.value = true;
+  try {
+    await store.actualizarCampos({ tipo: nuevoTipo });
+  } catch (e) {
+    showToast(e?.message || 'Error al cambiar el tipo', 'error');
   } finally {
     guardandoCampo.value = false;
   }
@@ -375,6 +398,13 @@ onUnmounted(() => store.limpiar());
                   </option>
                 </select>
               </div>
+              <div class="form-group">
+                <label for="in-tipo">Tipo</label>
+                <select id="in-tipo" v-model="atencionForm.tipo" :disabled="iniciando">
+                  <option value="" disabled>Seleccionar</option>
+                  <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+                </select>
+              </div>
               <div class="tk-acciones-estado">
                 <button class="btn btn-danger" type="button" :disabled="iniciando" @click="abrirRechazar">
                   <i class="ti ti-x" aria-hidden="true"></i> Rechazar
@@ -421,6 +451,12 @@ onUnmounted(() => store.limpiar());
                 <select id="tk-asignado" :value="ticket.asignado_a || ''" :disabled="guardandoCampo" @change="cambiarAsignado($event.target.value)">
                   <option value="">Sin asignar</option>
                   <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="tk-tipo">Tipo</label>
+                <select id="tk-tipo" :value="ticket.tipo" :disabled="guardandoCampo" @change="cambiarTipo($event.target.value)">
+                  <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
                 </select>
               </div>
               <label class="check-inline">

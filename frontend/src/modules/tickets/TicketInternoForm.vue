@@ -3,9 +3,10 @@
 // empleado que llamó/pasó en persona. Usa la MISMA acción "crear" de
 // la edge function que el formulario público — al venir con sesión de
 // staff, el backend fija creado_por y respeta origen=staff_interno.
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { crearTicket } from '../../api/ticketsPublicos.js';
+import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
@@ -46,6 +47,7 @@ const form = ref({
   subcategoriaId: '',
   titulo: '',
   descripcion: '',
+  tipo: '',
 });
 
 const esParaEmpleado = ref(false);
@@ -65,6 +67,15 @@ const dialogoDescarte = ref(null);
 const subcategoriasFiltradas = computed(() =>
   subcategorias.value.filter((s) => s.categoria_id === form.value.categoriaId)
 );
+
+// Precarga Tipo con el default de la subcategoría elegida (tipo_sugerido);
+// queda vacío si la subcategoría es una de las ambiguas a propósito o si
+// no hay subcategoría seleccionada. El staff puede corregirlo con el select
+// antes de crear el ticket — esto solo fija el valor inicial.
+watch(() => form.value.subcategoriaId, (id) => {
+  const sub = subcategorias.value.find((s) => s.id === id);
+  form.value.tipo = sub?.tipo_sugerido || '';
+});
 
 // Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
 // confirmación antes de descartar; limpio cierra directo.
@@ -101,6 +112,7 @@ async function guardar() {
       descripcion: form.value.descripcion.trim(),
       categoriaId: form.value.categoriaId,
       subcategoriaId: form.value.subcategoriaId || null,
+      tipo: form.value.tipo || null,
       origen: esParaEmpleado.value ? undefined : 'staff_interno',
       empleadoIdManual: esParaEmpleado.value ? empleadoSelId.value || null : null,
     });
@@ -169,6 +181,14 @@ onMounted(async () => {
           <select id="ti-subcategoria" v-model="form.subcategoriaId" :disabled="guardando">
             <option value="">Seleccionar (opcional)</option>
             <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+          </select>
+        </div>
+
+        <div class="form-group full">
+          <label for="ti-tipo">Tipo</label>
+          <select id="ti-tipo" v-model="form.tipo" :disabled="guardando">
+            <option value="">Sin definir</option>
+            <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
           </select>
         </div>
 
