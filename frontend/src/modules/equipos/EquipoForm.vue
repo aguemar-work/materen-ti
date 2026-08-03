@@ -6,6 +6,7 @@ import { comprimirImagen } from '../../core/imagenes.js';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
@@ -60,11 +61,19 @@ const form = ref({
 });
 
 // Alta rápida / búsqueda en catálogo de almacén
-const busquedaAcc = ref('');
 const sugerenciasAcc = ref([]);
-const buscandoAcc = ref(false);
 const mostrarSugerencias = ref(false);
-let timerBusqueda = null;
+const { termino: busquedaAcc, cargando: buscandoAcc } = useBusqueda({
+  onBuscar: async (q) => {
+    if (!q) { sugerenciasAcc.value = []; mostrarSugerencias.value = false; return; }
+    try {
+      sugerenciasAcc.value = await insforgeApi.listCatalogoAlmacen({ q, limite: 12 });
+      mostrarSugerencias.value = true;
+    } catch {
+      sugerenciasAcc.value = [];
+    }
+  },
+});
 
 const nuevaLinea = ref({ codigo: '', descripcion: '', cantidad: 1 });
 
@@ -250,27 +259,6 @@ async function agregarLineaManual() {
   error.value = '';
 }
 
-function onBusquedaAccInput() {
-  clearTimeout(timerBusqueda);
-  const q = busquedaAcc.value.trim();
-  if (q.length < 1) {
-    sugerenciasAcc.value = [];
-    mostrarSugerencias.value = false;
-    return;
-  }
-  timerBusqueda = setTimeout(async () => {
-    buscandoAcc.value = true;
-    try {
-      sugerenciasAcc.value = await insforgeApi.listCatalogoAlmacen({ q, limite: 12 });
-      mostrarSugerencias.value = true;
-    } catch {
-      sugerenciasAcc.value = [];
-    } finally {
-      buscandoAcc.value = false;
-    }
-  }, 220);
-}
-
 function ocultarSugerencias() {
   setTimeout(() => { mostrarSugerencias.value = false; }, 180);
 }
@@ -432,7 +420,6 @@ async function guardar() {
                 placeholder="Buscar en almacén por código o descripción…"
                 autocomplete="off"
                 :disabled="guardando"
-                @input="onBusquedaAccInput"
                 @focus="mostrarSugerencias = sugerenciasAcc.length > 0"
                 @blur="ocultarSugerencias"
               >

@@ -15,6 +15,7 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const router = useRouter();
 const store = useKbStore();
@@ -22,17 +23,12 @@ const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-const busqueda = ref('');
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 const filtroCategoria = ref('');
 const filtroEstado = ref('');
 const mostrarForm = ref(false);
 const categorias = ref([]);
 
-let debounceBusqueda = null;
-watch(busqueda, (q) => {
-  clearTimeout(debounceBusqueda);
-  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
-});
 watch(
   [filtroCategoria, filtroEstado],
   ([categoriaId, estado]) => store.aplicarFiltros({ categoriaId, estado }),

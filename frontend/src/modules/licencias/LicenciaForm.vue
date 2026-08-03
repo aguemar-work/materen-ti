@@ -6,6 +6,7 @@ import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 
 const props = defineProps({
   licencia: { type: Object, default: null },
@@ -73,22 +74,11 @@ const form = ref({
 
 // ── Buscador del correo vinculado ─────────────────────────────
 const busquedaCorreo = ref('');
-const listaCorreosAbierta = ref(false);
 
 // Registro en línea de un correo que aún no existe en el módulo Correos
 const registrandoCorreo = ref(false);
 const nuevoCorreo = ref({ plataforma_id: '', tipo_cuenta: 'compartida', password: '' });
 const passwordCorreoVisible = ref(false);
-
-const correosFiltrados = computed(() => {
-  const q = busquedaCorreo.value.trim().toLowerCase();
-  const base = q
-    ? correos.value.filter((c) =>
-        c.usuario.toLowerCase().includes(q) ||
-        (c.plataforma_nombre || '').toLowerCase().includes(q))
-    : correos.value;
-  return base.slice(0, 8);
-});
 
 const correoEscritoValido = computed(() =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(busquedaCorreo.value.trim())
@@ -100,29 +90,15 @@ const correoYaRegistrado = computed(() => {
   return correos.value.some((c) => c.usuario.toLowerCase() === q);
 });
 
-function seleccionarCorreo(c) {
-  form.value.cuenta_id = c.id;
-  busquedaCorreo.value = c.usuario;
+// Cualquier cambio de selección (elegir de la lista o volver a escribir)
+// cancela el modo "registrar correo nuevo" en curso.
+function onSeleccionCorreo() {
   registrandoCorreo.value = false;
-  listaCorreosAbierta.value = false;
 }
 
 function elegirRegistrarCorreo() {
   busquedaCorreo.value = busquedaCorreo.value.trim().toLowerCase();
   registrandoCorreo.value = true;
-  listaCorreosAbierta.value = false;
-}
-
-function onBuscarCorreo() {
-  // Escribir invalida la selección anterior hasta elegir de la lista
-  form.value.cuenta_id = '';
-  registrandoCorreo.value = false;
-  listaCorreosAbierta.value = true;
-}
-
-function cerrarListaCorreos() {
-  // Pequeño retraso para que el clic en una opción alcance a ejecutarse
-  setTimeout(() => { listaCorreosAbierta.value = false; }, 150);
 }
 
 // Además del form entran el modo de acceso, el correo buscado/escrito y los
@@ -374,34 +350,32 @@ async function guardar() {
         <template v-if="modoAcceso === 'login'">
           <div class="form-group full combo-correo">
             <label for="lf-cuenta">Correo que da acceso *</label>
-            <div class="combo-wrap">
-              <i class="ti ti-search combo-icon" aria-hidden="true"></i>
-              <input
-                id="lf-cuenta"
-                v-model="busquedaCorreo"
-                type="text"
-                autocomplete="off"
-                :placeholder="cargandoCatalogos ? 'Cargando correos...' : 'Buscar correo por dirección o plataforma...'"
-                :disabled="guardando || cargandoCatalogos"
-                :class="{ 'combo-ok': form.cuenta_id }"
-                @input="onBuscarCorreo"
-                @focus="listaCorreosAbierta = true"
-                @blur="cerrarListaCorreos"
-              >
-              <i v-if="form.cuenta_id" class="ti ti-circle-check combo-check" aria-hidden="true"></i>
-              <i v-else-if="registrandoCorreo" class="ti ti-circle-plus combo-check combo-check--nuevo" aria-hidden="true"></i>
-              <ul v-if="listaCorreosAbierta && !form.cuenta_id && !registrandoCorreo" class="combo-lista">
-                <li v-if="correosFiltrados.length === 0 && !correoEscritoValido" class="combo-vacio">
+            <BuscadorCombo
+              id="lf-cuenta"
+              v-model="form.cuenta_id"
+              v-model:busqueda="busquedaCorreo"
+              :items="correos"
+              :campos-busqueda="['usuario', 'plataforma_nombre']"
+              :etiqueta="(c) => c.usuario"
+              :placeholder="cargandoCatalogos ? 'Cargando correos...' : 'Buscar correo por dirección o plataforma...'"
+              :disabled="guardando || cargandoCatalogos"
+              :forzar-cerrado="registrandoCorreo"
+              @update:model-value="onSeleccionCorreo"
+            >
+              <template #icono="{ seleccionado }">
+                <i v-if="seleccionado" class="ti ti-circle-check combo-check" aria-hidden="true"></i>
+                <i v-else-if="registrandoCorreo" class="ti ti-circle-plus combo-check combo-check--nuevo" aria-hidden="true"></i>
+              </template>
+              <template #resultado="{ item }">
+                <span class="combo-usuario">{{ item.usuario }}</span>
+                <span class="combo-plataforma">{{ item.plataforma_nombre }}</span>
+              </template>
+              <template #vacio="{ sinResultados }">
+                <li v-if="sinResultados && !correoEscritoValido" class="combo-vacio">
                   Sin resultados. Escribe el correo completo para registrarlo desde aquí.
                 </li>
-                <li
-                  v-for="c in correosFiltrados"
-                  :key="c.id"
-                  @mousedown.prevent="seleccionarCorreo(c)"
-                >
-                  <span class="combo-usuario">{{ c.usuario }}</span>
-                  <span class="combo-plataforma">{{ c.plataforma_nombre }}</span>
-                </li>
+              </template>
+              <template #extra>
                 <li
                   v-if="correoEscritoValido && !correoYaRegistrado"
                   class="combo-registrar"
@@ -410,8 +384,8 @@ async function guardar() {
                   <i class="ti ti-circle-plus" aria-hidden="true"></i>
                   <span>Registrar <strong>{{ busquedaCorreo.trim().toLowerCase() }}</strong> como correo nuevo</span>
                 </li>
-              </ul>
-            </div>
+              </template>
+            </BuscadorCombo>
             <p class="field-hint">
               Los usuarios de la licencia se asignan a través de ese correo (desde la ficha
               del empleado). El sistema no permitirá más personas que asientos comprados.
@@ -597,98 +571,6 @@ async function guardar() {
   line-height: 1.3;
 }
 
-.combo-wrap {
-  position: relative;
-}
-
-.combo-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-text-secondary);
-  font-size: 15px;
-  pointer-events: none;
-}
-
-.combo-wrap input {
-  width: 100%;
-  padding-left: 32px;
-  padding-right: 32px;
-}
-
-.combo-wrap input.combo-ok {
-  border-color: var(--color-success);
-}
-
-.combo-check {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-success);
-  font-size: 16px;
-  pointer-events: none;
-}
-
-.combo-lista {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 20;
-  margin: 0;
-  padding: 4px;
-  list-style: none;
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.combo-lista li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.combo-lista li:hover {
-  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent);
-}
-
-.combo-vacio {
-  color: var(--color-text-secondary);
-  cursor: default !important;
-  font-size: 12.5px;
-}
-
-.combo-registrar {
-  justify-content: flex-start !important;
-  color: var(--color-primary);
-  font-size: 12.5px;
-}
-
-.combo-registrar i {
-  font-size: 15px;
-  flex-shrink: 0;
-}
-
-.combo-registrar strong {
-  font-family: var(--font-mono, monospace);
-  font-weight: 600;
-}
-
-.combo-check--nuevo {
-  color: var(--color-primary);
-}
-
 .nuevo-correo-panel {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -719,24 +601,6 @@ async function guardar() {
 
 .nuevo-correo-campos .full {
   grid-column: 1 / -1;
-}
-
-.combo-vacio:hover {
-  background: none !important;
-}
-
-.combo-usuario {
-  font-family: var(--font-mono, monospace);
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.combo-plataforma {
-  font-size: 11.5px;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
 }
 
 .input-with-action {

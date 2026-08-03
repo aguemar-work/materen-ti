@@ -12,11 +12,12 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const store = useEmpresasStore();
 const { lista, cargando, error } = storeToRefs(store);
 
-const busqueda = ref('');
+const { termino: busqueda } = useBusqueda({ debounceMs: 0, umbralMinimo: 0, sanitizar: false });
 const mostrarForm = ref(false);
 const empresaEditar = ref(null);
 const guardando = ref(false);

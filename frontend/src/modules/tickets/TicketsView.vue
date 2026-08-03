@@ -18,6 +18,7 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const router = useRouter();
 const store = useTicketsStore();
@@ -29,7 +30,7 @@ const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 // El auto-refresco de tickets:list vive en AppLayout.vue (suscripción
 // única, así el sonido de "ticket nuevo" suena en cualquier pantalla).
 
-const busqueda = ref('');
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 const filtroEstado = ref('');
 const filtroPrioridad = ref('');
 const soloSinAsignar = ref(false);
@@ -58,11 +59,6 @@ function toggleSinAsignar() {
 
 // Búsqueda y filtros viajan al servidor (paginación server-side):
 // la búsqueda con debounce, los chips/selects al instante.
-let debounceBusqueda = null;
-watch(busqueda, (q) => {
-  clearTimeout(debounceBusqueda);
-  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
-});
 watch(
   [filtroEstado, filtroPrioridad, soloSinAsignar, soloSinVincular, misTickets],
   ([estado, prioridad, sinAsignar, sinVincular, mios]) =>

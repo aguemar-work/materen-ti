@@ -15,6 +15,7 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const router = useRouter();
 const store = useProblemasStore();
@@ -22,7 +23,7 @@ const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-const busqueda = ref('');
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 const filtroEstado = ref('');
 const filtroSeveridad = ref('');
 const mostrarForm = ref(false);
@@ -30,11 +31,6 @@ const staffLista = ref([]);
 
 const staffPorId = computed(() => Object.fromEntries(staffLista.value.map((s) => [s.user_id, s.nombre])));
 
-let debounceBusqueda = null;
-watch(busqueda, (q) => {
-  clearTimeout(debounceBusqueda);
-  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
-});
 watch(
   [filtroEstado, filtroSeveridad],
   ([estado, severidad]) => store.aplicarFiltros({ estado, severidad }),

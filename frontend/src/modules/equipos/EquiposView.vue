@@ -18,11 +18,12 @@ import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
+import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const store = useEquiposStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
@@ -31,9 +32,11 @@ const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 useRealtimeRefresco('equipos:list', () => store.cargar());
 
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
+
 // Deep-link desde la búsqueda global: /equipos?q=CODIGO precarga el buscador.
 const route = useRoute();
-const busqueda = ref(String(route.query.q ?? ''));
+busqueda.value = String(route.query.q ?? '');
 watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
 
 const filtroTipo = ref('');
@@ -41,11 +44,6 @@ const filtroSituacion = ref('');
 const mostrarForm = ref(false);
 const equipoEditar = ref(null);
 
-let debounceBusqueda = null;
-watch(busqueda, (q) => {
-  clearTimeout(debounceBusqueda);
-  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
-});
 watch(filtroTipo, (tipoId) => store.aplicarFiltros({ tipoId }));
 watch(filtroSituacion, (situacion) => store.aplicarFiltros({ situacion }));
 
@@ -619,7 +617,20 @@ onMounted(async () => {
 
           <div class="form-group">
             <label for="asig-emp">Empleado *</label>
-            <BuscadorEmpleado id="asig-emp" v-model="empleadoSelId" :empleados="empleadosActivos" :disabled="procesando" />
+            <BuscadorCombo
+              id="asig-emp"
+              v-model="empleadoSelId"
+              :items="empleadosActivos"
+              :campos-busqueda="['nombres', 'apellidos', 'dni']"
+              :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
+              placeholder="Buscar por nombre o DNI..."
+              :disabled="procesando"
+            >
+              <template #resultado="{ item }">
+                <span>{{ item.nombres }} {{ item.apellidos }}</span>
+                <span class="combo-sec">{{ item.dni }}</span>
+              </template>
+            </BuscadorCombo>
           </div>
 
           <div class="form-group">

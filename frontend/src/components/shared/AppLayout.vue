@@ -9,6 +9,7 @@ import { estadoInfo } from '../../core/dominio-tickets.js';
 import { temaActual, alternarTema } from '../../core/tema.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -71,11 +72,8 @@ function toggleTema() {
 
 // ── Búsqueda global ───────────────────────────────────────────
 const SIN_RESULTADOS = { empleados: [], cuentas: [], equipos: [], tickets: [], licencias: [] };
-const busqueda = ref('');
 const resultados = ref({ ...SIN_RESULTADOS });
-const buscando = ref(false);
 const busquedaAbierta = ref(false);
-let debounceTimer = null;
 
 const hayResultados = computed(() =>
   resultados.value.empleados.length ||
@@ -85,25 +83,17 @@ const hayResultados = computed(() =>
   resultados.value.licencias.length
 );
 
-watch(busqueda, (q) => {
-  clearTimeout(debounceTimer);
-  if (q.trim().length < 2) {
-    resultados.value = { ...SIN_RESULTADOS };
-    busquedaAbierta.value = false;
-    return;
-  }
-  buscando.value = true;
-  busquedaAbierta.value = true;
-  debounceTimer = setTimeout(async () => {
+const { termino: busqueda, cargando: buscando } = useBusqueda({
+  onBuscar: async (q) => {
+    if (!q) { resultados.value = { ...SIN_RESULTADOS }; return; }
     try {
       resultados.value = await insforgeApi.buscarGlobal(q);
     } catch {
       resultados.value = { ...SIN_RESULTADOS };
-    } finally {
-      buscando.value = false;
     }
-  }, 300);
+  },
 });
+watch(busqueda, (q) => { busquedaAbierta.value = q.trim().length >= 2; });
 
 function cerrarBusqueda() {
   setTimeout(() => { busquedaAbierta.value = false; }, 150);

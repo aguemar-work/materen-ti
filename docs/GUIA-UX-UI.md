@@ -228,16 +228,20 @@ Especificación en `main.css` (`--z-*`).
 --z-popover: 300         .sb-resultados (búsqueda global)
 --z-modal: 400           .modal-bg
 --z-modal-stacked: 410   reservado para un modal sobre otro (sin uso aún)
+--z-popover-modal: 420   .combo-lista (BuscadorCombo) — popover teleportado
+                         a <body> que nace dentro de un modal y debe superarlo
 --z-toast: 500           .toast — siempre visible, incluso sobre un modal
 ```
 
 Antes de este ajuste, `.modal-bg` estaba en `z-index: 100` y el drawer móvil
 en `200` — un modal podía quedar **debajo** del sidebar en móvil. Corregido
-al fijar la escala (promovida a
-Los dropdowns internos de un modal (`.combo-lista` en
-Equipos/Licencias, `z-index: 20`) no participan de esta escala: compiten
-solo dentro del stacking context que crea su propio `.modal-bg`, no contra
-el sidebar ni el header.
+al fijar la escala completa en `main.css`.
+
+Un popover que se teletransporta a `<body>` deja de competir dentro del
+stacking context de su modal y pasa a competir contra toda la escala: por eso
+`.combo-lista` necesita un nivel propio por encima de `--z-modal`. Un popover
+que sigue dentro del árbol del modal (posicionado con `absolute`) no participa
+de la escala y le basta un `z-index` local.
 
 ### Excepciones hardcodeadas
 
@@ -431,6 +435,61 @@ Panel con `Teleport` a body + `--z-popover` (`.card` tiene `overflow:hidden`
 y recortaría un popover absoluto). En Equipos la fuente única de las 11
 acciones condicionales es `accionesDe(eq)` (EquiposView.vue) — la consumen
 los icon-btn de escritorio y el menú móvil; no dupliques condiciones.
+
+### BuscadorCombo.vue (campo de búsqueda con lista de resultados)
+
+`src/components/shared/BuscadorCombo.vue`. Reemplaza al antiguo
+`BuscadorEmpleado.vue` y a las variantes ad hoc de combo que había en
+Cuentas, Licencias, Equipos y Tickets. API: `v-model` (id seleccionado),
+`v-model:busqueda` (texto), `items`, `camposBusqueda`, `etiqueta(item)`,
+`limite` (filas visibles, 8 por defecto), `forzarCerrado`. Slots:
+`#resultado` (contenido de cada fila), `#icono`, `#vacio`, `#extra` (acciones
+al pie, ej. "Registrar como correo nuevo" en LicenciaForm).
+
+**La lista va teleportada a `<body>` con `position: fixed`, no `absolute`.**
+Es el punto no obvio del componente: `.modal-body` tiene `overflow-y: auto` y
+el modal se ajusta a su contenido, así que una lista `absolute` quedaba
+recortada a la altura visible del body — en un modal chico se veían una o dos
+filas y había que scrollear el modal a mano para leer los resultados. Las dos
+alternativas se descartaron: dejar solo el scroll interno no arregla nada
+porque el hueco visible sigue siendo de dos filas, y hacer crecer el modal
+según la cantidad de resultados provoca un salto de tamaño en cada tecleo.
+Teleportada, la lista se mide contra el viewport y el modal nunca cambia de
+tamaño.
+
+Detalles de comportamiento, todos en el componente:
+
+- Se abre hacia abajo y **solo se voltea hacia arriba** si el contenido real
+  (`scrollHeight`) no cabe abajo y arriba hay más aire. Se ancla por `top` al
+  abrir hacia abajo y por `bottom` al abrir hacia arriba, así el borde pegado
+  al campo no se mueve mientras se filtra.
+- `max-height` se calcula contra el espacio disponible (techo de 320px, ~8
+  filas) — no es un valor fijo. El espacio se mide contra el **visual
+  viewport**, no `window.innerHeight`: en móvil el teclado virtual no siempre
+  reduce `innerHeight`, y la lista terminaría extendiéndose por debajo del
+  teclado — el mismo síntoma de dos filas visibles que el componente evita.
+- Reposiciona en `scroll` (en captura, para oír el scroll del modal), `resize`
+  y los eventos de `visualViewport`, con throttle por `requestAnimationFrame`;
+  los listeners solo existen mientras la lista está abierta. Si el campo sale
+  del área visible de su contenedor con scroll, la lista se cierra en vez de
+  quedar flotando apuntando a nada.
+- Escape se intercepta en `window` en fase de **captura**, no desde el input:
+  `Modal.vue` escucha en `document` en captura y detiene ahí la propagación,
+  así que un handler en el campo nunca vería el evento y Escape cerraría el
+  modal entero en vez de solo la lista. La captura en `window` corre antes que
+  la de `document`. Solo intercepta con la lista visible.
+- Teclado: ↑↓ recorren (con wrap), Enter elige el ítem marcado — sin ítem
+  marcado Enter sigue enviando el formulario —, Escape cierra solo la lista
+  sin cerrar el modal, Tab cierra. El mouse y el teclado comparten
+  `indiceActivo`, así nunca hay dos filas resaltadas.
+- Cuando `limite` recorta resultados, un pie fijo declara cuántos quedaron
+  fuera ("N coincidencias más — precise la búsqueda"). Sin eso, 40
+  coincidencias se ven igual que 8 y el usuario cree que ya no hay nada por
+  afinar.
+- Las filas de los slots `#vacio`/`#extra` se compilan con el scope del padre:
+  las reglas de fila usan `.combo-lista :deep(...)` para que todas compartan
+  el layout. Bajo `.combo-lista` cada regla de fila especial gana por
+  especificidad a la regla base, sin `!important`.
 
 ---
 

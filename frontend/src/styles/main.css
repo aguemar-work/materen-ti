@@ -115,6 +115,7 @@
       --z-popover: 300;
       --z-modal: 400;
       --z-modal-stacked: 410;
+      --z-popover-modal: 420;
       --z-toast: 500;
 
       /* ── Alias legacy (--color-*, --fs-*, etc.) — no usar en código nuevo */

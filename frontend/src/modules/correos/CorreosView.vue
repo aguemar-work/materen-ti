@@ -16,6 +16,7 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const store = useCorreosStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
@@ -24,9 +25,11 @@ const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 useRealtimeRefresco('cuentas:list', () => store.cargar());
 
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
+
 // Deep-link desde la búsqueda global: /correos?q=usuario@dominio
 const route = useRoute();
-const busqueda = ref(String(route.query.q ?? ''));
+busqueda.value = String(route.query.q ?? '');
 watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
 
 const filtroTipo = ref('');
@@ -34,11 +37,6 @@ const mostrarForm = ref(false);
 const correoEditar = ref(null);
 const passwordVisibles = ref({});
 
-let debounceBusqueda = null;
-watch(busqueda, (q) => {
-  clearTimeout(debounceBusqueda);
-  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
-});
 watch(filtroTipo, (tipo) => store.aplicarFiltros({ tipo }));
 
 const paginaActual = computed({

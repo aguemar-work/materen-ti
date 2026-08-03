@@ -12,7 +12,7 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import CuentaForm from './CuentaForm.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import BuscadorEmpleado from '../../components/shared/BuscadorEmpleado.vue';
+import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 
@@ -354,7 +354,20 @@ onMounted(async () => {
         <template v-else>
           <div class="form-group">
             <label for="tr-empleado">Asignar a *</label>
-            <BuscadorEmpleado id="tr-empleado" v-model="nuevoEmpleadoId" :empleados="empleadosDestino" :disabled="guardandoTraspaso" />
+            <BuscadorCombo
+              id="tr-empleado"
+              v-model="nuevoEmpleadoId"
+              :items="empleadosDestino"
+              :campos-busqueda="['nombres', 'apellidos', 'dni']"
+              :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
+              placeholder="Buscar por nombre o DNI..."
+              :disabled="guardandoTraspaso"
+            >
+              <template #resultado="{ item }">
+                <span>{{ item.nombres }} {{ item.apellidos }}</span>
+                <span class="combo-sec">{{ item.dni }}</span>
+              </template>
+            </BuscadorCombo>
           </div>
           <div class="form-group">
             <label for="tr-notas">Notas</label>

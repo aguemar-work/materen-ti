@@ -19,6 +19,7 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -29,7 +30,7 @@ const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 useRealtimeRefresco('empleados:list', () => store.cargar());
 
-const busqueda = ref('');
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 // Precarga desde el link del Dashboard (ej. /empleados?estado=Inactivo)
 const filtroEstado = ref(route.query.estado || '');
 const mostrarForm = ref(false);
@@ -39,11 +40,6 @@ const estados = ['Activo', 'Inactivo', 'Suspendido'];
 
 // Búsqueda y filtros viajan al servidor (paginación server-side):
 // la búsqueda con debounce, el select de estado al instante.
-let debounceBusqueda = null;
-watch(busqueda, (q) => {
-  clearTimeout(debounceBusqueda);
-  debounceBusqueda = setTimeout(() => store.aplicarFiltros({ q: q.trim() }), 300);
-});
 watch(filtroEstado, (estado) => store.aplicarFiltros({ estado }));
 
 const paginaActual = computed({

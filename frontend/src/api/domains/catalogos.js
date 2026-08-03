@@ -223,7 +223,7 @@ export const catalogosApi = {
       .order('descripcion', { ascending: true })
       .limit(limite);
     const qSafe = sanitizarTermino(q);
-    if (qSafe.length >= 1) {
+    if (qSafe.length >= 2) {
       query = query.or(`codigo.ilike.%${qSafe}%,descripcion.ilike.%${qSafe}%`);
     }
     const { data, error } = await query;

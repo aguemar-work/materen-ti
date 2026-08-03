@@ -8,6 +8,7 @@ import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import { generarPassword } from '../../core/generarPassword.js';
 import { showToast } from '../../core/toast.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 
 const props = defineProps({
   cuenta: { type: Object, default: null },
@@ -218,18 +219,21 @@ async function guardar() {
           <div class="form-group full">
             <label for="cf-correo-compartido">Correo compartido *</label>
             <div v-if="cargandoCompartidos" class="loading-inline">Cargando correos compartidos...</div>
-            <select
+            <BuscadorCombo
               v-else
               id="cf-correo-compartido"
               v-model="cuentaCompartidaId"
-              required
+              :items="correosCompartidos"
+              :campos-busqueda="['usuario', 'plataforma_nombre']"
+              :etiqueta="(c) => c.usuario"
+              placeholder="Buscar correo por dirección o plataforma..."
               :disabled="guardando"
             >
-              <option value="" disabled>Seleccionar correo compartido</option>
-              <option v-for="c in correosCompartidos" :key="c.id" :value="c.id">
-                {{ c.plataforma_nombre }} — {{ c.usuario }} ({{ c.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable' }})
-              </option>
-            </select>
+              <template #resultado="{ item }">
+                <span class="combo-usuario">{{ item.usuario }}</span>
+                <span class="combo-plataforma">{{ item.plataforma_nombre }} · {{ item.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable' }}</span>
+              </template>
+            </BuscadorCombo>
             <p v-if="!cargandoCompartidos && correosCompartidos.length === 0" class="field-hint">
               No hay correos compartidos registrados.
               <a href="/correos" target="_blank">Ir al módulo de correos compartidos</a>
