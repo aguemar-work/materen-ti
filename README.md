@@ -246,6 +246,7 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 022 | Accesorios de equipo con código de almacén (catálogo `equipo_accesorios`) |
 | 023 | `codigo_almacen` en `equipos` (activos grandes) |
 | 024 | Accesos sensibles: `accesos_sensibles` + `accesos_sensibles_permisos`, visibilidad JEFE-con-permiso-por-fila (no todo JEFE), clave de cifrado aislada `CRED_KEY_SENSIBLE`, auditoría de ciclo de vida en `accesos_log` |
+| 035 | Distinción incidente/solicitud: `tickets.tipo` + `subcategorias_ticket.tipo_sugerido` (heredado al crear, editable por staff); `check_iniciar_completo` exige `tipo` antes de pasar a en_progreso; alta de subcategorías nuevas exige elegir `tipo_sugerido` |
 
 ## Checklist de deploy
 
