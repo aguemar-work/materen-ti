@@ -36,13 +36,22 @@ const encontrado = ref(null);
 function onDniInput(e) {
   const limpio = e.target.value.replace(/\D/g, '').slice(0, 8);
   e.target.value = limpio;
+  // Cambiar el DNI invalida lo que se autocompletó para el anterior: un
+  // DNI distinto es una identidad distinta, no debe quedar mezclado con
+  // datos de otra persona (bug reportado 2026-08-07).
+  if (limpio !== form.value.dni) {
+    form.value.nombres = '';
+    form.value.apellidos = '';
+    form.value.celular = '';
+    form.value.correoPersonal = '';
+  }
   form.value.dni = limpio;
   encontrado.value = null;
 }
 
 // Al completar el DNI, se intenta autocompletar contra `empleados` (sin
-// ningún servicio externo). Solo llena los campos que la persona no
-// tocó todavía, para no pisar lo que ya escribió.
+// ningún servicio externo). onDniInput ya limpió los campos al cambiar
+// el DNI, así que acá siempre se puede sobrescribir sin pisar nada.
 async function onDniBlur() {
   dniTocado.value = true;
   if (!dniValido.value) return;
@@ -51,10 +60,10 @@ async function onDniBlur() {
     const datos = await buscarDniPersonal(form.value.dni);
     encontrado.value = !!datos;
     if (datos) {
-      if (!form.value.nombres) form.value.nombres = datos.nombres;
-      if (!form.value.apellidos) form.value.apellidos = datos.apellidos;
-      if (!form.value.celular) form.value.celular = datos.celular;
-      if (!form.value.correoPersonal) form.value.correoPersonal = datos.correoPersonal;
+      form.value.nombres = datos.nombres;
+      form.value.apellidos = datos.apellidos;
+      form.value.celular = datos.celular;
+      form.value.correoPersonal = datos.correoPersonal;
     }
   } catch {
     // Autocompletar es una ayuda, no algo bloqueante: si falla, se llena a mano.
