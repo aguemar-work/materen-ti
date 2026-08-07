@@ -1,3 +1,5 @@
+import { fechaLocalISO } from './formatters.js';
+
 export function esc(str) {
   if (str == null) return '';
   return String(str)
@@ -33,5 +35,5 @@ export function uid() {
 }
 
 export function todayISO() {
-  return new Date().toISOString().split('T')[0];
+  return fechaLocalISO();
 }

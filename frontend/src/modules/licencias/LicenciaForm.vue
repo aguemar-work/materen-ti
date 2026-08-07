@@ -5,6 +5,7 @@ import { useLicenciasStore } from '../../stores/licencias.js';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { generarPassword } from '../../core/generarPassword.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 
@@ -191,6 +192,11 @@ function descartarCambios() {
 // Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
 // solo Cancelar, la X o Escape.
 useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
+
+function generarPasswordCorreo() {
+  nuevoCorreo.value.password = generarPassword();
+  passwordCorreoVisible.value = true;
+}
 
 async function guardar() {
   error.value = '';
@@ -424,6 +430,9 @@ async function guardar() {
                     placeholder="Opcional, se puede completar después en Correos"
                     :disabled="guardando"
                   >
+                  <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generarPasswordCorreo">
+                    <i class="ti ti-refresh" aria-hidden="true"></i>
+                  </button>
                   <button type="button" class="icon-btn" :title="passwordCorreoVisible ? 'Ocultar' : 'Mostrar'" @click="passwordCorreoVisible = !passwordCorreoVisible">
                     <i :class="passwordCorreoVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
                   </button>

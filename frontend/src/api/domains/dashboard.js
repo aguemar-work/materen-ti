@@ -2,6 +2,7 @@
 // accionables (cuentas, licencias, equipos, tickets) y log de auditoría.
 import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
+import { fechaLocalISO } from '../../core/formatters.js';
 
 export const dashboardApi = {
   // Búsqueda global del panel: empleados, cuentas, equipos, tickets y
@@ -149,7 +150,7 @@ export const dashboardApi = {
         cantidad: l.cantidad,
         fecha_vencimiento: l.fecha_vencimiento,
         empresa: l.empresas?.nombre || '',
-        vencida: l.fecha_vencimiento < new Date().toISOString().split('T')[0],
+        vencida: l.fecha_vencimiento < fechaLocalISO(),
       })),
       // Lo más urgente: equipos que siguen en manos de empleados dados de baja
       equiposSinDevolver: (equiposRes.data || [])
@@ -166,7 +167,7 @@ export const dashboardApi = {
         codigo: e.codigo,
         equipo: `${e.marca || ''} ${e.modelo || ''}`.trim(),
         garantia_hasta: e.garantia_hasta,
-        vencida: e.garantia_hasta < new Date().toISOString().split('T')[0],
+        vencida: e.garantia_hasta < fechaLocalISO(),
       })),
     };
   },
@@ -211,9 +212,7 @@ export const dashboardApi = {
   },
 };
 
-// Fecha de hoy + N días en formato YYYY-MM-DD (para filtros de vencimiento)
+// Fecha de hoy + N días en formato YYYY-MM-DD local (para filtros de vencimiento)
 function fechaEnDias(dias) {
-  const d = new Date();
-  d.setDate(d.getDate() + dias);
-  return d.toISOString().split('T')[0];
+  return fechaLocalISO(dias);
 }

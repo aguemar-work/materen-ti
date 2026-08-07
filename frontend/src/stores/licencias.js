@@ -12,10 +12,15 @@ export const useLicenciasStore = defineStore('licencias', {
     orden: null,
     cargando: false,
     error: null,
+    _peticionId: 0,
   }),
 
   actions: {
+    // _peticionId descarta respuestas obsoletas: si dos cargar() se
+    // superponen (búsqueda con debounce + cambio de página/filtro rápido),
+    // solo se aplica el resultado de la petición más reciente.
     async cargar() {
+      const peticionId = ++this._peticionId;
       this.cargando = true;
       this.error = null;
       try {
@@ -25,13 +30,15 @@ export const useLicenciasStore = defineStore('licencias', {
           ...this.filtros,
           orden: this.orden,
         });
+        if (peticionId !== this._peticionId) return;
         this.lista = items;
         this.total = total;
       } catch (e) {
+        if (peticionId !== this._peticionId) return;
         this.error = e?.message || 'Error al cargar licencias';
         throw e;
       } finally {
-        this.cargando = false;
+        if (peticionId === this._peticionId) this.cargando = false;
       }
     },
 

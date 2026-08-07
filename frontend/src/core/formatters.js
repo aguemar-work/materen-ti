@@ -65,6 +65,25 @@ export function formatTelefono(val) {
   return val;
 }
 
+// 'Date' local → 'YYYY-MM-DD'. NUNCA usar `date.toISOString().split('T')[0]`
+// para esto: toISOString() convierte a UTC, y en Perú (UTC-5) eso devuelve el
+// día SIGUIENTE para cualquier hora local a partir de las 19:00 — corrompe
+// fecha_inicio/fecha_fin de asignaciones y comparaciones de vencimiento.
+export function fechaISO(fecha) {
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Hoy (o desplazado `diasDesdeHoy` días, negativo = pasado) en 'YYYY-MM-DD'
+// LOCAL. Único punto para "la fecha de hoy" en el proyecto — ver fechaISO().
+export function fechaLocalISO(diasDesdeHoy = 0) {
+  const d = new Date();
+  if (diasDesdeHoy) d.setDate(d.getDate() + diasDesdeHoy);
+  return fechaISO(d);
+}
+
 // "2026-07-02" → "02/07/2026" (fechas de la BD, sin zona horaria)
 export function formatFecha(val) {
   if (!val) return '';
@@ -79,6 +98,30 @@ export function formatFechaHora(iso) {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
+}
+
+// Horas decimales → "45 min" / "3.2 h" / "2 d 4 h". Para tiempos de atención:
+// en minutos cuando fue rápido y en días cuando el número de horas ya no se
+// puede leer de un vistazo.
+export function formatHoras(h) {
+  if (h === null || h === undefined || !Number.isFinite(h)) return '—';
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  if (h < 24) return `${h.toFixed(1)} h`;
+  const dias = Math.floor(h / 24);
+  const resto = Math.round(h % 24);
+  return resto ? `${dias} d ${resto} h` : `${dias} d`;
+}
+
+// Variación contra el periodo anterior: "+5", "-2", "sin cambio". Devuelve null
+// cuando no hay con qué comparar, para que quien lo muestre no pinte nada.
+// Sin el signo menos tipográfico (U+2212): no existe en la codificación de los
+// PDF que genera jsPDF y saldría como un carácter roto.
+export function formatDelta(actual, anterior, decimales = 0, sufijo = '') {
+  if (actual === null || actual === undefined || anterior === null || anterior === undefined) return null;
+  const diferencia = Number(actual) - Number(anterior);
+  const redondeada = Number(diferencia.toFixed(decimales));
+  if (redondeada === 0) return 'sin cambio';
+  return `${redondeada > 0 ? '+' : '-'}${Math.abs(redondeada).toFixed(decimales)}${sufijo}`;
 }
 
 // Timestamp ISO → "hace 5 min" / "hace 3 h" / "hace 2 d" (edad relativa,

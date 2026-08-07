@@ -1,7 +1,12 @@
-# CI mínimo: build + tests unitarios en cada push/PR.
-# Los tests de triggers de BD corren solo si el repo tiene configurados
-# los secrets de InsForge (INSFORGE_ACCESS_TOKEN + INSFORGE_PROJECT_ID);
-# el SQL siempre hace rollback, no deja datos.
+# CI: build + tests unitarios + guardrails de contraste/dependencias en cada
+# push/PR. Los tests de triggers de BD y el smoke de integración corren solo
+# si el repo tiene configurados sus secrets — el SQL siempre hace rollback,
+# no deja datos. Auditoría integral 2026-08-05 (hallazgo Q-01): antes ambos
+# jobs hacían `exit 0` en silencio sin esos secrets, y el check quedaba en
+# verde sin haber ejecutado nada. Ahora, si faltan, el job emite un
+# ::warning:: visible en la pestaña Actions/checks del PR — no bloquea (no
+# hay forma de crearlos desde acá, requieren una cuenta de staff dedicada a
+# CI en InsForge, ver README), pero ya no se puede confundir con "verificado".
 name: CI
 
 on:
@@ -27,6 +32,37 @@ jobs:
         run: npm run build
       - name: Tests unitarios (cifrado + validaciones de tickets)
         run: npm test
+      - name: Contraste WCAG de los tokens de UI
+        run: node ../scripts/contraste.mjs
+      - name: Vulnerabilidades conocidas en dependencias de producción
+        run: npm audit --omit=dev --audit-level=high
+
+  test-integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VITE_INSFORGE_URL: ${{ secrets.VITE_INSFORGE_URL }}
+      VITE_INSFORGE_ANON_KEY: ${{ secrets.VITE_INSFORGE_ANON_KEY }}
+      INSFORGE_TEST_STAFF_EMAIL: ${{ secrets.INSFORGE_TEST_STAFF_EMAIL }}
+      INSFORGE_TEST_STAFF_PASSWORD: ${{ secrets.INSFORGE_TEST_STAFF_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Smoke de integración (se omite con warning si faltan secrets)
+        run: |
+          if [ -z "$INSFORGE_TEST_STAFF_EMAIL" ] || [ -z "$VITE_INSFORGE_URL" ]; then
+            echo "::warning::Sin INSFORGE_TEST_STAFF_EMAIL/PASSWORD o VITE_INSFORGE_*: se omite el smoke de integración contra el backend real. Este check NO verificó nada — ver README (cuenta de staff dedicada a CI)."
+            exit 0
+          fi
+          npm run test:integration
 
   tests-db:
     runs-on: ubuntu-latest
@@ -38,10 +74,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Tests de triggers (se omiten si faltan secrets)
+      - name: Tests de triggers (se omiten con warning si faltan secrets)
         run: |
           if [ -z "$INSFORGE_ACCESS_TOKEN" ]; then
-            echo "Sin INSFORGE_ACCESS_TOKEN: se omiten los tests de BD."
+            echo "::warning::Sin INSFORGE_ACCESS_TOKEN: se omiten los tests de triggers de BD. Este check NO verificó nada."
             exit 0
           fi
           node scripts/test-db.mjs

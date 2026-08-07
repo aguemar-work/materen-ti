@@ -6,7 +6,7 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha, formatTelefono } from '../../core/formatters.js';
+import { formatFecha, formatTelefono, fechaLocalISO } from '../../core/formatters.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -71,12 +71,8 @@ async function cargar() {
 
 // Mismos umbrales de vencimiento que LicenciasView (30 días); aquí solo
 // se badgea lo problemático — una licencia sana no necesita señal.
-const HOY = new Date().toISOString().split('T')[0];
-const EN_30_DIAS = (() => {
-  const d = new Date();
-  d.setDate(d.getDate() + 30);
-  return d.toISOString().split('T')[0];
-})();
+const HOY = fechaLocalISO();
+const EN_30_DIAS = fechaLocalISO(30);
 
 function vencimientoLicencia(lic) {
   if (lic.tipo === 'perpetua' || !lic.fecha_vencimiento) return null;

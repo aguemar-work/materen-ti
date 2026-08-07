@@ -16,10 +16,16 @@ export const useEmpleadosStore = defineStore('empleados', {
     orden: null, // { columna, direccion } — null = orden por defecto del servidor
     cargando: false,
     error: null,
+    _peticionId: 0,
   }),
 
   actions: {
+    // _peticionId descarta respuestas obsoletas: si dos cargar() se
+    // superponen (búsqueda con debounce + cambio de página/filtro rápido,
+    // orden de red no garantizado), solo se aplica el resultado de la
+    // petición más reciente.
     async cargar() {
+      const peticionId = ++this._peticionId;
       this.cargando = true;
       this.error = null;
       try {
@@ -29,12 +35,14 @@ export const useEmpleadosStore = defineStore('empleados', {
           ...this.filtros,
           orden: this.orden,
         });
+        if (peticionId !== this._peticionId) return;
         this.lista = items;
         this.total = total;
         // Conteos de cuentas/equipos vinculados de la página; si fallan,
         // la columna "Vínculos" queda vacía pero el listado no se cae.
         try {
           const conteos = await insforgeApi.conteosVinculos(items.map((e) => e.id));
+          if (peticionId !== this._peticionId) return;
           this.lista = items.map((e) => ({
             ...e,
             n_cuentas: conteos[e.id]?.cuentas ?? 0,
@@ -43,10 +51,11 @@ export const useEmpleadosStore = defineStore('empleados', {
           }));
         } catch { /* columna sin datos */ }
       } catch (e) {
+        if (peticionId !== this._peticionId) return;
         this.error = e?.message || 'Error al cargar empleados';
         throw e;
       } finally {
-        this.cargando = false;
+        if (peticionId === this._peticionId) this.cargando = false;
       }
     },
 

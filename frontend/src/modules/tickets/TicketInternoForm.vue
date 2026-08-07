@@ -207,12 +207,12 @@ onMounted(async () => {
 
         <div class="form-group full">
           <label for="ti-titulo">Resumen breve *</label>
-          <input id="ti-titulo" v-model="form.titulo" required :disabled="guardando">
+          <input id="ti-titulo" v-model="form.titulo" required maxlength="200" :disabled="guardando">
         </div>
 
         <div class="form-group full">
           <label for="ti-descripcion">Detalle *</label>
-          <textarea id="ti-descripcion" v-model="form.descripcion" required rows="4" :disabled="guardando"></textarea>
+          <textarea id="ti-descripcion" v-model="form.descripcion" required rows="4" maxlength="5000" :disabled="guardando"></textarea>
         </div>
 
         </div>

@@ -5,7 +5,8 @@ import { getClient } from '../client.js';
 // aquí solo se envía a cifrar antes de guardar. Los listados ya no
 // traen contraseñas; se revelan bajo demanda (auditado) vía passwords.js
 import { cifrarPassword } from '../passwords.js';
-import { toLower, trimText } from '../../core/formatters.js';
+import { toLower, trimText, fechaLocalISO } from '../../core/formatters.js';
+import { mensajeSiUsuarioDuplicado } from '../erroresDb.js';
 
 export const cuentasApi = {
   async listCuentasPorEmpleado(empleadoId) {
@@ -36,14 +37,14 @@ export const cuentasApi = {
       }])
       .select('id')
       .single();
-    if (e1) throw e1;
+    if (e1) throw new Error(mensajeSiUsuarioDuplicado(e1) || e1.message);
 
     const { error: e2 } = await db
       .from('asignaciones_cuenta')
       .insert([{
         cuenta_id: cuenta.id,
         empleado_id: datos.empleado_id,
-        fecha_inicio: new Date().toISOString().split('T')[0],
+        fecha_inicio: fechaLocalISO(),
       }]);
     if (e2) throw e2;
 
@@ -77,7 +78,7 @@ export const cuentasApi = {
     }
 
     const { error: e1 } = await db.from('cuentas').update(updateData).eq('id', cuentaId);
-    if (e1) throw e1;
+    if (e1) throw new Error(mensajeSiUsuarioDuplicado(e1) || e1.message);
 
     const { data, error: e2 } = await db
       .from('asignaciones_cuenta')
@@ -92,7 +93,7 @@ export const cuentasApi = {
 
   async traspasarCuenta(asignacionId, nuevoEmpleadoId, notas, nuevaPassword = null) {
     const db = getClient().database;
-    const today = new Date().toISOString().split('T')[0];
+    const today = fechaLocalISO();
 
     const { data: asig, error: e0 } = await db
       .from('asignaciones_cuenta')
@@ -152,7 +153,7 @@ export const cuentasApi = {
   },
 
   async cerrarAsignacion(asignacionId, notas = null) {
-    const updateData = { fecha_fin: new Date().toISOString().split('T')[0] };
+    const updateData = { fecha_fin: fechaLocalISO() };
     if (notas) updateData.notas = notas;
     const { error } = await getClient().database
       .from('asignaciones_cuenta')

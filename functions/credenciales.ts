@@ -153,6 +153,11 @@ function randomToken(): string {
 const REVELADO_MAX = 40;          // revelados permitidos por ventana
 const REVELADO_VENTANA_MIN = 5;   // minutos
 
+// entregaCrear descifra una contraseña por cada cuentaId del lote — sin
+// tope, una sola llamada podía pedir el catálogo entero de una vez,
+// evadiendo por completo el límite de arriba (hallazgo 2026-08-07).
+const ENTREGA_MAX_CUENTAS = 20;
+
 // ── Handler ──────────────────────────────────────────────────
 
 export default async function (req: Request): Promise<Response> {
@@ -426,11 +431,20 @@ export default async function (req: Request): Promise<Response> {
   }
 
   // entregaCrear: generar enlace de un solo uso con las credenciales
+  // Descifra tantas contraseñas como cuentaIds recibidos, igual que
+  // "revelar" en bucle — por eso pasa por el mismo tope de lote y el mismo
+  // rate-limit (H-05), y solo puede incluir cuentas realmente asignadas al
+  // empleado (nunca credenciales de otra persona).
   if (body.action === 'entregaCrear') {
     const empleadoId = String(body.empleadoId || '');
-    const cuentaIds = Array.isArray(body.cuentaIds) ? body.cuentaIds.map(String) : [];
+    const cuentaIds = Array.isArray(body.cuentaIds) ? [...new Set(body.cuentaIds.map(String))] : [];
     const horas = Math.min(Math.max(Number(body.horas) || 24, 1), 168);
     if (!empleadoId || !cuentaIds.length) return json({ ok: false, code: 'datos_requeridos' });
+    if (cuentaIds.length > ENTREGA_MAX_CUENTAS) return json({ ok: false, code: 'demasiadas_cuentas' });
+
+    if ((await reveladosRecientes(user.id)) + cuentaIds.length > REVELADO_MAX) {
+      return json({ ok: false, code: 'demasiados_revelados' }, 429);
+    }
 
     const { data: empleado } = await admin.database
       .from('empleados')
@@ -440,10 +454,23 @@ export default async function (req: Request): Promise<Response> {
     if (!empleado) return json({ ok: false, code: 'empleado_no_existe' });
     const empleadoNombre = `${empleado.nombres} ${empleado.apellidos}`.trim();
 
+    // Solo cuentas con asignación ACTIVA a este empleado — nunca las de
+    // otra persona, aunque el llamador haya mandado ese id por error o
+    // a propósito.
+    const { data: asignadas } = await admin.database
+      .from('asignaciones_cuenta')
+      .select('cuenta_id')
+      .eq('empleado_id', empleadoId)
+      .is('fecha_fin', null)
+      .in('cuenta_id', cuentaIds);
+    const idsPermitidos = new Set((asignadas || []).map((a) => a.cuenta_id));
+    const cuentaIdsValidos = cuentaIds.filter((id) => idsPermitidos.has(id));
+    if (!cuentaIdsValidos.length) return json({ ok: false, code: 'cuentas_no_asignadas' });
+
     const { data: cuentas } = await admin.database
       .from('cuentas')
       .select('id, usuario, password, url, plataformas(nombre)')
-      .in('id', cuentaIds);
+      .in('id', cuentaIdsValidos);
     if (!cuentas?.length) return json({ ok: false, code: 'cuentas_no_existen' });
 
     const items = [];

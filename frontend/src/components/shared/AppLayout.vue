@@ -83,13 +83,18 @@ const hayResultados = computed(() =>
   resultados.value.licencias.length
 );
 
+// peticionId descarta respuestas obsoletas: si dos búsquedas se
+// superponen (red desordenada), solo se aplica la más reciente.
+let peticionBusquedaId = 0;
 const { termino: busqueda, cargando: buscando } = useBusqueda({
   onBuscar: async (q) => {
+    const id = ++peticionBusquedaId;
     if (!q) { resultados.value = { ...SIN_RESULTADOS }; return; }
     try {
-      resultados.value = await insforgeApi.buscarGlobal(q);
+      const r = await insforgeApi.buscarGlobal(q);
+      if (id === peticionBusquedaId) resultados.value = r;
     } catch {
-      resultados.value = { ...SIN_RESULTADOS };
+      if (id === peticionBusquedaId) resultados.value = { ...SIN_RESULTADOS };
     }
   },
 });

@@ -202,7 +202,7 @@ export const ticketsApi = {
 };
 
 const SELECT_RESUMEN = `
-  id, codigo, titulo, estado, prioridad, vinculado, contacto_ingresado,
+  id, codigo, titulo, estado, prioridad, tipo, vinculado, contacto_ingresado,
   created_at, updated_at, asignado_a, empleado_id,
   empleados(nombres, apellidos),
   categorias_ticket(nombre), subcategorias_ticket(nombre)
@@ -244,6 +244,7 @@ function mapTicketResumen(row) {
     titulo: row.titulo,
     estado: row.estado,
     prioridad: row.prioridad,
+    tipo: row.tipo,
     vinculado: row.vinculado,
     solicitante: empleado ? `${empleado.nombres} ${empleado.apellidos}`.trim() : (row.contacto_ingresado || ''),
     solicitante_id: empleado ? row.empleado_id : null,

@@ -5,7 +5,8 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { cifrarPassword } from '../passwords.js';
-import { toLower, trimText } from '../../core/formatters.js';
+import { toLower, trimText, fechaLocalISO } from '../../core/formatters.js';
+import { mensajeSiUsuarioDuplicado } from '../erroresDb.js';
 import { mapAsignacion } from './cuentas.js';
 
 const SELECT_CORREO = 'id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono), asignaciones_cuenta(fecha_fin, empleado_id, empleados(nombres, apellidos))';
@@ -101,7 +102,7 @@ export const correosApi = {
       }])
       .select('id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono)')
       .single();
-    if (error) throw error;
+    if (error) throw new Error(mensajeSiUsuarioDuplicado(error) || error.message);
     return mapCorreo(data);
   },
 
@@ -126,7 +127,7 @@ export const correosApi = {
       .eq('id', id)
       .select('id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono)')
       .single();
-    if (error) throw error;
+    if (error) throw new Error(mensajeSiUsuarioDuplicado(error) || error.message);
     return mapCorreo(data);
   },
 
@@ -146,7 +147,7 @@ export const correosApi = {
       .insert([{
         cuenta_id: cuentaId,
         empleado_id: empleadoId,
-        fecha_inicio: new Date().toISOString().split('T')[0],
+        fecha_inicio: fechaLocalISO(),
       }]);
     if (e1) throw e1;
 

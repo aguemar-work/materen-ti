@@ -7,6 +7,7 @@ import { CATEGORIAS_ACCESO_SENSIBLE } from '../../core/dominio-accesos-sensibles
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { generarPassword } from '../../core/generarPassword.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
@@ -37,6 +38,7 @@ useFocoAtrapado(panelModal);
 
 const guardando = ref(false);
 const error = ref('');
+const passwordVisible = ref(false);
 
 const esEdicion = computed(() => !!props.acceso?.id);
 const categorias = Object.entries(CATEGORIAS_ACCESO_SENSIBLE).map(([id, c]) => ({ id, label: c.label }));
@@ -136,6 +138,11 @@ function descartarCambios() {
 // solo Cancelar, la X o Escape.
 useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
+function generar() {
+  form.value.password = generarPassword();
+  passwordVisible.value = true;
+}
+
 async function guardar() {
   error.value = '';
   guardando.value = true;
@@ -197,13 +204,22 @@ async function guardar() {
 
           <div class="form-group full">
             <label for="as-password">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
-            <input
-              id="as-password"
-              v-model="form.password"
-              autocomplete="new-password"
-              :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-              :disabled="guardando"
-            >
+            <div class="input-with-action">
+              <input
+                id="as-password"
+                v-model="form.password"
+                :type="passwordVisible ? 'text' : 'password'"
+                autocomplete="new-password"
+                :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+                :disabled="guardando"
+              >
+              <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+                <i class="ti ti-refresh" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" @click="passwordVisible = !passwordVisible">
+                <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+              </button>
+            </div>
           </div>
 
           <div class="form-group full">
@@ -274,6 +290,16 @@ async function guardar() {
   font-size: 13px;
   color: var(--color-text-secondary);
   padding: 8px 0;
+}
+
+.input-with-action {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.input-with-action input {
+  flex: 1;
 }
 
 .permisos-lista {

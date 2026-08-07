@@ -5,7 +5,7 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { cifrarPassword } from '../passwords.js';
-import { trimText } from '../../core/formatters.js';
+import { trimText, fechaLocalISO } from '../../core/formatters.js';
 
 // Columnas de "licencias" ordenables desde la tabla (excluye empresa/acceso/
 // usuarios, que vienen de joins, y asientos, que es calculado).
@@ -117,13 +117,13 @@ export const licenciasApi = {
       .insert([{
         licencia_id: licenciaId,
         empleado_id: empleadoId,
-        fecha_inicio: new Date().toISOString().split('T')[0],
+        fecha_inicio: fechaLocalISO(),
       }]);
     if (error) throw error;
   },
 
   async cerrarAsignacionLicencia(asignacionId, notas = null) {
-    const updateData = { fecha_fin: new Date().toISOString().split('T')[0] };
+    const updateData = { fecha_fin: fechaLocalISO() };
     if (notas) updateData.notas = notas;
     const { error } = await getClient().database
       .from('asignaciones_licencia')

@@ -1,4 +1,4 @@
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, fechaLocalISO } from '../../core/formatters.js';
 
 // Aplana las 8 categorías de pendientes del Dashboard (cuentas, licencias,
 // equipos, tickets) en un solo feed ordenado por urgencia real, en vez de
@@ -15,7 +15,7 @@ import { formatFecha } from '../../core/formatters.js';
 //   `requiere_rotacion_desde` ni fecha de baja del empleado) → diasUrgencia
 //   null, quedan al final de su tier.
 
-const HOY = () => new Date().toISOString().split('T')[0];
+const HOY = () => fechaLocalISO();
 
 function diasDesde(fechaISO) {
   if (!fechaISO) return null;

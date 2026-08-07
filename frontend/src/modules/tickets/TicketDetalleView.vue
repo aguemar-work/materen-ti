@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { estadoInfo, prioridadInfo, OPCIONES_PRIORIDAD as PRIORIDADES, OPCIONES_TIPO as TIPOS, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS } from '../../core/dominio-tickets.js';
+import { estadoInfo, prioridadInfo, destinoDeCambio, OPCIONES_PRIORIDAD as PRIORIDADES, OPCIONES_TIPO as TIPOS, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS } from '../../core/dominio-tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
@@ -60,7 +60,7 @@ const historialEsencial = computed(() => {
     if (ev.evento === 'creado') {
       hitos.push({ id: ev.id, label: 'Ticket creado', fecha: ev.created_at, color: colorDeEstado('abierto') });
     } else if (ev.evento === 'estado_cambiado') {
-      const nuevoEstado = /a "(\w+)"/.exec(ev.detalle || '')?.[1];
+      const nuevoEstado = destinoDeCambio(ev.detalle);
       const label = HITO_LABELS[nuevoEstado];
       if (!label) continue;
       const asignado = nuevoEstado === 'en_progreso' && ticket.value?.asignado_a
@@ -70,7 +70,7 @@ const historialEsencial = computed(() => {
     } else if (ev.evento === 'reasignado') {
       hitos.push({ id: ev.id, label: EVENTO_LABELS.reasignado, fecha: ev.created_at, color: 'neutral' });
     } else if (ev.evento === 'prioridad_cambiada') {
-      const nuevaPrioridad = /a "(\w+)"/.exec(ev.detalle || '')?.[1];
+      const nuevaPrioridad = destinoDeCambio(ev.detalle);
       hitos.push({ id: ev.id, label: `Prioridad cambiada a ${prioridadInfo(nuevaPrioridad).label}`, fecha: ev.created_at, color: 'info' });
     } else if (ev.evento === 'correo_fallido') {
       hitos.push({ id: ev.id, label: EVENTO_LABELS.correo_fallido, detalle: ev.detalle, fecha: ev.created_at, color: 'warning' });

@@ -13,10 +13,16 @@ export const useTicketsStore = defineStore('tickets', {
     orden: null,
     cargando: false,
     error: null,
+    _peticionId: 0,
   }),
 
   actions: {
+    // _peticionId descarta respuestas obsoletas: si dos cargar() se
+    // superponen (búsqueda con debounce + cambio de página/filtro rápido,
+    // o el refresco realtime de AppLayout.vue disparando cargar() mientras
+    // ya había uno en curso), solo se aplica el resultado más reciente.
     async cargar() {
+      const peticionId = ++this._peticionId;
       this.cargando = true;
       this.error = null;
       try {
@@ -26,13 +32,15 @@ export const useTicketsStore = defineStore('tickets', {
           ...this.filtros,
           orden: this.orden,
         });
+        if (peticionId !== this._peticionId) return;
         this.lista = items;
         this.total = total;
       } catch (e) {
+        if (peticionId !== this._peticionId) return;
         this.error = e?.message || 'Error al cargar tickets';
         throw e;
       } finally {
-        this.cargando = false;
+        if (peticionId === this._peticionId) this.cargando = false;
       }
     },
 

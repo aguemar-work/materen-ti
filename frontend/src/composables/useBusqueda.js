@@ -10,7 +10,7 @@
 // Modo cliente (sanitizar:false, debounceMs:0, umbralMinimo:0): no hay
 // red que ahorrar, así que no hay gate ni retraso — el `termino` queda
 // disponible para que el propio componente arme su `computed` de filtro.
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { sanitizarTermino } from '../api/sanitizar.js';
 
 export function useBusqueda({
@@ -50,6 +50,10 @@ export function useBusqueda({
       }
     }, debounceMs);
   });
+
+  // Si el componente se desmonta con el debounce pendiente, el timeout no
+  // debe disparar onBuscar contra un callback que ya no debería actuar.
+  onBeforeUnmount(() => clearTimeout(timer));
 
   const sinResultados = computed(() => {
     if (!resultados) return false;

@@ -7,7 +7,7 @@ import { useAuthStore } from '../../stores/auth.js';
 import { useProblemaDetalleStore } from '../../stores/problemaDetalle.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha, formatFechaHora } from '../../core/formatters.js';
+import { formatFecha, formatFechaHora, fechaLocalISO } from '../../core/formatters.js';
 import { OPCIONES_SEVERIDAD_PROBLEMA, OPCIONES_ESTADO_ACCION } from '../../core/dominio-problemas.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -206,7 +206,7 @@ async function eliminarAccion(id) {
 }
 
 function accionVencida(accion) {
-  return accion.estado !== 'completada' && accion.fecha_limite < new Date().toISOString().split('T')[0];
+  return accion.estado !== 'completada' && accion.fecha_limite < fechaLocalISO();
 }
 
 // ── Eliminar problema (solo JEFE, ver RLS de la migración 033) ──────────

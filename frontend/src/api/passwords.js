@@ -36,6 +36,8 @@ function mensajeError(code) {
     ya_abierta: 'Este enlace ya fue utilizado',
     expirada: 'Este enlace expiró',
     demasiados_revelados: 'Demasiadas contraseñas reveladas en poco tiempo. Espere unos minutos.',
+    demasiadas_cuentas: 'Se puede entregar como máximo 20 cuentas por enlace.',
+    cuentas_no_asignadas: 'Ninguna de las cuentas seleccionadas está asignada a ese empleado.',
   };
   return mensajes[code] || `Error de credenciales (${code || 'desconocido'})`;
 }

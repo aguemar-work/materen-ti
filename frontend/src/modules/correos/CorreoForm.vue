@@ -5,6 +5,7 @@ import { useCorreosStore } from '../../stores/correos.js';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { generarPassword } from '../../core/generarPassword.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
@@ -109,6 +110,11 @@ function descartarCambios() {
 // solo Cancelar, la X o Escape.
 useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
+function generar() {
+  form.value.password = generarPassword();
+  passwordVisible.value = true;
+}
+
 async function guardar() {
   error.value = '';
   guardando.value = true;
@@ -197,6 +203,9 @@ async function guardar() {
               :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
               :disabled="guardando"
             >
+            <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+              <i class="ti ti-refresh" aria-hidden="true"></i>
+            </button>
             <button
               type="button"
               class="icon-btn"

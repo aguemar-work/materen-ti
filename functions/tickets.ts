@@ -63,6 +63,20 @@ function randomToken(): string {
 // y se acota el tamaño muy por debajo del máximo de la plataforma (50MB).
 const ADJUNTO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
+// ── Topes de texto y rate-limit de "crear" (auditoría integral, S-01) ──────
+// El endpoint es público y sin sesión: sin esto, un script podía insertar
+// tickets sin fin y con texto de tamaño arbitrario (el adjunto ya estaba
+// acotado, el texto no). Los topes son generosos para un reporte real (un
+// título es una frase, una descripción puede incluir pasos detallados) pero
+// muy por debajo de lo que un abuso automatizado necesitaría para doler.
+const TITULO_MAX_LEN = 200;
+const DESCRIPCION_MAX_LEN = 5000;
+
+// Solo aplica a creación SIN sesión de staff (ver uso más abajo): un staff
+// autenticado ya pasó por su propio login y no necesita este freno.
+const CREACION_MAX_IP = 8;         // creaciones públicas permitidas por ventana
+const CREACION_VENTANA_MIN = 10;   // minutos
+
 // Devuelve la extensión canónica si los primeros bytes son de una imagen
 // soportada; null si no lo es (no se sube).
 // export: probado en frontend/tests/tickets-validaciones.test.js
@@ -176,9 +190,29 @@ export default async function (req: Request): Promise<Response> {
     if (!titulo || !descripcion || !categoriaId) {
       return json({ ok: false, code: 'datos_requeridos' });
     }
+    if (titulo.length > TITULO_MAX_LEN || descripcion.length > DESCRIPCION_MAX_LEN) {
+      return json({ ok: false, code: 'texto_muy_largo' });
+    }
 
     const staff = await staffDeSesion();
     const origen = staff && body.origen === 'staff_interno' ? 'staff_interno' : 'empleado';
+
+    // Rate-limit por IP, solo para creación pública (sin sesión de staff):
+    // mismo patrón que buscarPorDni (migración 017), tabla propia
+    // (migración 037) para no mezclar el conteo con la búsqueda por DNI.
+    if (!staff) {
+      const ip = ipDesdeHeaders(req.headers);
+      const desde = new Date(Date.now() - CREACION_VENTANA_MIN * 60 * 1000).toISOString();
+      const { data: intentos } = await admin.database
+        .from('ticket_creacion_intentos')
+        .select('id')
+        .eq('ip', ip)
+        .gte('created_at', desde);
+      if ((intentos?.length || 0) >= CREACION_MAX_IP) {
+        return json({ ok: false, code: 'demasiados_intentos' }, 429);
+      }
+      await admin.database.from('ticket_creacion_intentos').insert([{ ip }]);
+    }
 
     let empleadoId: string | null = null;
     let vinculado = true;
@@ -301,13 +335,17 @@ export default async function (req: Request): Promise<Response> {
     // Correo de confirmación con el token — mejor esfuerzo. El token ya
     // quedó guardado y se muestra en pantalla igual, así que un fallo de
     // correo (ej. plan sin envío habilitado) no bloquea la creación.
+    // Destino SOLO desde el correo_personal de un empleado ya vinculado
+    // (por token de entrega o por match de DNI) — nunca desde `contacto`
+    // directamente: es un campo público sin verificar, y tratarlo como
+    // email permitía a cualquiera hacer que el sistema mandara correo a una
+    // dirección arbitraria (auditoría integral, hallazgo S-01).
     let correoDestino: string | null = null;
     if (empleadoId) {
       const { data: empleado } = await admin.database
         .from('empleados').select('correo_personal').eq('id', empleadoId).maybeSingle();
       correoDestino = empleado?.correo_personal || null;
     }
-    if (!correoDestino && contacto && esEmail(contacto)) correoDestino = contacto;
 
     if (correoDestino) {
       const link = `${origenFrontend}/soporte/${token}`;
@@ -504,8 +542,11 @@ export default async function (req: Request): Promise<Response> {
     if (ticket.estado !== 'cerrado') return json({ ok: false, code: 'no_esta_cerrado' });
     if (!ticket.empleado_id) return json({ ok: true, enviado: false }); // interno: no aplica
 
-    const correoDestino = ticket.empleados?.correo_personal
-      || (ticket.contacto_ingresado && esEmail(ticket.contacto_ingresado) ? ticket.contacto_ingresado : null);
+    // Mismo criterio que en "crear" (auditoría integral, S-01): el destino
+    // sale SOLO del correo_personal de un empleado vinculado, nunca de
+    // `contacto_ingresado` directamente — ese campo es texto público no
+    // verificado, tratarlo como email deja mandar correo a quien sea.
+    const correoDestino = ticket.empleados?.correo_personal || null;
     if (!correoDestino) return json({ ok: true, enviado: false });
 
     const link = `${origenFrontend}/soporte/${ticket.token}/satisfaccion`;

@@ -65,6 +65,14 @@ export const HITO_LABELS = {
   rechazado: 'Rechazado',
 };
 
+// Los triggers registran los cambios de estado/prioridad como 'De "x" a "y"'
+// (evento_ticket_cambios, migración 035). Esta es la ÚNICA función que conoce
+// ese formato: si el texto del trigger cambia, se arregla acá y no en cada
+// vista ni en el reporte.
+export function destinoDeCambio(detalle) {
+  return /a "(\w+)"\s*$/.exec(String(detalle || ''))?.[1] || null;
+}
+
 export function estadoInfo(e) {
   return ESTADOS_TICKET[e] || { label: e, clase: 'badge--neutral' };
 }

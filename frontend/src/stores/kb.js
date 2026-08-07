@@ -14,10 +14,15 @@ export const useKbStore = defineStore('kb', {
     orden: null,
     cargando: false,
     error: null,
+    _peticionId: 0,
   }),
 
   actions: {
+    // _peticionId descarta respuestas obsoletas: si dos cargar() se
+    // superponen (búsqueda con debounce + cambio de página/filtro rápido),
+    // solo se aplica el resultado de la petición más reciente.
     async cargar() {
+      const peticionId = ++this._peticionId;
       this.cargando = true;
       this.error = null;
       try {
@@ -27,13 +32,15 @@ export const useKbStore = defineStore('kb', {
           ...this.filtros,
           orden: this.orden,
         });
+        if (peticionId !== this._peticionId) return;
         this.lista = items;
         this.total = total;
       } catch (e) {
+        if (peticionId !== this._peticionId) return;
         this.error = e?.message || 'Error al cargar la base de conocimiento';
         throw e;
       } finally {
-        this.cargando = false;
+        if (peticionId === this._peticionId) this.cargando = false;
       }
     },
 

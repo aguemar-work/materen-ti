@@ -181,6 +181,7 @@ onMounted(async () => {
               id="tk-titulo"
               v-model="form.titulo"
               required
+              maxlength="200"
               placeholder="Ej.: sin acceso al correo institucional"
               :disabled="estado === 'enviando'"
             >
@@ -193,6 +194,7 @@ onMounted(async () => {
               v-model="form.descripcion"
               required
               rows="4"
+              maxlength="5000"
               placeholder="Indique el problema, fecha de inicio y detalles relevantes"
               :disabled="estado === 'enviando'"
             ></textarea>

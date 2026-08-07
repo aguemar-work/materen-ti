@@ -141,12 +141,26 @@ cuándo y si la contraseña se rotó después.
   minúscula, mayúscula y símbolo (`insforge.toml`).
 - **Rate-limits**: el revelado de contraseñas está topado por usuario
   (40 / 5 min, vía `accesos_log`); la búsqueda pública por DNI, por IP y por
-  DNI (`ticket_busqueda_intentos`).
+  DNI (`ticket_busqueda_intentos`); la creación pública de tickets, por IP
+  (8 / 10 min, `ticket_creacion_intentos`, migración 037 — no aplica a
+  tickets creados por staff autenticado).
+- **Tickets públicos**: `titulo`/`descripcion` tienen tope de longitud en
+  servidor (200 / 5000 caracteres) y el correo de confirmación/encuesta solo
+  se envía al `correo_personal` de un empleado ya vinculado (por token de
+  entrega o DNI) — nunca al campo `contacto` sin verificar, que un llamado
+  directo a la edge function podía usar para hacer que el sistema mandara
+  correo a una dirección arbitraria.
+- **Baja de empleado atómica** (migración 038): las 4 escrituras (cerrar
+  asignaciones de cuenta/licencia, dar de baja cuentas personales, marcar
+  Inactivo) corren en una sola transacción de servidor vía RPC
+  (`dar_baja_empleado`), no como 4 updates secuenciales desde el cliente.
 - **Integridad de tickets** (migración 019): un ticket `cerrado`/`rechazado`
   solo sale de ese estado si el JEFE lo reabre; `token`, `codigo`, `origen` y
   `creado_por` son inmutables tras la creación.
 - El detalle completo del análisis estático y su remediación vive en
-  `auditoria_seguridad_sistema-ti_2026-07-07.md`.
+  `auditoria_seguridad_sistema-ti_2026-07-07.md`; el ciclo de auditoría
+  integral más reciente (arquitectura, UX, seguridad, QA, DevOps, performance
+  y datos) vive en `auditoria_integral_2026-08-05.md`.
 
 ## Estructura del repo
 
@@ -178,7 +192,7 @@ cuándo y si la contraseña se rotó después.
 │   ├── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir
 │   └── tickets.ts          # edge function: catalogo / crear / seguimiento / buscarPorDni /
 │                           #   encuestaEstado / encuesta / enviarEncuesta
-├── migrations/             # 001..019 — esquema completo, en orden, comentado
+├── migrations/             # 001..036 — esquema completo, en orden, comentado
 ├── docs/
 │   └── GUIA-UX-UI.md       # design system y convenciones de UI
 ├── AGENTS.md               # contexto para agentes de código
@@ -246,11 +260,24 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 022 | Accesorios de equipo con código de almacén (catálogo `equipo_accesorios`) |
 | 023 | `codigo_almacen` en `equipos` (activos grandes) |
 | 024 | Accesos sensibles: `accesos_sensibles` + `accesos_sensibles_permisos`, visibilidad JEFE-con-permiso-por-fila (no todo JEFE), clave de cifrado aislada `CRED_KEY_SENSIBLE`, auditoría de ciclo de vida en `accesos_log` |
+| 025 | Reordenar `categorias_ticket` (orden de presentación en el formulario público) |
+| 026 | Realtime de listados: `notify_list_changed()` en empleados, cuentas, licencias, equipos y tickets (canales `<tabla>:list`) |
+| 027 | Realtime del seguimiento público de un ticket: `notify_ticket_estado()` sobre el canal `ticket:<token>` |
+| 028 | Fix de RLS del realtime de tickets |
+| 029 | Fix del evento de realtime de ticket |
+| 030 | Auditoría de acceso denegado: acción `acceso_denegado` en `accesos_log`, escrita por la edge function cuando el guard del router bloquea una ruta por rol |
+| 031 | Base de Conocimiento: `kb_articulos` (borrador→en_revision→publicado→obsoleto), visibilidad por estado/autoría; elimina `tickets.es_base_conocimiento`. **Nota: el backfill se perdió durante la aplicación — decisión cerrada de no restaurar, ver `docs/PANORAMA_SISTEMA.md` §6** |
+| 032 | Cierra un hueco de RLS del voto de KB: reemplaza la policy amplia de UPDATE por el RPC `kb_registrar_feedback()` (`SECURITY DEFINER`, solo toca `util_si`/`util_no`) |
+| 033 | Gestión de Problemas (Fase 2): `problemas`, `problema_tickets`, `acciones_correctivas` + triggers de cierre y de responsable activo. Unifica lo que iba a ser "Lecciones Aprendidas" |
+| 034 | Elimina las tablas de prueba huérfanas `test_probe`, `test_probe2`, `test_probe3` (vacías, sin referencias en el código) |
 | 035 | Distinción incidente/solicitud: `tickets.tipo` + `subcategorias_ticket.tipo_sugerido` (heredado al crear, editable por staff); `check_iniciar_completo` exige `tipo` antes de pasar a en_progreso; alta de subcategorías nuevas exige elegir `tipo_sugerido` |
+| 036 | Índices para el reporte de tickets: `tickets(created_at desc)`, `ticket_eventos(evento, created_at)`, `ticket_satisfaccion(created_at)`. Solo índices: reversible con `DROP INDEX`, no cambia resultados |
+| 037 | Rate-limit de creación pública de tickets: `ticket_creacion_intentos` (ip, created_at), mismo patrón que `ticket_busqueda_intentos` (migración 017). Corrige que la acción `crear` de la edge function `tickets` no tenía ningún tope de frecuencia (auditoría integral 2026-08-05, hallazgo S-01) |
+| 038 | Baja de empleado atómica: RPC `dar_baja_empleado()` (`SECURITY DEFINER`) hace en una sola transacción las 4 escrituras que antes corrían secuenciales desde el cliente (cerrar asignaciones de cuenta/licencia, dar de baja cuentas personales, marcar Inactivo) — evita que un fallo a medio camino deje al empleado en un estado inconsistente (hallazgo A-01). **Requiere `db import`, no `db query`/`apply-migration.mjs` — ver gotcha en `AGENTS.md`** |
 
 ## Checklist de deploy
 
-1. Aplicar migraciones pendientes (`node scripts/apply-migration.mjs migrations/0XX_….sql` en Windows).
+1. Aplicar migraciones pendientes (`node scripts/apply-migration.mjs migrations/0XX_….sql` en Windows; para migraciones con `create function`/`do $$...$$` como la 037/038, usar `npx @insforge/cli db import migrations/0XX_….sql` — ver gotcha en `AGENTS.md`).
 2. Redesplegar edge functions si cambiaron: `credenciales`, `tickets`.
 3. Push de `insforge.toml` si cambió auth/storage.
 4. Build frontend: `cd frontend && npm run build`.

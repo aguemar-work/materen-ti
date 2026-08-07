@@ -7,7 +7,7 @@ import { getClient } from '../client.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
-import { trimText } from '../../core/formatters.js';
+import { trimText, fechaLocalISO } from '../../core/formatters.js';
 import { ESTADOS_PROBLEMA_ABIERTOS } from '../../core/dominio-problemas.js';
 
 const SELECT_RESUMEN = `
@@ -33,12 +33,10 @@ async function queryProblemas({ q = '', estado = '', severidad = '', orden } = {
   return entregarQuery(query.order(columna, { ascending }));
 }
 
-// Hoy en formato YYYY-MM-DD / N días atrás (mismo criterio que
+// Hoy en formato YYYY-MM-DD local / N días atrás (mismo criterio que
 // dashboard.js:fechaEnDias, pero solo hacia el pasado).
 function fechaHaceDias(dias) {
-  const d = new Date();
-  d.setDate(d.getDate() - dias);
-  return d.toISOString().split('T')[0];
+  return fechaLocalISO(-dias);
 }
 
 export const problemasApi = {

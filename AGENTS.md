@@ -4,7 +4,8 @@
 > tickets, correos, licencias y equipos. UI en
 > `frontend/src/styles/main.css` (`--mat-*`) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
-**Vigencia**: actualizado 2026-07-09 (migración 021 accesorios/almacén; 020 áreas/obras).
+**Vigencia**: actualizado 2026-08-05 (migración 036 índices del reporte de
+tickets; 035 incidente/solicitud; 033 problemas; 031-032 base de conocimiento).
 
 **Precedencia documental**: ante conflicto, `README.md` y `GUIA-UX-UI.md` describen
 intención; **ganan** los valores literales en `main.css` y el esquema real en
@@ -73,6 +74,17 @@ cuándo y si la contraseña se rotó después.
  **Verificar siempre después de aplicar** (`db query "select ..."` sobre la
  tabla/columna afectada): un `db import` que reporta error igual puede haber
  ejecutado parte de los statements antes de crashear.
+- **Gotcha del CLI (verificado 2026-08-05, migración 038)**: `db query` (con o
+ sin `scripts/apply-migration.mjs`, en bash o en PowerShell — no es un
+ problema de shell) **no soporta cuerpos de función/bloque con dollar-quoting
+ (`$$ ... $$`)**: falla con `{"error":"no language specified"}` incluso en un
+ `CREATE FUNCTION` de una sola línea sin ningún `;` interno. Cualquier
+ migración con `create function`/`do $$ ... end $$` (la mayoría desde la 008)
+ debe aplicarse con `db import <archivo.sql>`, nunca con `db query` ni con
+ `apply-migration.mjs` (usa `db query` por dentro). `db import` puede seguir
+ reportando el crash de cliente (`Assertion failed ... src\win\async.c`) de
+ arriba aun cuando el statement se ejecutó bien en el servidor — la
+ verificación posterior sigue siendo obligatoria en ambos casos.
 - **Edge function**: `functions/credenciales.ts` → desplegar con
  `npx @insforge/cli functions deploy credenciales --file functions/credenciales.ts`.
  Secrets que usa: `CRED_KEY_V2`, `CRED_KEY_LEGACY`, `API_KEY`,
@@ -96,7 +108,25 @@ cuándo y si la contraseña se rotó después.
 
 ## Verificación
 
-- Build: `cd frontend && npx vite build` (no hay tests automatizados aún).
+- Build: `cd frontend && npx vite build`.
+- Tests unitarios: `cd frontend && npm test` (Vitest, ~97 casos: cifrado,
+ validaciones de la edge function de tickets, dominio de tickets, formatters,
+ periodos y PDF del reporte, forma de `insforgeApi`, paginación). Corren en CI
+ en cada push (`.github/workflows/ci.yml`, job `build-y-tests`), junto con
+ `node scripts/contraste.mjs` (contraste WCAG de los tokens) y
+ `npm audit --omit=dev --audit-level=high` (vulnerabilidades de dependencias).
+- Smoke de integración contra el backend real: `npm run test:integration`
+ (atrapa desincronización esquema↔frontend). Corre en CI como job aparte
+ (`test-integration`) — **requiere 4 secrets del repo** que hoy no existen:
+ `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`, `INSFORGE_TEST_STAFF_EMAIL`,
+ `INSFORGE_TEST_STAFF_PASSWORD` (la cuenta de staff debe ser **dedicada a CI**,
+ nunca la de una persona real). Sin ellos el job emite un `::warning::` visible
+ en la pestaña Actions/checks y **no verifica nada** — no confundir ese aviso
+ con un check verde real.
+- Invariantes de triggers de BD: `node scripts/test-db.mjs` (SQL con rollback).
+ Job `tests-db` en CI; mismo patrón de `::warning::` si falta
+ `INSFORGE_ACCESS_TOKEN`.
+- Contraste WCAG de los tokens: `node scripts/contraste.mjs`.
 - Probar la función sin sesión:
  `npx @insforge/cli functions invoke credenciales --data '{"action":"entregaAbrir","token":"x"}'`
  debe responder `{"ok":false,"code":"no_existe"}`.

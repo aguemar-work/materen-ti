@@ -196,46 +196,24 @@ export const empleadosApi = {
   //   - cuentas personales → se dan de baja junto con el empleado
   //   - reutilizables/compartidas → quedan marcadas "rotar contraseña"
   //     por el trigger de BD al cerrarse la asignación
+  //
+  // Las 4 escrituras corren atómicas en el servidor vía RPC
+  // (dar_baja_empleado, migración 038): antes eran 4 updates secuenciales
+  // desde el cliente sin transacción — si el 3.º fallaba (red, pestaña
+  // cerrada), el empleado quedaba con asignaciones cerradas pero ACTIVO y
+  // con cuentas personales vivas, sin rastro de que la operación quedó a
+  // medias (auditoría integral 2026-08-05, hallazgo A-01).
   async bajaEmpleado(empleadoId) {
-    const db = getClient().database;
-    const today = new Date().toISOString().split('T')[0];
-
     // Antes `this.resumenBaja`: se referencia el propio objeto del dominio.
+    // Se lee ANTES de la baja (foto de qué tenía el empleado al momento de
+    // dar de baja, para el resumen que muestra la UI).
     const resumen = await empleadosApi.resumenBaja(empleadoId);
 
-    const { error: e1 } = await db
-      .from('asignaciones_cuenta')
-      .update({ fecha_fin: today, notas: 'Baja del empleado' })
-      .eq('empleado_id', empleadoId)
-      .is('fecha_fin', null);
-    if (e1) throw e1;
+    const { error } = await getClient().database.rpc('dar_baja_empleado', { p_empleado_id: empleadoId });
+    if (error) throw error;
 
-    // Liberar también sus asientos de licencias directas
-    const { error: eLic } = await db
-      .from('asignaciones_licencia')
-      .update({ fecha_fin: today, notas: 'Baja del empleado' })
-      .eq('empleado_id', empleadoId)
-      .is('fecha_fin', null);
-    if (eLic) throw eLic;
-
-    const personales = resumen.cuentas.filter((c) => c.tipo_cuenta === 'personal').map((c) => c.cuenta_id);
-    if (personales.length) {
-      const { error: e2 } = await db
-        .from('cuentas')
-        .update({ deleted_at: new Date().toISOString() })
-        .in('id', personales);
-      if (e2) throw e2;
-    }
-
-    const { data, error: e3 } = await db
-      .from('empleados')
-      .update({ estado: 'Inactivo' })
-      .eq('id', empleadoId)
-      .select('*, empresas(nombre), areas_obras(nombre)')
-      .single();
-    if (e3) throw e3;
-
-    return { empleado: mapEmpleado(data), resumen };
+    const empleado = await empleadosApi.getEmpleado(empleadoId);
+    return { empleado, resumen };
   },
 
   async reactivarEmpleado(id) {

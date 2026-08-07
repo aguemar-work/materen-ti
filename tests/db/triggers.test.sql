@@ -27,6 +27,8 @@
 --         problema cerrado rechaza acciones nuevas/reactivadas
 --         (check_problema_no_cerrado), fecha_completada se llena/limpia sola
 --         (set_fecha_completada)
+--   [038] dar_baja_empleado exige es_staff() (guard de la función, mismo
+--         alcance de prueba que [032] — ver nota del bloque 3)
 --
 -- OJO — esta conexión (project_admin, ver AGENTS.md) tiene BYPASSRLS y el
 -- CLI bloquea `SET ROLE`/`SET LOCAL` ("Changing SQL session configuration
@@ -325,5 +327,37 @@ begin
     raise exception 'TESTS_OK [033] — 11 invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [033]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- Bloque 3 — [038] dar_baja_empleado (baja atómica de empleado)
+-- Aparte del bloque 2 por el mismo límite de línea de comandos.
+--
+-- OJO: igual que [032] kb_registrar_feedback, esta conexión (project_admin)
+-- no tiene auth.uid() — no es una sesión de staff real —, así que solo
+-- puede verificar el guard de rechazo, no la lógica de las 4 escrituras
+-- atómicas (cerrar asignaciones de cuenta/licencia, dar de baja cuentas
+-- personales, marcar Inactivo). Esa lógica se verificó por inspección
+-- contra el esquema real (columnas/tipos/constraints) al escribir la
+-- migración 038 (auditoría integral 2026-08-05, hallazgo A-01) — pendiente
+-- de verificación funcional con una sesión de staff real en el navegador,
+-- mismo criterio que las policies RLS de kb_articulos/problemas.
+-- ============================================================
+do $$
+declare
+  fallos text := '';
+begin
+  begin
+    perform public.dar_baja_empleado('00000000-0000-4000-8000-000000000001');
+    fallos := fallos || '[038] dar_baja_empleado no rechazó una llamada sin sesión de staff; ';
+  exception when others then
+    null; -- esperado
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [038] — guard de es_staff() verificado, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [038]: %', fallos;
   end if;
 end $$;

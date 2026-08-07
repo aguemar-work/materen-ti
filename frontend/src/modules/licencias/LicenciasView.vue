@@ -8,7 +8,7 @@ import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { revelarClaveLicencia, revelarPassword } from '../../api/passwords.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, fechaISO, fechaLocalISO } from '../../core/formatters.js';
 import LicenciaForm from './LicenciaForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
@@ -90,12 +90,8 @@ useCerrarConEscape(() => {
 const panelAsignar = ref(null);
 useFocoAtrapado(panelAsignar, mostrarAsignar);
 
-const HOY = new Date().toISOString().split('T')[0];
-const EN_30_DIAS = (() => {
-  const d = new Date();
-  d.setDate(d.getDate() + 30);
-  return d.toISOString().split('T')[0];
-})();
+const HOY = fechaLocalISO();
+const EN_30_DIAS = fechaLocalISO(30);
 
 // Barra de capacidad: comunica cercanía al tope de asientos antes de que
 // el trigger de BD (check_tope_licencia) bloquee la asignación.
@@ -129,8 +125,8 @@ function proximaFecha(l) {
   const d = new Date(`${l.fecha_vencimiento}T00:00:00`);
   do {
     d.setMonth(d.getMonth() + l.renovacion_meses);
-  } while (d.toISOString().split('T')[0] <= HOY);
-  return d.toISOString().split('T')[0];
+  } while (fechaISO(d) <= HOY);
+  return fechaISO(d);
 }
 
 // Confirmación (ConfirmDialog compartido): una sola instancia para las 3

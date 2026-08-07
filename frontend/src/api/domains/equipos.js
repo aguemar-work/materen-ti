@@ -4,7 +4,7 @@ import { getClient } from '../client.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
-import { toTitleCase, trimText } from '../../core/formatters.js';
+import { toTitleCase, trimText, fechaLocalISO } from '../../core/formatters.js';
 
 // Columnas de "equipos" ordenables desde la tabla (excluye tipo/empresa,
 // que vienen de joins, y situación/asignado a, que son calculados).
@@ -147,13 +147,16 @@ export const equiposApi = {
     if (activa) {
       const { error: e1 } = await db
         .from('asignaciones_equipo')
-        .update({ fecha_fin: new Date().toISOString().split('T')[0], motivo_cierre: 'movimiento' })
+        .update({ fecha_fin: fechaLocalISO(), motivo_cierre: 'movimiento' })
         .eq('id', activa.id);
       if (e1) throw e1;
     }
     const { error: e2 } = await db
       .from('asignaciones_equipo')
-      .insert([{ equipo_id: equipoId, ubicacion_id: ubicacionId }]);
+      // fecha_inicio explícito: el default `current_date` de la columna
+      // corre en el servidor (GMT) y sufre el mismo corte de T-01 pasadas
+      // las 19:00 hora Perú si se deja implícito.
+      .insert([{ equipo_id: equipoId, ubicacion_id: ubicacionId, fecha_inicio: fechaLocalISO() }]);
     if (e2) throw e2;
   },
 
@@ -205,7 +208,7 @@ export const equiposApi = {
     if (activa?.ubicacion_id) {
       const { error: e0 } = await db
         .from('asignaciones_equipo')
-        .update({ fecha_fin: new Date().toISOString().split('T')[0], motivo_cierre: 'entrega a empleado' })
+        .update({ fecha_fin: fechaLocalISO(), motivo_cierre: 'entrega a empleado' })
         .eq('id', activa.id);
       if (e0) throw e0;
     }
@@ -214,7 +217,7 @@ export const equiposApi = {
       .insert([{
         equipo_id: equipoId,
         empleado_id: empleadoId,
-        fecha_inicio: new Date().toISOString().split('T')[0],
+        fecha_inicio: fechaLocalISO(),
         condicion_entrega: trimText(condicionEntrega),
       }]);
     if (error) throw error;
@@ -227,7 +230,7 @@ export const equiposApi = {
     const { error: e1 } = await db
       .from('asignaciones_equipo')
       .update({
-        fecha_fin: new Date().toISOString().split('T')[0],
+        fecha_fin: fechaLocalISO(),
         condicion_devolucion: trimText(condicion),
         motivo_cierre: motivo || 'devolucion',
       })

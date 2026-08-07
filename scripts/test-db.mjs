@@ -62,5 +62,5 @@ if (huboFallo) {
   process.exit(1);
 }
 
-console.log('\n✓ Tests de triggers OK (008 exclusividad, 009 rotación, 017 reabrir, 019 transiciones, 031/032 kb_articulos, 033 problemas) — rollback aplicado');
+console.log('\n✓ Tests de triggers OK (008 exclusividad, 009 rotación, 017 reabrir, 019 transiciones, 031/032 kb_articulos, 033 problemas, 038 baja atómica) — rollback aplicado');
 process.exit(0);
