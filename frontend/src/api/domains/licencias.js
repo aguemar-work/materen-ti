@@ -12,9 +12,11 @@ import { trimText, fechaLocalISO } from '../../core/formatters.js';
 const ORDEN_COLUMNAS = ['software', 'proveedor', 'fecha_vencimiento', 'costo'];
 const ORDEN_DEFECTO = { columna: 'software', ascending: true };
 
+// tiene_clave (no "clave"): columna generada (migración 040), nunca trae
+// el ciphertext al listado — se revela bajo demanda vía revelarClaveLicencia.
 const SELECT_LICENCIA = `
   id, software, tipo, cantidad, empresa_id, proveedor, fecha_vencimiento,
-  renovacion_meses, costo, moneda, cuenta_id, clave, notas,
+  renovacion_meses, costo, moneda, cuenta_id, tiene_clave, notas,
   empresas(nombre),
   cuentas(id, usuario, asignaciones_cuenta(id, fecha_fin, empleado_id, empleados(nombres, apellidos))),
   asignaciones_licencia(id, fecha_fin, empleado_id, empleados(nombres, apellidos))
@@ -187,7 +189,7 @@ function mapLicencia(row) {
     moneda: row.moneda || '',
     cuenta_id: row.cuenta_id,
     cuenta_usuario: cuenta?.usuario || '',
-    tiene_clave: !!row.clave,
+    tiene_clave: row.tiene_clave === true,
     notas: row.notas || '',
     usuarios,
     usados: usuarios.length,

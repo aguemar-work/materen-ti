@@ -16,6 +16,7 @@ import { staffApi } from './domains/staff.js';
 import { accesosSensiblesApi } from './domains/accesosSensibles.js';
 import { kbApi } from './domains/kb.js';
 import { problemasApi } from './domains/problemas.js';
+import { personalRegistrosApi } from './domains/personalRegistros.js';
 
 export const insforgeApi = {
   mode: 'insforge',
@@ -32,4 +33,5 @@ export const insforgeApi = {
   ...accesosSensiblesApi,
   ...kbApi,
   ...problemasApi,
+  ...personalRegistrosApi,
 };

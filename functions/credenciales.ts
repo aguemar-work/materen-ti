@@ -6,9 +6,14 @@
 //
 // Acciones (POST { action, ... }):
 //   encrypt              staff   { value }                 → { encrypted }
-//   revelar              staff   { cuentaId, motivo }      → { password }  (audita)
+//   revelar              staff*  { cuentaId, motivo }      → { password }  (audita)
+//     (*solo JEFE si la cuenta es tipo_cuenta='personal' — se entrega a un
+//      empleado, no se opera directamente. Compartida/reutilizable: staff)
 //   revelarClaveLicencia staff   { licenciaId, motivo }    → { clave }  (audita)
 //   entregaCrear         staff   { empleadoId, cuentaIds } → { token, expiresAt }  (audita)
+//     (ASISTENTE no puede "revelar" una cuenta personal, pero sí armar y
+//      enviar por WhatsApp un enlace de un solo uso con las cuentas del
+//      empleado — decisión de producto 2026-08-07)
 //   entregaAbrir         público { token }                 → { empleadoNombre, credenciales }  (un solo uso, audita)
 //   accesoDenegado       staff   { ruta }                  → { ok }  (audita un bloqueo por rol del router)
 //
@@ -369,21 +374,30 @@ export default async function (req: Request): Promise<Response> {
   }
 
   // revelar: devolver la contraseña de una cuenta (audita quién y por qué)
+  // Decisión de producto (2026-08-07): una cuenta PERSONAL (se entrega a un
+  // empleado) solo la revela JEFE — el ASISTENTE la entrega por enlace de
+  // WhatsApp (entregaCrear), nunca la ve él mismo. Correos compartidos y
+  // reutilizables quedan fuera de esta restricción: el ASISTENTE los usa
+  // para operar la bandeja, no para entregarlos a un tercero.
   if (body.action === 'revelar') {
     const cuentaId = String(body.cuentaId || '');
     const motivo = body.motivo === 'copiar' ? 'copiar' : 'ver';
     if (!cuentaId) return json({ ok: false, code: 'cuenta_requerida' });
 
-    if (await reveladosRecientes(user.id) >= REVELADO_MAX) {
-      return json({ ok: false, code: 'demasiados_revelados' }, 429);
-    }
-
     const { data: cuenta } = await admin.database
       .from('cuentas')
-      .select('id, usuario, password, plataformas(nombre)')
+      .select('id, usuario, password, tipo_cuenta, plataformas(nombre)')
       .eq('id', cuentaId)
       .maybeSingle();
     if (!cuenta) return json({ ok: false, code: 'no_existe' });
+
+    if (cuenta.tipo_cuenta === 'personal' && staffRow.rol !== 'JEFE') {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
+    if (await reveladosRecientes(user.id) >= REVELADO_MAX) {
+      return json({ ok: false, code: 'demasiados_revelados' }, 429);
+    }
 
     const password = cuenta.password ? await decryptAny(cuenta.password) : '';
 
@@ -400,6 +414,8 @@ export default async function (req: Request): Promise<Response> {
   }
 
   // revelarClaveLicencia: devolver la clave/serial de una licencia (audita)
+  // Sin restricción de rol (decisión de producto 2026-08-07): el ASISTENTE
+  // instala/activa software con estas claves como parte de su trabajo.
   if (body.action === 'revelarClaveLicencia') {
     const licenciaId = String(body.licenciaId || '');
     const motivo = body.motivo === 'copiar' ? 'copiar' : 'ver';

@@ -8,6 +8,7 @@ import { ref, computed } from 'vue';
 import { buscarTicketsPorDni, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { formatFecha } from '../../core/formatters.js';
 import { estadoInfo } from '../../core/dominio-tickets.js';
+import { esDniValido } from '../../core/utils.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 const dni = ref('');
@@ -16,7 +17,7 @@ const buscando = ref(false);
 const error = ref('');
 const resultados = ref(null); // null = aún no se buscó
 
-const dniValido = computed(() => dni.value.length === 8);
+const dniValido = computed(() => esDniValido(dni.value));
 
 // Aviso en vivo: aparece al salir del campo con menos de 8 dígitos y se
 // apaga solo al completarlos. Mismo texto que la validación del servidor.

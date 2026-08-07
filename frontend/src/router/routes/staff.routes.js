@@ -16,4 +16,10 @@ export default [
     name: 'accesos-sensibles',
     component: () => import('../../modules/accesosSensibles/AccesosSensiblesView.vue'),
   },
+  {
+    // Lo que llega por el formulario público /personal-registro
+    path: '/personal-registros',
+    name: 'personal-registros',
+    component: () => import('../../modules/personal/PersonalRegistrosView.vue'),
+  },
 ];

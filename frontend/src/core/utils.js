@@ -34,6 +34,12 @@ export function uid() {
   return crypto.randomUUID();
 }
 
+// DNI peruano: 8 dígitos. Usado en los formularios que identifican a una
+// persona por DNI (tickets públicos, pre-registro de personal).
+export function esDniValido(dni) {
+  return /^\d{8}$/.test(dni || '');
+}
+
 export function todayISO() {
   return fechaLocalISO();
 }

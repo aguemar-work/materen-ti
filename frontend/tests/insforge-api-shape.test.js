@@ -56,10 +56,12 @@ const METODOS = [
   'listTicketsVinculados', 'vincularTicket', 'desvincularTicket',
   'listAccionesCorrectivas', 'crearAccionCorrectiva', 'actualizarAccionCorrectiva', 'softDeleteAccionCorrectiva',
   'getProblemaAbiertoDeTicket', 'listCategoriasRecurrentes', 'listAccionesCorrectivasVencidas', 'pendientesProblemas',
+  // pre-registro de personal
+  'listPersonalRegistrosPage', 'listPersonalRegistrosFiltrados', 'marcarUsado',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 130 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 133 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

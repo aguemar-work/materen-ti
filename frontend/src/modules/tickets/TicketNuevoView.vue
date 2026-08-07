@@ -10,6 +10,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { catalogoTickets, crearTicket, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { comprimirImagen, archivoABase64 } from '../../core/imagenes.js';
+import { esDniValido } from '../../core/utils.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 const route = useRoute();
@@ -33,7 +34,7 @@ const form = ref({
 // Identificación SOLO por DNI (igual que TicketBuscarView): un correo puede
 // repetirse entre empleados o una persona tener varios, el DNI no.
 const dniTocado = ref(false);
-const dniValido = computed(() => !!tokenEntrega || form.value.contacto.length === 8);
+const dniValido = computed(() => !!tokenEntrega || esDniValido(form.value.contacto));
 const errorDni = computed(() =>
   dniTocado.value && !dniValido.value ? MENSAJES_ERROR_TICKETS.dni_invalido : ''
 );

@@ -2,6 +2,7 @@
 import { reactive, ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useCuentasStore } from '../../stores/cuentas.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { revelarPassword } from '../../api/passwords.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
@@ -23,7 +24,15 @@ const props = defineProps({
 });
 
 const store = useCuentasStore();
+const auth = useAuthStore();
 const { lista, cargando, error } = storeToRefs(store);
+
+// Regla del servidor (functions/credenciales.ts): una cuenta "personal" se
+// entrega a un empleado, no la revela el ASISTENTE — solo JEFE. Compartida/
+// reutilizable sí, porque el ASISTENTE las opera directamente.
+function puedeRevelar(cuenta) {
+  return auth.esJefe || cuenta.tipo_cuenta !== 'personal';
+}
 
 const mostrarForm = ref(false);
 const cuentaEditar = ref(null);
@@ -272,19 +281,24 @@ onMounted(async () => {
             <td>{{ cuenta.usuario }}</td>
             <td>
               <div class="password-cell">
-                <span class="password-text">{{ passwordVisibles[cuenta.asignacion_id] || '••••••••' }}</span>
-                <button
-                  class="icon-btn"
-                  type="button"
-                  :title="passwordVisibles[cuenta.asignacion_id] ? 'Ocultar' : 'Mostrar'"
-                  :aria-label="passwordVisibles[cuenta.asignacion_id] ? 'Ocultar' : 'Mostrar'"
-                  @click="togglePassword(cuenta)"
-                >
-                  <i :class="passwordVisibles[cuenta.asignacion_id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-                </button>
-                <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click="copiarPassword(cuenta)">
-                  <i class="ti ti-copy"></i>
-                </button>
+                <span class="password-text">{{ puedeRevelar(cuenta) ? (passwordVisibles[cuenta.asignacion_id] || '••••••••') : '••••••••' }}</span>
+                <template v-if="puedeRevelar(cuenta)">
+                  <button
+                    class="icon-btn"
+                    type="button"
+                    :title="passwordVisibles[cuenta.asignacion_id] ? 'Ocultar' : 'Mostrar'"
+                    :aria-label="passwordVisibles[cuenta.asignacion_id] ? 'Ocultar' : 'Mostrar'"
+                    @click="togglePassword(cuenta)"
+                  >
+                    <i :class="passwordVisibles[cuenta.asignacion_id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+                  </button>
+                  <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click="copiarPassword(cuenta)">
+                    <i class="ti ti-copy"></i>
+                  </button>
+                </template>
+                <span v-else class="password-locked" title="Solo un JEFE puede ver esta contraseña. Usa &quot;Enviar por WhatsApp&quot; para entregarla al empleado.">
+                  <i class="ti ti-lock" aria-hidden="true"></i>
+                </span>
               </div>
             </td>
             <td>
@@ -487,6 +501,13 @@ onMounted(async () => {
   font-family: var(--font-mono, monospace);
   letter-spacing: 0.05em;
   min-width: 72px;
+}
+
+.password-locked {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  color: var(--color-text-tertiary);
 }
 
 .url-link {

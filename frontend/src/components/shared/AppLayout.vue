@@ -157,6 +157,7 @@ const navGrupos = computed(() => [
     label: 'Gestión',
     items: [
       { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
+      { path: '/personal-registros', label: 'Pre-registro de personal', icon: 'ti ti-id-badge-2' },
       { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
       { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
       { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },

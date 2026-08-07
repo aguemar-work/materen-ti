@@ -44,6 +44,13 @@ export default [
     component: () => import('../../modules/entregas/EntregaView.vue'),
     meta: { public: true },
   },
+  {
+    // Pre-registro público de personal (candidato/nuevo ingreso, sin sesión)
+    path: '/personal-registro',
+    name: 'personal-registro',
+    component: () => import('../../modules/personal/PersonalRegistroView.vue'),
+    meta: { public: true },
+  },
   // Compat /ticket/* → /soporte/*: hay enlaces viejos ya enviados por
   // correo (functions/tickets.ts) y copiados/impresos por el staff que
   // no se pueden actualizar. Params y query (?entrega=) se conservan.
