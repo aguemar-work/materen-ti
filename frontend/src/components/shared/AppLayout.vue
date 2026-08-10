@@ -38,10 +38,51 @@ onUnmounted(() => {
 // aquí ya refresca TicketsView si está montada, sin que ella necesite su
 // propia suscripción al mismo canal.
 const ticketsStore = useTicketsStore();
+
+// Cola viva de tickets sin asignar para el badge del sidebar: baja cuando
+// alguien asigna el ticket, no cuando alguien "lo ve" (no es un contador de
+// no-leídos). Se reusa pendientesTickets() del Dashboard, no se agrega
+// query nueva.
+const ticketsSinAsignar = ref(0);
+async function cargarSinAsignar() {
+  try {
+    const { sinAsignar } = await insforgeApi.pendientesTickets();
+    ticketsSinAsignar.value = sinAsignar.length;
+  } catch {
+    // Sin dato fiable: se deja el último valor conocido.
+  }
+}
+onMounted(cargarSinAsignar);
+
 useRealtimeRefresco('tickets:list', (payload) => {
   if (payload?.op === 'INSERT') reproducirNotificacion();
   ticketsStore.cargar();
+  cargarSinAsignar();
 });
+
+// Aviso emergente de ticket nuevo: canal dedicado "tickets:nuevos"
+// (migración 044) porque tickets:list es un trigger de SENTENCIA y no
+// trae datos de la fila. Cola acotada para no tapar la pantalla si
+// entran varios tickets juntos.
+const MAX_AVISOS = 4;
+const avisos = ref([]);
+let avisoSeq = 0;
+
+function descartarAviso(key) {
+  avisos.value = avisos.value.filter((a) => a.key !== key);
+}
+
+useRealtimeRefresco('tickets:nuevos', (payload) => {
+  if (avisos.value.length >= MAX_AVISOS) return;
+  const key = ++avisoSeq;
+  avisos.value.push({ key, id: payload.id, codigo: payload.codigo, titulo: payload.titulo });
+  setTimeout(() => descartarAviso(key), 6000);
+});
+
+function irAAvisoTicket(aviso) {
+  descartarAviso(aviso.key);
+  router.push(`/tickets/${aviso.id}`);
+}
 
 const sidebarAbierto = ref(false);
 
@@ -163,6 +204,7 @@ const navGrupos = computed(() => [
       { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
       { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books' },
       { path: '/problemas', label: 'Problemas', icon: 'ti ti-alert-hexagon' },
+      { path: '/encuestas', label: 'Encuestas', icon: 'ti ti-clipboard-list' },
     ],
   },
   {
@@ -345,6 +387,11 @@ async function cerrarSesion() {
           >
             <i :class="item.icon" aria-hidden="true"></i>
             <span class="sb-nav-label">{{ item.label }}</span>
+            <span
+              v-if="item.path === '/tickets' && ticketsSinAsignar"
+              class="badge-count sb-nav-badge"
+              :title="`${ticketsSinAsignar} ticket(s) sin asignar`"
+            >{{ ticketsSinAsignar }}</span>
           </RouterLink>
         </div>
       </nav>
@@ -393,6 +440,33 @@ async function cerrarSesion() {
 
       <slot />
     </div>
+
+    <!-- Aviso emergente de ticket nuevo (tiempo real) -->
+    <transition-group name="aviso-fade" tag="div" class="aviso-stack">
+      <div
+        v-for="a in avisos"
+        :key="a.key"
+        class="aviso-card"
+        role="button"
+        tabindex="0"
+        @click="irAAvisoTicket(a)"
+        @keydown.enter="irAAvisoTicket(a)"
+      >
+        <i class="ti ti-headset" aria-hidden="true"></i>
+        <div class="aviso-card-texto">
+          <span class="aviso-card-titulo">Ticket nuevo · {{ a.codigo }}</span>
+          <span class="aviso-card-sub">{{ a.titulo }}</span>
+        </div>
+        <button
+          type="button"
+          class="aviso-card-cerrar"
+          aria-label="Descartar aviso"
+          @click.stop="descartarAviso(a.key)"
+        >
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+    </transition-group>
   </div>
 </template>
 
@@ -707,6 +781,30 @@ async function cerrarSesion() {
   color: var(--sb-active-text);
 }
 
+/* Badge de "sin asignar": cola viva, no contador de no-leídos */
+.sb-nav-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+@media (min-width: 769px) {
+  .sidebar--colapsado .sb-nav-item {
+    position: relative;
+  }
+
+  .sidebar--colapsado .sb-nav-badge {
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    margin-left: 0;
+    padding: 1px 5px;
+  }
+}
+
 /* ── Footer de usuario ───────────────────────────────────────── */
 .sb-footer {
   flex-shrink: 0;
@@ -804,6 +902,98 @@ async function cerrarSesion() {
 .sb-fade-enter-from,
 .sb-fade-leave-to {
   opacity: 0;
+}
+
+/* ── Aviso emergente de ticket nuevo ─────────────────────────── */
+.aviso-stack {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(320px, calc(100vw - 32px));
+}
+
+.aviso-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+}
+
+.aviso-card:hover {
+  border-color: var(--color-border);
+}
+
+.aviso-card .ti-headset {
+  color: var(--color-accent-soft);
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.aviso-card-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.aviso-card-titulo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.aviso-card-sub {
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aviso-card-cerrar {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 2px;
+  border-radius: 6px;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.aviso-card-cerrar:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.aviso-fade-enter-active,
+.aviso-fade-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+.aviso-fade-enter-from,
+.aviso-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (max-width: 768px) {
+  .aviso-stack {
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
 }
 
 /* ── Responsive ──────────────────────────────────────────────── */

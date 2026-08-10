@@ -58,10 +58,13 @@ const METODOS = [
   'getProblemaAbiertoDeTicket', 'listCategoriasRecurrentes', 'listAccionesCorrectivasVencidas', 'pendientesProblemas',
   // pre-registro de personal
   'listPersonalRegistrosPage', 'listPersonalRegistrosFiltrados', 'marcarUsado',
+  // encuestas
+  'listEncuestas', 'getEncuesta', 'createEncuesta', 'updateEncuesta', 'softDeleteEncuesta',
+  'listRondas', 'crearRonda', 'cerrarRonda', 'listRespuestas',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 133 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 142 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

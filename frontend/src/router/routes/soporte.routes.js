@@ -51,6 +51,13 @@ export default [
     component: () => import('../../modules/personal/PersonalRegistroView.vue'),
     meta: { public: true },
   },
+  {
+    // Responder una ronda de encuesta anónima (sin sesión, sin un solo uso)
+    path: '/encuesta/:slug',
+    name: 'encuesta-publica',
+    component: () => import('../../modules/encuestas/EncuestaPublicaView.vue'),
+    meta: { public: true },
+  },
   // Compat /ticket/* → /soporte/*: hay enlaces viejos ya enviados por
   // correo (functions/tickets.ts) y copiados/impresos por el staff que
   // no se pueden actualizar. Params y query (?entrega=) se conservan.
