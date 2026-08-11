@@ -36,6 +36,14 @@ export function setupGuards(router) {
       return { path: '/dashboard' };
     }
 
+    // Solo JEFE: puede migrar pre-registros a empleados y eliminarlos
+    // (hard delete, migración 046). El formulario público /personal-registro
+    // sigue abierto para cualquiera, sin sesión.
+    if (to.path === '/personal-registros' && !auth.esJefe) {
+      registrarAccesoDenegado(to.path);
+      return { path: '/dashboard' };
+    }
+
     // La pestaña Staff de Configuración es solo para el JEFE
     if (to.name === 'configuracion-staff' && !auth.esJefe) {
       registrarAccesoDenegado(to.path);

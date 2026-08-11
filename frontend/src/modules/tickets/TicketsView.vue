@@ -99,6 +99,7 @@ async function copiarEnlaceSoporte() {
 // "Más" (patrón mobile); en escritorio siguen como botones sueltos.
 const accionesMas = computed(() => [
   { icono: 'ti-report', label: 'Reporte', onClick: () => { mostrarReporte.value = true; } },
+  { icono: 'ti-mood-smile', label: 'Satisfacción', onClick: () => router.push('/tickets/satisfaccion') },
   { icono: 'ti-link', label: 'Enlace soporte', onClick: copiarEnlaceSoporte },
 ]);
 
@@ -127,6 +128,9 @@ onMounted(async () => {
       <template #acciones>
         <button class="btn solo-escritorio" type="button" @click="mostrarReporte = true">
           <i class="ti ti-report" aria-hidden="true"></i> Reporte
+        </button>
+        <button class="btn solo-escritorio" type="button" @click="router.push('/tickets/satisfaccion')">
+          <i class="ti ti-mood-smile" aria-hidden="true"></i> Satisfacción
         </button>
         <button class="btn solo-escritorio" type="button" title="Copiar enlace de soporte (reportar o buscar tickets)" @click="copiarEnlaceSoporte">
           <i class="ti ti-link" aria-hidden="true"></i> Enlace soporte

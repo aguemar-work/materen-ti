@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { usePersonalRegistrosStore } from '../../stores/personalRegistros.js';
+import { useAuthStore } from '../../stores/auth.js';
+import { insforgeApi } from '../../api/insforge.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
@@ -11,9 +13,11 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import Pagination from '../../components/shared/Pagination.vue';
+import EmpleadoForm from '../empleados/EmpleadoForm.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const store = usePersonalRegistrosStore();
+const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
@@ -53,6 +57,56 @@ async function toggleUsado(registro) {
     await store.marcarUsado(registro.id, !registro.usado);
   } catch (e) {
     showToast(e?.message || 'Error al actualizar', 'error');
+  }
+}
+
+// ── Migrar a empleado (solo JEFE, ver migración 046) ───────────────
+// Compara por DNI: si ya existe un empleado, abre su edición prellenada
+// con los datos del pre-registro; si no, abre el alta. El pre-registro
+// solo se elimina (hard delete) si el guardado del empleado tiene éxito.
+const mostrarFormEmpleado = ref(false);
+const empleadoParaForm = ref(null);
+const registroEnMigracion = ref(null);
+const migrandoId = ref(null);
+
+async function migrarAEmpleado(registro) {
+  migrandoId.value = registro.id;
+  try {
+    const existente = await insforgeApi.buscarPorDni(registro.dni);
+    empleadoParaForm.value = existente
+      ? {
+          ...existente,
+          nombres: registro.nombres,
+          apellidos: registro.apellidos,
+          correo_personal: registro.correo_personal || existente.correo_personal,
+          whatsapp: registro.celular || existente.whatsapp,
+        }
+      : {
+          nombres: registro.nombres,
+          apellidos: registro.apellidos,
+          dni: registro.dni,
+          correo_personal: registro.correo_personal || '',
+          whatsapp: registro.celular || '',
+        };
+    registroEnMigracion.value = registro;
+    mostrarFormEmpleado.value = true;
+  } catch (e) {
+    showToast(e?.message || 'Error al buscar empleado por DNI', 'error');
+  } finally {
+    migrandoId.value = null;
+  }
+}
+
+async function onCerrarMigracion(resultado) {
+  mostrarFormEmpleado.value = false;
+  if (!resultado) return;
+  try {
+    await store.eliminar(registroEnMigracion.value.id);
+    showToast('Empleado migrado y pre-registro eliminado', 'success');
+  } catch (e) {
+    showToast(e?.message || 'El empleado se guardó, pero no se pudo eliminar el pre-registro', 'error');
+  } finally {
+    registroEnMigracion.value = null;
   }
 }
 
@@ -108,10 +162,11 @@ onMounted(async () => {
                 <th scope="col">Correo personal</th>
                 <ThOrdenable clave="created_at" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Fecha</ThOrdenable>
                 <th scope="col">Estado</th>
+                <th v-if="auth.esJefe" scope="col">Migrar</th>
               </tr>
             </thead>
             <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="6" />
+              <SkeletonTabla v-if="cargando" :columnas="auth.esJefe ? 7 : 6" />
               <template v-else>
               <tr v-for="r in lista" :key="r.id">
                 <td class="registro-dni">{{ r.dni }}</td>
@@ -131,6 +186,18 @@ onMounted(async () => {
                     {{ r.usado ? 'Usado' : 'Pendiente' }}
                   </button>
                 </td>
+                <td v-if="auth.esJefe">
+                  <button
+                    class="btn"
+                    type="button"
+                    title="Migrar a empleado (alta o actualización por DNI) y eliminar este pre-registro"
+                    :disabled="migrandoId === r.id"
+                    @click="migrarAEmpleado(r)"
+                  >
+                    <i :class="migrandoId === r.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-user-plus'" aria-hidden="true"></i>
+                    Migrar a empleado
+                  </button>
+                </td>
               </tr>
               </template>
             </tbody>
@@ -139,6 +206,8 @@ onMounted(async () => {
         </div>
       </div>
     </main>
+
+    <EmpleadoForm v-if="mostrarFormEmpleado" :empleado="empleadoParaForm" @cerrar="onCerrarMigracion" />
   </div>
 </template>
 

@@ -98,6 +98,15 @@ function actualizar(valor) {
   font-weight: 400;
 }
 
+/* Radios uno por línea en mobile: en flex-wrap una opción sola se ve
+   suelta y el toque es menos preciso que con la fila completa. */
+@media (max-width: 768px) {
+  .pc-opciones {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
 .pc-escala {
   display: flex;
   gap: 8px;

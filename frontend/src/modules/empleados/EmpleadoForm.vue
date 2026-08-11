@@ -64,7 +64,11 @@ const confirmarDescarte = ref(false);
 const dialogoDescarte = ref(null);
 
 function resetForm() {
-  if (props.empleado) {
+  // Rama por `id`, no por truthiness: un prellenado de alta (ej. migración
+  // desde pre-registro de personal) llega como objeto truthy SIN id, y debe
+  // tratarse como alta (estado/empresa en blanco), no como edición de un
+  // empleado real que ya tendría esos campos.
+  if (props.empleado?.id) {
     form.value = {
       nombres: props.empleado.nombres,
       apellidos: props.empleado.apellidos,
@@ -76,6 +80,22 @@ function resetForm() {
       empresa_id: props.empleado.empresa_id,
       area_obra_id: props.empleado.area_obra_id || '',
       estado: props.empleado.estado,
+      fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
+    };
+  } else if (props.empleado) {
+    // Prellenado parcial para alta (sin id): mismos defaults del alta en
+    // blanco, con lo que sí trae el prellenado superpuesto.
+    form.value = {
+      nombres: props.empleado.nombres || '',
+      apellidos: props.empleado.apellidos || '',
+      dni: props.empleado.dni || '',
+      telefono: props.empleado.telefono || '',
+      whatsapp: props.empleado.whatsapp || '',
+      correo_personal: props.empleado.correo_personal || '',
+      cargo: props.empleado.cargo || '',
+      empresa_id: props.empleado.empresa_id || '',
+      area_obra_id: props.empleado.area_obra_id || '',
+      estado: 'Activo',
       fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
     };
   } else {

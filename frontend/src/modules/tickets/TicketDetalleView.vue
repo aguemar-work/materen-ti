@@ -10,6 +10,7 @@ import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ProblemaForm from '../problemas/ProblemaForm.vue';
 
 const route = useRoute();
@@ -472,8 +473,8 @@ onUnmounted(() => store.limpiar());
             <!-- terminal: solo lectura + Reabrir (jefe) -->
             <template v-if="ESTADOS_TERMINALES.includes(ticket.estado)">
               <p class="tk-detalle">Prioridad: {{ PRIORIDADES.find((p) => p.valor === ticket.prioridad)?.label || ticket.prioridad }}</p>
-              <p class="tk-detalle">Nivel de atención: {{ NIVELES_ATENCION.find((n) => n.valor === ticket.nivel_atencion)?.label || 'Sin definir' }}</p>
-              <p class="tk-detalle">Asignado a: {{ staffPorId[ticket.asignado_a] || 'Sin asignar' }}</p>
+              <p class="tk-detalle">Nivel de atención: <TextoVacio :valor="NIVELES_ATENCION.find((n) => n.valor === ticket.nivel_atencion)?.label" placeholder="Sin definir" /></p>
+              <p class="tk-detalle">Asignado a: <TextoVacio :valor="staffPorId[ticket.asignado_a]" placeholder="Sin asignar" /></p>
               <button v-if="auth.esJefe" class="btn tk-btn-reabrir" type="button" :disabled="reabriendo" @click="reabrirTicket">
                 <i :class="reabriendo ? 'ti ti-loader-2 spinner-icon' : 'ti ti-refresh'" aria-hidden="true"></i> {{ reabriendo ? 'Reabriendo...' : 'Reabrir ticket' }}
               </button>

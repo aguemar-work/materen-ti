@@ -4,7 +4,7 @@ import { getClient } from '../api/insforge.js';
 async function cargarStaff(userId) {
   const { data, error } = await getClient().database
     .from('staff')
-    .select('rol, activo')
+    .select('rol, activo, nombre')
     .eq('user_id', userId)
     .maybeSingle();
   if (error) throw error;
@@ -15,6 +15,7 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     rol: null,
+    nombre: null,
     cargando: false,
     sesionCargada: false,
   }),
@@ -45,6 +46,7 @@ export const useAuthStore = defineStore('auth', {
 
         this.user = data.user;
         this.rol = staff.rol;
+        this.nombre = staff.nombre;
       } finally {
         this.cargando = false;
       }
@@ -54,6 +56,7 @@ export const useAuthStore = defineStore('auth', {
       await getClient().auth.signOut();
       this.user = null;
       this.rol = null;
+      this.nombre = null;
     },
 
     // Flujo de reestablecer contraseña (método "code"):
@@ -83,6 +86,7 @@ export const useAuthStore = defineStore('auth', {
         if (error || !data?.user) {
           this.user = null;
           this.rol = null;
+          this.nombre = null;
           return;
         }
 
@@ -98,11 +102,13 @@ export const useAuthStore = defineStore('auth', {
           await getClient().auth.signOut().catch(() => {});
           this.user = null;
           this.rol = null;
+          this.nombre = null;
           return;
         }
 
         this.user = data.user;
         this.rol = staff.rol;
+        this.nombre = staff.nombre;
       } finally {
         this.cargando = false;
         this.sesionCargada = true;

@@ -48,6 +48,16 @@ export const personalRegistrosApi = {
       .eq('id', id);
     if (error) throw error;
   },
+
+  // Hard delete real (ver migración 046): se llama solo después de migrar
+  // este pre-registro a `empleados` (alta o actualización por DNI).
+  async eliminarRegistro(id) {
+    const { error } = await getClient().database
+      .from('personal_registros')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
 };
 
 function mapPersonalRegistro(row) {

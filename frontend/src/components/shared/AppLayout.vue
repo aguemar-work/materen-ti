@@ -224,7 +224,11 @@ const navGrupos = computed(() => [
     label: 'Gestión',
     items: [
       { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
-      { path: '/personal-registros', label: 'Pre-registro de personal', icon: 'ti ti-id-badge-2' },
+      // Solo JEFE: la migración a empleados y el hard delete que hace esta
+      // vista (migración 046) quedan reservados a ese rol.
+      ...(auth.esJefe
+        ? [{ path: '/personal-registros', label: 'Pre-registro de personal', icon: 'ti ti-id-badge-2' }]
+        : []),
       { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
       { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
       { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
@@ -248,7 +252,7 @@ const navGrupos = computed(() => [
   },
 ]);
 
-const userInitial = computed(() => (auth.user?.email?.[0] ?? '?').toUpperCase());
+const userInitial = computed(() => (auth.nombre?.[0] ?? auth.user?.email?.[0] ?? '?').toUpperCase());
 
 function cerrar() {
   sidebarAbierto.value = false;
@@ -423,13 +427,14 @@ async function cerrarSesion() {
       </nav>
 
       <div class="sb-footer">
-        <div class="sb-user" :title="sidebarColapsado ? auth.user?.email : null">
+        <div class="sb-user" :title="sidebarColapsado ? (auth.nombre || auth.user?.email) : null">
           <div class="sb-user-avatar" aria-hidden="true">{{ userInitial }}</div>
           <div class="sb-user-info">
-            <span class="sb-user-email" :title="auth.user?.email">{{ auth.user?.email }}</span>
+            <span class="sb-user-email" :title="auth.user?.email">{{ auth.nombre || auth.user?.email }}</span>
             <span class="sb-user-rol">{{ auth.rol ?? 'Staff' }}</span>
           </div>
         </div>
+        <div class="sb-footer-acciones">
         <NotificacionesCampana />
         <button
           class="sb-logout"
@@ -440,13 +445,14 @@ async function cerrarSesion() {
           <i :class="tema === 'dark' ? 'ti ti-sun' : 'ti ti-moon'" aria-hidden="true"></i>
         </button>
         <button
-          class="sb-logout"
+          class="sb-logout sb-logout--salir"
           type="button"
           title="Cerrar sesión"
           @click="cerrarSesion"
         >
           <i class="ti ti-logout" aria-hidden="true"></i>
         </button>
+        </div>
       </div>
     </aside>
 
@@ -463,6 +469,9 @@ async function cerrarSesion() {
           <i class="ti ti-menu-2" aria-hidden="true"></i>
         </button>
         <span class="topbar-title">Materen — Sistema TI</span>
+        <div class="topbar-campana">
+          <NotificacionesCampana />
+        </div>
       </div>
 
       <slot />
@@ -606,6 +615,18 @@ async function cerrarSesion() {
 
   .sidebar--colapsado .sb-user-info {
     display: none;
+  }
+
+  .sidebar--colapsado .sb-footer-acciones {
+    flex-direction: column;
+    padding-left: 0;
+    padding-top: 8px;
+    border-left: none;
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .sidebar--colapsado .sb-logout--salir {
+    margin-top: 4px;
   }
 }
 
@@ -838,6 +859,22 @@ async function cerrarSesion() {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Agrupa campana/tema/logout aparte de la identidad, con un separador
+   sutil (mismo tono que la línea sidebar/contenido) para que se lean
+   como dos bloques distintos en vez de una fila continua de iconos. */
+.sb-footer-acciones {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+.sb-logout--salir {
+  margin-left: 4px;
 }
 
 .sb-user {
@@ -1085,6 +1122,10 @@ async function cerrarSesion() {
     font-weight: 700;
     color: var(--color-text-primary);
     letter-spacing: -0.01em;
+  }
+
+  .topbar-campana {
+    margin-left: auto;
   }
 }
 </style>

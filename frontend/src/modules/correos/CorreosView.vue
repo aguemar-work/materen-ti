@@ -13,6 +13,7 @@ import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
@@ -102,6 +103,13 @@ function abrirEditar(correo) {
   mostrarForm.value = true;
 }
 
+function accionesDe(correo) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(correo) },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = correo; } },
+  ];
+}
+
 function onFormCerrado(guardado) {
   const fueEdicion = !!correoEditar.value;
   mostrarForm.value = false;
@@ -174,7 +182,8 @@ onMounted(async () => {
           </select>
         </div>
 
-        <div v-if="error" class="no-results correos-error">{{ error }}</div>
+        <div v-if="cargando" class="no-results solo-movil">Cargando correos...</div>
+        <div v-else-if="error" class="no-results correos-error">{{ error }}</div>
 
         <EmptyState
           v-else-if="!cargando && total === 0"
@@ -187,8 +196,9 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else-if="cargando || total > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando correos compartidos…</p>
+        <template v-if="!error && (cargando || total > 0)">
+        <p v-if="cargando" class="sr-only" role="status">Cargando correos compartidos…</p>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Correos compartidos y reutilizables">
             <thead>
               <tr>
@@ -207,7 +217,7 @@ onMounted(async () => {
               <template v-else>
               <tr v-for="correo in lista" :key="correo.id">
                 <td>
-                  <div class="user-name">{{ correo.plataforma_nombre || '—' }}</div>
+                  <div class="user-name"><TextoVacio :valor="correo.plataforma_nombre" /></div>
                 </td>
                 <td>
                   <BadgeEstado tipo="tipo_cuenta" :valor="correo.tipo_cuenta" />
@@ -300,8 +310,64 @@ onMounted(async () => {
               </template>
             </tbody>
           </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Correos compartidos y reutilizables">
+          <li v-for="correo in lista" :key="correo.id" class="tarjeta-fila">
+            <div class="tarjeta-fila__principal user-name"><TextoVacio :valor="correo.plataforma_nombre" /></div>
+            <div class="tarjeta-fila__sec">
+              <span class="correo-usuario">{{ correo.usuario }}</span>
+            </div>
+            <div class="tarjeta-fila__sec">
+              <template v-if="correo.tipo_cuenta === 'reutilizable'">
+                <RouterLink
+                  v-if="correo.asignados?.length"
+                  class="empleado-link"
+                  :to="`/empleados/${correo.asignados[0].id}`"
+                >
+                  {{ correo.asignados[0].nombre }}
+                </RouterLink>
+                <span v-else class="badge badge--success">
+                  <i class="ti ti-circle-check"></i> Libre
+                </span>
+              </template>
+              <template v-else>
+                <span v-if="correo.asignados?.length">
+                  {{ correo.asignados.length }} usuario{{ correo.asignados.length === 1 ? '' : 's' }}
+                </span>
+                <TextoVacio v-else placeholder="Sin usuarios" />
+              </template>
+            </div>
+            <div class="tarjeta-fila__sec password-cell">
+              <span class="password-text">{{ passwordVisibles[correo.id] || '••••••••' }}</span>
+              <button
+                class="icon-btn"
+                type="button"
+                :title="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
+                :aria-label="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
+                @click.stop="togglePassword(correo)"
+              >
+                <i :class="passwordVisibles[correo.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+              </button>
+              <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click.stop="copiarPassword(correo)">
+                <i class="ti ti-copy"></i>
+              </button>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <div class="tarjeta-fila__badges">
+                <BadgeEstado tipo="tipo_cuenta" :valor="correo.tipo_cuenta" />
+                <span v-if="correo.requiere_rotacion" class="badge badge--warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
+                  <i class="ti ti-alert-triangle"></i> Rotar
+                </span>
+              </div>
+              <MenuAcciones :acciones="accionesDe(correo)" :label="`Acciones de ${correo.usuario}`" />
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        </template>
       </div>
     </main>
 

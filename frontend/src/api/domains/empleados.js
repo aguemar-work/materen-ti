@@ -86,6 +86,19 @@ export const empleadosApi = {
     return data ? mapEmpleado(data) : null;
   },
 
+  // Sin filtro de deleted_at a propósito: el unique de `dni` (migración
+  // 002) es global, no parcial, así que un empleado dado de baja también
+  // debe detectarse como coincidencia (ej. migración de pre-registro).
+  async buscarPorDni(dni) {
+    const { data, error } = await getClient().database
+      .from('empleados')
+      .select('*, empresas(nombre), areas_obras(nombre)')
+      .eq('dni', dni)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapEmpleado(data) : null;
+  },
+
   async createEmpleado(datos) {
     const { data, error } = await getClient().database
       .from('empleados')

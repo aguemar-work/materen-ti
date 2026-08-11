@@ -29,10 +29,10 @@ const CLARO = {
   success: { bg: '#E6F7F1', text: '#157955' },
   warning: { bg: '#FBF0DC', text: '#845A0E' },
   danger:  { bg: '#FAEAE3', text: '#963D28' },
-  info:    { bg: '#EDEBF7', text: '#5B58A0' },
+  info:    { bg: '#E7EAF7', text: '#3B4FA0' },
   purple:  { bg: '#EDE8F5', text: '#534878' },
   sky:     { bg: '#E5F2F0', text: '#256B7A' },
-  teal:    { bg: '#E6F7F1', text: '#126B52' },
+  teal:    { bg: '#E1EEF5', text: '#1D5C8A' },
   neutral: { bg: '#EFF1F3', text: '#525862' },
 };
 
@@ -42,10 +42,10 @@ const OSCURO = {
   success: { bg: '#1A2E2A', text: '#6EE7B7' },
   warning: { bg: '#2E2719', text: '#E8C878' },
   danger:  { bg: '#2F2120', text: '#E88870' },
-  info:    { bg: '#212230', text: '#A8A5E0' },
+  info:    { bg: '#1C2130', text: '#9CAAE2' },
   purple:  { bg: '#21212C', text: '#B8A8E8' },
   sky:     { bg: '#18252A', text: '#7ECBE0' },
-  teal:    { bg: '#152524', text: '#6EE7B7' },
+  teal:    { bg: '#17232D', text: '#81BBE4' },
   neutral: { bg: '#24282D', text: '#9CA3AF' },
 };
 

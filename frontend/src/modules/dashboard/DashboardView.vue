@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 import { construirFeedPendientes } from './pendientesFeed.js';
 
 const stats = ref(null);
@@ -72,7 +73,7 @@ onMounted(async () => {
                   <div class="recientes-avatar">{{ emp.nombres[0] }}{{ emp.apellidos[0] }}</div>
                   <div class="recientes-info">
                     <span class="recientes-nombre">{{ emp.nombres }} {{ emp.apellidos }}</span>
-                    <span class="recientes-cargo">{{ emp.cargo || emp.empresa_nombre || '—' }}</span>
+                    <span class="recientes-cargo"><TextoVacio :valor="emp.cargo || emp.empresa_nombre" /></span>
                     <BadgeEstado tipo="empleado" :valor="emp.estado" status />
                   </div>
                 </RouterLink>
@@ -237,7 +238,7 @@ onMounted(async () => {
 .stat-icon--licencias { background: var(--color-teal-bg); color: var(--color-teal-text); }
 .stat-icon--alerta    { background: var(--color-warning-bg-strong); color: var(--color-warning-text); }
 .stat-icon--equipos   { background: var(--color-sky-bg); color: var(--color-sky-text); }
-.stat-icon--tickets   { background: var(--color-purple-bg); color: var(--color-purple-text); }
+.stat-icon--tickets   { background: var(--color-danger-bg); color: var(--color-danger-text); }
 
 .stat-card--alerta { border-color: var(--color-warning-border); }
 

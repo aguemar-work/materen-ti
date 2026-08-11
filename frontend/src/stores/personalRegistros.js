@@ -79,5 +79,14 @@ export const usePersonalRegistrosStore = defineStore('personalRegistros', {
       const fila = this.lista.find((r) => r.id === id);
       if (fila) fila.usado = usado;
     },
+
+    // Hard delete real (migración 046): se llama solo tras migrar este
+    // pre-registro a `empleados`.
+    async eliminar(id) {
+      this.error = null;
+      await insforgeApi.eliminarRegistro(id);
+      this.lista = this.lista.filter((r) => r.id !== id);
+      this.total -= 1;
+    },
   },
 });

@@ -91,7 +91,8 @@ onMounted(async () => {
           </select>
         </div>
 
-        <div v-if="error" class="no-results problemas-error">{{ error }}</div>
+        <div v-if="cargando" class="no-results solo-movil">Cargando problemas...</div>
+        <div v-else-if="error" class="no-results problemas-error">{{ error }}</div>
 
         <EmptyState
           v-else-if="!cargando && total === 0"
@@ -104,8 +105,9 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else-if="cargando || total > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando problemas…</p>
+        <template v-if="!error && (cargando || total > 0)">
+        <p v-if="cargando" class="sr-only" role="status">Cargando problemas…</p>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Problemas">
             <thead>
               <tr>
@@ -134,8 +136,27 @@ onMounted(async () => {
               </template>
             </tbody>
           </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Problemas">
+          <li v-for="p in lista" :key="p.id" class="tarjeta-fila tarjeta-fila--clic" @click="verProblema(p)">
+            <div class="tarjeta-fila__principal">{{ p.titulo }}</div>
+            <div class="tarjeta-fila__sec">
+              <span v-if="p.responsable_id">{{ staffPorId[p.responsable_id] || 'Staff' }}</span>
+              <TextoVacio v-else placeholder="Sin asignar" />
+              <span aria-hidden="true">·</span>
+              <span>{{ formatFechaHora(p.updated_at) }}</span>
+            </div>
+            <div class="tarjeta-fila__badges">
+              <BadgeEstado tipo="problema_severidad" :valor="p.severidad" />
+              <BadgeEstado tipo="problema_estado" :valor="p.estado" />
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        </template>
       </div>
     </main>
 
