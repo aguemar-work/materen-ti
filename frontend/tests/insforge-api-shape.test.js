@@ -61,10 +61,12 @@ const METODOS = [
   // encuestas
   'listEncuestas', 'getEncuesta', 'createEncuesta', 'updateEncuesta', 'softDeleteEncuesta',
   'listRondas', 'crearRonda', 'cerrarRonda', 'listRespuestas',
+  // notificaciones
+  'listNotificaciones', 'listLecturas', 'marcarLeida', 'marcarVariasLeidas',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 142 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 146 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

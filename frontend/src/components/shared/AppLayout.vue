@@ -10,6 +10,8 @@ import { temaActual, alternarTema } from '../../core/tema.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useNotificacionesStore } from '../../stores/notificaciones.js';
+import NotificacionesCampana from './NotificacionesCampana.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -60,28 +62,52 @@ useRealtimeRefresco('tickets:list', (payload) => {
   cargarSinAsignar();
 });
 
-// Aviso emergente de ticket nuevo: canal dedicado "tickets:nuevos"
-// (migración 044) porque tickets:list es un trigger de SENTENCIA y no
-// trae datos de la fila. Cola acotada para no tapar la pantalla si
-// entran varios tickets juntos.
+// Notificaciones (migración 045): campana persistente en el footer del
+// sidebar + aviso emergente genérico. Reemplaza el aviso que antes escuchaba
+// solo "tickets:nuevos" (migración 044) — ese canal sigue existiendo pero ya
+// no se usa desde el frontend, "notificaciones:nuevas" cubre tickets también.
+const notificacionesStore = useNotificacionesStore();
+onMounted(() => {
+  if (auth.user) notificacionesStore.cargar(auth.user.id);
+});
+
 const MAX_AVISOS = 4;
 const avisos = ref([]);
 let avisoSeq = 0;
+
+const ICONO_AVISO_POR_TIPO = {
+  ticket_creado: 'ti-headset',
+  cuenta_creada: 'ti-key',
+  empleado_alta: 'ti-user-plus',
+  empleado_baja: 'ti-user-off',
+};
 
 function descartarAviso(key) {
   avisos.value = avisos.value.filter((a) => a.key !== key);
 }
 
-useRealtimeRefresco('tickets:nuevos', (payload) => {
+useRealtimeRefresco('notificaciones:nuevas', (payload) => {
+  notificacionesStore.agregar(payload);
   if (avisos.value.length >= MAX_AVISOS) return;
   const key = ++avisoSeq;
-  avisos.value.push({ key, id: payload.id, codigo: payload.codigo, titulo: payload.titulo });
+  avisos.value.push({
+    key,
+    id: payload.id,
+    titulo: payload.titulo,
+    url_destino: payload.url_destino,
+    icono: ICONO_AVISO_POR_TIPO[payload.tipo] || 'ti-bell',
+  });
   setTimeout(() => descartarAviso(key), 6000);
 });
 
-function irAAvisoTicket(aviso) {
+async function irAAviso(aviso) {
   descartarAviso(aviso.key);
-  router.push(`/tickets/${aviso.id}`);
+  router.push(aviso.url_destino);
+  try {
+    await notificacionesStore.marcarLeida(aviso.id, auth.user.id);
+  } catch {
+    // El store ya revirtió el estado optimista; sin más feedback posible acá.
+  }
 }
 
 const sidebarAbierto = ref(false);
@@ -404,6 +430,7 @@ async function cerrarSesion() {
             <span class="sb-user-rol">{{ auth.rol ?? 'Staff' }}</span>
           </div>
         </div>
+        <NotificacionesCampana />
         <button
           class="sb-logout"
           type="button"
@@ -441,7 +468,7 @@ async function cerrarSesion() {
       <slot />
     </div>
 
-    <!-- Aviso emergente de ticket nuevo (tiempo real) -->
+    <!-- Aviso emergente de notificación nueva (tiempo real) -->
     <transition-group name="aviso-fade" tag="div" class="aviso-stack">
       <div
         v-for="a in avisos"
@@ -449,13 +476,12 @@ async function cerrarSesion() {
         class="aviso-card"
         role="button"
         tabindex="0"
-        @click="irAAvisoTicket(a)"
-        @keydown.enter="irAAvisoTicket(a)"
+        @click="irAAviso(a)"
+        @keydown.enter="irAAviso(a)"
       >
-        <i class="ti ti-headset" aria-hidden="true"></i>
+        <i class="ti" :class="a.icono" aria-hidden="true"></i>
         <div class="aviso-card-texto">
-          <span class="aviso-card-titulo">Ticket nuevo · {{ a.codigo }}</span>
-          <span class="aviso-card-sub">{{ a.titulo }}</span>
+          <span class="aviso-card-titulo">{{ a.titulo }}</span>
         </div>
         <button
           type="button"
@@ -904,10 +930,10 @@ async function cerrarSesion() {
   opacity: 0;
 }
 
-/* ── Aviso emergente de ticket nuevo ─────────────────────────── */
+/* ── Aviso emergente de notificación nueva ───────────────────── */
 .aviso-stack {
   position: fixed;
-  bottom: 16px;
+  top: 16px;
   right: 16px;
   z-index: var(--z-popover);
   display: flex;
@@ -932,7 +958,7 @@ async function cerrarSesion() {
   border-color: var(--color-border);
 }
 
-.aviso-card .ti-headset {
+.aviso-card > i {
   color: var(--color-accent-soft);
   font-size: 18px;
   flex-shrink: 0;
@@ -951,14 +977,11 @@ async function cerrarSesion() {
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
-}
-
-.aviso-card-sub {
-  font-size: 12.5px;
-  color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .aviso-card-cerrar {
