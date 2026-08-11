@@ -64,8 +64,8 @@ useRealtimeRefresco('tickets:list', (payload) => {
 
 // Notificaciones (migración 045): campana persistente en el footer del
 // sidebar + aviso emergente genérico. Reemplaza el aviso que antes escuchaba
-// solo "tickets:nuevos" (migración 044) — ese canal sigue existiendo pero ya
-// no se usa desde el frontend, "notificaciones:nuevas" cubre tickets también.
+// solo "tickets:nuevos" (migración 044) — ese canal se retiró en la
+// migración 052, "notificaciones:nuevas" cubre tickets también.
 const notificacionesStore = useNotificacionesStore();
 onMounted(() => {
   if (auth.user) notificacionesStore.cargar(auth.user.id);
@@ -80,14 +80,22 @@ const ICONO_AVISO_POR_TIPO = {
   cuenta_creada: 'ti-key',
   empleado_alta: 'ti-user-plus',
   empleado_baja: 'ti-user-off',
+  ticket_asignado: 'ti-user-check',
+  ticket_estado_cambiado: 'ti-progress',
+  ticket_comentario_nuevo: 'ti-message-circle',
+  ticket_correo_fallido: 'ti-mail-off',
 };
 
 function descartarAviso(key) {
   avisos.value = avisos.value.filter((a) => a.key !== key);
 }
 
-useRealtimeRefresco('notificaciones:nuevas', (payload) => {
+// Compartido entre el canal broadcast (notificaciones:nuevas) y el personal
+// (notificaciones:usuario:<id>, migración 048): mismo aviso emergente + misma
+// entrada en la campana, la única diferencia es si suena o no.
+function manejarNotificacionNueva(payload, { sonido = false } = {}) {
   notificacionesStore.agregar(payload);
+  if (sonido) reproducirNotificacion();
   if (avisos.value.length >= MAX_AVISOS) return;
   const key = ++avisoSeq;
   avisos.value.push({
@@ -98,7 +106,20 @@ useRealtimeRefresco('notificaciones:nuevas', (payload) => {
     icono: ICONO_AVISO_POR_TIPO[payload.tipo] || 'ti-bell',
   });
   setTimeout(() => descartarAviso(key), 6000);
+}
+
+useRealtimeRefresco('notificaciones:nuevas', (payload) => {
+  manejarNotificacionNueva(payload, { sonido: false });
 });
+
+// Notificaciones personales (migración 048/049): asignación, cambio de
+// estado, comentario nuevo o correo fallido en un ticket que le corresponde
+// a este usuario. Más accionable que el feed broadcast, por eso sí suena.
+if (auth.user) {
+  useRealtimeRefresco(`notificaciones:usuario:${auth.user.id}`, (payload) => {
+    manejarNotificacionNueva(payload, { sonido: true });
+  });
+}
 
 async function irAAviso(aviso) {
   descartarAviso(aviso.key);

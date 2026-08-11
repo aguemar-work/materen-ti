@@ -9,7 +9,7 @@ const METODOS = [
   'buscarGlobal',
   // empleados
   'listEmpleadosRecientes', 'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
-  'getEmpleado', 'createEmpleado',
+  'getEmpleado', 'createEmpleado', 'buscarPorDni',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
   'conteosVinculos',
   // catálogos
@@ -41,8 +41,8 @@ const METODOS = [
   'updateSubcategoriaTicket', 'softDeleteSubcategoriaTicket',
   'listTickets', 'listTicketsPage', 'listTicketsFiltrados',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
-  'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket',
-  'obtenerReporteTickets', 'obtenerResumenTickets', 'listarTicketsDelPeriodo',
+  'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
+  'obtenerReporteTickets', 'obtenerResumenTickets', 'obtenerSatisfaccionConsolidado', 'listarTicketsDelPeriodo',
   // staff
   'listStaff', 'updateStaff',
   // accesos sensibles
@@ -57,7 +57,7 @@ const METODOS = [
   'listAccionesCorrectivas', 'crearAccionCorrectiva', 'actualizarAccionCorrectiva', 'softDeleteAccionCorrectiva',
   'getProblemaAbiertoDeTicket', 'listCategoriasRecurrentes', 'listAccionesCorrectivasVencidas', 'pendientesProblemas',
   // pre-registro de personal
-  'listPersonalRegistrosPage', 'listPersonalRegistrosFiltrados', 'marcarUsado',
+  'listPersonalRegistrosPage', 'listPersonalRegistrosFiltrados', 'marcarUsado', 'eliminarRegistro',
   // encuestas
   'listEncuestas', 'getEncuesta', 'createEncuesta', 'updateEncuesta', 'softDeleteEncuesta',
   'listRondas', 'crearRonda', 'cerrarRonda', 'listRespuestas',
@@ -66,7 +66,7 @@ const METODOS = [
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 146 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 150 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

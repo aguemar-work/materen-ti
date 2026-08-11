@@ -199,6 +199,17 @@ export const ticketsApi = {
       .eq('id', id);
     if (error) throw error;
   },
+
+  // Cierre atómico (resuelto -> cerrado) vía RPC (migración 051):
+  // reemplaza las 2 llamadas HTTP secuenciales que hacía marcarResuelto().
+  // Mismo criterio que bajaEmpleado() (empleados.js): se ignora la fila
+  // que devuelve el RPC y se refresca con getTicket() para quedar con el
+  // shape mapeado (con los joins resueltos), no el shape crudo de la tabla.
+  async cerrarTicket(id) {
+    const { error } = await getClient().database.rpc('cerrar_ticket', { p_ticket_id: id });
+    if (error) throw error;
+    return ticketsApi.getTicket(id);
+  },
 };
 
 const SELECT_RESUMEN = `

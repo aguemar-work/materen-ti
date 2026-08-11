@@ -18,6 +18,10 @@ const ICONO_POR_TIPO = {
   cuenta_creada: 'ti-key',
   empleado_alta: 'ti-user-plus',
   empleado_baja: 'ti-user-off',
+  ticket_asignado: 'ti-user-check',
+  ticket_estado_cambiado: 'ti-progress',
+  ticket_comentario_nuevo: 'ti-message-circle',
+  ticket_correo_fallido: 'ti-mail-off',
 };
 function icono(tipo) {
   return ICONO_POR_TIPO[tipo] || 'ti-bell';

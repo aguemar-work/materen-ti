@@ -498,11 +498,6 @@
       flex-shrink: 0;
     }
 
-    .stat-icon.total { background: var(--color-accent-subtle); color: var(--color-accent); }
-    .stat-icon.active { background: var(--color-success-bg); color: var(--color-success-text); }
-    .stat-icon.inactive { background: var(--color-neutral-bg); color: var(--color-neutral-text); }
-    .stat-icon.suspended { background: var(--color-warning-bg); color: var(--color-warning-text); }
-
     .stat-info .stat-value {
       font-size: var(--fs-stat);
       font-weight: 700;
@@ -643,12 +638,6 @@
       height: 6px;
       border-radius: 50%;
       background: currentColor;
-    }
-
-    .toolbar-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
     }
 
     /* ── Buttons (estilo shadcn: outline secondary, solid primary) ─ */

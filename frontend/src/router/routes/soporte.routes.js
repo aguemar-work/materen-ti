@@ -34,7 +34,7 @@ export default [
     // Encuesta de satisfacción, enlace enviado al cerrar
     path: '/soporte/:token/satisfaccion',
     name: 'ticket-satisfaccion',
-    component: () => import('../../modules/tickets/TicketSatisfaccionView.vue'),
+    component: () => import('../../modules/tickets/ResponderEncuestaView.vue'),
     meta: { public: true },
   },
   {

@@ -416,8 +416,6 @@ onMounted(async () => {
   max-width: 160px;
 }
 
-/* .badge-libre y .badge-rotar: estructura y color del sistema de badges global */
-
 .password-cell {
   display: flex;
   align-items: center;

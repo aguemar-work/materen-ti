@@ -4,15 +4,19 @@
 > tickets, correos, licencias y equipos. UI en
 > `frontend/src/styles/main.css` (`--mat-*`) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
-**Vigencia**: actualizado 2026-08-05 (migración 036 índices del reporte de
-tickets; 035 incidente/solicitud; 033 problemas; 031-032 base de conocimiento).
+**Vigencia**: actualizado 2026-08-11 (migración 047 RLS de personal_registros;
+046 hard delete de personal_registros; 045 notificaciones; 044 aviso realtime
+de ticket nuevo; 043 encuestas; 042 pre-registro de personal; 041 exclusividad
+de cuentas personal; 040 `tiene_clave`; 039 índice único de cuentas).
 
 **Precedencia documental**: ante conflicto, `README.md` y `GUIA-UX-UI.md` describen
 intención; **ganan** los valores literales en `main.css` y el esquema real en
 `migrations/*.sql`.
 
 Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
-modelo de seguridad y estructura del repo).
+modelo de seguridad y estructura del repo), `docs/PANORAMA_SISTEMA.md`
+(esquema real y decisiones verificadas) y `docs/HISTORIAL-AUDITORIAS.md`
+(hallazgos de seguridad/calidad con su estado).
 
 ## Qué es
 
@@ -24,6 +28,16 @@ cuándo y si la contraseña se rotó después.
 
 ## Reglas del proyecto
 
+- **Documentación por cambio (obligatorio)**: toda modificación que cambie
+  dominio, seguridad, esquema o UI debe actualizar la documentación
+  correspondiente **en el mismo cambio**, no después: `README.md` (dominio,
+  flujos, historial de migraciones), este archivo (reglas/gotchas),
+  `docs/PANORAMA_SISTEMA.md` (esquema/decisiones) y/o `docs/GUIA-UX-UI.md`
+  (design system), según lo que se tocó. Dejar además una línea en
+  `docs/CHANGELOG.md`. Un hallazgo de auditoría cerrado o abierto se
+  actualiza en `docs/HISTORIAL-AUDITORIAS.md`, no en un informe nuevo suelto.
+  No es opcional ni una tarea aparte: un PR que cambia comportamiento y no
+  toca documentación queda incompleto, igual que uno sin tests.
 - **Idioma**: UI, comentarios, nombres de funciones/variables de dominio y
  mensajes en **español** (código base en Perú: DNI, RUC, WhatsApp).
 - **Contraseñas**: NUNCA en listados ni precargadas en formularios. Todo lo
@@ -96,6 +110,14 @@ cuándo y si la contraseña se rotó después.
  `ticket_satisfaccion` no tienen INSERT de cliente: solo esta función
  escribe. El **token de entrega** (`entregas`) y el **token de ticket**
  (`tickets`) son conceptos distintos — no reusar uno para el otro.
+- **Edge functions `encuestas` y `personal-registro`**: mismo patrón CORS/
+ admin-client y mismo comando de deploy (`npx @insforge/cli functions
+ deploy <nombre> --file functions/<nombre>.ts`). `encuestas.ts` expone
+ `abrir`/`responder` sobre `encuesta_rondas`/`encuesta_respuestas` (sin
+ INSERT de cliente en `encuesta_respuestas`); `personal-registro.ts` expone
+ `buscarDni`/`crear` sobre `personal_registros` (sin INSERT de cliente ahí
+ tampoco). No confundir la encuesta de este módulo con
+ `ticket_satisfaccion` — son tablas y flujos distintos, ver README.
 - **Gotcha de triggers `created_by`**: `set_created_by_only()` asume una
  columna `created_by`; en tablas con otro nombre de autor (ej.
  `ticket_comentarios.autor_id`) hay que crear una función dedicada

@@ -211,7 +211,7 @@ export const reportesTicketsApi = {
   // Consolidado histórico de satisfacción (TODO el histórico, sin recorte de
   // fecha — a diferencia del resto de este archivo): todas las respuestas +
   // el resumen por solicitante y por técnico. Se trae todo de una sola vez y
-  // se pagina/ordena en el cliente (vista SatisfaccionTicketsView.vue), a
+  // se pagina/ordena en el cliente (vista ReporteSatisfaccionView.vue), a
   // propósito: como los dos resúmenes ya necesitan el histórico completo, no
   // tiene sentido pedirlo de nuevo página por página para la tabla.
   async obtenerSatisfaccionConsolidado() {

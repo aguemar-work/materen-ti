@@ -11,6 +11,7 @@ import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import ProblemaForm from '../problemas/ProblemaForm.vue';
 
 const route = useRoute();
@@ -89,6 +90,17 @@ const historialEsencial = computed(() => {
 // primero "revela" el formulario. Rechazar sigue sin pedir nada de esto.
 const atencionForm = ref({ prioridad: 'media', nivelAtencion: 'N1', asignadoA: '', tipo: '' });
 const iniciando = ref(false);
+
+// 3 subcategorías quedan deliberadamente sin tipo_sugerido (migración 035:
+// "Accesorio dañado/faltante", "Otro", "Seguridad/backup" mezclan ambos
+// tipos) — el select de Tipo queda vacío sin que nada lo explique. Este
+// hint es el único cambio: no depende de nombres de subcategoría, solo de
+// que no haya tipo precargado ni sugerido.
+const tipoAmbiguoSinClasificar = computed(() =>
+  ticket.value?.estado === 'abierto' &&
+  !ticket.value?.tipo &&
+  !ticket.value?.subcategoria_tipo_sugerido
+);
 
 async function cargar() {
   try {
@@ -184,19 +196,25 @@ const guardarComoKb = ref(false);
 async function marcarResuelto() {
   resolviendo.value = true;
   try {
-    await store.actualizarCampos({ estado: 'resuelto' });
-    await store.actualizarCampos({ estado: 'cerrado' });
+    await store.marcarResueltoYCerrado();
     showToast('Ticket resuelto y cerrado');
+    // Mejor esfuerzo: ninguno de los dos bloquea el cierre (ya ocurrió, de
+    // forma atómica, en el paso de arriba) — pero si fallan, el usuario debe
+    // enterarse ahora, no solo revisando el historial de eventos.
     try {
       const data = await store.enviarEncuesta();
       if (data?.enviado) showToast('Encuesta de satisfacción enviada al correo del empleado');
-    } catch { /* mejor esfuerzo: no bloquea el cierre del ticket */ }
+    } catch (e) {
+      showToast('El ticket se cerró, pero no se pudo enviar la encuesta: ' + (e?.message || 'motivo desconocido'), 'error');
+    }
     await store.recargarSatisfaccion();
     if (guardarComoKb.value) {
       try {
         await store.guardarComoBorradorKb();
         showToast('Solución guardada como borrador en la Base de Conocimiento');
-      } catch { /* mejor esfuerzo: no bloquea el cierre del ticket */ }
+      } catch (e) {
+        showToast('El ticket se cerró, pero no se pudo guardar el borrador en la Base de Conocimiento: ' + (e?.message || 'motivo desconocido'), 'error');
+      }
     }
   } catch (e) {
     showToast(e?.message || 'No se pudo marcar como resuelto', 'error');
@@ -205,13 +223,30 @@ async function marcarResuelto() {
   }
 }
 
-// ── Reabrir: solo JEFE (reforzado también por trigger en BD) ────────────
+// ── Reabrir: solo JEFE (reforzado también por trigger en BD) — exige
+// motivo, igual que Rechazar. Queda como NOTA INTERNA (no visible para el
+// empleado): reabrir es una decisión interna, el empleado ya ve el cambio
+// de estado en su seguimiento público ────────────────────────────────────
+const mostrarReabrir = ref(false);
+const motivoReabrir = ref('');
 const reabriendo = ref(false);
 
-async function reabrirTicket() {
+function abrirReabrir() {
+  motivoReabrir.value = '';
+  mostrarReabrir.value = true;
+}
+
+async function confirmarReabrir() {
+  const motivo = motivoReabrir.value.trim();
+  if (!motivo) {
+    showToast('Escribe el motivo para reabrir', 'error');
+    return;
+  }
   reabriendo.value = true;
   try {
+    await store.comentar(motivo, true);
     await store.actualizarCampos({ estado: 'reabierto' });
+    mostrarReabrir.value = false;
     showToast('Ticket reabierto');
   } catch (e) {
     showToast(e?.message || 'No se pudo reabrir el ticket', 'error');
@@ -242,7 +277,20 @@ async function cambiarPrioridad(nuevaPrioridad) {
   }
 }
 
-async function cambiarAsignado(staffId) {
+// Desasignar un ticket EN CURSO pide confirmación (no reasignar a otro
+// técnico, eso sigue siendo directo): evita dejarlo "flotando" sin
+// responsable por un clic accidental en el select.
+const mostrarConfirmarDesasignar = ref(false);
+const dialogoDesasignar = ref(null);
+const desasignando = ref(false);
+let selectAsignadoEl = null;
+
+async function cambiarAsignado(staffId, event) {
+  if (!staffId && ESTADOS_EN_CURSO.includes(ticket.value.estado)) {
+    selectAsignadoEl = event?.target || null;
+    mostrarConfirmarDesasignar.value = true;
+    return;
+  }
   guardandoCampo.value = true;
   try {
     await store.actualizarCampos({ asignado_a: staffId || null });
@@ -251,6 +299,28 @@ async function cambiarAsignado(staffId) {
     showToast(e?.message || 'Error al asignar', 'error');
   } finally {
     guardandoCampo.value = false;
+  }
+}
+
+// Único handler de cierre (botón Cancelar y cierre animado tras confirmar):
+// el <select> de "Asignado a" no usa v-model (usa :value/@change), así que
+// hay que revertirlo a mano al valor actual del ticket.
+function cancelarDesasignar() {
+  mostrarConfirmarDesasignar.value = false;
+  if (selectAsignadoEl) selectAsignadoEl.value = ticket.value.asignado_a || '';
+  selectAsignadoEl = null;
+}
+
+async function confirmarDesasignar() {
+  desasignando.value = true;
+  try {
+    await store.actualizarCampos({ asignado_a: null });
+    showToast('Asignación quitada');
+    dialogoDesasignar.value?.cerrar();
+  } catch (e) {
+    showToast(e?.message || 'Error al asignar', 'error');
+  } finally {
+    desasignando.value = false;
   }
 }
 
@@ -405,6 +475,7 @@ onUnmounted(() => store.limpiar());
                   <option value="" disabled>Seleccionar</option>
                   <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
                 </select>
+                <p v-if="tipoAmbiguoSinClasificar" class="tk-nota">Esta subcategoría no tiene un tipo por defecto (puede ser incidente o solicitud según el caso) — elígelo manualmente antes de iniciar.</p>
               </div>
               <div class="tk-acciones-estado">
                 <button class="btn btn-danger" type="button" :disabled="iniciando" @click="abrirRechazar">
@@ -449,7 +520,7 @@ onUnmounted(() => store.limpiar());
               </div>
               <div class="form-group">
                 <label for="tk-asignado">Asignado a</label>
-                <select id="tk-asignado" :value="ticket.asignado_a || ''" :disabled="guardandoCampo" @change="cambiarAsignado($event.target.value)">
+                <select id="tk-asignado" :value="ticket.asignado_a || ''" :disabled="guardandoCampo" @change="cambiarAsignado($event.target.value, $event)">
                   <option value="">Sin asignar</option>
                   <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
                 </select>
@@ -471,15 +542,30 @@ onUnmounted(() => store.limpiar());
             </template>
 
             <!-- terminal: solo lectura + Reabrir (jefe) -->
-            <template v-if="ESTADOS_TERMINALES.includes(ticket.estado)">
+            <template v-if="ESTADOS_TERMINALES.includes(ticket.estado) && !mostrarReabrir">
               <p class="tk-detalle">Prioridad: {{ PRIORIDADES.find((p) => p.valor === ticket.prioridad)?.label || ticket.prioridad }}</p>
               <p class="tk-detalle">Nivel de atención: <TextoVacio :valor="NIVELES_ATENCION.find((n) => n.valor === ticket.nivel_atencion)?.label" placeholder="Sin definir" /></p>
               <p class="tk-detalle">Asignado a: <TextoVacio :valor="staffPorId[ticket.asignado_a]" placeholder="Sin asignar" /></p>
-              <button v-if="auth.esJefe" class="btn tk-btn-reabrir" type="button" :disabled="reabriendo" @click="reabrirTicket">
+              <button v-if="auth.esJefe" class="btn tk-btn-reabrir" type="button" :disabled="reabriendo" @click="abrirReabrir">
                 <i :class="reabriendo ? 'ti ti-loader-2 spinner-icon' : 'ti ti-refresh'" aria-hidden="true"></i> {{ reabriendo ? 'Reabriendo...' : 'Reabrir ticket' }}
               </button>
               <p v-else class="tk-nota">Solo el jefe puede reabrir este ticket.</p>
             </template>
+
+            <!-- Formulario: Reabrir (motivo obligatorio, queda como nota interna) -->
+            <div v-if="mostrarReabrir" class="tk-form-inline">
+              <div class="form-group">
+                <label for="re-motivo-reabrir">Motivo para reabrir *</label>
+                <textarea id="re-motivo-reabrir" v-model="motivoReabrir" rows="3" placeholder="Queda como nota interna, no visible para el empleado" :disabled="reabriendo"></textarea>
+              </div>
+              <div class="modal-actions">
+                <button class="btn" type="button" :disabled="reabriendo" @click="mostrarReabrir = false">Cancelar</button>
+                <button class="btn btn-primary" type="button" :disabled="reabriendo" @click="confirmarReabrir">
+                  <i v-if="reabriendo" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+                  {{ reabriendo ? 'Reabriendo...' : 'Confirmar reabrir' }}
+                </button>
+              </div>
+            </div>
 
             <div class="tk-problema-vinculado">
               <RouterLink v-if="problemaVinculado" :to="`/problemas/${problemaVinculado.id}`" class="badge badge--danger badge-inline">
@@ -571,6 +657,19 @@ onUnmounted(() => store.limpiar());
       v-if="mostrarProblemaForm"
       :ticket-disparador="{ id: ticket.id, codigo: ticket.codigo, titulo: ticket.titulo, descripcion: ticket.descripcion }"
       @cerrar="onProblemaFormCerrado"
+    />
+
+    <!-- Confirmación no destructiva (ConfirmDialog compartido): desasignar
+         un ticket en curso, para no dejarlo sin responsable por error -->
+    <ConfirmDialog
+      v-if="mostrarConfirmarDesasignar"
+      ref="dialogoDesasignar"
+      titulo="Quitar asignación"
+      mensaje="¿Quitar la asignación de este ticket en curso? Quedará sin responsable hasta que alguien lo tome."
+      confirmar-label="Quitar asignación"
+      :cargando="desasignando"
+      @cancel="cancelarDesasignar"
+      @confirm="confirmarDesasignar"
     />
   </div>
 </template>

@@ -16,6 +16,6 @@ export default [
     // rutas estáticas antes que las dinámicas independientemente del orden.
     path: '/tickets/satisfaccion',
     name: 'tickets-satisfaccion',
-    component: () => import('../../modules/tickets/SatisfaccionTicketsView.vue'),
+    component: () => import('../../modules/tickets/ReporteSatisfaccionView.vue'),
   },
 ];

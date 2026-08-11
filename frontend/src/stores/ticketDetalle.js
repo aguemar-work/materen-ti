@@ -82,6 +82,15 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
       await this.recargarEventos();
     },
 
+    // Resuelto -> cerrado en una sola transacción de servidor (migración
+    // 051), en vez de 2 llamadas separadas a actualizarCampos(). Reemplaza
+    // this.ticket completo: cerrarTicket() ya devuelve el shape mapeado
+    // (con joins), igual que cargar().
+    async marcarResueltoYCerrado() {
+      this.ticket = await insforgeApi.cerrarTicket(this.ticket.id);
+      await this.recargarEventos();
+    },
+
     async comentar(mensaje, interno) {
       await insforgeApi.crearComentarioTicket(this.ticket.id, mensaje, interno);
       await this.recargarComentarios();

@@ -14,6 +14,8 @@ cuándo y si la contraseña se rotó después.
 | Backend | [InsForge](https://insforge.dev) (BaaS sobre Postgres) — proyecto `sistema-ti`, API `https://kjyj8t5t.us-east.insforge.app` |
 | Seguridad | Edge function `credenciales` (`functions/credenciales.ts`) — cifrado AES-256-GCM en servidor, auditoría y entregas de un solo uso |
 | Soporte | Edge function `tickets` (`functions/tickets.ts`) — mesa de ayuda interna, reemplaza el helpdesk externo (Bitrix24) |
+| Encuestas | Edge function `encuestas` (`functions/encuestas.ts`) — encuestas anónimas reutilizables (plantilla + rondas), distintas de la encuesta de satisfacción por ticket |
+| Personal | Edge function `personal-registro` (`functions/personal-registro.ts`) — pre-registro público de personal antes del alta en Empleados |
 
 ## Conceptos del dominio
 
@@ -97,6 +99,36 @@ cuándo y si la contraseña se rotó después.
   asignación). Mover entre ubicaciones es libre; si lo tiene una persona,
   se exige registrar la devolución primero.
 
+- **Notificación**: aviso persistente para todo el staff sobre 4 eventos
+  concretos (`ticket_creado`, `cuenta_creada`, `empleado_alta`,
+  `empleado_baja`), cada uno con su propio trigger explícito — no es un
+  motor de reglas genérico (decisión deliberada, migración 045). Cada
+  usuario de staff tiene su propio estado leído/no-leído
+  (`notificaciones_lecturas`) sobre la misma notificación. Se muestra en la
+  campana del layout (`NotificacionesCampana.vue`) vía el canal realtime
+  `notificaciones:nuevas`. Distinto del aviso emergente de "ticket nuevo"
+  (canal `tickets:nuevos`, migración 044), que es solo un toast efímero con
+  sonido, sin persistencia ni estado de lectura.
+- **Encuesta** (módulo `/encuestas`, JEFE crea/edita): plantilla reutilizable
+  de preguntas (5 tipos: texto corto/largo, opción única, escala 1-5, sí/no)
+  que se relanza como **ronda** (`encuesta_rondas`) cada vez que se quiere
+  recolectar feedback, con su propio link público (`/encuesta/:slug`) y sus
+  propias respuestas anónimas (`encuesta_respuestas`) — las rondas nunca
+  mezclan respuestas entre sí. Las preguntas de una plantilla quedan
+  congeladas en cuanto tiene alguna ronda. **No confundir con la encuesta de
+  satisfacción de un ticket** (`ticket_satisfaccion`): esa es automática,
+  por ticket cerrado y con el empleado vinculado; esta es manual, genérica
+  (p. ej. clima laboral) y sin relación con tickets.
+- **Pre-registro de personal** (`/soporte`-style, público sin sesión, vía
+  edge function `personal-registro`): un candidato/nuevo ingreso llena
+  DNI/nombres/apellidos/celular/correo **antes** de existir como empleado.
+  No crea nada en `empleados` — TI lo revisa en `/personal` (**solo JEFE**,
+  migración 047) y lo marca `usado` al dar de alta al empleado. Única tabla
+  del sistema con **hard delete** real desde el cliente (`personal_registros`,
+  migración 046): sin historial de negocio ni FKs entrantes, se borra al
+  migrar su información a Empleados — no replicar este patrón en otra tabla
+  sin la misma justificación.
+
 ## Flujos principales
 
 1. **Alta guiada**: Empleados → "Nuevo empleado" → guarda → aterriza en la
@@ -143,7 +175,10 @@ cuándo y si la contraseña se rotó después.
   (40 / 5 min, vía `accesos_log`); la búsqueda pública por DNI, por IP y por
   DNI (`ticket_busqueda_intentos`); la creación pública de tickets, por IP
   (8 / 10 min, `ticket_creacion_intentos`, migración 037 — no aplica a
-  tickets creados por staff autenticado).
+  tickets creados por staff autenticado); el pre-registro público de
+  personal, por IP (`personal_registro_intentos`, migración 042); las
+  respuestas a encuestas públicas, por IP (`encuesta_respuesta_intentos`,
+  migración 043).
 - **Tickets públicos**: `titulo`/`descripcion` tienen tope de longitud en
   servidor (200 / 5000 caracteres) y el correo de confirmación/encuesta solo
   se envía al `correo_personal` de un empleado ya vinculado (por token de
@@ -157,10 +192,10 @@ cuándo y si la contraseña se rotó después.
 - **Integridad de tickets** (migración 019): un ticket `cerrado`/`rechazado`
   solo sale de ese estado si el JEFE lo reabre; `token`, `codigo`, `origen` y
   `creado_por` son inmutables tras la creación.
-- El detalle completo del análisis estático y su remediación vive en
-  `auditoria_seguridad_sistema-ti_2026-07-07.md`; el ciclo de auditoría
-  integral más reciente (arquitectura, UX, seguridad, QA, DevOps, performance
-  y datos) vive en `auditoria_integral_2026-08-05.md`.
+- El historial de auditorías (seguridad estática 2026-07-07 + auditoría
+  integral 2026-08-05, arquitectura/UX/seguridad/QA/DevOps/performance/datos)
+  vive consolidado con el estado de cada hallazgo en
+  `docs/HISTORIAL-AUDITORIAS.md`.
 
 ## Estructura del repo
 
@@ -185,16 +220,27 @@ cuándo y si la contraseña se rotó después.
 │       │   ├── licencias/     # licencias de software con tope de asientos
 │       │   ├── equipos/       # inventario físico: entrega/devolución/hoja de vida
 │       │   ├── entregas/      # página pública /entrega/:token
-│       │   └── tickets/       # mesa de ayuda: público (nuevo/seguimiento/encuesta) + staff (bandeja/detalle)
+│       │   ├── tickets/       # mesa de ayuda: público (nuevo/seguimiento/encuesta) + staff (bandeja/detalle)
+│       │   ├── kb/            # Base de Conocimiento
+│       │   ├── problemas/     # Gestión de Problemas (Fase 2)
+│       │   ├── encuestas/     # encuestas anónimas reutilizables (plantilla + rondas)
+│       │   ├── personal/      # pre-registro público + bandeja de revisión (solo JEFE)
+│       │   └── soporte/       # portal público de tickets
 │       ├── router/            # rutas + guards (meta.public para entregas y tickets)
-│       └── stores/            # Pinia
+│       └── stores/            # Pinia (incluye `notificaciones` — campana del layout)
 ├── functions/
 │   ├── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir
-│   └── tickets.ts          # edge function: catalogo / crear / seguimiento / buscarPorDni /
-│                           #   encuestaEstado / encuesta / enviarEncuesta
-├── migrations/             # 001..036 — esquema completo, en orden, comentado
+│   ├── tickets.ts          # edge function: catalogo / crear / seguimiento / buscarPorDni /
+│   │                       #   encuestaEstado / encuesta / enviarEncuesta
+│   ├── encuestas.ts        # edge function: abrir / responder (rondas de encuesta pública)
+│   └── personal-registro.ts # edge function: buscarDni / crear (pre-registro público)
+├── migrations/             # 001..047 — esquema completo, en orden, comentado
 ├── docs/
-│   └── GUIA-UX-UI.md       # design system y convenciones de UI
+│   ├── GUIA-UX-UI.md          # design system y convenciones de UI
+│   ├── PANORAMA_SISTEMA.md    # arquitectura, modelo de datos y decisiones verificadas
+│   ├── HISTORIAL-AUDITORIAS.md # hallazgos de auditoría con estado (reemplaza los informes sueltos)
+│   ├── INVENTARIO-ARCHIVOS.md  # qué archivos sirven, cuáles se limpiaron, qué falta crear
+│   └── CHANGELOG.md           # log discreto de cambios a la documentación
 ├── AGENTS.md               # contexto para agentes de código
 └── insforge.toml           # config del backend (auth por código, password min 6)
 ```
@@ -225,9 +271,10 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
   Para updates masivos usar un solo `UPDATE ... FROM (VALUES ...)` por lote.
 - **Edge function**: editar `functions/credenciales.ts` y desplegar con
   `npx @insforge/cli functions deploy credenciales --file functions/credenciales.ts`.
-  Lo mismo para `functions/tickets.ts` → `npx @insforge/cli functions deploy
-  tickets --file functions/tickets.ts` (tiene su propio `ORIGENES_PERMITIDOS`,
-  se actualiza igual que en `credenciales.ts`).
+  Mismo patrón para las otras 3: `tickets`, `encuestas`, `personal-registro`
+  (`npx @insforge/cli functions deploy <nombre> --file functions/<nombre>.ts`).
+  Cada una tiene su propio `ORIGENES_PERMITIDOS` (helpers CORS/admin
+  duplicados a propósito entre las 4, no se comparte código).
 - **Gotcha del SDK**: `functions.invoke()` deriva por defecto un subdominio
   que no existe en este backend; por eso `getClient()` pasa
   `functionsUrl: baseUrl + '/functions'`. No quitar esa opción.
@@ -274,15 +321,30 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 036 | Índices para el reporte de tickets: `tickets(created_at desc)`, `ticket_eventos(evento, created_at)`, `ticket_satisfaccion(created_at)`. Solo índices: reversible con `DROP INDEX`, no cambia resultados |
 | 037 | Rate-limit de creación pública de tickets: `ticket_creacion_intentos` (ip, created_at), mismo patrón que `ticket_busqueda_intentos` (migración 017). Corrige que la acción `crear` de la edge function `tickets` no tenía ningún tope de frecuencia (auditoría integral 2026-08-05, hallazgo S-01) |
 | 038 | Baja de empleado atómica: RPC `dar_baja_empleado()` (`SECURITY DEFINER`) hace en una sola transacción las 4 escrituras que antes corrían secuenciales desde el cliente (cerrar asignaciones de cuenta/licencia, dar de baja cuentas personales, marcar Inactivo) — evita que un fallo a medio camino deje al empleado en un estado inconsistente (hallazgo A-01). **Requiere `db import`, no `db query`/`apply-migration.mjs` — ver gotcha en `AGENTS.md`** |
+| 039 | Índice único `(plataforma_id, lower(usuario))` en `cuentas` (activas): evita registrar el mismo usuario/correo dos veces en la misma plataforma. Limpiados 5 duplicados reales en producción antes de aplicar |
+| 040 | `licencias.tiene_clave` (columna generada `clave is not null`): permite al listado saber si hay clave propia sin traer el ciphertext completo en cada carga |
+| 041 | Exclusividad de asignación también para cuentas `personal` (antes solo `reutilizable` la tenía en BD): cierra un candado de negocio que vivía solo en la disciplina de la app, no en el esquema |
+| 042 | Pre-registro público de personal: `personal_registros` + `personal_registro_intentos` (rate-limit por IP), mismo patrón que `tickets` (sin policy de INSERT para cliente, todo vía edge function `personal-registro`) |
+| 043 | Módulo de Encuestas: `encuestas` (plantilla), `encuesta_rondas` (cada lanzamiento, con su propio link público), `encuesta_respuestas` (anónimas) y `encuesta_respuesta_intentos` (rate-limit). Preguntas de una plantilla inmutables en cuanto tiene alguna ronda. Solo JEFE crea/edita/lanza; cualquier staff ve resultados |
+| 044 | Realtime: canal `tickets:nuevos` con detalle mínimo (id/código/título) en cada ticket creado, para el aviso emergente con sonido del sidebar — convive con el `tickets:list` de sentencia (026), no lo reemplaza |
+| 045 | Notificaciones: `notificaciones` (4 eventos concretos: `ticket_creado`, `cuenta_creada`, `empleado_alta`, `empleado_baja`, cada uno con su propio trigger) + `notificaciones_lecturas` (estado leído/no-leído por usuario de staff) + canal realtime `notificaciones:nuevas`. Alcance deliberadamente mínimo: no es un motor de reglas genérico |
+| 046 | Hard delete de `personal_registros` (solo JEFE): única tabla del sistema con borrado físico real desde el cliente — sin historial de negocio ni FKs entrantes, se limpia al migrar el registro a Empleados |
+| 047 | RLS de `personal_registros` restringido a JEFE (antes SELECT/UPDATE eran de cualquier staff, con el ocultamiento del menú como única barrera real): cierra el hueco entre "oculto en el sidebar" y "bloqueado por RLS", mismo criterio que `accesos_sensibles` (024) |
+| 048 | Notificaciones personales: `notificaciones.destinatario_id` (NULL = broadcast, como hoy; no nulo = solo ese usuario) + canal realtime wildcard `notificaciones:usuario:%`. `crear_notificacion()` gana un 6º parámetro opcional, compatible con las 4 llamadas de la migración 045 |
+| 049 | Triggers de notificación personal de tickets: asignación y cambio de estado (`notify_ticket_personal`), comentario nuevo (`notify_ticket_comentario_personal`) y correo fallido (`notify_correo_fallido`, sobre `ticket_eventos`). Con autoexclusión: nadie se autonotifica de su propia acción |
+| 050 | Máquina de estados formal: tabla `transiciones_ticket_permitidas` (whitelist, default-deny) + `check_transicion_ticket_permitida()`, que reemplaza los triggers puntuales `check_reabrir_solo_jefe` (017) y `check_transicion_ticket` (019) |
+| 051 | RPC `cerrar_ticket()` (`SECURITY DEFINER`): hace resuelto→cerrado en una sola transacción de servidor, reemplazando las 2 llamadas HTTP secuenciales que hacía `marcarResuelto()`. **Requiere `db import`, no `db query`/`apply-migration.mjs`** |
+| 052 | Retira el canal realtime `tickets:nuevos` (044), reemplazado por `notificaciones:nuevas` (045) y sin ningún consumidor en el frontend. La fila de `realtime.channels` queda `enabled=false` (reversible), no se borra |
 
 ## Checklist de deploy
 
 1. Aplicar migraciones pendientes (`node scripts/apply-migration.mjs migrations/0XX_….sql` en Windows; para migraciones con `create function`/`do $$...$$` como la 037/038, usar `npx @insforge/cli db import migrations/0XX_….sql` — ver gotcha en `AGENTS.md`).
-2. Redesplegar edge functions si cambiaron: `credenciales`, `tickets`.
+2. Redesplegar edge functions si cambiaron: `credenciales`, `tickets`,
+   `encuestas`, `personal-registro`.
 3. Push de `insforge.toml` si cambió auth/storage.
 4. Build frontend: `cd frontend && npm run build`.
 5. Deploy Vercel (o push a la rama conectada).
-6. Verificar CORS: `ORIGENES_PERMITIDOS` en ambas edge functions incluye el dominio de producción.
+6. Verificar CORS: `ORIGENES_PERMITIDOS` en las 4 edge functions incluye el dominio de producción.
 7. Smoke test: login → dashboard → revelar contraseña → entrega pública → ticket público.
 
 ## Producción
@@ -290,9 +352,10 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 - Frontend desplegado en Vercel: **https://materen-ti.vercel.app**
 - SPA rewrites: `frontend/vercel.json` (copiado a `dist/` vía `public/`) — sin
   esto las rutas profundas (`/entrega/:token`, `/empleados/:id`) dan 404.
-- CORS de las edge functions `credenciales` y `tickets`: allowlist con el
-  dominio de producción + localhost (dev), una por función. Si cambia el
-  dominio, actualizar `ORIGENES_PERMITIDOS` en ambos archivos y redesplegar.
+- CORS de las 4 edge functions (`credenciales`, `tickets`, `encuestas`,
+  `personal-registro`): allowlist con el dominio de producción + localhost
+  (dev), una por función. Si cambia el dominio, actualizar
+  `ORIGENES_PERMITIDOS` en los 4 archivos y redesplegar.
 - Correo transaccional (confirmación de ticket, aviso de encuesta) es
   best-effort: el plan actual de InsForge (free) no tiene `emails.send()`
   habilitado, así que esos envíos fallan y quedan registrados como evento

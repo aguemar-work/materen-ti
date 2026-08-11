@@ -4,9 +4,17 @@
 > viven en [`main.css`](../frontend/src/styles/main.css) (`--mat-*` y alias
 > `--color-*`); este archivo describe cómo usarlos en las vistas.
 
-**Vigencia**: actualizado 2026-07-09 — componentes compartidos (`PageHeader`,
-`BadgeEstado`, `EmptyState`, `TextoVacio`) y `.text-muted` en terciario para
-celdas vacías.
+**Vigencia**: actualizado 2026-08-11 — se agrega `NotificacionesCampana` a
+los componentes compartidos (migración 045); no hubo cambios de tokens ni de
+layout desde jul 2026. **Deuda de accesibilidad conocida**: `.text-muted` en
+terciario (`--mat-color-text-tertiary`, tema claro) sigue por debajo de
+4.5:1 (WCAG AA) sobre `--mat-color-bg`/`--mat-color-bg-elevated`. Es una
+deuda de código, no un desacuerdo de convención — hasta que se corrija el
+token, seguir usando `.text-muted` según lo documentado abajo (es
+consistente con el resto del sistema), pero no asumir que pasa el
+verificador de contraste: `scripts/contraste.mjs` hoy solo cubre badges, no
+este par texto/superficie. Detalle y seguimiento en
+`docs/HISTORIAL-AUDITORIAS.md` (hallazgo U-01).
 
 Documentación del sistema visual del panel: colores, tipografías, layout y
 convenciones de componentes. Útil para mantener coherencia al añadir pantallas.
@@ -24,6 +32,7 @@ o del estado vacío:
 | `TextoVacio` | Celda vacía con placeholder `—` y clase `.text-muted` automática |
 | `Pagination` | Paginación client/server (ya documentada abajo) |
 | `PublicBrand` | Cabecera de páginas públicas (empleados sin sesión) |
+| `NotificacionesCampana` | Campana de notificaciones (migración 045) en el footer del sidebar/topbar móvil; lista los 4 eventos con estado leído/no-leído, marca lectura por usuario vía `stores/notificaciones.js` |
 
 Los mapas de color por dominio siguen en `core/dominio-*.js`; `core/badges.js`
 solo despacha hacia ellos.
@@ -515,11 +524,12 @@ Todo en `main.css` — no hay átomos Vue separados:
 
 **Detalle:** `.detalle-grid`, `.datos-card`, `.datos-lista`, `.dato` (`EmpleadoDetalleView.vue`)
 
-> `.cred-card`, `.tool-tag`/`.tool-input`, `.user-cell`, `.modal-detail`,
-> `.detail-header`/`.detail-grid`/`.detail-item` siguen definidas en
-> `main.css` pero **ningún template las usa ya** — mismo caso que las
-> clases antiguas de badges, quedaron como restos sin limpiar. No usarlas
-> en código nuevo; se pueden borrar de `main.css` en una limpieza futura.
+> `.cred-card`, `.tool-tag`/`.tool-input`, `.user-cell`,
+> `.detail-header`/`.detail-grid`/`.detail-item` **ya se eliminaron de
+> `main.css`** (limpieza del 2026-08-11, ~267 líneas de reglas sin uso) —
+> no es que sigan como residuo, ya no existen. `.modal-detail` **sí sigue
+> en uso** (`CuentasPanel.vue`, `EquiposView.vue`) y no forma parte de esa
+> limpieza.
 
 ### Badges — sistema unificado
 
@@ -551,10 +561,11 @@ modificador de color: `class="status badge--success"`.
 
 **Clases antiguas**: `.s-activo`, `.s-inactivo`, `.s-suspendido`,
 `.sit-disponible`, `.sit-asignado`, `.sit-ubicacion`, `.sit-reparacion`,
-`.sit-baja`, `.sit-perdido`, `.badge-rotar`, `.pill` siguen definidas en
-`main.css` como **alias** (agrupadas en el mismo selector que su
-modificador) — si algo externo las referencia, no se rompe. Ningún
-template activo las usa ya.
+`.sit-baja`, `.sit-perdido`, `.badge-rotar`, `.pill` **ya se eliminaron de
+`main.css`** (limpieza del 2026-08-11) — dejaron de existir como alias, no
+solo de usarse. Si algo externo todavía las referencia (no debería quedar
+nada en este repo), hay que migrarlo a la clase base + modificador antes de
+actualizar.
 
 **Ajustes locales permitidos**: cuando un badge necesita un detalle que no
 es color/estructura (ej. `margin-left` para separarlo de texto vecino,
