@@ -10,6 +10,12 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-12** — **Fix de incidente en producción**: la CSP agregada en
+  S-04 bloqueaba el WebSocket del realtime (`wss://kjyj8t5t.us-east.insforge.app`)
+  porque `connect-src` solo tenía el esquema `https://` del mismo host.
+  Agregado `wss://` explícito en `frontend/vercel.json` y su copia
+  `frontend/public/vercel.json`. Actualizado el hallazgo S-04 en
+  `docs/HISTORIAL-AUDITORIAS.md` con el incidente y la lección aprendida.
 - **2026-08-12** — Nueva regla en `AGENTS.md` ("Diagnóstico/pruebas contra
   producción"): extiende la práctica de usar un branch de InsForge (antes
   solo para tablas de prueba nuevas, `docs/PANORAMA_SISTEMA.md` §7) a
