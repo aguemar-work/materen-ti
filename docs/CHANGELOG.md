@@ -10,6 +10,15 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-12** — Fusionado `AUDIT_REPORT.md` (raíz, reconciliación de
+  solo lectura del 2026-08-11) dentro de `docs/HISTORIAL-AUDITORIAS.md`:
+  actualizados con evidencia S-03/T-02, P-01, T-04, P-02, U-05, A-02, U-02,
+  U-03/U-04, P-04 (quitado el matiz "no reverificado"); cambiados a
+  **Resuelto** S-05/S-06 y U-06; cambiado a **Parcial** Q-02/Q-03;
+  corregido A-03 (bajó a 1446 líneas, no creció); confirmado P-03 con
+  evidencia dura. Se agregaron 3 hallazgos nuevos: A-06 (`AppLayout.vue`
+  god-component), A-07 (duplicación de "encuesta"), D-07 (alias CSS legacy
+  sin eliminar). `AUDIT_REPORT.md` se elimina de la raíz tras la fusión.
 - **2026-08-11** — Inventario de archivos (`docs/INVENTARIO-ARCHIVOS.md`,
   nuevo): limpieza confirmada de bajo riesgo aplicada — eliminado
   `sistema_credenciales_ti.html.bak`, destrackeado `.vite/deps/*` (+

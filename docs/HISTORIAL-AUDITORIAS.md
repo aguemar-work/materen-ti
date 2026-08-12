@@ -58,9 +58,9 @@ verificó que seguían cerrados, ver arriba).
 | Q-01 | Tests de integración/BD dan check verde sin ejecutarse | QA | **Mitigado** | `ci.yml` ya no hace `exit 0` silencioso: emite `::warning::` visible. Los 4 secrets (`INSFORGE_TEST_STAFF_EMAIL/PASSWORD`, `INSFORGE_ACCESS_TOKEN`, `INSFORGE_PROJECT_ID`) **siguen sin existir** en el repo — los jobs siguen sin verificar nada, ya no lo esconden |
 | A-01 | Bajas de empleado sin atomicidad (4 escrituras secuenciales) | Arquitectura | **Resuelto** | Migración 038: RPC `dar_baja_empleado()` `SECURITY DEFINER`, una sola transacción |
 | D-01 | Cero observabilidad de producción (sin Sentry/errores) | DevOps | **Abierto** | Sin `Sentry`/`window.onerror`/`unhandledrejection` en el frontend (verificado por grep) |
-| U-01 | Texto terciario a 2,54:1 (falla WCAG AA), prescrito por la guía de diseño | UX | **Abierto** | `--mat-color-text-tertiary: #9CA3AF` sin cambios en `main.css` |
-| S-03 / T-02 | Sin `CHECK` de prefijo de cifrado en columnas de contraseña | Seguridad/Datos | **Abierto** (no reverificado a fondo) | Ninguna de las migraciones 039–047 toca este punto |
-| P-01 | Dashboard cuenta filas descargando todas | Performance | **Abierto** (no reverificado) | — |
+| U-01 | Texto terciario a 2,54:1 (falla WCAG AA), prescrito por la guía de diseño | UX | **Abierto** | `--mat-color-text-tertiary: #9CA3AF` sin cambios, `main.css:46` |
+| S-03 / T-02 | Sin `CHECK` de prefijo de cifrado en columnas de contraseña | Seguridad/Datos | **Abierto** | Revisadas migraciones 001–053: ningún `CHECK` sobre columnas de contraseña/clave |
+| P-01 | Dashboard cuenta filas descargando todas | Performance | **Abierto** | `api/domains/dashboard.js:73-97,101-173` — 7 queries traen filas completas y cuentan con `.length`, sin `count/head` |
 | Q-04 | `functions/*.ts` nunca se compilan; sin linter/tsconfig | QA | **Abierto** | Confirmado: no existe `eslint.config.*` ni `tsconfig*.json` en el repo |
 | S-04 | Sin CSP/HSTS/anti-framing en Vercel | Seguridad | **Abierto** | `frontend/vercel.json` solo define el rewrite SPA |
 | W-01 / W-02 | `AGENTS.md` decía "sin tests"; README omitía 10 migraciones | Documentación | **Resuelto** | Corregido en el propio ciclo 2026-08-05, reconfirmado hoy |
@@ -69,27 +69,30 @@ verificó que seguían cerrados, ver arriba).
 
 | ID | Hallazgo | Rol | Estado (2026-08-11) |
 |----|----------|-----|----------------------|
-| T-04 | Reporte de tickets sin cota de filas | Datos | Abierto (no reverificado) |
-| P-02 | Realtime recarga la bandeja completa en cada cambio | Performance | Abierto (no reverificado) |
-| U-05 | Cierre de ticket sin resumen → borradores de KB vacíos | UX/Producto | Abierto (no reverificado) |
-| A-02 | Roles restringidos por literal de ruta en el guard | Arquitectura | Abierto (no reverificado) |
-| U-02 | Sin `:focus-visible` propio en `.btn`/`.icon-btn` | UX | **Abierto**, confirmado — solo `.empleado-link` y checkbox/radio lo tienen |
+| T-04 | Reporte de tickets sin cota de filas | Datos | **Abierto**, confirmado — `api/domains/reportesTickets.js:60-64,190-196,217-221` sin `.limit()`; `obtenerSatisfaccionConsolidado` trae todo el histórico |
+| P-02 | Realtime recarga la bandeja completa en cada cambio | Performance | **Abierto**, confirmado — `AppLayout.vue:59-63` → `stores/tickets.js:24-34` (`cargar()`) repite la página completa en cada evento |
+| U-05 | Cierre de ticket sin resumen → borradores de KB vacíos | UX/Producto | **Abierto**, confirmado — `TicketDetalleView.vue:196-220,535` + `stores/ticketDetalle.js:116-123`: el borrador se crea sin campo de contenido |
+| A-02 | Roles restringidos por literal de ruta en el guard | Arquitectura | **Abierto**, confirmado — `router/guards.js:29,34,42,48` compara `to.path`/`to.name` literal en vez de `to.meta` |
+| U-02 | Sin `:focus-visible` propio en `.btn`/`.icon-btn` | UX | **Abierto**, confirmado — `main.css:854,1294-1295` solo cubren `.empleado-link` y checkbox/radio |
 | D-06 | CI no corría `contraste.mjs` ni `npm audit` | DevOps | **Resuelto** — `ci.yml` ya ejecuta ambos en cada push/PR |
-| Q-02 / Q-03 | Cero tests de componentes Vue ni de `api/domains/*` | QA | Abierto (no reverificado) |
-| P-03 | ~390 KB de chunks de PDF muertos (`html2canvas`/`dompurify`) | Performance | Abierto (no reverificado) |
+| Q-02 / Q-03 | Cero tests de componentes Vue ni de `api/domains/*` | QA | **Parcial** — `reporte-tickets-agregacion.test.js` ya testea `api/domains/reportesTickets.js`; cero uso de `@vue/test-utils`/`mount(` en `frontend/tests/` |
+| P-03 | ~390 KB de chunks de PDF muertos (`html2canvas`/`dompurify`) | Performance | **Confirmado con evidencia dura** — `jsPDF.html()` (el único método que los necesita) no se llama en ningún lugar de `frontend/src` (grep, 0 resultados); peso real ~231 KB sin comprimir / ~59 KB gzip. Pendiente medir si Rollup ya los excluye del bundle servido por tree-shaking del `import()` dinámico en `reporte.js:253-256` |
 | D-02 / D-03 | Deploy de edge functions y migraciones sin control de versión | DevOps | Abierto — con 4 edge functions ya (antes 2), el problema crece |
 | W-03 / W-05 | Guía UX desactualizada / sin diagrama de arquitectura | Documentación | W-03 **resuelto** en esta misma actualización de documentación (2026-08-11); W-05 sigue abierto |
-| S-05 / S-06 | Tokens en consola; passthrough de texto plano sin log | Seguridad | Abierto (no reverificado) |
-| U-03 / U-04 | Tipografía en px desde 11px; hex de WhatsApp fuera de tokens | UX | Abierto (no reverificado) |
-| A-03 | `main.css` monolítico (1.656 líneas al momento del ciclo 2) | Arquitectura | Abierto — probablemente mayor hoy con los módulos de Personal/Encuestas/Notificaciones |
-| P-04 | 3 consultas solapadas en pendientes de tickets | Performance | Abierto (no reverificado) |
+| S-05 / S-06 | Tokens en consola; passthrough de texto plano sin log | Seguridad | **Resuelto** — solo 8 `console.*` en todo el frontend, todos de eventos realtime (`AppLayout.vue:26-30`, `useRealtimeRefresco.js:26,29,33`), ninguno con datos sensibles |
+| U-03 / U-04 | Tipografía en px desde 11px; hex de WhatsApp fuera de tokens | UX | **Abierto**, confirmado — `main.css:785,875,1301` (`font-size: 11px` literal); `main.css:1445-1446` (`#25d366`/`#1ebe57` sin variable) |
+| A-03 | `main.css` monolítico (1.656 líneas al momento del ciclo 2) | Arquitectura | **Mejoró, sigue abierto** — hoy 1446 líneas (bajó 210), pero sigue siendo el único archivo global |
+| P-04 | 3 consultas solapadas en pendientes de tickets | Performance | **Abierto**, confirmado — `api/domains/dashboard.js:176-194` — 3 `Promise.all` sin deduplicar tickets que califican en más de uno |
 | D-04 | `.vite/deps` versionado en git | DevOps | **Resuelto (2026-08-11)** — destrackeado (`git rm --cached`) y agregado `.vite/` a `.gitignore` |
 | D-05 | `sistema_credenciales_ti.html.bak` legacy en la raíz | DevOps | **Resuelto (2026-08-11)** — eliminado del repo. `sistema_credenciales_ti.html` (sin `.bak`) se mantiene: es un stub de 343 bytes con redirect intencional a `./frontend/`, no es legado |
 | A-05 / W-04 / Q-05 | Sin ADRs formales, sin CONTRIBUTING, sin registro de bugs | Varios | **Parcial** — este documento y `docs/CHANGELOG.md` cubren el registro de hallazgos/documentación; sigue sin existir `CONTRIBUTING.md` ni `docs/adr/` |
 | T-03 | Sin backup verificado ni RPO declarado | Datos | No verificable desde el repo (requiere plan InsForge) |
-| U-06 | Tablas móviles solo con scroll horizontal | UX | Sin decisión — falta medir uso móvil real antes de invertir |
-| Q-06 | `functions/encuestas.ts` y `functions/personal-registro.ts` sin ningún test | QA | **Abierto** (detectado 2026-08-11) — a diferencia de `credenciales.ts`/`tickets.ts`, que sí tienen `.test.js` en `frontend/tests/` |
+| U-06 | Tablas móviles solo con scroll horizontal | UX | **Resuelto** — patrón `.lista-tarjetas` (`main.css:1348-1421`) ya implementado en 6 vistas |
+| Q-06 | `functions/encuestas.ts` y `functions/personal-registro.ts` sin ningún test | QA | **Abierto** — a diferencia de `credenciales.ts`/`tickets.ts`, que sí tienen `.test.js` en `frontend/tests/` |
 | W-06 | Sin changelog de producto (para soporte/usuarios) ni plantillas de PR/issue en `.github/` | Documentación/DevOps | **Abierto** (detectado 2026-08-11) — `docs/CHANGELOG.md` es explícitamente de documentación, no de producto; `.github/` solo tiene `ci.yml` |
+| A-06 | `AppLayout.vue` es un god-component (1161 líneas): layout global, navegación, buscador y notificaciones realtime en un solo archivo, con hasta 4 niveles de anidamiento en el buscador (`AppLayout.vue:345-419`) y 3 en la navegación (`AppLayout.vue:425-442`) | Arquitectura | **Abierto** (detectado 2026-08-11) — candidato a dividir en `AppSearch.vue`/`AppNav.vue`/`AppNotifications.vue` |
+| A-07 | Duplicación conceptual de "encuesta": `modules/encuestas/*` (feature 043) y la lógica ad-hoc de `ticket_satisfaccion` (`api/domains/tickets.js:185-188`, `stores/ticketDetalle.js`, `ReporteSatisfaccionView.vue`) no comparten código ni modelo | Arquitectura | **Abierto** (detectado 2026-08-11) — no urgente, pero cada feature nueva de encuestas obliga a elegir entre los dos sistemas |
+| D-07 | Alias CSS legacy marcados "no usar" sin eliminar (`main.css:127,1053`) pese a que el commit `6f10d46` (2026-08-11) sí limpió 150 líneas de CSS basura en otro lado del mismo archivo | DevOps | **Abierto** (detectado 2026-08-11) |
 
 ---
 
