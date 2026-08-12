@@ -266,11 +266,11 @@ export const reportesTicketsApi = {
 // fecha_envio es el marcador explícito del esquema ("NULL = encuesta pendiente
 // de respuesta"). Antes el KPI usaba `nivel` y la tabla `fecha_envio`: dos
 // definiciones del mismo concepto en el mismo reporte.
-function esRespondida(encuesta) {
+export function esRespondida(encuesta) {
   return encuesta.fecha_envio !== null && encuesta.fecha_envio !== undefined;
 }
 
-function nombreSolicitante(t) {
+export function nombreSolicitante(t) {
   if (!t.vinculado) return 'Sin vincular';
   if (t.empleados) return `${t.empleados.nombres} ${t.empleados.apellidos}`.trim();
   return t.contacto_ingresado || 'Sin vincular';
@@ -280,7 +280,7 @@ function nombreSolicitante(t) {
 // los eventos 'estado_cambiado'. Extraído para reusarse tal cual en el
 // reporte por periodo y en el consolidado histórico de satisfacción — es la
 // misma regla de negocio (última resolución gana) en los dos lugares.
-function resolucionesPorTicket(eventos) {
+export function resolucionesPorTicket(eventos) {
   const resoluciones = new Map();   // ticket_id -> { userId, fecha }
   let reaperturas = 0;
   for (const ev of eventos) {
@@ -296,7 +296,7 @@ function resolucionesPorTicket(eventos) {
 // igual que un promedio sobre 20 respuestas).
 export const MIN_MUESTRA_PROMEDIO = 3;
 
-function promedioYMuestra(niveles) {
+export function promedioYMuestra(niveles) {
   const conNivel = niveles.filter((n) => n !== null && n !== undefined);
   return {
     promedio: conNivel.length ? conNivel.reduce((a, b) => a + b, 0) / conNivel.length : null,
@@ -306,7 +306,7 @@ function promedioYMuestra(niveles) {
 
 // Sin promedio (nadie respondió con nivel todavía) va al final, no al
 // principio: no tiene sentido leerlo como "el peor".
-function ordenarPeorPrimero(filas) {
+export function ordenarPeorPrimero(filas) {
   return [...filas].sort((a, b) => {
     if (a.promedio === null && b.promedio === null) return b.encuestasGeneradas - a.encuestasGeneradas;
     if (a.promedio === null) return 1;
@@ -315,7 +315,7 @@ function ordenarPeorPrimero(filas) {
   });
 }
 
-function resumenSatisfaccionPorSolicitante(respuestas) {
+export function resumenSatisfaccionPorSolicitante(respuestas) {
   const mapa = new Map();
   for (const r of respuestas) {
     const clave = r.empleado_id || 'sin_empleado';
@@ -337,7 +337,7 @@ function resumenSatisfaccionPorSolicitante(respuestas) {
   return ordenarPeorPrimero(filas);
 }
 
-function resumenSatisfaccionPorTecnico(respuestas) {
+export function resumenSatisfaccionPorTecnico(respuestas) {
   const mapa = new Map();
   for (const r of respuestas) {
     const clave = r.tecnico_id || 'sin_asignar';
@@ -358,7 +358,7 @@ function resumenSatisfaccionPorTecnico(respuestas) {
   return ordenarPeorPrimero(filas);
 }
 
-function contarPorTecnico(resoluciones) {
+export function contarPorTecnico(resoluciones) {
   const porTecnico = {};
   for (const { userId } of resoluciones.values()) {
     const clave = userId || 'sin_asignar';
@@ -370,7 +370,7 @@ function contarPorTecnico(resoluciones) {
 // Tiempo de atención: de la creación del ticket al evento que lo marcó
 // resuelto, en horas. Se reporta el promedio y la MEDIANA porque un solo
 // ticket olvidado un mes desplaza el promedio y hace ver mal a todo el equipo.
-function calcularTiempos(resoluciones, datosResueltos) {
+export function calcularTiempos(resoluciones, datosResueltos) {
   const porId = new Map(datosResueltos.map((t) => [t.id, t]));
   const horas = [];
   const porPrioridad = new Map();
@@ -406,12 +406,12 @@ function resumirAcumulado(mapa) {
   return salida;
 }
 
-function promedio(valores) {
+export function promedio(valores) {
   if (!valores.length) return null;
   return valores.reduce((a, b) => a + b, 0) / valores.length;
 }
 
-function mediana(valores) {
+export function mediana(valores) {
   if (!valores.length) return null;
   const orden = [...valores].sort((a, b) => a - b);
   const mitad = Math.floor(orden.length / 2);
@@ -420,7 +420,7 @@ function mediana(valores) {
 
 // Backlog: tickets abiertos AHORA, agrupados por antigüedad. Los tramos
 // separan "en trámite normal" de "olvidado", que es lo que hay que mirar.
-function resumenBacklog(abiertos, ahora = new Date()) {
+export function resumenBacklog(abiertos, ahora = new Date()) {
   const tramos = [
     { clave: 'hasta_3', label: 'Hasta 3 días', max: 3, cantidad: 0 },
     { clave: 'de_4_a_7', label: '4 a 7 días', max: 7, cantidad: 0 },
@@ -440,7 +440,7 @@ function resumenBacklog(abiertos, ahora = new Date()) {
 // Resumen por solicitante: total de tickets creados en el periodo, su estado
 // ACTUAL (resueltos / rechazados / sin resolver, que suman el total) y las
 // encuestas contestadas/pendientes.
-function resumenPorSolicitante(creados, encuestaPorTicket) {
+export function resumenPorSolicitante(creados, encuestaPorTicket) {
   const mapa = new Map();
   for (const t of creados) {
     const clave = nombreSolicitante(t);
@@ -461,7 +461,7 @@ function resumenPorSolicitante(creados, encuestaPorTicket) {
 
 // Volumen por día del periodo, en orden cronológico (para el gráfico de
 // barras del PDF). Fecha local: created_at es timestamptz.
-function contarPorDia(creados) {
+export function contarPorDia(creados) {
   const mapa = new Map();
   for (const t of creados) {
     const f = new Date(t.created_at);
@@ -474,7 +474,7 @@ function contarPorDia(creados) {
     .sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
-function contarPor(lista, fnClave) {
+export function contarPor(lista, fnClave) {
   const mapa = {};
   for (const item of lista) {
     const clave = fnClave(item) || 'Sin definir';

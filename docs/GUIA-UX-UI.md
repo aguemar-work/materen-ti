@@ -4,17 +4,32 @@
 > viven en [`main.css`](../frontend/src/styles/main.css) (`--mat-*` y alias
 > `--color-*`); este archivo describe cómo usarlos en las vistas.
 
-**Vigencia**: actualizado 2026-08-11 — se agrega `NotificacionesCampana` a
-los componentes compartidos (migración 045); no hubo cambios de tokens ni de
-layout desde jul 2026. **Deuda de accesibilidad conocida**: `.text-muted` en
-terciario (`--mat-color-text-tertiary`, tema claro) sigue por debajo de
-4.5:1 (WCAG AA) sobre `--mat-color-bg`/`--mat-color-bg-elevated`. Es una
-deuda de código, no un desacuerdo de convención — hasta que se corrija el
-token, seguir usando `.text-muted` según lo documentado abajo (es
-consistente con el resto del sistema), pero no asumir que pasa el
+**Vigencia**: actualizado 2026-08-12 — segunda pasada del día: auditoría y
+estandarización completa de la librería visual `design.pen` (ver changelog
+en la sección de abajo). La primera pasada del 2026-08-12 había agregado
+`design.pen`; antes, 2026-08-11, se agregó `NotificacionesCampana` a los
+componentes compartidos (migración 045). No hubo cambios de tokens ni de
+layout en `main.css`/Vue desde jul 2026 — todo lo corregido en esta pasada
+vive en `design.pen`, no en el código fuente. **Deuda de accesibilidad
+conocida**: `.text-muted` en terciario (`--mat-color-text-tertiary`, tema
+claro) sigue por debajo de 4.5:1 (WCAG AA) sobre
+`--mat-color-bg`/`--mat-color-bg-elevated` (2.37:1 / 2.54:1, medido en esta
+auditoría). **Ampliación 2026-08-12**: en tema oscuro tampoco alcanza AA
+para texto normal — 3.68:1–3.91:1, solo cumple el umbral AA de texto grande
+(3:1). Es una deuda de código, no un desacuerdo de convención — hasta que
+se corrija el token, seguir usando `.text-muted` según lo documentado abajo
+(es consistente con el resto del sistema), pero no asumir que pasa el
 verificador de contraste: `scripts/contraste.mjs` hoy solo cubre badges, no
 este par texto/superficie. Detalle y seguimiento en
-`docs/HISTORIAL-AUDITORIAS.md` (hallazgo U-01).
+`docs/HISTORIAL-AUDITORIAS.md` (hallazgo U-01). **Hallazgo nuevo de esta
+auditoría (sin registrar aún en HISTORIAL-AUDITORIAS.md)**:
+`.btn-danger:hover` en `main.css` fija `color: #fff` sin condicionar por
+tema; en oscuro `--color-danger` es `#E88870` (salmón claro), dando texto
+blanco a 2.57:1 — falla AA. Es un bug del código fuente (no de la
+migración a Figma); reproducido tal cual en `design.pen` →
+`Primitivas/Botón` → fila "⚠ Hallazgo de accesibilidad" para que sea
+visible, sin corregirlo ahí (corregir el color de texto de esa regla queda
+pendiente en `main.css`).
 
 Documentación del sistema visual del panel: colores, tipografías, layout y
 convenciones de componentes. Útil para mantener coherencia al añadir pantallas.
@@ -36,6 +51,143 @@ o del estado vacío:
 
 Los mapas de color por dominio siguen en `core/dominio-*.js`; `core/badges.js`
 solo despacha hacia ellos.
+
+### Librería visual (`design.pen`)
+
+`design.pen` (raíz del repo, se abre con Pencil) contiene el espejo visual de
+este documento: los tokens `--mat-*` como variables con tema claro/oscuro, y
+cada componente compartido y primitiva de `main.css` como componente
+reutilizable e instanciable (46 componentes). Incluye tres tableros de nivel
+raíz:
+
+| Tablero | Contenido |
+|---------|-----------|
+| `Librería de componentes` | Fichas agrupadas: Tokens, Primitivas, Formularios, Datos y tablas, Contenedores, Superposiciones, Navegación y marca |
+| `Empleados — listado` | Pantalla armada con los componentes (sidebar + `PageHeader` + filtros + tabla + paginación) |
+| `Empleados — listado (tema oscuro)` | La misma pantalla con `theme: {mode: dark}` para revisar el tema oscuro |
+
+El logotipo se reconstruyó desde `frontend/public/logo_materen_sisti.svg` (mismo
+trazado; "sistema ti" en Poppins) y se invierte a blanco en tema oscuro, igual
+que el `filter: brightness(0) invert(1)` del CSS. Si cambia un token o un
+componente compartido, actualizar también el tablero correspondiente.
+
+**Nomenclatura**: cada uno de los 46 componentes usa el prefijo
+`Familia/Componente` (p. ej. `Primitivas/Botón`, `Formularios/Campo de
+texto`, `Navegación y marca/Barra lateral`), con las mismas 7 familias que
+agrupan las fichas del tablero (`Tokens`, `Primitivas`, `Formularios`,
+`Datos y tablas`, `Contenedores`, `Superposiciones`, `Navegación y marca`).
+`Ítem de combo`/`Lista de combo` viven en `Superposiciones` (no en
+`Formularios`) porque su lista se teletransporta al body igual que un menú o
+un modal, no porque el campo de búsqueda que los dispara no sea un
+formulario.
+
+#### Changelog — auditoría y estandarización (2026-08-12)
+
+- **Bug de renderizado (sesión anterior)**: se auditaron los 46 componentes
+  y los 3 tableros nodo por nodo (bounds + captura). No se encontraron
+  nodos fantasma persistentes — el problema de la sesión anterior era caché
+  de render del cliente en nodos creados con `Insert` dentro de la misma
+  sesión en vivo (no repintaban hasta recargar), no corrupción de datos.
+  **El mismo bug reapareció dos veces durante esta auditoría** al insertar
+  el componente `Logotipo compacto` desde cero: los nodos quedaban con
+  datos correctos (confirmado con `bounds`) pero invisibles hasta recargar.
+  Patrón de corrección usado: `Copy` de un nodo recién insertado fuerza el
+  repintado inmediato, mientras que el `Insert` original se queda en blanco
+  en la misma sesión — por eso el componente final se promovió desde una
+  copia verificada en vez de dejar el `Insert` original.
+- **Nomenclatura**: se renombraron los 46 componentes raíz con el prefijo
+  de familia (ver arriba) y se corrigieron 7 capas internas con nombres
+  genéricos ambiguos (`Texto` usado a la vez para un texto suelto y para un
+  frame contenedor en `Modal`, `Tarjeta`, `Diálogo de confirmación`,
+  `Cabecera de módulo` e `Ítem de notificación`; ahora `Título`/`Textos`
+  según corresponda). El texto "sistema ti" del logotipo pasó de estar
+  nombrado por su contenido a `Texto de marca`.
+- **Tokens**: se compararon los 71 `--mat-*` declarados en `main.css`
+  contra las variables de `design.pen`. Se agregaron 13 tokens reales que
+  faltaban y estaban en uso activo en el código: `font-mono`, `ring`
+  (`--mat-ring`, el anillo de foco), `accent-2`, `success` (color base,
+  distinto de `success-text` en oscuro), `warning-text-strong`,
+  `warning-bg-strong`, `teal-bg-subtle`, `brand-elevated`, `brand-ink`,
+  `purple-border`, `sky-border`, `teal-border`, `scroll-shadow`. Se
+  corrigió un bug de fidelidad ya presente en la primera versión: el
+  overlay de `Modal` tenía un valor de tema oscuro inventado (`main.css` no
+  define uno — el `.modal-bg` no tiene override por tema) y `Barra de
+  capacidad` usaba `$success-text` en vez de `$success` (diverge en oscuro:
+  `#6EE7B7` vs `#34D399`), igual que `.capacity-fill--ok` en `main.css`.
+  `brand-elevated`, `brand-ink`, `purple-border`, `sky-border`,
+  `teal-border` y `radius-xl` están declarados en `main.css` pero **ninguna
+  regla los consume actualmente** — deuda del código fuente, migrados de
+  todos modos para paridad 1:1, y señalados como no usados. `scroll-shadow`
+  tampoco es replicable 1:1: `main.css` lo usa dentro de 4 gradientes en
+  capas con `background-position`, que el modelo de `Fill` de Pencil no
+  soporta — se migró el color plano, no el efecto compuesto.
+  `accent-alt`/`accent-subtle-bg`/`accent-subtle-text` no generaron tokens
+  nuevos a propósito: son duplicados exactos (mismo valor, mismos temas) de
+  `accent-2`/`accent-subtle`/`accent-text` ya existentes en el propio
+  `main.css`, y crear una segunda variable idéntica habría violado la regla
+  de "sin duplicados". `shadow-sm/md/lg` valen `none` en las tres — no son
+  representables como variable de color/número; se honran por ausencia de
+  efecto de sombra en todos los componentes (ningún componente de la
+  librería usa `effect: shadow`), consistente con la decisión de producto
+  "sin sombras en contenedores" (DS v0.3 §3.4).
+- **Estados y variantes**: se agregaron filas "Estados" con casos reales
+  del código (no inventados) a `Primitivas/Botón` (hover, focus con anillo
+  visible, cargando con `spinner-icon` — patrón usado en 35+ archivos —, y
+  un "deshabilitado" anotado como inferido porque `.btn` no define
+  `:disabled` en `main.css`), `Formularios/Campo de texto` (focus con
+  `$ring`, "con error" mostrando el patrón real: sin borde rojo, solo
+  `.form-error` + `aria-invalid` para lectores de pantalla, y
+  "deshabilitado" con la misma salvedad que `.btn`) y
+  `Navegación y marca/Ítem de navegación` (hover; sin `:focus-visible`
+  propio, anotado). `Badge estado` se dejó explícitamente sin estados de
+  interacción con una nota: no es interactivo en el código (`<span>` de
+  solo lectura). Se agregó una variante "alerta" a `Tarjeta de métrica`
+  usando `warning-bg-strong`/`warning-text`, el único uso real de esos
+  tokens (`.stat-icon--alerta` en `DashboardView.vue`).
+- **Logo (posicionamiento absoluto)**: se evaluó convertir el logotipo a
+  auto layout escalable. **Confirmado empíricamente que no es posible con
+  las primitivas actuales de Pencil**: sobreescribir `width`/`height` en
+  una instancia no reescala sus hijos con `layout: "none"` (quedan con las
+  coordenadas absolutas originales y se desbordan o se ven diminutos según
+  el caso) — verificado con `bounds` reales, no con capturas (una captura
+  de un nodo aislado no sirve para juzgar escala real: la herramienta
+  ajusta la imagen a un tamaño de miniatura consistente sin importar el
+  tamaño real del nodo, lo que produjo un falso positivo inicial). Por eso
+  el logotipo se mantiene como dos componentes independientes con
+  geometría propia (`Logotipo Materen — Sistema TI` 394×100 y
+  `Logotipo compacto` 110×28), no como variantes de tamaño de un mismo
+  componente. Es la única forma de que ambos tamaños rendericen fielmente
+  hoy; queda anotado en el tablero (ficha `Marca`) para que no se intente
+  "simplificar" de nuevo sin volver a probar. `Símbolo Sistema TI` (28×28,
+  icono solo) se mantiene aparte porque corresponde a un archivo fuente
+  distinto (`icon_sisti.svg`), no es una variante de tamaño del lockup.
+- **Accesibilidad (WCAG AA)**: se midió contraste real (fórmula de
+  luminancia relativa, no aproximado) de los 9 pares badge fondo/texto en
+  ambos temas — todos pasan AA (mínimo 4.86:1 en claro, 5.84:1 en oscuro
+  compuesto sobre `bg-elevated`), botón primario en ambos temas (5.39:1 /
+  9.84:1) y los 13 tokens nuevos. Dos hallazgos reales, ambos del código
+  fuente (no de la migración): la deuda ya conocida de `text-muted`
+  terciario, ampliada con la medición en oscuro (ver arriba), y un bug
+  nuevo no registrado antes en `.btn-danger:hover` (ver arriba). Ninguno
+  se "corrigió" en Figma — se documentan y, en el caso del botón de
+  peligro, se reproducen visiblemente en el propio tablero para que no
+  pasen desapercibidos.
+
+**Pendiente / requiere decisión de diseño** (no resuelto en esta pasada):
+
+- El patrón "aviso de advertencia" (`warning-bg` + `warning-text-strong`,
+  fondo suave con texto reforzado) se usa en 3 vistas
+  (`BajaEmpleadoModal.vue`, `EntregaView.vue` ×2) pero no tiene componente
+  propio en la librería — no se agregó por estar fuera del alcance de "los
+  46 componentes existentes"; queda como candidato a incorporar.
+  `--mat-color-brand-elevated`/`brand-ink`/`purple-border`/`sky-border`/
+  `teal-border`/`radius-xl` migrados pero sin ningún consumidor en el
+  código actual — decidir si se eliminan de `main.css` o se usan.
+- El bug de `.btn-danger:hover` en oscuro y la extensión de la deuda U-01
+  a tema oscuro no están todavía en `docs/HISTORIAL-AUDITORIAS.md` — se
+  señalan aquí porque surgieron de esta auditoría de `design.pen`, no se
+  registró un hallazgo formal nuevo ahí para no invadir ese documento sin
+  pedido explícito.
 
 ## Arquitectura general
 
