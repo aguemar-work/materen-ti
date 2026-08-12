@@ -10,6 +10,13 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-12** — Nuevo job `deploy-manual` en `.github/workflows/ci.yml`
+  (`workflow_dispatch`): aplica una migración a la vez vía `db import` y/o
+  redespliega las 4 edge functions, en Linux en vez de a mano en Windows.
+  Actualizado el checklist de deploy y la nota de producción de `vercel.json`
+  en `README.md`. Marca D-02/D-03 como **Parcial** en
+  `docs/HISTORIAL-AUDITORIAS.md` (sigue siendo manual a propósito, no hay
+  tracking de migraciones ya aplicadas).
 - **2026-08-12** — Resueltos varios hallazgos de `docs/HISTORIAL-AUDITORIAS.md`
   con cambio de código: U-02/U-03/U-04 (tokens CSS, `:focus-visible`),
   A-02 (router `meta.roles`), S-04 (CSP/HSTS en `vercel.json`). Descartado

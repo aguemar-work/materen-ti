@@ -12,6 +12,16 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      migracion:
+        description: 'Ruta de UNA migracion a aplicar, ej. migrations/053_reporte_tickets_rpc.sql (vacio = no aplicar ninguna)'
+        required: false
+        default: ''
+      desplegar_functions:
+        description: 'Redesplegar las 4 edge functions (credenciales, tickets, encuestas, personal-registro)'
+        type: boolean
+        default: false
 
 jobs:
   build-y-tests:
@@ -81,3 +91,44 @@ jobs:
             exit 0
           fi
           node scripts/test-db.mjs
+
+  # Deploy manual de migraciones/edge functions a InsForge, solo bajo demanda
+  # (workflow_dispatch) — nunca en push/PR, porque INSFORGE_ACCESS_TOKEN puede
+  # escribir en producción. Reemplaza el flujo 100% manual de AGENTS.md (CLI
+  # local en Windows, con el límite de línea de comandos y los crashes de
+  # `db import` documentados ahí) por una ejecución controlada en Linux, una
+  # migración a la vez — nunca "todas las pendientes", porque el proyecto no
+  # trackea qué migraciones ya se aplicaron (decisión de la migración 035:
+  # no se usa `db migrations up`) y aplicar dos veces una ya corrida puede
+  # fallar o duplicar datos (D-02/D-03).
+  deploy-manual:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      INSFORGE_ACCESS_TOKEN: ${{ secrets.INSFORGE_ACCESS_TOKEN }}
+      INSFORGE_PROJECT_ID: ${{ secrets.INSFORGE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verificar credenciales
+        run: |
+          if [ -z "$INSFORGE_ACCESS_TOKEN" ] || [ -z "$INSFORGE_PROJECT_ID" ]; then
+            echo "::error::Faltan INSFORGE_ACCESS_TOKEN/INSFORGE_PROJECT_ID en los secrets del repo — no se puede desplegar."
+            exit 1
+          fi
+      - name: Aplicar migración (db import)
+        if: inputs.migracion != ''
+        run: npx @insforge/cli db import "${{ inputs.migracion }}"
+      - name: Recordatorio de verificación posterior
+        if: inputs.migracion != ''
+        run: |
+          echo "::notice::Migración enviada — VERIFICAR MANUALMENTE contra la tabla/función afectada antes de darla por buena. db import puede reportar error de cliente aunque el statement ya se haya ejecutado en el servidor (ver AGENTS.md)."
+      - name: Redesplegar edge functions
+        if: inputs.desplegar_functions == 'true'
+        run: |
+          for fn in credenciales tickets encuestas personal-registro; do
+            echo "== Desplegando $fn =="
+            npx @insforge/cli functions deploy "$fn" --file "functions/$fn.ts"
+          done

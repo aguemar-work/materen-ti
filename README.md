@@ -338,9 +338,9 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 
 ## Checklist de deploy
 
-1. Aplicar migraciones pendientes (`node scripts/apply-migration.mjs migrations/0XX_….sql` en Windows; para migraciones con `create function`/`do $$...$$` como la 037/038, usar `npx @insforge/cli db import migrations/0XX_….sql` — ver gotcha en `AGENTS.md`).
+1. Aplicar migraciones pendientes (`node scripts/apply-migration.mjs migrations/0XX_….sql` en Windows; para migraciones con `create function`/`do $$...$$` como la 037/038, usar `npx @insforge/cli db import migrations/0XX_….sql` — ver gotcha en `AGENTS.md`). Alternativa sin los gotchas de Windows: disparar manualmente el job `deploy-manual` de `.github/workflows/ci.yml` (`workflow_dispatch`, un archivo de migración a la vez — nunca aplica "todas las pendientes", el proyecto no trackea cuáles ya corrieron).
 2. Redesplegar edge functions si cambiaron: `credenciales`, `tickets`,
-   `encuestas`, `personal-registro`.
+   `encuestas`, `personal-registro` (o marcar `desplegar_functions` al disparar el mismo job `deploy-manual`).
 3. Push de `insforge.toml` si cambió auth/storage.
 4. Build frontend: `cd frontend && npm run build`.
 5. Deploy Vercel (o push a la rama conectada).
@@ -352,6 +352,9 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 - Frontend desplegado en Vercel: **https://materen-ti.vercel.app**
 - SPA rewrites: `frontend/vercel.json` (copiado a `dist/` vía `public/`) — sin
   esto las rutas profundas (`/entrega/:token`, `/empleados/:id`) dan 404.
+  El mismo archivo define los headers de seguridad (CSP/HSTS/anti-framing,
+  S-04) — si se agrega un origen externo nuevo (fuente, CDN, API), hay que
+  sumarlo a la CSP ahí o el navegador lo bloquea en silencio.
 - CORS de las 4 edge functions (`credenciales`, `tickets`, `encuestas`,
   `personal-registro`): allowlist con el dominio de producción + localhost
   (dev), una por función. Si cambia el dominio, actualizar
