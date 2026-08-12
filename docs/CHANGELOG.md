@@ -10,6 +10,14 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-12** — Nueva regla en `AGENTS.md` ("Diagnóstico/pruebas contra
+  producción"): extiende la práctica de usar un branch de InsForge (antes
+  solo para tablas de prueba nuevas, `docs/PANORAMA_SISTEMA.md` §7) a
+  cualquier INSERT/UPDATE/DELETE de diagnóstico contra datos reales —
+  limpieza en la misma sesión + registro explícito obligatorio. Agregada
+  nota junto a `siguiente_codigo_ticket()` en `docs/PANORAMA_SISTEMA.md`
+  explicando que los huecos de `TCK-00XX` son esperables (`nextval()` no
+  es transaccional), a raíz del salto 0096→0120 documentado en T-05.
 - **2026-08-12** — **Fix de bug en producción** (migración 054): eliminada
   la sobrecarga vieja de 5 argumentos de `crear_notificacion()`, viva por
   error desde la migración 048 (`create or replace function` con firma

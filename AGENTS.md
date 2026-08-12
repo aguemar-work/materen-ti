@@ -38,6 +38,19 @@ cuándo y si la contraseña se rotó después.
   actualiza en `docs/HISTORIAL-AUDITORIAS.md`, no en un informe nuevo suelto.
   No es opcional ni una tarea aparte: un PR que cambia comportamiento y no
   toca documentación queda incompleto, igual que uno sin tests.
+- **Diagnóstico/pruebas contra producción**: para reproducir un bug o
+ verificar un fix, preferir un branch de InsForge (`npx @insforge/cli
+ branch create`) en vez de escribir sobre datos reales (ver
+ `docs/PANORAMA_SISTEMA.md` §7 — hasta ahora esa regla solo cubría tablas
+ de prueba nuevas; se extiende a cualquier INSERT/UPDATE/DELETE de
+ diagnóstico). Si no es viable (ej. confirmar que un fix ya corre en el
+ backend real), es obligatorio: (1) limpiar los datos de prueba en la
+ misma sesión, y (2) dejar registro explícito de qué se tocó y que se
+ limpió en `docs/HISTORIAL-AUDITORIAS.md` o `docs/CHANGELOG.md` — no basta
+ con haberlo borrado. Nota aparte: los códigos que vienen de una
+ `sequence` (`siguiente_codigo_ticket()`, etc.) **nunca se revierten**
+ aunque el INSERT falle o se borre el registro — un hueco en `TCK-00XX` no
+ es en sí mismo evidencia de nada, pero conviene poder explicarlo.
 - **Idioma**: UI, comentarios, nombres de funciones/variables de dominio y
  mensajes en **español** (código base en Perú: DNI, RUC, WhatsApp).
 - **Contraseñas**: NUNCA en listados ni precargadas en formularios. Todo lo
