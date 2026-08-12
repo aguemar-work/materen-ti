@@ -58,6 +58,7 @@ export default [
         path: 'staff',
         name: 'configuracion-staff',
         component: () => import('../../modules/staff/StaffView.vue'),
+        meta: { roles: ['jefe'], redirigirDenegado: { name: 'configuracion-empresas' } },
       },
     ],
   },

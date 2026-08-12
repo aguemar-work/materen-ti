@@ -1,6 +1,12 @@
 import { useAuthStore } from '../stores/auth.js';
 import { registrarAccesoDenegado } from '../api/passwords.js';
 
+// Roles declarados en meta.roles de routes/*.routes.js — agregar aquí al
+// sumar un rol nuevo.
+const CUMPLE_ROL = {
+  jefe: (auth) => auth.esJefe,
+};
+
 export function setupGuards(router) {
   router.beforeEach(async (to) => {
     // Rutas públicas (ej: /entrega/:token) no requieren sesión ni cargarla
@@ -24,30 +30,13 @@ export function setupGuards(router) {
       return { path: '/login' };
     }
 
-    // Cada bloqueo por rol queda auditado en accesos_log (migración 030).
-    // Sin await: el registro no debe demorar el redirect.
-    if (to.path === '/actividad' && !auth.esJefe) {
+    // Roles restringidos declarados en meta.roles (ver routes/*.routes.js).
+    // Cada bloqueo queda auditado en accesos_log (migración 030); sin
+    // await porque el registro no debe demorar el redirect.
+    const roles = to.meta.roles;
+    if (roles && !roles.some((rol) => CUMPLE_ROL[rol]?.(auth))) {
       registrarAccesoDenegado(to.path);
-      return { path: '/dashboard' };
-    }
-
-    if (to.path === '/accesos-sensibles' && !auth.esJefe) {
-      registrarAccesoDenegado(to.path);
-      return { path: '/dashboard' };
-    }
-
-    // Solo JEFE: puede migrar pre-registros a empleados y eliminarlos
-    // (hard delete, migración 046). El formulario público /personal-registro
-    // sigue abierto para cualquiera, sin sesión.
-    if (to.path === '/personal-registros' && !auth.esJefe) {
-      registrarAccesoDenegado(to.path);
-      return { path: '/dashboard' };
-    }
-
-    // La pestaña Staff de Configuración es solo para el JEFE
-    if (to.name === 'configuracion-staff' && !auth.esJefe) {
-      registrarAccesoDenegado(to.path);
-      return { name: 'configuracion-empresas' };
+      return to.meta.redirigirDenegado ?? { path: '/dashboard' };
     }
   });
 }
