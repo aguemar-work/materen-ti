@@ -1,11 +1,16 @@
-// Dominio licencias: catálogo, renovaciones y asignaciones directas
-// (las licencias con login se asignan vía su correo vinculado).
+// Dominio licencias: catálogo, renovaciones y asignación de asientos.
+// asignarUsuario/liberarUsuario deciden el mecanismo según el tipo de
+// licencia: con login (cuenta_id), delegan en el correo compartido
+// (asignaciones_cuenta, mismo camino que el módulo Correos); sin login,
+// asignación directa en asignaciones_licencia.
 import { getClient } from '../client.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { cifrarPassword } from '../passwords.js';
 import { trimText, fechaLocalISO } from '../../core/formatters.js';
+import { cuentasApi } from './cuentas.js';
+import { correosApi } from './correos.js';
 
 // Columnas de "licencias" ordenables desde la tabla (excluye empresa/acceso/
 // usuarios, que vienen de joins, y asientos, que es calculado).
@@ -111,8 +116,29 @@ export const licenciasApi = {
     if (error) throw error;
   },
 
-  // Asignación directa (licencias sin login). Las licencias con login se
-  // asignan a través de su correo vinculado, como cualquier correo compartido.
+  // Asignar un asiento a un empleado, sin importar el tipo de licencia:
+  // con login, delega en el correo compartido (mismo camino que Correos);
+  // sin login, usa asignarLicencia directo. Punto de entrada único desde la UI.
+  async asignarUsuario(licencia, empleadoId) {
+    if (licencia.cuenta_id) {
+      await correosApi.asignarCuentaExistente(licencia.cuenta_id, empleadoId);
+      return;
+    }
+    await licenciasApi.asignarLicencia(licencia.id, empleadoId);
+  },
+
+  // Liberar un asiento ya asignado (usuario = entrada de licencia.usuarios,
+  // con `origen` puesto por mapLicencia para saber a qué tabla pertenece).
+  async liberarUsuario(usuario, notas = null) {
+    if (usuario.origen === 'cuenta') {
+      await cuentasApi.cerrarAsignacion(usuario.asignacion_id, notas);
+      return;
+    }
+    await licenciasApi.cerrarAsignacionLicencia(usuario.asignacion_id, notas);
+  },
+
+  // Asignación directa en asignaciones_licencia (licencias sin login).
+  // Usar asignarUsuario() desde la UI; esto es el mecanismo de bajo nivel.
   async asignarLicencia(licenciaId, empleadoId) {
     const { error } = await getClient().database
       .from('asignaciones_licencia')
@@ -164,7 +190,8 @@ function mapLicencia(row) {
     ? (cuenta.asignaciones_cuenta || [])
         .filter((a) => !a.fecha_fin && a.empleados)
         .map((a) => ({
-          asignacion_id: null, // se gestiona desde el correo, no aquí
+          asignacion_id: a.id,
+          origen: 'cuenta', // liberarUsuario() cierra por asignaciones_cuenta
           empleado_id: a.empleado_id,
           nombre: `${a.empleados.nombres} ${a.empleados.apellidos}`.trim(),
         }))
@@ -172,6 +199,7 @@ function mapLicencia(row) {
         .filter((a) => !a.fecha_fin && a.empleados)
         .map((a) => ({
           asignacion_id: a.id,
+          origen: 'licencia', // liberarUsuario() cierra por asignaciones_licencia
           empleado_id: a.empleado_id,
           nombre: `${a.empleados.nombres} ${a.empleados.apellidos}`.trim(),
         }));

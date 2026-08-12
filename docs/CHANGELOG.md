@@ -10,6 +10,18 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-12** — Unificado el botón "Asignar a un empleado" en
+  `LicenciasView.vue` para todas las licencias, sin importar si tienen
+  login o no (antes solo aparecía para licencias sin login). Nuevas
+  funciones `licenciasApi.asignarUsuario()`/`liberarUsuario()`
+  (`frontend/src/api/domains/licencias.js`) deciden el mecanismo: con
+  login delegan en `asignarCuentaExistente`/`cerrarAsignacion` del correo
+  compartido (mismo camino que el módulo Correos); sin login usan
+  `asignarLicencia`/`cerrarAsignacionLicencia` directo. `mapLicencia()`
+  agrega `origen: 'cuenta'|'licencia'` a cada entrada de `usuarios` para
+  que `liberarUsuario()` sepa a qué tabla cerrar. Actualizados
+  `stores/licencias.js`, el hint de `LicenciaForm.vue`, `README.md` y la
+  lista de métodos de `tests/insforge-api-shape.test.js` (150→152).
 - **2026-08-12** — **Fix de incidente en producción**: la CSP agregada en
   S-04 bloqueaba el WebSocket del realtime (`wss://kjyj8t5t.us-east.insforge.app`)
   porque `connect-src` solo tenía el esquema `https://` del mismo host.

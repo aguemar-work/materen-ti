@@ -237,7 +237,7 @@ async function confirmarAsignar() {
   errorAsignar.value = '';
   asignando.value = true;
   try {
-    await store.asignar(licenciaAsignar.value.id, empleadoAsignarId.value);
+    await store.asignar(licenciaAsignar.value, empleadoAsignarId.value);
     mostrarAsignar.value = false;
     showToast('Asiento asignado');
   } catch (e) {
@@ -264,7 +264,7 @@ async function confirmarAccionPendiente() {
   procesandoAccion.value = true;
   try {
     if (a.tipo === 'liberar') {
-      await store.liberar(a.usuario.asignacion_id);
+      await store.liberar(a.usuario);
       showToast('Asiento liberado');
     } else if (a.tipo === 'renovar') {
       await store.renovar(a.licencia.id, a.nuevaFecha);
@@ -445,7 +445,6 @@ onMounted(async () => {
                       <i class="ti ti-refresh"></i>
                     </button>
                     <button
-                      v-if="!lic.cuenta_id"
                       class="icon-btn"
                       type="button"
                       title="Asignar asiento a un empleado"

@@ -393,8 +393,9 @@ async function guardar() {
               </template>
             </BuscadorCombo>
             <p class="field-hint">
-              Los usuarios de la licencia se asignan a través de ese correo (desde la ficha
-              del empleado). El sistema no permitirá más personas que asientos comprados.
+              Los usuarios de la licencia se asignan desde la lista de Licencias (mismo botón
+              que las licencias sin login) o desde Correos/la ficha del empleado — es la misma
+              cuenta. El sistema no permitirá más personas que asientos comprados.
             </p>
           </div>
 

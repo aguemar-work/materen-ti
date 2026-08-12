@@ -44,7 +44,10 @@ cuándo y si la contraseña se rotó después.
     **contraseña propia** distinta a la del correo (caso AutoCAD), va cifrada
     en `clave`; si `clave` es NULL se entra con la contraseña del correo. Los
     usuarios de la licencia son las asignaciones de ese correo y un trigger
-    impide asignar más personas que asientos.
+    impide asignar más personas que asientos. Se asigna con el mismo botón
+    "Asignar a un empleado" de la lista de Licencias que las licencias sin
+    login (`licenciasApi.asignarUsuario`, delega en `asignarCuentaExistente`
+    del módulo Correos) — no hace falta ir a otro módulo.
   - **Sin login** (`clave`) — clave/serial cifrada en servidor (revelado
     auditado); los usuarios van en `asignaciones_licencia`, con el mismo tope.
 

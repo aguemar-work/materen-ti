@@ -99,15 +99,17 @@ export const useLicenciasStore = defineStore('licencias', {
       await this.cargar();
     },
 
-    async asignar(licenciaId, empleadoId) {
+    // licencia: objeto completo (necesita cuenta_id para elegir el mecanismo).
+    async asignar(licencia, empleadoId) {
       this.error = null;
-      await insforgeApi.asignarLicencia(licenciaId, empleadoId);
+      await insforgeApi.asignarUsuario(licencia, empleadoId);
       await this.cargar();
     },
 
-    async liberar(asignacionId, notas = null) {
+    // usuario: entrada de licencia.usuarios (trae `origen` y `asignacion_id`).
+    async liberar(usuario, notas = null) {
       this.error = null;
-      await insforgeApi.cerrarAsignacionLicencia(asignacionId, notas);
+      await insforgeApi.liberarUsuario(usuario, notas);
       await this.cargar();
     },
   },
