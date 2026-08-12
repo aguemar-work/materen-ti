@@ -1,17 +1,17 @@
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { RouterLink, useRouter } from 'vue-router';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { getClient } from '../../api/client.js';
-import { estadoInfo } from '../../core/dominio-tickets.js';
 import { temaActual, alternarTema } from '../../core/tema.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
-import { useBusqueda } from '../../composables/useBusqueda.js';
-import { useNotificacionesStore } from '../../stores/notificaciones.js';
 import NotificacionesCampana from './NotificacionesCampana.vue';
+import AppSearch from './AppSearch.vue';
+import AppNav from './AppNav.vue';
+import AppNotifications from './AppNotifications.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -38,7 +38,8 @@ onUnmounted(() => {
 // que el sonido de "ticket nuevo" suene sin importar qué pantalla esté
 // viendo el staff. El store es un singleton Pinia: llamar cargar() desde
 // aquí ya refresca TicketsView si está montada, sin que ella necesite su
-// propia suscripción al mismo canal.
+// propia suscripción al mismo canal. Se queda en el layout raíz (no en
+// AppNotifications) porque también alimenta el badge de AppNav.
 const ticketsStore = useTicketsStore();
 
 // Cola viva de tickets sin asignar para el badge del sidebar: baja cuando
@@ -62,75 +63,6 @@ useRealtimeRefresco('tickets:list', (payload) => {
   cargarSinAsignar();
 });
 
-// Notificaciones (migración 045): campana persistente en el footer del
-// sidebar + aviso emergente genérico. Reemplaza el aviso que antes escuchaba
-// solo "tickets:nuevos" (migración 044) — ese canal se retiró en la
-// migración 052, "notificaciones:nuevas" cubre tickets también.
-const notificacionesStore = useNotificacionesStore();
-onMounted(() => {
-  if (auth.user) notificacionesStore.cargar(auth.user.id);
-});
-
-const MAX_AVISOS = 4;
-const avisos = ref([]);
-let avisoSeq = 0;
-
-const ICONO_AVISO_POR_TIPO = {
-  ticket_creado: 'ti-headset',
-  cuenta_creada: 'ti-key',
-  empleado_alta: 'ti-user-plus',
-  empleado_baja: 'ti-user-off',
-  ticket_asignado: 'ti-user-check',
-  ticket_estado_cambiado: 'ti-progress',
-  ticket_comentario_nuevo: 'ti-message-circle',
-  ticket_correo_fallido: 'ti-mail-off',
-};
-
-function descartarAviso(key) {
-  avisos.value = avisos.value.filter((a) => a.key !== key);
-}
-
-// Compartido entre el canal broadcast (notificaciones:nuevas) y el personal
-// (notificaciones:usuario:<id>, migración 048): mismo aviso emergente + misma
-// entrada en la campana, la única diferencia es si suena o no.
-function manejarNotificacionNueva(payload, { sonido = false } = {}) {
-  notificacionesStore.agregar(payload);
-  if (sonido) reproducirNotificacion();
-  if (avisos.value.length >= MAX_AVISOS) return;
-  const key = ++avisoSeq;
-  avisos.value.push({
-    key,
-    id: payload.id,
-    titulo: payload.titulo,
-    url_destino: payload.url_destino,
-    icono: ICONO_AVISO_POR_TIPO[payload.tipo] || 'ti-bell',
-  });
-  setTimeout(() => descartarAviso(key), 6000);
-}
-
-useRealtimeRefresco('notificaciones:nuevas', (payload) => {
-  manejarNotificacionNueva(payload, { sonido: false });
-});
-
-// Notificaciones personales (migración 048/049): asignación, cambio de
-// estado, comentario nuevo o correo fallido en un ticket que le corresponde
-// a este usuario. Más accionable que el feed broadcast, por eso sí suena.
-if (auth.user) {
-  useRealtimeRefresco(`notificaciones:usuario:${auth.user.id}`, (payload) => {
-    manejarNotificacionNueva(payload, { sonido: true });
-  });
-}
-
-async function irAAviso(aviso) {
-  descartarAviso(aviso.key);
-  router.push(aviso.url_destino);
-  try {
-    await notificacionesStore.marcarLeida(aviso.id, auth.user.id);
-  } catch {
-    // El store ya revirtió el estado optimista; sin más feedback posible acá.
-  }
-}
-
 const sidebarAbierto = ref(false);
 
 // ── Colapso del sidebar (solo desktop; en móvil manda el drawer) ──
@@ -142,13 +74,9 @@ function toggleColapso() {
   localStorage.setItem(CLAVE_SIDEBAR, sidebarColapsado.value ? 'colapsado' : 'expandido');
 }
 
-const inputBusqueda = ref(null);
-
-async function expandirYBuscar() {
+function expandirSidebar() {
   sidebarColapsado.value = false;
   localStorage.setItem(CLAVE_SIDEBAR, 'expandido');
-  await nextTick();
-  inputBusqueda.value?.focus();
 }
 
 // ── Tema claro/oscuro ─────────────────────────────────────────
@@ -157,121 +85,6 @@ const tema = ref(temaActual());
 function toggleTema() {
   tema.value = alternarTema();
 }
-
-// ── Búsqueda global ───────────────────────────────────────────
-const SIN_RESULTADOS = { empleados: [], cuentas: [], equipos: [], tickets: [], licencias: [] };
-const resultados = ref({ ...SIN_RESULTADOS });
-const busquedaAbierta = ref(false);
-
-const hayResultados = computed(() =>
-  resultados.value.empleados.length ||
-  resultados.value.cuentas.length ||
-  resultados.value.equipos.length ||
-  resultados.value.tickets.length ||
-  resultados.value.licencias.length
-);
-
-// peticionId descarta respuestas obsoletas: si dos búsquedas se
-// superponen (red desordenada), solo se aplica la más reciente.
-let peticionBusquedaId = 0;
-const { termino: busqueda, cargando: buscando } = useBusqueda({
-  onBuscar: async (q) => {
-    const id = ++peticionBusquedaId;
-    if (!q) { resultados.value = { ...SIN_RESULTADOS }; return; }
-    try {
-      const r = await insforgeApi.buscarGlobal(q);
-      if (id === peticionBusquedaId) resultados.value = r;
-    } catch {
-      if (id === peticionBusquedaId) resultados.value = { ...SIN_RESULTADOS };
-    }
-  },
-});
-watch(busqueda, (q) => { busquedaAbierta.value = q.trim().length >= 2; });
-
-function cerrarBusqueda() {
-  setTimeout(() => { busquedaAbierta.value = false; }, 150);
-}
-
-function limpiarBusqueda() {
-  busqueda.value = '';
-  busquedaAbierta.value = false;
-  cerrar();
-}
-
-function irAEmpleado(emp) {
-  limpiarBusqueda();
-  router.push(`/empleados/${emp.id}`);
-}
-
-function irACuenta(cuenta) {
-  limpiarBusqueda();
-  // Personal con titular → su ficha; compartida/reutilizable → Correos
-  // prefiltrado con el usuario de la cuenta
-  if (cuenta.tipo_cuenta === 'personal' && cuenta.titular_id) {
-    router.push(`/empleados/${cuenta.titular_id}`);
-  } else {
-    router.push({ path: '/correos', query: { q: cuenta.usuario } });
-  }
-}
-
-// Deep-links: la vista de lista lee ?q= y precarga su buscador, dejando
-// visible el registro concreto (no hay vistas de detalle para estos).
-function irAEquipo(eq) {
-  limpiarBusqueda();
-  router.push({ path: '/equipos', query: { q: eq.codigo } });
-}
-
-function irATicket(t) {
-  limpiarBusqueda();
-  router.push(`/tickets/${t.id}`);
-}
-
-function irALicencia(lic) {
-  limpiarBusqueda();
-  router.push({ path: '/licencias', query: { q: lic.software } });
-}
-
-// Nav agrupada por frecuencia de uso: día a día arriba, inventario al
-// medio, auditoría y catálogos al fondo.
-const navGrupos = computed(() => [
-  {
-    label: null,
-    items: [
-      { path: '/dashboard', label: 'Dashboard', icon: 'ti ti-layout-dashboard' },
-      { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset' },
-    ],
-  },
-  {
-    label: 'Gestión',
-    items: [
-      { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
-      // Solo JEFE: la migración a empleados y el hard delete que hace esta
-      // vista (migración 046) quedan reservados a ese rol.
-      ...(auth.esJefe
-        ? [{ path: '/personal-registros', label: 'Pre-registro de personal', icon: 'ti ti-id-badge-2' }]
-        : []),
-      { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
-      { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
-      { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
-      { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books' },
-      { path: '/problemas', label: 'Problemas', icon: 'ti ti-alert-hexagon' },
-      { path: '/encuestas', label: 'Encuestas', icon: 'ti ti-clipboard-list' },
-    ],
-  },
-  {
-    label: 'Administración',
-    items: [
-      ...(auth.esJefe
-        ? [
-            { path: '/actividad', label: 'Actividad', icon: 'ti ti-activity' },
-            { path: '/accesos-sensibles', label: 'Accesos sensibles', icon: 'ti ti-shield-lock' },
-          ]
-        : []),
-      // Catálogos (empresas, plataformas, tipos, ubicaciones, staff)
-      { path: '/configuracion', label: 'Configuración', icon: 'ti ti-settings' },
-    ],
-  },
-]);
 
 const userInitial = computed(() => (auth.nombre?.[0] ?? auth.user?.email?.[0] ?? '?').toUpperCase());
 
@@ -320,132 +133,13 @@ async function cerrarSesion() {
         </button>
       </div>
 
-      <!-- Búsqueda global (colapsado: solo un botón que expande y enfoca) -->
-      <div class="sb-busqueda sb-busqueda--colapsada">
-        <button
-          class="sb-logout"
-          type="button"
-          title="Buscar en todo"
-          @click="expandirYBuscar"
-        >
-          <i class="ti ti-search" aria-hidden="true"></i>
-        </button>
-      </div>
-      <div class="sb-busqueda sb-busqueda--full">
-        <i class="ti ti-search sb-busqueda-icon" aria-hidden="true"></i>
-        <input
-          ref="inputBusqueda"
-          v-model="busqueda"
-          type="text"
-          placeholder="Buscar en todo..."
-          aria-label="Búsqueda global"
-          @focus="busqueda.trim().length >= 2 && (busquedaAbierta = true)"
-          @blur="cerrarBusqueda"
-        >
-        <div v-if="busquedaAbierta" class="sb-resultados">
-          <div v-if="buscando" class="sb-res-vacio">Buscando...</div>
-          <template v-else-if="hayResultados">
-            <template v-if="resultados.empleados.length">
-              <div class="sb-res-grupo">Empleados</div>
-              <button
-                v-for="e in resultados.empleados"
-                :key="e.id"
-                type="button"
-                class="sb-res-item"
-                @mousedown.prevent="irAEmpleado(e)"
-              >
-                <i class="ti ti-user"></i>
-                <span class="sb-res-main">{{ e.nombres }} {{ e.apellidos }}</span>
-                <span class="sb-res-sec">{{ e.dni }}</span>
-              </button>
-            </template>
-            <template v-if="resultados.cuentas.length">
-              <div class="sb-res-grupo">Cuentas</div>
-              <button
-                v-for="c in resultados.cuentas"
-                :key="c.id"
-                type="button"
-                class="sb-res-item"
-                @mousedown.prevent="irACuenta(c)"
-              >
-                <i class="ti ti-key"></i>
-                <span class="sb-res-main">{{ c.usuario }}</span>
-                <span class="sb-res-sec">{{ c.plataforma_nombre }}</span>
-              </button>
-            </template>
-            <template v-if="resultados.equipos.length">
-              <div class="sb-res-grupo">Equipos</div>
-              <button
-                v-for="eq in resultados.equipos"
-                :key="eq.id"
-                type="button"
-                class="sb-res-item"
-                @mousedown.prevent="irAEquipo(eq)"
-              >
-                <i class="ti ti-devices"></i>
-                <span class="sb-res-main">{{ eq.codigo }}</span>
-                <span class="sb-res-sec">{{ eq.descripcion }}</span>
-              </button>
-            </template>
-            <template v-if="resultados.tickets.length">
-              <div class="sb-res-grupo">Tickets</div>
-              <button
-                v-for="t in resultados.tickets"
-                :key="t.id"
-                type="button"
-                class="sb-res-item"
-                @mousedown.prevent="irATicket(t)"
-              >
-                <i class="ti ti-headset"></i>
-                <span class="sb-res-main">{{ t.titulo }}</span>
-                <span class="sb-res-sec">{{ t.codigo }} · {{ estadoInfo(t.estado).label }}</span>
-              </button>
-            </template>
-            <template v-if="resultados.licencias.length">
-              <div class="sb-res-grupo">Licencias</div>
-              <button
-                v-for="lic in resultados.licencias"
-                :key="lic.id"
-                type="button"
-                class="sb-res-item"
-                @mousedown.prevent="irALicencia(lic)"
-              >
-                <i class="ti ti-license"></i>
-                <span class="sb-res-main">{{ lic.software }}</span>
-                <span class="sb-res-sec">{{ lic.proveedor }}</span>
-              </button>
-            </template>
-          </template>
-          <div v-else class="sb-res-vacio">Sin resultados para "{{ busqueda }}"</div>
-        </div>
-      </div>
+      <AppSearch @expandir-sidebar="expandirSidebar" @navegado="cerrar" />
 
-      <nav class="sb-nav" aria-label="Navegación">
-        <div
-          v-for="(grupo, i) in navGrupos"
-          :key="grupo.label ?? i"
-          class="sb-nav-grupo"
-        >
-          <div v-if="grupo.label" class="sb-nav-titulo">{{ grupo.label }}</div>
-          <RouterLink
-            v-for="item in grupo.items"
-            :key="item.path"
-            :to="item.path"
-            class="sb-nav-item"
-            active-class="sb-nav-item--active"
-            :title="sidebarColapsado ? item.label : null"
-            @click="cerrar"
-          >
-            <i :class="item.icon" aria-hidden="true"></i>
-            <span class="sb-nav-label">{{ item.label }}</span>
-            <span
-              v-if="item.path === '/tickets' && ticketsSinAsignar"
-              class="badge-count sb-nav-badge"
-              :title="`${ticketsSinAsignar} ticket(s) sin asignar`"
-            >{{ ticketsSinAsignar }}</span>
-          </RouterLink>
-        </div>
-      </nav>
+      <AppNav
+        :sidebar-colapsado="sidebarColapsado"
+        :tickets-sin-asignar="ticketsSinAsignar"
+        @cerrar-drawer="cerrar"
+      />
 
       <div class="sb-footer">
         <div class="sb-user" :title="sidebarColapsado ? (auth.nombre || auth.user?.email) : null">
@@ -498,31 +192,7 @@ async function cerrarSesion() {
       <slot />
     </div>
 
-    <!-- Aviso emergente de notificación nueva (tiempo real) -->
-    <transition-group name="aviso-fade" tag="div" class="aviso-stack">
-      <div
-        v-for="a in avisos"
-        :key="a.key"
-        class="aviso-card"
-        role="button"
-        tabindex="0"
-        @click="irAAviso(a)"
-        @keydown.enter="irAAviso(a)"
-      >
-        <i class="ti" :class="a.icono" aria-hidden="true"></i>
-        <div class="aviso-card-texto">
-          <span class="aviso-card-titulo">{{ a.titulo }}</span>
-        </div>
-        <button
-          type="button"
-          class="aviso-card-cerrar"
-          aria-label="Descartar aviso"
-          @click.stop="descartarAviso(a.key)"
-        >
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
-    </transition-group>
+    <AppNotifications />
   </div>
 </template>
 
@@ -568,17 +238,9 @@ async function cerrarSesion() {
   margin-left: auto;
 }
 
-.sb-busqueda--colapsada {
-  display: none;
-}
-
 @media (min-width: 769px) {
   .sidebar--colapsado {
     --sb-w: 64px;
-  }
-
-  .sidebar--colapsado .sb-busqueda--full {
-    display: none;
   }
 
   .sidebar--colapsado .sb-logo {
@@ -597,30 +259,6 @@ async function cerrarSesion() {
 
   .sidebar--colapsado .sb-collapse {
     margin-left: 0;
-  }
-
-  .sidebar--colapsado .sb-busqueda--colapsada {
-    display: flex;
-    justify-content: center;
-    padding: 4px 0;
-  }
-
-  .sidebar--colapsado .sb-nav {
-    padding: 10px 12px;
-  }
-
-  .sidebar--colapsado .sb-nav-item {
-    justify-content: center;
-    padding: 9px 0;
-  }
-
-  .sidebar--colapsado .sb-nav-label {
-    display: none;
-  }
-
-  /* Colapsado: sin títulos de grupo; la separación la da el gap del nav */
-  .sidebar--colapsado .sb-nav-titulo {
-    display: none;
   }
 
   .sidebar--colapsado .sb-footer {
@@ -651,117 +289,6 @@ async function cerrarSesion() {
   }
 }
 
-/* Durante la transición de ancho los labels no deben envolver línea */
-.sb-nav-label {
-  white-space: nowrap;
-}
-
-/* ── Búsqueda global ─────────────────────────────────────────── */
-.sb-busqueda {
-  position: relative;
-  padding: 12px 14px 4px;
-  flex-shrink: 0;
-}
-
-.sb-busqueda-icon {
-  position: absolute;
-  left: 26px;
-  top: 50%;
-  transform: translateY(calc(-50% + 3px));
-  color: var(--sb-text);
-  font-size: 14px;
-  pointer-events: none;
-}
-
-.sb-busqueda input {
-  width: 100%;
-  padding: 8px 10px 8px 34px;
-  font-size: 13px;
-  color: var(--sb-text-strong);
-  background: var(--color-bg-hover);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  outline: none;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.sb-busqueda input::placeholder { color: var(--color-text-tertiary); }
-
-.sb-busqueda input:focus {
-  background: var(--color-bg-elevated);
-  border-color: var(--color-border);
-}
-
-.sb-resultados {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 14px;
-  right: 14px;
-  z-index: var(--z-popover);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg);
-  max-height: 340px;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.sb-res-grupo {
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-secondary);
-  padding: 8px 10px 3px;
-}
-
-.sb-res-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  background: none;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-  font-size: 13px;
-}
-
-.sb-res-item:hover { background: var(--color-accent-subtle); }
-
-.sb-res-item i {
-  color: var(--color-accent-soft);
-  font-size: 15px;
-  flex-shrink: 0;
-}
-
-.sb-res-main {
-  color: var(--color-text-primary);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.sb-res-sec {
-  font-size: 11.5px;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.sb-res-vacio {
-  padding: 14px 10px;
-  font-size: 12.5px;
-  color: var(--color-text-secondary);
-  text-align: center;
-}
-
 /* ── Logo ────────────────────────────────────────────────────── */
 .sb-logo {
   display: flex;
@@ -789,88 +316,6 @@ async function cerrarSesion() {
 [data-theme="dark"] .sb-logo-full,
 [data-theme="dark"] .sb-logo-icono {
   filter: brightness(0) invert(1);
-}
-
-/* ── Nav ─────────────────────────────────────────────────────── */
-.sb-nav {
-  flex: 1;
-  padding: 10px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px; /* separación entre grupos (sin líneas divisorias) */
-}
-
-.sb-nav-grupo {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sb-nav-titulo {
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-secondary);
-  padding: 0 12px 2px;
-}
-
-.sb-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  color: var(--sb-text);
-  text-decoration: none;
-  font-size: 13.5px;
-  font-weight: 500;
-  transition: background 0.15s, color 0.15s;
-}
-
-.sb-nav-item i {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.sb-nav-item:hover {
-  background: var(--sb-hover);
-  color: var(--sb-text-strong);
-}
-
-.sb-nav-item--active {
-  background: var(--sb-active-bg);
-  color: var(--sb-active-text);
-  font-weight: 600;
-}
-
-.sb-nav-item--active:hover {
-  background: var(--sb-active-bg);
-  color: var(--sb-active-text);
-}
-
-/* Badge de "sin asignar": cola viva, no contador de no-leídos */
-.sb-nav-badge {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-size: 11px;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: 999px;
-}
-
-@media (min-width: 769px) {
-  .sidebar--colapsado .sb-nav-item {
-    position: relative;
-  }
-
-  .sidebar--colapsado .sb-nav-badge {
-    position: absolute;
-    top: 2px;
-    right: 6px;
-    margin-left: 0;
-    padding: 1px 5px;
-  }
 }
 
 /* ── Footer de usuario ───────────────────────────────────────── */
@@ -986,95 +431,6 @@ async function cerrarSesion() {
 .sb-fade-enter-from,
 .sb-fade-leave-to {
   opacity: 0;
-}
-
-/* ── Aviso emergente de notificación nueva ───────────────────── */
-.aviso-stack {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: var(--z-popover);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: min(320px, calc(100vw - 32px));
-}
-
-.aviso-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 12px 12px 14px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  cursor: pointer;
-}
-
-.aviso-card:hover {
-  border-color: var(--color-border);
-}
-
-.aviso-card > i {
-  color: var(--color-accent-soft);
-  font-size: 18px;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.aviso-card-texto {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.aviso-card-titulo {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.aviso-card-cerrar {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  padding: 2px;
-  border-radius: 6px;
-  display: flex;
-  flex-shrink: 0;
-  font-size: 14px;
-}
-
-.aviso-card-cerrar:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.aviso-fade-enter-active,
-.aviso-fade-leave-active {
-  transition: opacity 0.2s, transform 0.2s;
-}
-.aviso-fade-enter-from,
-.aviso-fade-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-@media (max-width: 768px) {
-  .aviso-stack {
-    left: 16px;
-    right: 16px;
-    width: auto;
-  }
 }
 
 /* ── Responsive ──────────────────────────────────────────────── */

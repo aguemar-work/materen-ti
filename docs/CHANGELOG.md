@@ -10,6 +10,14 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-12** — Dividido `AppLayout.vue` (1161 líneas, A-06) en
+  `AppSearch.vue`, `AppNav.vue` y `AppNotifications.vue`; queda en 517
+  líneas como orquestador (socket realtime, drawer/colapso, tema, logout).
+  Icono de aviso centralizado en `core/notificacionIconos.js` (antes
+  duplicado con `NotificacionesCampana.vue`). Actualizada la tabla de
+  `docs/GUIA-UX-UI.md` con la nueva composición del shell y una nota sobre
+  `:global()` en `<style scoped>` (pierde el selector descendiente al
+  compilar en este proyecto — verificado contra el CSS de `dist/`).
 - **2026-08-12** — Nuevo job `deploy-manual` en `.github/workflows/ci.yml`
   (`workflow_dispatch`): aplica una migración a la vez vía `db import` y/o
   redespliega las 4 edge functions, en Linux en vez de a mano en Windows.
