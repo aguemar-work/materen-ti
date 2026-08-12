@@ -10,6 +10,15 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-12** — **Fix de bug en producción** (migración 054): eliminada
+  la sobrecarga vieja de 5 argumentos de `crear_notificacion()`, viva por
+  error desde la migración 048 (`create or replace function` con firma
+  distinta crea sobrecarga, no reemplaza), que rompía con 500 la creación
+  de tickets/cuentas y el alta/baja de empleados (ambigüedad de función).
+  Reproducido y verificado el fix directo contra producción. Agregado
+  hallazgo T-05 (Resuelto) a `docs/HISTORIAL-AUDITORIAS.md`, fila 054 en
+  el historial de migraciones de `README.md`, y corregida la descripción
+  de `crear_notificacion()` en `docs/PANORAMA_SISTEMA.md`.
 - **2026-08-12** — Dividido `AppLayout.vue` (1161 líneas, A-06) en
   `AppSearch.vue`, `AppNav.vue` y `AppNotifications.vue`; queda en 517
   líneas como orquestador (socket realtime, drawer/colapso, tema, logout).

@@ -1,0 +1,38 @@
+-- ============================================================
+-- MIGRACIÓN 054 — Corrige sobrecarga ambigua de crear_notificacion()
+-- Depende de: 045 (crear_notificacion, 5 args), 048 (crear_notificacion,
+--             6 args con destinatario_id)
+--
+-- BUG EN PRODUCCIÓN (detectado 2026-08-12, al crear un ticket público):
+-- la migración 048 intentó "extender" crear_notificacion() agregándole un
+-- 6º parámetro opcional (destinatario_id) vía `create or replace function`.
+-- En Postgres una función se identifica por nombre + firma de argumentos:
+-- al cambiar la cantidad de parámetros, `create or replace` NO reemplaza
+-- la función de 5 argumentos de la 045, crea una SEGUNDA sobrecarga que
+-- queda conviviendo con la original. Como la de 6 argumentos tiene
+-- `p_destinatario_id uuid default null`, cualquier llamada con 5
+-- argumentos (las 4 de la 045: ticket_creado, cuenta_creada, empleado_alta,
+-- empleado_baja) matchea ambas funciones a la vez → Postgres no puede
+-- resolver cuál usar y falla con "function ... is not unique". Esto rompe
+-- el INSERT completo (el trigger corre en la misma transacción), así que
+-- literalmente no se podía crear un ticket, una cuenta, ni dar de alta/baja
+-- a un empleado desde que se aplicó la 048.
+--
+-- Reproducido y confirmado contra producción antes de este fix (insert de
+-- prueba con rollback automático vía el propio trigger, sin dejar datos):
+--   function public.crear_notificacion(unknown, unknown, uuid, text, text)
+--   is not unique
+--
+-- Fix: eliminar la sobrecarga vieja de 5 argumentos. La de 6 argumentos ya
+-- cubre el caso sin destinatario (branch `if p_destinatario_id is null`
+-- hace el mismo `realtime.publish('notificaciones:nuevas', ...)` que hacía
+-- la original), así que los 4 call sites de 5 argumentos de la 045 quedan
+-- funcionando igual, ahora sin ambigüedad porque solo queda una función
+-- candidata.
+-- ============================================================
+
+drop function if exists public.crear_notificacion(text, text, uuid, text, text);
+
+-- ============================================================
+-- FIN DE MIGRACIÓN 054
+-- ============================================================
