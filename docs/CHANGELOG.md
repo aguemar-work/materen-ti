@@ -10,6 +10,13 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-12** — Resueltos varios hallazgos de `docs/HISTORIAL-AUDITORIAS.md`
+  con cambio de código: U-02/U-03/U-04 (tokens CSS, `:focus-visible`),
+  A-02 (router `meta.roles`), S-04 (CSP/HSTS en `vercel.json`). Descartado
+  D-07 (alias CSS con 677 usos reales, no es código muerto). Medido P-03:
+  los chunks de `html2canvas`/`dompurify` existen en `dist/` pero nunca se
+  cargan en producción (lazy dentro de jsPDF, `doc.html()` no se usa) — sin
+  cambio de código.
 - **2026-08-12** — Fusionado `AUDIT_REPORT.md` (raíz, reconciliación de
   solo lectura del 2026-08-11) dentro de `docs/HISTORIAL-AUDITORIAS.md`:
   actualizados con evidencia S-03/T-02, P-01, T-04, P-02, U-05, A-02, U-02,
