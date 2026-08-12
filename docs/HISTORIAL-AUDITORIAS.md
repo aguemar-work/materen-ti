@@ -62,7 +62,7 @@ verificó que seguían cerrados, ver arriba).
 | S-03 / T-02 | Sin `CHECK` de prefijo de cifrado en columnas de contraseña | Seguridad/Datos | **Abierto** | Revisadas migraciones 001–053: ningún `CHECK` sobre columnas de contraseña/clave |
 | P-01 | Dashboard cuenta filas descargando todas | Performance | **Abierto** | `api/domains/dashboard.js:73-97,101-173` — 7 queries traen filas completas y cuentan con `.length`, sin `count/head` |
 | Q-04 | `functions/*.ts` nunca se compilan; sin linter/tsconfig | QA | **Abierto** | Confirmado: no existe `eslint.config.*` ni `tsconfig*.json` en el repo |
-| S-04 | Sin CSP/HSTS/anti-framing en Vercel | Seguridad | **Abierto** | `frontend/vercel.json` solo define el rewrite SPA |
+| S-04 | Sin CSP/HSTS/anti-framing en Vercel | Seguridad | **Resuelto (2026-08-12)** — `frontend/vercel.json` (y su copia `frontend/public/vercel.json`, la que Vite copia a `dist/`) agregan CSP, HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`. CSP acotada a los orígenes reales: Google Fonts, `cdn.jsdelivr.net` (iconos Tabler) e InsForge (`kjyj8t5t.us-east.insforge.app`). **Pendiente de validar en un preview de Vercel** antes de confiar en que no rompe nada (no se puede verificar sin desplegar) |
 | W-01 / W-02 | `AGENTS.md` decía "sin tests"; README omitía 10 migraciones | Documentación | **Resuelto** | Corregido en el propio ciclo 2026-08-05, reconfirmado hoy |
 
 ### Medio / Bajo
