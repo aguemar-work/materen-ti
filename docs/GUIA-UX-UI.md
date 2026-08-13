@@ -4,13 +4,28 @@
 > viven en [`main.css`](../frontend/src/styles/main.css) (`--mat-*` y alias
 > `--color-*`); este archivo describe cómo usarlos en las vistas.
 
-**Vigencia**: actualizado 2026-08-12 — segunda pasada del día: auditoría y
-estandarización completa de la librería visual `design.pen` (ver changelog
-en la sección de abajo). La primera pasada del 2026-08-12 había agregado
+**Vigencia**: actualizado 2026-08-12 — quinta pasada, cierre de la migración
+planificada en la cuarta: adopción real de `space-1..12` (83 propiedades en
+los 46 componentes + 2 pantallas), sidebar real reagrupado en 3 subgrupos
+(antes solo mockup comparativo), `$social.whatsapp`/`$social.whatsapp.hover`
+tokenizados, `Primitivas/Botón icono` a 49×49px con spec de `aria-label` por
+instancia, y foco visible extendido a `Ítem de navegación`/`Paginación`/
+`Ítem de menú` (`Ítem de combo` documentado como no-focusable — usa
+`aria-activedescendant`, no DOM focus). Ver changelog completo más abajo. La
+cuarta pasada del día había sido la migración planificada de `design.pen`
+hacia producción en 4 fases (auditoría de divergencias → fixes de bajo
+riesgo → fichas para desarrollo → fundación de escalamiento) — los 5
+hallazgos de esa pasada (DS-01 a DS-05) en `docs/HISTORIAL-AUDITORIAS.md`
+**siguen abiertos**, ninguno se tocó en esta quinta pasada (son cambios de
+`main.css`/`.vue`, fuera de alcance de trabajo solo-diseño). La tercera pasada había
+sido la propuesta de rediseño de paleta de color (notación de puntos,
+`brand.400`/`text.primary`/`success.bg`...) — **sigue sin portar a
+`main.css`**, igual que todo lo de esta cuarta pasada: los únicos cambios
+de código de hoy son de documentación (`docs/HISTORIAL-AUDITORIAS.md`,
+`docs/CHANGELOG.md`), no de `main.css`/`.vue`. La segunda pasada había sido
+la auditoría y estandarización de la librería; la primera había agregado
 `design.pen`; antes, 2026-08-11, se agregó `NotificacionesCampana` a los
-componentes compartidos (migración 045). No hubo cambios de tokens ni de
-layout en `main.css`/Vue desde jul 2026 — todo lo corregido en esta pasada
-vive en `design.pen`, no en el código fuente. **Deuda de accesibilidad
+componentes compartidos (migración 045). **Deuda de accesibilidad
 conocida**: `.text-muted` en terciario (`--mat-color-text-tertiary`, tema
 claro) sigue por debajo de 4.5:1 (WCAG AA) sobre
 `--mat-color-bg`/`--mat-color-bg-elevated` (2.37:1 / 2.54:1, medido en esta
@@ -188,6 +203,243 @@ formulario.
   señalan aquí porque surgieron de esta auditoría de `design.pen`, no se
   registró un hallazgo formal nuevo ahí para no invadir ese documento sin
   pedido explícito.
+
+#### Changelog — propuesta de rediseño de paleta (2026-08-12, tercera pasada)
+
+Reemplazo completo de los tokens de color de `design.pen` (no de
+`main.css`) por una propuesta nueva, anclada en los dos colores del logo
+(`#34D399`/`#072E2A`, sin modificar) y en notación de puntos
+(`brand.400`, `text.primary`, `success.bg`...) en vez del `kebab-case`
+anterior. Iniciativa del usuario con cálculos de contraste propios; yo
+verifiqué cada valor, encontré y resolví un problema real antes de aplicar
+nada, derivé los tokens que faltaban con la misma metodología, y reescribí
+las 383 referencias de color de los 46 componentes (290 propiedades
+directas + 93 overrides de instancia).
+
+- **Bug encontrado en el brief antes de implementarlo**: `brand.600`
+  (candidato obvio para "acento sólido", ya que su valor en oscuro
+  coincidía con el patrón del `accent-hover` anterior) fallaba contraste
+  con texto blanco en **ambos** temas — 3.77:1 en claro, **1.92:1 en
+  oscuro** (porque `brand.600` oscuro = `brand.400` = el verde crudo del
+  logo). Es el mismo número exacto que el bug de `accent-soft` que esta
+  paleta buscaba eliminar (punto 3 del brief), reaparecido un paso más
+  arriba en la escala. Consultado con el usuario; resuelto usando
+  `brand.700` como acento (5.48:1 claro) y tematizando `text.on-brand`
+  (blanco en claro, `#072E2A` en oscuro, 8.91:1) en vez de dejarlo fijo en
+  blanco como pedía el brief original — necesario porque ningún verde de
+  la mitad superior de la escala en modo oscuro despeja 4.5:1 con blanco.
+- **Segundo hallazgo, encontrado ya en producción de las muestras**: el
+  brief no incluye un hue "teal/cian" (evita a propósito la zona
+  verde-teal para no competir con la marca), pero el sistema anterior
+  usaba teal para la prioridad "Media" de tickets. Mi primer intento
+  reasignó esa prioridad a `categoric.blue` — que resultó ser el mismo hex
+  exacto que `info.solid` (#2563EB), recreando la colisión semántica que
+  el punto 2 del brief buscaba eliminar (esta vez entre "Abierto" y
+  "Media"). Corregido reasignando a `categoric.indigo`, con su propio par
+  bg/text/border derivado y verificado.
+- **Tokens sin equivalente en el brief, derivados con la misma
+  metodología** (tinte ~90% hacia blanco/superficie para `.bg`,
+  oscurecido/aclarado por tema para `.text`, verificados ≥4.5:1; bordes
+  decorativos verificados ≥3:1 donde fue posible):
+  `border.subtle`, `ring` (basado en `brand.700` al 28% alfa, mismo patrón
+  que el sistema anterior), `success/warning/danger/info.border`,
+  `warning.text-strong`/`warning.bg-strong` (mismos roles que ya existían:
+  avisos reforzados y `.stat-icon--alerta`), `neutral.bg/text/border`
+  (sobre `categoric.slate`, reemplaza al `neutral` que el brief no
+  contemplaba pero que sigue en uso real para Inactivo/Cerrado/De baja) y
+  `categoric.*.bg/.text/.border` para los 8 hues (el brief solo daba
+  sólidos). Todos marcados como "derivado" en el tablero (sección
+  `Tokens`), no como parte del brief original.
+- **50 tokens del sistema anterior eliminados** de `design.pen` tras
+  confirmar cero referencias rotas (`bg-elevated`, `accent*`,
+  `success/warning/danger-bg/text/border`, `info-*`, `neutral-*`,
+  `purple/sky/teal-*`, `logo-acento`/`logo-tinta` — consolidados en
+  `brand.400`/`brand.900` porque son el mismo valor —, `brand`,
+  `brand-elevated`, `brand-ink`). `ring`, `overlay`, `font-mono` y la
+  escala de radios/tipografía no cambiaron (fuera del alcance de esta
+  paleta).
+- **No se tocó**: `main.css`, ningún archivo `.vue`, ni
+  `core/dominio-*.js` (que sigue mapeando a las clases `.badge--*`
+  antiguas). Portar esta paleta a producción es un trabajo aparte, no
+  incluido en esta pasada.
+
+**Pendiente de esta pasada:**
+
+- Decidir si `categoric.blue` (idéntico a `info.solid`, sin uso hoy) se
+  conserva para uso futuro o se retira del brief por ser redundante.
+- Portar la paleta a `main.css`/Vue queda pendiente de aprobación
+  explícita — no se tocó ningún archivo de producción en esta pasada.
+- Los derivados (`border.subtle`, `ring`, bordes semánticos, pares
+  categóricos completos) están verificados por mí pero no vienen
+  aprobados por el autor del brief — revisar antes de dar por definitiva
+  la paleta.
+
+#### Changelog — plan de migración a producción en 4 fases (2026-08-12, cuarta pasada)
+
+`design.pen` lleva tres pasadas de trabajo puramente de diseño. Esta cuarta
+pasada arma el **plan para llevarlo a producción sin romperla**: audita qué
+tan alejado está el archivo del código real, aplica lo de bajo riesgo,
+redacta specs para lo que sí requiere tocar `main.css`/`.vue`, y construye
+la base para que Correos, Licencias, Equipos, Base de Conocimiento,
+Problemas y Encuestas (ya tienen ruta y vista en el código, no tienen
+tablero propio en `design.pen`) hereden un sistema consistente en vez de
+reinventar cada uno el suyo.
+
+**Fase 0 — Auditoría de estado real.** Releída completa de `main.css`
+(1461 líneas, ya con los fixes de U-02/U-03/U-04/S-04/A-02/A-06 aplicados
+desde la última vez que este documento se actualizó) y de
+`components/shared/*.vue`. Confirmadas las 3 divergencias conocidas
+(`:disabled`, borde de error, uso real de `$ring`) y encontradas 3 más,
+todas nuevas — ver DS-01 a DS-05 en `docs/HISTORIAL-AUDITORIAS.md` para el
+detalle y las fichas de desarrollo. Resumen de riesgo: DS-01 (a), DS-02
+(b), DS-03 (b), DS-04 (b), DS-05 (c) — DS-05 es el único que toca 10
+archivos de markup a la vez, el resto es CSS aislado.
+
+**Fase 1 — Fixes de bajo riesgo, aplicados en `design.pen`:**
+- `text.tertiary` (claro): mismo nombre de token, valor corregido de
+  `#7D8590` (3,51:1) a `#6B737E` (4,51:1 contra `bg`, 4,80:1 contra
+  `bg.elevated`) — **solo valor de token**, cero cambio de código si se
+  porta a `main.css` (ver propuesta de valor para el token real,
+  `#697281`/`#747C8B`, en el hallazgo U-01 ampliado).
+- `danger.hover` (nuevo token, invariante `#DC2626`, 4,83:1 con blanco en
+  ambos temas): reemplaza el hex hardcodeado `#E88870` del hallazgo de
+  accesibilidad de la auditoría anterior. **Requiere código** — no es solo
+  valor, hay que introducir la variable nueva y cambiar el selector
+  `.btn-danger:hover` (ficha DS-01). El tablero (`Primitivas/Botón` → fila
+  "⚠ Hallazgo de accesibilidad") ahora muestra el antes (bug reproducido
+  tal cual) y el después (con `$danger.hover`) lado a lado.
+- Labels de los selects de filtro: reactivados en
+  `Contenedores/Barra de filtros` (estaban con `enabled:false` a propósito,
+  reproduciendo el bug real). **Requiere código** — no había nada que
+  reactivar en el markup real (no existe un label oculto, nunca hubo
+  ninguno); es agregar `<label>` nuevo en 10 vistas (ficha DS-05).
+
+**Fase 2 — Fichas para desarrollo.** DS-02 (`:disabled` unificado), DS-03
+(estado de error visual) y DS-04 (cobertura de `:focus-visible`/`$ring` en
+`.sb-nav-item`, `ThOrdenable`, `BuscadorCombo` y `AppSearch` — ninguno de
+los 4 tiene hoy tratamiento de foco propio) quedaron documentados como
+fichas completas (qué cambia / selector / cómo verificar en QA) en
+`docs/HISTORIAL-AUDITORIAS.md`, no en este archivo, siguiendo la regla de
+`AGENTS.md` de que los hallazgos de auditoría viven ahí. Ninguno de los 3
+se implementó en `design.pen` más allá de lo que ya existía (los variant
+sets de Fase 3 ya modelan visualmente DS-02/DS-03).
+
+**Fase 3 — Fundación de escalamiento**, nueva sección en el tablero
+(`Librería de componentes` → "Fundación de escalamiento"):
+- Escala `space-1` a `space-12` (2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 40,
+  48px) — cubre el 90%+ de los valores crudos ya en uso en `main.css`
+  (medido por frecuencia: 2/3/4/5/6/8/10/12/16px y sus equivalentes en
+  `rem`). Migración progresiva, no total: los componentes nuevos
+  (Correos, Licencias, etc.) la usan desde ya; los 1461 líneas de
+  `main.css` existentes se migran en su próximo ciclo de cambio cada uno,
+  no de una vez — no se tocó ningún `padding`/`gap` crudo de `main.css` en
+  esta pasada.
+- Variant sets completos (variante × estado) de `Primitivas/Botón` (4
+  variantes × 5 estados = 20 combinaciones), `Formularios/Campo de texto`
+  y `Formularios/Campo select` (4 estados cada uno, con nota de qué es real
+  del código y qué es inferido). Reemplazan las filas de "Estados"
+  sueltas de la auditoría anterior como referencia canónica para módulos
+  nuevos — esas filas sueltas se dejaron intactas (documentan detalle de
+  foco con más precisión que la celda compacta de la matriz), la matriz
+  es la vista de conjunto.
+- Propuesta de reagrupación del sidebar: los mismos 8 ítems planos de hoy
+  bajo "GESTIÓN" reorganizados en 3 subgrupos semánticos (Personas;
+  Activos y credenciales; Conocimiento y mejora) — **mismos `path` e
+  íconos, verificados contra `router/routes/*.js`**, solo cambia el
+  encabezado de grupo en `AppNav.vue` (`navGrupos`). No se aplicó: es un
+  cambio de arquitectura de información que requiere validación de
+  producto antes de tocar código, no solo de diseño.
+
+**Qué requiere coordinación con desarrollo antes de aplicarse**: DS-01,
+DS-02, DS-03, DS-04 (las 4 fichas de `docs/HISTORIAL-AUDITORIAS.md`) y
+DS-05 (la de mayor alcance, 10 archivos). Ninguna se tocó en el código en
+esta pasada.
+
+**Qué se puede aplicar de inmediato sin dependencias**: el valor de
+`text.tertiary`/`--mat-color-text-tertiary` (fix (a) puro, un solo número
+en `:root` y otro en `[data-theme="dark"]`, cero riesgo de romper nada);
+todo lo de Fase 3 en `design.pen` ya está aplicado y no depende de nada
+del código.
+
+#### Changelog — cierre de la migración, ronda 2 (2026-08-12, quinta pasada)
+
+Los 5 puntos que quedaban abiertos de la Fase 3 anterior, resueltos en
+`design.pen` (ninguno toca `main.css`/`.vue` — son cambios de diseño puro):
+
+1. **Adopción real de `space-1..12`**: se auditaron los valores crudos de
+   `gap`/`padding` de los 46 componentes + las 2 pantallas de ejemplo (el
+   tablero de documentación, `Librería de componentes`, se excluyó a
+   propósito del barrido — sus filas "Fila" y paddings de ficha son
+   maquetación de la documentación, no parte del sistema que se envía a
+   producción; los valores 22/32/36/48 que parecían "sin mapear" solo
+   existían ahí). De 17 valores crudos reales: 9 coincidían exacto con un
+   token (2/4/6/8/10/12/16/20/24), 7 quedaron a mitad de camino entre dos
+   tokens (3, 5, 9, 11, 13, 14, 18) y se resolvieron con una regla
+   consistente — empate exacto → redondear hacia el token mayor — excepto
+   dos excepciones documentadas que se dejaron en valor crudo: `Eje` en
+   `Ítem de timeline` (`padding-top: 3px`, alinea ópticamente el punto con
+   la primera línea de texto) y `Estado vacío` (`padding: 56px` vertical,
+   aire intencional alrededor del ilustrativo, por encima del tope de la
+   escala). Resultado: **83 propiedades migradas, 0 valores crudos
+   mapeables restantes, 2 excepciones documentadas**.
+2. **Sidebar real reagrupado**: `Navegación y marca/Barra lateral` ya no
+   tiene el grupo plano "GESTIÓN" — sus 8 ítems se movieron (no se
+   recrearon, mismas instancias) a 3 subgrupos nuevos (PERSONAS; ACTIVOS Y
+   CREDENCIALES; CONOCIMIENTO Y MEJORA). "Empleados" conserva su estado
+   activo (`fill: $brand.50`, texto `$brand.700`, `fontWeight: 600`) sin
+   cambios — se movió el nodo, no se recreó. Ambas pantallas de ejemplo
+   (`Empleados — listado`, claro y oscuro) lo heredan automáticamente por
+   ser instancias de `Barra lateral`, no copias independientes.
+3. **`$social.whatsapp`/`$social.whatsapp.hover`** (`#25D366`/`#1EBE57`,
+   mismo valor en ambos temas — coincide con `--mat-color-whatsapp(-hover)`
+   real, que tampoco varía por tema): reemplazan el hex hardcodeado en las
+   5 celdas de la variante WhatsApp del variant set de Botón, más la
+   muestra suelta de `Primitivas/Botón`.
+4. **`Primitivas/Botón icono`**: padding subido de `$space-3`(6) a
+   `$space-7`(16) — área táctil 49×49px (antes ~29×29), sin tocar el
+   ícono (sigue en 17×17). Se agregó `context` en el componente base
+   documentando la obligación de `aria-label` por instancia, más una capa
+   de texto oculta (`enabled:false`) como refuerzo visual en el árbol de
+   capas, y se anotó el `context` de las 10 instancias reales
+   (Anterior/Siguiente de Paginación, Menú de Fila de tarjeta y de Fila de
+   tabla, Editar de Fila de tabla, Cerrar de Modal, Descartar de Aviso
+   emergente, Colapsar/Tema/Salir del sidebar) con el texto exacto — 4 ya
+   confirmados contra el código real (`Pagination.vue`, `Modal.vue`,
+   `AppNotifications.vue`), 6 propuestos y marcados como pendientes de
+   confirmar con desarrollo. Extendido también a `Campana de
+   notificaciones` (32×30→44×44): no es una instancia de `Botón icono`
+   pero en el código real comparte la clase `.icon-btn` — mismo problema,
+   mismo fix; queda anotado como candidato a refactor (componer sobre
+   `Botón icono` en vez de duplicar su estructura).
+5. **Foco visible extendido**: `Ítem de navegación` (nueva fila "Focus",
+   con nota actualizada — ya no dice solo "no tiene foco", ahora aclara que
+   esa fila es la propuesta del hallazgo DS-04), `Paginación` (fila
+   "Estados — foco en controles" sobre el botón "Anterior") e `Ítem de
+   menú` (fila "Estados" aislada, Default vs. Hover=Focus — se muestran
+   **idénticos a propósito**: `.menu-acciones__item:hover` y
+   `:focus-visible` comparten literalmente la misma regla en `main.css`,
+   no es una omisión). `Ítem de combo` se dejó **sin** anillo de foco, con
+   nota explícita: usa el patrón `aria-activedescendant` (el `<input>`
+   conserva el foco de DOM, `@mousedown.prevent` evita que el `<li>` se
+   enfoque) — agregar un `:focus-visible` ahí sería modelar una interacción
+   que el componente no tiene.
+
+**Bug de renderizado, tercera aparición**: volvió a pasar exactamente lo
+mismo que en la auditoría original — un frame nuevo creado con `Insert`
+("Anillo de foco" de `Ítem de navegación`) quedó con datos correctos
+(confirmado con `bounds`) pero invisible hasta que se promovió vía `Copy`.
+Mismo patrón, misma corrección; se sigue sin poder prevenir, solo detectar
+y corregir con el mismo truco.
+
+**(a) Qué cambió**: los 5 puntos, todos en `design.pen`. **(b) Riesgo**:
+ninguno toca `main.css`/`.vue` — son cambios de diseño puro, sin
+coordinación de desarrollo necesaria para *este* archivo (el sidebar real y
+`aria-label` sí la necesitan para pasar a producción, pero eso ya estaba
+señalado y sigue igual). **(c) Pendiente**: los 6 `aria-label` propuestos
+(no confirmados contra código) para `Botón icono`; decidir si `Campana de
+notificaciones` se refactoriza para componer `Botón icono`; los 5
+hallazgos DS-01 a DS-05 de la pasada anterior siguen abiertos, no se
+tocaron acá.
 
 ## Arquitectura general
 

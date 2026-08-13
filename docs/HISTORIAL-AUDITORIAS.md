@@ -58,7 +58,7 @@ verificó que seguían cerrados, ver arriba).
 | Q-01 | Tests de integración/BD dan check verde sin ejecutarse | QA | **Mitigado** | `ci.yml` ya no hace `exit 0` silencioso: emite `::warning::` visible. Los 4 secrets (`INSFORGE_TEST_STAFF_EMAIL/PASSWORD`, `INSFORGE_ACCESS_TOKEN`, `INSFORGE_PROJECT_ID`) **siguen sin existir** en el repo — los jobs siguen sin verificar nada, ya no lo esconden |
 | A-01 | Bajas de empleado sin atomicidad (4 escrituras secuenciales) | Arquitectura | **Resuelto** | Migración 038: RPC `dar_baja_empleado()` `SECURITY DEFINER`, una sola transacción |
 | D-01 | Cero observabilidad de producción (sin Sentry/errores) | DevOps | **Abierto** | Sin `Sentry`/`window.onerror`/`unhandledrejection` en el frontend (verificado por grep) |
-| U-01 | Texto terciario a 2,54:1 (falla WCAG AA), prescrito por la guía de diseño | UX | **Abierto** | `--mat-color-text-tertiary: #9CA3AF` sin cambios, `main.css:46` |
+| U-01 | Texto terciario a 2,54:1 (falla WCAG AA), prescrito por la guía de diseño | UX | **Abierto** — ampliado 2026-08-12: en oscuro tampoco alcanza AA para texto normal (3,68:1–3,91:1, solo cumple el umbral de texto grande 3:1). Fix (a) propuesto, mismo nombre de token, mismo tono neutro (no el gris con tinte verde de la propuesta de paleta de `design.pen`, que es un cambio aparte): `--mat-color-text-tertiary: #697281` en claro (4,53:1/4,86:1) y `#747C8B` en oscuro (4,50:1/4,23:1 — bg-elevated queda justo debajo de 4.5, aceptable por ser 0,27 el margen y no texto de cuerpo largo, pero anotarlo) | `--mat-color-text-tertiary: #9CA3AF` sin cambios, `main.css:48` (claro) y `main.css:212` (oscuro) |
 | S-03 / T-02 | Sin `CHECK` de prefijo de cifrado en columnas de contraseña | Seguridad/Datos | **Abierto** | Revisadas migraciones 001–053: ningún `CHECK` sobre columnas de contraseña/clave |
 | P-01 | Dashboard cuenta filas descargando todas | Performance | **Abierto** | `api/domains/dashboard.js:73-97,101-173` — 7 queries traen filas completas y cuentan con `.length`, sin `count/head` |
 | Q-04 | `functions/*.ts` nunca se compilan; sin linter/tsconfig | QA | **Abierto** | Confirmado: no existe `eslint.config.*` ni `tsconfig*.json` en el repo |
@@ -96,6 +96,140 @@ verificó que seguían cerrados, ver arriba).
 | D-07 | Alias CSS legacy marcados "no usar en código nuevo" (`main.css:127`, bloque `--color-*`/`--fs-*`) | DevOps | **Descartado (2026-08-12)** — no es código muerto: 677 usos en 53 archivos de `frontend/src` (verificado por grep). El comentario es una guía para código nuevo, no un candidato a eliminación; eliminarlos rompería la mayoría de las vistas |
 
 ---
+
+## Ciclo 3 — Auditoría de Design System (2026-08-12)
+
+Alcance: divergencias entre `design.pen` (librería de componentes en Figma/Pencil,
+ver `docs/GUIA-UX-UI.md`) y `frontend/src/styles/main.css`/componentes Vue
+**en producción**. A diferencia de los ciclos 1-2 (seguridad/arquitectura),
+este ciclo parte del archivo de diseño y valida contra el código real, no al
+revés. Metodología: lectura completa de `main.css` (1461 líneas) +
+`components/shared/*.vue` + `router/routes/*.js`, sin suposiciones de
+sesiones anteriores. Clasificación de riesgo: **(a)** solo visual/token, sin
+impacto funcional — deploy inmediato; **(b)** cambia comportamiento (estados,
+foco); **(c)** cambia estructura/jerarquía (markup, IA).
+
+| ID | Hallazgo | Riesgo | Estado | Referencia |
+|----|----------|--------|--------|------------|
+| DS-01 | `.btn-danger:hover` fija `color:#fff` sin condicionar por tema; en oscuro `--color-danger` es `#E88870` (salmón) → 2.57:1, falla AA | (a) — nuevo token, sin tocar markup | **Abierto** — propuesta lista (ficha abajo) | `main.css:695-699` |
+| DS-02 | `:disabled` inconsistente: solo `.icon-btn` lo define (`opacity:.4`); `.btn`, `.btn-primary`, `.btn-danger`, `input`, `select` no tienen regla propia — dependen del estilo nativo del navegador | (b) — nueva regla CSS, sin markup | **Abierto** — spec en ficha abajo | `main.css:918-921` (única referencia existente) |
+| DS-03 | Estado de error de campo sin tratamiento visual propio: `aria-invalid` se setea (`TicketNuevoView.vue`, `PersonalRegistroView.vue`, `TicketBuscarView.vue`) pero no existe `[aria-invalid] { border-color: ... }` — el borde no cambia, solo aparece `.form-error` debajo | (b) — nueva regla CSS, sin markup | **Abierto** — spec en ficha abajo | `main.css` (sin selector `aria-invalid`); confirmado por grep en los 3 `.vue` |
+| DS-04 | `$ring`/`:focus-visible` sin cobertura real en: navegación principal (`.sb-nav-item`, `AppNav.vue`), encabezados ordenables (`ThOrdenable.vue`), buscador con autocompletado (`.combo-wrap input`, `BuscadorCombo.vue`) y buscador global (`.sb-busqueda input`, `AppSearch.vue`) — cero regla de foco visible en los 4 | (b) — nuevas reglas CSS, sin markup | **Abierto** — spec en ficha abajo | Confirmado por grep de `focus` en los 4 componentes: cero resultados en 3, y `.sb-busqueda input:focus` solo cambia `background`/`border-color` sin outline ni ring |
+| DS-05 | Selects de filtro (`filtroEstado`, `filtroTipo`, `filtroSituacion`, `filtroCategoria`, `filtroAccion`, `filtroPrioridad`, `filtroSeveridad`) sin `<label>` ni `aria-label` en las 10 vistas con `.filters` — no hay nada que "reactivar": nunca existió un label, ni siquiera oculto | (c) — agrega markup en 10 archivos + ajusta `.filters` | **Abierto** — spec en ficha abajo | Confirmado por grep: `ActividadView`, `CorreosView`, `EmpleadosView`, `EquiposView` (×2), `KbView` (×2), `LicenciasView`, `ProblemasView` (×2), `TicketsView` (×2) — 0 de 11 tiene `<label>`/`aria-label` en su `<select>` de filtro. Contraejemplo que sí lo hace bien: `EquipoForm.vue:392`/`LicenciaForm.vue:318` (`aria-label="Moneda"`, un `<select>` de formulario, no de filtro) |
+
+### Fichas de desarrollo
+
+**DS-01 — Token `--color-danger-hover`**
+- **Qué cambia**: agregar `--mat-color-danger-hover: #DC2626;` en `:root` (mismo
+  valor en `[data-theme="dark"]` — a propósito invariante, no debe heredar el
+  comportamiento por tema de `--mat-color-danger`) + alias
+  `--color-danger-hover: var(--mat-color-danger-hover);`. Cambiar
+  `.btn-danger:hover { background: var(--color-danger); }` →
+  `background: var(--color-danger-hover);` (el `color: #fff;` de esa regla se
+  mantiene igual, ahora sí es seguro).
+- **Selector/componente**: `main.css` — `:root`, `[data-theme="dark"]`,
+  `.btn-danger:hover`. Ningún `.vue` cambia.
+- **Cómo verificar en QA**: DevTools → forzar `:hover` en un `.btn-danger`
+  (ej. "Dar de baja" en `EmpleadoDetalleView`) con `data-theme="dark"` en
+  `<html>` → contraste texto/fondo debe medir ≥4.5:1 (usar el inspector de
+  contraste de Chrome/Firefox). Repetir en claro (ya pasaba, no debe cambiar
+  visualmente: `#DC2626` vs `#963D28`+hover-a-solid es un rojo ligeramente
+  distinto — confirmar con Diseño si el tono nuevo es aceptable en claro
+  también, o si claro debe quedarse con su valor actual y el fix ser solo
+  para oscuro).
+
+**DS-02 — Especificación única de `:disabled`**
+- **Qué cambia**: unificar en una sola regla reutilizable. Propuesta:
+  ```css
+  .btn:disabled, .icon-btn:disabled,
+  .form-group input:disabled, .form-group select:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+  .btn:disabled:hover, .form-group input:disabled:focus {
+    background: inherit; border-color: inherit; box-shadow: none;
+  }
+  ```
+  (`.icon-btn:disabled` ya existe con `.4` — decidir si se sube a `.5` para
+  unificar o se deja `.4` y el resto de selectores lo igualan; es una
+  decisión de Diseño, no técnica).
+- **Selector/componente**: `main.css`, sección `.btn`/`.icon-btn`/
+  `.form-group input,select`. Sin cambios de markup — todos los `:disabled`
+  ya se setean vía `:disabled="condición"` en los `.vue` existentes.
+- **Cómo verificar en QA**: abrir cualquier modal con envío en curso (ej.
+  `EmpleadoForm` guardando) y confirmar que el botón primario Y los campos
+  del formulario se atenúan de forma **visualmente consistente** (mismo
+  nivel de opacidad), no solo el botón.
+
+**DS-03 — Estado de error visual en campos**
+- **Qué cambia**: decisión de Diseño pendiente entre dos opciones (ambas
+  compatibles con `aria-invalid` existente, que se mantiene para lectores de
+  pantalla):
+  - **Opción A (mínima)**: `.form-group input[aria-invalid="true"] { border-color: var(--color-danger-border); }` — mismo patrón ya usado en `.form-error`, cero verde/rojo nuevo.
+  - **Opción B (con foco propio)**: agregar además `box-shadow: 0 0 0 3px rgba(150,61,40,.15)` (variante roja del `$ring`) cuando el campo inválido tiene foco.
+  - `design.pen` ya modela la Opción A visualmente en `Formularios/Campo de texto` → variant set → "Con error" (ver `PzGrm` en el tablero) — no incluye la Opción B para no adelantarse a una decisión no tomada.
+- **Selector/componente**: `main.css`, cerca de `.form-group input:focus`.
+  Sin cambios de markup: `aria-invalid` ya se calcula en los `.vue` que lo
+  usan.
+- **Cómo verificar en QA**: en `TicketNuevoView`, ingresar un DNI de menos
+  de 8 dígitos y confirmar visualmente que el campo se distingue de uno
+  válido sin depender solo del lector de pantalla.
+
+**DS-04 — Cobertura de `:focus-visible`/`$ring`**
+- **Qué cambia**: agregar tratamiento de foco a los 4 componentes sin
+  ninguno:
+  ```css
+  .sb-nav-item:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+  .th-ordenable-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+  .combo-wrap input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--mat-ring); }
+  .sb-busqueda input:focus { box-shadow: 0 0 0 3px var(--mat-ring); }
+  ```
+  (`outline-offset: -2px` en vez de positivo porque `.sb-nav-item` y
+  `.th-ordenable-btn` no tienen el margen externo que sí tiene `.btn`; un
+  offset positivo recortaría contra el borde del sidebar/tabla).
+- **Selector/componente**: `AppNav.vue` (`.sb-nav-item`), `ThOrdenable.vue`
+  (`.th-ordenable-btn`), `BuscadorCombo.vue` (input dentro de `.combo-wrap`),
+  `AppSearch.vue` (`.sb-busqueda input`) — cada uno en su propio `<style
+  scoped>`, no en `main.css` (son componentes, no clases globales).
+- **Cómo verificar en QA**: navegar el sidebar completo con `Tab` (sin
+  mouse) y confirmar que cada ítem muestra un indicador de foco visible;
+  repetir con `Tab` sobre los encabezados de una tabla ordenable
+  (`EmpleadosView`) y sobre el buscador de empleado en un formulario que use
+  `BuscadorCombo` (ej. `EquipoForm` al asignar).
+
+**DS-05 — Nombre accesible en selects de filtro**
+- **Qué cambia**: agregar un `<label>` visible por select (no un
+  `aria-label` invisible — el brief pidió específicamente visible), más
+  ajustar `.filters` para que cada control quede en su propia columna
+  vertical (label arriba, control abajo) en vez de una fila de controles
+  sueltos:
+  ```html
+  <div class="filters">
+    <div class="search-wrap">...</div>
+    <div class="filter-field">
+      <label for="filtro-estado">Estado</label>
+      <select id="filtro-estado" v-model="filtroEstado">...</select>
+    </div>
+  </div>
+  ```
+  ```css
+  .filter-field { display: flex; flex-direction: column; gap: 4px; }
+  .filter-field label { font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); }
+  ```
+  Modelado en `design.pen` → `Contenedores/Barra de filtros` (ya actualizado
+  en esta pasada, Fase 1).
+- **Selector/componente**: 10 archivos — `ActividadView.vue`,
+  `CorreosView.vue`, `EmpleadosView.vue`, `EquiposView.vue` (2 selects),
+  `KbView.vue` (2), `LicenciasView.vue`, `ProblemasView.vue` (2),
+  `TicketsView.vue` (2) — más la clase `.filter-field` nueva en `main.css`.
+  Revisar también el breakpoint móvil (`main.css:1441-1443`,
+  `.filters select { flex: 1 1 45%; }`) porque el nuevo wrapper cambia qué
+  elemento hace de hijo flex directo.
+- **Cómo verificar en QA**: en cada una de las 10 vistas, confirmar que el
+  label aparece arriba del select en desktop y que en móvil (≤768px) los
+  selects siguen apilando de a dos por fila sin que el label rompa el
+  ancho. Con lector de pantalla (NVDA/VoiceOver), confirmar que anuncia
+  "Estado, combo box" (o equivalente) en vez de solo "combo box".
 
 ## Cómo mantener esto al día
 

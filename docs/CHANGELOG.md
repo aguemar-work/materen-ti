@@ -85,6 +85,28 @@
   no existen). Se agregaron 2 hallazgos nuevos a
   `docs/HISTORIAL-AUDITORIAS.md` (Q-06, W-06) y se marcaron D-04/D-05 como
   resueltos.
+- **2026-08-12** — Cierre de la migración de `design.pen` (ronda 2): los 5
+  puntos pendientes de la Fase 3 resueltos — adopción real de
+  `space-1..12` en los 46 componentes (83 propiedades migradas, 2
+  excepciones documentadas), sidebar real reagrupado en 3 subgrupos
+  (antes solo mockup), `$social.whatsapp` tokenizado, `Botón icono` a
+  49×49px con spec de `aria-label` por instancia, y foco visible
+  extendido a `Ítem de navegación`/`Paginación`/`Ítem de menú` (`Ítem de
+  combo` documentado como no-focusable). Los 5 hallazgos DS-01 a DS-05
+  de la pasada anterior siguen abiertos a propósito — dependen de
+  desarrollo, no de diseño. Detalle en `docs/GUIA-UX-UI.md`.
+- **2026-08-12** — Auditoría de Design System (`design.pen` vs. producción):
+  5 hallazgos nuevos en `docs/HISTORIAL-AUDITORIAS.md` (DS-01 a DS-05:
+  `.btn-danger:hover` en oscuro, `:disabled` inconsistente, error de
+  formulario sin tratamiento visual, cobertura de `:focus-visible`/`$ring`,
+  selects de filtro sin nombre accesible), cada uno con ficha de desarrollo
+  (qué cambia, selector, cómo verificar en QA). U-01 ampliado con la
+  medición en tema oscuro. Ninguno de los 5 se corrigió en `main.css`/`.vue`
+  en esta pasada — son hallazgos y propuestas, no cambios de código.
+  `docs/GUIA-UX-UI.md` documenta en paralelo lo que sí se aplicó dentro de
+  `design.pen` (3 fixes de bajo riesgo + fundación de escalamiento: escala
+  `space-1..12`, variant sets completos de Botón/Campo de texto/Campo
+  select, propuesta de reagrupación del sidebar sin tocar rutas).
 - **2026-08-11** — Revisión general de toda la documentación: `README.md`
   (migraciones 039–047, módulos Notificaciones/Encuestas/Pre-registro de
   personal), `AGENTS.md` (vigencia, regla de "docs por cambio"),
