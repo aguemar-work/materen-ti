@@ -52,7 +52,7 @@ function icono() {
   opacity: 0.5;
 }
 
-.th-ordenable-btn:hover { color: var(--color-text-primary); }
+.th-ordenable-btn:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 .th-ordenable-btn:hover .th-ordenable-icono { opacity: 1; }
 .th-ordenable[aria-sort="ascending"] .th-ordenable-icono,
 .th-ordenable[aria-sort="descending"] .th-ordenable-icono { opacity: 1; color: var(--color-primary); }
