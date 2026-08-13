@@ -196,6 +196,7 @@ onMounted(async () => {
               v-model="busqueda"
               type="text"
               placeholder="Buscar por nombre o DNI..."
+              aria-label="Buscar empleados"
             >
           </div>
           <div class="filter-field">
@@ -253,6 +254,7 @@ onMounted(async () => {
                       class="vinculo"
                       :class="{ 'vinculo--cero': !emp.n_cuentas }"
                       :title="`${emp.n_cuentas} cuenta(s) activa(s)`"
+                      :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`"
                     >
                       <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
                     </span>
@@ -260,6 +262,7 @@ onMounted(async () => {
                       class="vinculo"
                       :class="{ 'vinculo--cero': !emp.n_equipos }"
                       :title="`${emp.n_equipos} equipo(s) asignado(s)`"
+                      :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"
                     >
                       <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
                     </span>
@@ -267,6 +270,7 @@ onMounted(async () => {
                       class="vinculo"
                       :class="{ 'vinculo--cero': !emp.n_licencias }"
                       :title="`${emp.n_licencias} licencia(s) directa(s)`"
+                      :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"
                     >
                       <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
                     </span>
@@ -337,13 +341,13 @@ onMounted(async () => {
               <div class="tarjeta-fila__badges">
                 <BadgeEstado tipo="empleado" :valor="emp.estado" status />
                 <div v-if="emp.n_cuentas != null" class="vinculos vinculos--tarjeta">
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_cuentas }" :title="`${emp.n_cuentas} cuenta(s) activa(s)`">
+                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_cuentas }" :title="`${emp.n_cuentas} cuenta(s) activa(s)`" :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`">
                     <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
                   </span>
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_equipos }" :title="`${emp.n_equipos} equipo(s) asignado(s)`">
+                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_equipos }" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`">
                     <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
                   </span>
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_licencias }" :title="`${emp.n_licencias} licencia(s) directa(s)`">
+                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_licencias }" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`">
                     <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
                   </span>
                 </div>

@@ -298,6 +298,8 @@ async function confirmarBaja() {
   font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .cuenta-plataforma {

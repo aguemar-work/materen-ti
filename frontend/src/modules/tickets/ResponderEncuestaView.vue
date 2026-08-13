@@ -64,12 +64,16 @@ async function enviar() {
     <div class="card public-card">
       <PublicBrand subtitulo="Encuesta de satisfacción" />
 
+      <div role="status" aria-live="polite">
       <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
 
       <template v-else-if="estado === 'error'">
         <div class="ticket-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
         <h2 class="ticket-title">No disponible</h2>
         <p class="ticket-texto">{{ error }}</p>
+        <RouterLink class="public-volver" to="/soporte">
+          <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
+        </RouterLink>
       </template>
 
       <template v-else-if="estado === 'formulario' || estado === 'enviando'">
@@ -123,6 +127,7 @@ async function enviar() {
         <h2 class="ticket-title">Respuesta ya registrada</h2>
         <p class="ticket-texto">La encuesta ya fue completada — no es necesario volver a responder.</p>
       </template>
+      </div>
     </div>
   </div>
 </template>
@@ -145,7 +150,7 @@ async function enviar() {
 .niveles {
   display: flex;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 16px;
 }
 
@@ -167,6 +172,11 @@ async function enviar() {
 .nivel-btn:hover {
   border-color: var(--color-accent);
   color: var(--color-accent-text);
+}
+
+.nivel-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--mat-ring);
 }
 
 .nivel-btn--activo {

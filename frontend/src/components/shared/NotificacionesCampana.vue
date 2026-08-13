@@ -37,11 +37,19 @@ function onDocPointer(e) {
   cerrar();
 }
 
+function onKeydown(e) {
+  if (e.key !== 'Escape') return;
+  e.stopPropagation();
+  cerrar();
+  trigger.value?.focus();
+}
+
 async function abrir() {
   abierto.value = true;
   await nextTick();
   posicionar();
   document.addEventListener('pointerdown', onDocPointer, true);
+  document.addEventListener('keydown', onKeydown, true);
   window.addEventListener('resize', cerrar);
 }
 
@@ -49,6 +57,7 @@ function cerrar() {
   if (!abierto.value) return;
   abierto.value = false;
   document.removeEventListener('pointerdown', onDocPointer, true);
+  document.removeEventListener('keydown', onKeydown, true);
   window.removeEventListener('resize', cerrar);
 }
 

@@ -528,7 +528,7 @@ async function guardar() {
               <a :href="foto.url" target="_blank" rel="noopener noreferrer">
                 <img :src="foto.url" alt="Foto del equipo">
               </a>
-              <button class="foto-x" type="button" title="Quitar foto" :disabled="guardando" @click="quitarFoto(foto)">
+              <button class="foto-x" type="button" title="Quitar foto" aria-label="Quitar foto" :disabled="guardando" @click="quitarFoto(foto)">
                 <i class="ti ti-x"></i>
               </button>
             </div>
@@ -733,8 +733,8 @@ async function guardar() {
   position: absolute;
   top: 4px;
   right: 4px;
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: none;
   background: rgba(0, 0, 0, 0.55);
@@ -743,7 +743,7 @@ async function guardar() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .foto-x:hover { background: rgba(185, 28, 28, 0.85); }

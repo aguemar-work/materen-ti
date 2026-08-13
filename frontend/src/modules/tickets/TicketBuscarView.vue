@@ -68,7 +68,7 @@ async function buscar() {
 
       <form class="ticket-form" @submit.prevent="buscar">
         <div class="form-group full">
-          <label for="tk-dni">DNI</label>
+          <label for="tk-dni">DNI *</label>
           <input
             id="tk-dni"
             :value="dni"
@@ -78,11 +78,12 @@ async function buscar() {
             placeholder="8 dígitos"
             :disabled="buscando"
             :aria-invalid="errorDni ? 'true' : undefined"
+            :aria-describedby="(errorDni || error) ? 'tk-dni-error' : undefined"
             @input="onDniInput"
             @blur="dniTocado = true"
           >
         </div>
-        <p v-if="errorDni || error" class="form-error" role="alert">{{ errorDni || error }}</p>
+        <p v-if="errorDni || error" id="tk-dni-error" class="form-error" role="alert">{{ errorDni || error }}</p>
         <button class="btn btn-primary ticket-submit" type="submit" :disabled="buscando || !dniValido">
           <i v-if="buscando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ buscando ? 'Buscando...' : 'Buscar' }}

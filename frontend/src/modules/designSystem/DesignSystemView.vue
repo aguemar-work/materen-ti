@@ -526,15 +526,15 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
           <h4>Fondo {{ par.tema }}</h4>
           <div class="ds-marca-caja" :style="{ background: par.bg }">
             <div class="ds-marca-item">
-              <img src="/icon_sisti.svg" alt="Símbolo Sistema TI" width="28" height="28" :style="{ filter: par.invertir ? 'brightness(0) invert(1)' : 'none' }">
+              <img src="/icon_sisti.svg" alt="Símbolo Sistema TI" width="28" height="28" loading="lazy" :style="{ filter: par.invertir ? 'brightness(0) invert(1)' : 'none' }">
               <span>Símbolo (28px)</span>
             </div>
             <div class="ds-marca-item">
-              <img src="/icon_sisti.svg" alt="Símbolo Sistema TI compacto" width="20" height="20" :style="{ filter: par.invertir ? 'brightness(0) invert(1)' : 'none' }">
+              <img src="/icon_sisti.svg" alt="Símbolo Sistema TI compacto" width="20" height="20" loading="lazy" :style="{ filter: par.invertir ? 'brightness(0) invert(1)' : 'none' }">
               <span>Compacto (20px)</span>
             </div>
             <div class="ds-marca-item">
-              <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" height="26" :style="{ filter: par.invertir ? 'brightness(0) invert(1)' : 'none' }">
+              <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" height="26" loading="lazy" :style="{ filter: par.invertir ? 'brightness(0) invert(1)' : 'none' }">
               <span>Completo</span>
             </div>
           </div>

@@ -216,7 +216,7 @@ async function guardar() {
               <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
                 <i class="ti ti-refresh" aria-hidden="true"></i>
               </button>
-              <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" @click="passwordVisible = !passwordVisible">
+              <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
                 <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
               </button>
             </div>

@@ -56,7 +56,7 @@ const TABS = computed(() => {
 <style scoped>
 .config-tabs {
   display: flex;
-  gap: 2px;
+  gap: 8px;
   padding: 0 24px;
   overflow-x: auto;
 }
@@ -65,7 +65,7 @@ const TABS = computed(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 14px;
+  padding: 13px 14px;
   border: none;
   background: none;
   border-bottom: 2px solid transparent;

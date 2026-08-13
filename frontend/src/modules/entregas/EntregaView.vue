@@ -58,7 +58,7 @@ async function copiar(texto, id) {
         </button>
       </template>
 
-      <div v-else-if="estado === 'cargando'" class="entrega-cargando">
+      <div v-else-if="estado === 'cargando'" class="entrega-cargando" role="status">
         Abriendo entrega...
       </div>
 
@@ -123,7 +123,7 @@ async function copiar(texto, id) {
       <!-- Aviso de soporte (solo tras revelar credenciales) -->
       <div v-if="estado === 'revelado'" class="soporte-aviso">
         <p class="soporte-texto">
-          <strong>⚠️ IMPORTANTE:</strong> Toda solicitud de soporte debe realizarse
+          <strong><i class="ti ti-alert-triangle" aria-hidden="true"></i> IMPORTANTE:</strong> Toda solicitud de soporte debe realizarse
           exclusivamente a través de ticket. No se atenderán consultas por WhatsApp
           ni por ningún otro canal.
         </p>

@@ -16,6 +16,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
@@ -258,6 +259,27 @@ function pedirEliminar(licencia) {
   accionPendiente.value = { tipo: 'eliminar', licencia };
 }
 
+// Fuente única de las acciones por licencia para el menú ⋮ de las tarjetas
+// móviles (mismo criterio que accionesDe/accionesVisibles en EquiposView).
+function accionesDe(lic) {
+  return [
+    {
+      icono: 'ti-refresh',
+      label: 'Renovar',
+      visible: lic.tipo === 'suscripcion' && !!lic.renovacion_meses && !!lic.fecha_vencimiento,
+      onClick: () => pedirRenovar(lic),
+    },
+    {
+      icono: 'ti-user-plus',
+      label: 'Asignar asiento a un empleado',
+      disabled: lic.usados >= lic.cantidad,
+      onClick: () => abrirAsignar(lic),
+    },
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(lic) },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => pedirEliminar(lic) },
+  ];
+}
+
 async function confirmarAccionPendiente() {
   const a = accionPendiente.value;
   if (!a) return;
@@ -318,7 +340,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="error" class="no-results lic-error">{{ error }}</div>
+        <div v-if="cargando" class="no-results solo-movil">Cargando licencias...</div>
+        <div v-else-if="error" class="no-results lic-error">{{ error }}</div>
 
         <EmptyState
           v-else-if="!cargando && total === 0"
@@ -331,8 +354,9 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else-if="cargando || total > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando licencias…</p>
+        <template v-if="!error && (cargando || total > 0)">
+        <p v-if="cargando" class="sr-only" role="status">Cargando licencias…</p>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Licencias de software">
             <thead>
               <tr>
@@ -466,8 +490,29 @@ onMounted(async () => {
               </template>
             </tbody>
           </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Licencias de software">
+          <li v-for="lic in lista" :key="lic.id" class="tarjeta-fila">
+            <div class="tarjeta-fila__principal user-name">{{ lic.software }}</div>
+            <div class="tarjeta-fila__sec">
+              <span v-if="lic.proveedor">{{ lic.proveedor }}</span>
+              <span v-if="lic.proveedor" aria-hidden="true">·</span>
+              <span>{{ lic.empresa_nombre || 'Del grupo' }}</span>
+            </div>
+            <div class="tarjeta-fila__sec">
+              <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <span class="badge" :class="estadoVencimiento(lic).clase">{{ estadoVencimiento(lic).texto }}</span>
+              <MenuAcciones :acciones="accionesDe(lic)" :label="`Acciones de ${lic.software}`" />
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        </template>
       </div>
     </main>
 
@@ -625,6 +670,12 @@ onMounted(async () => {
   cursor: pointer;
   color: var(--color-text-secondary);
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
   font-size: 12px;
 }
 

@@ -236,7 +236,7 @@ onMounted(async () => {
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar. ¿Desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
     @cancel="confirmarDescarte = false"

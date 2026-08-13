@@ -153,9 +153,8 @@ onMounted(async () => {
 
 .detalle-cell {
   max-width: 240px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
 }
 
 /* Estructura y color: sistema de badges global (.badge + .badge--X) */

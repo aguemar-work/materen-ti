@@ -262,62 +262,68 @@ verde); el resto queda documentado como deuda abierta para priorizar después.
 | UX4-06 | 2 modales hand-rolled (Tipos de equipo, Categorías de ticket) sin cierre por Escape ni bloqueo de scroll del body, inconsistentes con sus 2 pares "equivalentes" (Áreas/Obras, Ubicaciones), que sí usan el `<Modal>` compartido | Alto | **Resuelto** (2026-08-13) | `TiposEquipoPanel.vue`, `CategoriasTicketPanel.vue` — migrados a `<Modal>` (mismo patrón que `AreasObrasPanel.vue`); `useFocoAtrapado` ya no se usa en estos 2 archivos |
 | UX4-54 | Barra de filtros desalineada: `.filters` no fijaba `align-items` (heredaba `stretch`), así que `.search-wrap` (sin label, 36px) quedaba top-aligned mientras `.filter-field` (con label + select) lo empujaba ~18px más abajo — visible en las 6 vistas que combinan buscador y selects | Alto | **Resuelto** (2026-08-13) | `main.css` (`.filters { align-items: flex-end; }`) — corrige de una vez `TicketsView`, `ProblemasView`, `KbView`, `EquiposView`, `EmpleadosView`, `CorreosView`; verificado con captura real (desktop y apilado móvil) vía Playwright contra el CSS compilado |
 
-### Deuda abierta — patrones sistémicos (afectan varios archivos)
+### Patrones sistémicos — todos resueltos (2026-08-13, décimoquinta pasada)
+
+Implementados por 6 agentes en paralelo, cada uno sobre un conjunto de
+archivos sin superposición (sin riesgo de choque de ediciones). Verificado
+con `npm run build` + `npm test` (96/97 en verde) tras consolidar los 6
+lotes, más revisión manual de los cambios de mayor riesgo (StaffView.vue,
+CategoriasTicketPanel.vue, notas de empleados).
 
 | ID | Hallazgo | Severidad | Estado | Referencia |
 |----|----------|-----------|--------|------------|
-| UX4-07 | Sin patrón de tarjetas móviles (`.lista-tarjetas`) — solo scroll horizontal | Alto/Medio | Abierto | `LicenciasView.vue`, `AccesosSensiblesView.vue`, `PersonalRegistrosView.vue`, `StaffView.vue`, `KbView.vue`, `EncuestasView.vue`, `EncuestaDetalleView.vue` |
-| UX4-08 | Botón mostrar/ocultar contraseña sin `aria-label` (solo `title`), inconsistente con "Generar contraseña" en el mismo formulario | Medio | Abierto | `CorreoForm.vue`, `LicenciaForm.vue` (×3), `AccesoSensibleForm.vue` |
-| UX4-09 | Objetivos táctiles bajo 44px (varios por debajo incluso de 24px) | Medio | Abierto | `EquipoForm.vue` (quitar foto, 22px), `LicenciasView.vue` (liberar asiento), `AppNav.vue` `.sb-nav-titulo` (~22px), `AppLayout.vue`/`AppSearch.vue` `.sb-logout` (~39-41px), `PersonalRegistrosView.vue` `.btn-usado` (24px), `StaffView.vue` `.rol-select`, `ConfiguracionView.vue` tabs (gap&lt;8px), `TicketsView.vue` chips (36px), `PreguntaCampo.vue` escala (40px), `ResponderEncuestaView.vue` (gap 6px) |
-| UX4-10 | Radios ocultos sin `:focus-visible` en tarjetas de tipo — navegar con teclado no muestra qué tarjeta está seleccionada | Alto (teclado) | Abierto | `CorreoForm.vue` (`.tipo-option`), `LicenciaForm.vue` (`.acceso-option`) |
-| UX4-11 | Confirmación nativa del navegador (`confirm()`) en vez de `ConfirmDialog` para una acción sensible | Alto | Abierto | `StaffView.vue` (`toggleActivo`, desactivar staff) |
-| UX4-12 | Formularios públicos sin `aria-live`/foco en el campo con error tras enviar | Alto | Abierto | `EncuestaPublicaView.vue`, `ResponderEncuestaView.vue`, `PersonalRegistroView.vue` |
-| UX4-13 | Sin feedback de carga en acciones async — riesgo de doble envío | Medio | Abierto | `StaffView.vue` (`toggleActivo`/`cambiarRol`), `PersonalRegistrosView.vue` (`toggleUsado`), `LoginView.vue` (reenviar código sin confirmación visible) |
-| UX4-14 | `aria-pressed`/`role="radiogroup"` ausente en toggles de selección única basados en `<button>` con solo cambio de color | Medio | Abierto | `PreguntaCampo.vue` (escala 1-5, sí/no), `PersonalRegistrosView.vue` (filtros toggle) |
+| UX4-07 | Sin patrón de tarjetas móviles (`.lista-tarjetas`) — solo scroll horizontal | Alto/Medio | **Resuelto** | Patrón replicado desde `ProblemasView.vue`/`EquiposView.vue` en `LicenciasView.vue`, `AccesosSensiblesView.vue`, `PersonalRegistrosView.vue`, `StaffView.vue`, `KbView.vue`, `EncuestasView.vue`, `EncuestaDetalleView.vue` |
+| UX4-08 | Botón mostrar/ocultar contraseña sin `aria-label` | Medio | **Resuelto** | `CorreoForm.vue`, `LicenciaForm.vue` (×3), `AccesoSensibleForm.vue` |
+| UX4-09 | Objetivos táctiles bajo 44px | Medio | **Resuelto** | `EquipoForm.vue`, `LicenciasView.vue`, `AppLayout.vue`/`AppSearch.vue` `.sb-logout`, `PersonalRegistrosView.vue`, `StaffView.vue`, `ConfiguracionView.vue`, `TicketsView.vue`, `PreguntaCampo.vue`, `ResponderEncuestaView.vue`. La instancia de `AppNav.vue` `.sb-nav-titulo` quedó sin objeto: en el rediseño de sidebar de esta misma sesión ese título dejó de ser un `<button>` (ya no es interactivo) |
+| UX4-10 | Radios ocultos sin `:focus-visible` | Alto (teclado) | **Resuelto** | `CorreoForm.vue` (`.tipo-option`), `LicenciaForm.vue` (`.acceso-option`) — `:focus-within` con el mismo criterio ya usado para checkbox/radio en `main.css` |
+| UX4-11 | `confirm()` nativo en vez de `ConfirmDialog` | Alto | **Resuelto** | `StaffView.vue` — reemplazado por `ConfirmDialog` (patrón `TiposEquipoPanel.vue`); de paso se corrigió un truco CSS (`.rol-select:not(:disabled)`) que habría parpadeado al combinarse con el nuevo estado de carga (UX4-13) |
+| UX4-12 | Formularios públicos sin `aria-live` tras enviar | Alto | **Resuelto** | `EncuestaPublicaView.vue`, `ResponderEncuestaView.vue`, `PersonalRegistroView.vue` |
+| UX4-13 | Sin feedback de carga en acciones async | Medio | **Resuelto** | `StaffView.vue`, `PersonalRegistrosView.vue`, `LoginView.vue` |
+| UX4-14 | `aria-pressed` ausente en toggles de selección única | Medio | **Resuelto** | `PreguntaCampo.vue` (escala 1-5, sí/no) |
 
-### Deuda abierta — hallazgos puntuales
+### Hallazgos puntuales — todos resueltos (2026-08-13, décimoquinta pasada)
 
 | ID | Hallazgo | Severidad | Estado | Referencia |
 |----|----------|-----------|--------|------------|
-| UX4-15 | Estado de error sin ninguna ruta de salida (ni enlace ni botón) — callejón sin salida en una página pública sin soporte | Alto | Abierto | `ResponderEncuestaView.vue:69-73` |
-| UX4-16 | `.alta-banner` con `color-mix(..., #fff)` crudo en vez de un token theme-aware — casi blanco también en tema oscuro, bajo contraste con el texto secundario que trae | Alto | Abierto | `EmpleadoDetalleView.vue:495-500` |
-| UX4-17 | Campana de notificaciones sin manejo de `Escape` (sí lo tiene el patrón equivalente `MenuAcciones.vue`) | Alto | Abierto | `NotificacionesCampana.vue:40-53` |
-| UX4-18 | `.password-locked` (candado de contraseña solo-JEFE) sin nombre accesible propio, depende de `title` | Medio | Abierto | `CuentasPanel.vue:299` |
-| UX4-19 | `role="status"` ausente en estado de carga de página pública con credenciales | Medio | Abierto | `EntregaView.vue:61-63` |
-| UX4-20 | Sin botón "Reintentar" cuando falla la carga del catálogo (usuario público) | Medio | Abierto | `TicketNuevoView.vue:133-137` |
-| UX4-21 | Error de campo sin `aria-describedby` hacia el `role="alert"` | Bajo | Abierto | `TicketNuevoView.vue:145-157`, `TicketBuscarView.vue:72-85` |
-| UX4-22 | Asterisco de obligatorio inconsistente entre dos formularios equivalentes ("DNI" vs "DNI *") | Bajo | Abierto | `TicketBuscarView.vue:71-72` |
-| UX4-23 | Indicadores de "Vínculos" (cuentas/equipos/licencias) sin `aria-label`, solo número + `title` | Medio | Abierto | `EmpleadosView.vue:251-273,339-349` |
-| UX4-24 | Input de búsqueda sin `<label>`/`aria-label` propio | Medio | Abierto | `EmpleadosView.vue:195-199` |
-| UX4-25 | Botón "Dar de baja" con clase custom `.btn-baja` en vez de `.btn-danger` (pierde el anillo de foco de peligro) | Bajo | Abierto | `EmpleadoDetalleView.vue:480-488` |
-| UX4-26 | Campo "Notas" visible en la ficha sin ningún control de edición en el formulario | Bajo | Abierto | `EmpleadoDetalleView.vue:275-278` / `EmpleadoForm.vue` |
-| UX4-27 | Texto truncado sin `white-space:nowrap` (el ellipsis nunca se activa, el texto largo envuelve en el modal angosto) | Medio | Abierto | `BajaEmpleadoModal.vue:296-301` |
-| UX4-28 | Formulario público sin `autocomplete` (`given-name`/`family-name`/`tel`/`email`) | Bajo | Abierto | `PersonalRegistroView.vue:148,153,158,163` |
-| UX4-29 | Mensajes de estado async sin `role="status"`/`aria-live` | Medio | Abierto | `PersonalRegistroView.vue:140-143` |
-| UX4-30 | Login sin foco inicial en el primer campo | Medio | Abierto | `LoginView.vue:127-135` |
-| UX4-31 | Error "las contraseñas no coinciden" no asociado al campo que lo causó | Medio | Abierto | `LoginView.vue:96-101,280` |
-| UX4-32 | `aria-describedby` ausente entre el `<textarea>` de motivo y su error | Medio | Abierto | `ConfirmDialog.vue:71-75` |
-| UX4-33 | `.aviso-card` con `role="button"` no maneja la tecla Space (solo Enter) | Medio | Abierto | `AppNotifications.vue:79-84` |
-| UX4-34 | Paginación sin `aria-live` — cambio de página no se anuncia | Medio | Abierto | `Pagination.vue:27-38` |
-| UX4-35 | Borrador de KB vacío (creado al cerrar un ticket, U-05) sin ninguna señal visual distinta de "sin datos" neutro | Medio | Abierto | `KbArticuloDetalleView.vue:191,259` |
-| UX4-36 | Grid de alta de acción correctiva sin breakpoint móvil (3 columnas `auto` en ancho de teléfono) | Alto | Abierto | `ProblemaDetalleView.vue:519-524` |
-| UX4-37 | `<label for>` sin contraparte real (`id` inexistente) en 2 campos | Bajo | Abierto | `EncuestaForm.vue:150-152,131` |
-| UX4-38 | Cierre de ronda de encuesta sin `ConfirmDialog` (acción sin "reabrir") | Alto | Abierto | `EncuestaDetalleView.vue:61-72,179-189` |
-| UX4-39 | `<label for>` roto en 3 de 5 tipos de pregunta (`opcion_unica`/`escala_1_5`/`si_no` no generan el `id` que el `for` referencia) | Medio | Abierto | `PreguntaCampo.vue:18,42-83` |
-| UX4-40 | Escala 1-5 sin indicar el significado de los extremos (ni visual ni accesible) | Medio | Abierto | `PreguntaCampo.vue:56-66` |
-| UX4-41 | Encuesta pública sin indicador de progreso ("Pregunta X de N") | Medio | Abierto | `EncuestaPublicaView.vue:85-101` |
-| UX4-42 | Estado de carga inicial sin esqueleto que reserve el espacio real (CLS) | Medio | Abierto | `DashboardView.vue:61` |
-| UX4-43 | Tarjeta "Cuentas asignadas" no interactiva con el mismo aspecto que las 6 sí clicables | Bajo | Abierto | `DashboardView.vue:139-190` |
-| UX4-44 | Color `danger` (rojo) usado para un conteo neutro ("Tickets abiertos"), no una alerta real | Bajo | Abierto | `DashboardView.vue:184-190,241` |
-| UX4-45 | Texto truncado accesible solo vía `title` (tooltip nativo), sin alternativa por teclado/táctil | Medio | Abierto | `ActividadView.vue:131-134` |
-| UX4-46 | Alta rápida de subcategoría sin `<label>`/`aria-label` (único form de los 4 paneles de configuración sin uno) | Medio | Abierto | `CategoriasTicketPanel.vue:223-234` |
-| UX4-47 | Widget interactivo (`role="button"`) anidando otros `<button>` reales dentro — patrón ARIA no recomendado | Medio | Abierto | `CategoriasTicketPanel.vue:194-214` |
-| UX4-48 | Imágenes de la sección "Marca" sin `loading="lazy"` en una página documentada como muy larga | Bajo | Abierto | `DesignSystemView.vue:529,533,537` |
-| UX4-49 | Emoji (⚠️) en vez de ícono Tabler, inconsistente con el resto del mismo archivo | Alto | Abierto | `EntregaView.vue:126` |
-| UX4-50 | Transiciones sin cobertura de `prefers-reduced-motion` (sí la tiene `.modal-anim*`) | Bajo | Abierto | `AppLayout.vue` (drawer), `AppNotifications.vue` (toast) |
-| UX4-51 | Tokens muertos o valores crudos que duplican un token ya existente | Bajo | Abierto | `EncuestaForm.vue`, `PlataformasView.vue:320-324`, `CuentaForm.vue`, `AppLayout.vue` (rgba de overlays), `EncuestaDetalleView.vue:271-278` |
-| UX4-52 | Tuteo aislado ("tienes", "deseas") en un mensaje de confirmación, viola el tono impersonal fijado para el proyecto (mismo string en otros 9 formularios fuera de este alcance) | Bajo | Abierto | `TicketInternoForm.vue:239` |
-| UX4-53 | Chips de filtro y botones de nivel sin `:focus-visible` propio (caen al outline nativo) | Bajo | Abierto | `TicketsView.vue` `.chip-filtro`, `ResponderEncuestaView.vue` `.nivel-btn` |
+| UX4-15 | Estado de error sin ruta de salida | Alto | **Resuelto** | `ResponderEncuestaView.vue` — enlace a `/soporte` (mismo patrón que `TicketSeguimientoView.vue`) |
+| UX4-16 | `.alta-banner` con `color-mix(..., #fff)` crudo | Alto | **Resuelto** | `EmpleadoDetalleView.vue` — reemplazado por `var(--color-accent-subtle)` |
+| UX4-17 | Campana de notificaciones sin `Escape` | Alto | **Resuelto** | `NotificacionesCampana.vue` — mismo mecanismo que `MenuAcciones.vue` |
+| UX4-18 | `.password-locked` sin nombre accesible propio | Medio | **Resuelto** | `CuentasPanel.vue:299` — `role="img"` + `aria-label` |
+| UX4-19 | `role="status"` ausente en carga de página pública | Medio | **Resuelto** | `EntregaView.vue:61` |
+| UX4-20 | Sin botón "Reintentar" en error de catálogo | Medio | **Resuelto** | `TicketNuevoView.vue` — nueva función `cargarCatalogo()` reutilizable |
+| UX4-21 | Error de campo sin `aria-describedby` | Bajo | **Resuelto** | `TicketNuevoView.vue`, `TicketBuscarView.vue` |
+| UX4-22 | Asterisco de obligatorio inconsistente | Bajo | **Resuelto** | `TicketBuscarView.vue:71-72` — "DNI" → "DNI *" |
+| UX4-23 | Indicadores de "Vínculos" sin `aria-label` | Medio | **Resuelto** | `EmpleadosView.vue` |
+| UX4-24 | Input de búsqueda sin `aria-label` | Medio | **Resuelto** | `EmpleadosView.vue:195-199` |
+| UX4-25 | `.btn-baja` en vez de `.btn-danger` | Bajo | **Resuelto** | `EmpleadoDetalleView.vue` — clase muerta `.btn-baja` eliminada (verificado sin otros usos en el repo) |
+| UX4-26 | Campo "Notas" sin control de edición | Bajo | **Resuelto** | `EmpleadoForm.vue` (textarea nuevo) + `api/domains/empleados.js` (`empleadoToRow` vuelve a escribir `notas`, vía `trimText`) — verificado que la omisión original no tenía una decisión de producto documentada en contra |
+| UX4-27 | Texto truncado sin `white-space:nowrap` | Medio | **Resuelto** | `BajaEmpleadoModal.vue:296-301` |
+| UX4-28 | Formulario público sin `autocomplete` | Bajo | **Resuelto** | `PersonalRegistroView.vue` |
+| UX4-29 | Mensajes de estado async sin `role="status"` | Medio | **Resuelto** | `PersonalRegistroView.vue` — mismo fix que UX4-12 (mismo contenedor) |
+| UX4-30 | Login sin foco inicial | Medio | **Resuelto** | `LoginView.vue` — `autofocus` en el campo de correo |
+| UX4-31 | Error de confirmación de contraseña no asociado al campo | Medio | **Resuelto** | `LoginView.vue` — `errorConfirmar` propio bajo el campo `confirmar-password` |
+| UX4-32 | `aria-describedby` ausente en `ConfirmDialog` | Medio | **Resuelto** | `ConfirmDialog.vue` — `useId()` + `aria-invalid` |
+| UX4-33 | `.aviso-card` sin manejo de Space | Medio | **Resuelto** | `AppNotifications.vue:79-84` |
+| UX4-34 | Paginación sin `aria-live` | Medio | **Resuelto** | `Pagination.vue:27` |
+| UX4-35 | Borrador de KB vacío sin señal distinta | Medio | **Resuelto** | `KbArticuloDetalleView.vue` — badge `.badge--warning` "Pendiente" + placeholder en modo edición |
+| UX4-36 | Grid de acción correctiva sin breakpoint móvil | Alto | **Resuelto** | `ProblemaDetalleView.vue:519` |
+| UX4-37 | `<label for>` sin contraparte real | Bajo | **Resuelto** | `EncuestaForm.vue` |
+| UX4-38 | Cierre de ronda sin `ConfirmDialog` | Alto | **Resuelto** | `EncuestaDetalleView.vue` |
+| UX4-39 | `<label for>` roto en 3 tipos de pregunta | Medio | **Resuelto** | `PreguntaCampo.vue` — `fieldset`/`legend` para `opcion_unica`/`escala_1_5`/`si_no` |
+| UX4-40 | Escala 1-5 sin significado de extremos | Medio | **Resuelto** | `PreguntaCampo.vue` — hints "1 = Nada satisfecho"/"5 = Muy satisfecho" |
+| UX4-41 | Encuesta pública sin indicador de progreso | Medio | **Resuelto** | `EncuestaPublicaView.vue` — contador "X de Y preguntas respondidas" (el formulario muestra todas a la vez, no pagina) |
+| UX4-42 | Carga inicial del Dashboard sin esqueleto | Medio | **Resuelto** | `DashboardView.vue:61` — reutiliza la animación `skeleton-pulso` ya definida en `main.css` |
+| UX4-43 | Tarjeta "Cuentas asignadas" no interactiva con aspecto de clicable | Bajo | **Resuelto** | `DashboardView.vue` — `cursor: default` explícito |
+| UX4-44 | Color `danger` mal usado para conteo neutro | Bajo | **Resuelto** | `DashboardView.vue` — cambiado a `info` (azul), único token categórico libre en esa fila |
+| UX4-45 | Texto truncado solo accesible vía `title` | Medio | **Resuelto** | `ActividadView.vue:131` — envuelve en vez de truncar |
+| UX4-46 | Alta rápida de subcategoría sin `aria-label` | Medio | **Resuelto** | `CategoriasTicketPanel.vue:223-234` |
+| UX4-47 | Widget anidando botones reales dentro de `role="button"` | Medio | **Resuelto** | `CategoriasTicketPanel.vue` — separado en `.cat-fila-toggle` (`<button>`) + `.actions` hermano |
+| UX4-48 | Imágenes de "Marca" sin `loading="lazy"` | Bajo | **Resuelto** | `DesignSystemView.vue:529,533,537` |
+| UX4-49 | Emoji en vez de ícono Tabler | Alto | **Resuelto** | `EntregaView.vue:126` |
+| UX4-50 | Transiciones sin `prefers-reduced-motion` | Bajo | **Resuelto** | `AppLayout.vue`, `AppNotifications.vue` |
+| UX4-51 | Tokens muertos/valores crudos | Bajo | **Resuelto** | `EncuestaForm.vue`, `PlataformasView.vue`, `CuentaForm.vue`, `AppLayout.vue`, `EncuestaDetalleView.vue` |
+| UX4-52 | Tuteo aislado en `ConfirmDialog` | Bajo | **Resuelto** | `TicketInternoForm.vue:239`. Nota: el mismo string tuteante se repite en otros 9 `ConfirmDialog` fuera de este alcance (`EquipoForm.vue`, `CuentaForm.vue`, `ProblemaForm.vue`, `EncuestaForm.vue`, `KbArticuloForm.vue`, `LicenciaForm.vue`, `EmpleadoForm.vue`, `AccesoSensibleForm.vue`, `CorreoForm.vue`) — no tocados, quedan como candidato a un hallazgo nuevo si se pide |
+| UX4-53 | Chips/botones sin `:focus-visible` propio | Bajo | **Resuelto** | `TicketsView.vue` `.chip-filtro`, `ResponderEncuestaView.vue` `.nivel-btn` |
 
 ## Cómo mantener esto al día
 

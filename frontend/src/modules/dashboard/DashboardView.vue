@@ -58,7 +58,26 @@ onMounted(async () => {
     <PageHeader titulo="Dashboard" icono="ti ti-layout-dashboard" />
 
     <main class="page page--padded dashboard-body">
-      <div v-if="cargando" class="no-results">Cargando...</div>
+      <div v-if="cargando" class="dashboard-skeleton" aria-hidden="true">
+        <div class="section">
+          <div class="grid-12 pendientes-row">
+            <div class="recientes-col">
+              <div class="skel-bar skel-bar--title"></div>
+              <div class="skel-block skel-block--recientes"></div>
+            </div>
+            <div class="pendientes-col">
+              <div class="skel-bar skel-bar--title"></div>
+              <div class="skel-block skel-block--pendientes"></div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="skel-bar skel-bar--title skel-bar--secondary"></div>
+          <div class="grid-12">
+            <div v-for="n in 8" :key="n" class="skel-block skel-block--stat col-2"></div>
+          </div>
+        </div>
+      </div>
 
       <template v-else>
         <!-- Pendientes (feed único por urgencia) + Últimos empleados,
@@ -136,7 +155,7 @@ onMounted(async () => {
               </div>
             </RouterLink>
             <!-- Sin link: no existe una vista global de cuentas (viven en la ficha del empleado) -->
-            <div class="stat-card col-2">
+            <div class="stat-card stat-card--no-clic col-2">
               <div class="stat-icon stat-icon--accesos"><i class="ti ti-key"></i></div>
               <div class="stat-info">
                 <span class="stat-value">{{ stats.cuentasAsignadas }}</span>
@@ -202,6 +221,29 @@ onMounted(async () => {
 
 .no-results { text-align: center; padding: 40px; color: var(--color-text-secondary); }
 
+/* Esqueleto de carga inicial: reserva aprox. la misma altura/estructura
+   que el contenido real (fila Últimos empleados + Pendientes, y el
+   Resumen de 7 stat-cards) para evitar el salto de layout al terminar
+   de cargar. Reusa la animación .skeleton-bar/skeleton-pulso de main.css. */
+.skel-bar,
+.skel-block {
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+  animation: skeleton-pulso 1.4s ease-in-out infinite;
+}
+
+.skel-bar--title { width: 140px; height: 15px; margin-bottom: 14px; }
+.skel-bar--secondary { width: 100px; height: 13px; }
+
+.skel-block--recientes { height: 280px; }
+.skel-block--pendientes { height: 280px; }
+.skel-block--stat { height: 66px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skel-bar,
+  .skel-block { animation: none; opacity: 0.6; }
+}
+
 .stat-card {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
@@ -223,6 +265,11 @@ onMounted(async () => {
 .stat-card--clic:hover,
 .stat-card--clic:focus-visible { box-shadow: var(--shadow-md, var(--shadow-sm)); }
 
+/* "Cuentas asignadas" no navega a ningún lado (no existe vista global de
+   cuentas): mismo marcado que las demás stat-card, pero sin el cursor de
+   puntero que sugiere interactividad. */
+.stat-card--no-clic { cursor: default; }
+
 .section--stats .stat-card { padding: 12px 14px; }
 
 .stat-icon {
@@ -238,7 +285,7 @@ onMounted(async () => {
 .stat-icon--licencias { background: var(--color-teal-bg); color: var(--color-teal-text); }
 .stat-icon--alerta    { background: var(--color-warning-bg-strong); color: var(--color-warning-text); }
 .stat-icon--equipos   { background: var(--color-sky-bg); color: var(--color-sky-text); }
-.stat-icon--tickets   { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.stat-icon--tickets   { background: var(--color-info-bg); color: var(--color-info-text); }
 
 .stat-card--alerta { border-color: var(--color-warning-border); }
 

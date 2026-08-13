@@ -830,6 +830,48 @@ Pendiente**: nada abierto por este cambio; sin hint visual del atajo (ej.
 "⌘K" en el placeholder) — no estaba en el plan aprobado, se puede agregar
 si se pide.
 
+#### Changelog — cierre del backlog Ciclo 4, 47 hallazgos (2026-08-13, décimoquinta pasada)
+
+Pedido explícito del usuario: seguir con el backlog de UX/UI ya documentado
+(UX4-07 a UX4-53, `docs/HISTORIAL-AUDITORIAS.md`) en vez de seguir
+agregando mejoras nuevas. 6 agentes en paralelo, cada uno sobre un conjunto
+de archivos sin superposición entre sí (sin riesgo de choque de ediciones
+concurrentes) — detalle completo hallazgo por hallazgo en
+`docs/HISTORIAL-AUDITORIAS.md`, acá solo el resumen de patrones que tocan
+el sistema de diseño:
+
+- **Patrón `.lista-tarjetas` extendido a 7 vistas más** (`LicenciasView`,
+  `AccesosSensiblesView`, `PersonalRegistrosView`, `StaffView`, `KbView`,
+  `EncuestasView`, `EncuestaDetalleView`), replicado desde
+  `ProblemasView.vue`/`EquiposView.vue` — mismas clases ya existentes en
+  `main.css`, sin tokens nuevos.
+- **`ConfirmDialog` reemplaza 2 patrones fuera del sistema**: `confirm()`
+  nativo del navegador en `StaffView.vue` (desactivar staff) y un clic
+  directo sin confirmación en `EncuestaDetalleView.vue` (cerrar ronda) —
+  ambos ahora usan el componente compartido, mismo patrón que
+  `TiposEquipoPanel.vue`/`AreasObrasPanel.vue`.
+- **Un widget interactivo mal anidado, corregido**: `CategoriasTicketPanel.vue`
+  tenía botones reales (editar/eliminar) dentro de un `role="button"` — se
+  separó en un `<button>` real para expandir/colapsar (`.cat-fila-toggle`)
+  y `.actions` como hermano, no hijo.
+- **Foco visible añadido** a radios ocultos (`CorreoForm.vue`/`LicenciaForm.vue`)
+  y a chips/botones que caían al outline nativo (`TicketsView.vue`,
+  `ResponderEncuestaView.vue`) — mismo criterio de anillo ya establecido.
+- **Campo "Notas" reactivado** en `EmpleadoForm.vue` (se mostraba en la
+  ficha sin forma de editarlo) — se verificó que su remoción del
+  formulario, años atrás, no tenía ninguna decisión de producto documentada
+  en contra antes de reactivarlo.
+
+**(a) Qué cambió**: 43 archivos (ver `docs/HISTORIAL-AUDITORIAS.md` para el
+detalle completo por ítem) + esta guía + `docs/CHANGELOG.md`. **(b)
+Riesgo**: bajo-medio — la mayoría son adiciones de accesibilidad/CSS
+aisladas; los 2 cambios de mayor superficie (`StaffView.vue`,
+`CategoriasTicketPanel.vue`) se revisaron manualmente además de la
+verificación automática. `npm run build` + `npm test` (96/97) en verde
+tras consolidar los 6 lotes. **(c) Pendiente**: el tuteo de UX4-52 se
+repite en otros 9 `ConfirmDialog` fuera de este alcance (ver
+`docs/HISTORIAL-AUDITORIAS.md`); nada más queda abierto del Ciclo 4.
+
 ## Arquitectura general
 
 El frontend **no usa Tailwind ni librería de componentes**. Todo el diseño vive en:

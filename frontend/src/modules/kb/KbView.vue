@@ -108,8 +108,9 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else-if="cargando || total > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando artículos…</p>
+        <template v-else-if="cargando || total > 0">
+        <p v-if="cargando" class="sr-only" role="status">Cargando artículos…</p>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Artículos de la base de conocimiento">
             <thead>
               <tr>
@@ -142,8 +143,31 @@ onMounted(async () => {
               </template>
             </tbody>
           </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Artículos de la base de conocimiento">
+          <li v-for="a in lista" :key="a.id" class="tarjeta-fila tarjeta-fila--clic" @click="verArticulo(a)">
+            <div class="tarjeta-fila__principal">{{ a.titulo }}</div>
+            <div v-if="a.sintoma" class="tarjeta-fila__sec kb-sintoma">{{ a.sintoma }}</div>
+            <div class="tarjeta-fila__sec">
+              <span v-if="a.categoria_nombre">{{ a.categoria_nombre }}</span>
+              <TextoVacio v-else placeholder="Sin categoría" />
+              <span aria-hidden="true">·</span>
+              <span>{{ formatFechaHora(a.updated_at) }}</span>
+            </div>
+            <div class="tarjeta-fila__badges">
+              <BadgeEstado tipo="kb_estado" :valor="a.estado" />
+              <span class="kb-feedback" title="Le sirvió / no le sirvió">
+                <i class="ti ti-thumb-up" aria-hidden="true"></i> {{ a.util_si }}
+                <i class="ti ti-thumb-down" aria-hidden="true"></i> {{ a.util_no }}
+              </span>
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        </template>
       </div>
     </main>
 

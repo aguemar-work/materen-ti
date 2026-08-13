@@ -2,7 +2,7 @@
 // Página PÚBLICA (sin sesión): responder una ronda de encuesta. A
 // diferencia de EntregaView (un solo uso), esta misma ronda la puede
 // abrir y responder cualquier cantidad de personas.
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { abrirEncuesta, responderEncuesta, MENSAJES_ERROR_ENCUESTA } from '../../api/encuestaPublica.js';
 import { respuestaValida } from '../../core/dominio-encuestas.js';
@@ -20,6 +20,15 @@ const titulo = ref('');
 const descripcion = ref('');
 const preguntas = ref([]);
 const respuestas = reactive({});
+
+// Todas las preguntas se muestran juntas (no hay paginado de a una), así
+// que el indicador de progreso es un conteo de respondidas sobre el total,
+// no "Pregunta X de N".
+const totalPreguntas = computed(() => preguntas.value.length);
+const preguntasRespondidas = computed(() => preguntas.value.filter((p) => {
+  const v = respuestas[p.id];
+  return v !== undefined && v !== null && v !== '';
+}).length);
 
 function enviar() {
   error.value = '';
@@ -81,6 +90,7 @@ onMounted(async () => {
       <template v-else>
         <h2 class="ticket-title">{{ titulo }}</h2>
         <p v-if="descripcion" class="ticket-texto">{{ descripcion }}</p>
+        <p v-if="totalPreguntas" class="encuesta-progreso">{{ preguntasRespondidas }} de {{ totalPreguntas }} preguntas respondidas</p>
 
         <form class="ticket-form" @submit.prevent="enviar">
           <PreguntaCampo
@@ -117,6 +127,12 @@ onMounted(async () => {
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 10px;
+}
+
+.encuesta-progreso {
+  font-size: var(--fs-sm);
+  color: var(--color-text-secondary);
+  margin: 0 0 14px;
 }
 
 .ticket-form {

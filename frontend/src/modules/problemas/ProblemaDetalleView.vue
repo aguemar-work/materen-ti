@@ -523,6 +523,12 @@ onUnmounted(() => store.limpiar());
   margin-top: 12px;
 }
 
+@media (max-width: 768px) {
+  .accion-form-nueva {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Tickets vinculados ────────────────────────────────────────────────── */
 .tickets-vinculados-lista { display: flex; flex-direction: column; gap: 6px; }
 

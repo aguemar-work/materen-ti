@@ -137,30 +137,30 @@ async function enviar() {
               @blur="onDniBlur"
             >
             <p v-if="errorDni" class="form-error" role="alert">{{ errorDni }}</p>
-            <p v-else-if="estado === 'buscando_dni'" class="ticket-nota">Buscando...</p>
-            <p v-else-if="encontrado" class="ticket-identificado">
+            <p v-else-if="estado === 'buscando_dni'" class="ticket-nota" role="status">Buscando...</p>
+            <p v-else-if="encontrado" class="ticket-identificado" role="status">
               <i class="ti ti-user-check" aria-hidden="true"></i> Te encontramos — revisa tus datos.
             </p>
           </div>
 
           <div class="form-group full">
             <label for="pr-nombres">Nombres *</label>
-            <input id="pr-nombres" v-model="form.nombres" required maxlength="100" :disabled="estado === 'enviando'">
+            <input id="pr-nombres" v-model="form.nombres" required maxlength="100" autocomplete="given-name" :disabled="estado === 'enviando'">
           </div>
 
           <div class="form-group full">
             <label for="pr-apellidos">Apellidos *</label>
-            <input id="pr-apellidos" v-model="form.apellidos" required maxlength="100" :disabled="estado === 'enviando'">
+            <input id="pr-apellidos" v-model="form.apellidos" required maxlength="100" autocomplete="family-name" :disabled="estado === 'enviando'">
           </div>
 
           <div class="form-group full">
             <label for="pr-celular">Teléfono / Celular</label>
-            <input id="pr-celular" v-model="form.celular" type="tel" maxlength="20" placeholder="9XXXXXXXX" :disabled="estado === 'enviando'">
+            <input id="pr-celular" v-model="form.celular" type="tel" maxlength="20" placeholder="9XXXXXXXX" autocomplete="tel" :disabled="estado === 'enviando'">
           </div>
 
           <div class="form-group full">
             <label for="pr-correo">Correo personal</label>
-            <input id="pr-correo" v-model="form.correoPersonal" type="email" maxlength="200" placeholder="tunombre@correo.com" :disabled="estado === 'enviando'">
+            <input id="pr-correo" v-model="form.correoPersonal" type="email" maxlength="200" placeholder="tunombre@correo.com" autocomplete="email" :disabled="estado === 'enviando'">
           </div>
 
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>

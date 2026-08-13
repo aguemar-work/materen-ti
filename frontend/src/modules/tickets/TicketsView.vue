@@ -315,7 +315,7 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  height: 40px;
   padding: 0 12px;
   border: none;
   border-radius: var(--radius-pill);
@@ -329,6 +329,11 @@ onMounted(async () => {
 }
 
 .chip-filtro:hover { background: var(--color-bg-hover); }
+
+.chip-filtro:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--mat-ring);
+}
 
 .chip-filtro--activo {
   background: var(--color-accent-subtle);

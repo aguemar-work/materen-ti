@@ -210,6 +210,7 @@ async function guardar() {
               type="button"
               class="icon-btn"
               :title="passwordVisible ? 'Ocultar' : 'Mostrar'"
+              :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'"
               @click="passwordVisible = !passwordVisible"
             >
               <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
@@ -282,6 +283,11 @@ async function guardar() {
 .tipo-option:hover {
   border-color: var(--color-primary);
   background: var(--color-bg-hover);
+}
+
+.tipo-option:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .tipo-option--active {

@@ -91,8 +91,9 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
           </button>
         </EmptyState>
 
-        <div v-else class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando encuestas…</p>
+        <template v-else>
+        <p v-if="cargando" class="sr-only" role="status">Cargando encuestas…</p>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Encuestas">
             <thead>
               <tr>
@@ -130,8 +131,37 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
               </template>
             </tbody>
           </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Encuestas">
+          <li v-for="e in listaPaginada" :key="e.id" class="tarjeta-fila">
+            <RouterLink class="tarjeta-fila__principal empleado-link" :to="`/encuestas/${e.id}`">{{ e.titulo }}</RouterLink>
+            <div class="tarjeta-fila__sec">
+              <span>{{ e.preguntas?.length || 0 }} preguntas</span>
+              <span aria-hidden="true">·</span>
+              <span>{{ formatFecha(e.created_at) }}</span>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <div class="actions">
+                <RouterLink class="icon-btn" :to="`/encuestas/${e.id}`" title="Ver rondas y resultados" aria-label="Ver rondas y resultados">
+                  <i class="ti ti-chart-bar"></i>
+                </RouterLink>
+                <template v-if="auth.esJefe">
+                  <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(e)">
+                    <i class="ti ti-pencil"></i>
+                  </button>
+                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = e">
+                    <i class="ti ti-trash"></i>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+        </template>
       </div>
     </main>
 

@@ -320,7 +320,7 @@ onMounted(async () => {
 .icono-preview-sm {
   font-size: 20px;
   line-height: 1;
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .label-hint {

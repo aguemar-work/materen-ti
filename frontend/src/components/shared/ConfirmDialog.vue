@@ -23,6 +23,7 @@ const props = defineProps({
 const emit = defineEmits(['confirm', 'cancel']);
 
 const motivoId = useId();
+const motivoErrorId = useId();
 const motivo = ref('');
 const error = ref('');
 
@@ -70,9 +71,16 @@ function confirmar() {
 
     <div v-if="requiereMotivo" class="form-group full">
       <label :for="motivoId">{{ motivoLabel }}</label>
-      <textarea :id="motivoId" v-model="motivo" rows="3" :disabled="cargando"></textarea>
+      <textarea
+        :id="motivoId"
+        v-model="motivo"
+        rows="3"
+        :disabled="cargando"
+        :aria-describedby="error ? motivoErrorId : undefined"
+        :aria-invalid="error ? 'true' : undefined"
+      ></textarea>
     </div>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <p v-if="error" :id="motivoErrorId" class="form-error" role="alert">{{ error }}</p>
 
     <template #acciones>
       <button class="btn" type="button" :disabled="cargando" @click="modalRef?.cerrar()">

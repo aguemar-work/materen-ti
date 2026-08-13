@@ -406,7 +406,7 @@ async function cerrarSesion() {
   border: none;
   cursor: pointer;
   color: var(--sb-text);
-  padding: 6px;
+  padding: 8px;
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -467,14 +467,14 @@ async function cerrarSesion() {
 
   .sidebar--open {
     transform: translateX(0);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 4px 0 24px rgba(12, 15, 17, 0.4);
   }
 
   .sb-overlay {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(12, 15, 17, 0.55);
     z-index: calc(var(--z-nav) - 1); /* justo debajo del drawer que cubre */
   }
 
@@ -519,6 +519,14 @@ async function cerrarSesion() {
 
   .topbar-campana {
     margin-left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sb-fade-enter-active,
+  .sb-fade-leave-active {
+    transition-duration: 0.01ms !important;
   }
 }
 </style>

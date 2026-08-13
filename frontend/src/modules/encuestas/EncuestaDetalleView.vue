@@ -12,6 +12,7 @@ import { exportarCSV } from '../../core/exportar.js';
 import { resumenPregunta } from '../../core/dominio-encuestas.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
+import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -58,12 +59,25 @@ async function nuevaRonda() {
   }
 }
 
-async function cerrarRonda(ronda) {
+// Cerrar una ronda no se puede revertir desde la interfaz (no existe
+// función para "reabrir"), así que pide confirmación (ConfirmDialog
+// compartido) antes de ejecutarla, en vez de disparar el cierre al clic.
+const rondaPorCerrar = ref(null);
+const dialogoCerrarRonda = ref(null);
+
+function pedirCerrarRonda(ronda) {
+  rondaPorCerrar.value = ronda;
+}
+
+async function cerrarRonda() {
+  const ronda = rondaPorCerrar.value;
+  if (!ronda) return;
   cerrandoId.value = ronda.id;
   try {
     await insforgeApi.cerrarRonda(ronda.id);
     ronda.cerrada = true;
     showToast('Ronda cerrada');
+    dialogoCerrarRonda.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al cerrar la ronda', 'error');
   } finally {
@@ -149,7 +163,8 @@ onMounted(cargar);
             :mensaje="auth.esJefe ? 'Abre una ronda para generar el link que vas a compartir.' : 'Todavía no se abrió ninguna ronda de esta encuesta.'"
           />
 
-          <div v-else class="table-wrap">
+          <template v-else>
+          <div class="table-wrap solo-escritorio">
             <table aria-label="Rondas de la encuesta">
               <thead>
                 <tr>
@@ -183,7 +198,7 @@ onMounted(cargar);
                         title="Cerrar ronda"
                         aria-label="Cerrar ronda"
                         :disabled="cerrandoId === r.id"
-                        @click="cerrarRonda(r)"
+                        @click="pedirCerrarRonda(r)"
                       >
                         <i class="ti ti-lock"></i>
                       </button>
@@ -193,6 +208,41 @@ onMounted(cargar);
               </tbody>
             </table>
           </div>
+
+          <!-- Render móvil: misma lista, como tarjetas apiladas -->
+          <ul class="lista-tarjetas solo-movil" aria-label="Rondas de la encuesta">
+            <li v-for="r in rondas" :key="r.id" class="tarjeta-fila" :class="{ 'fila-activa': rondaSeleccionada?.id === r.id }">
+              <div class="tarjeta-fila__principal">{{ formatFecha(r.abierta_en) }}</div>
+              <div class="tarjeta-fila__sec">
+                <span>{{ r.n_respuestas }} respuestas</span>
+              </div>
+              <div class="tarjeta-fila__pie">
+                <span class="badge" :class="r.cerrada ? 'badge--neutral' : 'badge--success'">
+                  {{ r.cerrada ? 'Cerrada' : 'Abierta' }}
+                </span>
+                <div class="actions">
+                  <button class="icon-btn" type="button" title="Copiar link" aria-label="Copiar link" :disabled="r.cerrada" @click="copiarLink(r)">
+                    <i class="ti ti-link"></i>
+                  </button>
+                  <button class="icon-btn" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(r)">
+                    <i class="ti ti-chart-bar"></i>
+                  </button>
+                  <button
+                    v-if="auth.esJefe && !r.cerrada"
+                    class="icon-btn"
+                    type="button"
+                    title="Cerrar ronda"
+                    aria-label="Cerrar ronda"
+                    :disabled="cerrandoId === r.id"
+                    @click="pedirCerrarRonda(r)"
+                  >
+                    <i class="ti ti-lock"></i>
+                  </button>
+                </div>
+              </div>
+            </li>
+          </ul>
+          </template>
         </div>
 
         <div v-if="rondaSeleccionada" class="card card--fill resultados-card">
@@ -244,6 +294,19 @@ onMounted(cargar);
         </div>
       </template>
     </main>
+
+    <ConfirmDialog
+      v-if="rondaPorCerrar"
+      ref="dialogoCerrarRonda"
+      destructivo
+      icono="ti-lock"
+      titulo="Cerrar ronda"
+      mensaje="¿Cerrar esta ronda? Deja de recibir respuestas y no se puede reabrir desde la interfaz."
+      confirmar-label="Cerrar ronda"
+      :cargando="cerrandoId === rondaPorCerrar?.id"
+      @cancel="rondaPorCerrar = null"
+      @confirm="cerrarRonda"
+    />
   </div>
 </template>
 
@@ -268,12 +331,12 @@ onMounted(cargar);
 .resumen-bloque:first-child { border-top: none; padding-top: 0; }
 
 .resumen-etiqueta { font-weight: 600; margin: 0 0 2px; }
-.resumen-total { font-size: 12px; color: var(--color-text-tertiary); margin: 0 0 8px; }
+.resumen-total { font-size: var(--fs-sm); color: var(--color-text-tertiary); margin: 0 0 8px; }
 
 .resumen-opciones { display: flex; flex-direction: column; gap: 4px; max-width: 320px; }
-.resumen-opcion { display: flex; justify-content: space-between; font-size: 13px; }
+.resumen-opcion { display: flex; justify-content: space-between; font-size: var(--fs-base); }
 .resumen-cant { font-weight: 600; }
-.resumen-promedio { margin: 0 0 6px; font-size: 13px; }
+.resumen-promedio { margin: 0 0 6px; font-size: var(--fs-base); }
 
-.resumen-textos { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.resumen-textos { margin: 0; padding-left: 18px; font-size: var(--fs-base); display: flex; flex-direction: column; gap: 4px; }
 </style>

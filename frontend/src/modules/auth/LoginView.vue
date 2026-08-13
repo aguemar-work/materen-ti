@@ -27,6 +27,7 @@ const codigo = ref('');
 const resetToken = ref('');
 const nuevaPassword = ref('');
 const confirmarPassword = ref('');
+const errorConfirmar = ref('');
 
 const titulo = computed(() => ({
   'login': 'Iniciar sesión',
@@ -45,6 +46,7 @@ const subtitulo = computed(() => ({
 function irA(nuevoModo) {
   error.value = '';
   aviso.value = '';
+  errorConfirmar.value = '';
   modo.value = nuevoModo;
 }
 
@@ -53,6 +55,7 @@ function volverAlLogin() {
   resetToken.value = '';
   nuevaPassword.value = '';
   confirmarPassword.value = '';
+  errorConfirmar.value = '';
   irA('login');
 }
 
@@ -69,10 +72,12 @@ async function onSubmit() {
 
 async function onSolicitarCodigo() {
   error.value = '';
+  const reenvio = modo.value === 'reset-codigo';
   procesando.value = true;
   try {
     await auth.solicitarCodigoReset(email.value);
     irA('reset-codigo');
+    if (reenvio) aviso.value = 'Código reenviado.';
   } catch (e) {
     error.value = e?.message || 'No se pudo enviar el código';
   } finally {
@@ -95,8 +100,9 @@ async function onVerificarCodigo() {
 
 async function onCambiarPassword() {
   error.value = '';
+  errorConfirmar.value = '';
   if (nuevaPassword.value !== confirmarPassword.value) {
-    error.value = 'Las contraseñas no coinciden';
+    errorConfirmar.value = 'Las contraseñas no coinciden';
     return;
   }
   procesando.value = true;
@@ -131,6 +137,7 @@ async function onCambiarPassword() {
             autocomplete="email"
             placeholder="tu@empresa.com"
             required
+            autofocus
             :disabled="cargando"
           >
         </div>
@@ -235,6 +242,7 @@ async function onCambiarPassword() {
           Volver a iniciar sesión
         </button>
 
+        <p v-if="aviso" class="login-aviso" role="status">{{ aviso }}</p>
         <p v-if="error" class="login-error" role="alert">{{ error }}</p>
       </form>
 
@@ -266,6 +274,7 @@ async function onCambiarPassword() {
             required
             :disabled="procesando"
           >
+          <p v-if="errorConfirmar" class="form-error" role="alert">{{ errorConfirmar }}</p>
         </div>
 
         <button class="btn btn-primary login-submit" type="submit" :disabled="procesando">

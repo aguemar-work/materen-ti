@@ -23,6 +23,17 @@
   consolida 3 round-trips solapados en 1 (P-04). Detalle y estado en
   `docs/HISTORIAL-AUDITORIAS.md` (Ciclo 2). También se agregó el atajo
   Ctrl/Cmd+K para el buscador global — ver `docs/GUIA-UX-UI.md`.
+- **2026-08-13** — Cierre completo del backlog del Ciclo 4 (47 hallazgos
+  UX4-07 a UX4-53, `docs/HISTORIAL-AUDITORIAS.md`): patrón de tarjetas
+  móviles en 7 vistas, `aria-label` en botones de contraseña, objetivos
+  táctiles bajo 44px, `ConfirmDialog` reemplazando `confirm()` nativo en
+  `StaffView.vue`, foco visible en radios ocultos, `aria-live`/`role=status`
+  en formularios públicos, campo "Notas" reactivado en `EmpleadoForm.vue`,
+  esqueleto de carga en el Dashboard, y varias correcciones puntuales de
+  accesibilidad/tokens/tono. Implementado por 6 agentes en paralelo sobre
+  conjuntos de archivos sin superposición; verificado con `npm run build` +
+  `npm test` tras consolidar, más revisión manual de los cambios de mayor
+  riesgo. Detalle completo por ítem en `docs/HISTORIAL-AUDITORIAS.md`.
 - **2026-08-13** — Retiro de toda funcionalidad de correo en tickets
   (decisión de producto: el sistema no debe enviar avisos/notificaciones por
   correo por el momento). Migración 055 elimina el trigger/función

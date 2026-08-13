@@ -52,11 +52,15 @@ async function exportar() {
   }
 }
 
+const actualizandoId = ref(null);
 async function toggleUsado(registro) {
+  actualizandoId.value = registro.id;
   try {
     await store.marcarUsado(registro.id, !registro.usado);
   } catch (e) {
     showToast(e?.message || 'Error al actualizar', 'error');
+  } finally {
+    actualizandoId.value = null;
   }
 }
 
@@ -151,8 +155,9 @@ onMounted(async () => {
           mensaje="Comparte el link /personal-registro para que candidatos o nuevos ingresos dejen sus datos."
         />
 
-        <div v-else-if="cargando || total > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando pre-registros de personal…</p>
+        <template v-else-if="cargando || total > 0">
+        <p v-if="cargando" class="sr-only" role="status">Cargando pre-registros de personal…</p>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Pre-registros de personal">
             <thead>
               <tr>
@@ -180,9 +185,10 @@ onMounted(async () => {
                     type="button"
                     :class="{ 'btn-usado--activo': r.usado }"
                     :title="r.usado ? 'Marcar como pendiente' : 'Marcar como usado'"
+                    :disabled="actualizandoId === r.id"
                     @click="toggleUsado(r)"
                   >
-                    <i :class="r.usado ? 'ti ti-check' : 'ti ti-clock'" aria-hidden="true"></i>
+                    <i :class="actualizandoId === r.id ? 'ti ti-loader-2 spinner-icon' : (r.usado ? 'ti ti-check' : 'ti ti-clock')" aria-hidden="true"></i>
                     {{ r.usado ? 'Usado' : 'Pendiente' }}
                   </button>
                 </td>
@@ -202,8 +208,46 @@ onMounted(async () => {
               </template>
             </tbody>
           </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
         </div>
+
+        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Pre-registros de personal">
+          <li v-for="r in lista" :key="r.id" class="tarjeta-fila">
+            <div class="tarjeta-fila__principal">{{ r.nombres }} {{ r.apellidos }}</div>
+            <div class="tarjeta-fila__sec">
+              <span class="registro-dni">{{ r.dni }}</span>
+              <span aria-hidden="true">·</span>
+              <span>{{ formatFecha(r.created_at) }}</span>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <button
+                class="btn-usado"
+                type="button"
+                :class="{ 'btn-usado--activo': r.usado }"
+                :title="r.usado ? 'Marcar como pendiente' : 'Marcar como usado'"
+                :disabled="actualizandoId === r.id"
+                @click="toggleUsado(r)"
+              >
+                <i :class="actualizandoId === r.id ? 'ti ti-loader-2 spinner-icon' : (r.usado ? 'ti ti-check' : 'ti ti-clock')" aria-hidden="true"></i>
+                {{ r.usado ? 'Usado' : 'Pendiente' }}
+              </button>
+              <button
+                v-if="auth.esJefe"
+                class="btn"
+                type="button"
+                title="Migrar a empleado (alta o actualización por DNI) y eliminar este pre-registro"
+                :disabled="migrandoId === r.id"
+                @click="migrarAEmpleado(r)"
+              >
+                <i :class="migrandoId === r.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-user-plus'" aria-hidden="true"></i>
+                Migrar
+              </button>
+            </div>
+          </li>
+        </ul>
+
+        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        </template>
       </div>
     </main>
 
@@ -226,14 +270,20 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  height: 36px;
+  padding: 0 12px;
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius-md);
   background: none;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--color-text-secondary);
   cursor: pointer;
+}
+
+.btn-usado:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-usado--activo {

@@ -296,7 +296,13 @@ onMounted(async () => {
                     <i class="ti ti-copy"></i>
                   </button>
                 </template>
-                <span v-else class="password-locked" title="Solo un JEFE puede ver esta contraseña. Usa &quot;Enviar por WhatsApp&quot; para entregarla al empleado.">
+                <span
+                  v-else
+                  class="password-locked"
+                  role="img"
+                  aria-label="Solo un JEFE puede ver esta contraseña. Usa &quot;Enviar por WhatsApp&quot; para entregarla al empleado."
+                  title="Solo un JEFE puede ver esta contraseña. Usa &quot;Enviar por WhatsApp&quot; para entregarla al empleado."
+                >
                   <i class="ti ti-lock" aria-hidden="true"></i>
                 </span>
               </div>

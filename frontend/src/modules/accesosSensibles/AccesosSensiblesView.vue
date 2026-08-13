@@ -10,6 +10,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import AccesoSensibleForm from './AccesoSensibleForm.vue';
 
@@ -72,6 +73,16 @@ const porEliminar = ref(null);
 const eliminando = ref(false);
 const dialogoEliminar = ref(null);
 
+// Fuente única de las acciones por acceso para el menú ⋮ de las tarjetas
+// móviles (mismo criterio que accionesDe/accionesVisibles en EquiposView).
+function accionesDe(a) {
+  return [
+    { icono: 'ti-copy', label: 'Copiar contraseña', disabled: !a.puedeRevelar, onClick: () => copiarPassword(a) },
+    { icono: 'ti-pencil', label: 'Editar', disabled: !a.puedeRevelar, onClick: () => abrirEditar(a) },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, disabled: !a.puedeRevelar, onClick: () => { porEliminar.value = a; } },
+  ];
+}
+
 async function confirmarEliminar() {
   const a = porEliminar.value;
   if (!a) return;
@@ -108,7 +119,8 @@ onMounted(async () => {
 
     <main class="page">
       <div class="card card--fill">
-        <div v-if="error" class="no-results acc-error">{{ error }}</div>
+        <div v-if="cargando" class="no-results solo-movil">Cargando accesos sensibles...</div>
+        <div v-else-if="error" class="no-results acc-error">{{ error }}</div>
 
         <EmptyState
           v-else-if="!cargando && lista.length === 0"
@@ -121,8 +133,9 @@ onMounted(async () => {
           </button>
         </EmptyState>
 
-        <div v-else-if="cargando || lista.length > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando accesos sensibles…</p>
+        <template v-if="!error && (cargando || lista.length > 0)">
+        <p v-if="cargando" class="sr-only" role="status">Cargando accesos sensibles…</p>
+        <div class="table-wrap solo-escritorio">
           <table aria-label="Accesos sensibles">
             <thead>
               <tr>
@@ -196,6 +209,35 @@ onMounted(async () => {
             </tbody>
           </table>
         </div>
+
+        <!-- Render móvil: misma lista, como tarjetas apiladas -->
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Accesos sensibles">
+          <li v-for="a in lista" :key="a.id" class="tarjeta-fila">
+            <div class="tarjeta-fila__cab">
+              <BadgeEstado tipo="categoria_acceso_sensible" :valor="a.categoria" />
+            </div>
+            <div class="tarjeta-fila__principal user-name">{{ a.nombre }}</div>
+            <div class="tarjeta-fila__sec">{{ a.usuario }}</div>
+            <div class="tarjeta-fila__sec password-cell">
+              <span class="password-text">{{ passwordVisibles[a.id] || '••••••••' }}</span>
+              <button
+                class="icon-btn"
+                type="button"
+                :disabled="!a.puedeRevelar"
+                :title="a.puedeRevelar ? (passwordVisibles[a.id] ? 'Ocultar' : 'Mostrar') : 'No tienes permiso para ver esta credencial'"
+                :aria-label="a.puedeRevelar ? (passwordVisibles[a.id] ? 'Ocultar' : 'Mostrar') : 'No tienes permiso para ver esta credencial'"
+                @click="togglePassword(a)"
+              >
+                <i :class="passwordVisibles[a.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+              </button>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <TextoVacio :valor="a.notas" placeholder="Sin notas" />
+              <MenuAcciones :acciones="accionesDe(a)" :label="`Acciones de ${a.nombre}`" />
+            </div>
+          </li>
+        </ul>
+        </template>
       </div>
     </main>
 

@@ -24,7 +24,7 @@ function irA(pagina) {
 </script>
 
 <template>
-  <div v-if="totalItems > 0" class="pagination">
+  <div v-if="totalItems > 0" class="pagination" aria-live="polite">
     <span class="pagination-info">Mostrando {{ desde }}–{{ hasta }} de {{ totalItems }}</span>
     <div v-if="totalPaginas > 1" class="pagination-controls">
       <button class="icon-btn" type="button" :disabled="modelValue <= 1" @click="irA(modelValue - 1)" aria-label="Página anterior">

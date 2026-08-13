@@ -381,7 +381,7 @@ async function guardar() {
 .field-hint {
   margin: 4px 0 0;
   font-size: 12px;
-  color: var(--color-text-muted, var(--color-text-secondary));
+  color: var(--color-text-secondary);
 }
 
 .field-hint a {

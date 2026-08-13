@@ -188,7 +188,9 @@ onMounted(async () => {
             <div class="kb-bloque">
               <div class="datos-title">Solución</div>
               <p v-if="articulo.solucion" class="kb-texto kb-solucion">{{ articulo.solucion }}</p>
-              <p v-else class="tk-nota">Todavía sin completar.</p>
+              <p v-else class="kb-solucion-pendiente">
+                <span class="badge badge--warning">Pendiente</span> Todavía sin completar.
+              </p>
             </div>
 
             <div class="kb-acciones">
@@ -256,7 +258,7 @@ onMounted(async () => {
             </div>
             <div class="form-group">
               <label for="kbe-solucion">Solución</label>
-              <textarea id="kbe-solucion" v-model="formEdicion.solucion" rows="8" :disabled="guardandoEdicion"></textarea>
+              <textarea id="kbe-solucion" v-model="formEdicion.solucion" rows="8" placeholder="Pasos para resolverlos..." :disabled="guardandoEdicion"></textarea>
             </div>
             <div class="modal-actions">
               <button class="btn" type="button" :disabled="guardandoEdicion" @click="editando = false">Cancelar</button>
@@ -353,6 +355,17 @@ onMounted(async () => {
   background: var(--color-bg-subtle);
   border-radius: var(--radius-md);
   padding: 10px 12px;
+}
+
+/* A diferencia de un "sin datos" neutro (.tk-nota), este vacío requiere
+   acción: es el borrador que el sistema crea solo al cerrar un ticket. */
+.kb-solucion-pendiente {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--color-warning-text);
+  margin: 6px 0 0;
 }
 
 .kb-acciones {

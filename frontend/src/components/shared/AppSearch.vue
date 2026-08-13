@@ -221,7 +221,7 @@ function irALicencia(lic) {
   border: none;
   cursor: pointer;
   color: var(--sb-text, var(--color-text-secondary));
-  padding: 6px;
+  padding: 8px;
   border-radius: 6px;
   display: flex;
   align-items: center;

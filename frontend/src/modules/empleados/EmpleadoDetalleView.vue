@@ -176,7 +176,7 @@ onMounted(cargar);
         </button>
         <button
           v-if="empleado.estado !== 'Inactivo'"
-          class="btn btn-baja"
+          class="btn btn-danger"
           type="button"
           :disabled="procesando"
           @click="mostrarBaja = true"
@@ -477,22 +477,12 @@ onMounted(cargar);
   color: var(--color-text-secondary);
 }
 
-.btn-baja {
-  color: var(--color-danger-text);
-  border-color: var(--color-danger-border);
-}
-
-.btn-baja:hover:not(:disabled) {
-  background: var(--color-danger-bg);
-  border-color: var(--color-danger-border);
-}
-
 .alta-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 6%, #fff);
+  background: var(--color-accent-subtle);
   border: 1px solid color-mix(in srgb, var(--color-primary, var(--color-accent)) 25%, transparent);
   border-radius: var(--radius-lg, 12px);
   padding: 12px 16px;

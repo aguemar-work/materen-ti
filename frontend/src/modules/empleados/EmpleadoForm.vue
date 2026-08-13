@@ -57,6 +57,7 @@ const form = ref({
   area_obra_id: '',
   estado: 'Activo',
   fecha_alta: new Date().toISOString().slice(0, 10),
+  notas: '',
 });
 
 const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => form.value);
@@ -81,6 +82,7 @@ function resetForm() {
       area_obra_id: props.empleado.area_obra_id || '',
       estado: props.empleado.estado,
       fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
+      notas: props.empleado.notas || '',
     };
   } else if (props.empleado) {
     // Prellenado parcial para alta (sin id): mismos defaults del alta en
@@ -97,6 +99,7 @@ function resetForm() {
       area_obra_id: props.empleado.area_obra_id || '',
       estado: 'Activo',
       fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
+      notas: props.empleado.notas || '',
     };
   } else {
     form.value = {
@@ -111,6 +114,7 @@ function resetForm() {
       area_obra_id: '',
       estado: 'Activo',
       fecha_alta: new Date().toISOString().slice(0, 10),
+      notas: '',
     };
   }
   error.value = '';
@@ -291,6 +295,11 @@ async function guardar() {
              conserva el estado actual. Cambiarlo es un flujo aparte
              (Dar de baja / Reactivar en la ficha). -->
 
+        <div class="form-group full">
+          <label for="notas">Notas</label>
+          <textarea id="notas" v-model="form.notas" :disabled="guardando"></textarea>
+        </div>
+
         </div>
 
         <p v-if="error" class="form-error" role="alert">{{ error }}</p>
@@ -329,6 +338,7 @@ async function guardar() {
 
 .whatsapp-row {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -338,8 +348,9 @@ async function guardar() {
 
 .whatsapp-row .btn {
   flex-shrink: 0;
-  font-size: 12px;
-  padding: 8px 10px;
+  height: 40px;
+  padding: 0 14px;
+  font-size: 13px;
 }
 
 

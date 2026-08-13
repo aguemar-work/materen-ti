@@ -108,7 +108,8 @@ async function enviar() {
   }
 }
 
-onMounted(async () => {
+async function cargarCatalogo() {
+  estado.value = 'cargando_catalogo';
   try {
     const catalogo = await catalogoTickets();
     categorias.value = catalogo.categorias;
@@ -118,7 +119,9 @@ onMounted(async () => {
     error.value = e?.message || 'No se pudo cargar el formulario';
     estado.value = 'error_catalogo';
   }
-});
+}
+
+onMounted(cargarCatalogo);
 </script>
 
 <template>
@@ -134,6 +137,9 @@ onMounted(async () => {
         <div class="ticket-error-icon"><i class="ti ti-plug-connected-x" aria-hidden="true"></i></div>
         <h2 class="ticket-title">No se pudo cargar el formulario</h2>
         <p class="ticket-texto">{{ error }}</p>
+        <button class="btn btn-primary ticket-submit" type="button" @click="cargarCatalogo">
+          <i class="ti ti-refresh" aria-hidden="true"></i> Reintentar
+        </button>
       </template>
 
       <template v-else-if="estado === 'formulario' || estado === 'enviando'">
@@ -151,10 +157,11 @@ onMounted(async () => {
               placeholder="8 dígitos"
               :disabled="estado === 'enviando'"
               :aria-invalid="errorDni ? 'true' : undefined"
+              :aria-describedby="errorDni ? 'tk-contacto-error' : undefined"
               @input="onDniInput"
               @blur="dniTocado = true"
             >
-            <p v-if="errorDni" class="form-error" role="alert">{{ errorDni }}</p>
+            <p v-if="errorDni" id="tk-contacto-error" class="form-error" role="alert">{{ errorDni }}</p>
           </div>
           <div v-else class="ticket-identificado">
             <i class="ti ti-user-check" aria-hidden="true"></i> Empleado identificado automáticamente.

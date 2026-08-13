@@ -81,6 +81,7 @@ async function irAAviso(aviso) {
       tabindex="0"
       @click="irAAviso(a)"
       @keydown.enter="irAAviso(a)"
+      @keydown.space.prevent="irAAviso(a)"
     >
       <i class="ti" :class="a.icono" aria-hidden="true"></i>
       <div class="aviso-card-texto">
@@ -184,6 +185,13 @@ async function irAAviso(aviso) {
     left: 16px;
     right: 16px;
     width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aviso-fade-enter-active,
+  .aviso-fade-leave-active {
+    transition-duration: 0.01ms !important;
   }
 }
 </style>

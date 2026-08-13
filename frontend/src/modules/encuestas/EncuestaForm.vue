@@ -128,7 +128,7 @@ async function guardar() {
 
       <div v-for="(p, idx) in form.preguntas" :key="p.id" class="pregunta-card">
         <div class="pregunta-fila">
-          <select v-model="p.tipo" :disabled="guardando">
+          <select v-model="p.tipo" aria-label="Tipo de pregunta" :disabled="guardando">
             <option v-for="(info, tipo) in TIPOS_PREGUNTA" :key="tipo" :value="tipo">{{ info.label }}</option>
           </select>
           <input v-model="p.etiqueta" placeholder="Texto de la pregunta" :disabled="guardando" class="pregunta-etiqueta">
@@ -148,8 +148,8 @@ async function guardar() {
           </div>
         </div>
         <div v-if="p.tipo === 'opcion_unica'" class="form-group">
-          <label>Opciones (una por línea) *</label>
-          <textarea :value="opcionesTexto(p)" rows="3" placeholder="Excelente&#10;Bueno&#10;Regular&#10;Malo" :disabled="guardando" @input="onOpcionesInput(p, $event.target.value)"></textarea>
+          <label :for="`enc-opciones-${p.id}`">Opciones (una por línea) *</label>
+          <textarea :id="`enc-opciones-${p.id}`" :value="opcionesTexto(p)" rows="3" placeholder="Excelente&#10;Bueno&#10;Regular&#10;Malo" :disabled="guardando" @input="onOpcionesInput(p, $event.target.value)"></textarea>
         </div>
       </div>
 
@@ -213,7 +213,7 @@ async function guardar() {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 400;
   white-space: nowrap;
 }

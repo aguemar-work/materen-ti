@@ -3,7 +3,7 @@
 import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
-import { toTitleCase, toLower, normalizarTelefono, onlyDigits } from '../../core/formatters.js';
+import { toTitleCase, toLower, normalizarTelefono, onlyDigits, trimText } from '../../core/formatters.js';
 import { equiposApi } from './equipos.js';
 
 // Columnas de "empleados" ordenables desde la tabla (excluye empresa/área,
@@ -242,8 +242,8 @@ export const empleadosApi = {
 };
 
 function empleadoToRow(datos) {
-  // "notas" dejó de escribirse (jul 2026): el campo salió del formulario,
-  // pero la columna conserva lo histórico.
+  // "notas" volvió al formulario (UX4-26, docs/HISTORIAL-AUDITORIAS.md Ciclo 4):
+  // se mostraba en la ficha sin ningún control de edición.
   return {
     nombres:         toTitleCase(datos.nombres),
     apellidos:       toTitleCase(datos.apellidos),
@@ -256,6 +256,7 @@ function empleadoToRow(datos) {
     whatsapp:        normalizarTelefono(datos.whatsapp),
     correo_personal: toLower(datos.correo_personal),
     cargo:           toTitleCase(datos.cargo),
+    notas:           trimText(datos.notas),
   };
 }
 

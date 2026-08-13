@@ -191,19 +191,18 @@ onMounted(async () => {
 
       <div v-else class="cat-lista">
         <div v-for="cat in categorias" :key="cat.id" class="cat-item">
-          <div
-            class="cat-fila"
-            role="button"
-            tabindex="0"
-            :aria-expanded="expandidoId === cat.id"
-            @click="toggleExpandir(cat.id)"
-            @keydown.enter.prevent="toggleExpandir(cat.id)"
-            @keydown.space.prevent="toggleExpandir(cat.id)"
-          >
-            <i class="ti cat-chevron" :class="expandidoId === cat.id ? 'ti-chevron-down' : 'ti-chevron-right'"></i>
-            <span class="user-name">{{ cat.nombre }}</span>
-            <span class="cat-count">{{ subsDe(cat.id).length }} subcategorías</span>
-            <div class="actions" @click.stop>
+          <div class="cat-fila">
+            <button
+              type="button"
+              class="cat-fila-toggle"
+              :aria-expanded="expandidoId === cat.id"
+              @click="toggleExpandir(cat.id)"
+            >
+              <i class="ti cat-chevron" :class="expandidoId === cat.id ? 'ti-chevron-down' : 'ti-chevron-right'"></i>
+              <span class="user-name">{{ cat.nombre }}</span>
+              <span class="cat-count">{{ subsDe(cat.id).length }} subcategorías</span>
+            </button>
+            <div class="actions">
               <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditarCategoria(cat)">
                 <i class="ti ti-pencil"></i>
               </button>
@@ -224,9 +223,10 @@ onMounted(async () => {
               <input
                 v-model="nuevaSubPorCategoria[cat.id]"
                 placeholder="Nueva subcategoría..."
+                aria-label="Nombre de la subcategoría"
                 @keydown.enter.prevent="agregarSubcategoria(cat.id)"
               >
-              <select v-model="nuevoTipoPorCategoria[cat.id]">
+              <select v-model="nuevoTipoPorCategoria[cat.id]" aria-label="Tipo sugerido">
                 <option value="" disabled>Tipo</option>
                 <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
               </select>
@@ -293,15 +293,32 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
-  cursor: pointer;
 }
 
-.cat-fila:hover { background: var(--color-bg-hover); }
+.cat-fila-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 12px 0 12px 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
 
-.cat-fila:focus-visible {
+.cat-fila-toggle:hover { background: var(--color-bg-hover); }
+
+.cat-fila-toggle:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
+}
+
+.cat-fila .actions {
+  padding-right: 16px;
 }
 
 .cat-chevron { color: var(--color-text-secondary); font-size: 15px; }

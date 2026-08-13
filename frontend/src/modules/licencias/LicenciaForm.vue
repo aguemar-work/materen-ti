@@ -434,7 +434,7 @@ async function guardar() {
                   <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generarPasswordCorreo">
                     <i class="ti ti-refresh" aria-hidden="true"></i>
                   </button>
-                  <button type="button" class="icon-btn" :title="passwordCorreoVisible ? 'Ocultar' : 'Mostrar'" @click="passwordCorreoVisible = !passwordCorreoVisible">
+                  <button type="button" class="icon-btn" :title="passwordCorreoVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordCorreoVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordCorreoVisible = !passwordCorreoVisible">
                     <i :class="passwordCorreoVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
                   </button>
                 </div>
@@ -453,7 +453,7 @@ async function guardar() {
                 :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'Dejar vacío si es la misma del correo'"
                 :disabled="guardando"
               >
-              <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" @click="claveVisible = !claveVisible">
+              <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
                 <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
               </button>
             </div>
@@ -475,7 +475,7 @@ async function guardar() {
               :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'XXXXX-XXXXX-XXXXX'"
               :disabled="guardando"
             >
-            <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" @click="claveVisible = !claveVisible">
+            <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
               <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
             </button>
           </div>
@@ -550,6 +550,11 @@ async function guardar() {
 
 .acceso-option:hover {
   border-color: var(--color-primary);
+}
+
+.acceso-option:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .acceso-option--active {
