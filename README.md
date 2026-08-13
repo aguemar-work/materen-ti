@@ -144,10 +144,11 @@ cuándo y si la contraseña se rotó después.
 3. **Auditoría**: cada vez que alguien **ve, copia o envía** una contraseña
    queda registrado en `accesos_log`. El JEFE lo consulta en `/actividad`.
 4. **Soporte por ticket**: el empleado reporta un problema en `/soporte/nuevo`
-   (con o sin token de entrega) → recibe su código y token en pantalla y por
-   correo (best-effort) → el staff lo triaga en `/tickets` (asignar,
-   priorizar, comentar interno/visible vía Timeline) → al cerrar, se dispara
-   la encuesta de satisfacción reutilizando el mismo token.
+   (con o sin token de entrega) → recibe su código y token en pantalla → el
+   staff lo triaga en `/tickets` (asignar, priorizar, comentar interno/visible
+   vía Timeline) → al cerrar, se genera la encuesta de satisfacción
+   reutilizando el mismo token (sin aviso por correo: el sistema no envía
+   avisos/notificaciones por correo, ver nota más abajo).
 
 ## Modelo de seguridad
 
@@ -183,11 +184,7 @@ cuándo y si la contraseña se rotó después.
   respuestas a encuestas públicas, por IP (`encuesta_respuesta_intentos`,
   migración 043).
 - **Tickets públicos**: `titulo`/`descripcion` tienen tope de longitud en
-  servidor (200 / 5000 caracteres) y el correo de confirmación/encuesta solo
-  se envía al `correo_personal` de un empleado ya vinculado (por token de
-  entrega o DNI) — nunca al campo `contacto` sin verificar, que un llamado
-  directo a la edge function podía usar para hacer que el sistema mandara
-  correo a una dirección arbitraria.
+  servidor (200 / 5000 caracteres).
 - **Baja de empleado atómica** (migración 038): las 4 escrituras (cerrar
   asignaciones de cuenta/licencia, dar de baja cuentas personales, marcar
   Inactivo) corren en una sola transacción de servidor vía RPC
@@ -234,7 +231,7 @@ cuándo y si la contraseña se rotó después.
 ├── functions/
 │   ├── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir
 │   ├── tickets.ts          # edge function: catalogo / crear / seguimiento / buscarPorDni /
-│   │                       #   encuestaEstado / encuesta / enviarEncuesta
+│   │                       #   encuestaEstado / encuesta
 │   ├── encuestas.ts        # edge function: abrir / responder (rondas de encuesta pública)
 │   └── personal-registro.ts # edge function: buscarDni / crear (pre-registro público)
 ├── migrations/             # 001..047 — esquema completo, en orden, comentado
@@ -339,6 +336,7 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 051 | RPC `cerrar_ticket()` (`SECURITY DEFINER`): hace resuelto→cerrado en una sola transacción de servidor, reemplazando las 2 llamadas HTTP secuenciales que hacía `marcarResuelto()`. **Requiere `db import`, no `db query`/`apply-migration.mjs`** |
 | 052 | Retira el canal realtime `tickets:nuevos` (044), reemplazado por `notificaciones:nuevas` (045) y sin ningún consumidor en el frontend. La fila de `realtime.channels` queda `enabled=false` (reversible), no se borra |
 | 054 | **Fix de bug en producción** (detectado 2026-08-12 al crear un ticket): elimina la sobrecarga vieja de 5 argumentos de `crear_notificacion()` que la 048 dejó viva sin querer — cualquier llamada de 5 argumentos (las 4 de la 045: `ticket_creado`, `cuenta_creada`, `empleado_alta`, `empleado_baja`) quedaba ambigua entre las dos sobrecargas y fallaba con `function ... is not unique`, rompiendo el INSERT completo (crear ticket, crear cuenta, alta/baja de empleado) |
+| 055 | **Decisión de producto** (2026-08-13): retira el trigger/función `notify_correo_fallido()` (049), huérfano tras quitar de `functions/tickets.ts` el correo de confirmación al crear y la acción `enviarEncuesta` — el sistema no debe enviar avisos/notificaciones por correo por el momento. No toca los checks de `ticket_eventos`/`notificaciones` (podría haber filas históricas con esos valores) |
 
 ## Checklist de deploy
 
@@ -363,11 +361,13 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
   `personal-registro`): allowlist con el dominio de producción + localhost
   (dev), una por función. Si cambia el dominio, actualizar
   `ORIGENES_PERMITIDOS` en los 4 archivos y redesplegar.
-- Correo transaccional (confirmación de ticket, aviso de encuesta) es
-  best-effort: el plan actual de InsForge (free) no tiene `emails.send()`
-  habilitado, así que esos envíos fallan y quedan registrados como evento
-  `correo_fallido` en `ticket_eventos`, sin bloquear la creación/cierre del
-  ticket. El canal garantizado es la pantalla (código + token visibles).
+- **El sistema no envía avisos ni notificaciones por correo** (retirado en la
+  migración 055, agosto 2026): ni confirmación de ticket al crear, ni aviso
+  de la encuesta de satisfacción al cerrar. Antes existía como envío
+  best-effort, pero el plan actual de InsForge (free) no tiene `emails.send()`
+  habilitado, así que en la práctica siempre fallaba; se retiró en vez de
+  dejarlo a medias. El canal garantizado sigue siendo la pantalla (código +
+  token visibles al crear).
 
 ## Pendientes / roadmap
 

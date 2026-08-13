@@ -198,10 +198,13 @@ onMounted(async () => {
               placeholder="Buscar por nombre o DNI..."
             >
           </div>
-          <select v-model="filtroEstado">
-            <option value="">Todos los estados</option>
-            <option v-for="est in estados" :key="est" :value="est">{{ est }}</option>
-          </select>
+          <div class="filter-field">
+            <label for="filtro-estado">Estado</label>
+            <select id="filtro-estado" v-model="filtroEstado">
+              <option value="">Todos los estados</option>
+              <option v-for="est in estados" :key="est" :value="est">{{ est }}</option>
+            </select>
+          </div>
         </div>
 
         <div v-if="cargando" class="no-results solo-movil">Cargando empleados...</div>

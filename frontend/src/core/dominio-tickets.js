@@ -49,7 +49,6 @@ export const EVENTO_LABELS = {
   estado_cambiado: 'Cambio de estado',
   prioridad_cambiada: 'Cambio de prioridad',
   nivel_atencion_cambiado: 'Cambio de nivel de atención',
-  correo_fallido: 'No se pudo enviar el correo',
   encuesta_enviada: 'Encuesta enviada',
   encuesta_respondida: 'Encuesta respondida',
 };

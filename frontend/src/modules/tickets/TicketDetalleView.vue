@@ -54,8 +54,7 @@ function colorDeEstado(estado) {
 // Historial: hitos del ciclo de vida (creado → inicio de atención/asignado
 // → resuelto → cerrado) más los eventos auxiliares de ticket_eventos que
 // antes se descartaban en silencio (reasignaciones, cambios de prioridad,
-// avisos de correo fallido, encuesta) — ver GUIA-UX-UI / análisis de
-// tickets: nadie se enteraba si el correo de confirmación/encuesta fallaba.
+// encuesta respondida).
 const historialEsencial = computed(() => {
   const hitos = [];
   for (const ev of eventos.value) {
@@ -74,8 +73,6 @@ const historialEsencial = computed(() => {
     } else if (ev.evento === 'prioridad_cambiada') {
       const nuevaPrioridad = destinoDeCambio(ev.detalle);
       hitos.push({ id: ev.id, label: `Prioridad cambiada a ${prioridadInfo(nuevaPrioridad).label}`, fecha: ev.created_at, color: 'info' });
-    } else if (ev.evento === 'correo_fallido') {
-      hitos.push({ id: ev.id, label: EVENTO_LABELS.correo_fallido, detalle: ev.detalle, fecha: ev.created_at, color: 'warning' });
     } else if (ev.evento === 'encuesta_enviada') {
       hitos.push({ id: ev.id, label: EVENTO_LABELS.encuesta_enviada, fecha: ev.created_at, color: 'neutral' });
     } else if (ev.evento === 'encuesta_respondida') {
@@ -189,7 +186,7 @@ async function confirmarRechazar() {
 }
 
 // ── Marcar como resuelto: encadena resuelto -> cerrado en un solo clic
-// (queda igual registrado en la hoja de vida) y dispara la encuesta ─────
+// (queda igual registrado en la hoja de vida) ────────────────────────────
 const resolviendo = ref(false);
 const guardarComoKb = ref(false);
 
@@ -198,15 +195,6 @@ async function marcarResuelto() {
   try {
     await store.marcarResueltoYCerrado();
     showToast('Ticket resuelto y cerrado');
-    // Mejor esfuerzo: ninguno de los dos bloquea el cierre (ya ocurrió, de
-    // forma atómica, en el paso de arriba) — pero si fallan, el usuario debe
-    // enterarse ahora, no solo revisando el historial de eventos.
-    try {
-      const data = await store.enviarEncuesta();
-      if (data?.enviado) showToast('Encuesta de satisfacción enviada al correo del empleado');
-    } catch (e) {
-      showToast('El ticket se cerró, pero no se pudo enviar la encuesta: ' + (e?.message || 'motivo desconocido'), 'error');
-    }
     await store.recargarSatisfaccion();
     if (guardarComoKb.value) {
       try {

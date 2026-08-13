@@ -72,27 +72,33 @@ export const dashboardApi = {
 
   async getEstadisticas() {
     const db = getClient().database;
+    // count+head (Supabase-style, soportado por @insforge/sdk): solo pide
+    // el número de filas al backend, sin descargarlas — antes cada query
+    // traía la tabla completa solo para medir .length (P-01).
+    const CONTEO = { count: 'exact', head: true };
+    // empleadosActivos necesita el estado real: única query que sigue
+    // trayendo filas (mínimas: solo la columna que se filtra).
     const [empRes, asigRes, compartidaRes, rotacionRes, licVencenRes, equiposRes, ticketsRes] = await Promise.all([
       db.from('empleados').select('id, estado').is('deleted_at', null),
-      db.from('asignaciones_cuenta').select('id, cuenta_id').is('fecha_fin', null),
-      db.from('cuentas').select('id').eq('tipo_cuenta', 'compartida').is('deleted_at', null),
-      db.from('cuentas').select('id').eq('requiere_rotacion', true).is('deleted_at', null),
-      db.from('licencias').select('id')
+      db.from('asignaciones_cuenta').select('id', CONTEO).is('fecha_fin', null),
+      db.from('cuentas').select('id', CONTEO).eq('tipo_cuenta', 'compartida').is('deleted_at', null),
+      db.from('cuentas').select('id', CONTEO).eq('requiere_rotacion', true).is('deleted_at', null),
+      db.from('licencias').select('id', CONTEO)
         .lte('fecha_vencimiento', fechaEnDias(30))
         .is('deleted_at', null),
-      db.from('equipos').select('id').is('deleted_at', null),
-      db.from('tickets').select('id').not('estado', 'in', '("resuelto","cerrado","rechazado")'),
+      db.from('equipos').select('id', CONTEO).is('deleted_at', null),
+      db.from('tickets').select('id', CONTEO).not('estado', 'in', '("resuelto","cerrado","rechazado")'),
     ]);
 
     return {
       empleadosActivos: (empRes.data || []).filter((e) => e.estado === 'Activo').length,
       empleadosTotal: (empRes.data || []).length,
-      cuentasAsignadas: (asigRes.data || []).length,
-      correosCompartidos: (compartidaRes.data || []).length,
-      cuentasPorRotar: (rotacionRes.data || []).length,
-      licenciasPorVencer: (licVencenRes.data || []).length,
-      equiposTotal: (equiposRes.data || []).length,
-      ticketsAbiertos: (ticketsRes.data || []).length,
+      cuentasAsignadas: asigRes.count || 0,
+      correosCompartidos: compartidaRes.count || 0,
+      cuentasPorRotar: rotacionRes.count || 0,
+      licenciasPorVencer: licVencenRes.count || 0,
+      equiposTotal: equiposRes.count || 0,
+      ticketsAbiertos: ticketsRes.count || 0,
     };
   },
 
@@ -172,30 +178,28 @@ export const dashboardApi = {
     };
   },
 
-  // Pendientes accionables de tickets, para el Dashboard
+  // Pendientes accionables de tickets, para el Dashboard.
+  // Antes: 3 round-trips a "tickets" repitiendo el mismo filtro base
+  // (estado abierto) — P-04. Ahora: 1 query trae los tickets abiertos una
+  // sola vez, con las columnas que las 3 listas necesitan para clasificar
+  // en memoria; un ticket que califica en más de un bucket (ej. viejo Y
+  // sin asignar) sigue apareciendo en ambos, igual que antes.
   async pendientesTickets() {
     const db = getClient().database;
-    const [sinAsignarRes, sinVincularRes, viejosRes] = await Promise.all([
-      db.from('tickets')
-        .select('id, codigo, titulo, created_at')
-        .is('asignado_a', null)
-        .not('estado', 'in', '("resuelto","cerrado","rechazado")')
-        .order('created_at', { ascending: true }),
-      db.from('tickets')
-        .select('id, codigo, titulo, created_at')
-        .eq('vinculado', false)
-        .not('estado', 'in', '("resuelto","cerrado","rechazado")')
-        .order('created_at', { ascending: true }),
-      db.from('tickets')
-        .select('id, codigo, titulo, created_at')
-        .not('estado', 'in', '("resuelto","cerrado","rechazado")')
-        .lte('created_at', fechaEnDias(-3))
-        .order('created_at', { ascending: true }),
-    ]);
+    const { data, error } = await db.from('tickets')
+      .select('id, codigo, titulo, created_at, asignado_a, vinculado')
+      .not('estado', 'in', '("resuelto","cerrado","rechazado")')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    const abiertos = data || [];
+    const cortesViejos = fechaEnDias(-3);
+    const aItem = (t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at });
     return {
-      sinAsignar: (sinAsignarRes.data || []).map((t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at })),
-      sinVincular: (sinVincularRes.data || []).map((t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at })),
-      abiertosViejos: (viejosRes.data || []).map((t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at })),
+      sinAsignar: abiertos.filter((t) => !t.asignado_a).map(aItem),
+      // === false explícito (no !t.vinculado): igual que el .eq('vinculado',
+      // false) original, un valor null no debe contar como "sin vincular".
+      sinVincular: abiertos.filter((t) => t.vinculado === false).map(aItem),
+      abiertosViejos: abiertos.filter((t) => t.created_at <= cortesViejos).map(aItem),
     };
   },
 

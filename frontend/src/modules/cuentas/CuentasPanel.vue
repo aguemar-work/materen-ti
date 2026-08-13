@@ -519,14 +519,13 @@ onMounted(async () => {
 
 .url-link:hover { text-decoration: underline; }
 
+/* Tamaño reducido para este toolbar — el color/contraste ya vienen de la
+   clase global .btn-whatsapp (main.css); no sobreescribir background/color
+   acá, ese override reintroducía texto blanco a ~2:1 sobre el verde. */
 .btn-whatsapp {
-  background: #25d366;
-  color: #fff;
-  border-color: #25d366;
   font-size: 13px;
   padding: 6px 12px;
 }
-.btn-whatsapp:hover { background: #1ebe5d; border-color: #1ebe5d; }
 
 .cuentas-error { color: var(--color-danger); }
 

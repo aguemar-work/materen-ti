@@ -389,8 +389,11 @@ onBeforeUnmount(() => {
   padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: var(--fs-base);
 }
 
-.combo-lista :deep(li:hover),
-.combo-lista :deep(li.is-activo) { background: var(--color-accent-subtle); }
+.combo-lista :deep(li:hover) { background: var(--color-accent-subtle); }
+.combo-lista :deep(li.is-activo) {
+  background: var(--color-accent-subtle);
+  box-shadow: 0 0 0 3px var(--mat-ring);
+}
 
 .combo-lista :deep(.combo-vacio) {
   color: var(--color-text-secondary); cursor: default; font-size: var(--fs-sm);

@@ -1,10 +1,10 @@
 // ============================================================
 // Edge function: tickets
 // Único punto por donde se CREA un ticket, se consulta su
-// seguimiento público, se envía la encuesta de satisfacción y se
-// registra la respuesta — mismo patrón que "entregas" en
-// credenciales.ts: el cliente nunca escribe directo en `tickets`
-// (sin política de INSERT), todo pasa por aquí con cliente admin.
+// seguimiento público y se registra la respuesta de la encuesta de
+// satisfacción — mismo patrón que "entregas" en credenciales.ts: el
+// cliente nunca escribe directo en `tickets` (sin política de
+// INSERT), todo pasa por aquí con cliente admin.
 //
 // Acciones (POST { action, ... }):
 //   catalogo       público          → { categorias[], subcategorias[] }
@@ -13,7 +13,11 @@
 //   buscarPorDni   público          → { tickets[] } (solo tickets ACTIVOS; limitado por IP)
 //   encuestaEstado público          → { respondida } (para no mostrar el formulario tras refrescar)
 //   encuesta       público          → { ok }
-//   enviarEncuesta staff            → { ok, enviado }
+//
+// Nota: el sistema no envía avisos/notificaciones por correo (se
+// retiró intencionalmente; ver docs/HISTORIAL-AUDITORIAS.md). El
+// único canal garantizado es la pantalla (código + token visibles al
+// crear); la encuesta de satisfacción se guarda pero no se notifica.
 //
 // Regla de dominio: un token de TICKET es un recurso distinto del
 // token de ENTREGA. Un token de entrega solo sirve para resolver
@@ -116,15 +120,6 @@ export function ipDesdeHeaders(headers: Headers): string {
   );
 }
 
-// Plantilla mínima, consistente con el tono del resto del sistema
-function plantillaCorreo(titulo: string, cuerpoHtml: string): string {
-  return `<div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;color:#3A372E">
-    <h2 style="color:#157955;font-family:Sora,Arial,sans-serif">${titulo}</h2>
-    ${cuerpoHtml}
-    <p style="font-size:12px;color:#6B7280;margin-top:24px">Sistema TI · Materen</p>
-  </div>`;
-}
-
 export default async function (req: Request): Promise<Response> {
   CORS = corsPara(req.headers.get('Origin'));
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -139,14 +134,6 @@ export default async function (req: Request): Promise<Response> {
 
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
-
-  // Origen del frontend, para armar enlaces en los correos. Se reusa el
-  // mismo Origin ya validado para CORS; si no vino uno permitido, se cae
-  // al dominio de producción.
-  const origenFrontend =
-    (req.headers.get('Origin') && ORIGENES_PERMITIDOS.has(req.headers.get('Origin')!))
-      ? req.headers.get('Origin')!
-      : 'https://materen-ti.vercel.app';
 
   async function log(ticketId: string, evento: string, detalle: string | null, userId: string | null, userEmail: string | null) {
     await admin.database.from('ticket_eventos').insert([
@@ -332,37 +319,6 @@ export default async function (req: Request): Promise<Response> {
 
     await log(ticket.id, 'creado', `Origen: ${origen}${vinculado ? '' : ' (sin vincular)'}`, staff?.id || null, staff?.email || null);
 
-    // Correo de confirmación con el token — mejor esfuerzo. El token ya
-    // quedó guardado y se muestra en pantalla igual, así que un fallo de
-    // correo (ej. plan sin envío habilitado) no bloquea la creación.
-    // Destino SOLO desde el correo_personal de un empleado ya vinculado
-    // (por token de entrega o por match de DNI) — nunca desde `contacto`
-    // directamente: es un campo público sin verificar, y tratarlo como
-    // email permitía a cualquiera hacer que el sistema mandara correo a una
-    // dirección arbitraria (auditoría integral, hallazgo S-01).
-    let correoDestino: string | null = null;
-    if (empleadoId) {
-      const { data: empleado } = await admin.database
-        .from('empleados').select('correo_personal').eq('id', empleadoId).maybeSingle();
-      correoDestino = empleado?.correo_personal || null;
-    }
-
-    if (correoDestino) {
-      const link = `${origenFrontend}/soporte/${token}`;
-      const { error: eCorreo } = await admin.emails.send({
-        to: correoDestino,
-        subject: `Ticket ${codigo} registrado`,
-        html: plantillaCorreo('Solicitud registrada', `
-          <p>Código: <strong>${codigo}</strong></p>
-          <p>El seguimiento puede realizarse en cualquier momento desde este enlace:</p>
-          <p><a href="${link}">${link}</a></p>
-        `),
-      });
-      if (eCorreo) {
-        await log(ticket.id, 'correo_fallido', `Confirmación: ${eCorreo.message || 'error desconocido'}`, null, null);
-      }
-    }
-
     return json({ ok: true, codigo, token, vinculado });
   }
 
@@ -523,49 +479,6 @@ export default async function (req: Request): Promise<Response> {
 
     await log(ticket.id, 'encuesta_respondida', `Nivel ${nivel}`, null, null);
     return json({ ok: true });
-  }
-
-  // ── enviarEncuesta: staff, tras cerrar el ticket ─────────────────────
-  if (body.action === 'enviarEncuesta') {
-    const staff = await staffDeSesion();
-    if (!staff) return json({ ok: false, code: 'no_autenticado' }, 401);
-
-    const ticketId = String(body.ticketId || '');
-    if (!ticketId) return json({ ok: false, code: 'ticket_requerido' });
-
-    const { data: ticket } = await admin.database
-      .from('tickets')
-      .select('id, codigo, token, estado, empleado_id, contacto_ingresado, empleados(correo_personal)')
-      .eq('id', ticketId)
-      .maybeSingle();
-    if (!ticket) return json({ ok: false, code: 'no_existe' });
-    if (ticket.estado !== 'cerrado') return json({ ok: false, code: 'no_esta_cerrado' });
-    if (!ticket.empleado_id) return json({ ok: true, enviado: false }); // interno: no aplica
-
-    // Mismo criterio que en "crear" (auditoría integral, S-01): el destino
-    // sale SOLO del correo_personal de un empleado vinculado, nunca de
-    // `contacto_ingresado` directamente — ese campo es texto público no
-    // verificado, tratarlo como email deja mandar correo a quien sea.
-    const correoDestino = ticket.empleados?.correo_personal || null;
-    if (!correoDestino) return json({ ok: true, enviado: false });
-
-    const link = `${origenFrontend}/soporte/${ticket.token}/satisfaccion`;
-    const { error: eCorreo } = await admin.emails.send({
-      to: correoDestino,
-      subject: `Encuesta de satisfacción — ticket ${ticket.codigo}`,
-      html: plantillaCorreo('Calificación del servicio', `
-        <p>El ticket <strong>${ticket.codigo}</strong> fue cerrado. La encuesta de
-        satisfacción está disponible en el siguiente enlace:</p>
-        <p><a href="${link}">${link}</a></p>
-      `),
-    });
-
-    if (eCorreo) {
-      await log(ticket.id, 'correo_fallido', `Encuesta: ${eCorreo.message || 'error desconocido'}`, staff.id, staff.email);
-      return json({ ok: true, enviado: false });
-    }
-    await log(ticket.id, 'encuesta_enviada', null, staff.id, staff.email);
-    return json({ ok: true, enviado: true });
   }
 
   return json({ ok: false, code: 'accion_desconocida' }, 400);

@@ -359,9 +359,11 @@ sets de Fase 3 ya modelan visualmente DS-02/DS-03).
   bajo "GESTIÓN" reorganizados en 3 subgrupos semánticos (Personas;
   Activos y credenciales; Conocimiento y mejora) — **mismos `path` e
   íconos, verificados contra `router/routes/*.js`**, solo cambia el
-  encabezado de grupo en `AppNav.vue` (`navGrupos`). No se aplicó: es un
-  cambio de arquitectura de información que requiere validación de
-  producto antes de tocar código, no solo de diseño.
+  encabezado de grupo en `AppNav.vue` (`navGrupos`). No se aplicó en esta
+  pasada: era un cambio de arquitectura de información que requería
+  validación de producto antes de tocar código, no solo de diseño —
+  **validado y portado a producción el 2026-08-13**, ver sección "Sidebar
+  (minimalista, sigue el tema)" y el changelog al final de este documento.
 
 **Qué requiere coordinación con desarrollo antes de aplicarse**: DS-01,
 DS-02, DS-03, DS-04 (las 4 fichas de `docs/HISTORIAL-AUDITORIAS.md`) y
@@ -492,6 +494,341 @@ y DS-04 (cobertura de `:focus-visible` en navegación/`ThOrdenable`/buscadores)
 — ambos requieren la misma decisión de producto que `:disabled`, no se
 tocaron. DS-05 (labels de filtro) tampoco. La propuesta de paleta de puntos
 sigue solo en `design.pen`.
+
+#### Changelog — sidebar reagrupado a producción (2026-08-13, séptima pasada)
+
+Se portó a `AppNav.vue` la propuesta de reagrupación semántica del sidebar
+que hasta ahora solo vivía en `design.pen` (ver "Propuesta de reagrupación
+del sidebar" más arriba, en el changelog de la quinta pasada). Validado con
+el usuario antes de tocar código (mismo grupo elegido que ya estaba diseñado,
+más el título "Día a día" agregado al bloque superior por consistencia
+visual con el resto de los grupos).
+
+- El grupo plano "Gestión" (8 ítems sin subdivisión) se dividió en 3
+  subgrupos: **Personas** (Empleados, Pre-registro de personal solo JEFE),
+  **Activos y credenciales** (Correos, Licencias, Equipos), **Conocimiento y
+  mejora** (Base de Conocimiento, Problemas, Encuestas). Mismos `path` e
+  íconos que antes — solo cambió el array `navGrupos` en `AppNav.vue`, cero
+  CSS nuevo.
+- El bloque superior (Dashboard, Tickets), antes sin título de grupo, ahora
+  lleva el título "Día a día" — mismo tratamiento visual que los demás
+  grupos (uppercase 10.5px, oculto en modo colapsado).
+- "Administración" no cambió.
+
+**(a) Qué cambió**: `frontend/src/components/shared/AppNav.vue` (`navGrupos`
+y su comentario) + esta guía (sección "Sidebar" y la nota de la propuesta
+original). **(b) Riesgo**: ninguno — mismas rutas, mismos íconos, sin tocar
+`main.css`. **(c) Pendiente**: nada abierto por este cambio puntual; sigue
+sin decidir todo lo de DS-03/DS-04/DS-05 y la paleta de puntos, sin relación
+con el sidebar.
+
+#### Changelog — acordeón por grupo en el sidebar (2026-08-13, octava pasada)
+
+Pedido explícito del usuario, distinto del colapso general del sidebar (rail
+de 64px): cada grupo de `navGrupos` ahora se pliega/despliega individualmente
+al hacer click en su título.
+
+- Cada grupo ganó un `id` fijo (`dia-a-dia`, `personas`,
+  `activos-credenciales`, `conocimiento-mejora`, `administracion`),
+  desacoplado del `label` visible, usado como clave de persistencia.
+- `.sb-nav-titulo` pasó de `<div>` a `<button>` con chevron
+  (`ti-chevron-right`/`ti-chevron-down`, cambio de ícono — mismo criterio que
+  `CategoriasTicketPanel.vue`, sin `transform: rotate` porque no existe esa
+  clase en `main.css`) y `aria-expanded`/`aria-controls`.
+- Persistencia en `localStorage`, clave nueva `sistema-ti-sidebar-grupos`
+  (ids separados por coma, string plano — separada de `sistema-ti-sidebar`,
+  que sigue siendo el colapso general/rail).
+- Tres reglas de interacción (detalladas en la sección "Sidebar" arriba):
+  el modo rail ignora el colapso por grupo; la ruta activa revela su grupo
+  sin persistir ese cambio; el badge de "Tickets sin asignar" se reubica en
+  el título de "Día a día" mientras ese grupo está colapsado.
+
+**(a) Qué cambió**: solo `frontend/src/components/shared/AppNav.vue` (estado,
+`toggleGrupo`, `grupoVisible`, `badgeDeGrupo`, template, estilos nuevos) +
+esta guía. **(b) Riesgo**: bajo — cambio autocontenido, no tocó
+`AppLayout.vue` ni ninguna ruta; el `<button>` nuevo suma un
+`:focus-visible` que antes no existía (mejora, no regresión) sobre un
+elemento que antes ni siquiera era interactivo. **(c) Pendiente**: nada
+abierto por este cambio; DS-03/DS-04/DS-05 y la paleta de puntos siguen
+igual de pendientes que antes, sin relación con esto.
+
+#### Changelog — footer de usuario condensado (2026-08-13, novena pasada)
+
+Hallazgo del usuario: a 240px de ancho, avatar + nombre + 3 botones de ícono
+(campana, tema, logout) en una sola fila dejaban al nombre solo ~66px antes
+de truncarse (verificado con captura real: "a.gueva…").
+
+- "Cambiar tema" y "Cerrar sesión" se movieron a un menú `⋮` en
+  `AppLayout.vue`, reusando `MenuAcciones.vue` (mismo componente ya usado en
+  menús de fila de tabla en `EmpleadosView.vue`/`CorreosView.vue`/etc.) —
+  cero componente nuevo. Array `accionesUsuario` (computed) con las dos
+  acciones + un separador.
+- La campana de notificaciones (`NotificacionesCampana`) queda fuera del
+  menú, visible directo — es información urgente/frecuente, no una acción
+  de cuenta.
+- Se eliminó `.sb-logout--salir` (clase que solo usaba el botón de logout
+  quitado); `.sb-logout` se mantiene porque el toggle de colapso del
+  sidebar (`.sb-collapse`) sigue usándola.
+
+**(a) Qué cambió**: `frontend/src/components/shared/AppLayout.vue` (script:
+`accionesUsuario` + import de `MenuAcciones`; template: footer; estilos:
+comentario actualizado, clase muerta eliminada) + esta guía. **(b) Riesgo**:
+bajo — tema y logout pasan de 1 click a 2 (abrir menú → elegir), aceptado
+como costo del arreglo; verificado con capturas reales en modo expandido,
+menú abierto, y rail. **(c) Pendiente**: nada abierto por este cambio.
+
+#### Changelog — cierre de DS-04/DS-05, cumplimiento contra `design.pen` (2026-08-13, décima pasada)
+
+Pedido explícito del usuario: que todo el sistema quede bajo las reglas del
+design system y `design.pen`, corrigiendo cualquier inconveniente. Se
+reauditaron directamente los nodos de `design.pen` vía Pencil MCP (no solo
+`docs/HISTORIAL-AUDITORIAS.md`, que tenía algunas fichas desactualizadas)
+antes de tocar código.
+
+- **DS-04 (foco visible) resuelto**: `.sb-nav-item` (`AppNav.vue`) y
+  `.th-ordenable-btn` (`ThOrdenable.vue`) ganaron `outline: 2px solid
+  var(--color-accent); outline-offset: -2px` — mismo criterio ya usado en
+  `.sb-nav-titulo`, para que el anillo no se recorte contra el `gap` de 2px
+  entre ítems. `.sb-busqueda input` (`AppSearch.vue`) ganó
+  `box-shadow: 0 0 0 3px var(--mat-ring)`. `.combo-wrap input`
+  (`BuscadorCombo.vue`) **ya estaba resuelto de hecho**: siempre vive dentro
+  de `.form-group`, que ya trae anillo — la ficha original no lo había
+  reverificado.
+- **Dos gaps reales adicionales, no listados en DS-04, encontrados al
+  comparar contra `design.pen` nodo por nodo**: `MenuAcciones.vue`
+  (`.menu-acciones__item:focus-visible`) y `BuscadorCombo.vue`
+  (`.combo-lista li.is-activo`) solo cambiaban el fondo en su estado de
+  foco/activo; `design.pen` (`rowY1dDW`/`rowlEgjG`) modela además un anillo
+  `$brand.700`. Ambos ganaron `box-shadow: 0 0 0 3px var(--mat-ring)`,
+  separado del `:hover` puro (que sigue sin anillo, solo fondo).
+- **DS-05 (nombre accesible en selects de filtro) resuelto**: cada
+  `<select>` de filtro se envolvió en `.filter-field` (clase nueva en
+  `main.css`, reemplaza el `flex`/`min-width` que tenía `.filters select`
+  directamente) con un `<label>` visible arriba. Corrección al conteo de la
+  ficha original: son **7 archivos con 11 selects**, no 10 archivos —
+  `ActividadView`, `CorreosView`, `EmpleadosView`, `EquiposView` (×2),
+  `KbView` (×2), `ProblemasView` (×2), `TicketsView` (×2);
+  `LicenciasView.vue` no tiene ningún select de filtro, la ficha original
+  la listó por error.
+- La página `/design-system` se actualizó en el mismo cambio para reflejar
+  los fixes (ver `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 3): las notas
+  "pendiente" de sidebar/menú/combo/ordenable pasaron a notas "resuelto", y
+  sus demos ahora muestran el anillo real en vez de simularlo igual que
+  `Hover`.
+- El reporte suelto `AUDITORIA-DESIGN-SYSTEM-PAGINA.md` (auditoría de la
+  propia página `/design-system`, sin código) tenía varios hallazgos ya
+  desactualizados contra el código real (el punto de "no leída" y el
+  `.ds-toc` sticky que reportaba como faltantes ya estaban en el código) —
+  se descartó en vez de aplicarlo a ciegas; lo verificable se reconcilió acá
+  y en `docs/HISTORIAL-AUDITORIAS.md`.
+
+**(a) Qué cambió**: `AppNav.vue`, `ThOrdenable.vue`, `AppSearch.vue`,
+`MenuAcciones.vue`, `BuscadorCombo.vue`, `main.css` (`.filter-field`), 7
+vistas con filtros, `DesignSystemView.vue` + esta guía +
+`docs/HISTORIAL-AUDITORIAS.md`. **(b) Riesgo**: bajo — solo CSS de foco
+(nuevo, no reemplaza nada visible en reposo) y markup de label/wrapper sin
+tocar lógica; verificado con `npm run build`. **(c) Pendiente**: DS-02
+(`input`/`select` sin regla de `:disabled` propia) y DS-03 (borde de error)
+siguen abiertos — pendientes de decisión de producto, sin relación con este
+cambio.
+
+#### Changelog — 6 bugs del Ciclo 4 corregidos (2026-08-13, undécima pasada)
+
+Auditoría de superficie UI/UX completa (skill `ui-ux-pro-max`, 65 archivos,
+ver `docs/HISTORIAL-AUDITORIAS.md` Ciclo 4). De ~50 hallazgos, se corrigieron
+en el momento los 6 de impacto real (bug funcional o violación directa de
+una regla de producto ya fijada); el resto queda documentado como deuda
+abierta (UX4-07 a UX4-53) para priorizar después.
+
+- **Historial de ticket sin color**: `main.css` gana 5 reglas
+  `.timeline-dot--info/warning/success/neutral/danger` (mismos tokens que
+  usan los badges de estado) — antes no existían y el punto quedaba sin
+  `background`.
+- **Buscador global inoperable por teclado**: `AppSearch.vue` — los 5
+  botones de resultado ganan `@click` (el `@mousedown.prevent` se deja vacío,
+  solo para no perder el foco del input); `cerrarBusqueda()` ya no cierra la
+  lista si el foco quedó dentro de ella (Tab desde el input hacia un
+  resultado).
+- **Regresión de contraste en WhatsApp**: `CuentasPanel.vue` tenía un
+  `<style scoped>` que reintroducía `color:#fff` sobre `#25d366` (~2:1) —
+  el mismo bug que `.btn-whatsapp` global ya evita a propósito. Se quitó el
+  override, solo queda el ajuste de tamaño del botón.
+- **Avatar de usuario**: `.sb-user-avatar` (`AppLayout.vue`) fijaba
+  `color:#fff` sobre un gradiente que en tema oscuro es monocromo
+  `--color-accent-2` (#34D399, ~1.9:1) — pasa a `var(--color-text-inverse)`,
+  mismo token que ya usa `.btn-primary` para este caso exacto.
+- **Borde de severidad a 3px**: `.accion-item--vencida`
+  (`ProblemaDetalleView.vue`) bajó a 2px — ninguna otra excepción a la regla
+  de "sin bordes &gt;2px" se agregó en esta pasada.
+- **2 modales sin Escape/scroll-lock**: `TiposEquipoPanel.vue` y
+  `CategoriasTicketPanel.vue` usaban un modal hand-rolled con
+  `useFocoAtrapado` (solo atrapa Tab, no maneja Escape ni bloquea el scroll
+  del body) en vez del `<Modal>` compartido que ya usan sus 2 pares
+  equivalentes (`AreasObrasPanel.vue`/`UbicacionesPanel.vue`). Migrados al
+  mismo patrón — mismo markup de formulario, sin cambios de comportamiento
+  de guardado.
+
+**(a) Qué cambió**: `main.css`, `AppSearch.vue`, `CuentasPanel.vue`,
+`AppLayout.vue`, `ProblemaDetalleView.vue`, `TiposEquipoPanel.vue`,
+`CategoriasTicketPanel.vue` + esta guía + `docs/HISTORIAL-AUDITORIAS.md`.
+**(b) Riesgo**: bajo — todos son fixes puntuales verificados contra el
+código real (`npm run build`, `npm test`, `node scripts/contraste.mjs`, los
+tres en verde); ninguno cambia markup de formularios salvo la migración a
+`<Modal>`, que reutiliza el mismo patrón ya probado en 2 paneles hermanos.
+**(c) Pendiente**: los ~47 hallazgos restantes del Ciclo 4 (patrones
+sistémicos como tarjetas móviles faltantes en 7 vistas, botones de
+contraseña sin `aria-label`, objetivos táctiles bajo 44px, y hallazgos
+puntuales por archivo) quedan abiertos en `docs/HISTORIAL-AUDITORIAS.md`
+para una pasada futura.
+
+#### Changelog — alineación de la barra de filtros (2026-08-13, duodécima pasada)
+
+Pedido explícito del usuario ("arreglar y alinear los filtros en cada
+módulo"). `.filters` (`main.css`) no fijaba `align-items`, así que heredaba
+`stretch`: `.search-wrap` (sin label, 36px) quedaba top-aligned dentro de una
+fila estirada a la altura de `.filter-field` (label + select, ~54px),
+mientras el `<select>` se dibuja al fondo de su propia columna — resultado:
+el buscador flotaba visiblemente ~18px más arriba que los selects en las 6
+vistas que combinan ambos (Tickets, Problemas, KB, Equipos, Empleados,
+Correos).
+
+- **Fix de un solo token**: `.filters { align-items: flex-end; }` — todos
+  los hijos directos (`.search-wrap`, `.filter-field`, `.chips-filtro` en
+  Tickets, el `.btn` de "Solo pendientes" en Pre-registros) miden 36px de
+  alto en su fila de control real, así que alinear por el borde inferior los
+  deja en la misma línea de base sin tocar ningún archivo `.vue`.
+  `LicenciasView`/`EmpresasView`/`PlataformasView` (solo buscador, sin
+  selects) no cambian visualmente — ya estaban alineados al no tener un
+  segundo elemento con el que desalinearse.
+- **Verificado con captura real** (no solo lectura de CSS): página estática
+  de prueba servida por el dev server de Vite, cargando el `main.css` real
+  del proyecto, capturada con Playwright en desktop (960px, filas de
+  Tickets/Equipos) y en móvil (375px, filtros apilados) — confirmado el
+  borde inferior común en ambos casos antes de aplicar el fix a producción.
+  El archivo de prueba se borró al terminar, no quedó en el repo.
+
+**(a) Qué cambió**: `main.css` (`.filters`) + esta guía +
+`docs/HISTORIAL-AUDITORIAS.md` (UX4-54). **(b) Riesgo**: bajo — un solo
+token de layout, sin cambios de markup; verificado con `npm run build`,
+`npm test` y captura visual real antes y después. **(c) Pendiente**: nada
+abierto por este cambio puntual; los ~47 hallazgos restantes del Ciclo 4
+siguen igual de pendientes, sin relación con esto.
+
+#### Changelog — rediseño de sidebar y dropdowns (2026-08-13, décimotercera pasada)
+
+Pedido explícito del usuario: sidebar "profesional y usable, que no
+confunda", Configuración movida al menú donde están tema/salir, y rediseño
+de "todos los dropdowns del sistema". Dirección del sidebar confirmada con
+el usuario antes de tocar código (retirar el acordeón, no solo pulirlo).
+
+- **Acordeón por grupo retirado**: con ~12 ítems en 5 grupos, plegar/
+  desplegar cada sección agregaba más reglas de comportamiento (rail que lo
+  ignora, ruta activa que revela sin persistir, badge que se reubicaba en
+  el título de "Día a día" al colapsar) que valor real — patrón más cercano
+  a un sidebar de 40+ ítems que a este. `AppNav.vue` pierde `toggleGrupo`,
+  `grupoVisible`, `grupoContieneRutaActiva`, `badgeDeGrupo` y la clave de
+  `localStorage` `sistema-ti-sidebar-grupos`; `.sb-nav-titulo` pasa de
+  `<button>` con chevron a un `<div>` estático, siempre expandido. El
+  colapso general del sidebar a rail (64px, `sistema-ti-sidebar`) no
+  cambia — sigue siendo el único eje de colapso.
+- **Grupos vacíos no se renderizan**: al sacar Configuración de
+  "Administración", ese grupo queda sin ítems para ASISTENTE (Actividad/
+  Accesos sensibles son solo JEFE) — `navGrupos` filtra grupos con
+  `items.length === 0` antes de pintarlos, para no mostrar un encabezado
+  "Administración" sin filas debajo.
+- **Configuración se mueve al menú `⋮`** (`AppLayout.vue`,
+  `accionesUsuario`): primer ítem, antes de tema/logout — no es una
+  sección de uso diario. El `label` accesible del trigger pasa de "Más
+  acciones de la cuenta" a "Configuración y cuenta".
+- **Jerarquía visual pulida**: `gap` entre grupos de 14px a 18px (más aire
+  entre secciones sin agregar líneas divisorias, regla ya fijada del
+  proyecto); `.sb-nav-titulo` de 10.5px a 11px con algo más de padding
+  vertical, ahora que es una etiqueta y no un control que necesitaba caber
+  en una fila angosta; `.sb-nav-item` de `9px 12px` a `10px 12px` de
+  padding (objetivo de toque un poco más generoso).
+- **Rediseño de dropdowns nativos, base global**: el primer intento estiló
+  solo `.filters select`/`.form-group select` — pero varios `<select>` viven
+  sueltos, sin ninguno de los dos wrappers (`StaffView.vue` `.rol-select`,
+  `CategoriasTicketPanel.vue` dentro de `.cat-sub-nueva`, `ProblemaDetalleView.vue`
+  en `.accion-item`/`.accion-form-nueva`, `ReporteTicketsModal.vue` el
+  selector de mes/año), y esos se quedaban con el look nativo del
+  navegador — justo "fuera del sistema" (hallazgo del usuario tras ver el
+  primer intento). Corregido moviendo la base completa (altura, padding,
+  borde, radio, fondo, chevron, foco) a un selector `select` global, sin
+  atarla a ningún contenedor; `.filters select` y `.form-group select`
+  quedan solo con sus ajustes de contexto (ancho 100%, padding-right del
+  formulario). El chevron pierde la flecha nativa del navegador
+  (`appearance: none`) por una de línea propia (mismo trazo que Tabler) en
+  `--color-text-tertiary`, con su valor por tema (`#9CA3AF` claro / `#6B7280`
+  oscuro, mismos hex que ya usa ese token). Los popovers custom
+  (`MenuAcciones.vue`, `BuscadorCombo.vue`, `NotificacionesCampana.vue`) ya
+  compartían borde/radio/sombra (`--color-border-strong`, `--radius-md`,
+  `--shadow-lg`) — no necesitaron cambios, son el sistema al que los
+  `<select>` nativos se suman ahora, envueltos o no.
+- **Verificado con captura real**: reconstrucción estática del sidebar
+  completo (mismo CSS de `AppNav.vue`/`AppLayout.vue` pegado literal, sin
+  el hash de scope de Vue) servida por el dev server y capturada con
+  Playwright — confirmado visualmente el estado activo, hover, el menú `⋮`
+  con Configuración arriba de tema/logout, y el chevron de los `<select>`
+  en ambos temas (`<html data-theme="dark">`, no un `<div>` anidado — los
+  tokens de tema cuelgan de `:root`). Repetido después del fix a base
+  global: 4 `<select>` lado a lado (envuelto en `.form-group`, suelto tipo
+  `.rol-select`, suelto dentro de un toolbar mixto con input+botón, y
+  `disabled`) — los 4 con el mismo borde/radio/chevron. Los archivos de
+  prueba se borraron
+  al terminar, no quedaron en el repo.
+
+**(a) Qué cambió**: `AppNav.vue`, `AppLayout.vue`, `main.css` (`.filters
+select`, `.form-group select`) + esta guía. **(b) Riesgo**: medio — a
+diferencia de los cambios anteriores de este documento, este sí quita una
+función que el propio usuario había pedido antes (el acordeón); confirmado
+explícitamente con él antes de implementar. Verificado con `npm run build`,
+`npm test` y captura visual real en ambos temas. **(c) Pendiente**: nada
+abierto por este cambio; los ~47 hallazgos del Ciclo 4 y la propuesta de
+paleta de puntos siguen sin relación con esto.
+
+#### Changelog — atajo de teclado para el buscador global (2026-08-13, décimocuarta pasada)
+
+Parte del roadmap de mejoras para el público de TI (junto con
+observabilidad y rendimiento del dashboard, ver `docs/CHANGELOG.md` y
+`docs/HISTORIAL-AUDITORIAS.md`). El buscador global (`AppSearch.vue`) ya
+existe y ya tiene navegación por teclado dentro de sus resultados (pasada
+anterior), pero solo se abría con clic/tap — Ctrl/Cmd+K (mismo atajo que
+Linear/Notion/Vercel/GitHub) ahorra el viaje del mouse en el flujo más
+repetido del día: buscar un ticket/empleado/cuenta.
+
+- **`AppSearch.vue`** expone el método que ya usaba el botón de lupa del
+  sidebar colapsado (`expandirYBuscar`) vía
+  `defineExpose({ enfocar: expandirYBuscar })` — mismo patrón que
+  `Modal.vue` (`defineExpose({ cerrar })`).
+- **`AppLayout.vue`** agrega `ref="appSearchRef"` al `<AppSearch>` ya
+  montado y un listener `keydown` en el mismo ciclo `onMounted`/
+  `onUnmounted` que ya usa para el socket realtime. Guard: si el foco está
+  dentro de un `[role="dialog"]` (`Modal.vue`/`ConfirmDialog.vue`), el
+  atajo no hace nada — saltar al buscador del sidebar detrás de un overlay
+  con foco atrapado sería confuso.
+- **Verificado con la app real, no una reconstrucción**: a diferencia de
+  las capturas estáticas de pasadas anteriores (que no pueden probar
+  interacción JS), se montó `AppSearch.vue` de verdad en un componente
+  `.vue` de prueba servido por Vite, y se usó Playwright para presionar
+  Ctrl+K y confirmar por código (`document.activeElement`) que el foco
+  cae en el input — y que con un `role="dialog"` enfocado, Ctrl+K no lo
+  mueve. El primer intento de esta verificación usó un `h()` manual sin
+  compilador de templates y el `ref` nunca se resolvía (warning de Vue
+  "Missing ref owner context") — no era un bug del código real, era el
+  arnés de prueba; se corrigió escribiéndolo como un `.vue` de verdad. Los
+  4 archivos de prueba (`.vue`, `.js`, `.html`, script de Playwright) se
+  borraron al terminar, no quedaron en el repo ni en `package.json`
+  (Playwright se instaló solo temporalmente con `--no-save` para poder
+  ejecutar el script, y se dejó fuera del lockfile).
+
+**(a) Qué cambió**: `AppSearch.vue`, `AppLayout.vue` + esta guía. **(b)
+Riesgo**: bajo — no reemplaza ninguna interacción existente, solo agrega
+una nueva vía de entrada al mismo buscador ya probado. Verificado con
+`npm run build`, `npm test` y la app real montada con Playwright. **(c)
+Pendiente**: nada abierto por este cambio; sin hint visual del atajo (ej.
+"⌘K" en el placeholder) — no estaba en el plan aprobado, se puede agregar
+si se pide.
 
 ## Arquitectura general
 
@@ -652,14 +989,31 @@ Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
 - Hover de ítems: fondo muy tenue `var(--color-bg-hover)`, **nunca bordes**.
 - Ítem activo: tinte suave `var(--color-accent-subtle)` + texto
   `var(--color-accent-text)`, **sin border-left ni indicadores**.
+- Foco de ítems (`:focus-visible`, DS-04 resuelto ago 2026): `outline: 2px
+  solid var(--color-accent); outline-offset: -2px` — `outline`, no el anillo
+  `box-shadow` que usan botones/inputs, porque el `gap` de 2px entre ítems
+  recortaría el `box-shadow`. Mismo criterio en `.th-ordenable-btn`
+  (encabezado ordenable de tablas). `.sb-nav-titulo` (título de grupo) ya no
+  es focoable desde el rediseño de sidebar (ago 2026, ver más abajo): es un
+  `<div>` estático, no un control.
 - Búsqueda: input sin borde visible (fondo tenue); al enfocar sube a
   `--color-bg-elevated` con borde suave.
-- **Nav agrupada (jul 2026)** por frecuencia de uso, en este orden: día a día
-  sin label (Dashboard, Tickets) → "Gestión" (Empleados, Correos, Licencias,
-  Equipos) → "Administración" (Actividad solo JEFE, Configuración). Labels de
-  sección en uppercase 10.5px `--color-text-secondary`; la separación entre
-  grupos es solo espaciado (`gap`), **nunca líneas divisorias**. Colapsado:
-  los labels se ocultan y queda el espaciado.
+- **Nav agrupada semánticamente**, definida en `AppNav.vue` (`navGrupos`), en
+  este orden: "Día a día" (Dashboard, Tickets) → "Personas" (Empleados,
+  Pre-registro de personal solo JEFE) → "Activos y credenciales" (Correos,
+  Licencias, Equipos) → "Conocimiento y mejora" (Base de Conocimiento,
+  Problemas, Encuestas) → "Administración" (Actividad y Accesos sensibles,
+  ambos solo JEFE — **Configuración ya no vive acá**, ver "Rediseño de
+  sidebar" más abajo). Un grupo sin ítems visibles para el rol actual (ej.
+  "Administración" completo para ASISTENTE, una vez retirada Configuración)
+  no se renderiza — un encabezado sin filas debajo se leería como una
+  sección rota. Labels de sección en uppercase 11px `--color-text-secondary`;
+  la separación entre grupos es solo espaciado (`gap`), **nunca líneas
+  divisorias**. Colapsado (rail): los labels se ocultan y queda el
+  espaciado.
+- **Sin acordeón por grupo** (retirado en el rediseño de sidebar, ago 2026):
+  los títulos de grupo son ahora `<div>` estáticos, siempre expandidos —
+  ver "Rediseño de sidebar" más abajo para el porqué y el detalle.
 - Ancho: `240px` expandido, `64px` colapsado (rail de solo iconos). En móvil
   (off-canvas) sí lleva sombra al abrirse.
 - **Colapso (jul 2026)**: toggle en la fila del logo
@@ -669,6 +1023,18 @@ Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
   botón que expande y enfoca el input, footer apilado con solo avatar +
   iconos. Solo aplica en desktop (>768px); el drawer móvil siempre va
   completo y oculta el toggle.
+- **Footer de usuario condensado (ago 2026)**: a 240px de ancho, avatar +
+  nombre + 3 botones de ícono (campana, tema, logout) dejaban al nombre
+  ~66px de ancho antes de truncarse (ej. "a.gueva…"). Tema y "Cerrar
+  sesión" se movieron a un menú `⋮` (reusa `MenuAcciones.vue`, el mismo
+  componente de los menús de fila de tabla — sin componente nuevo); la
+  campana de notificaciones queda visible fuera del menú por ser
+  información urgente/frecuente, no una acción de cuenta. Resultado: el
+  nombre gana ~40px (ej. "a.guevaramart…"). **Configuración se suma a ese
+  mismo menú (ago 2026, rediseño de sidebar)** como primer ítem, antes de
+  tema/logout — no es una sección de uso diario, así que sale de la nav
+  principal. `label` del trigger pasa de "Más acciones de la cuenta" a
+  "Configuración y cuenta" para reflejarlo.
 
 ### Sombras y radios
 

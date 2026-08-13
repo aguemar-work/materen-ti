@@ -191,9 +191,13 @@ onBeforeUnmount(cerrar);
   color: var(--color-text-secondary);
 }
 
-.menu-acciones__item:hover,
+.menu-acciones__item:hover {
+  background: var(--color-bg-hover);
+}
+
 .menu-acciones__item:focus-visible {
   background: var(--color-bg-hover);
+  box-shadow: 0 0 0 3px var(--mat-ring);
 }
 
 .menu-acciones__item--danger,

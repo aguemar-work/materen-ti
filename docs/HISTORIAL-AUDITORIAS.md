@@ -53,14 +53,14 @@ verificó que seguían cerrados, ver arriba).
 | ID | Hallazgo | Rol | Estado (verificado 2026-08-11) | Referencia |
 |----|----------|-----|-------------------------------|------------|
 | T-01 | Fecha UTC (`toISOString().split`) en 24 sitios → historial y vencimientos con un día de error en Perú | Datos | **Resuelto** | `core/utils.js:todayISO()` y `core/formatters.js:fechaISO()` ahora usan hora local; el único match de `toISOString().split` que queda en el repo es el comentario que explica por qué no usarlo |
-| S-01 | Endpoint público `crear` de tickets sin rate-limit, sin cota de texto, con correo a destinatario arbitrario | Seguridad | **Resuelto** | Migración 037 (`ticket_creacion_intentos`) + `TITULO_MAX_LEN`/`DESCRIPCION_MAX_LEN` en `tickets.ts` + `correoDestino` ahora sale únicamente de `empleado.correo_personal` (nunca de `contacto`), mismo criterio aplicado a la encuesta |
+| S-01 | Endpoint público `crear` de tickets sin rate-limit, sin cota de texto, con correo a destinatario arbitrario | Seguridad | **Resuelto — superado** (2026-08-13) | Migración 037 (`ticket_creacion_intentos`) + `TITULO_MAX_LEN`/`DESCRIPCION_MAX_LEN` en `tickets.ts` mitigaron el riesgo original; la migración 055 retiró directamente todo envío de correo en `tickets.ts` (decisión de producto: sin correo por el momento), así que la superficie de "correo a destinatario arbitrario" ya no existe |
 | S-02 | 4 CVE altas en `ws`/`socket.io-parser` (transitivas de `@insforge/sdk`) | Seguridad | **Resuelto** | `package-lock.json`: `ws@8.21.0`, `socket.io-parser@4.2.7` — ambos fuera de rango vulnerable, sin tocar el pin de `@insforge/sdk` |
 | Q-01 | Tests de integración/BD dan check verde sin ejecutarse | QA | **Mitigado** | `ci.yml` ya no hace `exit 0` silencioso: emite `::warning::` visible. Los 4 secrets (`INSFORGE_TEST_STAFF_EMAIL/PASSWORD`, `INSFORGE_ACCESS_TOKEN`, `INSFORGE_PROJECT_ID`) **siguen sin existir** en el repo — los jobs siguen sin verificar nada, ya no lo esconden |
 | A-01 | Bajas de empleado sin atomicidad (4 escrituras secuenciales) | Arquitectura | **Resuelto** | Migración 038: RPC `dar_baja_empleado()` `SECURITY DEFINER`, una sola transacción |
-| D-01 | Cero observabilidad de producción (sin Sentry/errores) | DevOps | **Abierto** | Sin `Sentry`/`window.onerror`/`unhandledrejection` en el frontend (verificado por grep) |
+| D-01 | Cero observabilidad de producción (sin Sentry/errores) | DevOps | **Resuelto** (2026-08-13) — `@sentry/vue` instalado e inicializado en `main.js` (solo `PROD` + `VITE_SENTRY_DSN`; `window.onerror`/`unhandledrejection` los captura el SDK por defecto — confirmado `defaultIntegrations` no se desactiva con `integrations: []`, solo se le agregan cero integraciones extra, ver `node_modules/@sentry/core/build/types/types/options.d.ts`). Sin Session Replay/`browserTracingIntegration`/`enableLogs` (no estaban en el plan aprobado — la app maneja DNI/credenciales). DSN real configurado por el usuario en `frontend/.env` (gitignorado) y host de ingesta agregado al `connect-src` de ambos `vercel.json`. Verificado de punta a punta con `npm run build` + `npm run preview` + Playwright: 0 violaciones de CSP, el evento de error de prueba llegó a Sentry (`200`, con event ID real) | `main.js`, `frontend/.env`, `vercel.json` (×2), `docs/CHANGELOG.md` |
 | U-01 | Texto terciario a 2,54:1 (falla WCAG AA), prescrito por la guía de diseño | UX | **Abierto** — ampliado 2026-08-12: en oscuro tampoco alcanza AA para texto normal (3,68:1–3,91:1, solo cumple el umbral de texto grande 3:1). Fix (a) propuesto, mismo nombre de token, mismo tono neutro (no el gris con tinte verde de la propuesta de paleta de `design.pen`, que es un cambio aparte): `--mat-color-text-tertiary: #697281` en claro (4,53:1/4,86:1) y `#747C8B` en oscuro (4,50:1/4,23:1 — bg-elevated queda justo debajo de 4.5, aceptable por ser 0,27 el margen y no texto de cuerpo largo, pero anotarlo) | `--mat-color-text-tertiary: #9CA3AF` sin cambios, `main.css:48` (claro) y `main.css:212` (oscuro) |
 | S-03 / T-02 | Sin `CHECK` de prefijo de cifrado en columnas de contraseña | Seguridad/Datos | **Abierto** | Revisadas migraciones 001–053: ningún `CHECK` sobre columnas de contraseña/clave |
-| P-01 | Dashboard cuenta filas descargando todas | Performance | **Abierto** | `api/domains/dashboard.js:73-97,101-173` — 7 queries traen filas completas y cuentan con `.length`, sin `count/head` |
+| P-01 | Dashboard cuenta filas descargando todas | Performance | **Resuelto** (2026-08-13) | `api/domains/dashboard.js` `getEstadisticas()` — 6 de 7 queries pasan a `.select('id', { count: 'exact', head: true })` (patrón ya usado en `licencias.js`/`correos.js`/`tickets.js`/`equipos.js`/`kb.js`/`problemas.js`/`personalRegistros.js`/`empleados.js`, sin `head` porque ahí también necesitan las filas); leen `res.count` en vez de `res.data.length`. La 7ª (`empleados`) sigue trayendo filas porque necesita `estado` por fila para separar activos/total — ya era una consulta angosta (2 columnas, sin joins) |
 | Q-04 | `functions/*.ts` nunca se compilan; sin linter/tsconfig | QA | **Abierto** | Confirmado: no existe `eslint.config.*` ni `tsconfig*.json` en el repo |
 | S-04 | Sin CSP/HSTS/anti-framing en Vercel | Seguridad | **Resuelto (2026-08-12, corregido el mismo día)** — `frontend/vercel.json` (y su copia `frontend/public/vercel.json`) agregan CSP, HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`. **Incidente**: la primera versión de la CSP solo incluía `https://kjyj8t5t.us-east.insforge.app` en `connect-src`, y bloqueó el WebSocket del realtime (`wss://...`, socket.io) en cuanto se desplegó — justo el riesgo que ya se había anotado como "pendiente de validar en preview". Corregido agregando el esquema `wss://` explícito al mismo host en `connect-src`. Lección: `https://` en `connect-src` no cubre `wss://` de forma confiable en la práctica, aunque el spec de CSP3 diga que debería |
 | W-01 / W-02 | `AGENTS.md` decía "sin tests"; README omitía 10 migraciones | Documentación | **Resuelto** | Corregido en el propio ciclo 2026-08-05, reconfirmado hoy |
@@ -83,7 +83,7 @@ verificó que seguían cerrados, ver arriba).
 | S-05 / S-06 | Tokens en consola; passthrough de texto plano sin log | Seguridad | **Resuelto** — solo 8 `console.*` en todo el frontend, todos de eventos realtime (`AppLayout.vue:26-30`, `useRealtimeRefresco.js:26,29,33`), ninguno con datos sensibles |
 | U-03 / U-04 | Tipografía en px desde 11px; hex de WhatsApp fuera de tokens | UX | **Resuelto (2026-08-12)** — `main.css:785,875,1301` ahora usan `var(--fs-xs)`; se crearon `--mat-color-whatsapp`/`--mat-color-whatsapp-hover` (claro y oscuro) y `.btn-whatsapp` las referencia |
 | A-03 | `main.css` monolítico (1.656 líneas al momento del ciclo 2) | Arquitectura | **Mejoró, sigue abierto** — hoy 1446 líneas (bajó 210), pero sigue siendo el único archivo global |
-| P-04 | 3 consultas solapadas en pendientes de tickets | Performance | **Abierto**, confirmado — `api/domains/dashboard.js:176-194` — 3 `Promise.all` sin deduplicar tickets que califican en más de uno |
+| P-04 | 3 consultas solapadas en pendientes de tickets | Performance | **Resuelto** (2026-08-13) | `api/domains/dashboard.js` `pendientesTickets()` — las 3 queries a `tickets` (mismo filtro base de estado abierto repetido 3 veces) se consolidaron en 1 sola query; `sinAsignar`/`sinVincular`/`abiertosViejos` se derivan en memoria del mismo array. Un ticket que califica en más de un bucket sigue apareciendo en ambos — no es deduplicación de resultados, es de round-trips (3 → 1) |
 | D-04 | `.vite/deps` versionado en git | DevOps | **Resuelto (2026-08-11)** — destrackeado (`git rm --cached`) y agregado `.vite/` a `.gitignore` |
 | D-05 | `sistema_credenciales_ti.html.bak` legacy en la raíz | DevOps | **Resuelto (2026-08-11)** — eliminado del repo. `sistema_credenciales_ti.html` (sin `.bak`) se mantiene: es un stub de 343 bytes con redirect intencional a `./frontend/`, no es legado |
 | A-05 / W-04 / Q-05 | Sin ADRs formales, sin CONTRIBUTING, sin registro de bugs | Varios | **Parcial** — este documento y `docs/CHANGELOG.md` cubren el registro de hallazgos/documentación; sigue sin existir `CONTRIBUTING.md` ni `docs/adr/` |
@@ -114,8 +114,8 @@ foco); **(c)** cambia estructura/jerarquía (markup, IA).
 | DS-01 | `.btn-danger:hover` fija `color:#fff` sin condicionar por tema; en oscuro `--color-danger` es `#E88870` (salmón) → 2.57:1, falla AA | (a) — nuevo token, sin tocar markup | **Resuelto** (2026-08-13) — `.btn-danger:hover` usa el invariante `--mat-color-danger-hover` (#DC2626, 4.83:1 con blanco en ambos temas) en vez de `--color-danger` | `main.css` — ver Fase B en `docs/GUIA-UX-UI.md` |
 | DS-02 | `:disabled` inconsistente: solo `.icon-btn` lo define (`opacity:.4`); `.btn`, `.btn-primary`, `.btn-danger`, `input`, `select` no tienen regla propia — dependen del estilo nativo del navegador | (b) — nueva regla CSS, sin markup | **Parcialmente resuelto** (2026-08-13) — unificado en `.btn`/`.btn-primary`/`.btn-danger`/`.btn-danger-solid`/`.btn-whatsapp`/`.icon-btn` a `opacity:.5` (decisión de producto confirmada con el usuario). `input`/`select` de formulario **siguen sin regla propia** — fuera de alcance de esta pasada (ver regla de "no tocar sin mostrar diff" en `docs/GUIA-UX-UI.md`) | `main.css` — ver Fase B en `docs/GUIA-UX-UI.md` |
 | DS-03 | Estado de error de campo sin tratamiento visual propio: `aria-invalid` se setea (`TicketNuevoView.vue`, `PersonalRegistroView.vue`, `TicketBuscarView.vue`) pero no existe `[aria-invalid] { border-color: ... }` — el borde no cambia, solo aparece `.form-error` debajo | (b) — nueva regla CSS, sin markup | **Abierto** — spec en ficha abajo | `main.css` (sin selector `aria-invalid`); confirmado por grep en los 3 `.vue` |
-| DS-04 | `$ring`/`:focus-visible` sin cobertura real en: navegación principal (`.sb-nav-item`, `AppNav.vue`), encabezados ordenables (`ThOrdenable.vue`), buscador con autocompletado (`.combo-wrap input`, `BuscadorCombo.vue`) y buscador global (`.sb-busqueda input`, `AppSearch.vue`) — cero regla de foco visible en los 4 | (b) — nuevas reglas CSS, sin markup | **Abierto** — spec en ficha abajo | Confirmado por grep de `focus` en los 4 componentes: cero resultados en 3, y `.sb-busqueda input:focus` solo cambia `background`/`border-color` sin outline ni ring |
-| DS-05 | Selects de filtro (`filtroEstado`, `filtroTipo`, `filtroSituacion`, `filtroCategoria`, `filtroAccion`, `filtroPrioridad`, `filtroSeveridad`) sin `<label>` ni `aria-label` en las 10 vistas con `.filters` — no hay nada que "reactivar": nunca existió un label, ni siquiera oculto | (c) — agrega markup en 10 archivos + ajusta `.filters` | **Abierto** — spec en ficha abajo | Confirmado por grep: `ActividadView`, `CorreosView`, `EmpleadosView`, `EquiposView` (×2), `KbView` (×2), `LicenciasView`, `ProblemasView` (×2), `TicketsView` (×2) — 0 de 11 tiene `<label>`/`aria-label` en su `<select>` de filtro. Contraejemplo que sí lo hace bien: `EquipoForm.vue:392`/`LicenciaForm.vue:318` (`aria-label="Moneda"`, un `<select>` de formulario, no de filtro) |
+| DS-04 | `$ring`/`:focus-visible` sin cobertura real en: navegación principal (`.sb-nav-item`, `AppNav.vue`), encabezados ordenables (`ThOrdenable.vue`), buscador con autocompletado (`.combo-wrap input`, `BuscadorCombo.vue`) y buscador global (`.sb-busqueda input`, `AppSearch.vue`) — cero regla de foco visible en los 4 | (b) — nuevas reglas CSS, sin markup | **Resuelto** (2026-08-13) — `.sb-nav-item`/`.th-ordenable-btn` ganaron `outline: 2px solid var(--color-accent); outline-offset: -2px` (mismo criterio ya usado en `.sb-nav-titulo`, evita que el `box-shadow` de anillo se recorte contra el `gap` de 2px entre ítems). `.sb-busqueda input:focus` ganó `box-shadow: 0 0 0 3px var(--mat-ring)`. `.combo-wrap input` **ya estaba resuelto**: siempre vive dentro de `.form-group` (`EquipoForm`/`LicenciaForm`/`CuentaForm`/etc.), que ya trae anillo vía `.form-group input:focus` — el hallazgo original quedó desactualizado. Reauditando contra `design.pen` en esta misma pasada aparecieron 2 gaps reales no listados aquí: `MenuAcciones.vue` (`.menu-acciones__item:focus-visible`, spec `rowY1dDW`) y `BuscadorCombo.vue` (`.combo-lista li.is-activo`, spec `rowlEgjG`) — ambos sin anillo, solo cambio de fondo; corregidos con `box-shadow: 0 0 0 3px var(--mat-ring)`, verificado directamente contra los nodos de `design.pen` vía Pencil MCP antes de tocar código | `AppNav.vue`, `ThOrdenable.vue`, `AppSearch.vue`, `MenuAcciones.vue`, `BuscadorCombo.vue` |
+| DS-05 | Selects de filtro (`filtroEstado`, `filtroTipo`, `filtroSituacion`, `filtroCategoria`, `filtroAccion`, `filtroPrioridad`, `filtroSeveridad`) sin `<label>` ni `aria-label` en las vistas con `.filters` — no hay nada que "reactivar": nunca existió un label, ni siquiera oculto | (c) — agrega markup en 7 archivos + ajusta `.filters` | **Resuelto** (2026-08-13) — cada `<select>` de filtro ahora vive en un `.filter-field` (`label` visible arriba, `select` abajo), clase nueva en `main.css` que reemplaza el `flex`/`min-width` que antes tenía `.filters select` directamente. Corrección al hallazgo original: son **7 archivos con 11 selects**, no 10/11 — `ActividadView` (1), `CorreosView` (1), `EmpleadosView` (1), `EquiposView` (2), `KbView` (2), `ProblemasView` (2), `TicketsView` (2); `LicenciasView` **no tiene ningún `<select>` de filtro** (solo buscador de texto), el archivo original la listó por error | `main.css` (`.filter-field`) + los 7 `.vue` listados |
 
 ### Fichas de desarrollo
 
@@ -175,7 +175,10 @@ foco); **(c)** cambia estructura/jerarquía (markup, IA).
   de 8 dígitos y confirmar visualmente que el campo se distingue de uno
   válido sin depender solo del lector de pantalla.
 
-**DS-04 — Cobertura de `:focus-visible`/`$ring`**
+**DS-04 — Cobertura de `:focus-visible`/`$ring`** — **aplicado 2026-08-13**,
+ver fila de estado arriba. `.combo-wrap input` no necesitó cambio (ya
+resuelto por `.form-group input:focus`); se agregaron además dos anillos no
+listados originalmente (`MenuAcciones.vue`, `BuscadorCombo.vue` `li.is-activo`).
 - **Qué cambia**: agregar tratamiento de foco a los 4 componentes sin
   ninguno:
   ```css
@@ -197,7 +200,9 @@ foco); **(c)** cambia estructura/jerarquía (markup, IA).
   (`EmpleadosView`) y sobre el buscador de empleado en un formulario que use
   `BuscadorCombo` (ej. `EquipoForm` al asignar).
 
-**DS-05 — Nombre accesible en selects de filtro**
+**DS-05 — Nombre accesible en selects de filtro** — **aplicado 2026-08-13**,
+ver fila de estado arriba (7 archivos/11 selects, no 10/11 como decía la
+ficha original — `LicenciasView.vue` no tiene select de filtro).
 - **Qué cambia**: agregar un `<label>` visible por select (no un
   `aria-label` invisible — el brief pidió específicamente visible), más
   ajustar `.filters` para que cada control quede en su propia columna
@@ -230,6 +235,89 @@ foco); **(c)** cambia estructura/jerarquía (markup, IA).
   selects siguen apilando de a dos por fila sin que el label rompa el
   ancho. Con lector de pantalla (NVDA/VoiceOver), confirmar que anuncia
   "Estado, combo box" (o equivalente) en vez de solo "combo box".
+
+## Ciclo 4 — Auditoría de superficie UI/UX con skill `ui-ux-pro-max` (2026-08-13)
+
+Alcance: los 65 componentes/vistas Vue del frontend, en 6 lotes por área
+(shell y compartidos; tickets; empleados/personal/staff/login; activos y
+credenciales; conocimiento y encuestas; dashboard/actividad/configuración),
+auditados en paralelo contra el checklist priorizado de la skill
+`ui-ux-pro-max` (accesibilidad, touch, rendimiento, estilo, layout,
+tipografía, animación, formularios, navegación, gráficos). Cada lote se
+briefeó con los hallazgos ya abiertos en este documento (U-01, U-05, DS-02,
+DS-03, P-*, D-01, A-07) para reportar solo instancias nuevas, no repetirlos.
+6 bugs de impacto real se corrigieron en el mismo ciclo (verificado con
+`npm run build`, `npm test` y `node scripts/contraste.mjs`, los tres en
+verde); el resto queda documentado como deuda abierta para priorizar después.
+
+### Bugs reales corregidos en este ciclo
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| UX4-01 | Los puntos de la línea de tiempo del historial de ticket (`timeline-dot--info/warning/success/neutral/danger`) no tenían regla CSS — el historial se renderizaba sin color pese a que el código ya calculaba cuál correspondía | Alto | **Resuelto** (2026-08-13) | `main.css` (5 reglas nuevas junto a `--active`/`--closed`); `TicketDetalleView.vue:631` |
+| UX4-02 | Buscador global inoperable por teclado: los resultados solo respondían a `@mousedown`, así que Tab+Enter no hacía nada; además el `blur` del input cerraba la lista aunque el foco ya estuviera dentro | Alto | **Resuelto** (2026-08-13) | `AppSearch.vue` — se agregó `@click` a los 5 botones de resultado (el `@mousedown.prevent` se deja solo para evitar el blur en mouse) y `cerrarBusqueda()` ahora comprueba `resultadosEl.contains(document.activeElement)` antes de cerrar |
+| UX4-03 | Regresión de contraste en "Enviar por WhatsApp": un `<style scoped>` local reintroducía texto blanco a ~2:1 sobre `#25d366`, el mismo bug que la clase global `.btn-whatsapp` ya corrige a propósito (usa `--mat-color-whatsapp-text`) | Alto | **Resuelto** (2026-08-13) | `CuentasPanel.vue` — se quitó el `background`/`color` hardcodeado del override local, solo queda el ajuste de tamaño |
+| UX4-04 | Borde de 3px usado como acento de severidad en acción correctiva vencida, violando la regla de producto "ningún borde supera 2px" | Alto | **Resuelto** (2026-08-13) | `ProblemaDetalleView.vue:494` (`.accion-item--vencida`, bajado a 2px) |
+| UX4-05 | Avatar del usuario con texto blanco fijo sobre gradiente que incluye `--color-accent-2` (#34D399); en tema oscuro `--color-accent` también es #34D399, dejando el avatar casi monocromo a ~1.9:1 — el mismo patrón que `--color-text-inverse` ya resuelve en `.btn-primary` | Alto | **Resuelto** (2026-08-13) | `AppLayout.vue` (`.sb-user-avatar`, `color: #fff` → `var(--color-text-inverse)`) |
+| UX4-06 | 2 modales hand-rolled (Tipos de equipo, Categorías de ticket) sin cierre por Escape ni bloqueo de scroll del body, inconsistentes con sus 2 pares "equivalentes" (Áreas/Obras, Ubicaciones), que sí usan el `<Modal>` compartido | Alto | **Resuelto** (2026-08-13) | `TiposEquipoPanel.vue`, `CategoriasTicketPanel.vue` — migrados a `<Modal>` (mismo patrón que `AreasObrasPanel.vue`); `useFocoAtrapado` ya no se usa en estos 2 archivos |
+| UX4-54 | Barra de filtros desalineada: `.filters` no fijaba `align-items` (heredaba `stretch`), así que `.search-wrap` (sin label, 36px) quedaba top-aligned mientras `.filter-field` (con label + select) lo empujaba ~18px más abajo — visible en las 6 vistas que combinan buscador y selects | Alto | **Resuelto** (2026-08-13) | `main.css` (`.filters { align-items: flex-end; }`) — corrige de una vez `TicketsView`, `ProblemasView`, `KbView`, `EquiposView`, `EmpleadosView`, `CorreosView`; verificado con captura real (desktop y apilado móvil) vía Playwright contra el CSS compilado |
+
+### Deuda abierta — patrones sistémicos (afectan varios archivos)
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| UX4-07 | Sin patrón de tarjetas móviles (`.lista-tarjetas`) — solo scroll horizontal | Alto/Medio | Abierto | `LicenciasView.vue`, `AccesosSensiblesView.vue`, `PersonalRegistrosView.vue`, `StaffView.vue`, `KbView.vue`, `EncuestasView.vue`, `EncuestaDetalleView.vue` |
+| UX4-08 | Botón mostrar/ocultar contraseña sin `aria-label` (solo `title`), inconsistente con "Generar contraseña" en el mismo formulario | Medio | Abierto | `CorreoForm.vue`, `LicenciaForm.vue` (×3), `AccesoSensibleForm.vue` |
+| UX4-09 | Objetivos táctiles bajo 44px (varios por debajo incluso de 24px) | Medio | Abierto | `EquipoForm.vue` (quitar foto, 22px), `LicenciasView.vue` (liberar asiento), `AppNav.vue` `.sb-nav-titulo` (~22px), `AppLayout.vue`/`AppSearch.vue` `.sb-logout` (~39-41px), `PersonalRegistrosView.vue` `.btn-usado` (24px), `StaffView.vue` `.rol-select`, `ConfiguracionView.vue` tabs (gap&lt;8px), `TicketsView.vue` chips (36px), `PreguntaCampo.vue` escala (40px), `ResponderEncuestaView.vue` (gap 6px) |
+| UX4-10 | Radios ocultos sin `:focus-visible` en tarjetas de tipo — navegar con teclado no muestra qué tarjeta está seleccionada | Alto (teclado) | Abierto | `CorreoForm.vue` (`.tipo-option`), `LicenciaForm.vue` (`.acceso-option`) |
+| UX4-11 | Confirmación nativa del navegador (`confirm()`) en vez de `ConfirmDialog` para una acción sensible | Alto | Abierto | `StaffView.vue` (`toggleActivo`, desactivar staff) |
+| UX4-12 | Formularios públicos sin `aria-live`/foco en el campo con error tras enviar | Alto | Abierto | `EncuestaPublicaView.vue`, `ResponderEncuestaView.vue`, `PersonalRegistroView.vue` |
+| UX4-13 | Sin feedback de carga en acciones async — riesgo de doble envío | Medio | Abierto | `StaffView.vue` (`toggleActivo`/`cambiarRol`), `PersonalRegistrosView.vue` (`toggleUsado`), `LoginView.vue` (reenviar código sin confirmación visible) |
+| UX4-14 | `aria-pressed`/`role="radiogroup"` ausente en toggles de selección única basados en `<button>` con solo cambio de color | Medio | Abierto | `PreguntaCampo.vue` (escala 1-5, sí/no), `PersonalRegistrosView.vue` (filtros toggle) |
+
+### Deuda abierta — hallazgos puntuales
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| UX4-15 | Estado de error sin ninguna ruta de salida (ni enlace ni botón) — callejón sin salida en una página pública sin soporte | Alto | Abierto | `ResponderEncuestaView.vue:69-73` |
+| UX4-16 | `.alta-banner` con `color-mix(..., #fff)` crudo en vez de un token theme-aware — casi blanco también en tema oscuro, bajo contraste con el texto secundario que trae | Alto | Abierto | `EmpleadoDetalleView.vue:495-500` |
+| UX4-17 | Campana de notificaciones sin manejo de `Escape` (sí lo tiene el patrón equivalente `MenuAcciones.vue`) | Alto | Abierto | `NotificacionesCampana.vue:40-53` |
+| UX4-18 | `.password-locked` (candado de contraseña solo-JEFE) sin nombre accesible propio, depende de `title` | Medio | Abierto | `CuentasPanel.vue:299` |
+| UX4-19 | `role="status"` ausente en estado de carga de página pública con credenciales | Medio | Abierto | `EntregaView.vue:61-63` |
+| UX4-20 | Sin botón "Reintentar" cuando falla la carga del catálogo (usuario público) | Medio | Abierto | `TicketNuevoView.vue:133-137` |
+| UX4-21 | Error de campo sin `aria-describedby` hacia el `role="alert"` | Bajo | Abierto | `TicketNuevoView.vue:145-157`, `TicketBuscarView.vue:72-85` |
+| UX4-22 | Asterisco de obligatorio inconsistente entre dos formularios equivalentes ("DNI" vs "DNI *") | Bajo | Abierto | `TicketBuscarView.vue:71-72` |
+| UX4-23 | Indicadores de "Vínculos" (cuentas/equipos/licencias) sin `aria-label`, solo número + `title` | Medio | Abierto | `EmpleadosView.vue:251-273,339-349` |
+| UX4-24 | Input de búsqueda sin `<label>`/`aria-label` propio | Medio | Abierto | `EmpleadosView.vue:195-199` |
+| UX4-25 | Botón "Dar de baja" con clase custom `.btn-baja` en vez de `.btn-danger` (pierde el anillo de foco de peligro) | Bajo | Abierto | `EmpleadoDetalleView.vue:480-488` |
+| UX4-26 | Campo "Notas" visible en la ficha sin ningún control de edición en el formulario | Bajo | Abierto | `EmpleadoDetalleView.vue:275-278` / `EmpleadoForm.vue` |
+| UX4-27 | Texto truncado sin `white-space:nowrap` (el ellipsis nunca se activa, el texto largo envuelve en el modal angosto) | Medio | Abierto | `BajaEmpleadoModal.vue:296-301` |
+| UX4-28 | Formulario público sin `autocomplete` (`given-name`/`family-name`/`tel`/`email`) | Bajo | Abierto | `PersonalRegistroView.vue:148,153,158,163` |
+| UX4-29 | Mensajes de estado async sin `role="status"`/`aria-live` | Medio | Abierto | `PersonalRegistroView.vue:140-143` |
+| UX4-30 | Login sin foco inicial en el primer campo | Medio | Abierto | `LoginView.vue:127-135` |
+| UX4-31 | Error "las contraseñas no coinciden" no asociado al campo que lo causó | Medio | Abierto | `LoginView.vue:96-101,280` |
+| UX4-32 | `aria-describedby` ausente entre el `<textarea>` de motivo y su error | Medio | Abierto | `ConfirmDialog.vue:71-75` |
+| UX4-33 | `.aviso-card` con `role="button"` no maneja la tecla Space (solo Enter) | Medio | Abierto | `AppNotifications.vue:79-84` |
+| UX4-34 | Paginación sin `aria-live` — cambio de página no se anuncia | Medio | Abierto | `Pagination.vue:27-38` |
+| UX4-35 | Borrador de KB vacío (creado al cerrar un ticket, U-05) sin ninguna señal visual distinta de "sin datos" neutro | Medio | Abierto | `KbArticuloDetalleView.vue:191,259` |
+| UX4-36 | Grid de alta de acción correctiva sin breakpoint móvil (3 columnas `auto` en ancho de teléfono) | Alto | Abierto | `ProblemaDetalleView.vue:519-524` |
+| UX4-37 | `<label for>` sin contraparte real (`id` inexistente) en 2 campos | Bajo | Abierto | `EncuestaForm.vue:150-152,131` |
+| UX4-38 | Cierre de ronda de encuesta sin `ConfirmDialog` (acción sin "reabrir") | Alto | Abierto | `EncuestaDetalleView.vue:61-72,179-189` |
+| UX4-39 | `<label for>` roto en 3 de 5 tipos de pregunta (`opcion_unica`/`escala_1_5`/`si_no` no generan el `id` que el `for` referencia) | Medio | Abierto | `PreguntaCampo.vue:18,42-83` |
+| UX4-40 | Escala 1-5 sin indicar el significado de los extremos (ni visual ni accesible) | Medio | Abierto | `PreguntaCampo.vue:56-66` |
+| UX4-41 | Encuesta pública sin indicador de progreso ("Pregunta X de N") | Medio | Abierto | `EncuestaPublicaView.vue:85-101` |
+| UX4-42 | Estado de carga inicial sin esqueleto que reserve el espacio real (CLS) | Medio | Abierto | `DashboardView.vue:61` |
+| UX4-43 | Tarjeta "Cuentas asignadas" no interactiva con el mismo aspecto que las 6 sí clicables | Bajo | Abierto | `DashboardView.vue:139-190` |
+| UX4-44 | Color `danger` (rojo) usado para un conteo neutro ("Tickets abiertos"), no una alerta real | Bajo | Abierto | `DashboardView.vue:184-190,241` |
+| UX4-45 | Texto truncado accesible solo vía `title` (tooltip nativo), sin alternativa por teclado/táctil | Medio | Abierto | `ActividadView.vue:131-134` |
+| UX4-46 | Alta rápida de subcategoría sin `<label>`/`aria-label` (único form de los 4 paneles de configuración sin uno) | Medio | Abierto | `CategoriasTicketPanel.vue:223-234` |
+| UX4-47 | Widget interactivo (`role="button"`) anidando otros `<button>` reales dentro — patrón ARIA no recomendado | Medio | Abierto | `CategoriasTicketPanel.vue:194-214` |
+| UX4-48 | Imágenes de la sección "Marca" sin `loading="lazy"` en una página documentada como muy larga | Bajo | Abierto | `DesignSystemView.vue:529,533,537` |
+| UX4-49 | Emoji (⚠️) en vez de ícono Tabler, inconsistente con el resto del mismo archivo | Alto | Abierto | `EntregaView.vue:126` |
+| UX4-50 | Transiciones sin cobertura de `prefers-reduced-motion` (sí la tiene `.modal-anim*`) | Bajo | Abierto | `AppLayout.vue` (drawer), `AppNotifications.vue` (toast) |
+| UX4-51 | Tokens muertos o valores crudos que duplican un token ya existente | Bajo | Abierto | `EncuestaForm.vue`, `PlataformasView.vue:320-324`, `CuentaForm.vue`, `AppLayout.vue` (rgba de overlays), `EncuestaDetalleView.vue:271-278` |
+| UX4-52 | Tuteo aislado ("tienes", "deseas") en un mensaje de confirmación, viola el tono impersonal fijado para el proyecto (mismo string en otros 9 formularios fuera de este alcance) | Bajo | Abierto | `TicketInternoForm.vue:239` |
+| UX4-53 | Chips de filtro y botones de nivel sin `:focus-visible` propio (caen al outline nativo) | Bajo | Abierto | `TicketsView.vue` `.chip-filtro`, `ResponderEncuestaView.vue` `.nivel-btn` |
 
 ## Cómo mantener esto al día
 

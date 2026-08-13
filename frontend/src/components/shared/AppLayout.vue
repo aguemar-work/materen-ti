@@ -12,6 +12,7 @@ import NotificacionesCampana from './NotificacionesCampana.vue';
 import AppSearch from './AppSearch.vue';
 import AppNav from './AppNav.vue';
 import AppNotifications from './AppNotifications.vue';
+import MenuAcciones from './MenuAcciones.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -33,6 +34,23 @@ onMounted(() => {
 onUnmounted(() => {
   getClient().realtime.disconnect();
 });
+
+// Atajo global de búsqueda (Ctrl/Cmd+K, patrón Linear/Notion/Vercel/GitHub):
+// ahorra el viaje del mouse en el flujo más repetido del día (buscar un
+// ticket/empleado/cuenta). No se activa con un modal abierto y atrapando
+// foco (Modal.vue/ConfirmDialog.vue usan role="dialog") — saltar al
+// buscador del sidebar detrás del overlay sería confuso.
+const appSearchRef = ref(null);
+
+function onAtajoBusqueda(e) {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k') return;
+  if (document.activeElement?.closest('[role="dialog"]')) return;
+  e.preventDefault();
+  appSearchRef.value?.enfocar();
+}
+
+onMounted(() => window.addEventListener('keydown', onAtajoBusqueda));
+onUnmounted(() => window.removeEventListener('keydown', onAtajoBusqueda));
 
 // Suscripción única a tickets:list, vivida aquí (no en TicketsView) para
 // que el sonido de "ticket nuevo" suene sin importar qué pantalla esté
@@ -88,6 +106,25 @@ function toggleTema() {
 
 const userInitial = computed(() => (auth.nombre?.[0] ?? auth.user?.email?.[0] ?? '?').toUpperCase());
 
+// Footer del sidebar apiñado (avatar + nombre truncaba contra 3 botones de
+// ícono a 240px de ancho): tema y logout se condensan en un solo menú ⋮,
+// reusando MenuAcciones.vue en vez de un componente nuevo. La campana queda
+// afuera porque es información urgente/frecuente, no una acción de cuenta.
+// Configuración se suma aquí (rediseño de sidebar, ago 2026): no es una
+// sección de uso diario, así que sale de la nav principal y se agrupa con
+// las otras acciones de "administrar mi sesión/el sistema".
+const accionesUsuario = computed(() => [
+  { icono: 'ti-settings', label: 'Configuración', onClick: () => router.push('/configuracion') },
+  { separador: true },
+  {
+    icono: tema.value === 'dark' ? 'ti-sun' : 'ti-moon',
+    label: tema.value === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro',
+    onClick: toggleTema,
+  },
+  { separador: true },
+  { icono: 'ti-logout', label: 'Cerrar sesión', onClick: cerrarSesion },
+]);
+
 function cerrar() {
   sidebarAbierto.value = false;
 }
@@ -133,7 +170,7 @@ async function cerrarSesion() {
         </button>
       </div>
 
-      <AppSearch @expandir-sidebar="expandirSidebar" @navegado="cerrar" />
+      <AppSearch ref="appSearchRef" @expandir-sidebar="expandirSidebar" @navegado="cerrar" />
 
       <AppNav
         :sidebar-colapsado="sidebarColapsado"
@@ -151,22 +188,7 @@ async function cerrarSesion() {
         </div>
         <div class="sb-footer-acciones">
         <NotificacionesCampana />
-        <button
-          class="sb-logout"
-          type="button"
-          :title="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
-          @click="toggleTema"
-        >
-          <i :class="tema === 'dark' ? 'ti ti-sun' : 'ti ti-moon'" aria-hidden="true"></i>
-        </button>
-        <button
-          class="sb-logout sb-logout--salir"
-          type="button"
-          title="Cerrar sesión"
-          @click="cerrarSesion"
-        >
-          <i class="ti ti-logout" aria-hidden="true"></i>
-        </button>
+        <MenuAcciones :acciones="accionesUsuario" label="Configuración y cuenta" />
         </div>
       </div>
     </aside>
@@ -283,10 +305,6 @@ async function cerrarSesion() {
     border-left: none;
     border-top: 1px solid var(--color-border-subtle);
   }
-
-  .sidebar--colapsado .sb-logout--salir {
-    margin-top: 4px;
-  }
 }
 
 /* ── Logo ────────────────────────────────────────────────────── */
@@ -327,9 +345,11 @@ async function cerrarSesion() {
   gap: 8px;
 }
 
-/* Agrupa campana/tema/logout aparte de la identidad, con un separador
-   sutil (mismo tono que la línea sidebar/contenido) para que se lean
-   como dos bloques distintos en vez de una fila continua de iconos. */
+/* Agrupa campana + menú ⋮ (tema, cerrar sesión) aparte de la identidad,
+   con un separador sutil (mismo tono que la línea sidebar/contenido) para
+   que se lean como dos bloques distintos. Tema y logout se condensaron en
+   el menú porque a 240px de ancho 3 botones de ícono truncaban el nombre
+   del usuario (ago 2026). */
 .sb-footer-acciones {
   flex-shrink: 0;
   display: flex;
@@ -337,10 +357,6 @@ async function cerrarSesion() {
   gap: 2px;
   padding-left: 8px;
   border-left: 1px solid var(--color-border-subtle);
-}
-
-.sb-logout--salir {
-  margin-left: 4px;
 }
 
 .sb-user {
@@ -356,7 +372,7 @@ async function cerrarSesion() {
   height: 30px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
-  color: #fff;
+  color: var(--color-text-inverse);
   font-size: 12px;
   font-weight: 700;
   display: flex;

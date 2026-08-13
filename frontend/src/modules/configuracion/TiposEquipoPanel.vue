@@ -10,7 +10,7 @@ import { slugDe } from '../../core/utils.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import Pagination from '../../components/shared/Pagination.vue';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import Modal from '../../components/shared/Modal.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -28,9 +28,9 @@ const editar = ref(null);
 const form = ref({ nombre: '', specs: '', accesorios: '' });
 const errorForm = ref('');
 
-// Foco atrapado mientras el modal está abierto (Fase 4)
-const panelForm = ref(null);
-useFocoAtrapado(panelForm, mostrarForm);
+// Cerrar vía Modal.cerrar() reproduce la animación de salida;
+// el @close del Modal es quien baja mostrarForm.
+const modalForm = ref(null);
 
 const esEdicion = computed(() => !!editar.value);
 
@@ -77,7 +77,7 @@ async function guardar() {
     }
     // El formulario de equipos usa este catálogo: refrescar su copia
     equiposStore.tipos = [...lista.value];
-    mostrarForm.value = false;
+    modalForm.value?.cerrar();
   } catch (e) {
     errorForm.value = e?.message?.includes('duplicate')
       ? 'Ya existe un tipo con ese nombre'
@@ -188,42 +188,38 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Modal -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarForm" class="modal-bg" @click.self="mostrarForm = false">
-      <div ref="panelForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="tipo-eq-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="tipo-eq-title">{{ esEdicion ? `Editar "${editar.nombre}"` : 'Nuevo tipo de equipo' }}</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarForm = false"><i class="ti ti-x"></i></button>
+    <!-- Formulario (Modal accesible compartido) -->
+    <Modal
+      v-if="mostrarForm"
+      ref="modalForm"
+      :titulo="esEdicion ? `Editar “${editar.nombre}”` : 'Nuevo tipo de equipo'"
+      size="sm"
+      @close="mostrarForm = false"
+    >
+      <form id="te-form" class="te-form" @submit.prevent="guardar">
+        <div class="form-group">
+          <label for="te-nombre">Nombre *</label>
+          <input id="te-nombre" v-model="form.nombre" required placeholder="ej: Cámara de seguridad" :disabled="guardando">
         </div>
-        <form @submit.prevent="guardar">
-          <div class="modal-body">
-          <div class="form-group">
-            <label for="te-nombre">Nombre *</label>
-            <input id="te-nombre" v-model="form.nombre" required placeholder="ej: Cámara de seguridad" :disabled="guardando">
-          </div>
-          <div class="form-group">
-            <label for="te-specs">Specs que pide (separadas por coma)</label>
-            <input id="te-specs" v-model="form.specs" placeholder="ej: Resolución, Alcance, Conectividad" :disabled="guardando">
-            <p class="field-hint">Estos campos aparecerán al registrar un equipo de este tipo.</p>
-          </div>
-          <div class="form-group">
-            <label for="te-acc">Accesorios sugeridos (separados por coma)</label>
-            <input id="te-acc" v-model="form.accesorios" placeholder="ej: Fuente de poder, Soporte" :disabled="guardando">
-          </div>
-          </div>
-          <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
-          <div class="modal-actions">
-            <button class="btn" type="button" :disabled="guardando" @click="mostrarForm = false">Cancelar</button>
-            <button class="btn btn-primary" type="submit" :disabled="guardando">
-              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-              {{ guardando ? 'Guardando...' : 'Guardar' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-    </Transition>
+        <div class="form-group">
+          <label for="te-specs">Specs que pide (separadas por coma)</label>
+          <input id="te-specs" v-model="form.specs" placeholder="ej: Resolución, Alcance, Conectividad" :disabled="guardando">
+          <p class="field-hint">Estos campos aparecerán al registrar un equipo de este tipo.</p>
+        </div>
+        <div class="form-group">
+          <label for="te-acc">Accesorios sugeridos (separados por coma)</label>
+          <input id="te-acc" v-model="form.accesorios" placeholder="ej: Fuente de poder, Soporte" :disabled="guardando">
+        </div>
+        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+      </form>
+      <template #acciones>
+        <button class="btn" type="button" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
+        <button class="btn btn-primary" type="submit" form="te-form" :disabled="guardando">
+          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+          {{ guardando ? 'Guardando...' : 'Guardar' }}
+        </button>
+      </template>
+    </Modal>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -256,9 +252,7 @@ onMounted(async () => {
 
 .chip--acc { background: var(--color-success-bg); color: var(--color-success-text); }
 
-/* Ancho: .modal-sm de la escala centralizada (main.css) */
-.modal-title { display: flex; align-items: center; justify-content: space-between; }
-.modal-body { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 12px; }
+.te-form { display: flex; flex-direction: column; gap: 12px; }
 
 .field-hint { margin: 4px 0 0; font-size: 12px; color: var(--color-text-secondary); }
 

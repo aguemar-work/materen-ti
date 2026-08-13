@@ -310,24 +310,26 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
         <h2>5. Navegación</h2>
 
         <h3>Ítem de navegación del sidebar</h3>
-        <p class="ds-nota ds-nota--warn">
-          Sin tratamiento de <code>:focus-visible</code> propio en <code>AppNav.vue</code> — el
-          estado "Focus" de abajo se ve igual que "Inactivo" porque así es en el código real
-          (DS-04, pendiente).
+        <p class="ds-nota ds-nota--ok">
+          <code>AppNav.vue</code> ganó <code>:focus-visible</code> propio (2026-08-13, DS-04
+          resuelto) — anillo <code>outline</code> igual al ya usado en el título de grupo del
+          sidebar (<code>.sb-nav-titulo</code>), en vez del anillo <code>box-shadow</code> que
+          modela <code>design.pen</code> (<code>rowIW3We</code>): sin ese ajuste el
+          <code>box-shadow</code> se recortaría contra los 2px de <code>gap</code> entre ítems.
         </p>
         <div class="ds-nav-demo">
           <a href="#" class="ds-nav-item" @click.prevent>Inactivo</a>
           <a href="#" class="ds-nav-item force-hover" @click.prevent>Hover</a>
-          <a href="#" class="ds-nav-item" @click.prevent>Focus (= Inactivo)</a>
+          <a href="#" class="ds-nav-item force-focus" @click.prevent>Focus</a>
           <a href="#" class="ds-nav-item ds-nav-item--active" @click.prevent>Activo</a>
         </div>
 
         <h3>Ítem de menú de acciones</h3>
-        <p class="ds-nota ds-nota--warn">
+        <p class="ds-nota ds-nota--ok">
           <code>design.pen</code> (<code>rowY1dDW</code>) modela un anillo de foco
-          (<code>$brand.700</code>) para este ítem; <code>MenuAcciones.vue:194-197</code> solo
-          cambia el fondo en <code>:focus-visible</code>, sin anillo — el estado "Focus" de abajo
-          se ve igual que "Hover".
+          (<code>$brand.700</code>) para este ítem; <code>MenuAcciones.vue</code> ganó ese anillo
+          en <code>:focus-visible</code> (2026-08-13, DS-04 resuelto) — antes solo cambiaba el
+          fondo, igual que "Hover".
         </p>
         <div class="ds-menu-demo">
           <button type="button" class="ds-menu-item">Default</button>
@@ -341,10 +343,11 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
           teclado con <code>aria-activedescendant</code> + clase <code>.is-activo</code>, sin
           mover el foco del input.
         </p>
-        <p class="ds-nota ds-nota--warn">
+        <p class="ds-nota ds-nota--ok">
           <code>design.pen</code> (<code>rowlEgjG</code>) modela un anillo de foco
-          (<code>$brand.700</code>) para el estado "Activo"; en <code>BuscadorCombo.vue</code> ese
-          estado solo cambia el fondo (<code>--color-accent-subtle</code>), sin anillo.
+          (<code>$brand.700</code>) para el estado "Activo"; <code>BuscadorCombo.vue</code> ganó
+          ese anillo en <code>.is-activo</code> (2026-08-13, DS-04 resuelto), separado del simple
+          cambio de fondo que sigue usando <code>:hover</code>.
         </p>
         <ul class="ds-combo-demo">
           <li class="ds-combo-item">Default</li>
@@ -357,18 +360,23 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
         <h2>6. Datos y tablas</h2>
 
         <h3>Encabezado ordenable</h3>
+        <p class="ds-nota ds-nota--info">
+          El ícono nace atenuado (<code>opacity: .5</code>) y se aclara en <code>Hover</code>/
+          <code>Focus</code> — señala que la columna es clickeable sin competir visualmente con
+          las que ya están ordenadas.
+        </p>
         <div class="ds-tabla-wrap">
           <table>
             <thead>
               <tr>
                 <th class="ds-th-ordenable">
                   <button type="button" class="ds-th-btn">
-                    Nombre <i class="ti ti-arrows-sort" aria-hidden="true"></i>
+                    Nombre <i class="ti ti-arrows-sort ds-th-icono" aria-hidden="true"></i>
                   </button>
                 </th>
                 <th class="ds-th-ordenable">
                   <button type="button" class="ds-th-btn force-hover">
-                    Área (hover) <i class="ti ti-arrows-sort" aria-hidden="true"></i>
+                    Área (hover) <i class="ti ti-arrows-sort ds-th-icono" aria-hidden="true"></i>
                   </button>
                 </th>
               </tr>
@@ -382,6 +390,14 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
             </tbody>
           </table>
         </div>
+        <p class="ds-nota ds-nota--ok">
+          <code>ThOrdenable.vue</code> ganó <code>:focus-visible</code> propio (2026-08-13, DS-04
+          resuelto) — mismo anillo <code>outline</code> que el ítem de sidebar, y el ícono se
+          aclara igual que en <code>Hover</code>.
+        </p>
+        <button type="button" class="ds-th-btn ds-th-btn--suelto force-focus">
+          Estado (focus) <i class="ti ti-arrows-sort ds-th-icono" aria-hidden="true"></i>
+        </button>
 
         <h3>Tarjeta de métrica</h3>
         <div class="ds-metricas">
@@ -695,6 +711,7 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
   color: var(--color-text-secondary); text-decoration: none; font-size: 13.5px; font-weight: 500;
 }
 .ds-nav-item.force-hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.ds-nav-item.force-focus { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 .ds-nav-item--active { background: var(--color-accent-subtle); color: var(--color-accent-text); font-weight: 600; }
 
 .ds-menu-demo { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -704,19 +721,29 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
   border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans);
   font-size: var(--fs-base); cursor: pointer;
 }
-.ds-menu-item.force-hover,
-.ds-menu-item.force-focus { background: var(--color-bg-hover); }
+.ds-menu-item.force-hover { background: var(--color-bg-hover); }
+.ds-menu-item.force-focus { background: var(--color-bg-hover); box-shadow: 0 0 0 3px var(--mat-ring); }
 
 .ds-combo-demo { list-style: none; display: flex; flex-direction: column; gap: 2px; max-width: 260px; padding: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-elevated); }
 /* BuscadorCombo.vue .combo-lista li */
 .ds-combo-item { padding: 8px 10px; border-radius: 6px; font-size: var(--fs-base); }
-.ds-combo-item.force-hover,
-.ds-combo-item--activo { background: var(--color-accent-subtle); }
+.ds-combo-item.force-hover { background: var(--color-accent-subtle); }
+.ds-combo-item--activo { background: var(--color-accent-subtle); box-shadow: 0 0 0 3px var(--mat-ring); }
 
 /* ThOrdenable.vue .th-ordenable-btn */
 .ds-th-ordenable { padding: 0; }
 .ds-th-btn { display: flex; align-items: center; gap: 4px; width: 100%; padding: 10px 1.25rem; background: none; border: none; font: inherit; color: inherit; cursor: pointer; }
+.ds-th-btn--suelto { width: auto; border-radius: var(--radius-sm); }
 .ds-th-btn.force-hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.ds-th-btn.force-focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+.ds-th-icono { font-size: 13px; opacity: 0.5; }
+.ds-th-btn.force-hover .ds-th-icono,
+.ds-th-btn.force-focus .ds-th-icono { opacity: 1; }
 
 /* ── Datos y tablas ───────────────────────────────────────────── */
 .ds-metricas { display: flex; gap: 12px; flex-wrap: wrap; }

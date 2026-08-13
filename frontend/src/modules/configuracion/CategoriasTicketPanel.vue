@@ -11,7 +11,7 @@ import { slugDe } from '../../core/utils.js';
 import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import Modal from '../../components/shared/Modal.vue';
 
 // Las categorías viven en el store de catálogos; las subcategorías son
 // un detalle de este panel y se quedan locales (insforgeApi directo).
@@ -28,9 +28,9 @@ const catEditar = ref(null);
 const catForm = ref({ id: '', nombre: '' });
 const errorForm = ref('');
 
-// Foco atrapado mientras el modal está abierto (Fase 4)
-const panelCatForm = ref(null);
-useFocoAtrapado(panelCatForm, mostrarCatForm);
+// Cerrar vía Modal.cerrar() reproduce la animación de salida;
+// el @close del Modal es quien baja mostrarCatForm.
+const modalCatForm = ref(null);
 
 // Alta rápida de subcategoría (inline, sin modal)
 const nuevaSubPorCategoria = ref({});
@@ -89,7 +89,7 @@ async function guardarCategoria() {
       await catStore.crear({ id: slugDe(catForm.value.nombre), nombre: catForm.value.nombre });
       showToast('Categoría creada');
     }
-    mostrarCatForm.value = false;
+    modalCatForm.value?.cerrar();
   } catch (e) {
     errorForm.value = e?.message?.includes('duplicate') ? 'Ya existe una categoría con ese nombre' : (e?.message || 'Error al guardar');
   } finally {
@@ -237,33 +237,29 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Modal categoría -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarCatForm" class="modal-bg" @click.self="mostrarCatForm = false">
-      <div ref="panelCatForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="cat-form-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="cat-form-title">{{ catEditar ? 'Editar categoría' : 'Nueva categoría' }}</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarCatForm = false"><i class="ti ti-x"></i></button>
+    <!-- Formulario de categoría (Modal accesible compartido) -->
+    <Modal
+      v-if="mostrarCatForm"
+      ref="modalCatForm"
+      :titulo="catEditar ? 'Editar categoría' : 'Nueva categoría'"
+      size="sm"
+      @close="mostrarCatForm = false"
+    >
+      <form id="cat-form" @submit.prevent="guardarCategoria">
+        <div class="form-group">
+          <label for="cat-nombre">Nombre *</label>
+          <input id="cat-nombre" v-model="catForm.nombre" required placeholder="ej: Accesos y Cuentas" :disabled="guardando">
         </div>
-        <form @submit.prevent="guardarCategoria">
-          <div class="modal-body">
-          <div class="form-group">
-            <label for="cat-nombre">Nombre *</label>
-            <input id="cat-nombre" v-model="catForm.nombre" required placeholder="ej: Accesos y Cuentas" :disabled="guardando">
-          </div>
-          </div>
-          <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
-          <div class="modal-actions">
-            <button class="btn" type="button" :disabled="guardando" @click="mostrarCatForm = false">Cancelar</button>
-            <button class="btn btn-primary" type="submit" :disabled="guardando">
-              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-              {{ guardando ? 'Guardando...' : 'Guardar' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-    </Transition>
+        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+      </form>
+      <template #acciones>
+        <button class="btn" type="button" :disabled="guardando" @click="modalCatForm?.cerrar()">Cancelar</button>
+        <button class="btn btn-primary" type="submit" form="cat-form" :disabled="guardando">
+          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+          {{ guardando ? 'Guardando...' : 'Guardar' }}
+        </button>
+      </template>
+    </Modal>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -339,8 +335,4 @@ onMounted(async () => {
 }
 
 .cat-sub-nueva input { flex: 1; }
-
-/* Ancho: .modal-sm de la escala centralizada (main.css) */
-.modal-title { display: flex; align-items: center; justify-content: space-between; }
-.modal-body { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 12px; }
 </style>

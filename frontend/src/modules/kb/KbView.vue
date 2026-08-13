@@ -79,14 +79,20 @@ onMounted(async () => {
             <i class="ti ti-search"></i>
             <input v-model="busqueda" type="text" placeholder="Buscar por título o síntoma...">
           </div>
-          <select v-model="filtroCategoria">
-            <option value="">Todas las categorías</option>
-            <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-          </select>
-          <select v-model="filtroEstado">
-            <option value="">Todos los estados</option>
-            <option v-for="e in OPCIONES_ESTADO_KB" :key="e.valor" :value="e.valor">{{ e.label }}</option>
-          </select>
+          <div class="filter-field">
+            <label for="filtro-categoria">Categoría</label>
+            <select id="filtro-categoria" v-model="filtroCategoria">
+              <option value="">Todas las categorías</option>
+              <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+            </select>
+          </div>
+          <div class="filter-field">
+            <label for="filtro-estado">Estado</label>
+            <select id="filtro-estado" v-model="filtroEstado">
+              <option value="">Todos los estados</option>
+              <option v-for="e in OPCIONES_ESTADO_KB" :key="e.valor" :value="e.valor">{{ e.label }}</option>
+            </select>
+          </div>
         </div>
 
         <div v-if="error" class="no-results kb-error">{{ error }}</div>

@@ -81,14 +81,17 @@ onMounted(async () => {
     <main class="page">
       <div class="card card--fill">
         <div class="filters">
-          <select v-model="filtroAccion">
-            <option value="">Todas las acciones</option>
-            <option value="ver">Vio contraseña</option>
-            <option value="copiar">Copió contraseña</option>
-            <option value="enviar">Creó entrega</option>
-            <option value="entrega_abierta">Entrega abierta</option>
-            <option value="acceso_denegado">Acceso denegado</option>
-          </select>
+          <div class="filter-field">
+            <label for="filtro-accion">Acción</label>
+            <select id="filtro-accion" v-model="filtroAccion">
+              <option value="">Todas las acciones</option>
+              <option value="ver">Vio contraseña</option>
+              <option value="copiar">Copió contraseña</option>
+              <option value="enviar">Creó entrega</option>
+              <option value="entrega_abierta">Entrega abierta</option>
+              <option value="acceso_denegado">Acceso denegado</option>
+            </select>
+          </div>
         </div>
 
         <EmptyState

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@insforge/sdk": "^1.4.0",
+    "@sentry/vue": "^10.70.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "pinia": "^3.0.4",

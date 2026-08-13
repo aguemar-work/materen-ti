@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 
-defineProps({
+const props = defineProps({
   sidebarColapsado: { type: Boolean, default: false },
   ticketsSinAsignar: { type: Number, default: 0 },
 });
@@ -12,18 +12,30 @@ const emit = defineEmits(['cerrar-drawer']);
 
 const auth = useAuthStore();
 
-// Nav agrupada por frecuencia de uso: día a día arriba, inventario al
-// medio, auditoría y catálogos al fondo.
+// Nav agrupada semánticamente (propuesta ya validada en design.pen,
+// GUIA-UX-UI.md "Sidebar real reagrupado"): día a día arriba, luego
+// Personas / Activos y credenciales / Conocimiento y mejora, auditoría
+// y catálogos al fondo. Cada grupo lleva un `id` fijo (no el `label`,
+// que es copy) para mantener consistencia con las claves de preferencia
+// ya persistidas en el sidebar (colapso general).
+//
+// Sin acordeón por grupo (retirado ago 2026, rediseño de sidebar): con
+// solo ~12 ítems el plegado por grupo agregaba más reglas de
+// comportamiento que valor (badge que se reubicaba, rail que lo ignoraba,
+// estado que había que recordar) — los grupos quedan siempre visibles,
+// como encabezados de sección estáticos.
 const navGrupos = computed(() => [
   {
-    label: null,
+    id: 'dia-a-dia',
+    label: 'Día a día',
     items: [
       { path: '/dashboard', label: 'Dashboard', icon: 'ti ti-layout-dashboard' },
-      { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset' },
+      { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset', badge: props.ticketsSinAsignar },
     ],
   },
   {
-    label: 'Gestión',
+    id: 'personas',
+    label: 'Personas',
     items: [
       { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
       // Solo JEFE: la migración a empleados y el hard delete que hace esta
@@ -31,55 +43,76 @@ const navGrupos = computed(() => [
       ...(auth.esJefe
         ? [{ path: '/personal-registros', label: 'Pre-registro de personal', icon: 'ti ti-id-badge-2' }]
         : []),
+    ],
+  },
+  {
+    id: 'activos-credenciales',
+    label: 'Activos y credenciales',
+    items: [
       { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
       { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
       { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
+    ],
+  },
+  {
+    id: 'conocimiento-mejora',
+    label: 'Conocimiento y mejora',
+    items: [
       { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books' },
       { path: '/problemas', label: 'Problemas', icon: 'ti ti-alert-hexagon' },
       { path: '/encuestas', label: 'Encuestas', icon: 'ti ti-clipboard-list' },
     ],
   },
   {
+    id: 'administracion',
     label: 'Administración',
     items: [
+      // Solo JEFE. Configuración se movió al menú de cuenta (⋮ junto a
+      // tema/cerrar sesión, ver AppLayout.vue) — ago 2026, rediseño de
+      // sidebar: no es una sección de uso diario, no necesita un ítem
+      // de nav propio.
       ...(auth.esJefe
         ? [
             { path: '/actividad', label: 'Actividad', icon: 'ti ti-activity' },
             { path: '/accesos-sensibles', label: 'Accesos sensibles', icon: 'ti ti-shield-lock' },
           ]
         : []),
-      // Catálogos (empresas, plataformas, tipos, ubicaciones, staff)
-      { path: '/configuracion', label: 'Configuración', icon: 'ti ti-settings' },
     ],
   },
-]);
+  // Grupos sin ítems visibles para el rol actual (ej. "Administración"
+  // para ASISTENTE) no se renderizan — un encabezado sin filas debajo
+  // se leería como una sección rota.
+].filter((grupo) => grupo.items.length > 0));
 </script>
 
 <template>
   <nav class="sb-nav" aria-label="Navegación">
     <div
-      v-for="(grupo, i) in navGrupos"
-      :key="grupo.label ?? i"
+      v-for="grupo in navGrupos"
+      :key="grupo.id"
       class="sb-nav-grupo"
     >
       <div v-if="grupo.label" class="sb-nav-titulo">{{ grupo.label }}</div>
-      <RouterLink
-        v-for="item in grupo.items"
-        :key="item.path"
-        :to="item.path"
-        class="sb-nav-item"
-        active-class="sb-nav-item--active"
-        :title="sidebarColapsado ? item.label : null"
-        @click="emit('cerrar-drawer')"
-      >
-        <i :class="item.icon" aria-hidden="true"></i>
-        <span class="sb-nav-label">{{ item.label }}</span>
-        <span
-          v-if="item.path === '/tickets' && ticketsSinAsignar"
-          class="badge-count sb-nav-badge"
-          :title="`${ticketsSinAsignar} ticket(s) sin asignar`"
-        >{{ ticketsSinAsignar }}</span>
-      </RouterLink>
+
+      <div class="sb-nav-grupo-items">
+        <RouterLink
+          v-for="item in grupo.items"
+          :key="item.path"
+          :to="item.path"
+          class="sb-nav-item"
+          active-class="sb-nav-item--active"
+          :title="sidebarColapsado ? item.label : null"
+          @click="emit('cerrar-drawer')"
+        >
+          <i :class="item.icon" aria-hidden="true"></i>
+          <span class="sb-nav-label">{{ item.label }}</span>
+          <span
+            v-if="item.badge"
+            class="badge-count sb-nav-badge"
+            :title="`${item.badge} ticket(s) sin asignar`"
+          >{{ item.badge }}</span>
+        </RouterLink>
+      </div>
     </div>
   </nav>
 </template>
@@ -95,7 +128,7 @@ const navGrupos = computed(() => [
   padding: 10px 10px;
   display: flex;
   flex-direction: column;
-  gap: 14px; /* separación entre grupos (sin líneas divisorias) */
+  gap: 18px; /* separación entre grupos (sin líneas divisorias) */
 }
 
 .sb-nav-grupo {
@@ -104,20 +137,28 @@ const navGrupos = computed(() => [
   gap: 2px;
 }
 
+.sb-nav-grupo-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Encabezado de sección estático (sin acordeón, ago 2026): solo etiqueta,
+   no es interactivo — sin cursor, sin hover, sin foco propio. */
 .sb-nav-titulo {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-secondary);
-  padding: 0 12px 2px;
+  padding: 6px 12px 4px;
 }
 
 .sb-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
+  padding: 10px 12px;
   border-radius: 8px;
   color: var(--sb-text, var(--color-text-secondary));
   text-decoration: none;
@@ -134,6 +175,11 @@ const navGrupos = computed(() => [
 .sb-nav-item:hover {
   background: var(--sb-hover, var(--color-bg-hover));
   color: var(--sb-text-strong, var(--color-text-primary));
+}
+
+.sb-nav-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 .sb-nav-item--active {
@@ -171,7 +217,7 @@ const navGrupos = computed(() => [
 
   .sidebar--colapsado .sb-nav-item {
     justify-content: center;
-    padding: 9px 0;
+    padding: 10px 0;
     position: relative;
   }
 

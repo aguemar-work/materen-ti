@@ -491,7 +491,7 @@ onUnmounted(() => store.limpiar());
   padding: 8px 10px;
   border-radius: var(--radius-md);
   background: var(--color-bg-subtle);
-  border-left: 3px solid transparent;
+  border-left: 2px solid transparent;
 }
 
 .accion-item--vencida { border-left-color: var(--color-danger); }

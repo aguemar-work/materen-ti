@@ -175,11 +175,14 @@ onMounted(async () => {
               placeholder="Buscar por correo o plataforma..."
             >
           </div>
-          <select v-model="filtroTipo">
-            <option value="">Todos los tipos</option>
-            <option value="compartida">Compartidos</option>
-            <option value="reutilizable">Reutilizables</option>
-          </select>
+          <div class="filter-field">
+            <label for="filtro-tipo">Tipo</label>
+            <select id="filtro-tipo" v-model="filtroTipo">
+              <option value="">Todos los tipos</option>
+              <option value="compartida">Compartidos</option>
+              <option value="reutilizable">Reutilizables</option>
+            </select>
+          </div>
         </div>
 
         <div v-if="cargando" class="no-results solo-movil">Cargando correos...</div>

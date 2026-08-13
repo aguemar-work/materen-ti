@@ -452,14 +452,20 @@ onMounted(async () => {
             <i class="ti ti-search"></i>
             <input v-model="busqueda" type="text" placeholder="Buscar por código, marca, serie o portador...">
           </div>
-          <select v-model="filtroTipo">
-            <option value="">Todos los tipos</option>
-            <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
-          </select>
-          <select v-model="filtroSituacion">
-            <option value="">Todas las situaciones</option>
-            <option v-for="(s, k) in SITUACIONES_EQUIPO" :key="k" :value="k">{{ s.label }}</option>
-          </select>
+          <div class="filter-field">
+            <label for="filtro-tipo">Tipo</label>
+            <select id="filtro-tipo" v-model="filtroTipo">
+              <option value="">Todos los tipos</option>
+              <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
+            </select>
+          </div>
+          <div class="filter-field">
+            <label for="filtro-situacion">Situación</label>
+            <select id="filtro-situacion" v-model="filtroSituacion">
+              <option value="">Todas las situaciones</option>
+              <option v-for="(s, k) in SITUACIONES_EQUIPO" :key="k" :value="k">{{ s.label }}</option>
+            </select>
+          </div>
         </div>
 
         <div v-if="cargando" class="no-results solo-movil">Cargando equipos...</div>

@@ -765,6 +765,7 @@
     /* ── Filters ── */
     .filters {
       display: flex;
+      align-items: flex-end;
       gap: 8px;
       padding: 0.85rem 1.25rem;
       background: var(--color-bg-subtle);
@@ -801,22 +802,72 @@
       transition: border-color 0.15s, box-shadow 0.15s;
     }
 
-    .filters select {
-      flex: 1;
-      min-width: 140px;
+    /* Rediseño de dropdowns (ago 2026): base ÚNICA para TODO <select> del
+       sistema, envuelto o suelto — antes solo los que vivían dentro de
+       .filters/.form-group tenían estilo propio; los que no (selects de
+       acción sueltos en tablas/tarjetas, ej. StaffView, ProblemaDetalleView,
+       CategoriasTicketPanel) caían al look nativo del navegador, que es
+       justo "no pertenecer al sistema". Pierde también la flecha nativa
+       —inconsistente entre Windows/Mac/Chrome/Firefox— por un chevron de
+       línea propio (mismo trazo que Tabler), en el mismo tono que el ícono
+       de lupa del buscador (--color-text-tertiary). Data-URI en vez de un
+       ícono real: una sola propiedad CSS, sin depender de la fuente de
+       iconos ni de un elemento extra superpuesto. */
+    select {
       height: 36px;
-      padding: 0 10px;
+      padding: 0 30px 0 12px;
       border: 1px solid var(--color-border);
       border-radius: var(--radius-md);
       font-size: var(--fs-base);
-      background: var(--color-bg-elevated);
+      background-color: var(--color-bg-elevated);
       color: var(--color-text-primary);
       font-family: var(--font-sans);
       cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 16px;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
 
-    .search-wrap input:focus,
-    .filters select:focus {
+    select:focus {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--mat-ring);
+    }
+
+    [data-theme="dark"] select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    }
+
+    /* Ancho: dentro de .filters/.form-group el <select> llena su columna;
+       suelto en una tabla/tarjeta se queda al ancho de su contenido. */
+    .filters select {
+      width: 100%;
+    }
+
+    /* Envuelve cada select de filtro (DS-05): el <select> solo no acepta
+       un <label> visible sin romper la alineación de .filters, así que el
+       label va arriba y el par ocupa el espacio flex que antes ocupaba el
+       select suelto. */
+    .filter-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .filter-field label {
+      font-size: var(--fs-xs);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+    }
+
+    /* select:focus ya cubierto por la regla global de <select> */
+    .search-wrap input:focus {
       outline: none;
       border-color: var(--color-accent);
       box-shadow: 0 0 0 3px var(--mat-ring);
@@ -1089,6 +1140,13 @@
 
     .timeline-dot--active { background: var(--color-success-text); }
     .timeline-dot--closed { background: var(--color-text-tertiary); }
+    /* Historial de ticket (TicketDetalleView): mismo color que estadoInfo()
+       usa para el badge de cada estado, vía colorDeEstado(). */
+    .timeline-dot--info { background: var(--color-info-text); }
+    .timeline-dot--warning { background: var(--color-warning-text); }
+    .timeline-dot--success { background: var(--color-success-text); }
+    .timeline-dot--neutral { background: var(--color-neutral-text); }
+    .timeline-dot--danger { background: var(--color-danger-text); }
 
     .timeline-content { font-size: var(--fs-base); flex: 1; min-width: 0; }
 
@@ -1355,10 +1413,15 @@
       border: 1px solid var(--color-border);
       border-radius: var(--radius-md);
       font-size: var(--fs-base);
-      background: var(--color-bg-elevated);
+      background-color: var(--color-bg-elevated);
       color: var(--color-text-primary);
       font-family: var(--font-sans);
       transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .form-group select {
+      padding-right: 32px;
+      cursor: pointer;
     }
 
     .form-group textarea {
@@ -1544,7 +1607,7 @@
 
       /* Filtros apilados: buscador a fila completa, selects a media fila */
       .filters .search-wrap { flex-basis: 100%; }
-      .filters select { flex: 1 1 45%; }
+      .filters .filter-field { flex: 1 1 45%; }
 
       /* Toast a lo ancho, legible en pantallas angostas */
       .toast {

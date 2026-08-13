@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { insforgeApi, getClient } from '../api/insforge.js';
+import { insforgeApi } from '../api/insforge.js';
 
 // Detalle de un ticket: toda la data de TicketDetalleView pasa por acá.
 // Mismo patrón que stores/tickets.js: state plano, actions async que lanzan
@@ -94,13 +94,6 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
     async comentar(mensaje, interno) {
       await insforgeApi.crearComentarioTicket(this.ticket.id, mensaje, interno);
       await this.recargarComentarios();
-    },
-
-    async enviarEncuesta() {
-      const { data } = await getClient().functions.invoke('tickets', {
-        body: { action: 'enviarEncuesta', ticketId: this.ticket.id },
-      });
-      return data;
     },
 
     async recargarSatisfaccion() {

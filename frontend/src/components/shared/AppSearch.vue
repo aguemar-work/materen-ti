@@ -20,6 +20,10 @@ async function expandirYBuscar() {
   inputBusqueda.value?.focus();
 }
 
+// Expuesto para el atajo global Ctrl/Cmd+K (AppLayout.vue) — mismo método
+// que ya usa el botón de lupa cuando el sidebar está colapsado.
+defineExpose({ enfocar: expandirYBuscar });
+
 const SIN_RESULTADOS = { empleados: [], cuentas: [], equipos: [], tickets: [], licencias: [] };
 const resultados = ref({ ...SIN_RESULTADOS });
 const busquedaAbierta = ref(false);
@@ -49,8 +53,16 @@ const { termino: busqueda, cargando: buscando } = useBusqueda({
 });
 watch(busqueda, (q) => { busquedaAbierta.value = q.trim().length >= 2; });
 
+const resultadosEl = ref(null);
+
+// El cierre se retrasa: si el blur vino de un Tab hacia un resultado (en vez
+// de un click), el foco ya está dentro de `.sb-resultados` cuando el timeout
+// corre — no cerrar en ese caso, o el v-if desmontaría el botón enfocado.
 function cerrarBusqueda() {
-  setTimeout(() => { busquedaAbierta.value = false; }, 150);
+  setTimeout(() => {
+    if (resultadosEl.value?.contains(document.activeElement)) return;
+    busquedaAbierta.value = false;
+  }, 150);
 }
 
 function limpiarBusqueda() {
@@ -116,7 +128,7 @@ function irALicencia(lic) {
       @focus="busqueda.trim().length >= 2 && (busquedaAbierta = true)"
       @blur="cerrarBusqueda"
     >
-    <div v-if="busquedaAbierta" class="sb-resultados">
+    <div v-if="busquedaAbierta" ref="resultadosEl" class="sb-resultados">
       <div v-if="buscando" class="sb-res-vacio">Buscando...</div>
       <template v-else-if="hayResultados">
         <template v-if="resultados.empleados.length">
@@ -126,7 +138,8 @@ function irALicencia(lic) {
             :key="e.id"
             type="button"
             class="sb-res-item"
-            @mousedown.prevent="irAEmpleado(e)"
+            @mousedown.prevent
+            @click="irAEmpleado(e)"
           >
             <i class="ti ti-user"></i>
             <span class="sb-res-main">{{ e.nombres }} {{ e.apellidos }}</span>
@@ -140,7 +153,8 @@ function irALicencia(lic) {
             :key="c.id"
             type="button"
             class="sb-res-item"
-            @mousedown.prevent="irACuenta(c)"
+            @mousedown.prevent
+            @click="irACuenta(c)"
           >
             <i class="ti ti-key"></i>
             <span class="sb-res-main">{{ c.usuario }}</span>
@@ -154,7 +168,8 @@ function irALicencia(lic) {
             :key="eq.id"
             type="button"
             class="sb-res-item"
-            @mousedown.prevent="irAEquipo(eq)"
+            @mousedown.prevent
+            @click="irAEquipo(eq)"
           >
             <i class="ti ti-devices"></i>
             <span class="sb-res-main">{{ eq.codigo }}</span>
@@ -168,7 +183,8 @@ function irALicencia(lic) {
             :key="t.id"
             type="button"
             class="sb-res-item"
-            @mousedown.prevent="irATicket(t)"
+            @mousedown.prevent
+            @click="irATicket(t)"
           >
             <i class="ti ti-headset"></i>
             <span class="sb-res-main">{{ t.titulo }}</span>
@@ -182,7 +198,8 @@ function irALicencia(lic) {
             :key="lic.id"
             type="button"
             class="sb-res-item"
-            @mousedown.prevent="irALicencia(lic)"
+            @mousedown.prevent
+            @click="irALicencia(lic)"
           >
             <i class="ti ti-license"></i>
             <span class="sb-res-main">{{ lic.software }}</span>
@@ -254,7 +271,8 @@ function irALicencia(lic) {
 
 .sb-busqueda input:focus {
   background: var(--color-bg-elevated);
-  border-color: var(--color-border);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--mat-ring);
 }
 
 .sb-resultados {

@@ -10,6 +10,31 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-13** — Observabilidad y rendimiento del dashboard (roadmap
+  pedido explícitamente por el usuario). `@sentry/vue` instalado e
+  inicializado en `main.js` (solo `PROD` + `VITE_SENTRY_DSN` configurado,
+  sin Session Replay/tracing/logs, `sendDefaultPii: false` — esta app
+  maneja DNI/tickets/credenciales); DSN real y host de ingesta en el
+  `connect-src` de ambos `vercel.json` ya configurados por el usuario —
+  cierra D-01, verificado de punta a punta (build de producción real +
+  Playwright: sin violaciones de CSP, evento de prueba aceptado por
+  Sentry). `api/domains/dashboard.js`: `getEstadisticas()` pasa de
+  descargar filas completas a `count`/`head` (P-01); `pendientesTickets()`
+  consolida 3 round-trips solapados en 1 (P-04). Detalle y estado en
+  `docs/HISTORIAL-AUDITORIAS.md` (Ciclo 2). También se agregó el atajo
+  Ctrl/Cmd+K para el buscador global — ver `docs/GUIA-UX-UI.md`.
+- **2026-08-13** — Retiro de toda funcionalidad de correo en tickets
+  (decisión de producto: el sistema no debe enviar avisos/notificaciones por
+  correo por el momento). Migración 055 elimina el trigger/función
+  `notify_correo_fallido()` (049); `functions/tickets.ts` pierde el correo de
+  confirmación al crear y la acción `enviarEncuesta` (con su `plantillaCorreo`
+  helper); frontend pierde la llamada automática a `enviarEncuesta()` en
+  `marcarResuelto()` (`TicketDetalleView.vue`/`ticketDetalle.js`) y las
+  referencias a `correo_fallido`/`ticket_correo_fallido` en
+  `dominio-tickets.js`/`notificacionIconos.js`. La encuesta de satisfacción
+  sigue generándose al cerrar, pero sin ningún aviso — el enlace queda sin
+  canal de entrega. Actualizados README.md, `docs/PANORAMA_SISTEMA.md` y
+  `docs/HISTORIAL-AUDITORIAS.md` (S-01 marcado como superado).
 - **2026-08-13** — Primer porteo real de `design.pen` a producción, 5
   commits (Fases A-E): tokens aditivos en `main.css` (`space-1..12`,
   `danger-hover`/`-solid`, `whatsapp-text`); 5 variantes de `.btn` con foco

@@ -149,14 +149,20 @@ onMounted(async () => {
             <i class="ti ti-search"></i>
             <input v-model="busqueda" type="text" placeholder="Buscar por código, título o solicitante...">
           </div>
-          <select v-model="filtroEstado">
-            <option value="">Todos los estados</option>
-            <option v-for="(v, k) in ESTADOS" :key="k" :value="k">{{ v.label }}</option>
-          </select>
-          <select v-model="filtroPrioridad">
-            <option value="">Toda prioridad</option>
-            <option v-for="(v, k) in PRIORIDADES" :key="k" :value="k">{{ v.label }}</option>
-          </select>
+          <div class="filter-field">
+            <label for="filtro-estado">Estado</label>
+            <select id="filtro-estado" v-model="filtroEstado">
+              <option value="">Todos los estados</option>
+              <option v-for="(v, k) in ESTADOS" :key="k" :value="k">{{ v.label }}</option>
+            </select>
+          </div>
+          <div class="filter-field">
+            <label for="filtro-prioridad">Prioridad</label>
+            <select id="filtro-prioridad" v-model="filtroPrioridad">
+              <option value="">Toda prioridad</option>
+              <option v-for="(v, k) in PRIORIDADES" :key="k" :value="k">{{ v.label }}</option>
+            </select>
+          </div>
           <div class="chips-filtro">
             <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': misTickets }" @click="toggleMisTickets">
               <i class="ti ti-user" aria-hidden="true"></i> Mis tickets

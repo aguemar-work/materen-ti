@@ -54,6 +54,11 @@ function icono() {
 
 .th-ordenable-btn:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 .th-ordenable-btn:hover .th-ordenable-icono { opacity: 1; }
+.th-ordenable-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.th-ordenable-btn:focus-visible .th-ordenable-icono { opacity: 1; }
 .th-ordenable[aria-sort="ascending"] .th-ordenable-icono,
 .th-ordenable[aria-sort="descending"] .th-ordenable-icono { opacity: 1; color: var(--color-primary); }
 </style>
