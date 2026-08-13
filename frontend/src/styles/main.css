@@ -1437,7 +1437,31 @@
       transition: opacity 0.3s, transform 0.3s;
     }
 
-    .toast i { font-size: 16px; color: var(--color-accent); }
+    .toast i { font-size: 16px; color: currentColor; }
+
+    /* Variantes semánticas (design.pen "Variant set — Toast"): fondo +
+       borde + texto/ícono del color de estado, no fondo neutro con solo
+       el ícono coloreado. El ícono hereda color vía currentColor. */
+    .toast-success {
+      background: var(--color-success-bg);
+      color: var(--color-success-text);
+      border-color: var(--color-success-border);
+    }
+    .toast-error {
+      background: var(--color-danger-bg);
+      color: var(--color-danger-text);
+      border-color: var(--color-danger-border);
+    }
+    .toast-warning {
+      background: var(--color-warning-bg);
+      color: var(--color-warning-text);
+      border-color: var(--color-warning-border);
+    }
+    .toast-info {
+      background: var(--color-info-bg);
+      color: var(--color-info-text);
+      border-color: var(--color-info-border);
+    }
 
     /* ── Lista de tarjetas (reemplazo móvil de tablas en módulos operativos) ── */
     /* Dual render: la vista mantiene su <table> (.solo-escritorio) y agrega

@@ -6,9 +6,16 @@ export function initToast() {
   toastEl = document.getElementById('toast');
 }
 
+const ICONOS = {
+  success: 'ti-check',
+  error: 'ti-alert-circle',
+  warning: 'ti-alert-triangle',
+  info: 'ti-info-circle',
+};
+
 export function showToast(msg, type = 'success') {
   if (!toastEl) return;
-  const icon = type === 'error' ? 'ti-alert-circle' : 'ti-check';
+  const icon = ICONOS[type] || ICONOS.success;
   toastEl.innerHTML = `<i class="ti ${icon}" aria-hidden="true"></i> ${esc(msg)}`;
   toastEl.className = `toast toast-${type}`;
   toastEl.style.display = 'flex';
