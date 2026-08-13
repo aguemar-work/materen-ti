@@ -70,6 +70,15 @@ const ESTADOS_BOTON = [
   { clave: 'disabled', etiqueta: 'Deshabilitado' },
 ];
 
+// ── Botón icono: sin variant set propio en design.pen todavía — 4 estados
+// reales de .icon-btn (sin "Cargando", no se usa en este componente hoy).
+const ESTADOS_ICON_BTN = [
+  { clave: 'default', etiqueta: 'Default' },
+  { clave: 'hover', etiqueta: 'Hover' },
+  { clave: 'focus', etiqueta: 'Focus' },
+  { clave: 'disabled', etiqueta: 'Deshabilitado' },
+];
+
 // ── Toast: 4 variantes semánticas (Fase C) ─────────────────────────────
 const TOASTS = [
   { clase: 'toast-success', icono: 'ti-check', texto: 'Empleado actualizado correctamente' },
@@ -213,6 +222,28 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
             </tbody>
           </table>
         </div>
+
+        <h3>Botón icono</h3>
+        <p class="ds-nota ds-nota--warn">
+          <code>design.pen</code> (<code>KpgFe</code>): "SPEC DE ACCESIBILIDAD: cada instancia de
+          este componente DEBE definir su propio aria-label descriptivo (el ícono solo no
+          basta)... Área táctil: icono 17×17 + padding $space-7(16) = 49×49px, cumple el mínimo de
+          44×44px (WCAG 2.5.5) sin agrandar el ícono."
+        </p>
+        <div class="ds-icon-btn-demo">
+          <div v-for="estado in ESTADOS_ICON_BTN" :key="estado.clave" class="ds-icon-btn-item">
+            <button
+              type="button"
+              class="icon-btn"
+              :class="{ 'force-hover': estado.clave === 'hover', 'force-focus': estado.clave === 'focus' }"
+              :disabled="estado.clave === 'disabled'"
+              aria-label="Editar empleado"
+            >
+              <i class="ti ti-pencil" aria-hidden="true"></i>
+            </button>
+            <span>{{ estado.etiqueta }}</span>
+          </div>
+        </div>
       </section>
 
       <section id="toast" class="ds-seccion">
@@ -292,6 +323,12 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
         </div>
 
         <h3>Ítem de menú de acciones</h3>
+        <p class="ds-nota ds-nota--warn">
+          <code>design.pen</code> (<code>rowY1dDW</code>) modela un anillo de foco
+          (<code>$brand.700</code>) para este ítem; <code>MenuAcciones.vue:194-197</code> solo
+          cambia el fondo en <code>:focus-visible</code>, sin anillo — el estado "Focus" de abajo
+          se ve igual que "Hover".
+        </p>
         <div class="ds-menu-demo">
           <button type="button" class="ds-menu-item">Default</button>
           <button type="button" class="ds-menu-item force-hover">Hover</button>
@@ -303,6 +340,11 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
           No es <code>:focus</code> real de DOM: <code>BuscadorCombo.vue</code> navega por
           teclado con <code>aria-activedescendant</code> + clase <code>.is-activo</code>, sin
           mover el foco del input.
+        </p>
+        <p class="ds-nota ds-nota--warn">
+          <code>design.pen</code> (<code>rowlEgjG</code>) modela un anillo de foco
+          (<code>$brand.700</code>) para el estado "Activo"; en <code>BuscadorCombo.vue</code> ese
+          estado solo cambia el fondo (<code>--color-accent-subtle</code>), sin anillo.
         </p>
         <ul class="ds-combo-demo">
           <li class="ds-combo-item">Default</li>
@@ -410,6 +452,23 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
           </div>
         </div>
 
+        <h3>Campana de notificaciones</h3>
+        <p class="ds-nota ds-nota--warn">
+          <code>design.pen</code> (<code>JjMGW</code>): "En el código real (.icon-btn
+          campana-trigger), este botón comparte estilo con Primitivas/Botón icono — mismo problema
+          de área táctil (32×30→44×44 aquí) y de nombre accesible. Hoy usa :title dinámico
+          ("Notificaciones (N sin leer)"/"Notificaciones"), no aria-label — confirmar con dev si
+          conviene sumar aria-label explícito (title tiene limitaciones de accesibilidad: no
+          aparece en móvil, retraso de tooltip). Pendiente de refactor: este componente debería
+          componerse sobre Primitivas/Botón icono en vez de duplicar su estructura."
+        </p>
+        <div class="ds-campana-trigger-demo">
+          <button type="button" class="icon-btn" title="Notificaciones (3 sin leer)">
+            <i class="ti ti-bell" aria-hidden="true"></i>
+            <span class="badge-count ds-campana-trigger-badge">3</span>
+          </button>
+        </div>
+
         <h3>Panel de notificaciones</h3>
         <div class="ds-campana-demo">
           <div class="ds-campana-item">
@@ -418,6 +477,7 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
               <span class="ds-campana-item-titulo">Ticket #1042 asignado a vos</span>
               <span class="ds-campana-item-fecha">hace 5 min</span>
             </span>
+            <span class="ds-campana-item-punto" aria-hidden="true"></span>
           </div>
           <div class="ds-campana-item force-hover">
             <i class="ti ti-mail" aria-hidden="true"></i>
@@ -502,8 +562,15 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
   gap: 14px;
   flex-wrap: wrap;
   margin: 16px 0 20px;
-  padding-bottom: 12px;
+  padding: 8px 0 12px;
   border-bottom: 1px solid var(--color-border);
+  /* Página larga (~5000-6500px, ver auditoría) — sin esto la tabla de
+     contenidos desaparece apenas se hace scroll. Necesita fondo propio
+     para no dejar ver el contenido pasando detrás. */
+  position: sticky;
+  top: 0;
+  background: var(--color-bg);
+  z-index: 1;
 }
 
 .ds-toc a {
@@ -605,6 +672,12 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
 .ds-grid th { background: none; text-transform: none; letter-spacing: normal; font-size: var(--fs-sm); color: var(--color-text-secondary); padding: 4px 8px; white-space: nowrap; }
 .ds-grid td { border: none; padding: 4px 8px; }
 
+.ds-icon-btn-demo { display: flex; gap: 20px; align-items: center; }
+.ds-icon-btn-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--color-text-secondary); }
+/* main.css .icon-btn:focus-visible usa outline, no el anillo box-shadow de .btn (Fase B no tocó icon-btn) */
+.icon-btn.force-hover { background: var(--color-bg-subtle); color: var(--color-text-primary); }
+.icon-btn.force-focus { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
 /* ── Toast: en línea (real es position:fixed) ───────────────────── */
 .ds-toast-grid { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .ds-toast-grid .toast { position: static; max-width: none; }
@@ -658,14 +731,20 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
 .confirm-titulo { display: flex; align-items: center; gap: 10px; }
 .confirm-mensaje { font-size: var(--fs-base); color: var(--color-text-secondary); }
 
+/* NotificacionesCampana.vue .campana-trigger/.campana-badge */
+.ds-campana-trigger-demo .icon-btn { position: relative; }
+.ds-campana-trigger-badge { position: absolute; top: 0; right: 0; font-size: 10px; line-height: 1; padding: 1px 5px; }
+
 .ds-campana-demo { display: flex; flex-direction: column; gap: 2px; max-width: 320px; padding: 4px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-bg-elevated); }
 /* NotificacionesCampana.vue .campana-panel__item */
 .ds-campana-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); }
 .ds-campana-item.force-hover { background: var(--color-bg-hover); }
 .ds-campana-item i { font-size: 16px; color: var(--color-accent-soft); margin-top: 1px; }
-.ds-campana-item-texto { display: flex; flex-direction: column; gap: 2px; }
+.ds-campana-item-texto { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .ds-campana-item-titulo { font-size: 12.5px; font-weight: 500; color: var(--color-text-primary); }
 .ds-campana-item-fecha { font-size: 11px; color: var(--color-text-secondary); }
+/* NotificacionesCampana.vue .campana-panel__punto — omitido antes en esta demo */
+.ds-campana-item-punto { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0; margin-top: 5px; }
 
 /* AppNotifications.vue .aviso-card */
 .ds-aviso-demo {
