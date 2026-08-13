@@ -20,6 +20,7 @@
       --mat-color-accent-2: var(--mat-color-accent-alt);
       --mat-color-whatsapp: #25d366;         /* verde de marca WhatsApp — solo para .btn-whatsapp */
       --mat-color-whatsapp-hover: #1ebe57;
+      --mat-color-whatsapp-text: #072E2A;    /* texto/ícono sobre fondo whatsapp — mismo verde petróleo de marca, no blanco */
 
       /* ── Tipografía: Inter cuerpo + Sora títulos (Axiforma pendiente) ─ */
       --mat-font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
@@ -35,6 +36,23 @@
       --mat-fs-xl: 17px;
       --mat-fs-2xl: 20px;
       --mat-fs-stat: 26px;
+
+      /* ── Escala de espaciado (base 4px, design.pen $space-1..12) ──
+         Invariante entre temas. Adopción progresiva: no reemplaza los
+         valores crudos ya existentes en este archivo, disponible para
+         componentes nuevos. */
+      --mat-space-1: 2px;
+      --mat-space-2: 4px;
+      --mat-space-3: 6px;
+      --mat-space-4: 8px;
+      --mat-space-5: 10px;
+      --mat-space-6: 12px;
+      --mat-space-7: 16px;
+      --mat-space-8: 20px;
+      --mat-space-9: 24px;
+      --mat-space-10: 32px;
+      --mat-space-11: 40px;
+      --mat-space-12: 48px;
 
       /* ── Superficies (grises neutros — la marca no tiñe el sistema,
          solo se conecta a través del acento) ─────────────────── */
@@ -71,6 +89,14 @@
       --mat-color-danger-bg: #FAEAE3;
       --mat-color-danger-text: #963D28;
       --mat-color-danger-border: #E8C4B4;
+      /* Invariantes entre temas (design.pen $danger.hover/$danger.solid):
+         no heredan el comportamiento por tema de --mat-color-danger. Fijan
+         el bug de contraste de .btn-danger:hover en oscuro (DS-01: el
+         --mat-color-danger de oscuro es un salmón que no pasa AA con
+         texto blanco) y dan el rojo sólido para la variante "peligro
+         sólido" (confirmaciones destructivas irreversibles). */
+      --mat-color-danger-hover: #DC2626;
+      --mat-color-danger-solid: #DC2626;
 
       /* info: antes #EDEBF7/#5B58A0 — casi idéntico a purple, se corrigió a
          azul propio para que "Abierto" (ticket) no se confunda con "Alta"
