@@ -4,7 +4,20 @@
 > viven en [`main.css`](../frontend/src/styles/main.css) (`--mat-*` y alias
 > `--color-*`); este archivo describe cómo usarlos en las vistas.
 
-**Vigencia**: actualizado 2026-08-12 — quinta pasada, cierre de la migración
+**Vigencia**: actualizado 2026-08-13 — sexta pasada, primer porteo real de
+`design.pen` a producción (Fases A-E, commits separados): tokens aditivos
+en `main.css` (`--mat-space-1..12`, `--mat-color-danger-hover`/`-solid`,
+`--mat-color-whatsapp-text`) sin renombrar `--mat-color-*`/`--color-*` a la
+notación de puntos de la propuesta de paleta (sigue sin aprobar); 5
+variantes de `.btn` con estados completos y foco unificado en anillo
+externo (`box-shadow`, color por variante) — de paso resuelve DS-01 y
+unifica `:disabled` a `opacity:.5` (DS-02 parcial: solo botones, no
+`input`/`select`); 4 variantes semánticas de `.toast`; hover de fondo en
+`ThOrdenable`; símbolo de marca actualizado a 4 pétalos + diamante. DS-03,
+DS-04 y DS-05 siguen abiertos a propósito (ver `docs/HISTORIAL-AUDITORIAS.md`
+Ciclo 3) — la propuesta de paleta de puntos tampoco se portó. Ver changelog
+completo más abajo.
+La quinta pasada (2026-08-12), cierre de la migración
 planificada en la cuarta: adopción real de `space-1..12` (83 propiedades en
 los 46 componentes + 2 pantallas), sidebar real reagrupado en 3 subgrupos
 (antes solo mockup comparativo), `$social.whatsapp`/`$social.whatsapp.hover`
@@ -440,6 +453,45 @@ señalado y sigue igual). **(c) Pendiente**: los 6 `aria-label` propuestos
 notificaciones` se refactoriza para componer `Botón icono`; los 5
 hallazgos DS-01 a DS-05 de la pasada anterior siguen abiertos, no se
 tocaron acá.
+
+#### Changelog — primer porteo a producción, Fases A-E (2026-08-13, sexta pasada)
+
+Primera vez que algo de `design.pen` sale del propio archivo y toca
+`main.css`/`.vue` en producción. Cinco commits separados:
+
+- **Fase A (tokens)**: `--mat-space-1..12` (base 4px), `--mat-color-whatsapp-text`,
+  y los invariantes `--mat-color-danger-hover`/`-solid` (#DC2626 en ambos
+  temas). **Deliberadamente aditivo**: no se tocó ningún nombre `--mat-color-*`
+  ni `--color-*` existente — la propuesta de paleta en notación de puntos
+  (tercera pasada) sigue sin aprobación explícita para portarse.
+- **Fase B (botón)**: `.btn-danger-solid` nuevo (confirmaciones destructivas
+  irreversibles, sólido desde el default — distinto de `.btn-danger`, que es
+  el tratamiento "soft" existente). Foco de las 5 variantes migrado de
+  `outline` a anillo externo (`box-shadow`), color de anillo propio por
+  variante (verde de marca / rojo / verde WhatsApp). Efecto colateral:
+  **DS-01 resuelto** (`.btn-danger:hover` ya no hereda el salmón de
+  `--color-danger` en oscuro). Decisión de producto confirmada con el
+  usuario: `:disabled` unificado a `opacity:.5` en las 5 variantes +
+  `.icon-btn` (antes `.4`, único con regla propia) — **DS-02 solo
+  parcialmente resuelto**, `input`/`select` de formulario siguen sin regla
+  propia (fuera de alcance, no se preguntó por eso).
+- **Fase C (toast)**: 4 variantes semánticas (`.toast-success/-error/-warning/-info`)
+  con fondo de color real (antes: fondo neutro con solo el ícono verde,
+  sin distinguir tipo). `toast.js` gana un mapa de íconos por tipo
+  (warning/info sin uso real todavía, listos para cuando se necesiten).
+- **Fase D (hover)**: de los 5 componentes pedidos, 4 ya tenían hover propio
+  (combo, menú de acciones, ítem de sidebar, ítem de notificación) — solo
+  `ThOrdenable` lo tenía a medias (cambiaba color, no fondo). Único cambio
+  real de esta fase.
+- **Fase E (logo)**: ya estaba resuelta al empezar esta pasada (trabajo de
+  una sesión anterior, sin commitear) — se verificó contra el nodo
+  `Símbolo Sistema TI` de `design.pen` y se commiteó tal cual.
+
+**Qué sigue sin portar, a propósito**: DS-03 (borde de error de formulario)
+y DS-04 (cobertura de `:focus-visible` en navegación/`ThOrdenable`/buscadores)
+— ambos requieren la misma decisión de producto que `:disabled`, no se
+tocaron. DS-05 (labels de filtro) tampoco. La propuesta de paleta de puntos
+sigue solo en `design.pen`.
 
 ## Arquitectura general
 

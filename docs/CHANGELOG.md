@@ -10,6 +10,14 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-13** — Primer porteo real de `design.pen` a producción, 5
+  commits (Fases A-E): tokens aditivos en `main.css` (`space-1..12`,
+  `danger-hover`/`-solid`, `whatsapp-text`); 5 variantes de `.btn` con foco
+  en anillo externo unificado (de paso resuelve DS-01, unifica `:disabled`
+  a `.5`); 4 variantes semánticas de `.toast`; hover de fondo en
+  `ThOrdenable`; símbolo de marca a 4 pétalos + diamante. DS-03/DS-04/DS-05
+  y la propuesta de paleta en notación de puntos siguen sin portar, a
+  propósito. Detalle en `docs/GUIA-UX-UI.md` y `docs/HISTORIAL-AUDITORIAS.md`.
 - **2026-08-12** — Unificado el botón "Asignar a un empleado" en
   `LicenciasView.vue` para todas las licencias, sin importar si tienen
   login o no (antes solo aparecía para licencias sin login). Nuevas
