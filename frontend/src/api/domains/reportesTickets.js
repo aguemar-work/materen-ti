@@ -17,14 +17,11 @@
 //   el único criterio de "respondida" en todo el reporte.
 // - La tasa de respuesta va contra las encuestas generadas: el correo no es el
 //   único canal, el empleado también las alcanza buscando su ticket por DNI.
-// - El backlog es una foto de HOY, no del cierre del periodo: reconstruir el
-//   estado histórico exigiría reproducir toda la hoja de vida de cada ticket.
 import { getClient } from '../client.js';
 import { destinoDeCambio } from '../../core/dominio-tickets.js';
 
 const ESTADOS_RESUELTO = ['resuelto', 'cerrado'];
 const ESTADO_RECHAZADO = 'rechazado';
-const ESTADOS_ABIERTOS = ['abierto', 'en_progreso', 'reabierto'];
 
 // Tope de comentarios que viajan al modal y al PDF: un mes cargado devolvía
 // cientos y volvía el documento ilegible. Se informa el total aparte.
@@ -56,7 +53,7 @@ export const reportesTicketsApi = {
   async obtenerReporteTickets({ desde, hasta }) {
     const db = getClient().database;
 
-    const [creadosRes, eventosRes, satisfaccionRes, backlogRes] = await Promise.all([
+    const [creadosRes, eventosRes, satisfaccionRes, todosRes] = await Promise.all([
       db.from('tickets')
         .select(SELECT_CREADOS)
         .gte('created_at', desde)
@@ -72,14 +69,14 @@ export const reportesTicketsApi = {
         .select('nivel, comentario, fecha_envio')
         .gte('created_at', desde)
         .lte('created_at', hasta),
-      db.from('tickets')
-        .select('created_at')
-        .in('estado', ESTADOS_ABIERTOS),
+      // Sin filtro de fecha: la columna "Total" de la tabla por solicitante es
+      // su histórico completo, no solo lo creado en este periodo.
+      db.from('tickets').select('vinculado, contacto_ingresado, empleados(nombres, apellidos)'),
     ]);
     if (creadosRes.error) throw creadosRes.error;
     if (eventosRes.error) throw eventosRes.error;
     if (satisfaccionRes.error) throw satisfaccionRes.error;
-    if (backlogRes.error) throw backlogRes.error;
+    if (todosRes.error) throw todosRes.error;
 
     const creados = creadosRes.data || [];
     const eventos = eventosRes.data || [];
@@ -88,6 +85,16 @@ export const reportesTicketsApi = {
     // periodo (reabierto): se atribuye a quien lo marcó resuelto por última vez.
     const { resoluciones, reaperturas } = resolucionesPorTicket(eventos);
 
+    // De los resueltos del periodo, cuántos también se crearon en el mismo
+    // periodo (vs. arrastrados de antes) — sin esto, "Resueltos" se leía como
+    // si fuera lo mismo que "Creados", cuando puede ser un ticket de semanas
+    // atrás que recién hoy se cerró.
+    const creadosIds = new Set(creados.map((t) => t.id));
+    let resueltosMismoPeriodo = 0;
+    for (const id of resoluciones.keys()) {
+      if (creadosIds.has(id)) resueltosMismoPeriodo += 1;
+    }
+
     // Segunda ronda, en paralelo (las dos dependen de la primera pero no entre
     // ellas): el alta y la prioridad de los tickets resueltos —muchos se crearon
     // antes de la ventana, así que no están en `creados`— y el estado de encuesta
@@ -95,7 +102,7 @@ export const reportesTicketsApi = {
     const idsResueltos = [...resoluciones.keys()];
     const [datosResueltos, filasEncuesta] = await Promise.all([
       idsResueltos.length
-        ? porLotes(idsResueltos, (lote) => db.from('tickets').select('id, created_at, prioridad').in('id', lote))
+        ? porLotes(idsResueltos, (lote) => db.from('tickets').select('id, codigo, titulo, created_at, prioridad').in('id', lote))
         : [],
       creados.length
         ? porLotes(creados.map((t) => t.id), (lote) => db.from('ticket_satisfaccion').select('ticket_id, fecha_envio').in('ticket_id', lote))
@@ -106,6 +113,13 @@ export const reportesTicketsApi = {
 
     const encuestaPorTicket = new Map();
     for (const e of filasEncuesta) encuestaPorTicket.set(e.ticket_id, esRespondida(e) ? 'respondida' : 'pendiente');
+
+    const totalHistoricoPorSolicitante = contarHistoricoPorSolicitante(todosRes.data || []);
+
+    // Detalle de los resueltos que NO son de este periodo (venían de antes):
+    // cuáles son, quién los cerró y cuánto llevaban abiertos.
+    const porIdResueltos = new Map(datosResueltos.map((t) => [t.id, t]));
+    const arrastrados = resumenArrastrados(resoluciones, porIdResueltos, creadosIds);
 
     const encuestas = satisfaccionRes.data || [];
     const respondidas = encuestas.filter(esRespondida);
@@ -122,20 +136,21 @@ export const reportesTicketsApi = {
     return {
       totalCreados: creados.length,
       totalResueltos: resoluciones.size,
+      resueltosMismoPeriodo,
+      resueltosArrastrados: resoluciones.size - resueltosMismoPeriodo,
       porCategoria: contarPor(creados, (t) => t.categorias_ticket?.nombre || 'Sin categoría'),
       porPrioridad: contarPor(creados, (t) => t.prioridad),
-      porEstado: contarPor(creados, (t) => t.estado),
       porTipo: contarPor(creados, (t) => t.tipo || 'sin_clasificar'),
       porDia: contarPorDia(creados),
-      porTecnico: contarPorTecnico(resoluciones),
-      porSolicitante: resumenPorSolicitante(creados, encuestaPorTicket),
+      porTecnico: contarPorTecnico(resoluciones, creadosIds),
+      porSolicitante: resumenPorSolicitante(creados, encuestaPorTicket, totalHistoricoPorSolicitante),
       tiempoResolucion: tiempos.global,
       tiempoPorPrioridad: tiempos.porPrioridad,
       tiempoPorTecnico: tiempos.porTecnico,
       reaperturas,
       // Denominador = resueltos del periodo (no total creados).
       tasaReapertura: resoluciones.size ? Math.round((reaperturas / resoluciones.size) * 100) : null,
-      backlog: resumenBacklog(backlogRes.data || []),
+      arrastrados,
       encuestasGeneradas: encuestas.length,
       encuestasRespondidas: respondidas.length,
       promedioSatisfaccion,
@@ -358,13 +373,35 @@ export function resumenSatisfaccionPorTecnico(respuestas) {
   return ordenarPeorPrimero(filas);
 }
 
-export function contarPorTecnico(resoluciones) {
+// Por técnico, cuántos resolvió y de esos cuántos son de este mismo periodo
+// vs. arrastrados de antes — mismo desglose que el KPI "Resueltos", pero por
+// persona: no es lo mismo cerrar 5 tickets nuevos que 5 que venían de otros.
+export function contarPorTecnico(resoluciones, creadosIds) {
   const porTecnico = {};
-  for (const { userId } of resoluciones.values()) {
+  for (const [ticketId, { userId }] of resoluciones) {
     const clave = userId || 'sin_asignar';
-    porTecnico[clave] = (porTecnico[clave] || 0) + 1;
+    if (!porTecnico[clave]) porTecnico[clave] = { total: 0, mismoPeriodo: 0, arrastrados: 0 };
+    porTecnico[clave].total += 1;
+    if (creadosIds.has(ticketId)) porTecnico[clave].mismoPeriodo += 1;
+    else porTecnico[clave].arrastrados += 1;
   }
   return porTecnico;
+}
+
+// Detalle de los tickets resueltos en el periodo que NO se crearon en él: qué
+// ticket es, quién lo cerró y cuánto llevaba abierto al momento de resolverse.
+// Orden por antigüedad descendente: el más demorado primero.
+export function resumenArrastrados(resoluciones, porIdResueltos, creadosIds) {
+  const filas = [];
+  for (const [ticketId, { userId, fecha }] of resoluciones) {
+    if (creadosIds.has(ticketId)) continue;
+    const info = porIdResueltos.get(ticketId);
+    if (!info) continue;
+    const diasAbierto = Math.floor((new Date(fecha) - new Date(info.created_at)) / 86400000);
+    if (!Number.isFinite(diasAbierto)) continue;
+    filas.push({ codigo: info.codigo, titulo: info.titulo, tecnicoId: userId, diasAbierto, creadoEn: info.created_at });
+  }
+  return filas.sort((a, b) => b.diasAbierto - a.diasAbierto);
 }
 
 // Tiempo de atención: de la creación del ticket al evento que lo marcó
@@ -418,45 +455,39 @@ export function mediana(valores) {
   return orden.length % 2 ? orden[mitad] : (orden[mitad - 1] + orden[mitad]) / 2;
 }
 
-// Backlog: tickets abiertos AHORA, agrupados por antigüedad. Los tramos
-// separan "en trámite normal" de "olvidado", que es lo que hay que mirar.
-export function resumenBacklog(abiertos, ahora = new Date()) {
-  const tramos = [
-    { clave: 'hasta_3', label: 'Hasta 3 días', max: 3, cantidad: 0 },
-    { clave: 'de_4_a_7', label: '4 a 7 días', max: 7, cantidad: 0 },
-    { clave: 'de_8_a_30', label: '8 a 30 días', max: 30, cantidad: 0 },
-    { clave: 'mas_30', label: 'Más de 30 días', max: Infinity, cantidad: 0 },
-  ];
-  let masAntiguo = null;
-  for (const t of abiertos) {
-    const dias = Math.floor((ahora - new Date(t.created_at)) / 86400000);
-    if (!Number.isFinite(dias)) continue;
-    (tramos.find((tr) => dias <= tr.max) || tramos[tramos.length - 1]).cantidad += 1;
-    if (masAntiguo === null || dias > masAntiguo) masAntiguo = dias;
+// Histórico completo de tickets por solicitante, SIN recorte de fecha (a
+// diferencia del resto de este reporte): es la columna "Total" de la tabla por
+// solicitante, para distinguirla de "Ticket creado" (solo este periodo).
+export function contarHistoricoPorSolicitante(todos) {
+  const mapa = new Map();
+  for (const t of todos) {
+    const clave = nombreSolicitante(t);
+    mapa.set(clave, (mapa.get(clave) || 0) + 1);
   }
-  return { total: abiertos.length, tramos, diasMasAntiguo: masAntiguo };
+  return mapa;
 }
 
-// Resumen por solicitante: total de tickets creados en el periodo, su estado
-// ACTUAL (resueltos / rechazados / sin resolver, que suman el total) y las
-// encuestas contestadas/pendientes.
-export function resumenPorSolicitante(creados, encuestaPorTicket) {
+// Resumen por solicitante: cuántos tickets creó en el periodo, su estado
+// ACTUAL (resuelto / rechazado) y las encuestas contestadas/pendientes, más su
+// histórico completo (columna "Total", ver contarHistoricoPorSolicitante).
+export function resumenPorSolicitante(creados, encuestaPorTicket, totalHistoricoPorSolicitante) {
   const mapa = new Map();
   for (const t of creados) {
     const clave = nombreSolicitante(t);
     if (!mapa.has(clave)) {
-      mapa.set(clave, { solicitante: clave, total: 0, resueltos: 0, rechazados: 0, sinResolver: 0, encuestasContestadas: 0, encuestasPendientes: 0 });
+      mapa.set(clave, { solicitante: clave, creados: 0, resueltos: 0, rechazados: 0, encuestasContestadas: 0, encuestasPendientes: 0 });
     }
     const fila = mapa.get(clave);
-    fila.total += 1;
+    fila.creados += 1;
     if (ESTADOS_RESUELTO.includes(t.estado)) fila.resueltos += 1;
     else if (t.estado === ESTADO_RECHAZADO) fila.rechazados += 1;
-    else fila.sinResolver += 1;
     const encuesta = encuestaPorTicket.get(t.id);
     if (encuesta === 'respondida') fila.encuestasContestadas += 1;
     else if (encuesta === 'pendiente') fila.encuestasPendientes += 1;
   }
-  return [...mapa.values()].sort((a, b) => b.total - a.total);
+  return [...mapa.values()]
+    .map((f) => ({ ...f, total: totalHistoricoPorSolicitante.get(f.solicitante) ?? f.creados }))
+    .sort((a, b) => b.creados - a.creados);
 }
 
 // Volumen por día del periodo, en orden cronológico (para el gráfico de

@@ -241,7 +241,7 @@ function irALicencia(lic) {
 
 .sb-busqueda {
   position: relative;
-  padding: 12px 14px 4px;
+  padding: 10px 14px 4px;
   flex-shrink: 0;
 }
 

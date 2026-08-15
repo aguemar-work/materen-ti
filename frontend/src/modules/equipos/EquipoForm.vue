@@ -626,7 +626,7 @@ async function guardar() {
   margin: 0;
   padding: 4px 0;
   list-style: none;
-  background: var(--color-bg-elevated, #fff);
+  background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
@@ -746,7 +746,7 @@ async function guardar() {
   font-size: 14px;
 }
 
-.foto-x:hover { background: rgba(185, 28, 28, 0.85); }
+.foto-x:hover { background: var(--mat-color-danger-hover); }
 
 .foto-agregar {
   width: 92px;

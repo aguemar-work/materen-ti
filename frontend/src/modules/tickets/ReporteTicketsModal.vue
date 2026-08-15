@@ -11,7 +11,7 @@ import { ref, computed, nextTick, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { estadoInfo, prioridadInfo, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
-import { formatFechaHora, formatHoras, formatDelta } from '../../core/formatters.js';
+import { formatFecha, formatFechaHora, formatHoras, formatDelta } from '../../core/formatters.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
@@ -70,9 +70,6 @@ function anclaMensual(mes, anio) {
 const porPrioridadLabel = computed(() =>
   (datos.value?.porPrioridad || []).map((c) => ({ clave: prioridadInfo(c.clave).label, cantidad: c.cantidad })),
 );
-const porEstadoLabel = computed(() =>
-  (datos.value?.porEstado || []).map((c) => ({ clave: estadoInfo(c.clave).label, cantidad: c.cantidad })),
-);
 const TIPO_LABELS = { ...Object.fromEntries(OPCIONES_TIPO.map((t) => [t.valor, t.label])), sin_clasificar: 'Sin clasificar' };
 const porTipoLabel = computed(() =>
   (datos.value?.porTipo || []).map((c) => ({ clave: TIPO_LABELS[c.clave] || c.clave, cantidad: c.cantidad })),
@@ -81,13 +78,24 @@ const porTecnicoNombres = computed(() => {
   if (!datos.value) return [];
   const tiempos = datos.value.tiempoPorTecnico || {};
   return Object.entries(datos.value.porTecnico)
-    .map(([staffId, cantidad]) => ({
+    .map(([staffId, resumen]) => ({
       nombre: staffId === 'sin_asignar' ? 'Sin asignar' : (props.staffPorId[staffId] || 'Staff'),
-      cantidad,
+      cantidad: resumen.total,
+      mismoPeriodo: resumen.mismoPeriodo,
+      arrastrados: resumen.arrastrados,
       promedio: tiempos[staffId]?.promedio ?? null,
       mediana: tiempos[staffId]?.mediana ?? null,
     }))
     .sort((a, b) => b.cantidad - a.cantidad);
+});
+// Detalle de los tickets resueltos en el periodo que venían de antes, con el
+// nombre del técnico ya resuelto (mismo criterio que porTecnicoNombres).
+const arrastradosNombres = computed(() => {
+  if (!datos.value) return [];
+  return (datos.value.arrastrados || []).map((a) => ({
+    ...a,
+    tecnico: a.tecnicoId ? (props.staffPorId[a.tecnicoId] || 'Staff') : 'Sin asignar',
+  }));
 });
 // Prioridades en el orden del dominio (urgente → baja), no por cantidad: acá se
 // compara el tiempo de atención entre prioridades y el orden importa.
@@ -106,6 +114,25 @@ const tiempoPorPrioridadLabel = computed(() => {
 const tasaRespuesta = computed(() => {
   if (!datos.value || !datos.value.encuestasGeneradas) return 0;
   return Math.round((datos.value.encuestasRespondidas / datos.value.encuestasGeneradas) * 100);
+});
+
+// Sin canal de aviso por correo (retirado, migración 055) la tasa de
+// respuesta depende de que el empleado busque su ticket por su cuenta — no es
+// comparable a como se leía antes, así que queda oculta salvo que se pida.
+const incluirTasaRespuesta = ref(false);
+
+// Desglose del KPI "Resueltos": "de hoy/esta semana/este mes" según el
+// periodo elegido, para no decir "del periodo" en abstracto.
+const etiquetaResueltosMismoPeriodo = computed(() => {
+  if (periodo.value === 'diario') return 'de hoy';
+  if (periodo.value === 'semanal') return 'de esta semana';
+  return 'de este mes';
+});
+// Misma idea, como encabezado de columna en la tabla de técnicos.
+const etiquetaColMismoPeriodo = computed(() => {
+  if (periodo.value === 'diario') return 'Hoy';
+  if (periodo.value === 'semanal') return 'Esta semana';
+  return 'Este mes';
 });
 
 // Comparativa contra el periodo anterior equivalente (mes contra mes, semana
@@ -127,11 +154,16 @@ async function cargar() {
   comparativa.value = null;
   try {
     const { desde, hasta } = rangoDe(periodo.value, ancla.value);
-    const anterior = rangoDe(periodo.value, desplazarAncla(periodo.value, ancla.value, -1));
+    // El diario no compara contra "el día anterior": un día suelto no es
+    // representativo (para eso está el reporte semanal/mensual) y el delta
+    // salía engañoso comparando un día a medias contra uno ya cerrado.
+    const incluirComparativa = periodo.value !== 'diario';
+    const anterior = incluirComparativa ? rangoDe(periodo.value, desplazarAncla(periodo.value, ancla.value, -1)) : null;
     const [reporte, resumenAnterior] = await Promise.all([
       insforgeApi.obtenerReporteTickets({ desde: desde.toISOString(), hasta: hasta.toISOString() }),
-      insforgeApi.obtenerResumenTickets({ desde: anterior.desde.toISOString(), hasta: anterior.hasta.toISOString() })
-        .catch(() => null),
+      incluirComparativa
+        ? insforgeApi.obtenerResumenTickets({ desde: anterior.desde.toISOString(), hasta: anterior.hasta.toISOString() }).catch(() => null)
+        : Promise.resolve(null),
     ]);
     datos.value = reporte;
     comparativa.value = resumenAnterior;
@@ -204,10 +236,10 @@ async function descargar() {
       {
         ...datos.value,
         porPrioridadLabel: porPrioridadLabel.value,
-        porEstadoLabel: porEstadoLabel.value,
         porTipoLabel: porTipoLabel.value,
         porTecnicoNombres: porTecnicoNombres.value,
         tiempoPorPrioridadLabel: tiempoPorPrioridadLabel.value,
+        arrastradosNombres: arrastradosNombres.value,
       },
       {
         periodoLabel: periodoLabel.value,
@@ -215,6 +247,9 @@ async function descargar() {
         nombreArchivo: nombreArchivoReporte(periodo.value, ancla.value),
         enCurso: periodoEnCurso.value,
         comparativa: comparativa.value ? { ...comparativa.value, etiqueta: etiquetaAnterior.value } : null,
+        incluirTasaRespuesta: incluirTasaRespuesta.value,
+        etiquetaResueltosMismoPeriodo: etiquetaResueltosMismoPeriodo.value,
+        etiquetaColMismoPeriodo: etiquetaColMismoPeriodo.value,
       },
     );
   } catch (e) {
@@ -294,7 +329,7 @@ onMounted(cargar);
                 :key="p.valor"
                 type="button"
                 class="btn"
-                :class="{ 'btn-primary': periodo === p.valor }"
+                :class="{ 'is-activo': periodo === p.valor }"
                 :disabled="cargando"
                 :aria-pressed="periodo === p.valor"
                 @click="cambiarPeriodo(p.valor)"
@@ -367,7 +402,11 @@ onMounted(cargar);
           <p v-else-if="error" class="form-error" role="alert">{{ error }}</p>
 
           <template v-else-if="datos">
-            <div class="rep-kpis">
+            <label class="rep-toggle-tasa">
+              <input v-model="incluirTasaRespuesta" type="checkbox">
+              Incluir tasa de respuesta de encuestas
+            </label>
+            <div class="rep-kpis" :class="{ 'rep-kpis-3col': !incluirTasaRespuesta }">
               <div class="rep-kpi">
                 <span class="rep-kpi-valor">{{ datos.totalCreados }}</span>
                 <span class="rep-kpi-label">Creados</span>
@@ -377,13 +416,14 @@ onMounted(cargar);
                 <span class="rep-kpi-valor">{{ datos.totalResueltos }}</span>
                 <span class="rep-kpi-label">Resueltos</span>
                 <span v-if="deltaDe('totalResueltos')" class="rep-kpi-delta">{{ deltaDe('totalResueltos') }}</span>
+                <span class="rep-kpi-desglose">{{ datos.resueltosMismoPeriodo }} {{ etiquetaResueltosMismoPeriodo }} · {{ datos.resueltosArrastrados }} anteriores</span>
               </div>
               <div class="rep-kpi">
                 <span class="rep-kpi-valor">{{ datos.promedioSatisfaccion !== null ? datos.promedioSatisfaccion.toFixed(1) : '—' }}/5</span>
                 <span class="rep-kpi-label">Satisfacción</span>
                 <span v-if="deltaDe('promedioSatisfaccion', 1)" class="rep-kpi-delta">{{ deltaDe('promedioSatisfaccion', 1) }}</span>
               </div>
-              <div class="rep-kpi">
+              <div v-if="incluirTasaRespuesta" class="rep-kpi">
                 <span class="rep-kpi-valor">{{ tasaRespuesta }}%</span>
                 <span class="rep-kpi-label">Tasa de respuesta</span>
                 <span v-if="deltaDe('tasaRespuesta', 0, ' pp')" class="rep-kpi-delta">{{ deltaDe('tasaRespuesta', 0, ' pp') }}</span>
@@ -409,13 +449,6 @@ onMounted(cargar);
                   </tbody>
                 </table>
                 <table class="rep-tabla">
-                  <thead><tr><th>Estado actual</th><th class="num">Cant.</th></tr></thead>
-                  <tbody>
-                    <tr v-for="c in porEstadoLabel" :key="c.clave"><td>{{ c.clave }}</td><td class="num">{{ c.cantidad }}</td></tr>
-                    <tr v-if="!porEstadoLabel.length"><td colspan="2" class="rep-vacio">Sin datos</td></tr>
-                  </tbody>
-                </table>
-                <table class="rep-tabla">
                   <thead><tr><th>Tipo</th><th class="num">Cant.</th></tr></thead>
                   <tbody>
                     <tr v-for="c in porTipoLabel" :key="c.clave"><td>{{ c.clave }}</td><td class="num">{{ c.cantidad }}</td></tr>
@@ -427,10 +460,6 @@ onMounted(cargar);
 
             <div class="rep-seccion">
               <div class="datos-title">Tiempos y calidad de la atención</div>
-              <p class="tk-nota">
-                Del alta del ticket al momento en que se marcó resuelto. Se muestra la mediana porque
-                un solo ticket olvidado desplaza el promedio de todo el equipo.
-              </p>
               <div class="rep-kpis rep-kpis-3">
                 <div class="rep-kpi">
                   <span class="rep-kpi-valor">{{ formatHoras(datos.tiempoResolucion?.promedio) }}</span>
@@ -463,56 +492,72 @@ onMounted(cargar);
             </div>
 
             <div class="rep-seccion">
-              <div class="datos-title">Backlog pendiente</div>
-              <p class="tk-nota">
-                Tickets abiertos, en atención o reabiertos en este momento — es una foto de hoy, no del
-                cierre del periodo.<template v-if="datos.backlog?.diasMasAntiguo !== null && datos.backlog?.diasMasAntiguo !== undefined">
-                El más antiguo lleva {{ datos.backlog.diasMasAntiguo }} día(s) sin cerrarse.</template>
-              </p>
-              <table class="rep-tabla">
-                <thead><tr><th>Antigüedad</th><th class="num">Tickets</th></tr></thead>
-                <tbody>
-                  <tr v-for="t in (datos.backlog?.tramos || [])" :key="t.clave"><td>{{ t.label }}</td><td class="num">{{ t.cantidad }}</td></tr>
-                  <tr v-if="datos.backlog?.total"><td><strong>Total</strong></td><td class="num"><strong>{{ datos.backlog.total }}</strong></td></tr>
-                  <tr v-else><td colspan="2" class="rep-vacio">Sin tickets pendientes</td></tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div class="rep-seccion">
               <div class="datos-title">Desempeño por técnico</div>
-              <p class="tk-nota">Resoluciones ocurridas en el periodo, atribuidas a quien marcó el ticket como resuelto.</p>
               <table class="rep-tabla">
-                <thead><tr><th>Técnico</th><th class="num">Resueltos</th><th class="num">Tiempo medio</th><th class="num">Mediana</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Técnico</th>
+                    <th class="num">Resueltos</th>
+                    <th class="num">{{ etiquetaColMismoPeriodo }}</th>
+                    <th class="num">Anteriores</th>
+                    <th class="num">Tiempo medio</th>
+                    <th class="num">Mediana</th>
+                  </tr>
+                </thead>
                 <tbody>
                   <tr v-for="t in porTecnicoNombres" :key="t.nombre">
                     <td>{{ t.nombre }}</td>
                     <td class="num">{{ t.cantidad }}</td>
+                    <td class="num">{{ t.mismoPeriodo }}</td>
+                    <td class="num">{{ t.arrastrados }}</td>
                     <td class="num">{{ formatHoras(t.promedio) }}</td>
                     <td class="num">{{ formatHoras(t.mediana) }}</td>
                   </tr>
-                  <tr v-if="!porTecnicoNombres.length"><td colspan="4" class="rep-vacio">Sin tickets resueltos en el periodo</td></tr>
+                  <tr v-if="!porTecnicoNombres.length"><td colspan="6" class="rep-vacio">Sin tickets resueltos en el periodo</td></tr>
                 </tbody>
               </table>
             </div>
 
             <div class="rep-seccion">
+              <div class="datos-title">Tickets anteriores resueltos en el periodo</div>
+              <div class="table-wrap">
+                <table class="rep-tabla rep-tabla-ancha">
+                  <thead>
+                    <tr>
+                      <th>Código</th>
+                      <th>Título</th>
+                      <th>Técnico</th>
+                      <th>Creado el</th>
+                      <th class="num">Días abierto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="a in arrastradosNombres" :key="a.codigo">
+                      <td class="rep-codigo">{{ a.codigo }}</td>
+                      <td>{{ a.titulo }}</td>
+                      <td>{{ a.tecnico }}</td>
+                      <td>{{ formatFecha(a.creadoEn) }}</td>
+                      <td class="num">{{ a.diasAbierto }}</td>
+                    </tr>
+                    <tr v-if="!arrastradosNombres.length"><td colspan="5" class="rep-vacio">Sin tickets arrastrados resueltos en el periodo</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="rep-seccion">
               <div class="datos-title">Tickets del periodo por solicitante</div>
-              <p class="tk-nota">
-                Estado actual del ticket, no el que tenía al cerrar el periodo. Un rechazo no es
-                una resolución, por eso va en su propia columna.
-              </p>
               <!-- 7 columnas: en pantallas angostas la tabla scrollea sola en
                    vez de desbordar el modal (.table-wrap, patrón del sistema). -->
               <div class="table-wrap">
                 <table class="rep-tabla rep-tabla-ancha">
                   <thead>
                     <tr>
-                      <th>Solicitante</th>
+                      <th>Usuario</th>
                       <th class="num">Total</th>
-                      <th class="num">Resueltos</th>
-                      <th class="num">Rechazados</th>
-                      <th class="num">Sin resolver</th>
+                      <th class="num">Ticket creado</th>
+                      <th class="num">Ticket resuelto</th>
+                      <th class="num">Rechazado</th>
                       <th class="num">Enc. contestadas</th>
                       <th class="num">Enc. pendientes</th>
                     </tr>
@@ -521,9 +566,9 @@ onMounted(cargar);
                     <tr v-for="s in datos.porSolicitante" :key="s.solicitante">
                       <td><TextoVacio :valor="s.solicitante" /></td>
                       <td class="num">{{ s.total }}</td>
+                      <td class="num">{{ s.creados }}</td>
                       <td class="num">{{ s.resueltos }}</td>
                       <td class="num">{{ s.rechazados }}</td>
-                      <td class="num">{{ s.sinResolver }}</td>
                       <td class="num">{{ s.encuestasContestadas }}</td>
                       <td class="num">{{ s.encuestasPendientes }}</td>
                     </tr>
@@ -586,6 +631,15 @@ onMounted(cargar);
 .rep-granularidad, .rep-nav { display: flex; align-items: center; gap: 6px; }
 .rep-nav { padding-left: 8px; border-left: 1px solid var(--color-border-subtle); }
 
+/* Selector segmentado (no es la acción principal del modal, es un estado de
+   selección) — mismo par tenue-acento que .chip-filtro--activo en vez de
+   .btn-primary, para no competir con "Descargar PDF". */
+.rep-granularidad .btn.is-activo {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+  border-color: var(--color-accent-subtle);
+}
+
 .rep-campo {
   height: 36px;
   padding: 0 10px;
@@ -611,20 +665,32 @@ select.rep-campo { cursor: pointer; }
   color: var(--color-text-tertiary);
 }
 
+.rep-toggle-tasa {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-base);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
 .rep-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.rep-kpis-3 { grid-template-columns: repeat(3, 1fr); margin-bottom: 10px; }
+.rep-kpis-3, .rep-kpis-3col { grid-template-columns: repeat(3, 1fr); }
+.rep-kpis-3 { margin-bottom: 10px; }
 .rep-kpi { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px; text-align: center; }
 .rep-kpi-valor { display: block; font-size: var(--fs-xl); font-weight: 600; }
 .rep-kpi-label { font-size: var(--fs-sm); color: var(--color-text-secondary); }
 /* La variación no se pinta de verde/rojo: "más creados" no es bueno ni malo por
    sí mismo y el color le pondría un juicio que el dato no tiene. */
 .rep-kpi-delta { display: block; margin-top: 2px; font-size: 11px; color: var(--color-text-tertiary); }
+.rep-kpi-desglose { display: block; margin-top: 2px; font-size: 11px; color: var(--color-text-tertiary); }
 .rep-comparativa { margin: -8px 0 0; font-size: var(--fs-sm); color: var(--color-text-tertiary); text-align: right; }
 
 .rep-seccion { border-top: 1px solid var(--color-border); padding-top: 12px; }
-/* Cuatro conteos (categoría, prioridad, estado, tipo) en 2×2: en fila de cuatro
-   no caben dentro de los 680px de .modal-lg sin partir los encabezados. */
-.rep-cols { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+/* Tres conteos (categoría, prioridad, tipo): caben en una sola fila dentro de
+   los 680px de .modal-lg sin partir los encabezados. */
+.rep-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 
 .rep-tabla { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .rep-tabla-ancha { min-width: 620px; }
@@ -640,7 +706,7 @@ select.rep-campo { cursor: pointer; }
 
 @media (max-width: 768px) {
   .rep-cols { grid-template-columns: 1fr; }
-  .rep-kpis, .rep-kpis-3 { grid-template-columns: repeat(2, 1fr); }
+  .rep-kpis, .rep-kpis-3, .rep-kpis-3col { grid-template-columns: repeat(2, 1fr); }
   .rep-comparativa { text-align: left; }
   .rep-nav { padding-left: 0; border-left: none; }
   .rep-rango { margin-left: 0; }

@@ -314,7 +314,7 @@ async function guardar() {
 }
 
 .tipo-option-desc {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--color-text-secondary);
   line-height: 1.3;
 }

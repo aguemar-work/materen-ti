@@ -872,6 +872,227 @@ tras consolidar los 6 lotes. **(c) Pendiente**: el tuteo de UX4-52 se
 repite en otros 9 `ConfirmDialog` fuera de este alcance (ver
 `docs/HISTORIAL-AUDITORIAS.md`); nada más queda abierto del Ciclo 4.
 
+#### Changelog — compactación del sidebar y colapso inteligente (2026-08-14, décimosexta pasada)
+
+Pedido explícito del usuario: el sidebar "ocupa mucho espacio" — al aclarar,
+el problema es la **densidad/alto vertical** (títulos de grupo, gaps entre
+secciones, padding de ítems), no el ancho. Esto revierte parcialmente la
+pasada del 13-ago-2026 ("rediseño de sidebar y dropdowns", ver arriba), que
+había aumentado a propósito ese mismo padding/gap — confirmado con el
+usuario que ahora se quiere ir en la dirección contraria. Revertir solo esos
+dos valores puntuales recuperaba ~40px en total, poco perceptible dado que
+la queja es sobre el peso general del bloque, así que se aplicó un paso de
+compactación coordinado sobre todo el espaciado vertical, sin tocar
+estructura, grupos, ítems ni copy (fuera de alcance sin pedido explícito).
+
+- **Espaciado vertical reducido** en `AppLayout.vue` (`.sb-logo` de
+  `20px 18px 14px` a `16px 16px 12px`; `.sb-footer` de `12px 14px` a
+  `10px 14px`, mismo ajuste en su variante colapsada), `AppSearch.vue`
+  (`.sb-busqueda` de `12px 14px 4px` a `10px 14px 4px`) y `AppNav.vue`
+  (`.sb-nav` padding de `10px 10px` a `8px 10px`; gap entre grupos de
+  `18px` a `12px` — revierte el `18px` de ayer; `.sb-nav-titulo` padding de
+  `6px 12px 4px` a `4px 12px 2px`; `.sb-nav-item` padding de `10px 12px` a
+  `8px 12px` — revierte el `10px` de ayer; los mismos valores se replican en
+  los overrides de `.sidebar--colapsado`).
+- **Colapso a rail inteligente por defecto**: `AppLayout.vue`, valor inicial
+  de `sidebarColapsado` — si el usuario ya usó el toggle alguna vez, su
+  preferencia guardada en `localStorage` (`sistema-ti-sidebar`) sigue
+  mandando igual que antes; sin preferencia guardada, arranca colapsado
+  (rail de 64px) en ventanas `≤1200px` — mismo breakpoint que ya usa
+  `main.css`/`DashboardView.vue` para el reflow de columnas, no uno nuevo.
+  Así el ancho del sidebar deja de competirle al contenido en laptops
+  comunes sin que el usuario tenga que descubrir el botón de colapso. Sin
+  listener de `resize`: es solo el valor inicial al montar.
+
+**(a) Qué cambió**: `AppNav.vue`, `AppLayout.vue`, `AppSearch.vue` + esta
+guía. **(b) Riesgo**: bajo-medio — revierte parte de una decisión de ayer
+(el aumento de padding/gap) más allá de lo literal, confirmado con el
+usuario antes de implementar; el nuevo default de colapso no tiene listener
+de `resize`, por lo que redimensionar la ventana en caliente no recalcula el
+estado (solo el valor inicial al montar/recargar). **(c) Pendiente**: nada
+abierto por este cambio.
+
+#### Changelog — reconciliación de design system, 13 hallazgos corregidos (2026-08-14, décimoctava pasada)
+
+Pedido explícito del usuario: revisar todas las páginas contra el design
+system y la implementación de componentes, y aplicar la lista de mejoras
+resultante. Mismo método que la pasada anterior (6 agentes en paralelo,
+uno por grupo de módulos, briefeados con la deuda ya documentada acá y en
+`docs/HISTORIAL-AUDITORIAS.md` para no repetir hallazgos), esta vez con eje
+en tipografía cruda, fallbacks CSS muertos y tono, dimensiones que la
+pasada anterior (auditoría de consistencia global) no cubrió. Detalle
+completo hallazgo por hallazgo en `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 5
+(UX5-01 a UX5-13); acá solo el resumen de lo que toca el sistema de diseño.
+
+- **Regresión real de la pasada anterior, encontrada y corregida**: el
+  `core/dominio-licencias.js` nuevo (centralización del umbral de
+  vencimiento) dejó `LicenciasView.vue` con una referencia a `HOY`, variable
+  que el propio refactor eliminó del scope — `ReferenceError` al usar
+  "Renovar" en una licencia por suscripción. No es un hallazgo de diseño,
+  pero se corrigió en el mismo pase por aparecer en la misma auditoría.
+- **Gap real en `Modal.vue` compartido**: Escape, clic en el backdrop y la
+  "X" cerraban el modal sin pasar por el chequeo de "cambios sin guardar"
+  (`estaSucio`) que sí respetaba el botón "Cancelar" — la migración de
+  `KbArticuloForm.vue`/`ProblemaForm.vue` a `Modal.vue` en la pasada
+  anterior heredó este gap del propio componente, no lo introdujo. Fix:
+  nuevo prop opcional `confirmarCierre` (función guard) en `Modal.vue`,
+  default `null` — sin cambio de comportamiento para los ~10 consumidores
+  que no lo pasan. Los 4 formularios afectados (`KbArticuloForm.vue`,
+  `ProblemaForm.vue`, `EncuestaForm.vue`, `AccesoSensibleForm.vue`, este
+  último migrado a `Modal.vue` en este mismo pase) ahora lo usan.
+- **`AccesoSensibleForm.vue` migrado a `Modal.vue`**: quedó como el único
+  formulario grande con modal hand-rolled tras la migración de
+  `ProblemaForm.vue`/`KbArticuloForm.vue` — mismo patrón (`form="..."` +
+  slot `#acciones`), sin cambiar campos ni comportamiento de guardado.
+- **`BajaEmpleadoModal.vue` migrado a `Modal.vue`**: mismo patrón que
+  `TiposEquipoPanel.vue`/`CategoriasTicketPanel.vue` en Ciclo 4 — ganó
+  scroll-lock y Escape reales; sin `useDetectorDeCambios` (es una
+  confirmación de solo lectura), así que no recibe `confirmarCierre`.
+- **Tono**: cluster de tuteo nuevo, distinto del ya documentado en
+  `ConfirmDialog` (UX4-52) — mensajes de `EmptyState`, validaciones de
+  formulario ("Escribe" → "Escriba", "Describe" → "Describa", "Revisa" →
+  "Revise") y copy público, en Encuestas, Empleados, Problemas, KB y el
+  toast nuevo de `router/guards.js`.
+- **Tipografía cruda → tokens** en 8 archivos que no habían pasado por
+  ninguna auditoría anterior de este tipo (`DashboardView.vue`,
+  `LoginView.vue`, `EntregaView.vue`, `EmpleadoDetalleView.vue` y otros 4)
+  — valores sin token exacto se dejaron sin tocar y quedan anotados como
+  pendiente de decisión de diseño en `docs/HISTORIAL-AUDITORIAS.md`.
+- **Fallbacks CSS muertos** (`var(--x, var(--x))`, o fallback a un token
+  que siempre está definido): completa lo que UX4-51 había dejado parcial
+  en `CuentaForm.vue`, más `EquipoForm.vue` (incluía además un rojo
+  inventado en vez de `--mat-color-danger-hover`) y `LoginView.vue` — este
+  último con un bug real de contraste de paso: `.login-aviso` usaba
+  `--color-success` (alta saturación, pensado para íconos/botones sólidos)
+  como color de texto sobre su propio `-bg` en vez de `--color-success-text`.
+
+**(a) Qué cambió**: `Modal.vue`, `AccesoSensibleForm.vue`,
+`BajaEmpleadoModal.vue`, `LicenciasView.vue`, `DesignSystemView.vue`,
+`TicketsView.vue`, `DashboardView.vue`, `EmpleadoDetalleView.vue`,
+`EmpleadosView.vue`, `EncuestasView.vue`, `EncuestaDetalleView.vue`,
+`EncuestaForm.vue`, `EncuestaPublicaView.vue`, `KbArticuloForm.vue`,
+`ProblemaForm.vue`, `ProblemaDetalleView.vue`, `router/guards.js`,
+`LoginView.vue`, `EntregaView.vue`, `LicenciaForm.vue`, `CorreoForm.vue`,
+`PersonalRegistrosView.vue`, `EquipoForm.vue`, `CuentaForm.vue` +
+esta guía + `docs/HISTORIAL-AUDITORIAS.md` (Ciclo 5). **(b) Riesgo**: bajo
+en general (fixes puntuales, `confirmarCierre` es aditivo); medio en las 2
+migraciones a `Modal.vue` (mismo tipo de cambio de markup ya validado 2
+veces en pasadas anteriores) — verificado con `npm run build` y
+`npm test` (96/97 en verde, misma línea base) tras consolidar los 8 lotes.
+**(c) Pendiente**: los valores de tipografía sin token exacto anotados en
+`docs/HISTORIAL-AUDITORIAS.md`; nada más abierto por este cambio.
+
+#### Changelog — auditoría de consistencia global, 11 hallazgos corregidos (2026-08-14, décimoséptima pasada)
+
+Pedido explícito del usuario: revisar todas las páginas del sistema (~55
+vistas) contra los patrones ya documentados acá (`PageHeader`, `EmptyState`,
+`BadgeEstado`, `Modal`, "un solo `.btn-primary` visible por vista", colores
+por dominio). 6 agentes en paralelo, uno por grupo de módulos; Correos,
+Licencias, Equipos, Cuentas, Encuestas, Accesos sensibles, Actividad,
+Empresas, Plataformas, Personal y Configuración salieron sin hallazgos
+reales. Se corrigieron los 11 hallazgos reales encontrados, priorizando el
+módulo nuevo de Staff/permisos (migración 056, todavía sin commitear al
+momento de la auditoría).
+
+- **`StaffModulosForm.vue` (módulo nuevo)**: modal hand-rolled migrado a
+  `Modal.vue` compartido (mismo patrón que `EncuestaForm.vue`: `modal.value?.cerrar()`
+  + `form="..."` en el botón de submit) — antes sin scroll-lock real. Los
+  checkboxes de permisos ganaron `:focus-visible` propio
+  (`outline: 2px solid var(--color-accent)`): viven fuera de `.form-group`,
+  así que no heredaban el anillo de foco que sí tienen los checkboxes de
+  formularios normales.
+- **`StaffView.vue` (`.rol-select`, preexistente)**: quitados los overrides
+  de borde/radio/fondo que pisaban el `select` global y le borraban el
+  chevron (el propio comentario de `main.css` línea ~808 ya citaba este
+  archivo como el caso que motivó unificar todo `<select>` bajo un solo
+  estilo) — queda solo el `margin-right` de contexto.
+- **Un solo `.btn-primary` por vista** (regla de "Principios de diseño",
+  más abajo en este documento) — 3 hallazgos:
+  - `TicketDetalleView.vue`: "Comentar" competía con la acción de estado
+    (Iniciar atención/Marcar resuelto); bajado a `.btn` secundario.
+  - `ReporteTicketsModal.vue`: el selector de granularidad (diario/semanal/
+    mensual) usaba `.btn-primary` como estado "seleccionado", compitiendo
+    con "Descargar PDF" — pasa a una clase `.is-activo` propia
+    (`background: var(--color-accent-subtle)`, mismo par tenue-acento que
+    `.chip-filtro--activo` de `TicketsView.vue`, sin ser la misma clase
+    porque el control es un grupo `.btn` rectangular, no chips-pill).
+  - `ProblemaDetalleView.vue`: el botón de cambio de estado seguía visible
+    en modo edición junto al "Guardar" del formulario inline; se envolvió
+    en `v-if="!editando"` (mismo patrón que ya usa `KbArticuloDetalleView.vue`
+    con su botón "Publicar").
+- **Borde de acento lateral + color inline** (`ProblemaDetalleView.vue`,
+  tag "VENCIDA" de acciones correctivas): iba contra el principio ya fijado
+  "sin bordes de acento en los costados, severidad por color de ícono +
+  badge" (sección "Principios de diseño"). `.accion-item--vencida`
+  (`border-left-color`) y `.accion-vencida-tag` (color inline) se
+  eliminaron; la etiqueta pasa a un badge real (`badge badge--danger
+  badge-inline`, texto "Vencida").
+- **`BadgeEstado` no reutilizado** — 2 hallazgos, ambos en vistas públicas
+  de tickets que reimplementaban `estadoInfo(ticket.estado)` a mano en vez
+  de importar el componente (no dependen de sesión, podían usarlo igual):
+  `TicketSeguimientoView.vue` y `TicketBuscarView.vue` pasan a
+  `<BadgeEstado tipo="ticket" :valor="..." />`.
+- **Modales hand-rolled sin `Modal.vue`** — 2 hallazgos: `KbArticuloForm.vue`
+  y `ProblemaForm.vue` (ambos con el patrón de "cambios sin guardar" +
+  `ConfirmDialog`) migrados al mismo patrón ya usado por `EncuestaForm.vue`
+  — sin Escape/scroll-lock reales antes del cambio.
+- **Badge "Sin vincular" de tickets duplicado 3 veces a mano**
+  (`TicketsView.vue` ×2, `TicketDetalleView.vue` ×1): centralizado como
+  `case 'ticket_sin_vincular'` en `core/badges.js` (label + clase); el
+  ícono `ti-alert-triangle` se mantiene en el markup de cada sitio porque
+  `BadgeEstado` no soporta contenido con ícono, solo texto.
+- **Badge de vencimiento de licencia duplicado**: `EmpleadoDetalleView.vue`
+  resolvía el vencimiento de licencia con una función local
+  (`vencimientoLicencia()`) mientras su propio panel de Equipos sí usaba
+  `BadgeEstado`/`core/badges.js` — inconsistencia dentro del mismo archivo,
+  y la misma lógica de umbral (30 días) estaba duplicada en
+  `LicenciasView.vue` (`estadoVencimiento()`). Nuevo módulo
+  `core/dominio-licencias.js` (`estadoVencimientoLicencia()` +
+  `CLASE_VENCIMIENTO_LICENCIA`) centraliza el umbral y la clase de badge;
+  cada vista sigue formateando su propio texto (`LicenciasView` siempre
+  muestra la fecha; `EmpleadoDetalleView` omite a propósito las licencias
+  sanas, ver su comentario) porque son presentaciones legítimamente
+  distintas, no la misma duplicación que sí se resolvió.
+
+**(a) Qué cambió**: `StaffModulosForm.vue`, `StaffView.vue`,
+`TicketDetalleView.vue`, `ReporteTicketsModal.vue`, `ProblemaDetalleView.vue`,
+`TicketSeguimientoView.vue`, `TicketBuscarView.vue`, `KbArticuloForm.vue`,
+`ProblemaForm.vue`, `TicketsView.vue`, `EmpleadoDetalleView.vue`,
+`LicenciasView.vue`, `core/badges.js` (nuevo caso `ticket_sin_vincular`),
+`core/dominio-licencias.js` (nuevo) + esta guía. **(b) Riesgo**: bajo — todos
+son fixes puntuales que reutilizan patrones ya existentes en el propio
+código (no hay componente ni convención nueva); verificado con
+`npm run build` y `npm test` (96 tests, verde) tras cada tanda de cambios.
+**(c) Pendiente**: sin commitear a pedido explícito del usuario — falta el
+commit real de estos 13 archivos + el módulo nuevo.
+
+**Hallazgo adicional, encontrado por el usuario después de esta pasada**:
+`/tickets/satisfaccion` (`ReporteSatisfaccionView.vue`) no tenía el mismo
+aspecto que otras vistas multi-tarjeta — los 9 criterios de reutilización de
+componentes de arriba no lo detectan porque el problema es de **layout**, no
+de componentes: (1) `<main class="page">` sin `page--padded` (el comentario
+de `main.css` línea ~452 ya documenta que las vistas multi-tarjeta tipo
+Dashboard/detalle necesitan `page--padded`; esta vista tiene 2 tarjetas de
+resumen + una tabla, es multi-tarjeta, pero le faltaba la clase) — sin eso,
+todo queda pegado a los bordes de la ventana; (2) la tarjeta de "Todas las
+respuestas" usaba `.card--fill` (pensada para una sola tarjeta de listado a
+sangre, sin borde/radio) mientras las 2 tarjetas de resumen usan `.card`
+normal — la de abajo se veía sin caja mientras las de arriba sí. Fix: quitar
+`card--fill` (queda `.card` normal, igual que sus vecinas) y agregar
+`page--padded` al `<main>`. Verificado montando el componente real (no una
+reconstrucción) en un arnés temporal servido por el propio dev server de
+Vite (`insforgeApi` con datos mock, router en memoria para que `RouterLink`
+resuelva sus inyecciones — el compilador de `<script setup>` importa
+`RouterLink` real de `vue-router` en vez de resolverlo en runtime, así que
+un componente stub registrado por `app.component()` no alcanza) y capturado
+con Playwright; archivos del arnés borrados al terminar, no quedaron en el
+repo. **(a) Qué cambió**: `ReporteSatisfaccionView.vue` + esta guía. **(b)
+Riesgo**: bajo — dos clases CSS, sin cambios de markup más allá de eso.
+**(c) Pendiente**: revisar si alguna otra vista multi-tarjeta tiene el mismo
+problema (`page--padded` faltante o `card--fill` mal aplicada) — esta vez se
+corrigió puntualmente la reportada, no se re-auditó el resto del sistema
+contra este criterio de layout.
+
 ## Arquitectura general
 
 El frontend **no usa Tailwind ni librería de componentes**. Todo el diseño vive en:
@@ -1064,7 +1285,12 @@ Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
   Colapsado: labels ocultos con `title` como tooltip, búsqueda reducida a un
   botón que expande y enfoca el input, footer apilado con solo avatar +
   iconos. Solo aplica en desktop (>768px); el drawer móvil siempre va
-  completo y oculta el toggle.
+  completo y oculta el toggle. **Default inteligente (ago 2026, ver
+  changelog "compactación del sidebar" más abajo)**: sin preferencia
+  guardada, arranca colapsado en ventanas `≤1200px` (breakpoint ya usado en
+  `main.css`/`DashboardView.vue`) y expandido en monitores más anchos; una
+  vez que el usuario toca el toggle, su elección manda sobre el tamaño de
+  ventana en cualquier sesión futura.
 - **Footer de usuario condensado (ago 2026)**: a 240px de ancho, avatar +
   nombre + 3 botones de ícono (campana, tema, logout) dejaban al nombre
   ~66px de ancho antes de truncarse (ej. "a.gueva…"). Tema y "Cerrar

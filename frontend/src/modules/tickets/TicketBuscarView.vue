@@ -7,9 +7,9 @@
 import { ref, computed } from 'vue';
 import { buscarTicketsPorDni, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { formatFecha } from '../../core/formatters.js';
-import { estadoInfo } from '../../core/dominio-tickets.js';
 import { esDniValido } from '../../core/utils.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 
 const dni = ref('');
 const dniTocado = ref(false);
@@ -107,7 +107,7 @@ async function buscar() {
               <span v-if="t.encuestaPendiente" class="badge badge--accent">
                 <i class="ti ti-mood-smile" aria-hidden="true"></i> Encuesta pendiente
               </span>
-              <span v-else class="badge" :class="estadoInfo(t.estado).clase">{{ estadoInfo(t.estado).label }}</span>
+              <BadgeEstado v-else tipo="ticket" :valor="t.estado" />
             </div>
             <div class="buscar-item-titulo">{{ t.titulo }}</div>
             <div class="buscar-item-fecha">Creado el {{ formatFecha(t.creado) }}</div>

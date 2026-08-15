@@ -249,6 +249,7 @@ function piePaginas(doc, hoy) {
 // navegador; la UI usa generarReporteTickets(), abajo.
 export async function construirReporteTickets(datos, {
   periodoLabel = '', rangoLabel = '', nombreArchivo = '', enCurso = false, comparativa = null,
+  incluirTasaRespuesta = false, etiquetaResueltosMismoPeriodo = 'del periodo',
 } = {}) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -281,17 +282,21 @@ export async function construirReporteTickets(datos, {
     y += 9;
   }
 
-  y = bloqueKpis(doc, [
+  const itemsKpis = [
     { valor: datos.totalCreados, label: 'Creados', delta: delta(datos.totalCreados, comparativa?.totalCreados) },
     { valor: datos.totalResueltos, label: 'Resueltos', delta: delta(datos.totalResueltos, comparativa?.totalResueltos) },
     { valor: `${datos.promedioSatisfaccion !== null ? datos.promedioSatisfaccion.toFixed(1) : '—'}/5`, label: 'Satisfacción', delta: delta(datos.promedioSatisfaccion, comparativa?.promedioSatisfaccion, 1) },
-    { valor: `${tasaRespuesta}%`, label: 'Tasa de respuesta', delta: delta(tasaRespuesta, comparativa?.tasaRespuesta, 0, ' pp') },
-  ], y);
+  ];
+  if (incluirTasaRespuesta) {
+    itemsKpis.push({ valor: `${tasaRespuesta}%`, label: 'Tasa de respuesta', delta: delta(tasaRespuesta, comparativa?.tasaRespuesta, 0, ' pp') });
+  }
+  y = bloqueKpis(doc, itemsKpis, y);
   if (comparativa?.etiqueta) {
     doc.setFont('helvetica', 'normal').setFontSize(6.8).setTextColor(...GRIS_TEXTO);
     doc.text(`Variación respecto a ${comparativa.etiqueta}`, ANCHO / 2, y - 3.5, { align: 'center' });
     doc.setTextColor(NEGRO);
   }
+  y = nota(doc, `Del total resuelto: ${datos.resueltosMismoPeriodo ?? 0} ${etiquetaResueltosMismoPeriodo}, ${datos.resueltosArrastrados ?? 0} anteriores.`, y);
 
   y = abrirSeccion(doc, y, 'Volumen y distribución', 40);
   y = graficoPorDia(doc, datos.porDia || [], y);
@@ -299,12 +304,10 @@ export async function construirReporteTickets(datos, {
   y = tablasConteo(doc, autoTable, [
     { titulo: 'Categoría', items: datos.porCategoria },
     { titulo: 'Prioridad', items: datos.porPrioridadLabel },
-    { titulo: 'Estado actual', items: datos.porEstadoLabel },
     { titulo: 'Tipo', items: datos.porTipoLabel },
   ], y);
 
   y = abrirSeccion(doc, y, 'Tiempos y calidad de la atención', 40);
-  y = nota(doc, 'Del alta del ticket al momento en que se marcó resuelto. Se informa la mediana porque un solo ticket olvidado desplaza el promedio.', y);
   y = tabla(doc, autoTable, {
     head: [['Indicador', 'Valor']],
     body: [
@@ -330,22 +333,19 @@ export async function construirReporteTickets(datos, {
 
   const backlog = datos.backlog || { total: 0, tramos: [], diasMasAntiguo: null };
   y = abrirSeccion(doc, y, 'Backlog pendiente', 34);
-  y = nota(
-    doc,
-    `Tickets abiertos, en atención o reabiertos en este momento — es una foto de hoy, no del cierre del periodo.${
-      backlog.diasMasAntiguo !== null ? ` El más antiguo lleva ${backlog.diasMasAntiguo} día(s) sin cerrarse.` : ''}`,
-    y,
-  );
   y = tabla(doc, autoTable, {
     head: [['Antigüedad', 'Tickets']],
     body: backlog.total
-      ? [...backlog.tramos.map((t) => [t.label, String(t.cantidad)]), [{ content: 'Total', styles: { fontStyle: 'bold' } }, { content: String(backlog.total), styles: { fontStyle: 'bold', halign: 'right' } }]]
+      ? [
+        ...backlog.tramos.map((t) => [t.label, String(t.cantidad)]),
+        ...(backlog.diasMasAntiguo !== null ? [['Más antiguo', `${backlog.diasMasAntiguo} día(s)`]] : []),
+        [{ content: 'Total', styles: { fontStyle: 'bold' } }, { content: String(backlog.total), styles: { fontStyle: 'bold', halign: 'right' } }],
+      ]
       : celdaVacia('Sin tickets pendientes', 2),
     columnStyles: { 1: { halign: 'right', cellWidth: 26 } },
   }, y);
 
   y = abrirSeccion(doc, y, 'Desempeño por técnico', 34);
-  y = nota(doc, 'Resoluciones ocurridas en el periodo, atribuidas a quien marcó el ticket como resuelto.', y);
   y = tabla(doc, autoTable, {
     head: [['Técnico', 'Resueltos', 'Tiempo medio', 'Mediana']],
     body: datos.porTecnicoNombres.length
@@ -359,13 +359,12 @@ export async function construirReporteTickets(datos, {
   }, y);
 
   y = abrirSeccion(doc, y, 'Tickets del periodo por solicitante', 38);
-  y = nota(doc, 'Estado actual del ticket. Un rechazo no es una resolución: va en su propia columna.', y);
   y = tabla(doc, autoTable, {
-    head: [['Solicitante', 'Total', 'Resueltos', 'Rechazados', 'Sin resolver', 'Enc. contestadas', 'Enc. pendientes']],
+    head: [['Usuario', 'Total', 'Ticket creado', 'Ticket resuelto', 'Rechazado', 'Enc. contestadas', 'Enc. pendientes']],
     body: datos.porSolicitante.length
       ? datos.porSolicitante.map((s) => [
-        s.solicitante, String(s.total), String(s.resueltos), String(s.rechazados),
-        String(s.sinResolver), String(s.encuestasContestadas), String(s.encuestasPendientes),
+        s.solicitante, String(s.total), String(s.creados), String(s.resueltos),
+        String(s.rechazados), String(s.encuestasContestadas), String(s.encuestasPendientes),
       ])
       : celdaVacia('Sin tickets creados en el periodo', 7),
     columnStyles: {

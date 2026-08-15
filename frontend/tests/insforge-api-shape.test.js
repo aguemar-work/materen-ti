@@ -36,6 +36,9 @@ const METODOS = [
   'listEquipos', 'listEquiposPage', 'listEquiposFiltrados', 'asignacionActivaEquipo', 'moverEquipo', 'createEquipo', 'updateEquipo',
   'cambiarEstadoEquipo', 'softDeleteEquipo', 'asignarEquipo', 'devolverEquipo',
   'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado',
+  // bandeja de importación de equipos desde Excel (migración 057)
+  'listImportacionPendiente', 'bulkCrearImportacion', 'updateImportacion',
+  'eliminarImportacion', 'vaciarImportacion',
   // tickets (staff) + categorías
   'listCategoriasTicket', 'listSubcategoriasTicket', 'createCategoriaTicket',
   'updateCategoriaTicket', 'softDeleteCategoriaTicket', 'createSubcategoriaTicket',
@@ -64,10 +67,12 @@ const METODOS = [
   'listRondas', 'crearRonda', 'cerrarRonda', 'listRespuestas',
   // notificaciones
   'listNotificaciones', 'listLecturas', 'marcarLeida', 'marcarVariasLeidas',
+  // permisos de módulo (migración 056)
+  'misModulos', 'modulosDeStaff', 'guardarModulos',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 152 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 160 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

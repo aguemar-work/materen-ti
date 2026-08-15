@@ -4,11 +4,13 @@ export default [
     path: '/tickets',
     name: 'tickets',
     component: () => import('../../modules/tickets/TicketsView.vue'),
+    meta: { modulo: 'tickets' },
   },
   {
     path: '/tickets/:id',
     name: 'ticket-detalle',
     component: () => import('../../modules/tickets/TicketDetalleView.vue'),
+    meta: { modulo: 'tickets' },
   },
   {
     // Consolidado histórico de satisfacción (todo el tiempo). Va antes de
@@ -17,5 +19,6 @@ export default [
     path: '/tickets/satisfaccion',
     name: 'tickets-satisfaccion',
     component: () => import('../../modules/tickets/ReporteSatisfaccionView.vue'),
+    meta: { modulo: 'tickets' },
   },
 ];

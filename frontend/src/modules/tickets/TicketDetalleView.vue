@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
 import { estadoInfo, prioridadInfo, destinoDeCambio, OPCIONES_PRIORIDAD as PRIORIDADES, OPCIONES_TIPO as TIPOS, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS } from '../../core/dominio-tickets.js';
+import { badgeInfo } from '../../core/badges.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
@@ -185,12 +186,21 @@ async function confirmarRechazar() {
   }
 }
 
-// ── Marcar como resuelto: encadena resuelto -> cerrado en un solo clic
-// (queda igual registrado en la hoja de vida) ────────────────────────────
+// ── Marcar como resuelto: encadena resuelto -> cerrado en un solo paso
+// (queda igual registrado en la hoja de vida). Exige confirmación — a
+// diferencia de Rechazar/Reabrir, este botón vivía sin ninguna fricción justo
+// debajo del selector de "Asignado a", y un clic reflejo tras reasignar
+// bastaba para cerrar el ticket sin que nadie lo decidiera de verdad ────────
 const resolviendo = ref(false);
 const guardarComoKb = ref(false);
+const mostrarConfirmarResolver = ref(false);
+const dialogoResolver = ref(null);
 
-async function marcarResuelto() {
+function cancelarResolver() {
+  mostrarConfirmarResolver.value = false;
+}
+
+async function confirmarResolver() {
   resolviendo.value = true;
   try {
     await store.marcarResueltoYCerrado();
@@ -204,6 +214,7 @@ async function marcarResuelto() {
         showToast('El ticket se cerró, pero no se pudo guardar el borrador en la Base de Conocimiento: ' + (e?.message || 'motivo desconocido'), 'error');
       }
     }
+    dialogoResolver.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'No se pudo marcar como resuelto', 'error');
   } finally {
@@ -232,8 +243,8 @@ async function confirmarReabrir() {
   }
   reabriendo.value = true;
   try {
-    await store.comentar(motivo, true);
     await store.actualizarCampos({ estado: 'reabierto' });
+    await store.comentar(motivo, true);
     mostrarReabrir.value = false;
     showToast('Ticket reabierto');
   } catch (e) {
@@ -385,7 +396,7 @@ onUnmounted(() => store.limpiar());
             <span v-if="ticket.empleado_correo" class="tk-detalle">{{ ticket.empleado_correo }}</span>
           </div>
           <div v-else class="tk-sin-vincular">
-            <span class="badge badge--danger"><i class="ti ti-alert-triangle"></i> Sin vincular</span>
+            <span class="badge" :class="badgeInfo('ticket_sin_vincular').clase"><i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}</span>
             <p v-if="ticket.contacto_ingresado" class="tk-detalle">Contacto ingresado: {{ ticket.contacto_ingresado }}</p>
             <p class="tk-nota">Revisa manualmente quién es y, si corresponde, vincúlalo desde comentarios.</p>
           </div>
@@ -523,9 +534,8 @@ onUnmounted(() => store.limpiar());
                 <input v-model="guardarComoKb" type="checkbox" :disabled="resolviendo">
                 ¿Guardar esta solución en la Base de Conocimiento?
               </label>
-              <button class="btn btn-primary tk-btn-resolver" type="button" :disabled="resolviendo" @click="marcarResuelto">
-                <i :class="resolviendo ? 'ti ti-loader-2 spinner-icon' : 'ti ti-circle-check'" aria-hidden="true"></i>
-                {{ resolviendo ? 'Cerrando...' : 'Marcar como resuelto' }}
+              <button class="btn btn-primary tk-btn-resolver" type="button" @click="mostrarConfirmarResolver = true">
+                <i class="ti ti-circle-check" aria-hidden="true"></i> Marcar como resuelto
               </button>
             </template>
 
@@ -612,7 +622,7 @@ onUnmounted(() => store.limpiar());
                 <input v-model="comentarioInterno" type="checkbox" :disabled="enviandoComentario">
                 Nota interna (no visible para el empleado)
               </label>
-              <button class="btn btn-primary" type="button" :disabled="enviandoComentario || !nuevoComentario.trim()" @click="enviarComentario">
+              <button class="btn" type="button" :disabled="enviandoComentario || !nuevoComentario.trim()" @click="enviarComentario">
                 <i v-if="enviandoComentario" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
                 {{ enviandoComentario ? 'Enviando...' : 'Comentar' }}
               </button>
@@ -658,6 +668,19 @@ onUnmounted(() => store.limpiar());
       :cargando="desasignando"
       @cancel="cancelarDesasignar"
       @confirm="confirmarDesasignar"
+    />
+
+    <!-- Confirmación no destructiva: marcar resuelto cierra el ticket de
+         inmediato, sin paso intermedio para revisar antes de cerrar -->
+    <ConfirmDialog
+      v-if="mostrarConfirmarResolver"
+      ref="dialogoResolver"
+      titulo="Marcar como resuelto"
+      mensaje="Esto cierra el ticket de inmediato — no hay un paso intermedio para revisar antes de cerrar. ¿Confirmas que el problema quedó resuelto?"
+      confirmar-label="Marcar como resuelto"
+      :cargando="resolviendo"
+      @cancel="cancelarResolver"
+      @confirm="confirmarResolver"
     />
   </div>
 </template>

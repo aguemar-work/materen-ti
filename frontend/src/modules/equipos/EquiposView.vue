@@ -439,6 +439,9 @@ onMounted(async () => {
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
           <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
         </button>
+        <RouterLink class="btn" to="/equipos/importar" title="Importar equipos desde un Excel de activos">
+          <i class="ti ti-file-import" aria-hidden="true"></i> Importar desde Excel
+        </RouterLink>
         <button class="btn btn-primary" type="button" @click="abrirNuevo">
           <i class="ti ti-plus" aria-hidden="true"></i> Nuevo equipo
         </button>

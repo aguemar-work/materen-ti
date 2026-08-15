@@ -4,10 +4,12 @@ export default [
     path: '/problemas',
     name: 'problemas',
     component: () => import('../../modules/problemas/ProblemasView.vue'),
+    meta: { modulo: 'problemas' },
   },
   {
     path: '/problemas/:id',
     name: 'problema-detalle',
     component: () => import('../../modules/problemas/ProblemaDetalleView.vue'),
+    meta: { modulo: 'problemas' },
   },
 ];

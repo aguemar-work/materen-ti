@@ -6,9 +6,9 @@ import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { seguimientoTicket } from '../../api/ticketsPublicos.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { estadoInfo } from '../../core/dominio-tickets.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
+import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 
 const route = useRoute();
 
@@ -73,7 +73,7 @@ function enlaceSeguimiento() {
       <template v-else>
         <div class="segui-header">
           <span class="segui-codigo">{{ ticket.codigo }}</span>
-          <span class="badge" :class="estadoInfo(ticket.estado).clase">{{ estadoInfo(ticket.estado).label }}</span>
+          <BadgeEstado tipo="ticket" :valor="ticket.estado" />
         </div>
 
         <div class="segui-copiar">

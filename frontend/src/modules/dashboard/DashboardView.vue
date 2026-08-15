@@ -2,11 +2,13 @@
 import { ref, computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
+import { useAuthStore } from '../../stores/auth.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import { construirFeedPendientes } from './pendientesFeed.js';
 
+const auth = useAuthStore();
 const stats = ref(null);
 const recientes = ref([]);
 const pendientes = ref({
@@ -140,14 +142,14 @@ onMounted(async () => {
         <div class="section section--stats">
           <h2 class="section-title section-title--secondary">Resumen</h2>
           <div class="grid-12">
-            <RouterLink to="/empleados?estado=Activo" class="stat-card stat-card--clic col-2">
+            <RouterLink v-if="auth.puedeVerModulo('empleados')" to="/empleados?estado=Activo" class="stat-card stat-card--clic col-2">
               <div class="stat-icon stat-icon--empleados"><i class="ti ti-users"></i></div>
               <div class="stat-info">
                 <span class="stat-value">{{ stats.empleadosActivos }}</span>
                 <span class="stat-label">Empleados activos</span>
               </div>
             </RouterLink>
-            <RouterLink to="/empleados?estado=Inactivo" class="stat-card stat-card--clic col-2">
+            <RouterLink v-if="auth.puedeVerModulo('empleados')" to="/empleados?estado=Inactivo" class="stat-card stat-card--clic col-2">
               <div class="stat-icon stat-icon--neutral"><i class="ti ti-users-minus"></i></div>
               <div class="stat-info">
                 <span class="stat-value">{{ stats.empleadosTotal - stats.empleadosActivos }}</span>
@@ -162,7 +164,7 @@ onMounted(async () => {
                 <span class="stat-label">Cuentas asignadas</span>
               </div>
             </div>
-            <RouterLink to="/correos" class="stat-card stat-card--clic col-2">
+            <RouterLink v-if="auth.puedeVerModulo('correos')" to="/correos" class="stat-card stat-card--clic col-2">
               <div class="stat-icon stat-icon--correos"><i class="ti ti-mail-share"></i></div>
               <div class="stat-info">
                 <span class="stat-value">{{ stats.correosCompartidos }}</span>
@@ -183,6 +185,7 @@ onMounted(async () => {
               </div>
             </button>
             <RouterLink
+              v-if="auth.puedeVerModulo('licencias')"
               to="/licencias"
               class="stat-card stat-card--clic col-2"
               :class="{ 'stat-card--alerta': stats.licenciasPorVencer > 0 }"
@@ -193,14 +196,14 @@ onMounted(async () => {
                 <span class="stat-label">Licencias por vencer</span>
               </div>
             </RouterLink>
-            <RouterLink to="/equipos" class="stat-card stat-card--clic col-2">
+            <RouterLink v-if="auth.puedeVerModulo('equipos')" to="/equipos" class="stat-card stat-card--clic col-2">
               <div class="stat-icon stat-icon--equipos"><i class="ti ti-devices"></i></div>
               <div class="stat-info">
                 <span class="stat-value">{{ stats.equiposTotal }}</span>
                 <span class="stat-label">Equipos</span>
               </div>
             </RouterLink>
-            <RouterLink to="/tickets" class="stat-card stat-card--clic col-2">
+            <RouterLink v-if="auth.puedeVerModulo('tickets')" to="/tickets" class="stat-card stat-card--clic col-2">
               <div class="stat-icon stat-icon--tickets"><i class="ti ti-headset"></i></div>
               <div class="stat-info">
                 <span class="stat-value">{{ stats.ticketsAbiertos }}</span>
@@ -292,10 +295,10 @@ onMounted(async () => {
 .stat-info { display: flex; flex-direction: column; }
 .section--stats .stat-value { font-size: 22px; }
 .stat-value { font-size: 28px; font-weight: 700; color: var(--color-text-primary); line-height: 1; }
-.stat-label { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; }
+.stat-label { font-size: var(--fs-sm); color: var(--color-text-secondary); margin-top: 4px; }
 
 .section-title--secondary {
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--color-text-secondary);
   text-transform: uppercase;
@@ -308,7 +311,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13.5px;
+  font-size: var(--fs-base);
   color: var(--color-success-text);
   background: var(--color-success-bg);
   border: 1px solid var(--color-success-border);
@@ -382,7 +385,7 @@ onMounted(async () => {
 }
 
 .feed-titulo {
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--color-text-primary);
   font-family: var(--font-mono, monospace);
@@ -395,7 +398,7 @@ onMounted(async () => {
 }
 
 .feed-contexto {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -414,7 +417,7 @@ onMounted(async () => {
   padding: 9px 14px;
   border: none;
   background: none;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--color-accent-text, var(--color-accent));
   text-align: center;
@@ -427,12 +430,12 @@ onMounted(async () => {
 }
 
 .section-title {
-  font-size: 15px; font-weight: 600;
+  font-size: var(--fs-lg); font-weight: 600;
   color: var(--color-text-primary);
   margin: 0 0 14px;
 }
 
-.no-results--compacto { padding: 20px; font-size: 12.5px; }
+.no-results--compacto { padding: 20px; font-size: var(--fs-sm); }
 
 /* Últimos empleados: lista vertical angosta (col-2), no la tarjeta
    horizontal que usaba antes cuando ocupaba col-3 a lo ancho */
@@ -459,7 +462,7 @@ onMounted(async () => {
 }
 
 .recientes-info { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.recientes-nombre { font-size: 12.5px; font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.recientes-cargo  { font-size: 11.5px; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recientes-nombre { font-size: var(--fs-sm); font-weight: 600; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recientes-cargo  { font-size: var(--fs-xs); color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .recientes-info .badge { align-self: flex-start; }
 </style>

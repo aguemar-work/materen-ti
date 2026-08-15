@@ -575,7 +575,7 @@ async function guardar() {
 }
 
 .acceso-label {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--color-text-primary);
 }
@@ -598,7 +598,7 @@ async function guardar() {
   align-items: center;
   gap: 6px;
   margin: 0 0 10px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--color-text-secondary);
 }
 

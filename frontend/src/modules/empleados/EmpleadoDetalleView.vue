@@ -6,7 +6,8 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha, formatTelefono, fechaLocalISO } from '../../core/formatters.js';
+import { formatFecha, formatTelefono } from '../../core/formatters.js';
+import { estadoVencimientoLicencia, CLASE_VENCIMIENTO_LICENCIA } from '../../core/dominio-licencias.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -69,15 +70,12 @@ async function cargar() {
   }
 }
 
-// Mismos umbrales de vencimiento que LicenciasView (30 días); aquí solo
-// se badgea lo problemático — una licencia sana no necesita señal.
-const HOY = fechaLocalISO();
-const EN_30_DIAS = fechaLocalISO(30);
-
+// Mismo umbral de vencimiento que LicenciasView (core/dominio-licencias.js);
+// aquí solo se badgea lo problemático — una licencia sana no necesita señal.
 function vencimientoLicencia(lic) {
-  if (lic.tipo === 'perpetua' || !lic.fecha_vencimiento) return null;
-  if (lic.fecha_vencimiento < HOY) return { clase: 'badge--danger', texto: 'Vencida' };
-  if (lic.fecha_vencimiento <= EN_30_DIAS) return { clase: 'badge--warning', texto: 'Por vencer' };
+  const estado = estadoVencimientoLicencia(lic);
+  if (estado === 'vencida') return { clase: CLASE_VENCIMIENTO_LICENCIA.vencida, texto: 'Vencida' };
+  if (estado === 'por_vencer') return { clase: CLASE_VENCIMIENTO_LICENCIA.por_vencer, texto: 'Por vencer' };
   return null;
 }
 
@@ -448,8 +446,8 @@ onMounted(cargar);
   height: 40px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
-  color: #fff;
-  font-size: 13px;
+  color: var(--color-text-inverse);
+  font-size: var(--fs-base);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -463,7 +461,7 @@ onMounted(cargar);
 }
 
 .header-emp h1 {
-  font-size: 17px;
+  font-size: var(--fs-xl);
   font-weight: 600;
   margin: 0;
   display: flex;
@@ -500,12 +498,12 @@ onMounted(cargar);
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-secondary);
 }
 
 .alta-paso i {
-  font-size: 17px;
+  font-size: var(--fs-xl);
 }
 
 .alta-paso--hecho {
@@ -519,7 +517,7 @@ onMounted(cargar);
 .alta-sep {
   color: var(--color-text-secondary);
   opacity: 0.5;
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 .alta-cerrar {
@@ -547,7 +545,7 @@ onMounted(cargar);
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 15px;
+  font-size: var(--fs-lg);
   font-weight: 600;
   color: var(--color-text-primary);
   margin-bottom: 14px;
@@ -561,7 +559,7 @@ onMounted(cargar);
 }
 
 .dato dt {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -583,7 +581,7 @@ onMounted(cargar);
 
 .dato--notas dd {
   white-space: pre-wrap;
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-secondary);
 }
 
@@ -635,7 +633,7 @@ onMounted(cargar);
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 15px;
+  font-size: var(--fs-lg);
   font-weight: 600;
   color: var(--color-text-primary);
 }
@@ -644,7 +642,7 @@ onMounted(cargar);
 .panel-vacio {
   margin: 0;
   padding: 18px 20px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-tertiary);
 }
 
@@ -674,7 +672,7 @@ onMounted(cargar);
 }
 
 .panel-item-titulo {
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-primary);
 }
 

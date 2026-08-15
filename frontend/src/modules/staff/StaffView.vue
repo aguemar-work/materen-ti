@@ -12,6 +12,7 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import StaffModulosForm from './StaffModulosForm.vue';
 
 const store = useStaffStore();
 const authStore = useAuthStore();
@@ -67,6 +68,20 @@ async function confirmarDesactivar() {
     desactivando.value = false;
     procesandoId.value = null;
   }
+}
+
+// Módulos visibles por integrante (migración 056). JEFE siempre ve todos
+// los módulos (auth.puedeVerModulo), así que este modal solo tiene sentido
+// para ASISTENTE — para JEFE el botón queda deshabilitado.
+const miembroModulos = ref(null);
+
+function gestionarModulos(miembro) {
+  if (miembro.rol === 'JEFE') return;
+  miembroModulos.value = miembro;
+}
+
+function cerrarModulos() {
+  miembroModulos.value = null;
 }
 
 async function cambiarRol(miembro, nuevoRol) {
@@ -157,6 +172,16 @@ onMounted(async () => {
                   <div class="actions">
                     <button
                       class="icon-btn"
+                      type="button"
+                      :disabled="miembro.rol === 'JEFE'"
+                      :title="miembro.rol === 'JEFE' ? 'JEFE ve todos los módulos' : 'Módulos visibles'"
+                      :aria-label="`Módulos visibles de ${miembro.nombre}`"
+                      @click="gestionarModulos(miembro)"
+                    >
+                      <i class="ti ti-layout-grid" aria-hidden="true"></i>
+                    </button>
+                    <button
+                      class="icon-btn"
                       :class="miembro.activo ? 'danger' : ''"
                       type="button"
                       :disabled="procesandoId === miembro.user_id"
@@ -200,6 +225,16 @@ onMounted(async () => {
               </select>
               <button
                 class="icon-btn"
+                type="button"
+                :disabled="miembro.rol === 'JEFE'"
+                :title="miembro.rol === 'JEFE' ? 'JEFE ve todos los módulos' : 'Módulos visibles'"
+                :aria-label="`Módulos visibles de ${miembro.nombre}`"
+                @click="gestionarModulos(miembro)"
+              >
+                <i class="ti ti-layout-grid" aria-hidden="true"></i>
+              </button>
+              <button
+                class="icon-btn"
                 :class="miembro.activo ? 'danger' : ''"
                 type="button"
                 :disabled="procesandoId === miembro.user_id"
@@ -231,6 +266,12 @@ onMounted(async () => {
       @cancel="pendienteDesactivar = null"
       @confirm="confirmarDesactivar"
     />
+
+    <StaffModulosForm
+      v-if="miembroModulos"
+      :miembro="miembroModulos"
+      @cerrar="cerrarModulos"
+    />
   </div>
 </template>
 
@@ -246,16 +287,10 @@ onMounted(async () => {
   text-transform: uppercase;
 }
 
-/* Solo se renderiza (v-if) para JEFE; para el resto se muestra el badge. */
+/* Solo se renderiza (v-if) para JEFE; para el resto se muestra el badge.
+   Base (altura, borde, radio, fondo, chevron) viene del `select` global de
+   main.css — acá solo el ajuste de contexto (separación del resto de la fila). */
 .rol-select {
-  display: inline-block;
-  height: 36px;
-  padding: 0 10px;
-  font-size: 13px;
-  border: 1px solid var(--color-border, #d1d5db);
-  border-radius: var(--radius-sm, 4px);
-  background: var(--color-surface, #fff);
-  cursor: pointer;
   margin-right: 6px;
 }
 

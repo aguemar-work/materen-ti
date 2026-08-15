@@ -34,7 +34,7 @@ function enviar() {
   error.value = '';
   for (const p of preguntas.value) {
     if (!respuestaValida(p, respuestas[p.id])) {
-      error.value = `Revisa la pregunta “${p.etiqueta}”`;
+      error.value = `Revise la pregunta “${p.etiqueta}”`;
       return;
     }
   }
@@ -79,12 +79,15 @@ onMounted(async () => {
         <div class="ticket-error-icon"><i class="ti ti-plug-connected-x" aria-hidden="true"></i></div>
         <h2 class="ticket-title">No se pudo abrir la encuesta</h2>
         <p class="ticket-texto">{{ error }}</p>
+        <RouterLink class="public-volver" to="/soporte">
+          <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
+        </RouterLink>
       </template>
 
       <template v-else-if="estado === 'confirmacion'">
         <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
-        <h2 class="ticket-title">¡Gracias por tu respuesta!</h2>
-        <p class="ticket-texto">Tu respuesta quedó registrada de forma anónima.</p>
+        <h2 class="ticket-title">¡Gracias por su respuesta!</h2>
+        <p class="ticket-texto">Su respuesta quedó registrada de forma anónima.</p>
       </template>
 
       <template v-else>

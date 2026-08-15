@@ -169,7 +169,7 @@ const creandoAccion = ref(false);
 
 async function crearAccion() {
   if (!nuevaAccion.value.descripcion.trim() || !nuevaAccion.value.fecha_limite) {
-    showToast('Escribe una descripción y una fecha límite', 'error');
+    showToast('Escriba una descripción y una fecha límite', 'error');
     return;
   }
   creandoAccion.value = true;
@@ -253,7 +253,7 @@ onUnmounted(() => store.limpiar());
             <BadgeEstado tipo="problema_estado" :valor="problema.estado" />
             <BadgeEstado tipo="problema_severidad" :valor="problema.severidad" />
 
-            <div class="problema-encabezado-acciones">
+            <div v-if="!editando" class="problema-encabezado-acciones">
               <button
                 v-if="problema.estado !== 'cerrado'"
                 class="btn btn-primary"
@@ -317,13 +317,13 @@ onUnmounted(() => store.limpiar());
             <div class="datos-title"><i class="ti ti-list-check" aria-hidden="true"></i> Acciones correctivas</div>
 
             <div v-if="accionesCorrectivas.length" class="acciones-lista">
-              <div v-for="a in accionesCorrectivas" :key="a.id" class="accion-item" :class="{ 'accion-item--vencida': accionVencida(a) }">
+              <div v-for="a in accionesCorrectivas" :key="a.id" class="accion-item">
                 <div class="accion-info">
                   <p class="accion-descripcion">{{ a.descripcion }}</p>
                   <p class="accion-meta">
                     <span v-if="a.responsable_id">{{ staffPorId[a.responsable_id] || 'Staff' }} · </span>
                     Vence {{ formatFecha(a.fecha_limite) }}
-                    <span v-if="accionVencida(a)" class="accion-vencida-tag">VENCIDA</span>
+                    <span v-if="accionVencida(a)" class="badge badge--danger badge-inline">Vencida</span>
                   </p>
                 </div>
                 <select :value="a.estado" @change="cambiarEstadoAccion(a.id, $event.target.value)">
@@ -491,10 +491,7 @@ onUnmounted(() => store.limpiar());
   padding: 8px 10px;
   border-radius: var(--radius-md);
   background: var(--color-bg-subtle);
-  border-left: 2px solid transparent;
 }
-
-.accion-item--vencida { border-left-color: var(--color-danger); }
 
 .accion-info { flex: 1; min-width: 0; }
 
@@ -508,12 +505,6 @@ onUnmounted(() => store.limpiar());
   font-size: var(--fs-sm);
   color: var(--color-text-secondary);
   margin: 2px 0 0;
-}
-
-.accion-vencida-tag {
-  color: var(--color-danger);
-  font-weight: 600;
-  margin-left: 4px;
 }
 
 .accion-form-nueva {
@@ -546,4 +537,11 @@ onUnmounted(() => store.limpiar());
 }
 
 .vincular-ticket-form input { flex: 1; }
+
+/* Estructura y color: sistema de badges global (.badge + .badge--X);
+   aquí solo el ajuste de este contexto: separación del texto vecino. */
+.badge-inline {
+  margin-left: 6px;
+  vertical-align: middle;
+}
 </style>

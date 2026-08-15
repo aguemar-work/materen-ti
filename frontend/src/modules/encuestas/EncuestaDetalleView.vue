@@ -160,7 +160,7 @@ onMounted(cargar);
             v-if="rondas.length === 0"
             icono="ti ti-circle-plus"
             titulo="Sin rondas todavía"
-            :mensaje="auth.esJefe ? 'Abre una ronda para generar el link que vas a compartir.' : 'Todavía no se abrió ninguna ronda de esta encuesta.'"
+            :mensaje="auth.esJefe ? 'Abra una ronda para generar el link que va a compartir.' : 'Todavía no se abrió ninguna ronda de esta encuesta.'"
           />
 
           <template v-else>
@@ -258,7 +258,7 @@ onMounted(cargar);
             v-else-if="!respuestas.length"
             icono="ti ti-chart-bar"
             titulo="Sin respuestas todavía"
-            mensaje="Comparte el link de esta ronda para empezar a recibir respuestas."
+            mensaje="Comparta el link de esta ronda para empezar a recibir respuestas."
           />
 
           <div v-else class="resumenes">

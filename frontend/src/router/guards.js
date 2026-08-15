@@ -1,5 +1,6 @@
 import { useAuthStore } from '../stores/auth.js';
 import { registrarAccesoDenegado } from '../api/passwords.js';
+import { showToast } from '../core/toast.js';
 
 // Roles declarados en meta.roles de routes/*.routes.js — agregar aquí al
 // sumar un rol nuevo.
@@ -36,6 +37,17 @@ export function setupGuards(router) {
     const roles = to.meta.roles;
     if (roles && !roles.some((rol) => CUMPLE_ROL[rol]?.(auth))) {
       registrarAccesoDenegado(to.path);
+      showToast('No tiene acceso a ese módulo o sección', 'warning');
+      return to.meta.redirigirDenegado ?? { path: '/dashboard' };
+    }
+
+    // Módulo configurable por usuario (meta.modulo, migración 056): cubre
+    // la navegación directa por URL, no solo el ítem oculto del sidebar
+    // (AppNav.vue). JEFE siempre cumple (auth.puedeVerModulo lo exime).
+    const modulo = to.meta.modulo;
+    if (modulo && !auth.puedeVerModulo(modulo)) {
+      registrarAccesoDenegado(to.path);
+      showToast('No tiene acceso a ese módulo o sección', 'warning');
       return to.meta.redirigirDenegado ?? { path: '/dashboard' };
     }
   });

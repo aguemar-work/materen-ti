@@ -94,7 +94,7 @@ onMounted(cargar);
       </template>
     </PageHeader>
 
-    <main class="page">
+    <main class="page page--padded">
       <div v-if="error" class="no-results">{{ error }}</div>
 
       <template v-else>
@@ -160,7 +160,7 @@ onMounted(cargar);
           </div>
         </div>
 
-        <div class="card card--fill">
+        <div class="card">
           <div class="datos-title">Todas las respuestas</div>
 
           <EmptyState

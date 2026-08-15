@@ -325,6 +325,44 @@ CategoriasTicketPanel.vue, notas de empleados).
 | UX4-52 | Tuteo aislado en `ConfirmDialog` | Bajo | **Resuelto** | `TicketInternoForm.vue:239`. Nota: el mismo string tuteante se repite en otros 9 `ConfirmDialog` fuera de este alcance (`EquipoForm.vue`, `CuentaForm.vue`, `ProblemaForm.vue`, `EncuestaForm.vue`, `KbArticuloForm.vue`, `LicenciaForm.vue`, `EmpleadoForm.vue`, `AccesoSensibleForm.vue`, `CorreoForm.vue`) — no tocados, quedan como candidato a un hallazgo nuevo si se pide |
 | UX4-53 | Chips/botones sin `:focus-visible` propio | Bajo | **Resuelto** | `TicketsView.vue` `.chip-filtro`, `ResponderEncuestaView.vue` `.nivel-btn` |
 
+## Ciclo 5 — Reconciliación de design system con skill `ui-ux-pro-max` (2026-08-14)
+
+Alcance: los 49 componentes/vistas del frontend, en 6 lotes por área (mismo
+método que Ciclo 4), briefeados con la deuda ya abierta en este documento
+para reportar solo instancias nuevas o regresiones. Distinto de Ciclo 4 en
+un punto: el repo tenía cambios reales sin commitear al momento de auditar
+(feature de módulos visibles por staff, migración 056, y un refactor de
+estilos en `KbArticuloForm.vue`/`ProblemaForm.vue`), así que varios
+hallazgos son de ese código nuevo, no deuda vieja. Todos los hallazgos de
+impacto real se corrigieron en el mismo ciclo (verificado con
+`npm run build` y `npm test`, 96/97 en verde, igual que la línea base ya
+conocida).
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| UX5-01 | `proximaFecha()` referenciaba `HOY`, variable eliminada por el refactor a `core/dominio-licencias.js` sin reimportar `fechaLocalISO` — `ReferenceError` real al usar "Renovar" en una licencia por suscripción | Crítico (funcional) | **Resuelto** | `LicenciasView.vue` — reimportado `fechaLocalISO` de `core/formatters.js` |
+| UX5-02 | Ícono KPI "Tickets abiertos" del Dashboard (`--color-info`, azul, ya fijado en UX4-44) vs. la misma tarjeta documentada en `/design-system` con `--color-danger` (rojo) — desincronizados | Alto | **Resuelto** | `DesignSystemView.vue` (`.ds-stat-icon--tickets` → `--color-info-bg`/`-text`, igualando al código real) |
+| UX5-03 | Badge "Sin vincular" hardcodeado en la tarjeta móvil de `TicketsView.vue` mientras la fila de escritorio ya usaba `badgeInfo('ticket_sin_vincular')` | Alto | **Resuelto** | `TicketsView.vue` |
+| UX5-04 | `BajaEmpleadoModal.vue` hand-rolled sin cierre por Escape ni bloqueo de scroll del body — misma categoría que UX4-06 | Alto | **Resuelto** | Migrado a `<Modal>` compartido |
+| UX5-05 | `.emp-avatar` con `color:#fff` fijo sobre gradiente monocromo en oscuro (~1.9:1) — mismo bug que UX4-05, reproducido sin el fix | Alto | **Resuelto** | `EmpleadoDetalleView.vue` → `var(--color-text-inverse)` |
+| UX5-06 | `AccesoSensibleForm.vue` era el único formulario grande con modal hand-rolled tras la migración de `ProblemaForm.vue`/`KbArticuloForm.vue` a `<Modal>` en este mismo ciclo | Medio | **Resuelto** | Migrado a `<Modal>` compartido |
+| UX5-07 | `<Modal>` compartido cerraba por Escape/backdrop/X sin pasar por el chequeo de "cambios sin guardar" (`estaSucio`) — solo el botón "Cancelar" lo respetaba; riesgo real de pérdida de datos en `KbArticuloForm.vue`/`ProblemaForm.vue`/`EncuestaForm.vue`/`AccesoSensibleForm.vue` | Alto | **Resuelto** | `Modal.vue` — nuevo prop opcional `confirmarCierre` (guard function), default `null` (sin cambio de comportamiento para los demás ~10 consumidores) |
+| UX5-08 | Toast nuevo de la migración 056 tuteaba: "No tienes acceso a ese módulo o sección" | Medio | **Resuelto** | `router/guards.js` |
+| UX5-09 | Cluster de tuteo nuevo (distinto del ya documentado en `ConfirmDialog`, UX4-52): mensajes de `EmptyState`, validaciones de formulario y copy público en varios módulos | Medio | **Resuelto** | `EncuestasView.vue`, `EncuestaDetalleView.vue` (×2), `EncuestaPublicaView.vue` (×2), `EmpleadosView.vue`, `BajaEmpleadoModal.vue` (×3), `KbArticuloForm.vue`, `ProblemaForm.vue` (×2), `ProblemaDetalleView.vue`, `DesignSystemView.vue` (copy de demo), `AccesoSensibleForm.vue` |
+| UX5-10 | `EncuestaPublicaView.vue` sin enlace de salida en su estado de error, a diferencia de su hermana `ResponderEncuestaView.vue` (patrón ya resuelto en UX4-15) | Medio | **Resuelto** | Agregado enlace `.public-volver` a `/soporte` |
+| UX5-11 | Tipografía en `px` sueltos fuera de la escala `--mat-fs-*`/`--fs-*`, no cubierta por auditorías anteriores | Bajo | **Resuelto** (parcial, ver pendiente) | `DashboardView.vue`, `LoginView.vue`, `EntregaView.vue`, `EmpleadoDetalleView.vue`, `LicenciasView.vue`, `LicenciaForm.vue`, `CorreoForm.vue`, `PersonalRegistrosView.vue` |
+| UX5-12 | Fallbacks CSS muertos (`var(--x, var(--x))` o fallback a un token siempre definido) y un color de peligro inventado sin relación a ningún token | Bajo | **Resuelto** | `EquipoForm.vue` (fallback muerto + `.foto-x:hover` → `--mat-color-danger-hover`), `CuentaForm.vue` (4 fallbacks, completa UX4-51), `LoginView.vue` (4 fallbacks más, incluye un bug real: `.login-aviso` usaba `--color-success` de alta saturación como color de texto en vez de `--color-success-text`, falla de contraste potencial) |
+| UX5-13 | `.badge-inline` usado en `ProblemaDetalleView.vue` sin que ese componente definiera la regla local (solo existía `scoped` en otros 2 archivos) | Bajo | **Resuelto** | `ProblemaDetalleView.vue` |
+
+**Pendiente de esta pasada** (sin token exacto en la escala, requiere
+decisión de diseño — no forzado a un mapeo incorrecto):
+`DashboardView.vue` `.stat-value` (28px) y `.section--stats .stat-value`
+(22px); `EmpleadoDetalleView.vue` `.header-sub` (12.5px), `.dato dd`
+(13.5px), `.panel-item-meta` (11.5px). Ningún archivo quedó con una
+regresión de Ciclo 3/4 — se confirmó vigente todo lo ya cerrado (modales,
+`:disabled`, tap targets, foco, `aria-label`) en los archivos tocados por
+este ciclo.
+
 ## Cómo mantener esto al día
 
 Cuando se cierre un hallazgo (código o config), actualizar su fila de

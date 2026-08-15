@@ -4,10 +4,9 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useAccesosSensiblesStore } from '../../stores/accesosSensibles.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { CATEGORIAS_ACCESO_SENSIBLE } from '../../core/dominio-accesos-sensibles.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import { generarPassword } from '../../core/generarPassword.js';
+import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
+import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
@@ -19,22 +18,8 @@ const emit = defineEmits(['cerrar']);
 const auth = useAuthStore();
 const store = useAccesosSensiblesStore();
 
-// Cierre animado (mismo patrón que CuentaForm.vue): cerrar() dispara la
-// transición de salida y el emit real sale en @after-leave.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+const modal = ref(null);
+let resultado = false;
 
 const guardando = ref(false);
 const error = ref('');
@@ -118,25 +103,25 @@ function togglePermiso(userId) {
   else permisosSeleccionados.value.splice(i, 1);
 }
 
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
+// Guard de cierre del Modal compartido: backdrop/Escape/X pasan por acá
+// igual que el botón "Cancelar" — con cambios sin guardar se pide
 // confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
+function confirmarCierre() {
   if (estaSucio.value) {
     confirmarDescarte.value = true;
-    return;
+    return false;
   }
-  cerrar(false);
+  return true;
+}
+
+function cancelar() {
+  if (confirmarCierre()) modal.value?.cerrar();
 }
 
 function descartarCambios() {
   dialogoDescarte.value?.cerrar();
-  cerrar(false);
+  modal.value?.cerrar();
 }
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
 function generar() {
   form.value.password = generarPassword();
@@ -155,14 +140,15 @@ async function guardar() {
       );
     } else {
       if (!permisosSeleccionados.value.length) {
-        error.value = 'Selecciona al menos un JEFE con permiso (tu propio permiso ya está incluido)';
+        error.value = 'Seleccione al menos un JEFE con permiso (su propio permiso ya está incluido)';
         guardando.value = false;
         return;
       }
       await store.crear(form.value, permisosSeleccionados.value);
     }
     tomarSnapshot();
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
     error.value = e?.message || 'Error al guardar el acceso';
   } finally {
@@ -172,107 +158,100 @@ async function guardar() {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="acceso-form-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="acceso-form-title">{{ esEdicion ? 'Editar acceso sensible' : 'Nuevo acceso sensible' }}</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
+  <Modal
+    ref="modal"
+    size="lg"
+    :titulo="esEdicion ? 'Editar acceso sensible' : 'Nuevo acceso sensible'"
+    :confirmar-cierre="confirmarCierre"
+    @close="emit('cerrar', resultado)"
+  >
+    <form id="acceso-sensible-form" class="form-grid" @submit.prevent="guardar">
+      <div class="form-group full">
+        <label for="as-nombre">Nombre *</label>
+        <input id="as-nombre" v-model="form.nombre" required placeholder="ej: Router principal, Correo gerencia" :disabled="guardando">
       </div>
 
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
-          <div class="form-group full">
-            <label for="as-nombre">Nombre *</label>
-            <input id="as-nombre" v-model="form.nombre" required placeholder="ej: Router principal, Correo gerencia" :disabled="guardando">
-          </div>
+      <div class="form-group">
+        <label for="as-categoria">Categoría *</label>
+        <select id="as-categoria" v-model="form.categoria" required :disabled="guardando">
+          <option value="" disabled>Seleccionar categoría</option>
+          <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.label }}</option>
+        </select>
+      </div>
 
-          <div class="form-group">
-            <label for="as-categoria">Categoría *</label>
-            <select id="as-categoria" v-model="form.categoria" required :disabled="guardando">
-              <option value="" disabled>Seleccionar categoría</option>
-              <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.label }}</option>
-            </select>
-          </div>
+      <div class="form-group">
+        <label for="as-usuario">Usuario *</label>
+        <input id="as-usuario" v-model="form.usuario" required :disabled="guardando">
+      </div>
 
-          <div class="form-group">
-            <label for="as-usuario">Usuario *</label>
-            <input id="as-usuario" v-model="form.usuario" required :disabled="guardando">
-          </div>
-
-          <div class="form-group full">
-            <label for="as-password">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
-            <div class="input-with-action">
-              <input
-                id="as-password"
-                v-model="form.password"
-                :type="passwordVisible ? 'text' : 'password'"
-                autocomplete="new-password"
-                :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-                :disabled="guardando"
-              >
-              <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
-                <i class="ti ti-refresh" aria-hidden="true"></i>
-              </button>
-              <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
-                <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-              </button>
-            </div>
-          </div>
-
-          <div class="form-group full">
-            <label for="as-notas">Notas</label>
-            <textarea id="as-notas" v-model="form.notas" :disabled="guardando"></textarea>
-          </div>
-
-          <div class="form-group full section-label">
-            <i class="ti ti-shield-lock" aria-hidden="true"></i> Quién puede revelar esta credencial
-          </div>
-
-          <div class="form-group full">
-            <div v-if="cargandoJefes" class="loading-inline">Cargando JEFEs...</div>
-            <ul v-else class="permisos-lista">
-              <li v-for="j in jefesActivos" :key="j.user_id" class="permiso-item">
-                <label>
-                  <input
-                    type="checkbox"
-                    :checked="permisosSeleccionados.includes(j.user_id)"
-                    :disabled="guardando || j.user_id === auth.user.id"
-                    @change="togglePermiso(j.user_id)"
-                  >
-                  {{ j.nombre }}
-                  <span v-if="j.user_id === auth.user.id" class="permiso-yo">(yo)</span>
-                </label>
-              </li>
-            </ul>
-            <p class="field-hint">
-              Solo los JEFE marcados acá van a poder revelar, editar o eliminar esta credencial. Tu propio permiso queda incluido siempre.
-            </p>
-          </div>
-        </div>
-
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando || cargandoJefes">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Guardando...' : 'Guardar' }}
+      <div class="form-group full">
+        <label for="as-password">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
+        <div class="input-with-action">
+          <input
+            id="as-password"
+            v-model="form.password"
+            :type="passwordVisible ? 'text' : 'password'"
+            autocomplete="new-password"
+            :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+            :disabled="guardando"
+          >
+          <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+            <i class="ti ti-refresh" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
+            <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
           </button>
         </div>
-      </form>
-    </div>
-  </div>
-  </Transition>
+      </div>
+
+      <div class="form-group full">
+        <label for="as-notas">Notas</label>
+        <textarea id="as-notas" v-model="form.notas" :disabled="guardando"></textarea>
+      </div>
+
+      <div class="form-group full section-label">
+        <i class="ti ti-shield-lock" aria-hidden="true"></i> Quién puede revelar esta credencial
+      </div>
+
+      <div class="form-group full">
+        <div v-if="cargandoJefes" class="loading-inline">Cargando JEFEs...</div>
+        <ul v-else class="permisos-lista">
+          <li v-for="j in jefesActivos" :key="j.user_id" class="permiso-item">
+            <label>
+              <input
+                type="checkbox"
+                :checked="permisosSeleccionados.includes(j.user_id)"
+                :disabled="guardando || j.user_id === auth.user.id"
+                @change="togglePermiso(j.user_id)"
+              >
+              {{ j.nombre }}
+              <span v-if="j.user_id === auth.user.id" class="permiso-yo">(yo)</span>
+            </label>
+          </li>
+        </ul>
+        <p class="field-hint">
+          Solo los JEFE marcados acá van a poder revelar, editar o eliminar esta credencial. Su propio permiso queda incluido siempre.
+        </p>
+      </div>
+
+      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    </form>
+
+    <template #acciones>
+      <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
+      <button class="btn btn-primary" type="submit" form="acceso-sensible-form" :disabled="guardando || cargandoJefes">
+        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+        {{ guardando ? 'Guardando...' : 'Guardar' }}
+      </button>
+    </template>
+  </Modal>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Tiene cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
     @cancel="confirmarDescarte = false"
@@ -281,13 +260,8 @@ async function guardar() {
 </template>
 
 <style scoped>
-/* Ancho: .modal-lg de la escala centralizada (main.css) — el multi-select
-   de JEFEs hace el formulario más largo que un .modal base. */
-.modal-title { display: flex; align-items: center; justify-content: space-between; }
-.modal-body { padding: 16px 24px 24px; }
-
 .loading-inline {
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-secondary);
   padding: 8px 0;
 }
@@ -320,7 +294,7 @@ async function guardar() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 400;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -328,16 +302,12 @@ async function guardar() {
 
 .permiso-yo {
   color: var(--color-text-tertiary);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .field-hint {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--color-text-secondary);
-}
-
-.modal-actions.full {
-  grid-column: 1 / -1;
 }
 </style>

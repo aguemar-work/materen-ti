@@ -4,7 +4,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import Modal from '../../components/shared/Modal.vue';
 
 const props = defineProps({
   empleado: { type: Object, required: true },
@@ -12,25 +12,8 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió.
-// El foco inicial cae en Cancelar (primer foco-able que no es la "X"),
-// coherente con la confirmación de nivel Base.
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+const modal = ref(null);
+let resultado = false;
 
 const store = useEmpleadosStore();
 
@@ -40,7 +23,6 @@ const equipos = ref([]);
 const cargando = ref(true);
 const procesando = ref(false);
 const error = ref('');
-const btnCancelar = ref(null);
 
 const nombreCompleto = computed(() => nombreCompletoDe(props.empleado));
 
@@ -53,10 +35,6 @@ const sinAccesos = computed(
 );
 
 onMounted(async () => {
-  // Confirmación de nivel Base (Materen Core #patrones-de-componente): el foco por defecto va
-  // en Cancelar, no en Confirmar — el usuario debe elegir avanzar a
-  // propósito, nunca por apretar Enter/Espacio sin pensar.
-  btnCancelar.value?.focus();
   try {
     const resumen = await insforgeApi.resumenBaja(props.empleado.id);
     cuentas.value = resumen.cuentas;
@@ -69,17 +47,14 @@ onMounted(async () => {
   }
 });
 
-function cancelar() {
-  cerrar(false);
-}
-
 async function confirmarBaja() {
   error.value = '';
   procesando.value = true;
   try {
     await store.darDeBaja(props.empleado.id);
     showToast(`${nombreCompleto.value} dado de baja`);
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
     error.value = e?.message || 'Error al dar de baja';
   } finally {
@@ -89,137 +64,133 @@ async function confirmarBaja() {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg confirm-dialog--destructive" @click.self="cancelar">
-    <div ref="panelModal" class="modal modal-sm baja-modal" role="dialog" aria-modal="true" aria-labelledby="baja-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="baja-title" class="baja-title-con-icono">
-          <span class="modal-icon"><i class="ti ti-user-off" aria-hidden="true"></i></span>
-          Dar de baja a {{ nombreCompleto }}
-        </span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
+  <Modal
+    ref="modal"
+    size="sm"
+    overlay-class="confirm-dialog--destructive"
+    @close="emit('cerrar', resultado)"
+  >
+    <template #titulo>
+      <span class="baja-title-con-icono">
+        <span class="modal-icon"><i class="ti ti-user-off" aria-hidden="true"></i></span>
+        Dar de baja a {{ nombreCompleto }}
+      </span>
+    </template>
 
-      <div class="modal-body baja-body">
-        <div v-if="cargando" class="baja-cargando">Cargando resumen de accesos...</div>
+    <div class="baja-body">
+      <div v-if="cargando" class="baja-cargando">Cargando resumen de accesos...</div>
 
-        <template v-else>
-          <p class="baja-intro">
-            Esto es lo que pasará con sus accesos. Revisa antes de confirmar:
-          </p>
+      <template v-else>
+        <p class="baja-intro">
+          Esto es lo que pasará con sus accesos. Revise antes de confirmar:
+        </p>
 
-          <div v-if="sinAccesos" class="baja-sin-cuentas">
-            <i class="ti ti-info-circle"></i>
-            No tiene cuentas, licencias ni equipos asignados actualmente.
+        <div v-if="sinAccesos" class="baja-sin-cuentas">
+          <i class="ti ti-info-circle"></i>
+          No tiene cuentas, licencias ni equipos asignados actualmente.
+        </div>
+
+        <div v-if="personales.length" class="baja-grupo">
+          <div class="grupo-header grupo-header--danger">
+            <i class="ti ti-user"></i>
+            Cuentas personales — se darán de baja
           </div>
+          <ul>
+            <li v-for="c in personales" :key="c.asignacion_id">
+              <span class="cuenta-usuario">{{ c.usuario }}</span>
+              <span class="cuenta-plataforma">{{ c.plataforma }}</span>
+            </li>
+          </ul>
+        </div>
 
-          <div v-if="personales.length" class="baja-grupo">
-            <div class="grupo-header grupo-header--danger">
-              <i class="ti ti-user"></i>
-              Cuentas personales — se darán de baja
-            </div>
-            <ul>
-              <li v-for="c in personales" :key="c.asignacion_id">
-                <span class="cuenta-usuario">{{ c.usuario }}</span>
-                <span class="cuenta-plataforma">{{ c.plataforma }}</span>
-              </li>
-            </ul>
+        <div v-if="reutilizables.length" class="baja-grupo">
+          <div class="grupo-header grupo-header--ok">
+            <i class="ti ti-transfer"></i>
+            Reutilizables — quedarán disponibles para otro empleado
           </div>
+          <ul>
+            <li v-for="c in reutilizables" :key="c.asignacion_id">
+              <span class="cuenta-usuario">{{ c.usuario }}</span>
+              <span class="cuenta-plataforma">{{ c.plataforma }}</span>
+            </li>
+          </ul>
+        </div>
 
-          <div v-if="reutilizables.length" class="baja-grupo">
-            <div class="grupo-header grupo-header--ok">
-              <i class="ti ti-transfer"></i>
-              Reutilizables — quedarán disponibles para otro empleado
-            </div>
-            <ul>
-              <li v-for="c in reutilizables" :key="c.asignacion_id">
-                <span class="cuenta-usuario">{{ c.usuario }}</span>
-                <span class="cuenta-plataforma">{{ c.plataforma }}</span>
-              </li>
-            </ul>
+        <div v-if="compartidas.length" class="baja-grupo">
+          <div class="grupo-header grupo-header--info">
+            <i class="ti ti-users"></i>
+            Compartidas — se le quitará el acceso (los demás usuarios continúan)
           </div>
+          <ul>
+            <li v-for="c in compartidas" :key="c.asignacion_id">
+              <span class="cuenta-usuario">{{ c.usuario }}</span>
+              <span class="cuenta-plataforma">{{ c.plataforma }}</span>
+            </li>
+          </ul>
+        </div>
 
-          <div v-if="compartidas.length" class="baja-grupo">
-            <div class="grupo-header grupo-header--info">
-              <i class="ti ti-users"></i>
-              Compartidas — se le quitará el acceso (los demás usuarios continúan)
-            </div>
-            <ul>
-              <li v-for="c in compartidas" :key="c.asignacion_id">
-                <span class="cuenta-usuario">{{ c.usuario }}</span>
-                <span class="cuenta-plataforma">{{ c.plataforma }}</span>
-              </li>
-            </ul>
+        <div v-if="licencias.length" class="baja-grupo">
+          <div class="grupo-header grupo-header--ok">
+            <i class="ti ti-license"></i>
+            Licencias — el asiento quedará libre
           </div>
+          <ul>
+            <li v-for="l in licencias" :key="l.asignacion_id">
+              <span class="cuenta-usuario">{{ l.software }}</span>
+            </li>
+          </ul>
+        </div>
 
-          <div v-if="licencias.length" class="baja-grupo">
-            <div class="grupo-header grupo-header--ok">
-              <i class="ti ti-license"></i>
-              Licencias — el asiento quedará libre
-            </div>
-            <ul>
-              <li v-for="l in licencias" :key="l.asignacion_id">
-                <span class="cuenta-usuario">{{ l.software }}</span>
-              </li>
-            </ul>
+        <div v-if="reutilizables.length || compartidas.length" class="baja-aviso-rotacion">
+          <i class="ti ti-alert-triangle"></i>
+          <span>
+            Estas cuentas quedarán marcadas <strong>"Rotar contraseña"</strong>:
+            el empleado conoce las claves actuales. Cámbielas cuanto antes.
+          </span>
+        </div>
+
+        <!-- Equipos: NO se cierran con la baja — devolución física pendiente -->
+        <div v-if="equipos.length" class="baja-grupo">
+          <div class="grupo-header grupo-header--danger">
+            <i class="ti ti-devices"></i>
+            Equipos — quedan PENDIENTES DE DEVOLUCIÓN
           </div>
+          <ul>
+            <li v-for="eq in equipos" :key="eq.asignacion_id">
+              <span class="cuenta-usuario">{{ eq.codigo }} — {{ eq.tipo }} {{ eq.marca }} {{ eq.modelo }}</span>
+            </li>
+          </ul>
+        </div>
 
-          <div v-if="reutilizables.length || compartidas.length" class="baja-aviso-rotacion">
-            <i class="ti ti-alert-triangle"></i>
-            <span>
-              Estas cuentas quedarán marcadas <strong>"Rotar contraseña"</strong>:
-              el empleado conoce las claves actuales. Cámbialas cuanto antes.
-            </span>
-          </div>
+        <div v-if="equipos.length" class="baja-aviso-rotacion">
+          <i class="ti ti-alert-triangle"></i>
+          <span>
+            La baja <strong>no</strong> marca los equipos como devueltos: recupérelos
+            físicamente y registre la devolución en el módulo <strong>Equipos</strong>.
+            Mientras tanto aparecerán como "Sin devolver" en el Dashboard.
+          </span>
+        </div>
 
-          <!-- Equipos: NO se cierran con la baja — devolución física pendiente -->
-          <div v-if="equipos.length" class="baja-grupo">
-            <div class="grupo-header grupo-header--danger">
-              <i class="ti ti-devices"></i>
-              Equipos — quedan PENDIENTES DE DEVOLUCIÓN
-            </div>
-            <ul>
-              <li v-for="eq in equipos" :key="eq.asignacion_id">
-                <span class="cuenta-usuario">{{ eq.codigo }} — {{ eq.tipo }} {{ eq.marca }} {{ eq.modelo }}</span>
-              </li>
-            </ul>
-          </div>
-
-          <div v-if="equipos.length" class="baja-aviso-rotacion">
-            <i class="ti ti-alert-triangle"></i>
-            <span>
-              La baja <strong>no</strong> marca los equipos como devueltos: recupéralos
-              físicamente y registra la devolución en el módulo <strong>Equipos</strong>.
-              Mientras tanto aparecerán como "Sin devolver" en el Dashboard.
-            </span>
-          </div>
-
-          <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-        </template>
-      </div>
-
-      <div class="modal-actions">
-        <button ref="btnCancelar" class="btn" type="button" :disabled="procesando" @click="cancelar">Cancelar</button>
-        <button
-          class="btn btn-danger"
-          type="button"
-          :disabled="cargando || procesando"
-          @click="confirmarBaja"
-        >
-          <i :class="procesando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-user-off'" aria-hidden="true"></i>
-          {{ procesando ? 'Procesando...' : 'Confirmar baja' }}
-        </button>
-      </div>
+        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      </template>
     </div>
-  </div>
-  </Transition>
+
+    <template #acciones>
+      <button class="btn" type="button" :disabled="procesando" @click="modal?.cerrar()">Cancelar</button>
+      <button
+        class="btn btn-danger"
+        type="button"
+        :disabled="cargando || procesando"
+        @click="confirmarBaja"
+      >
+        <i :class="procesando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-user-off'" aria-hidden="true"></i>
+        {{ procesando ? 'Procesando...' : 'Confirmar baja' }}
+      </button>
+    </template>
+  </Modal>
 </template>
 
 <style scoped>
-/* Ancho: .modal-sm de la escala centralizada (main.css) */
-
 .baja-title-con-icono {
   display: flex;
   align-items: center;
@@ -227,7 +198,6 @@ async function confirmarBaja() {
 }
 
 .baja-body {
-  padding: 4px 24px 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -237,12 +207,12 @@ async function confirmarBaja() {
   padding: 24px 0;
   text-align: center;
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .baja-intro {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-secondary);
 }
 
@@ -250,9 +220,9 @@ async function confirmarBaja() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-secondary);
-  background: var(--color-bg-subtle, var(--color-bg-subtle));
+  background: var(--color-bg-subtle);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
@@ -268,7 +238,7 @@ async function confirmarBaja() {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   padding: 8px 12px;
 }
@@ -290,12 +260,12 @@ async function confirmarBaja() {
   gap: 8px;
   padding: 8px 12px;
   border-top: 1px solid var(--color-border);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .cuenta-usuario {
   font-family: var(--font-mono, monospace);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -303,7 +273,7 @@ async function confirmarBaja() {
 }
 
 .cuenta-plataforma {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--color-text-secondary);
   white-space: nowrap;
 }
@@ -312,7 +282,7 @@ async function confirmarBaja() {
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.45;
   color: var(--color-warning-text-strong);
   background: var(--color-warning-bg);
@@ -322,7 +292,7 @@ async function confirmarBaja() {
 }
 
 .baja-aviso-rotacion i {
-  font-size: 16px;
+  font-size: var(--fs-md);
   flex-shrink: 0;
   margin-top: 1px;
 }

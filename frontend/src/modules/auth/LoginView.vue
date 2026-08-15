@@ -321,7 +321,7 @@ async function onCambiarPassword() {
 }
 
 .login-title {
-  font-size: 20px;
+  font-size: var(--fs-2xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   margin-bottom: 1.25rem;
@@ -333,7 +333,7 @@ async function onCambiarPassword() {
 }
 
 .login-subtitle {
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-secondary);
   margin-bottom: 1.5rem;
 }
@@ -401,8 +401,8 @@ async function onCambiarPassword() {
   background: none;
   border: none;
   padding: 0;
-  font-size: 13px;
-  color: var(--color-primary, var(--color-accent));
+  font-size: var(--fs-base);
+  color: var(--color-primary);
   cursor: pointer;
   align-self: center;
 }
@@ -418,18 +418,18 @@ async function onCambiarPassword() {
 
 .input-codigo {
   text-align: center;
-  font-size: 18px;
+  font-size: var(--fs-xl);
   letter-spacing: 0.4em;
   font-variant-numeric: tabular-nums;
 }
 
 .login-aviso {
-  color: var(--color-success, var(--color-success-text));
-  background: var(--color-success-bg, var(--color-success-bg));
-  border: 1px solid var(--color-success-border, var(--color-success-border));
+  color: var(--color-success-text);
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
   border-radius: var(--radius-md);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   margin: 0;
 }
 
@@ -439,7 +439,7 @@ async function onCambiarPassword() {
   border: 1px solid var(--color-danger-border);
   border-radius: var(--radius-md);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   margin: 0;
 }
 </style>

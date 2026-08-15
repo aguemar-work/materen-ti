@@ -85,7 +85,17 @@ const sidebarAbierto = ref(false);
 
 // ── Colapso del sidebar (solo desktop; en móvil manda el drawer) ──
 const CLAVE_SIDEBAR = 'sistema-ti-sidebar';
-const sidebarColapsado = ref(localStorage.getItem(CLAVE_SIDEBAR) === 'colapsado');
+// Sin preferencia guardada: rail por defecto en pantallas medianas (mismo
+// breakpoint que ya usa main.css/DashboardView.vue para reflow de grillas),
+// para que el ancho no le compita al contenido en laptops sin que el usuario
+// tenga que descubrir el toggle. Quien ya eligió una vez, siempre gana esa
+// elección sobre el tamaño de ventana.
+const preferenciaSidebarGuardada = localStorage.getItem(CLAVE_SIDEBAR);
+const sidebarColapsado = ref(
+  preferenciaSidebarGuardada
+    ? preferenciaSidebarGuardada === 'colapsado'
+    : window.innerWidth <= 1200
+);
 
 function toggleColapso() {
   sidebarColapsado.value = !sidebarColapsado.value;
@@ -286,7 +296,7 @@ async function cerrarSesion() {
   .sidebar--colapsado .sb-footer {
     flex-direction: column;
     gap: 6px;
-    padding: 12px 0;
+    padding: 10px 0;
   }
 
   .sidebar--colapsado .sb-user {
@@ -312,7 +322,7 @@ async function cerrarSesion() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 18px 14px;
+  padding: 16px 16px 12px;
   flex-shrink: 0;
 }
 
@@ -339,7 +349,7 @@ async function cerrarSesion() {
 /* ── Footer de usuario ───────────────────────────────────────── */
 .sb-footer {
   flex-shrink: 0;
-  padding: 12px 14px;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   gap: 8px;

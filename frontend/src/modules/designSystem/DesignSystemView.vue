@@ -490,7 +490,7 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
           <div class="ds-campana-item">
             <i class="ti ti-ticket" aria-hidden="true"></i>
             <span class="ds-campana-item-texto">
-              <span class="ds-campana-item-titulo">Ticket #1042 asignado a vos</span>
+              <span class="ds-campana-item-titulo">Ticket #1042 asignado</span>
               <span class="ds-campana-item-fecha">hace 5 min</span>
             </span>
             <span class="ds-campana-item-punto" aria-hidden="true"></span>
@@ -750,7 +750,7 @@ const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? val
 .ds-metricas .stat-card { width: 220px; }
 /* DashboardView.vue .stat-icon--empleados/.stat-icon--tickets (scoped ahí) */
 .ds-stat-icon--empleados { background: var(--color-success-bg); color: var(--color-success-text); }
-.ds-stat-icon--tickets { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.ds-stat-icon--tickets { background: var(--color-info-bg); color: var(--color-info-text); }
 
 /* ── Superposiciones ──────────────────────────────────────────── */
 .ds-modal-demo { display: flex; }

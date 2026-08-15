@@ -350,7 +350,7 @@ async function guardar() {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-secondary, var(--color-text-secondary));
+  color: var(--color-text-secondary);
   transition: color 0.15s, border-color 0.15s;
   margin-bottom: -1px;
 }
@@ -360,13 +360,13 @@ async function guardar() {
 }
 
 .modo-btn--active {
-  color: var(--color-primary, var(--color-accent));
-  border-bottom-color: var(--color-primary, var(--color-accent));
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
 }
 
 .loading-inline {
   font-size: 13px;
-  color: var(--color-text-secondary, var(--color-text-secondary));
+  color: var(--color-text-secondary);
   padding: 8px 0;
 }
 
@@ -385,7 +385,7 @@ async function guardar() {
 }
 
 .field-hint a {
-  color: var(--color-primary, var(--color-accent));
+  color: var(--color-primary);
   text-decoration: none;
 }
 

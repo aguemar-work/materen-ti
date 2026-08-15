@@ -61,7 +61,14 @@ cuándo y si la contraseña se rotó después.
 - **No reabrir el registro público**: `disable_signup` debe seguir en `true` y
  el trigger `handle_new_staff_user` debe crear el `staff` **inactivo**
  (`activo=false`). Solo el JEFE aprovisiona/activa staff. Revertir esto
- reintroduce la escalada H-CRIT de la auditoría.
+ reintroduce la escalada H-CRIT de la auditoría. Ese mismo trigger (migración
+ 056) también siembra las 8 filas de `staff_modulos_permisos` del staff
+ nuevo — si se reescribe la función, no perder ese `insert`.
+- **Permisos de módulo** (`staff_modulos_permisos`, migración 056): son
+ control de UI/navegación (sidebar + router guard), no de RLS. No asumir que
+ desmarcar un módulo bloquea el acceso a los datos de esa tabla por otra vía
+ (RPC, otra vista) — eso requeriría tocar RLS aparte, decisión que no se
+ tomó acá.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — las
  asignaciones se cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, enviar `password_cambiada: true` solo si el usuario

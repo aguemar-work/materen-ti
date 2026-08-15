@@ -57,12 +57,16 @@ function onOpcionesInput(pregunta, texto) {
   pregunta.opciones = texto.split('\n').map((o) => o.trim()).filter(Boolean);
 }
 
-function cerrar() {
+function confirmarCierre() {
   if (estaSucio.value) {
     confirmarDescarte.value = true;
-    return;
+    return false;
   }
-  modal.value?.cerrar();
+  return true;
+}
+
+function cerrar() {
+  if (confirmarCierre()) modal.value?.cerrar();
 }
 
 function descartarCambios() {
@@ -77,7 +81,7 @@ async function guardar() {
     return;
   }
   if (!form.value.preguntas.length) {
-    errorForm.value = 'Agrega al menos una pregunta';
+    errorForm.value = 'Agregue al menos una pregunta';
     return;
   }
   for (const p of form.value.preguntas) {
@@ -108,7 +112,7 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal ref="modal" :titulo="esEdicion ? 'Editar encuesta' : 'Nueva encuesta'" size="lg" @close="emit('cerrar')">
+  <Modal ref="modal" :titulo="esEdicion ? 'Editar encuesta' : 'Nueva encuesta'" size="lg" :confirmar-cierre="confirmarCierre" @close="emit('cerrar')">
     <form id="enc-form" class="enc-form" @submit.prevent="guardar">
       <div class="form-group">
         <label for="enc-titulo">Título *</label>

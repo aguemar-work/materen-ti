@@ -6,6 +6,7 @@ import { useTicketsStore } from '../../stores/tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES } from '../../core/dominio-tickets.js';
+import { badgeInfo } from '../../core/badges.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import TicketInternoForm from './TicketInternoForm.vue';
@@ -212,8 +213,8 @@ onMounted(async () => {
                   <div class="tk-antiguedad" :class="{ 'tk-antiguedad--alerta': ticketEnvejecido(t) }">{{ formatAntiguedad(t.created_at) }}</div>
                 </td>
                 <td>
-                  <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
-                    <i class="ti ti-alert-triangle"></i> Sin vincular
+                  <span v-if="!t.vinculado" class="badge badge-inline" :class="badgeInfo('ticket_sin_vincular').clase" title="No se pudo identificar al solicitante">
+                    <i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}
                   </span>
                   <RouterLink v-else-if="t.solicitante_id" class="empleado-link" :to="`/empleados/${t.solicitante_id}`" @click.stop>{{ t.solicitante }}</RouterLink>
                   <TextoVacio v-else :valor="t.solicitante" />
@@ -249,8 +250,8 @@ onMounted(async () => {
             </div>
             <div class="tarjeta-fila__principal">{{ t.titulo }}</div>
             <div class="tarjeta-fila__sec">
-              <span v-if="!t.vinculado" class="badge badge--danger badge-inline" title="No se pudo identificar al solicitante">
-                <i class="ti ti-alert-triangle"></i> Sin vincular
+              <span v-if="!t.vinculado" class="badge badge-inline" :class="badgeInfo('ticket_sin_vincular').clase" title="No se pudo identificar al solicitante">
+                <i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}
               </span>
               <RouterLink v-else-if="t.solicitante_id" class="empleado-link" :to="`/empleados/${t.solicitante_id}`" @click.stop>{{ t.solicitante }}</RouterLink>
               <TextoVacio v-else :valor="t.solicitante" />

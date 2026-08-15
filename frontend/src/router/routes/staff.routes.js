@@ -4,11 +4,13 @@ export default [
     path: '/empleados',
     name: 'empleados',
     component: () => import('../../modules/empleados/EmpleadosView.vue'),
+    meta: { modulo: 'empleados' },
   },
   {
     path: '/empleados/:id',
     name: 'empleado-detalle',
     component: () => import('../../modules/empleados/EmpleadoDetalleView.vue'),
+    meta: { modulo: 'empleados' },
   },
   {
     // Solo JEFE — ver guard en router/guards.js

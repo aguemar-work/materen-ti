@@ -5,10 +5,12 @@ export default [
     path: '/encuestas',
     name: 'encuestas',
     component: () => import('../../modules/encuestas/EncuestasView.vue'),
+    meta: { modulo: 'encuestas' },
   },
   {
     path: '/encuestas/:id',
     name: 'encuesta-detalle',
     component: () => import('../../modules/encuestas/EncuestaDetalleView.vue'),
+    meta: { modulo: 'encuestas' },
   },
 ];

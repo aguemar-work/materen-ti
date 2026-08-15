@@ -24,6 +24,14 @@ cuándo y si la contraseña se rotó después.
 - **Staff**: quien sí inicia sesión (tabla `staff`, 1:1 con `auth.users`).
   Dos roles: **JEFE** (todo: eliminar, staff, auditoría) y **ASISTENTE**
   (operativo). Aplicado con RLS en todas las tablas.
+- **Permisos de módulo** (`staff_modulos_permisos`, migración 056): además
+  del rol, cada ASISTENTE tiene una lista de módulos operativos habilitados
+  (Tickets, Empleados, Correos, Licencias, Equipos, Base de Conocimiento,
+  Problemas, Encuestas). Un módulo sin fila para ese usuario se oculta del
+  sidebar y bloquea la navegación directa por URL (router guard). Es control
+  de UI/navegación, no de RLS: las políticas de cada tabla siguen dando
+  acceso a cualquier staff activo, sin cambios. JEFE siempre ve los 8
+  módulos, sin excepción.
 - **Cuenta**: una credencial en una plataforma. Tres tipos (`tipo_cuenta`):
   - `personal` — de una sola persona; **se da de baja junto con el empleado**.
   - `reutilizable` — un titular a la vez; al salir el titular queda **Libre**
@@ -337,6 +345,8 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 052 | Retira el canal realtime `tickets:nuevos` (044), reemplazado por `notificaciones:nuevas` (045) y sin ningún consumidor en el frontend. La fila de `realtime.channels` queda `enabled=false` (reversible), no se borra |
 | 054 | **Fix de bug en producción** (detectado 2026-08-12 al crear un ticket): elimina la sobrecarga vieja de 5 argumentos de `crear_notificacion()` que la 048 dejó viva sin querer — cualquier llamada de 5 argumentos (las 4 de la 045: `ticket_creado`, `cuenta_creada`, `empleado_alta`, `empleado_baja`) quedaba ambigua entre las dos sobrecargas y fallaba con `function ... is not unique`, rompiendo el INSERT completo (crear ticket, crear cuenta, alta/baja de empleado) |
 | 055 | **Decisión de producto** (2026-08-13): retira el trigger/función `notify_correo_fallido()` (049), huérfano tras quitar de `functions/tickets.ts` el correo de confirmación al crear y la acción `enviarEncuesta` — el sistema no debe enviar avisos/notificaciones por correo por el momento. No toca los checks de `ticket_eventos`/`notificaciones` (podría haber filas históricas con esos valores) |
+| 056 | Permisos de módulo por usuario: `staff_modulos_permisos` (puente `staff_user_id ↔ módulo`, mismo patrón que `accesos_sensibles_permisos` de 024). Backfill con los 8 módulos habilitados para todo staff existente y trigger de alta (`handle_new_staff_user`, extendido) que siembra igual a cualquier staff nuevo — es "opt-out" (JEFE desmarca), no "opt-in". Solo UI/navegación (sidebar + router guard en el frontend); no toca RLS de correos/licencias/equipos/etc |
+| 057 | Bandeja de importación de equipos desde Excel: tabla `equipos_importacion` (campos editables 1 a 1 con `equipos` + `raw` jsonb de referencia). RLS: staff ve/crea/edita/**elimina** (sin jefe-only, mismo caso que `equipo_accesorios` — es cola de trabajo, no historial de negocio) |
 
 ## Checklist de deploy
 
@@ -386,3 +396,13 @@ del receptor, del equipo, specs, accesorios, condición, cláusula de
 responsabilidad y firmas. Las **fotos** (máx. 4 por equipo) se comprimen en el
 navegador (`core/imagenes.js`, ~200 KB c/u) antes de subir al bucket público
 `equipos-fotos`; se guarda `{url, key}` por foto.
+
+**Importar equipos desde Excel** (`/equipos/importar`): se pegan las filas
+copiadas de un Excel de activos fijos y se confirma el mapeo de columnas; eso
+crea una **bandeja de trabajo** (`equipos_importacion`, migración 057) donde
+se corrige fila por fila (tipo, estado físico, a quién está asignado) antes
+de migrar cada una a Equipos — no hay alta masiva sin revisión humana, porque
+la columna "Usuario" del Excel de origen no siempre coincide con el nombre
+real del empleado en el sistema. La bandeja vive en la base de datos (no en
+el navegador) para poder retomarla desde cualquier sesión/computadora; una
+fila desaparece de la bandeja recién cuando se migra al inventario real.

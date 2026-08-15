@@ -216,7 +216,7 @@ onMounted(async () => {
           v-else-if="total === 0"
           icono="ti ti-users"
           titulo="Sin empleados"
-          :mensaje="busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agrega el primer empleado al inventario.'"
+          :mensaje="busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agregue el primer empleado al inventario.'"
         >
           <button v-if="!busqueda && !filtroEstado" class="btn" type="button" @click="abrirNuevo">
             <i class="ti ti-plus"></i> Agregar empleado

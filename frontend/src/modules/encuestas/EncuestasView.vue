@@ -84,7 +84,7 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
           v-else-if="!cargando && lista.length === 0"
           icono="ti ti-clipboard-list"
           titulo="Sin encuestas"
-          :mensaje="auth.esJefe ? 'Crea una plantilla de encuesta para lanzar la primera ronda.' : 'Todavía no hay ninguna encuesta creada.'"
+          :mensaje="auth.esJefe ? 'Cree una plantilla de encuesta para lanzar la primera ronda.' : 'Todavía no hay ninguna encuesta creada.'"
         >
           <button v-if="auth.esJefe" class="btn" type="button" @click="abrirNueva">
             <i class="ti ti-plus"></i> Nueva encuesta

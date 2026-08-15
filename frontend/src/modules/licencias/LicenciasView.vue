@@ -9,6 +9,7 @@ import { revelarClaveLicencia, revelarPassword } from '../../api/passwords.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, fechaISO, fechaLocalISO } from '../../core/formatters.js';
+import { estadoVencimientoLicencia, CLASE_VENCIMIENTO_LICENCIA } from '../../core/dominio-licencias.js';
 import LicenciaForm from './LicenciaForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
@@ -91,9 +92,6 @@ useCerrarConEscape(() => {
 const panelAsignar = ref(null);
 useFocoAtrapado(panelAsignar, mostrarAsignar);
 
-const HOY = fechaLocalISO();
-const EN_30_DIAS = fechaLocalISO(30);
-
 // Barra de capacidad: comunica cercanía al tope de asientos antes de que
 // el trigger de BD (check_tope_licencia) bloquee la asignación.
 function capacidadInfo(l) {
@@ -105,10 +103,12 @@ function capacidadInfo(l) {
 }
 
 function estadoVencimiento(l) {
-  if (l.tipo === 'perpetua' || !l.fecha_vencimiento) return { clase: 'badge--success', texto: 'Perpetua' };
-  if (l.fecha_vencimiento < HOY) return { clase: 'badge--danger', texto: `Venció ${formatFecha(l.fecha_vencimiento)}` };
-  if (l.fecha_vencimiento <= EN_30_DIAS) return { clase: 'badge--warning', texto: `Vence ${formatFecha(l.fecha_vencimiento)}` };
-  return { clase: 'badge--success', texto: formatFecha(l.fecha_vencimiento) };
+  const estado = estadoVencimientoLicencia(l);
+  const clase = CLASE_VENCIMIENTO_LICENCIA[estado];
+  if (estado === 'perpetua') return { clase, texto: 'Perpetua' };
+  if (estado === 'vencida') return { clase, texto: `Venció ${formatFecha(l.fecha_vencimiento)}` };
+  if (estado === 'por_vencer') return { clase, texto: `Vence ${formatFecha(l.fecha_vencimiento)}` };
+  return { clase, texto: formatFecha(l.fecha_vencimiento) };
 }
 
 const PERIODO_LABELS = {
@@ -126,7 +126,7 @@ function proximaFecha(l) {
   const d = new Date(`${l.fecha_vencimiento}T00:00:00`);
   do {
     d.setMonth(d.getMonth() + l.renovacion_meses);
-  } while (fechaISO(d) <= HOY);
+  } while (fechaISO(d) <= fechaLocalISO());
   return fechaISO(d);
 }
 
@@ -607,7 +607,7 @@ onMounted(async () => {
   align-items: center;
   gap: 4px;
   font-family: var(--font-mono, monospace);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -637,7 +637,7 @@ onMounted(async () => {
 
 .clave-text {
   font-family: var(--font-mono, monospace);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   letter-spacing: 0.05em;
   min-width: 72px;
 }

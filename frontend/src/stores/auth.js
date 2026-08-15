@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { getClient } from '../api/insforge.js';
+import { staffModulosApi } from '../api/domains/staffModulos.js';
 
 async function cargarStaff(userId) {
   const { data, error } = await getClient().database
@@ -11,11 +12,23 @@ async function cargarStaff(userId) {
   return data; // null si el usuario no tiene fila de staff
 }
 
+// Módulos habilitados para el sidebar. Solo importa para ASISTENTE (JEFE ve
+// todos vía el getter puedeVerModulo) pero se consulta igual: es una sola
+// fila de más y evita un camino especial por rol acá.
+async function cargarModulos(userId) {
+  try {
+    return await staffModulosApi.misModulos(userId);
+  } catch {
+    return [];
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     rol: null,
     nombre: null,
+    modulosVisibles: [],
     cargando: false,
     sesionCargada: false,
   }),
@@ -23,6 +36,9 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     esJefe: (state) => state.rol === 'JEFE',
     esStaff: (state) => state.user !== null,
+    // JEFE siempre ve todos los módulos (migración 056), sin consultar
+    // modulosVisibles.
+    puedeVerModulo: (state) => (id) => state.rol === 'JEFE' || state.modulosVisibles.includes(id),
   },
 
   actions: {
@@ -47,6 +63,7 @@ export const useAuthStore = defineStore('auth', {
         this.user = data.user;
         this.rol = staff.rol;
         this.nombre = staff.nombre;
+        this.modulosVisibles = await cargarModulos(data.user.id);
       } finally {
         this.cargando = false;
       }
@@ -57,6 +74,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = null;
       this.rol = null;
       this.nombre = null;
+      this.modulosVisibles = [];
     },
 
     // Flujo de reestablecer contraseña (método "code"):
@@ -87,6 +105,7 @@ export const useAuthStore = defineStore('auth', {
           this.user = null;
           this.rol = null;
           this.nombre = null;
+          this.modulosVisibles = [];
           return;
         }
 
@@ -103,12 +122,14 @@ export const useAuthStore = defineStore('auth', {
           this.user = null;
           this.rol = null;
           this.nombre = null;
+          this.modulosVisibles = [];
           return;
         }
 
         this.user = data.user;
         this.rol = staff.rol;
         this.nombre = staff.nombre;
+        this.modulosVisibles = await cargarModulos(data.user.id);
       } finally {
         this.cargando = false;
         this.sesionCargada = true;

@@ -30,14 +30,14 @@ const navGrupos = computed(() => [
     label: 'Día a día',
     items: [
       { path: '/dashboard', label: 'Dashboard', icon: 'ti ti-layout-dashboard' },
-      { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset', badge: props.ticketsSinAsignar },
+      { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset', badge: props.ticketsSinAsignar, modulo: 'tickets' },
     ],
   },
   {
     id: 'personas',
     label: 'Personas',
     items: [
-      { path: '/empleados', label: 'Empleados', icon: 'ti ti-users' },
+      { path: '/empleados', label: 'Empleados', icon: 'ti ti-users', modulo: 'empleados' },
       // Solo JEFE: la migración a empleados y el hard delete que hace esta
       // vista (migración 046) quedan reservados a ese rol.
       ...(auth.esJefe
@@ -49,18 +49,18 @@ const navGrupos = computed(() => [
     id: 'activos-credenciales',
     label: 'Activos y credenciales',
     items: [
-      { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share' },
-      { path: '/licencias', label: 'Licencias', icon: 'ti ti-license' },
-      { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices' },
+      { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share', modulo: 'correos' },
+      { path: '/licencias', label: 'Licencias', icon: 'ti ti-license', modulo: 'licencias' },
+      { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices', modulo: 'equipos' },
     ],
   },
   {
     id: 'conocimiento-mejora',
     label: 'Conocimiento y mejora',
     items: [
-      { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books' },
-      { path: '/problemas', label: 'Problemas', icon: 'ti ti-alert-hexagon' },
-      { path: '/encuestas', label: 'Encuestas', icon: 'ti ti-clipboard-list' },
+      { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books', modulo: 'base_conocimiento' },
+      { path: '/problemas', label: 'Problemas', icon: 'ti ti-alert-hexagon', modulo: 'problemas' },
+      { path: '/encuestas', label: 'Encuestas', icon: 'ti ti-clipboard-list', modulo: 'encuestas' },
     ],
   },
   {
@@ -79,10 +79,17 @@ const navGrupos = computed(() => [
         : []),
     ],
   },
-  // Grupos sin ítems visibles para el rol actual (ej. "Administración"
-  // para ASISTENTE) no se renderizan — un encabezado sin filas debajo
-  // se leería como una sección rota.
-].filter((grupo) => grupo.items.length > 0));
+  // Grupos sin ítems visibles (ej. "Administración" para ASISTENTE, o
+  // cualquier grupo si al integrante le desmarcaron todos sus módulos) no
+  // se renderizan — un encabezado sin filas debajo se leería como una
+  // sección rota. El filtro por módulo (migración 056, permisos por
+  // usuario) va antes del filtro por rol de arriba.
+]
+  .map((grupo) => ({
+    ...grupo,
+    items: grupo.items.filter((item) => !item.modulo || auth.puedeVerModulo(item.modulo)),
+  }))
+  .filter((grupo) => grupo.items.length > 0));
 </script>
 
 <template>
@@ -125,10 +132,10 @@ const navGrupos = computed(() => [
 
 .sb-nav {
   flex: 1;
-  padding: 10px 10px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 18px; /* separación entre grupos (sin líneas divisorias) */
+  gap: 12px; /* separación entre grupos (sin líneas divisorias) */
 }
 
 .sb-nav-grupo {
@@ -151,14 +158,14 @@ const navGrupos = computed(() => [
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-secondary);
-  padding: 6px 12px 4px;
+  padding: 4px 12px 2px;
 }
 
 .sb-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 8px;
   color: var(--sb-text, var(--color-text-secondary));
   text-decoration: none;
@@ -212,12 +219,12 @@ const navGrupos = computed(() => [
 <style>
 @media (min-width: 769px) {
   .sidebar--colapsado .sb-nav {
-    padding: 10px 12px;
+    padding: 8px 12px;
   }
 
   .sidebar--colapsado .sb-nav-item {
     justify-content: center;
-    padding: 10px 0;
+    padding: 8px 0;
     position: relative;
   }
 

@@ -17,6 +17,10 @@ const props = defineProps({
   mostrarCerrar: { type: Boolean, default: true },
   // 'modal-anim' (estándar) | 'modal-anim-rapida' (diálogos sobre otro modal)
   transicion: { type: String, default: 'modal-anim' },
+  // Guard opcional para backdrop/Escape/X: si retorna `false`, el modal no se
+  // cierra (el padre asume mostrar su propia confirmación, ej. "cambios sin
+  // guardar") — el cierre por v-if del padre (tras confirmar) sigue directo.
+  confirmarCierre: { type: Function, default: null },
 });
 const emit = defineEmits(['close']);
 
@@ -27,6 +31,11 @@ const visible = ref(true);
 
 function cerrar() {
   visible.value = false;
+}
+
+function intentarCerrar() {
+  if (props.confirmarCierre && props.confirmarCierre() === false) return;
+  cerrar();
 }
 
 defineExpose({ cerrar });
@@ -47,7 +56,7 @@ function focusables() {
 function onKeydown(e) {
   if (e.key === 'Escape') {
     e.stopPropagation();
-    cerrar();
+    intentarCerrar();
     return;
   }
   if (e.key !== 'Tab') return;
@@ -87,7 +96,7 @@ onBeforeUnmount(() => {
 });
 
 function onBackdrop() {
-  if (props.cerrarEnBackdrop) cerrar();
+  if (props.cerrarEnBackdrop) intentarCerrar();
 }
 </script>
 
@@ -111,7 +120,7 @@ function onBackdrop() {
             class="icon-btn"
             type="button"
             aria-label="Cerrar"
-            @click="emit('close')"
+            @click="intentarCerrar"
           >
             <i class="ti ti-x" aria-hidden="true"></i>
           </button>

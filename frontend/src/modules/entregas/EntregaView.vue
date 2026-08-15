@@ -141,14 +141,14 @@ async function copiar(texto, id) {
 }
 
 .entrega-title {
-  font-size: 19px;
+  font-size: var(--fs-2xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0 0 8px;
 }
 
 .entrega-texto {
-  font-size: 13.5px;
+  font-size: var(--fs-base);
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 12px;
@@ -165,7 +165,7 @@ async function copiar(texto, id) {
   text-align: center;
   padding: 24px 0;
   color: var(--color-text-secondary);
-  font-size: 13.5px;
+  font-size: var(--fs-base);
 }
 
 .entrega-aviso {
@@ -197,7 +197,7 @@ async function copiar(texto, id) {
 }
 
 .cred-plataforma {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -214,7 +214,7 @@ async function copiar(texto, id) {
 }
 
 .cred-label {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--color-text-secondary);
   width: 82px;
   flex-shrink: 0;
@@ -222,7 +222,7 @@ async function copiar(texto, id) {
 
 .cred-valor {
   font-family: var(--font-mono, monospace);
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--color-text-primary);
   overflow-wrap: anywhere;
   min-width: 0;
@@ -267,7 +267,7 @@ async function copiar(texto, id) {
   gap: 6px;
   width: 100%;
   padding: 9px 14px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--color-primary, var(--color-accent));
   border: 1.5px solid var(--color-primary, var(--color-accent));
@@ -287,7 +287,7 @@ async function copiar(texto, id) {
 }
 
 .soporte-texto {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   text-align: center;
   color: var(--color-warning-text-strong);
@@ -305,7 +305,7 @@ async function copiar(texto, id) {
   gap: 6px;
   width: 100%;
   padding: 9px 14px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--color-primary, var(--color-accent));
   border: 1.5px solid var(--color-primary, var(--color-accent));

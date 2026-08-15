@@ -40,6 +40,8 @@ export function badgeInfo(tipo, valor) {
       const on = valor === true || valor === 'true';
       return { label: on ? 'Activo' : 'Inactivo', clase: on ? 'badge--success' : 'badge--neutral' };
     }
+    case 'ticket_sin_vincular':
+      return { label: 'Sin vincular', clase: 'badge--danger' };
     default:
       return { label: valor, clase: 'badge--neutral' };
   }
