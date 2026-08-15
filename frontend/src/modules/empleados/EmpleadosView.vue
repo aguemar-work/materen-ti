@@ -31,8 +31,10 @@ const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 useRealtimeRefresco('empleados:list', () => store.cargar());
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
-// Precarga desde el link del Dashboard (ej. /empleados?estado=Inactivo)
-const filtroEstado = ref(route.query.estado || '');
+// Precarga desde el link del Dashboard (ej. /empleados?estado=Inactivo);
+// sin query entrante arranca en Activo — ver activos e inactivos mezclados
+// por defecto era el problema reportado (ago 2026).
+const filtroEstado = ref(route.query.estado || 'Activo');
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
 
@@ -55,9 +57,9 @@ async function exportar() {
     const filas = await store.listaParaExportar();
     exportarCSV(
       'empleados',
-      ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Área/Obra', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal'],
+      ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Área/Obra', 'Ubicación', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal'],
       filas.map((e) => [
-        e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.area_obra_nombre, e.cargo,
+        e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.area_obra_nombre, e.ubicacion_nombre, e.cargo,
         e.estado, e.fecha_alta, e.whatsapp, e.correo_personal,
       ]),
     );

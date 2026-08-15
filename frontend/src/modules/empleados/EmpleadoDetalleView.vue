@@ -244,6 +244,10 @@ onMounted(cargar);
                 <dd><TextoVacio :valor="empleado.area_obra_nombre" /></dd>
               </div>
               <div class="dato">
+                <dt>Ubicación</dt>
+                <dd><TextoVacio :valor="empleado.ubicacion_nombre" /></dd>
+              </div>
+              <div class="dato">
                 <dt>Fecha de alta</dt>
                 <dd><TextoVacio :valor="formatFecha(empleado.fecha_alta)" /></dd>
               </div>

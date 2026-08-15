@@ -324,6 +324,7 @@ function mapEquipo(row) {
   else situacion = 'disponible';
   return {
     ubicacion_nombre: ubicacion,
+    ubicacion_id: activa?.ubicacion_id || null,
     id: row.id,
     codigo: row.codigo,
     codigo_almacen: row.codigo_almacen || '',

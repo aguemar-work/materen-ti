@@ -20,7 +20,7 @@ const ORDEN_DEFECTO = { columna: 'apellidos', ascending: true };
 function queryEmpleados({ q = '', estado = '', orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('empleados')
-    .select('*, empresas(nombre), areas_obras(nombre)', conteo ? { count: 'exact' } : undefined)
+    .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))', conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
   if (estado) query = query.eq('estado', estado);
   const qSafe = sanitizarTermino(q);
@@ -58,7 +58,7 @@ export const empleadosApi = {
   async listEmpleadosRecientes(limit = 5) {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre), areas_obras(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -69,7 +69,7 @@ export const empleadosApi = {
   async listEmpleados() {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre), areas_obras(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
       .is('deleted_at', null)
       .order('apellidos', { ascending: true });
     if (error) throw error;
@@ -79,7 +79,7 @@ export const empleadosApi = {
   async getEmpleado(id) {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre), areas_obras(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -92,7 +92,7 @@ export const empleadosApi = {
   async buscarPorDni(dni) {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre), areas_obras(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
       .eq('dni', dni)
       .maybeSingle();
     if (error) throw error;
@@ -103,7 +103,7 @@ export const empleadosApi = {
     const { data, error } = await getClient().database
       .from('empleados')
       .insert([empleadoToRow(datos)])
-      .select('*, empresas(nombre), areas_obras(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -114,7 +114,7 @@ export const empleadosApi = {
       .from('empleados')
       .update(empleadoToRow(datos))
       .eq('id', id)
-      .select('*, empresas(nombre), areas_obras(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -234,7 +234,7 @@ export const empleadosApi = {
       .from('empleados')
       .update({ deleted_at: null, estado: 'Activo' })
       .eq('id', id)
-      .select('*, empresas(nombre), areas_obras(nombre)')
+      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -276,6 +276,7 @@ function mapEmpleado(row) {
     empresa_nombre: empresa.nombre || '',
     area_obra_id: row.area_obra_id || '',
     area_obra_nombre: areaObra.nombre || '',
+    ubicacion_nombre: areaObra.ubicaciones?.nombre || '',
     estado: row.estado,
     fecha_alta: row.fecha_alta || '',
     notas: row.notas || '',

@@ -69,7 +69,7 @@ o del estado vacío:
 
 | Componente | Uso |
 |------------|-----|
-| `PageHeader` | Título + icono Tabler + conteo opcional; slots `#acciones`, `#izquierda` (detalle con volver) y `#extra` (p. ej. tabs de Configuración) |
+| `PageHeader` | Título + icono Tabler + conteo opcional; slots `#acciones`, `#izquierda` (detalle con volver) y `#extra` (franja opcional bajo el header; sin uso actual — Configuración pasó a sidebar propio, ago 2026, ver más abajo) |
 | `EmptyState` | Tabla sin filas: icono, título, mensaje y slot para CTA secundario (`.btn`, no primario) |
 | `BadgeEstado` | Badge semántico vía `core/badges.js` (`tipo`: `empleado`, `ticket`, `prioridad`, `situacion`, `tipo_cuenta`) |
 | `TextoVacio` | Celda vacía con placeholder `—` y clase `.text-muted` automática |
@@ -1467,6 +1467,24 @@ borde y radio normales. Las vistas de detalle mantienen su header
 contextual (botón volver + entidad) sobre la misma base `site-header` +
 `header-inner`.
 
+### Página con sidebar propio (Configuración)
+
+`ConfiguracionView.vue` (ago 2026, reemplaza las pestañas horizontales que
+vivían en `#extra` del `PageHeader`): debajo del header va un
+`.config-layout` (`display:flex`) con dos columnas — `.config-sidebar`
+(220px, ítems verticales `.config-sidebar-item`/`--activa`, mismas clases
+de color/hover que `.sb-nav-item` de `AppNav.vue` a menor escala, para que
+se lea como el mismo sistema) y `.config-content` (`flex:1`) con el
+`RouterView` de la sección activa. Cada sección sigue siendo una ruta hija
+con su propio `main.page`/`.card--fill`, sin cambios. En ≤768px el sidebar
+pasa a fila horizontal con scroll (`overflow-x:auto`), igual que antes
+hacían las pestañas — no se convierte en drawer aparte.
+
+Aplica este mismo patrón (sidebar de secciones + `RouterView`) si otra
+zona de administración crece a más de ~4-5 sub-secciones; para 2-3 pestañas
+sin planes de crecer, las pestañas horizontales en `#extra` siguen siendo
+válidas.
+
 ### Rutas públicas (login, entrega)
 
 Sin sidebar: card centrada a pantalla completa, reutilizando `.card`, `.brand`, `.form-group`, `.btn-primary`.
@@ -1481,13 +1499,14 @@ franja 601-768px con drawer móvil pero contenido de escritorio).
 | Ancho | Comportamiento |
 |-------|----------------|
 | ≤1200px | Grid-12: spans se ensanchan |
-| ≤900px | Stats grid a 2 columnas; Equipos oculta `.badge-fisico` |
+| ≤900px | Stats grid a 2 columnas |
 | ≤768px | Sidebar off-canvas + topbar móvil 48px; grid-12 apila; formularios 1 columna; padding reducido; header compacto; filtros apilados (buscador a fila completa); toast a lo ancho; tablas de módulos operativos → tarjetas |
 
-Constantes: `--header-h: 64px` (ahora `min-height` — el header crece si lleva
-tabs, como en Configuración). `--max-w` se eliminó (estaba definido pero
-ningún selector lo usaba; el contenido es de ancho completo). `.page` ya no
-tiene padding — el respiro en vistas multi-card lo da `.page--padded`.
+Constantes: `--header-h: 64px` (`min-height`, no fijo — un header con
+contenido extra en `#extra` puede crecer). `--max-w` se eliminó (estaba
+definido pero ningún selector lo usaba; el contenido es de ancho completo).
+`.page` ya no tiene padding — el respiro en vistas multi-card lo da
+`.page--padded`.
 
 **Utilidades de visibilidad:** `.solo-escritorio` (se oculta en ≤768px) y
 `.solo-movil` (solo visible en ≤768px; variante `.solo-movil--flex` cuando el
@@ -1532,8 +1551,12 @@ Accesible: `role="menu"`, `aria-haspopup`/`aria-expanded`, flechas ↑↓,
 Escape devuelve el foco al trigger; cierra con clic fuera, scroll y resize.
 Panel con `Teleport` a body + `--z-popover` (`.card` tiene `overflow:hidden`
 y recortaría un popover absoluto). En Equipos la fuente única de las 11
-acciones condicionales es `accionesDe(eq)` (EquiposView.vue) — la consumen
-los icon-btn de escritorio y el menú móvil; no dupliques condiciones.
+acciones condicionales es `accionesDe(eq)` (EquiposView.vue): cada acción
+puede llevar `overflow: true`; la tarjeta móvil siempre cuelga el arreglo
+completo del menú ⋮, y el escritorio separa con `accionesInlineDe(eq)`
+(las sueltas como icon-btn) y `accionesOverflowDe(eq)` (las que van al
+mismo `MenuAcciones` también en escritorio, ver regla de umbral abajo) — no
+dupliques condiciones entre ambos.
 
 ### BuscadorCombo.vue (campo de búsqueda con lista de resultados)
 
@@ -1712,26 +1735,26 @@ el trigger `check_tope_licencia` bloquee la asignación.
 Umbrales: `--ok` <70% ocupado, `--warning` 70-99%, `--full` =100%. En uso en
 `LicenciasView.vue` (tabla y modal "Asignar asiento").
 
-### Badge doble (`.badge-group`)
+### Columna Situación de Equipos: un solo badge (ago 2026)
 
-> Patrón visto solo en Equipos — no generalizar hasta que un segundo módulo lo necesite.
-
-Para entidades con **dos estados simultáneos e independientes** — un equipo
-tiene estado físico (operativo/en_reparación/de_baja/perdido) y situación
-derivada (Disponible/Asignado/En ubicación) a la vez:
+Un equipo tiene estado físico (operativo/en_reparación/de_baja/perdido) y
+situación derivada (disponible/asignado/en_ubicación) a la vez. Hasta ago
+2026 la columna Situación mostraba **ambos** como dos badges (`.badge-group`
++ `.badge-fisico`) cuando el equipo estaba operativo y en uso — se
+simplificó a un solo badge con el **estado físico**, porque la situación
+derivada ya se lee en las columnas vecinas "Asignado a" (nombre del
+empleado) y "Ubicación" (nombre de la ubicación o su `<select>`); mostrarla
+también como badge era redundante, no informativo:
 
 ```html
-<span class="badge-group" title="Operativo · Asignado">
-  <span class="badge badge--success badge-fisico">Operativo</span>
-  <span class="badge badge--info">Asignado</span>
-</span>
+<span class="badge badge--success">Operativo</span>
 ```
 
-Solo se duplican los badges cuando ambos datos aportan información (equipo
-operativo + en uso/ubicado); si no está operativo, el estado físico solo ya
-lo dice todo. Columna `.th-situacion` con `min-width: 168px`; en pantallas
-≤900px el badge físico (`.badge-fisico`) se oculta y queda accesible en el
-`title` del grupo — se prioriza el estado derivado.
+`eq.situacion` (disponible/asignado/en_ubicación) no se tocó — sigue
+siendo la fuente del filtro "Situación" del toolbar y de las condiciones
+`visible`/`enAlmacen()` de `accionesDe()`; el cambio fue solo visual, en
+`badgeEstadoFisico(eq)` (`EquiposView.vue`). Columna `.th-situacion` con
+`min-width: 120px` (antes 168px, para el badge doble).
 
 ### Confirmación destructiva
 
@@ -1826,6 +1849,39 @@ pocas filas, sin buscador), no un listado global.
   series, correos). La jerarquía la dan los badges y el layout, no la
   tipografía. Excepciones: badges/chips (son estado, no dato) y los
   vacíos "—" en `.text-muted`.
+- **Color de los íconos de acción (ago 2026)**: `.icon-btn` es siempre gris
+  neutro (`--color-text-secondary`, se oscurece en hover); nunca colores
+  por tipo de acción (no "azul = editar", "verde = descargar"). El único
+  color permitido es el modificador `.danger`, reservado para acciones
+  destructivas, y solo se activa en hover/focus — en reposo se ve igual
+  que cualquier otra acción.
+- **Umbral de acciones por fila (ago 2026)**: si una fila puede mostrar más
+  de 3 íconos de acción simultáneos en escritorio (ej. `EquiposView.vue`,
+  hasta 6 según el estado del equipo antes de este cambio), las secundarias
+  se cuelgan del mismo `MenuAcciones.vue` que ya arma la tarjeta móvil —
+  nunca un componente nuevo. Regla de reparto: la acción principal de esa
+  fila (la transición de estado más relevante) + "Editar" quedan sueltas
+  como `.icon-btn`; el resto (consultas como "Hoja de vida", acciones poco
+  frecuentes o destructivas) va al menú ⋮. Ver `accionesInlineDe`/
+  `accionesOverflowDe` en `EquiposView.vue` para el patrón de referencia.
+- **Edición inline en vez de ícono + modal**: cuando una acción de fila solo
+  cambia **un campo**, de bajo riesgo y reversible (ej. la ubicación de un
+  equipo), se edita directamente en la celda — un `<select>`/control suelto
+  que guarda al `@change`, sin modal ni confirmación (mismo patrón que
+  `.rol-select` en `StaffView.vue` o la columna Ubicación en
+  `EquiposView.vue`). Los modales quedan para flujos con más de un campo o
+  que sí requieren confirmación (ej. "Registrar devolución").
+- **Filtro de estado con default no-vacío (ago 2026)**: si una entidad tiene
+  un estado "vigente" claro (Activo) frente a estados históricos/terminales
+  (Inactivo, Suspendido, De baja...), la vista arranca filtrada al estado
+  vigente en vez de "Todos" — mostrarlos todos mezclados por defecto obliga
+  a leer un badge fila por fila para distinguirlos. El selector de estado
+  sigue visible y sigue ofreciendo "Todos los estados"; un link con `?estado=X`
+  entrante (ej. los KPI del Dashboard) sigue ganando sobre el default. Ver
+  `EmpleadosView.vue`/`stores/empleados.js` (`resetearFiltros()`, default
+  `estado: 'Activo'`) como referencia. `EquiposView.vue` (Situación) y
+  `StaffView.vue` (sin filtro de estado) todavía no siguen este criterio —
+  aplicarlo ahí si se reporta la misma confusión.
 
 ### Errores de formulario/acción (`.form-error`)
 

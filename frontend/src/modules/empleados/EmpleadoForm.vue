@@ -45,6 +45,13 @@ const error = ref('');
 
 const esEdicion = computed(() => !!props.empleado?.id);
 
+// Ubicación derivada del área/obra elegida (migración 058): no es un
+// campo editable, solo refleja la ubicación configurada para esa área.
+const ubicacionDelArea = computed(() => {
+  const area = areasObras.value.find((a) => a.id === form.value.area_obra_id);
+  return area?.ubicaciones?.nombre || '';
+});
+
 const form = ref({
   nombres: '',
   apellidos: '',
@@ -279,6 +286,10 @@ async function guardar() {
               {{ ao.nombre }}
             </option>
           </select>
+          <p v-if="form.area_obra_id" class="text-muted campo-ubicacion">
+            <i class="ti ti-map-pin" aria-hidden="true"></i>
+            {{ ubicacionDelArea || 'Sin ubicación configurada para esta área' }}
+          </p>
         </div>
 
         <div class="form-group">
@@ -351,6 +362,14 @@ async function guardar() {
   height: 40px;
   padding: 0 14px;
   font-size: 13px;
+}
+
+.campo-ubicacion {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 0;
+  font-size: 12px;
 }
 
 

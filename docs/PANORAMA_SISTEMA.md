@@ -42,7 +42,7 @@ Leyenda de la columna RLS: `staff` = `es_staff()`, `jefe` = `es_jefe()`. Cuando 
 | Tabla | Columnas clave | FKs | RLS (ver/crear/editar/eliminar) |
 |---|---|---|---|
 | `empresas` | nombre, ruc | — | staff / staff / staff / jefe |
-| `areas_obras` | nombre, descripcion | — | staff / staff / staff / jefe |
+| `areas_obras` | nombre, descripcion | `ubicacion_id→ubicaciones` (opcional, migración 058 — de ahí se deriva la ubicación del empleado) | staff / staff / staff / jefe |
 | `ubicaciones` | nombre, descripcion | — | staff / staff / staff / jefe |
 | `empleados` | nombres, apellidos, dni, telefono, whatsapp, correo_personal, cargo, `estado` (enum), fecha_alta | `empresa_id→empresas`, `area_obra_id→areas_obras` | staff / staff / staff / jefe |
 
@@ -252,7 +252,7 @@ Agrupado por tabla. Todos corren `SECURITY DEFINER` salvo donde se indica.
 
 ## 4. Estructura del frontend
 
-**Módulos (`frontend/src/modules/`)**: auth, dashboard, empleados, cuentas, correos, licencias, equipos, tickets, kb (Base de Conocimiento), problemas (Gestión de Problemas), accesosSensibles, staff, empresas, plataformas, configuracion (panel de pestañas con catálogos), actividad (auditoría), entregas, soporte (portal público), errores, **encuestas** (plantillas + rondas + resultados, migración 043), **personal** (pre-registro público + bandeja de revisión, migración 042).
+**Módulos (`frontend/src/modules/`)**: auth, dashboard, empleados, cuentas, correos, licencias, equipos, tickets, kb (Base de Conocimiento), problemas (Gestión de Problemas), accesosSensibles, staff, empresas, plataformas, configuracion (sidebar de secciones con catálogos), actividad (auditoría), entregas, soporte (portal público), errores, **encuestas** (plantillas + rondas + resultados, migración 043), **personal** (pre-registro público + bandeja de revisión, migración 042).
 
 **Stores Pinia (`frontend/src/stores/`)**: uno por dominio — `auth`, `empleados`, `cuentas`, `correos`, `licencias`, `equipos`, `tickets` + `ticketDetalle` (separado, para no recargar toda la bandeja al abrir un detalle), `kb`, `problemas` + `problemaDetalle` (mismo patrón que tickets), `accesosSensibles`, `staff`, `empresas`, `plataformas`, `catalogos` (agrupa los catálogos chicos: tipos de equipo, ubicaciones, áreas/obras), **`notificaciones`** (campana del layout, migración 045).
 

@@ -1,8 +1,9 @@
 <script setup>
 // Reporte de tickets para un periodo diario/semanal/mensual: volumen y
-// distribución, tiempos y calidad de la atención, backlog, desempeño por
-// técnico y satisfacción. Se ve en pantalla y se descarga como PDF para
-// compartir con control/gerencia — ver reporte.js.
+// distribución, tiempos y calidad de la atención, desempeño por técnico
+// (incluye qué resolvió cada uno del periodo vs. arrastrado de antes) y
+// satisfacción. Se ve en pantalla y se descarga como PDF para compartir con
+// control/gerencia — ver reporte.js.
 //
 // El periodo es un recorte de CALENDARIO elegible (un día, una semana o un mes
 // concretos, navegables con las flechas), no una ventana móvil desde hoy —

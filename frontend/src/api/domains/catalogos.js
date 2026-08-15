@@ -137,21 +137,28 @@ export const catalogosApi = {
   },
 
   // ── Áreas/Obras (catálogo para empleados) ─────────────────────
+  // Cada área puede pertenecer a una ubicación física (mismo catálogo
+  // `ubicaciones` que usan los equipos), para derivar la ubicación
+  // del empleado a partir de su área — ver migración 058.
   async listAreasObras() {
     const { data, error } = await getClient().database
       .from('areas_obras')
-      .select('id, nombre, descripcion')
+      .select('id, nombre, descripcion, ubicacion_id, ubicaciones(nombre)')
       .is('deleted_at', null)
       .order('nombre', { ascending: true });
     if (error) throw error;
     return data || [];
   },
 
-  async createAreaObra(nombre, descripcion = null) {
+  async createAreaObra(nombre, descripcion = null, ubicacionId = null) {
     const { data, error } = await getClient().database
       .from('areas_obras')
-      .insert([{ nombre: toTitleCase(nombre), descripcion: trimText(descripcion) }])
-      .select('id, nombre, descripcion')
+      .insert([{
+        nombre: toTitleCase(nombre),
+        descripcion: trimText(descripcion),
+        ubicacion_id: ubicacionId || null,
+      }])
+      .select('id, nombre, descripcion, ubicacion_id, ubicaciones(nombre)')
       .single();
     if (error) throw error;
     return data;
@@ -160,9 +167,13 @@ export const catalogosApi = {
   async updateAreaObra(id, datos) {
     const { data, error } = await getClient().database
       .from('areas_obras')
-      .update({ nombre: toTitleCase(datos.nombre), descripcion: trimText(datos.descripcion) })
+      .update({
+        nombre: toTitleCase(datos.nombre),
+        descripcion: trimText(datos.descripcion),
+        ubicacion_id: datos.ubicacion_id || null,
+      })
       .eq('id', id)
-      .select('id, nombre, descripcion')
+      .select('id, nombre, descripcion, ubicacion_id, ubicaciones(nombre)')
       .single();
     if (error) throw error;
     return data;

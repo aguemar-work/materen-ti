@@ -75,7 +75,10 @@ export const useEmpleadosStore = defineStore('empleados', {
     // a entrar la caja de búsqueda se ve vacía pero el filtro anterior
     // sigue aplicado (bug reportado jul 2026).
     resetearFiltros() {
-      this.filtros = { q: '', estado: '' };
+      // estado: 'Activo' por defecto (ago 2026) — activos e inactivos
+      // mezclados en la lista era el problema reportado; "Todos los
+      // estados" sigue disponible en el selector.
+      this.filtros = { q: '', estado: 'Activo' };
       this.orden = null;
       this.pagina = 1;
     },

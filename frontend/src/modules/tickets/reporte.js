@@ -249,7 +249,7 @@ function piePaginas(doc, hoy) {
 // navegador; la UI usa generarReporteTickets(), abajo.
 export async function construirReporteTickets(datos, {
   periodoLabel = '', rangoLabel = '', nombreArchivo = '', enCurso = false, comparativa = null,
-  incluirTasaRespuesta = false, etiquetaResueltosMismoPeriodo = 'del periodo',
+  incluirTasaRespuesta = false, etiquetaResueltosMismoPeriodo = 'del periodo', etiquetaColMismoPeriodo = 'Del periodo',
 } = {}) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -331,30 +331,30 @@ export async function construirReporteTickets(datos, {
     },
   }, y);
 
-  const backlog = datos.backlog || { total: 0, tramos: [], diasMasAntiguo: null };
-  y = abrirSeccion(doc, y, 'Backlog pendiente', 34);
-  y = tabla(doc, autoTable, {
-    head: [['Antigüedad', 'Tickets']],
-    body: backlog.total
-      ? [
-        ...backlog.tramos.map((t) => [t.label, String(t.cantidad)]),
-        ...(backlog.diasMasAntiguo !== null ? [['Más antiguo', `${backlog.diasMasAntiguo} día(s)`]] : []),
-        [{ content: 'Total', styles: { fontStyle: 'bold' } }, { content: String(backlog.total), styles: { fontStyle: 'bold', halign: 'right' } }],
-      ]
-      : celdaVacia('Sin tickets pendientes', 2),
-    columnStyles: { 1: { halign: 'right', cellWidth: 26 } },
-  }, y);
-
   y = abrirSeccion(doc, y, 'Desempeño por técnico', 34);
   y = tabla(doc, autoTable, {
-    head: [['Técnico', 'Resueltos', 'Tiempo medio', 'Mediana']],
+    head: [['Técnico', 'Resueltos', etiquetaColMismoPeriodo, 'Anteriores', 'Tiempo medio', 'Mediana']],
     body: datos.porTecnicoNombres.length
-      ? datos.porTecnicoNombres.map((t) => [t.nombre, String(t.cantidad), horas(t.promedio), horas(t.mediana)])
-      : celdaVacia('Sin tickets resueltos en el periodo', 4),
+      ? datos.porTecnicoNombres.map((t) => [t.nombre, String(t.cantidad), String(t.mismoPeriodo), String(t.arrastrados), horas(t.promedio), horas(t.mediana)])
+      : celdaVacia('Sin tickets resueltos en el periodo', 6),
     columnStyles: {
-      1: { halign: 'right', cellWidth: 24 },
-      2: { halign: 'right', cellWidth: 30 },
-      3: { halign: 'right', cellWidth: 26 },
+      1: { halign: 'right', cellWidth: 18 },
+      2: { halign: 'right', cellWidth: 20 },
+      3: { halign: 'right', cellWidth: 20 },
+      4: { halign: 'right', cellWidth: 26 },
+      5: { halign: 'right', cellWidth: 22 },
+    },
+  }, y);
+
+  y = abrirSeccion(doc, y, 'Tickets anteriores resueltos en el periodo', 34);
+  y = tabla(doc, autoTable, {
+    head: [['Código', 'Título', 'Técnico', 'Creado el', 'Días abierto']],
+    body: (datos.arrastradosNombres || []).length
+      ? datos.arrastradosNombres.map((a) => [a.codigo, a.titulo, a.tecnico, formatFecha(a.creadoEn), String(a.diasAbierto)])
+      : celdaVacia('Sin tickets arrastrados resueltos en el periodo', 5),
+    columnStyles: {
+      3: { halign: 'right', cellWidth: 24 },
+      4: { halign: 'right', cellWidth: 22 },
     },
   }, y);
 

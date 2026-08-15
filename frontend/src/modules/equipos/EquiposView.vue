@@ -59,7 +59,7 @@ async function exportar() {
     const filas = await store.listaParaExportar();
     exportarCSV(
       'equipos',
-      ['Código equipo', 'Código almacén', 'Tipo', 'Marca', 'Modelo', 'Empresa', 'Serie', 'Situación', 'Asignado a'],
+      ['Código equipo', 'Código almacén', 'Tipo', 'Marca', 'Modelo', 'Empresa', 'Serie', 'Situación', 'Asignado a', 'Ubicación'],
       filas.map((eq) => [
         eq.codigo,
         eq.codigo_almacen,
@@ -68,8 +68,9 @@ async function exportar() {
         eq.modelo,
         eq.empresa_nombre,
         eq.serie,
-        badgesSituacion(eq).map((b) => b.label).join(' · '),
-        eq.portador || eq.ubicacion_nombre,
+        badgeEstadoFisico(eq).label,
+        eq.portador,
+        eq.ubicacion_nombre,
       ]),
     );
   } catch (e) {
@@ -79,21 +80,14 @@ async function exportar() {
   }
 }
 
-// Un equipo tiene estado FÍSICO (operativo/en_reparacion/de_baja/perdido) y
-// situación DERIVADA (Disponible/Asignado/En ubicación) simultáneos. Cuando
-// está operativo Y en uso, mostrar ambos confirma de un vistazo que el
-// equipo está sano *mientras* alguien lo tiene — con un solo badge no se ve.
-// Si no está operativo, el estado físico ya lo dice todo (un solo badge).
-function badgesSituacion(eq) {
-  if (eq.estado === 'operativo' && (eq.situacion === 'asignado' || eq.situacion === 'en_ubicacion')) {
-    const derivado = situacionInfo(eq.situacion);
-    return [
-      { label: 'Operativo', clase: 'badge--success', fisico: true },
-      { label: derivado.label, clase: derivado.clase, fisico: false },
-    ];
-  }
-  const info = situacionInfo(eq.situacion);
-  return [{ label: info.label, clase: info.clase, fisico: false }];
+// Columna Situación: solo el estado FÍSICO (operativo/en_reparacion/de_baja/
+// perdido). Si está asignado a un empleado o en una ubicación ya se ve en
+// las columnas "Asignado a"/"Ubicación" — repetirlo acá era redundante.
+// `eq.situacion` (disponible/asignado/en_ubicacion) sigue intacto para el
+// filtro del toolbar y las condiciones de accionesDe()/enAlmacen().
+function badgeEstadoFisico(eq) {
+  if (eq.estado === 'operativo') return { label: 'Operativo', clase: 'badge--success' };
+  return situacionInfo(eq.estado);
 }
 
 // ── Formulario ────────────────────────────────────────────────
@@ -209,54 +203,61 @@ async function confirmarDevolver() {
   }
 }
 
-// ── Mover a ubicación ─────────────────────────────────────────
-const mostrarMover = ref(false);
-const equipoMover = ref(null);
-const ubicacionSelId = ref('');
-const nuevaUbicacion = ref('');
+// ── Mover a ubicación (edición inline en la columna Ubicación) ─
+// Cambio de un solo campo, reversible y de bajo riesgo: se guarda al
+// cambiar el <select>, sin modal ni confirmación (mismo patrón que
+// StaffView usa para "Rol").
+const moviendoId = ref(null);
+const creandoUbicacionId = ref(null); // eq.id de la fila que muestra el input "nueva ubicación"
+const nombreNuevaUbicacion = ref('');
 
-function abrirMover(equipo) {
-  equipoMover.value = equipo;
-  ubicacionSelId.value = '';
-  nuevaUbicacion.value = '';
-  mostrarMover.value = true;
-}
-
-async function agregarUbicacion() {
-  const nombre = nuevaUbicacion.value.trim();
-  if (!nombre) return;
-  try {
-    const ub = await store.crearUbicacion(nombre);
-    ubicacionSelId.value = ub.id;
-    nuevaUbicacion.value = '';
-    showToast(`Ubicación "${ub.nombre}" creada`);
-  } catch (e) {
-    showToast(e?.message || 'Error al crear ubicación', 'error');
+async function onCambiarUbicacion(eq, valor) {
+  if (valor === '__nueva__') {
+    creandoUbicacionId.value = eq.id;
+    nombreNuevaUbicacion.value = '';
+    return;
   }
-}
-
-async function confirmarMover() {
-  if (!ubicacionSelId.value) return;
-  procesando.value = true;
+  if (!valor || valor === eq.ubicacion_id) return;
+  moviendoId.value = eq.id;
   try {
-    await store.mover(equipoMover.value.id, ubicacionSelId.value);
-    mostrarMover.value = false;
-    showToast(`${equipoMover.value.codigo} movido`);
+    await store.mover(eq.id, valor);
+    showToast(`${eq.codigo} movido`);
   } catch (e) {
     showToast(e?.message || 'Error al mover', 'error');
   } finally {
-    procesando.value = false;
+    moviendoId.value = null;
   }
 }
 
-// Los modales de captura (entregar/devolver/mover) no se cierran con clic
-// fuera para no perder lo escrito; Escape sí los cierra. El de hoja de
-// impresión (informativo) conserva el cierre por clic en el fondo.
+function cancelarNuevaUbicacion() {
+  creandoUbicacionId.value = null;
+  nombreNuevaUbicacion.value = '';
+}
+
+async function confirmarNuevaUbicacion(eq) {
+  const nombre = nombreNuevaUbicacion.value.trim();
+  if (!nombre) return;
+  moviendoId.value = eq.id;
+  try {
+    const ub = await store.crearUbicacion(nombre);
+    await store.mover(eq.id, ub.id);
+    showToast(`Ubicación "${ub.nombre}" creada — ${eq.codigo} movido`);
+  } catch (e) {
+    showToast(e?.message || 'Error al crear ubicación', 'error');
+  } finally {
+    moviendoId.value = null;
+    creandoUbicacionId.value = null;
+    nombreNuevaUbicacion.value = '';
+  }
+}
+
+// Los modales de captura (entregar/devolver) no se cierran con clic fuera
+// para no perder lo escrito; Escape sí los cierra. El de hoja de impresión
+// (informativo) conserva el cierre por clic en el fondo.
 useCerrarConEscape(() => {
   if (procesando.value) return;
   if (mostrarAsignar.value) mostrarAsignar.value = false;
   else if (mostrarDevolver.value) mostrarDevolver.value = false;
-  else if (mostrarMover.value) mostrarMover.value = false;
 });
 
 // ── Cambiar estado físico ─────────────────────────────────────
@@ -364,11 +365,9 @@ const EVENTO_ICONS = {
 // apertura; al cerrarse, el foco vuelve al botón que lo abrió
 const panelAsignar = ref(null);
 const panelDevolver = ref(null);
-const panelMover = ref(null);
 const panelHoja = ref(null);
 useFocoAtrapado(panelAsignar, mostrarAsignar);
 useFocoAtrapado(panelDevolver, mostrarDevolver);
-useFocoAtrapado(panelMover, mostrarMover);
 useFocoAtrapado(panelHoja, mostrarHoja);
 
 async function verHoja(equipo) {
@@ -386,25 +385,33 @@ async function verHoja(equipo) {
   }
 }
 
+// Equipo en almacén (disponible o en una ubicación, sin portador): puede
+// entregarse, moverse de ubicación o enviarse a reparación. Se usa tanto
+// para las acciones por fila como para decidir si la columna Ubicación
+// muestra el <select> editable (desktop y tarjeta móvil).
+function enAlmacen(eq) {
+  return eq.situacion === 'disponible' || eq.situacion === 'en_ubicacion';
+}
+
 // ── Acciones por equipo ───────────────────────────────────────
 // Fuente única de las acciones condicionales por fila: la tabla de
-// escritorio las pinta como icon-btn y las tarjetas móviles como menú ⋮.
+// escritorio las pinta como icon-btn (o las cuelga del menú ⋮ si `overflow`
+// es true) y las tarjetas móviles siempre las cuelan todas del menú ⋮.
 // Las condiciones `visible` replican el estado físico/derivado del equipo.
 function accionesDe(eq) {
-  const enAlmacen = eq.situacion === 'disponible' || eq.situacion === 'en_ubicacion';
   return [
-    { icono: 'ti-user-plus', label: 'Entregar a un empleado', visible: enAlmacen, onClick: () => abrirAsignar(eq) },
-    { icono: 'ti-map-pin', label: 'Mover a una ubicación', visible: enAlmacen, onClick: () => abrirMover(eq) },
-    { icono: 'ti-printer', label: 'Imprimir acta de entrega', visible: eq.situacion === 'asignado', onClick: () => imprimirActa(eq) },
+    { icono: 'ti-user-plus', label: 'Entregar a un empleado', visible: enAlmacen(eq), onClick: () => abrirAsignar(eq) },
+    { icono: 'ti-printer', label: 'Imprimir acta de entrega', visible: eq.situacion === 'asignado', overflow: true, onClick: () => imprimirActa(eq) },
     { icono: 'ti-arrow-back-up', label: 'Registrar devolución', visible: eq.situacion === 'asignado', onClick: () => abrirDevolver(eq) },
-    { icono: 'ti-tool', label: 'Enviar a reparación', visible: enAlmacen, onClick: () => pedirCambiarEstado(eq, 'en_reparacion', 'En reparación') },
+    { icono: 'ti-tool', label: 'Enviar a reparación', visible: enAlmacen(eq), overflow: true, onClick: () => pedirCambiarEstado(eq, 'en_reparacion', 'En reparación') },
     { icono: 'ti-circle-check', label: 'Marcar reparado (operativo)', visible: eq.situacion === 'en_reparacion', onClick: () => pedirCambiarEstado(eq, 'operativo', 'Operativo') },
-    { icono: 'ti-history', label: 'Hoja de vida', onClick: () => verHoja(eq) },
+    { icono: 'ti-history', label: 'Hoja de vida', overflow: true, onClick: () => verHoja(eq) },
     { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(eq) },
     {
       icono: 'ti-circle-off',
       label: 'Dar de baja el equipo',
       danger: true,
+      overflow: true,
       visible: eq.situacion !== 'asignado' && eq.estado !== 'de_baja',
       onClick: () => pedirCambiarEstado(eq, 'de_baja', 'De baja'),
     },
@@ -415,6 +422,17 @@ function accionesDe(eq) {
 
 function accionesVisibles(eq) {
   return accionesDe(eq).filter((a) => a.visible !== false);
+}
+
+// Escritorio: solo la acción principal + Editar quedan sueltas como icon-btn;
+// el resto se cuelga del mismo MenuAcciones que ya usa la tarjeta móvil, para
+// no repetir hasta 6 íconos sin etiqueta en una sola fila (equipo en almacén).
+function accionesInlineDe(eq) {
+  return accionesVisibles(eq).filter((a) => !a.overflow);
+}
+
+function accionesOverflowDe(eq) {
+  return accionesVisibles(eq).filter((a) => a.overflow);
 }
 
 onMounted(async () => {
@@ -497,11 +515,12 @@ onMounted(async () => {
                 <ThOrdenable clave="serie" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Serie</ThOrdenable>
                 <th scope="col" class="th-situacion">Situación</th>
                 <th scope="col">Asignado a</th>
+                <th scope="col">Ubicación</th>
                 <th scope="col"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
             <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="7" />
+              <SkeletonTabla v-if="cargando" :columnas="8" />
               <template v-else>
               <tr v-for="eq in lista" :key="eq.id">
                 <td><span class="eq-codigo">{{ eq.codigo }}</span></td>
@@ -519,16 +538,7 @@ onMounted(async () => {
                 </td>
                 <td class="eq-serie"><TextoVacio :valor="eq.serie" /></td>
                 <td>
-                  <span class="badge-group" :title="badgesSituacion(eq).map(b => b.label).join(' · ')">
-                    <span
-                      v-for="b in badgesSituacion(eq)"
-                      :key="b.label"
-                      class="badge"
-                      :class="[b.clase, { 'badge-fisico': b.fisico }]"
-                    >
-                      {{ b.label }}
-                    </span>
-                  </span>
+                  <span class="badge" :class="badgeEstadoFisico(eq).clase">{{ badgeEstadoFisico(eq).label }}</span>
                 </td>
                 <td>
                   <template v-if="eq.portador">
@@ -537,15 +547,47 @@ onMounted(async () => {
                       <i class="ti ti-alert-triangle"></i> Sin devolver
                     </span>
                   </template>
-                  <span v-else-if="eq.ubicacion_nombre" class="ubicacion-nombre">
-                    <i class="ti ti-map-pin"></i> {{ eq.ubicacion_nombre }}
-                  </span>
                   <TextoVacio v-else />
+                </td>
+                <td>
+                  <div v-if="creandoUbicacionId === eq.id" class="ubicacion-nueva-inline">
+                    <input
+                      v-model="nombreNuevaUbicacion"
+                      placeholder="Nombre de la ubicación"
+                      :disabled="moviendoId === eq.id"
+                      @keydown.enter.prevent="confirmarNuevaUbicacion(eq)"
+                      @keydown.esc.prevent="cancelarNuevaUbicacion"
+                    >
+                    <button class="icon-btn" type="button" title="Crear y mover aquí" :disabled="moviendoId === eq.id || !nombreNuevaUbicacion.trim()" @click="confirmarNuevaUbicacion(eq)">
+                      <i class="ti" :class="moviendoId === eq.id ? 'ti-loader-2 spinner-icon' : 'ti-check'"></i>
+                    </button>
+                    <button class="icon-btn" type="button" title="Cancelar" :disabled="moviendoId === eq.id" @click="cancelarNuevaUbicacion">
+                      <i class="ti ti-x"></i>
+                    </button>
+                  </div>
+                  <select
+                    v-else-if="enAlmacen(eq)"
+                    class="ubicacion-select"
+                    :value="eq.ubicacion_id || ''"
+                    :disabled="moviendoId === eq.id"
+                    aria-label="Ubicación"
+                    @change="onCambiarUbicacion(eq, $event.target.value)"
+                  >
+                    <option value="" disabled>Seleccionar ubicación</option>
+                    <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+                    <option value="__nueva__">+ Crear nueva ubicación…</option>
+                  </select>
+                  <template v-else>
+                    <span v-if="eq.ubicacion_nombre" class="ubicacion-nombre">
+                      <i class="ti ti-map-pin"></i> {{ eq.ubicacion_nombre }}
+                    </span>
+                    <TextoVacio v-else />
+                  </template>
                 </td>
                 <td>
                   <div class="actions">
                     <button
-                      v-for="a in accionesVisibles(eq)"
+                      v-for="a in accionesInlineDe(eq)"
                       :key="a.label"
                       class="icon-btn"
                       :class="{ danger: a.danger }"
@@ -556,6 +598,11 @@ onMounted(async () => {
                     >
                       <i class="ti" :class="a.icono"></i>
                     </button>
+                    <MenuAcciones
+                      v-if="accionesOverflowDe(eq).length"
+                      :acciones="accionesOverflowDe(eq)"
+                      :label="`Más acciones de ${eq.codigo}`"
+                    />
                   </div>
                 </td>
               </tr>
@@ -579,28 +626,46 @@ onMounted(async () => {
               <template v-if="eq.empresa_nombre"><span aria-hidden="true">·</span><span>{{ eq.empresa_nombre }}</span></template>
               <template v-if="eq.serie"><span aria-hidden="true">·</span><span class="eq-serie">{{ eq.serie }}</span></template>
             </div>
-            <div v-if="eq.portador || eq.ubicacion_nombre" class="tarjeta-fila__sec">
+            <div v-if="eq.portador || eq.ubicacion_nombre || enAlmacen(eq)" class="tarjeta-fila__sec">
               <template v-if="eq.portador">
                 <RouterLink class="empleado-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
                 <span v-if="eq.portador_inactivo" class="badge badge--danger badge-sin-devolver" title="Este empleado fue dado de baja y no ha devuelto el equipo">
                   <i class="ti ti-alert-triangle"></i> Sin devolver
                 </span>
               </template>
+              <div v-else-if="creandoUbicacionId === eq.id" class="ubicacion-nueva-inline">
+                <input
+                  v-model="nombreNuevaUbicacion"
+                  placeholder="Nombre de la ubicación"
+                  :disabled="moviendoId === eq.id"
+                  @keydown.enter.prevent="confirmarNuevaUbicacion(eq)"
+                  @keydown.esc.prevent="cancelarNuevaUbicacion"
+                >
+                <button class="icon-btn" type="button" title="Crear y mover aquí" :disabled="moviendoId === eq.id || !nombreNuevaUbicacion.trim()" @click="confirmarNuevaUbicacion(eq)">
+                  <i class="ti" :class="moviendoId === eq.id ? 'ti-loader-2 spinner-icon' : 'ti-check'"></i>
+                </button>
+                <button class="icon-btn" type="button" title="Cancelar" :disabled="moviendoId === eq.id" @click="cancelarNuevaUbicacion">
+                  <i class="ti ti-x"></i>
+                </button>
+              </div>
+              <select
+                v-else-if="enAlmacen(eq)"
+                class="ubicacion-select"
+                :value="eq.ubicacion_id || ''"
+                :disabled="moviendoId === eq.id"
+                aria-label="Ubicación"
+                @change="onCambiarUbicacion(eq, $event.target.value)"
+              >
+                <option value="" disabled>Seleccionar ubicación</option>
+                <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+                <option value="__nueva__">+ Crear nueva ubicación…</option>
+              </select>
               <span v-else class="ubicacion-nombre">
                 <i class="ti ti-map-pin"></i> {{ eq.ubicacion_nombre }}
               </span>
             </div>
             <div class="tarjeta-fila__pie">
-              <span class="badge-group" :title="badgesSituacion(eq).map(b => b.label).join(' · ')">
-                <span
-                  v-for="b in badgesSituacion(eq)"
-                  :key="b.label"
-                  class="badge"
-                  :class="[b.clase, { 'badge-fisico': b.fisico }]"
-                >
-                  {{ b.label }}
-                </span>
-              </span>
+              <span class="badge" :class="badgeEstadoFisico(eq).clase">{{ badgeEstadoFisico(eq).label }}</span>
               <MenuAcciones :acciones="accionesDe(eq)" :label="`Acciones de ${eq.codigo}`" />
             </div>
           </li>
@@ -709,57 +774,6 @@ onMounted(async () => {
     </div>
     </Transition>
 
-    <!-- Modal: mover a ubicación -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarMover" class="modal-bg">
-      <div ref="panelMover" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="mover-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="mover-title"><i class="ti ti-map-pin" aria-hidden="true"></i> Mover {{ equipoMover?.codigo }}</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarMover = false"><i class="ti ti-x"></i></button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-info">
-            {{ equipoMover?.tipo_nombre }} {{ equipoMover?.marca }} {{ equipoMover?.modelo }}
-            <template v-if="equipoMover?.ubicacion_nombre"> — hoy en <strong>{{ equipoMover?.ubicacion_nombre }}</strong></template>
-          </p>
-
-          <div class="form-group">
-            <label for="mov-ubicacion">Ubicación destino *</label>
-            <select id="mov-ubicacion" v-model="ubicacionSelId" :disabled="procesando">
-              <option value="" disabled>Seleccionar ubicación</option>
-              <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="mov-nueva">¿No existe? Créala aquí</label>
-            <div class="nueva-ubicacion">
-              <input
-                id="mov-nueva"
-                v-model="nuevaUbicacion"
-                placeholder="ej: Oficina Contabilidad, Obra San Isidro..."
-                :disabled="procesando"
-                @keydown.enter.prevent="agregarUbicacion"
-              >
-              <button class="btn" type="button" :disabled="procesando || !nuevaUbicacion.trim()" @click="agregarUbicacion">
-                Crear
-              </button>
-            </div>
-          </div>
-
-        </div>
-
-        <div class="modal-actions">
-          <button class="btn" type="button" :disabled="procesando" @click="mostrarMover = false">Cancelar</button>
-          <button class="btn btn-primary" type="button" :disabled="procesando || !ubicacionSelId" @click="confirmarMover">
-            <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ procesando ? 'Moviendo...' : 'Mover' }}
-          </button>
-        </div>
-      </div>
-    </div>
-    </Transition>
-
     <!-- Modal: hoja de vida -->
     <Transition name="modal-anim">
     <div v-if="mostrarHoja" class="modal-bg" @click.self="mostrarHoja = false">
@@ -770,19 +784,8 @@ onMounted(async () => {
         </div>
         <div class="modal-body">
           <p class="modal-info">{{ equipoHoja?.tipo_nombre }} {{ equipoHoja?.marca }} {{ equipoHoja?.modelo }}</p>
-          <span
-            v-if="equipoHoja"
-            class="badge-group"
-            :title="badgesSituacion(equipoHoja).map(b => b.label).join(' · ')"
-          >
-            <span
-              v-for="b in badgesSituacion(equipoHoja)"
-              :key="b.label"
-              class="badge"
-              :class="[b.clase, { 'badge-fisico': b.fisico }]"
-            >
-              {{ b.label }}
-            </span>
+          <span v-if="equipoHoja" class="badge" :class="badgeEstadoFisico(equipoHoja).clase">
+            {{ badgeEstadoFisico(equipoHoja).label }}
           </span>
           <div v-if="cargandoEventos" class="no-results">Cargando...</div>
           <ul v-else class="hoja-lista">
@@ -863,14 +866,9 @@ onMounted(async () => {
 
 /* Estructura y color: sistema de badges global (.badge + .badge--X) */
 
-/* Columna Situación: ancho mínimo para que el badge doble (físico +
-   derivado) no se corte. En pantallas chicas, si no entra, se prioriza
-   el estado derivado (el físico queda accesible en el title del grupo). */
-.th-situacion { min-width: 168px; }
-
-@media (max-width: 900px) {
-  .badge-fisico { display: none; }
-}
+/* Columna Situación: ancho mínimo para que "Robado/Perdido" (el label más
+   largo) no corte el badge. */
+.th-situacion { min-width: 120px; }
 
 .ubicacion-nombre {
   display: inline-flex;
@@ -881,12 +879,22 @@ onMounted(async () => {
 /* Solo el icono conserva el color de la familia "ubicaciones" */
 .ubicacion-nombre i { color: var(--color-purple-text); }
 
-.nueva-ubicacion {
-  display: flex;
-  gap: 6px;
+.ubicacion-select {
+  max-width: 170px;
 }
 
-.nueva-ubicacion input { flex: 1; }
+.ubicacion-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.ubicacion-nueva-inline {
+  display: flex;
+  gap: 6px;
+  max-width: 220px;
+}
+
+.ubicacion-nueva-inline input { flex: 1; min-width: 0; }
 
 .badge-sin-devolver {
   /* Estructura y color: sistema de badges global (.badge + .badge--danger);
