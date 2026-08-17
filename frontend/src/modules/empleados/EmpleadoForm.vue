@@ -39,18 +39,12 @@ const store = useEmpleadosStore();
 
 const empresas = ref([]);
 const areasObras = ref([]);
+const ubicaciones = ref([]);
 const cargandoEmpresas = ref(false);
 const guardando = ref(false);
 const error = ref('');
 
 const esEdicion = computed(() => !!props.empleado?.id);
-
-// Ubicación derivada del área/obra elegida (migración 058): no es un
-// campo editable, solo refleja la ubicación configurada para esa área.
-const ubicacionDelArea = computed(() => {
-  const area = areasObras.value.find((a) => a.id === form.value.area_obra_id);
-  return area?.ubicaciones?.nombre || '';
-});
 
 const form = ref({
   nombres: '',
@@ -62,6 +56,7 @@ const form = ref({
   cargo: '',
   empresa_id: '',
   area_obra_id: '',
+  ubicacion_id: '',
   estado: 'Activo',
   fecha_alta: new Date().toISOString().slice(0, 10),
   notas: '',
@@ -87,6 +82,7 @@ function resetForm() {
       cargo: props.empleado.cargo || '',
       empresa_id: props.empleado.empresa_id,
       area_obra_id: props.empleado.area_obra_id || '',
+      ubicacion_id: props.empleado.ubicacion_id || '',
       estado: props.empleado.estado,
       fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
       notas: props.empleado.notas || '',
@@ -104,6 +100,7 @@ function resetForm() {
       cargo: props.empleado.cargo || '',
       empresa_id: props.empleado.empresa_id || '',
       area_obra_id: props.empleado.area_obra_id || '',
+      ubicacion_id: props.empleado.ubicacion_id || '',
       estado: 'Activo',
       fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
       notas: props.empleado.notas || '',
@@ -119,6 +116,7 @@ function resetForm() {
       cargo: '',
       empresa_id: '',
       area_obra_id: '',
+      ubicacion_id: '',
       estado: 'Activo',
       fecha_alta: new Date().toISOString().slice(0, 10),
       notas: '',
@@ -134,9 +132,10 @@ watch(() => props.empleado, resetForm, { immediate: true });
 onMounted(async () => {
   cargandoEmpresas.value = true;
   try {
-    [empresas.value, areasObras.value] = await Promise.all([
+    [empresas.value, areasObras.value, ubicaciones.value] = await Promise.all([
       insforgeApi.listEmpresas(),
       insforgeApi.listAreasObras(),
+      insforgeApi.listUbicaciones(),
     ]);
   } catch (e) {
     error.value = e?.message || 'Error al cargar catálogos';
@@ -286,10 +285,18 @@ async function guardar() {
               {{ ao.nombre }}
             </option>
           </select>
-          <p v-if="form.area_obra_id" class="text-muted campo-ubicacion">
-            <i class="ti ti-map-pin" aria-hidden="true"></i>
-            {{ ubicacionDelArea || 'Sin ubicación configurada para esta área' }}
-          </p>
+        </div>
+
+        <!-- Independiente de Área/Obra (migración 059): el área es función,
+             la ubicación es lugar físico — no se derivan entre sí. -->
+        <div class="form-group">
+          <label for="ubicacion">Ubicación</label>
+          <select id="ubicacion" v-model="form.ubicacion_id" :disabled="guardando || cargandoEmpresas">
+            <option value="">Sin asignar</option>
+            <option v-for="u in ubicaciones" :key="u.id" :value="u.id">
+              {{ u.nombre }}
+            </option>
+          </select>
         </div>
 
         <div class="form-group">
@@ -363,15 +370,6 @@ async function guardar() {
   padding: 0 14px;
   font-size: 13px;
 }
-
-.campo-ubicacion {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 6px 0 0;
-  font-size: 12px;
-}
-
 
 .modal-actions.full {
   grid-column: 1 / -1;

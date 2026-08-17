@@ -115,7 +115,7 @@ function onNuevoCerrado(creado) {
 onMounted(async () => {
   store.resetearFiltros();
   try {
-    const [, staff] = await Promise.all([store.cargar(), insforgeApi.listStaff()]);
+    const [, staff] = await Promise.all([store.cargar(), insforgeApi.nombresStaff()]);
     staffLista.value = staff;
   } catch {
     showToast(error.value || 'Error al cargar tickets', 'error');

@@ -1,9 +1,10 @@
 <script setup>
-// Catálogo de áreas/obras (áreas administrativas, obras en campo...)
-// usado por el módulo de Empleados para asignar dónde trabaja cada uno.
+// Catálogo de áreas/obras: puramente funcional (migración 059) — dónde
+// trabaja cada empleado en términos de función/asignación laboral, sin
+// relación con su ubicación física (ver UbicacionesPanel.vue, independiente).
 import { ref, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useAreasObrasStore, useUbicacionesStore } from '../../stores/catalogos.js';
+import { useAreasObrasStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
@@ -17,8 +18,6 @@ import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 
 const store = useAreasObrasStore();
 const { lista, cargando } = storeToRefs(store);
-const ubicacionesStore = useUbicacionesStore();
-const { lista: ubicaciones } = storeToRefs(ubicacionesStore);
 const guardando = ref(false);
 
 const porEliminar = ref(null);
@@ -29,7 +28,7 @@ const dialogoEliminar = ref(null);
 
 const mostrarForm = ref(false);
 const editar = ref(null);
-const form = ref({ nombre: '', descripcion: '', ubicacion_id: '' });
+const form = ref({ nombre: '', descripcion: '' });
 const errorForm = ref('');
 // Cerrar vía Modal.cerrar() reproduce la animación de salida;
 // el @close del Modal es quien baja mostrarForm.
@@ -37,14 +36,14 @@ const modalForm = ref(null);
 
 function abrirNueva() {
   editar.value = null;
-  form.value = { nombre: '', descripcion: '', ubicacion_id: '' };
+  form.value = { nombre: '', descripcion: '' };
   errorForm.value = '';
   mostrarForm.value = true;
 }
 
 function abrirEditar(a) {
   editar.value = a;
-  form.value = { nombre: a.nombre, descripcion: a.descripcion || '', ubicacion_id: a.ubicacion_id || '' };
+  form.value = { nombre: a.nombre, descripcion: a.descripcion || '' };
   errorForm.value = '';
   mostrarForm.value = true;
 }
@@ -57,7 +56,7 @@ async function guardar() {
       await store.actualizar(editar.value.id, form.value);
       showToast('Área/Obra actualizada');
     } else {
-      await store.crear(form.value.nombre, form.value.descripcion, form.value.ubicacion_id || null);
+      await store.crear(form.value.nombre, form.value.descripcion);
       showToast('Área/Obra creada');
     }
     modalForm.value?.cerrar();
@@ -85,7 +84,7 @@ async function confirmarEliminar() {
 
 onMounted(async () => {
   try {
-    await Promise.all([store.cargar(), ubicacionesStore.cargar()]);
+    await store.cargar();
   } catch (e) {
     showToast(e?.message || 'Error al cargar áreas/obras', 'error');
   }
@@ -122,17 +121,15 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
             <tr>
               <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
               <ThOrdenable clave="descripcion" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Descripción</ThOrdenable>
-              <th scope="col">Ubicación</th>
               <th scope="col"><span class="sr-only">Acciones</span></th>
             </tr>
           </thead>
           <tbody>
-            <SkeletonTabla v-if="cargando" :columnas="4" />
+            <SkeletonTabla v-if="cargando" :columnas="3" />
             <template v-else>
             <tr v-for="a in listaPaginada" :key="a.id">
               <td><span class="user-name"><i class="ti ti-building-community ao-icon"></i> {{ a.nombre }}</span></td>
               <td><TextoVacio :valor="a.descripcion" /></td>
-              <td><TextoVacio :valor="a.ubicaciones?.nombre" /></td>
               <td>
                 <div class="actions">
                   <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(a)">
@@ -162,20 +159,11 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
       <form id="ao-form" class="ao-form" @submit.prevent="guardar">
         <div class="form-group">
           <label for="ao-nombre">Nombre *</label>
-          <input id="ao-nombre" v-model="form.nombre" required placeholder="ej: Oficina Central, Obra San Isidro" :disabled="guardando">
+          <input id="ao-nombre" v-model="form.nombre" required placeholder="ej: Contabilidad, Logística" :disabled="guardando">
         </div>
         <div class="form-group">
           <label for="ao-desc">Descripción</label>
           <input id="ao-desc" v-model="form.descripcion" :disabled="guardando">
-        </div>
-        <div class="form-group">
-          <label for="ao-ubicacion">Ubicación</label>
-          <select id="ao-ubicacion" v-model="form.ubicacion_id" :disabled="guardando">
-            <option value="">Sin asignar</option>
-            <option v-for="u in ubicaciones" :key="u.id" :value="u.id">
-              {{ u.nombre }}
-            </option>
-          </select>
         </div>
         <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
       </form>

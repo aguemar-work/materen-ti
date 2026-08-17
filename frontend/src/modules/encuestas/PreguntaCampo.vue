@@ -1,7 +1,7 @@
 <script setup>
 import { TIPOS_PREGUNTA } from '../../core/dominio-encuestas.js';
 
-const props = defineProps({
+defineProps({
   pregunta: { type: Object, required: true },
   modelValue: { default: undefined },
   disabled: { type: Boolean, default: false },

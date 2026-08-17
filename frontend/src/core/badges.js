@@ -13,6 +13,15 @@ const TIPOS_CUENTA = {
   personal: { label: 'Personal', clase: 'badge--sky' },
 };
 
+// ubicaciones.tipo (migración 059): clasifica el catálogo físico — no
+// confundir con areas_obras (función/asignación laboral, sin tipo propio).
+const TIPOS_UBICACION = {
+  sede: { label: 'Sede', clase: 'badge--sky' },
+  almacen: { label: 'Almacén', clase: 'badge--sky' },
+  obra: { label: 'Obra', clase: 'badge--sky' },
+  otro: { label: 'Otro', clase: 'badge--neutral' },
+};
+
 /** @returns {{ label: string, clase: string }} */
 export function badgeInfo(tipo, valor) {
   switch (tipo) {
@@ -36,6 +45,8 @@ export function badgeInfo(tipo, valor) {
       return estadoAccionInfo(valor);
     case 'tipo_cuenta':
       return TIPOS_CUENTA[valor] || { label: valor, clase: 'badge--neutral' };
+    case 'tipo_ubicacion':
+      return TIPOS_UBICACION[valor] || { label: valor, clase: 'badge--neutral' };
     case 'activo_staff': {
       const on = valor === true || valor === 'true';
       return { label: on ? 'Activo' : 'Inactivo', clase: on ? 'badge--success' : 'badge--neutral' };

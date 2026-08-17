@@ -16,6 +16,7 @@ import { dashboardApi } from './domains/dashboard.js';
 import { staffApi } from './domains/staff.js';
 import { accesosSensiblesApi } from './domains/accesosSensibles.js';
 import { staffModulosApi } from './domains/staffModulos.js';
+import { staffPermisosApi } from './domains/staffPermisos.js';
 import { kbApi } from './domains/kb.js';
 import { problemasApi } from './domains/problemas.js';
 import { personalRegistrosApi } from './domains/personalRegistros.js';
@@ -37,6 +38,7 @@ export const insforgeApi = {
   ...staffApi,
   ...accesosSensiblesApi,
   ...staffModulosApi,
+  ...staffPermisosApi,
   ...kbApi,
   ...problemasApi,
   ...personalRegistrosApi,

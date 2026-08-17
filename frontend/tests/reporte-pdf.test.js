@@ -22,7 +22,7 @@ const DATOS = {
     { nombre: 'Bruno Díaz', cantidad: 3, promedio: 30, mediana: 26 },
   ],
   porSolicitante: [
-    { solicitante: 'Ana Pérez', total: 5, resueltos: 3, rechazados: 1, sinResolver: 1, encuestasContestadas: 2, encuestasPendientes: 1 },
+    { solicitante: 'Ana Pérez', total: 5, creados: 4, resueltos: 3, rechazados: 1, encuestasContestadas: 2, encuestasPendientes: 1 },
   ],
   tiempoResolucion: { promedio: 13.4, mediana: 6, muestra: 9 },
   tiempoPorPrioridadLabel: [
@@ -31,16 +31,6 @@ const DATOS = {
   ],
   reaperturas: 2,
   tasaReapertura: 22,
-  backlog: {
-    total: 7,
-    tramos: [
-      { clave: 'hasta_3', label: 'Hasta 3 días', cantidad: 3 },
-      { clave: 'de_4_a_7', label: '4 a 7 días', cantidad: 2 },
-      { clave: 'de_8_a_30', label: '8 a 30 días', cantidad: 1 },
-      { clave: 'mas_30', label: 'Más de 30 días', cantidad: 1 },
-    ],
-    diasMasAntiguo: 41,
-  },
   encuestasGeneradas: 9,
   encuestasRespondidas: 4,
   promedioSatisfaccion: 4.25,
@@ -62,7 +52,6 @@ const VACIO = {
   tiempoPorPrioridadLabel: [],
   reaperturas: 0,
   tasaReapertura: null,
-  backlog: { total: 0, tramos: [], diasMasAntiguo: null },
   encuestasGeneradas: 0,
   encuestasRespondidas: 0,
   promedioSatisfaccion: null,
@@ -136,8 +125,8 @@ describe('construirReporteTickets', () => {
     const largo = {
       ...DATOS,
       porSolicitante: Array.from({ length: 90 }, (_, i) => ({
-        solicitante: `Solicitante ${i + 1}`, total: 3, resueltos: 1, rechazados: 1,
-        sinResolver: 1, encuestasContestadas: 1, encuestasPendientes: 0,
+        solicitante: `Solicitante ${i + 1}`, total: 3, creados: 3, resueltos: 1, rechazados: 1,
+        encuestasContestadas: 1, encuestasPendientes: 0,
       })),
     };
     const { doc } = await construirReporteTickets(largo, { ...OPCIONES, nombreArchivo: 'x' });
@@ -159,10 +148,12 @@ describe('construirReporteTickets', () => {
     const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
 
     expect(crudo).toContain('TIEMPOS Y CALIDAD DE LA ATENCI');
-    expect(crudo).toContain('BACKLOG PENDIENTE');
     expect(crudo).toContain('Julio 2026');
     expect(crudo).toContain('+4');    // creados: 12 vs 8
     expect(crudo).toContain('-2');    // resueltos: 9 vs 11
+    // Columna "Histórico" (no "Total"): aclara que ese dato es de siempre,
+    // no del periodo — ver docs/CHANGELOG.md.
+    expect(crudo).toContain('Hist\xF3rico');
   });
 
   // Guarda contra que el documento se dispare de largo: un mes normal tiene que

@@ -7,12 +7,13 @@ import { insforgeApi } from '../../api/insforge.js';
 import { getClient } from '../../api/client.js';
 import { temaActual, alternarTema } from '../../core/tema.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
-import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
+import { useRealtimeRefresco, crearRefrescoDebounced, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import NotificacionesCampana from './NotificacionesCampana.vue';
 import AppSearch from './AppSearch.vue';
 import AppNav from './AppNav.vue';
 import AppNotifications from './AppNotifications.vue';
 import MenuAcciones from './MenuAcciones.vue';
+import StaffNombreForm from '../../modules/staff/StaffNombreForm.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -75,10 +76,16 @@ async function cargarSinAsignar() {
 }
 onMounted(cargarSinAsignar);
 
+// El sonido debe sonar por cada ticket nuevo, pero el refresco de la lista
+// (pesado) se coalesce — ver crearRefrescoDebounced/REFRESCO_LISTA_DEBOUNCE_MS.
+const refrescarTickets = crearRefrescoDebounced(
+  () => Promise.all([ticketsStore.cargar(), cargarSinAsignar()]),
+  { delayMs: REFRESCO_LISTA_DEBOUNCE_MS }
+);
+
 useRealtimeRefresco('tickets:list', (payload) => {
   if (payload?.op === 'INSERT') reproducirNotificacion();
-  ticketsStore.cargar();
-  cargarSinAsignar();
+  refrescarTickets();
 });
 
 const sidebarAbierto = ref(false);
@@ -123,7 +130,14 @@ const userInitial = computed(() => (auth.nombre?.[0] ?? auth.user?.email?.[0] ??
 // Configuración se suma aquí (rediseño de sidebar, ago 2026): no es una
 // sección de uso diario, así que sale de la nav principal y se agrupa con
 // las otras acciones de "administrar mi sesión/el sistema".
+const mostrarEditarNombre = ref(false);
+
+function onNombreGuardado(actualizado) {
+  auth.actualizarNombre(actualizado.nombre);
+}
+
 const accionesUsuario = computed(() => [
+  { icono: 'ti-pencil', label: 'Editar mi nombre', onClick: () => { mostrarEditarNombre.value = true; } },
   { icono: 'ti-settings', label: 'Configuración', onClick: () => router.push('/configuracion') },
   { separador: true },
   {
@@ -225,6 +239,13 @@ async function cerrarSesion() {
     </div>
 
     <AppNotifications />
+
+    <StaffNombreForm
+      v-if="mostrarEditarNombre"
+      :miembro="{ user_id: auth.user?.id, nombre: auth.nombre }"
+      @cerrar="mostrarEditarNombre = false"
+      @guardado="onNombreGuardado"
+    />
   </div>
 </template>
 

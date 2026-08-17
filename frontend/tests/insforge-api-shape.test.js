@@ -48,7 +48,7 @@ const METODOS = [
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
   'obtenerReporteTickets', 'obtenerResumenTickets', 'obtenerSatisfaccionConsolidado', 'listarTicketsDelPeriodo',
   // staff
-  'listStaff', 'updateStaff',
+  'listStaff', 'updateStaff', 'nombresStaff',
   // accesos sensibles
   'listAccesosSensibles', 'permisosDeAcceso', 'crearAccesoSensible',
   'actualizarAccesoSensible', 'eliminarAccesoSensible',
@@ -69,10 +69,12 @@ const METODOS = [
   'listNotificaciones', 'listLecturas', 'marcarLeida', 'marcarVariasLeidas',
   // permisos de módulo (migración 056)
   'misModulos', 'modulosDeStaff', 'guardarModulos',
+  // permisos individuales (migración 060)
+  'misPermisos', 'setCredencialesVer',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 160 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 162 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

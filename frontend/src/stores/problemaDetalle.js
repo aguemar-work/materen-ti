@@ -17,7 +17,9 @@ export const useProblemaDetalleStore = defineStore('problemaDetalle', {
   }),
 
   getters: {
-    staffActivo: (state) => state.staffLista.filter((s) => s.activo),
+    // staffLista ya viene solo con staff activo (staff_nombres(), migración
+    // 061): staffActivo queda como alias por compatibilidad con la vista.
+    staffActivo: (state) => state.staffLista,
     staffPorId() {
       const mapa = {};
       for (const s of this.staffActivo) mapa[s.user_id] = s.nombre;
@@ -32,7 +34,7 @@ export const useProblemaDetalleStore = defineStore('problemaDetalle', {
       try {
         const [problema, staff] = await Promise.all([
           insforgeApi.getProblema(id),
-          insforgeApi.listStaff(),
+          insforgeApi.nombresStaff(),
         ]);
         this.problema = problema;
         this.staffLista = staff;

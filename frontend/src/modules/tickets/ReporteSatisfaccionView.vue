@@ -69,7 +69,7 @@ async function cargar() {
   try {
     const [consolidado, staff] = await Promise.all([
       insforgeApi.obtenerSatisfaccionConsolidado(),
-      insforgeApi.listStaff(),
+      insforgeApi.nombresStaff(),
     ]);
     respuestas.value = consolidado.respuestas;
     porSolicitante.value = consolidado.porSolicitante;

@@ -9,6 +9,7 @@ import { formatFecha, formatFechaHora } from '../../core/formatters.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import EncuestaSatisfaccionForm from './EncuestaSatisfaccionForm.vue';
 
 const route = useRoute();
 
@@ -106,13 +107,9 @@ function enlaceSeguimiento() {
           </div>
         </div>
 
-        <RouterLink
-          v-if="ticket.estado === 'cerrado'"
-          class="ticket-link"
-          :to="{ name: 'ticket-satisfaccion', params: { token: route.params.token } }"
-        >
-          <i class="ti ti-mood-smile" aria-hidden="true"></i> Calificar el servicio
-        </RouterLink>
+        <div v-if="ticket.estado === 'cerrado'" class="segui-encuesta">
+          <EncuestaSatisfaccionForm :token="route.params.token" embebido />
+        </div>
       </template>
     </div>
   </div>
@@ -215,6 +212,12 @@ function enlaceSeguimiento() {
 .segui-fecha {
   font-size: var(--fs-sm);
   color: var(--color-text-tertiary);
+}
+
+.segui-encuesta {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
 }
 
 .ticket-link {

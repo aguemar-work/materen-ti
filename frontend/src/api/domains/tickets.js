@@ -139,7 +139,7 @@ export const ticketsApi = {
     const { data, error } = await getClient().database
       .from('tickets')
       .select(`
-        id, codigo, titulo, descripcion, estado, prioridad, nivel_atencion, tipo, origen, vinculado,
+        id, codigo, token, titulo, descripcion, estado, prioridad, nivel_atencion, tipo, origen, vinculado,
         contacto_ingresado, asignado_a,
         adjunto_url, created_at, updated_at,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
@@ -272,6 +272,7 @@ function mapTicketDetalle(row) {
   return {
     id: row.id,
     codigo: row.codigo,
+    token: row.token,
     titulo: row.titulo,
     descripcion: row.descripcion,
     estado: row.estado,

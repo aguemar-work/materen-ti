@@ -91,7 +91,7 @@ async function onVerificarCodigo() {
   try {
     resetToken.value = await auth.verificarCodigoReset(email.value, codigo.value.trim());
     irA('reset-password');
-  } catch (e) {
+  } catch {
     error.value = 'Código inválido o expirado. Verifica e intenta de nuevo.';
   } finally {
     procesando.value = false;

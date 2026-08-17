@@ -3,8 +3,9 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useCorreosStore } from '../../stores/correos.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { revelarPassword } from '../../api/passwords.js';
-import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
+import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import CorreoForm from './CorreoForm.vue';
@@ -20,11 +21,12 @@ import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const store = useCorreosStore();
+const authStore = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-useRealtimeRefresco('cuentas:list', () => store.cargar());
+useRealtimeRefresco('cuentas:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 
@@ -264,7 +266,8 @@ onMounted(async () => {
                     <button
                       class="icon-btn"
                       type="button"
-                      :title="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
+                      :disabled="!authStore.puedeVerCredenciales"
+                      :title="authStore.puedeVerCredenciales ? (passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar') : 'Sin permiso para ver contraseñas'"
                       :aria-label="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
                       @click="togglePassword(correo)"
                     >
@@ -273,7 +276,8 @@ onMounted(async () => {
                     <button
                       class="icon-btn"
                       type="button"
-                      title="Copiar contraseña"
+                      :disabled="!authStore.puedeVerCredenciales"
+                      :title="authStore.puedeVerCredenciales ? 'Copiar contraseña' : 'Sin permiso para ver contraseñas'"
                       aria-label="Copiar contraseña"
                       @click="copiarPassword(correo)"
                     >
@@ -347,13 +351,21 @@ onMounted(async () => {
               <button
                 class="icon-btn"
                 type="button"
-                :title="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
+                :disabled="!authStore.puedeVerCredenciales"
+                :title="authStore.puedeVerCredenciales ? (passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar') : 'Sin permiso para ver contraseñas'"
                 :aria-label="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
                 @click.stop="togglePassword(correo)"
               >
                 <i :class="passwordVisibles[correo.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
               </button>
-              <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click.stop="copiarPassword(correo)">
+              <button
+                class="icon-btn"
+                type="button"
+                :disabled="!authStore.puedeVerCredenciales"
+                :title="authStore.puedeVerCredenciales ? 'Copiar contraseña' : 'Sin permiso para ver contraseñas'"
+                aria-label="Copiar contraseña"
+                @click.stop="copiarPassword(correo)"
+              >
                 <i class="ti ti-copy"></i>
               </button>
             </div>

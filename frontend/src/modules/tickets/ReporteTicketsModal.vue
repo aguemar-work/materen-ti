@@ -11,6 +11,7 @@
 import { ref, computed, nextTick, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useTicketsStore } from '../../stores/tickets.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { estadoInfo, prioridadInfo, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
 import { formatFecha, formatFechaHora, formatHoras, formatDelta } from '../../core/formatters.js';
 import { exportarCSV } from '../../core/exportar.js';
@@ -29,11 +30,25 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 // misma finalidad —sacar información de tickets para compartir o analizar— así
 // que viven juntas acá en vez de repartidas por el toolbar de la bandeja.
 const ticketsStore = useTicketsStore();
+const auth = useAuthStore();
 
 const props = defineProps({
   staffPorId: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(['cerrar']);
+
+// Alcance del reporte: disponible para cualquier staff (JEFE y ASISTENTE),
+// no restringido por rol — el reporte de equipo lo puede generar cualquiera
+// del área. Por defecto "equipo" (comportamiento de siempre, nadie se
+// sorprende). El alcance elegido se muestra siempre junto al periodo, en
+// pantalla y en el PDF: un reporte "solo mi actividad" que no lo diga es
+// tan engañoso como el bug de nombres que este mismo cambio corrige.
+const ALCANCES = [
+  { valor: 'equipo', label: 'Todo el equipo' },
+  { valor: 'propia', label: 'Solo mi actividad' },
+];
+const alcance = ref('equipo');
+const alcanceLabel = computed(() => ALCANCES.find((a) => a.valor === alcance.value)?.label || '');
 
 const visible = ref(true);
 function cerrar() { visible.value = false; }
@@ -155,13 +170,16 @@ async function cargar() {
   comparativa.value = null;
   try {
     const { desde, hasta } = rangoDe(periodo.value, ancla.value);
-    // El diario no compara contra "el día anterior": un día suelto no es
-    // representativo (para eso está el reporte semanal/mensual) y el delta
-    // salía engañoso comparando un día a medias contra uno ya cerrado.
-    const incluirComparativa = periodo.value !== 'diario';
+    const asignadoA = alcance.value === 'propia' ? auth.user?.id : undefined;
+    // El diario no compara contra "el día anterior" (un día suelto no es
+    // representativo); "solo mi actividad" tampoco lleva comparativa —
+    // sería una comparación distinta y más compleja (satisfacción no se
+    // puede recortar por técnico sin un cambio aparte), así que se omite en
+    // vez de mostrar un delta a medias.
+    const incluirComparativa = periodo.value !== 'diario' && alcance.value === 'equipo';
     const anterior = incluirComparativa ? rangoDe(periodo.value, desplazarAncla(periodo.value, ancla.value, -1)) : null;
     const [reporte, resumenAnterior] = await Promise.all([
-      insforgeApi.obtenerReporteTickets({ desde: desde.toISOString(), hasta: hasta.toISOString() }),
+      insforgeApi.obtenerReporteTickets({ desde: desde.toISOString(), hasta: hasta.toISOString(), asignadoA }),
       incluirComparativa
         ? insforgeApi.obtenerResumenTickets({ desde: anterior.desde.toISOString(), hasta: anterior.hasta.toISOString() }).catch(() => null)
         : Promise.resolve(null),
@@ -173,6 +191,15 @@ async function cargar() {
   } finally {
     cargando.value = false;
   }
+}
+
+// Cambiar el alcance recarga igual que cambiar de periodo (mismo criterio
+// que aplicarPeriodo): sin esto, el modal mostraría datos del alcance
+// anterior hasta el próximo cambio de periodo.
+function cambiarAlcance(nuevo) {
+  if (cargando.value || alcance.value === nuevo) return;
+  alcance.value = nuevo;
+  cargar();
 }
 
 // Punto único de cambio de recorte: limita a periodos ya empezados y recarga
@@ -245,6 +272,7 @@ async function descargar() {
       {
         periodoLabel: periodoLabel.value,
         rangoLabel: rangoLabel.value,
+        alcanceLabel: alcanceLabel.value,
         nombreArchivo: nombreArchivoReporte(periodo.value, ancla.value),
         enCurso: periodoEnCurso.value,
         comparativa: comparativa.value ? { ...comparativa.value, etiqueta: etiquetaAnterior.value } : null,
@@ -394,9 +422,22 @@ onMounted(cargar);
             </div>
 
             <span class="rep-rango">
-              {{ rangoLabel }}
+              {{ rangoLabel }} · {{ alcanceLabel }}
               <span v-if="periodoEnCurso" class="rep-encurso">En curso</span>
             </span>
+          </div>
+
+          <div class="rep-alcance" role="group" aria-label="Alcance del reporte">
+            <button
+              v-for="a in ALCANCES"
+              :key="a.valor"
+              type="button"
+              class="btn"
+              :class="{ 'is-activo': alcance === a.valor }"
+              :disabled="cargando"
+              :aria-pressed="alcance === a.valor"
+              @click="cambiarAlcance(a.valor)"
+            >{{ a.label }}</button>
           </div>
 
           <div v-if="cargando" class="no-results">Calculando reporte...</div>
@@ -548,6 +589,9 @@ onMounted(cargar);
 
             <div class="rep-seccion">
               <div class="datos-title">Tickets del periodo por solicitante</div>
+              <p class="tk-nota">
+                "Histórico" es el total de siempre para ese usuario, no de este periodo — el resto de columnas sí es solo del periodo.
+              </p>
               <!-- 7 columnas: en pantallas angostas la tabla scrollea sola en
                    vez de desbordar el modal (.table-wrap, patrón del sistema). -->
               <div class="table-wrap">
@@ -555,7 +599,7 @@ onMounted(cargar);
                   <thead>
                     <tr>
                       <th>Usuario</th>
-                      <th class="num">Total</th>
+                      <th class="num" title="Total histórico de siempre, no de este periodo">Histórico</th>
                       <th class="num">Ticket creado</th>
                       <th class="num">Ticket resuelto</th>
                       <th class="num">Rechazado</th>
@@ -629,13 +673,15 @@ onMounted(cargar);
 .rep-body { display: flex; flex-direction: column; gap: 16px; }
 
 .rep-periodos { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.rep-granularidad, .rep-nav { display: flex; align-items: center; gap: 6px; }
+.rep-granularidad, .rep-nav, .rep-alcance { display: flex; align-items: center; gap: 6px; }
 .rep-nav { padding-left: 8px; border-left: 1px solid var(--color-border-subtle); }
+.rep-alcance { margin: -6px 0 2px; }
 
 /* Selector segmentado (no es la acción principal del modal, es un estado de
    selección) — mismo par tenue-acento que .chip-filtro--activo en vez de
    .btn-primary, para no competir con "Descargar PDF". */
-.rep-granularidad .btn.is-activo {
+.rep-granularidad .btn.is-activo,
+.rep-alcance .btn.is-activo {
   background: var(--color-accent-subtle);
   color: var(--color-accent-text);
   border-color: var(--color-accent-subtle);

@@ -364,10 +364,13 @@ async function migrarFila(fila) {
 
 const migrandoLote = ref(false);
 const progresoLote = ref({ hecho: 0, total: 0 });
+const confirmarMigrarTodas = ref(false);
 
 const hayListasParaMigrar = computed(() => filas.value.some(puedeMigrar));
+const cantidadParaMigrar = computed(() => filas.value.filter(puedeMigrar).length);
 
 async function migrarTodasListas() {
+  confirmarMigrarTodas.value = false;
   const pendientes = filas.value.filter(puedeMigrar);
   if (!pendientes.length) return;
   migrandoLote.value = true;
@@ -466,7 +469,7 @@ onMounted(async () => {
               class="btn btn-primary"
               type="button"
               :disabled="migrandoLote || !hayListasParaMigrar"
-              @click="migrarTodasListas"
+              @click="confirmarMigrarTodas = true"
             >
               <i v-if="migrandoLote" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
               {{ migrandoLote ? `Migrando ${progresoLote.hecho}/${progresoLote.total}...` : 'Migrar todas las filas listas' }}
@@ -618,6 +621,16 @@ onMounted(async () => {
       :cargando="vaciando"
       @cancel="confirmarVaciar = false"
       @confirm="confirmarVaciarBandeja"
+    />
+
+    <ConfirmDialog
+      v-if="confirmarMigrarTodas"
+      icono="ti-file-import"
+      titulo="Migrar todas las filas listas"
+      :mensaje="`Se crearán ${cantidadParaMigrar} equipos nuevos en el sistema (con su asignación/ubicación indicada). Esta acción no se puede deshacer desde acá.`"
+      confirmar-label="Migrar"
+      @cancel="confirmarMigrarTodas = false"
+      @confirm="migrarTodasListas"
     />
   </div>
 </template>

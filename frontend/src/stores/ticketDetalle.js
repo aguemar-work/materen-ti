@@ -19,7 +19,9 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
   }),
 
   getters: {
-    staffActivo: (state) => state.staffLista.filter((s) => s.activo),
+    // staffLista ya viene solo con staff activo (staff_nombres(), migración
+    // 061): staffActivo queda como alias por compatibilidad con la vista.
+    staffActivo: (state) => state.staffLista,
     staffPorId() {
       const mapa = {};
       for (const s of this.staffActivo) mapa[s.user_id] = s.nombre;
@@ -35,7 +37,7 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
         const [t, coms, staff, eventos] = await Promise.all([
           insforgeApi.getTicket(id),
           insforgeApi.listComentariosTicket(id),
-          insforgeApi.listStaff(),
+          insforgeApi.nombresStaff(),
           insforgeApi.listEventosTicket(id),
         ]);
         // Si el ticket no existe, ticket queda en null (la vista decide el redirect).

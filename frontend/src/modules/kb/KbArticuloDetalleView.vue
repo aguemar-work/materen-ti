@@ -150,7 +150,7 @@ onMounted(async () => {
   try {
     [categorias.value, staffLista.value] = await Promise.all([
       insforgeApi.listCategoriasTicket(),
-      insforgeApi.listStaff(),
+      insforgeApi.nombresStaff(),
     ]);
   } catch { /* el select de categoría y el nombre del autor quedan vacíos, no bloquea la vista */ }
 });

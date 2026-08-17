@@ -25,7 +25,7 @@
 // para leer/escribir un ticket.
 // ============================================================
 
-import { createClient, createAdminClient } from 'npm:@insforge/sdk';
+import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
 
 const ORIGENES_PERMITIDOS = new Set([
   'https://materen-ti.vercel.app',
@@ -109,6 +109,16 @@ export function soloDigitos(valor: string): string {
 // edge (un solo valor, no falsificables). x-forwarded-for es el último
 // recurso y se toma su ÚLTIMO valor: los proxies AGREGAN la IP real al
 // final; el primero lo controla el cliente (auditoría H-02).
+// El SDK (postgrest-js sin Database schema generado) tipa toda relación
+// embebida en un select() como arreglo, aunque en runtime sea un solo
+// objeto cuando el embed es por FK 1:1 desde la fila consultada (ej.
+// tickets.categoria_id → categorias_ticket.id). Sin esto, TS marca
+// `.nombre` como inexistente en un arreglo — el dato real siempre fue
+// un objeto.
+function uno<T>(rel: T | T[] | null | undefined): T | null {
+  return (Array.isArray(rel) ? rel[0] : rel) ?? null;
+}
+
 export function ipDesdeHeaders(headers: Headers): string {
   const xff = (headers.get('x-forwarded-for') || '')
     .split(',').map((s) => s.trim()).filter(Boolean);
@@ -347,8 +357,8 @@ export default async function (req: Request): Promise<Response> {
       titulo: ticket.titulo,
       descripcion: ticket.descripcion,
       estado: ticket.estado,
-      categoria: ticket.categorias_ticket?.nombre || '',
-      subcategoria: ticket.subcategorias_ticket?.nombre || '',
+      categoria: uno(ticket.categorias_ticket)?.nombre || '',
+      subcategoria: uno(ticket.subcategorias_ticket)?.nombre || '',
       creado: ticket.created_at,
       actualizado: ticket.updated_at,
       // No se exponen nombres de staff: cara pública única, "Soporte TI"

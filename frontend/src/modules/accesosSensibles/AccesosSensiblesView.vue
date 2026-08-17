@@ -101,7 +101,7 @@ async function confirmarEliminar() {
 onMounted(async () => {
   try {
     await store.cargar(auth.user.id);
-  } catch (e) {
+  } catch {
     showToast(error.value || 'Error al cargar accesos sensibles', 'error');
   }
 });

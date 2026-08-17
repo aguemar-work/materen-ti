@@ -12,7 +12,6 @@ import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js'
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import { showToast } from '../../core/toast.js';
 
 const emit = defineEmits(['cerrar']);
 

@@ -8,10 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:integration": "vitest run tests/integration/tickets-api.smoke.test.js"
+    "test:integration": "vitest run tests/integration"
   },
   "dependencies": {
-    "@insforge/sdk": "^1.4.0",
+    "@insforge/sdk": "1.5.2",
     "@sentry/vue": "^10.70.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",

@@ -47,10 +47,17 @@ async function porLotes(ids, consulta) {
   return partes.flat();
 }
 
-const SELECT_CREADOS = 'id, estado, prioridad, tipo, created_at, vinculado, contacto_ingresado, empleados(nombres, apellidos), categorias_ticket(nombre)';
+const SELECT_CREADOS = 'id, estado, prioridad, tipo, created_at, vinculado, contacto_ingresado, asignado_a, empleados(nombres, apellidos), categorias_ticket(nombre)';
 
 export const reportesTicketsApi = {
-  async obtenerReporteTickets({ desde, hasta }) {
+  // asignadoA (selector de alcance del reporte, migración-frontend sin
+  // cambio de esquema): si viene, recorta el reporte a solo los tickets
+  // ASIGNADOS a ese usuario — "Solo mi actividad" en vez de "Todo el
+  // equipo". Se resuelve al final, no con un filtro SQL directo sobre
+  // `creados`: varios números (resueltos, arrastrados, reaperturas) dependen
+  // de ticket_eventos, que no trae asignado_a — hace falta el asignado_a de
+  // CUALQUIER ticket tocado en el periodo, no solo el de los creados en él.
+  async obtenerReporteTickets({ desde, hasta, asignadoA }) {
     const db = getClient().database;
 
     const [creadosRes, eventosRes, satisfaccionRes, todosRes] = await Promise.all([
@@ -66,7 +73,7 @@ export const reportesTicketsApi = {
         .lte('created_at', hasta)
         .order('created_at', { ascending: true }),
       db.from('ticket_satisfaccion')
-        .select('nivel, comentario, fecha_envio')
+        .select('ticket_id, nivel, comentario, fecha_envio')
         .gte('created_at', desde)
         .lte('created_at', hasta),
       // Sin filtro de fecha: la columna "Total" de la tabla por solicitante es
@@ -78,12 +85,40 @@ export const reportesTicketsApi = {
     if (satisfaccionRes.error) throw satisfaccionRes.error;
     if (todosRes.error) throw todosRes.error;
 
-    const creados = creadosRes.data || [];
+    let creados = creadosRes.data || [];
     const eventos = eventosRes.data || [];
+    const encuestasCrudas = satisfaccionRes.data || [];
+
+    // Alcance "solo mi actividad": se completa el asignado_a de los tickets
+    // que NO están en `creados` (arrastrados de antes, solo reabiertos en
+    // este periodo, o con encuesta pero sin evento propio) con una consulta
+    // aparte — solo cuando el alcance está activo, para no penalizar el
+    // camino por defecto ("todo el equipo").
+    const asignadoPorId = new Map(creados.map((t) => [t.id, t.asignado_a]));
+    if (asignadoA) {
+      const idsTocados = new Set([
+        ...creados.map((t) => t.id),
+        ...eventos.map((e) => e.ticket_id),
+        ...encuestasCrudas.map((e) => e.ticket_id),
+      ]);
+      const idsFaltantes = [...idsTocados].filter((id) => !asignadoPorId.has(id));
+      if (idsFaltantes.length) {
+        const filas = await porLotes(idsFaltantes, (lote) => db.from('tickets').select('id, asignado_a').in('id', lote));
+        for (const f of filas) asignadoPorId.set(f.id, f.asignado_a);
+      }
+      creados = creados.filter((t) => t.asignado_a === asignadoA);
+    }
+    const esDeMiAlcance = (ticketId) => !asignadoA || asignadoPorId.get(ticketId) === asignadoA;
 
     // Un ticket cuenta una sola vez aunque se resuelva varias veces en el
     // periodo (reabierto): se atribuye a quien lo marcó resuelto por última vez.
-    const { resoluciones, reaperturas } = resolucionesPorTicket(eventos);
+    const { resoluciones: resolucionesTodas, reaperturasPorTicket } = resolucionesPorTicket(eventos);
+    const resoluciones = asignadoA
+      ? new Map([...resolucionesTodas].filter(([id]) => esDeMiAlcance(id)))
+      : resolucionesTodas;
+    const reaperturas = asignadoA
+      ? [...reaperturasPorTicket].reduce((acc, [id, n]) => acc + (esDeMiAlcance(id) ? n : 0), 0)
+      : [...reaperturasPorTicket.values()].reduce((a, b) => a + b, 0);
 
     // De los resueltos del periodo, cuántos también se crearon en el mismo
     // periodo (vs. arrastrados de antes) — sin esto, "Resueltos" se leía como
@@ -121,7 +156,11 @@ export const reportesTicketsApi = {
     const porIdResueltos = new Map(datosResueltos.map((t) => [t.id, t]));
     const arrastrados = resumenArrastrados(resoluciones, porIdResueltos, creadosIds);
 
-    const encuestas = satisfaccionRes.data || [];
+    // Igual que resoluciones/reaperturas: bajo "solo mi actividad" la
+    // satisfacción también se recorta a los tickets del alcance — sin esto,
+    // "Satisfacción"/"Comentarios" seguirían mostrando todo el equipo aunque
+    // el resto del reporte ya diga que es individual.
+    const encuestas = asignadoA ? encuestasCrudas.filter((e) => esDeMiAlcance(e.ticket_id)) : encuestasCrudas;
     const respondidas = encuestas.filter(esRespondida);
     const conNivel = respondidas.filter((e) => e.nivel !== null);
     const promedioSatisfaccion = conNivel.length
@@ -291,19 +330,28 @@ export function nombreSolicitante(t) {
   return t.contacto_ingresado || 'Sin vincular';
 }
 
-// Quién marcó resuelto cada ticket (y cuántas reaperturas hubo), a partir de
-// los eventos 'estado_cambiado'. Extraído para reusarse tal cual en el
-// reporte por periodo y en el consolidado histórico de satisfacción — es la
-// misma regla de negocio (última resolución gana) en los dos lugares.
+// Quién marcó resuelto cada ticket (y cuántas reaperturas hubo, por ticket),
+// a partir de los eventos 'estado_cambiado'. Extraído para reusarse tal cual
+// en el reporte por periodo y en el consolidado histórico de satisfacción —
+// es la misma regla de negocio (última resolución gana) en los dos lugares.
+// reaperturasPorTicket (ticket_id -> cantidad) permite recortar el total de
+// reaperturas por alcance ("solo mi actividad") sin perder el desglose;
+// `reaperturas` (el total plano) se mantiene para quien no necesita el
+// desglose.
 export function resolucionesPorTicket(eventos) {
   const resoluciones = new Map();   // ticket_id -> { userId, fecha }
+  const reaperturasPorTicket = new Map();
   let reaperturas = 0;
   for (const ev of eventos) {
     const destino = destinoDeCambio(ev.detalle);
-    if (destino === 'resuelto') resoluciones.set(ev.ticket_id, { userId: ev.user_id, fecha: ev.created_at });
-    else if (destino === 'reabierto') reaperturas += 1;
+    if (destino === 'resuelto') {
+      resoluciones.set(ev.ticket_id, { userId: ev.user_id, fecha: ev.created_at });
+    } else if (destino === 'reabierto') {
+      reaperturas += 1;
+      reaperturasPorTicket.set(ev.ticket_id, (reaperturasPorTicket.get(ev.ticket_id) || 0) + 1);
+    }
   }
-  return { resoluciones, reaperturas };
+  return { resoluciones, reaperturas, reaperturasPorTicket };
 }
 
 // Bajo esta cantidad de respuestas CON nivel, el promedio se sigue calculando

@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
+import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
@@ -30,7 +30,7 @@ const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-useRealtimeRefresco('equipos:list', () => store.cargar());
+useRealtimeRefresco('equipos:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 

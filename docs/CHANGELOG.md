@@ -10,6 +10,166 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-17** — Bug en producción (`README.md`, `AGENTS.md`,
+  `docs/HISTORIAL-AUDITORIAS.md`): `GET /empleados` devolvía 400 `PGRST200`
+  ("Could not find a relationship between 'areas_obras' and 'ubicaciones'")
+  — la migración 059 eliminó `areas_obras.ubicacion_id`, pero
+  `api/domains/empleados.js` seguía pidiendo el embed anidado
+  `areas_obras(nombre, ubicaciones(nombre))` que dependía de esa columna.
+  Fix: `SELECT_EMPLEADO` pide `areas_obras(nombre)` y `ubicaciones(nombre)`
+  como dos embeds independientes (el modelo real desde la 059). Guardia
+  adicional en `DashboardView.vue`: el `Promise.all` de carga ya no deja
+  `stats` en `null` sin aviso — `catch` con toast + `v-if` en el template que
+  antes leía `stats.cuentasAsignadas` sin verificar. Nuevo
+  `tests/integration/embeds.smoke.test.js`: una consulta real por cada
+  `select()` con embed del resto de dominios (el smoke existente solo
+  cubría `tickets`, por eso no atrapó esto — ver Q-01 en
+  `docs/HISTORIAL-AUDITORIAS.md`, que sigue abierto porque los 4 secrets de
+  `test-integration` todavía no existen en el repo; pasos para crearlos
+  documentados en `README.md`, sección "CI: secrets del smoke de
+  integración").
+- **2026-08-17** — Migración 061 (`README.md`, `docs/PANORAMA_SISTEMA.md`,
+  `docs/HISTORIAL-AUDITORIAS.md`): fix de bug en producción — un ASISTENTE
+  que genera el reporte de tickets veía a sus compañeros como "Staff" (la
+  RLS de SELECT de `staff` es "propio registro o jefe"). Mismo patrón
+  encontrado en otras 6 pantallas no reportadas por el usuario ("Asignado
+  a" de tickets, Responsable de Problemas/acciones correctivas, autor de
+  KB, reporte de satisfacción) — sistémico, no aislado al reporte. Fix: RPC
+  `staff_nombres()` (`SECURITY DEFINER` angosto, mismo patrón que
+  `kb_registrar_feedback` de la migración 032) en vez de ampliar la policy
+  de SELECT. De paso, extiende el UPDATE de `staff` para autoedición de
+  `nombre` (JEFE sigue editando cualquier fila), blindado con el mismo
+  patrón de trigger de columnas congeladas que la migración 019 usó para
+  H-06 en `tickets` — actualiza la fila de H-06 en
+  `docs/HISTORIAL-AUDITORIAS.md`. Feature adicional: selector de alcance
+  ("Solo mi actividad" / "Todo el equipo") en el reporte de tickets,
+  visible junto al periodo en pantalla y en el PDF.
+- **2026-08-17** — Cierra P-02 (`docs/HISTORIAL-AUDITORIAS.md`): reporte de
+  usuario de que Equipos "se refresca a cada rato" durante una importación
+  masiva y termina en `502 Bad Gateway`. Causa: `useRealtimeRefresco.js`
+  relanzaba el fetch pesado de la lista en cada evento `'changed'`, sin
+  debounce, y `ImportarEquiposView.vue` migra fila por fila (cada
+  INSERT/UPDATE dispara el trigger de BD). Fix: nueva `crearRefrescoDebounced`
+  (leading + trailing coalescente + guardia de solicitud-en-curso) en
+  `useRealtimeRefresco.js`, opt-in vía `debounceMs`, aplicada a las 4 vistas
+  de lista (equipos/empleados/licencias/correos) y al `tickets:list` de
+  `AppLayout.vue`; `AppNotifications.vue`/`TicketSeguimientoView.vue` quedan
+  sin cambios porque necesitan reaccionar a cada evento. Además se agregó
+  `ConfirmDialog` antes de "Migrar todas las filas listas" — antes escribía
+  en lote sin confirmación previa. `docs/GUIA-UX-UI.md` no se toca: el
+  diálogo reusa el componente y patrón ya existente (el mismo que "Vaciar
+  bandeja"), sin UI nueva.
+- **2026-08-16** — Cierra los 8 tests en rojo del reporte de tickets
+  (`frontend/tests/reporte-tickets-agregacion.test.js` y `reporte-pdf.test.js`),
+  rotos desde el commit `030cc89` (2026-08-15, "Pruebas") sin que CI lo
+  notara (ver `docs/HISTORIAL-AUDITORIAS.md` Q-01). Tres decisiones:
+  **Backlog por antigüedad retirado del reporte de tickets — sin uso real.
+  Con el volumen actual (~63 tickets) la métrica no aporta señal. Se perdió
+  originalmente sin documentar en el commit 030cc89; se confirma ahora como
+  decisión deliberada. Si el volumen crece, es la primera métrica a
+  reconsiderar.** `porSolicitante.sinResolver` se retira con la misma
+  decisión y el mismo razonamiento. `porTecnico` (forma `{total, mismoPeriodo,
+  arrastrados}`) queda como está — es correcta y ya la consumían bien
+  `ReporteTicketsModal.vue`/`reporte.js`, solo los tests verificaban la forma
+  vieja. `porSolicitante.total` sí cambia de etiqueta (no de dato): pasa de
+  "Total" a "Histórico" en el modal y el PDF, con nota aclaratoria, porque
+  dentro de un reporte por periodo "Total" se leía como si fuera de ese
+  periodo. `tasaReapertura` sin cambios (ya usa resueltos como denominador,
+  como fija `docs/PANORAMA_SISTEMA.md` §5). Línea base real verificada:
+  **95 tests pasan + 1 se salta (96 total, 0 en rojo)** — ni el "88/97" ni
+  el "96/97" que se habían documentado antes eran correctos; `AGENTS.md`
+  corregido con la cifra real. Detalle completo en
+  `docs/PANORAMA_SISTEMA.md` §6.
+- **2026-08-16** — Proceso (hallazgo A-05/W-04/Q-05): agrega
+  `.github/pull_request_template.md` (checklist de documentación/tests/capa
+  de deploy afectada) y `CONTRIBUTING.md` (convención de commits `fix(scope):`/
+  `feat(scope):` que ya existía de hecho pero no estaba escrita, con la
+  regla de "un commit = un cambio coherente" y el episodio de `030cc89` como
+  caso real de por qué — 30+ archivos sin relación bajo un solo mensaje,
+  que borró una sección del reporte de gerencia sin que nadie lo notara
+  durante un día).
+- **2026-08-16** — Migración 059: separa `areas_obras` (función) de
+  `ubicaciones` (lugar) — la 058 las había mezclado en una sola relación,
+  y "Almacén" (área funcional de logística, 5 empleados) rompía esa premisa:
+  no es un lugar. `ubicaciones` gana `tipo` (sede/almacen/obra/otro);
+  `empleados` gana `ubicacion_id` propio, independiente de su área;
+  `areas_obras.ubicacion_id` se elimina (leída antes en el backfill).
+  Aplicado en un branch de InsForge primero, validado (28 empleados con
+  ubicación derivada, exacto) antes de producción. Frontend:
+  `EmpleadoForm.vue` gana un select de Ubicación independiente del de
+  Área/Obra; `EmpleadosView.vue` gana un filtro de Ubicación;
+  `AreasObrasPanel.vue` pierde el campo de ubicación; `UbicacionesPanel.vue`
+  gana el select de tipo. Cierra el pendiente de `docs/PANORAMA_SISTEMA.md`
+  §7 sobre "consolidar en un catálogo único" — la idea original era la
+  equivocada, ver §6. "Obra" queda sin dividir (cero referencias reales,
+  pendiente sin urgencia).
+- **2026-08-16** — Migración 060: permiso individual `credenciales.ver`
+  (tabla `staff_permisos`, mismo patrón que `staff_modulos_permisos` de 056).
+  Gatea revelar/enviar contraseñas de Cuentas y Licencias en
+  `functions/credenciales.ts` (consulta directa, no RPC — el handler corre
+  sin sesión de usuario); JEFE exento siempre. Otorgar/revocar queda
+  auditado en `accesos_log` (no solo el rechazo — se audita también el
+  otorgamiento, que es el evento más importante). Backfill de los 3 staff
+  activos + `handle_new_staff_user` extendido. Toggle sin `ConfirmDialog` en
+  `StaffView.vue` (la auditoría del trigger hace aceptable la fricción baja)
+  y gate cosmético en los 4 sitios del frontend que revelan/envían
+  credenciales (`CorreosView`, `CuentasPanel`, `EmpleadosView`,
+  `LicenciasView`). **Advertencia explícita agregada en `AGENTS.md`**: la
+  regla de quién puede ver contraseñas está escrita dos veces (SQL y
+  `credenciales.ts`, por la misma razón que ya obligaba a esto en
+  `revelarAccesoSensible`/024) — cambiar una sin la otra es el riesgo real.
+  Pendiente de branch+aplicación en InsForge (sesión de CLI expirada a
+  mitad de tarea) — ver `docs/HISTORIAL-AUDITORIAS.md` si aplica.
+- **2026-08-16** — Cierra H-12 en código (`docs/HISTORIAL-AUDITORIAS.md`):
+  las 4 edge functions y `frontend/package.json` quedan en la misma versión
+  exacta de `@insforge/sdk` (`1.5.2`, sin rango). Se subió el frontend en vez
+  de bajar las functions: revisado el diff de tipos completo 1.4.0→1.5.2 y
+  las release notes contra cada API que el proyecto usa de verdad, sin
+  breaking changes reales (el único cambio real, `getPublicUrl()`, no se usa
+  en este repo). Verificado con `deno check` limpio y el frontend con la
+  dependencia instalada de verdad (no solo tipos): build + tests en la misma
+  línea base (88/97, sin regresiones). De paso se corrigió un alias de
+  `frontend/vitest.config.js` que solo interceptaba el string exacto sin
+  versión y rompía 2 archivos de test al fijarla. `functions/deno.lock`
+  queda versionado (fija dependencias transitivas para `deno check`
+  reproducible — no participa del deploy real, que no lee lockfiles).
+  **Redesplegar las 4 funciones queda pendiente**, a propósito, coordinado
+  por el usuario — hasta entonces cada una sigue en la versión de su último
+  deploy real, no la del código fuente. Detalle completo en
+  `docs/HISTORIAL-AUDITORIAS.md` (H-12) y checklist de deploy en `README.md`.
+- **2026-08-16** — Nuevo hallazgo H-12 (`docs/HISTORIAL-AUDITORIAS.md`, abierto):
+  detectado al generar `functions/deno.lock` para Q-04 — las 4 edge functions
+  importan `npm:@insforge/sdk` sin versión fijada (H-09 solo pinneó
+  `frontend/package.json`), hoy resuelve a `1.5.2` vs. el `1.4.0` del
+  frontend. Sin acción de código: fijar el import implica redesplegar las 4
+  funciones, decisión que corresponde a otro cambio.
+- **2026-08-16** — Cierra Q-04 (`docs/HISTORIAL-AUDITORIAS.md`): `functions/*.ts`
+  nunca se compilaban ni se linteaban. Runtime real verificado primero (Deno
+  Subhosting, no Node — imports `npm:@insforge/sdk` y `Deno.env`) en vez de
+  asumir: `functions/tsconfig.json` + `deno check` para el type-check (no
+  `tsc`, que no resuelve `npm:` ni conoce el global `Deno`); `eslint.config.js`
+  (raíz) cubre `frontend/src` y `functions/` con reglas calibradas contra el
+  estilo real — 0 violaciones nuevas quedan en `error`, los hallazgos de
+  estilo preexistentes en `warn`. Nuevo job `lint-y-typecheck` en `ci.yml`.
+  Corregidos los 10 errores de tipo reales que apareció el type-check en
+  `functions/*.ts` y 8 `no-unused-vars`/`no-useless-assignment` reales en
+  `frontend/src` — ninguno era un bug funcional (ver detalle en
+  `docs/HISTORIAL-AUDITORIAS.md`, Q-04). `.prettierrc.json` queda configurado
+  para uso manual (`npm run format`), no como gate de CI: `prettier --check`
+  marca 130 archivos existentes solo por espaciado/orden, reformatearlos de
+  golpe está fuera de alcance. `@insforge/sdk` sin tocar (pin de H-09 vigente).
+- **2026-08-16** — Cierra U-07 (`docs/HISTORIAL-AUDITORIAS.md`): la encuesta
+  de satisfacción se generaba al cerrar un ticket pero sin ningún canal para
+  que el empleado se enterara desde que la migración 055 retiró el correo (8
+  respondidas de 48 generadas). Sin tocar esquema ni el trigger
+  `crear_encuesta_al_cerrar()`: el formulario (extraído a
+  `EncuestaSatisfaccionForm.vue`, reusado sin duplicar lógica) se embebe en
+  `/soporte/:token` en cuanto el ticket pasa a `cerrado` — la plomería
+  realtime ya existía (`notify_ticket_estado()` + `useRealtimeRefresco`),
+  solo se conectó. Además, `/tickets/:id` gana un botón "Copiar mensaje de
+  WhatsApp" (mismo patrón que `copiarEnlaceSoporte()`, sin abrir `wa.me`),
+  para lo cual `getTicket()` ahora expone `token`. Detalle en
+  `docs/PANORAMA_SISTEMA.md` §5 y `docs/HISTORIAL-AUDITORIAS.md`.
 - **2026-08-13** — Observabilidad y rendimiento del dashboard (roadmap
   pedido explícitamente por el usuario). `@sentry/vue` instalado e
   inicializado en `main.js` (solo `PROD` + `VITE_SENTRY_DSN` configurado,

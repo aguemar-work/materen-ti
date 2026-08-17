@@ -248,7 +248,7 @@ function piePaginas(doc, hoy) {
 // para poder verificar el PDF en tests sin depender de la API de descarga del
 // navegador; la UI usa generarReporteTickets(), abajo.
 export async function construirReporteTickets(datos, {
-  periodoLabel = '', rangoLabel = '', nombreArchivo = '', enCurso = false, comparativa = null,
+  periodoLabel = '', rangoLabel = '', alcanceLabel = '', nombreArchivo = '', enCurso = false, comparativa = null,
   incluirTasaRespuesta = false, etiquetaResueltosMismoPeriodo = 'del periodo', etiquetaColMismoPeriodo = 'Del periodo',
 } = {}) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
@@ -269,7 +269,10 @@ export async function construirReporteTickets(datos, {
   doc.setFont('helvetica', 'bold').setFontSize(9.5);
   doc.text(periodoLabel, ANCHO / 2, 24, { align: 'center' });
   doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...GRIS_TEXTO);
-  doc.text(`Periodo ${rangoLabel}`, ANCHO / 2, 29, { align: 'center' });
+  // Alcance junto al periodo, siempre visible (no solo cuando es "propia"):
+  // un reporte de equipo que no diga que es de equipo es tan ambiguo como
+  // uno individual que no lo diga.
+  doc.text(`Periodo ${rangoLabel}${alcanceLabel ? ` · ${alcanceLabel}` : ''}`, ANCHO / 2, 29, { align: 'center' });
   doc.setTextColor(NEGRO);
 
   let y = 36;
@@ -359,8 +362,9 @@ export async function construirReporteTickets(datos, {
   }, y);
 
   y = abrirSeccion(doc, y, 'Tickets del periodo por solicitante', 38);
+  y = nota(doc, '"Histórico" es el total de siempre para ese usuario, no de este periodo — el resto de columnas sí es solo del periodo.', y);
   y = tabla(doc, autoTable, {
-    head: [['Usuario', 'Total', 'Ticket creado', 'Ticket resuelto', 'Rechazado', 'Enc. contestadas', 'Enc. pendientes']],
+    head: [['Usuario', 'Histórico', 'Ticket creado', 'Ticket resuelto', 'Rechazado', 'Enc. contestadas', 'Enc. pendientes']],
     body: datos.porSolicitante.length
       ? datos.porSolicitante.map((s) => [
         s.solicitante, String(s.total), String(s.creados), String(s.resueltos),
@@ -393,7 +397,7 @@ export async function construirReporteTickets(datos, {
   if (datos.comentariosTotal > datos.comentarios.length) {
     y = nota(doc, `Se muestran los ${datos.comentarios.length} más recientes de ${datos.comentariosTotal}.`, y);
   }
-  y = tabla(doc, autoTable, {
+  tabla(doc, autoTable, {
     head: [['Nivel', 'Comentario', 'Fecha']],
     body: datos.comentarios.length
       ? datos.comentarios.map((c) => [`${c.nivel}/5`, c.comentario, formatFechaHora(c.fecha)])

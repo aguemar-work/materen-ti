@@ -17,10 +17,22 @@ cuándo y si la contraseña se rotó después.
 | Encuestas | Edge function `encuestas` (`functions/encuestas.ts`) — encuestas anónimas reutilizables (plantilla + rondas), distintas de la encuesta de satisfacción por ticket |
 | Personal | Edge function `personal-registro` (`functions/personal-registro.ts`) — pre-registro público de personal antes del alta en Empleados |
 
+Las 4 edge functions corren en **Deno Subhosting** (no Node) — de ahí
+`Deno.env.get(...)` y el especificador de import `npm:@insforge/sdk`.
+Type-check con `deno check` (`functions/tsconfig.json`, ver AGENTS.md
+§Verificación), no `tsc`: un tsconfig de Node no resuelve `npm:` ni conoce el
+global `Deno`.
+
 ## Conceptos del dominio
 
 - **Empleado**: persona inventariada. No inicia sesión en el sistema. Tiene
   estado `Activo / Inactivo / Suspendido` y pertenece a una **empresa**.
+  Su **área/obra** (función/asignación laboral, catálogo `areas_obras`) y su
+  **ubicación** (lugar físico, catálogo `ubicaciones` — el mismo que usan los
+  equipos) son dos ejes independientes desde la migración 059: ninguno se
+  deriva del otro. Antes de esa migración estaban mezclados (`areas_obras`
+  tenía una `ubicacion_id` opcional) — se separaron porque no eran el mismo
+  concepto: "Almacén" es un área funcional de logística, no un lugar.
 - **Staff**: quien sí inicia sesión (tabla `staff`, 1:1 con `auth.users`).
   Dos roles: **JEFE** (todo: eliminar, staff, auditoría) y **ASISTENTE**
   (operativo). Aplicado con RLS en todas las tablas.
@@ -94,7 +106,19 @@ cuándo y si la contraseña se rotó después.
   formulario, para que un refresco después de enviar no la haga parecer
   reenviable. `ticket_eventos` es la hoja de vida append-only del ticket
   (asignaciones, cambios de estado/prioridad/nivel de atención, fallos de
-  correo, envío/respuesta de encuesta).
+  correo, envío/respuesta de encuesta). **Canal de entrega de la encuesta**
+  (sin correo, ver más abajo): el mismo formulario (`EncuestaSatisfaccionForm.vue`)
+  se **embebe** en `/soporte/:token` en cuanto el ticket pasa a `cerrado` —
+  el empleado ya tiene ese enlace de seguimiento desde que creó el ticket, no
+  hace falta que navegue a otra URL. Si la encuesta no existe todavía para
+  ese ticket (sin empleado vinculado) o falla la consulta, el bloque
+  simplemente no aparece — no rompe una página de seguimiento que por lo
+  demás carga bien. Además, en `/tickets/:id` el staff tiene un botón
+  **"Copiar mensaje de WhatsApp"** (junto a "Satisfacción", visible mientras
+  la encuesta esté sin responder) que copia al portapapeles un mensaje con
+  el enlace directo — mismo patrón de copiar-y-pegar que el enlace de
+  soporte (`copiarEnlaceSoporte()`, `TicketsView.vue`), sin abrir WhatsApp
+  por su cuenta.
 
 - **Equipo**: activo físico con código de inventario único (etiqueta), tipo
   (catálogo `tipos_equipo` con plantilla de specs y accesorios por tipo),
@@ -156,7 +180,10 @@ cuándo y si la contraseña se rotó después.
    staff lo triaga en `/tickets` (asignar, priorizar, comentar interno/visible
    vía Timeline) → al cerrar, se genera la encuesta de satisfacción
    reutilizando el mismo token (sin aviso por correo: el sistema no envía
-   avisos/notificaciones por correo, ver nota más abajo).
+   avisos/notificaciones por correo, ver nota más abajo). Canal real: el
+   formulario se embebe solo en `/soporte/:token` (el empleado ya tiene ese
+   enlace) y el staff puede copiar un mensaje de WhatsApp con el enlace
+   directo desde `/tickets/:id`.
 
 ## Modelo de seguridad
 
@@ -166,7 +193,12 @@ cuándo y si la contraseña se rotó después.
   navegador.**
 - Los listados no traen contraseñas (ni cifradas). Se revelan bajo demanda vía
   la edge function (`frontend/src/api/passwords.js`), que verifica staff activo
-  y audita cada revelado.
+  y audita cada revelado. Desde la migración 060, revelar/enviar una
+  contraseña de Cuentas o Licencias exige además el permiso individual
+  `credenciales.ver` (`staff_permisos`) — JEFE siempre lo tiene; a un
+  ASISTENTE se le otorga/revoca desde Configuración·Staff. El gate real vive
+  en `functions/credenciales.ts`; el del frontend es cosmético (ver
+  `AGENTS.md` sobre por qué la regla está escrita dos veces).
 - `accesos_log` no tiene políticas de escritura para usuarios: solo la edge
   function (cliente admin) escribe. Ni el JEFE puede alterar la auditoría.
 - En formularios de edición, el campo contraseña vacío significa "mantener la
@@ -269,6 +301,40 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 > solo abren desde la misma máquina. En producción (frontend desplegado)
 > funcionan desde cualquier dispositivo.
 
+## CI: secrets del smoke de integración
+
+`test-integration` (`.github/workflows/ci.yml`) corre los smoke tests de
+`tests/integration/*.test.js` contra el backend real de InsForge — la única
+clase de check que atrapa una desincronización esquema↔frontend (un `select`
+con embed que pide una relación que una migración ya rompió; ver
+`docs/HISTORIAL-AUDITORIAS.md`, Q-01, incidente 2026-08-17). Sin los 4
+secrets de abajo el job se omite con `::warning::` y **no verifica nada** —
+hoy (2026-08-17) no existen en el repo.
+
+1. **Crear la cuenta de staff dedicada a CI** (nunca la de una persona real):
+   **no por registro público** — `disable_signup = true` en `insforge.toml`
+   es innegociable (cierre de H-CRIT, ver `AGENTS.md`) y no se reabre para
+   esto. Crear el usuario directamente desde el **dashboard de InsForge**
+   (Authentication → Users → crear usuario) con un correo propio del
+   equipo para esto (ej. `ci-tests@<dominio>`, no el de una persona). La
+   creación por dashboard sigue disparando el trigger `handle_new_staff_user`
+   igual que el alta pública, así que el staff `ASISTENTE` nace **inactivo**
+   por diseño (migración 018) — el paso 2 de abajo lo activa.
+2. **Activarla**: con una sesión JEFE, ir a Configuración → Staff, buscar esa
+   fila y pulsar "Activar". No hace falta rol JEFE ni ningún permiso extra en
+   `staff_permisos`: los smoke tests solo hacen lecturas de nivel `staff`
+   (`es_staff()`), ningún endpoint gateado por `es_jefe()`.
+3. **Cargar los 4 secrets** del repo (GitHub → Settings → Secrets and
+   variables → Actions → New repository secret):
+   - `VITE_INSFORGE_URL` / `VITE_INSFORGE_ANON_KEY` — los mismos valores que
+     ya usa el build (`.env` local; la anon key sale de
+     `npx @insforge/cli secrets get ANON_KEY`, ver sección Desarrollo).
+   - `INSFORGE_TEST_STAFF_EMAIL` / `INSFORGE_TEST_STAFF_PASSWORD` — las
+     credenciales de la cuenta creada en el paso 1.
+4. Verificar: relanzar el job `test-integration` de un PR/push — debe pasar
+   de `::warning::` a ejecutar de verdad (`npm run test:integration`, cubre
+   `tickets-api.smoke.test.js` + `embeds.smoke.test.js`).
+
 ## Backend: migraciones y función
 
 - **Migraciones**: archivos numerados en `migrations/`, aplicados manualmente.
@@ -347,12 +413,22 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 | 055 | **Decisión de producto** (2026-08-13): retira el trigger/función `notify_correo_fallido()` (049), huérfano tras quitar de `functions/tickets.ts` el correo de confirmación al crear y la acción `enviarEncuesta` — el sistema no debe enviar avisos/notificaciones por correo por el momento. No toca los checks de `ticket_eventos`/`notificaciones` (podría haber filas históricas con esos valores) |
 | 056 | Permisos de módulo por usuario: `staff_modulos_permisos` (puente `staff_user_id ↔ módulo`, mismo patrón que `accesos_sensibles_permisos` de 024). Backfill con los 8 módulos habilitados para todo staff existente y trigger de alta (`handle_new_staff_user`, extendido) que siembra igual a cualquier staff nuevo — es "opt-out" (JEFE desmarca), no "opt-in". Solo UI/navegación (sidebar + router guard en el frontend); no toca RLS de correos/licencias/equipos/etc |
 | 057 | Bandeja de importación de equipos desde Excel: tabla `equipos_importacion` (campos editables 1 a 1 con `equipos` + `raw` jsonb de referencia). RLS: staff ve/crea/edita/**elimina** (sin jefe-only, mismo caso que `equipo_accesorios` — es cola de trabajo, no historial de negocio) |
+| 059 | Separa `areas_obras` (función/asignación laboral) de `ubicaciones` (lugar físico) — la 058 los había mezclado en una sola relación. `ubicaciones` gana `tipo` (text+check: sede/almacen/obra/otro); `empleados` gana `ubicacion_id` propio e independiente (ya no derivado de su área); `areas_obras.ubicacion_id` se elimina. Backfill de 28 empleados (27 → Oficina Principal, 1 → Almacén Pucusana) leyendo `areas_obras.ubicacion_id` antes de borrarla, verificado antes y después de aplicar. Ver decisión completa en `docs/PANORAMA_SISTEMA.md` §6 |
+| 060 | Permiso individual `credenciales.ver`: tabla `staff_permisos` (mismo patrón que `staff_modulos_permisos` de 056, pero para capacidades). Gatea revelar/enviar contraseñas de Cuentas y Licencias en `functions/credenciales.ts` (consulta directa, no RPC — ver `AGENTS.md`); JEFE exento siempre. Backfill de los 3 staff activos + `handle_new_staff_user` extendido (ya sembraba `staff_modulos_permisos`). Otorgar/revocar queda auditado en `accesos_log` vía trigger `staff_permisos_log_evento` |
+| 061 | **Fix de bug en producción** (nombres de staff invisibles para un ASISTENTE — la RLS de SELECT de `staff` es "propio registro o jefe", así que cualquier UI que resolvía el nombre de un compañero caía a "Staff": reporte de tickets, bandeja, "Asignado a", Responsable de Problemas/acciones correctivas, autor de KB, reporte de satisfacción). RPC `staff_nombres()` (`SECURITY DEFINER`, mismo patrón que `kb_registrar_feedback` de 032): devuelve solo `(user_id, nombre)` de staff activo, sin ampliar la policy de SELECT. De paso, extiende el UPDATE de `staff` (antes solo JEFE) para que cualquier staff edite su propio `nombre` — JEFE sigue pudiendo editar cualquier fila — blindado con un trigger que congela `rol`/`activo` cuando quien edita no es JEFE (mismo patrón que `check_ticket_identidad_inmutable` de 019, hallazgo H-06) |
 
 ## Checklist de deploy
 
 1. Aplicar migraciones pendientes (`node scripts/apply-migration.mjs migrations/0XX_….sql` en Windows; para migraciones con `create function`/`do $$...$$` como la 037/038, usar `npx @insforge/cli db import migrations/0XX_….sql` — ver gotcha en `AGENTS.md`). Alternativa sin los gotchas de Windows: disparar manualmente el job `deploy-manual` de `.github/workflows/ci.yml` (`workflow_dispatch`, un archivo de migración a la vez — nunca aplica "todas las pendientes", el proyecto no trackea cuáles ya corrieron).
 2. Redesplegar edge functions si cambiaron: `credenciales`, `tickets`,
    `encuestas`, `personal-registro` (o marcar `desplegar_functions` al disparar el mismo job `deploy-manual`).
+   **Pendiente de este redeploy (H-12, 2026-08-16)**: el import de las 4 pasó
+   de `npm:@insforge/sdk` (sin versión, resolvía a la última en cada deploy)
+   a `npm:@insforge/sdk@1.5.2` (fijo, igual que `frontend/package.json`).
+   Hasta que se redespliegue cada función, sigue corriendo en producción con
+   la versión que quedó resuelta en su último deploy real (no con la que dice
+   el código fuente) — probablemente distinta entre las 4, según cuándo se
+   desplegó cada una por última vez.
 3. Push de `insforge.toml` si cambió auth/storage.
 4. Build frontend: `cd frontend && npm run build`.
 5. Deploy Vercel (o push a la rama conectada).
@@ -377,7 +453,11 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
   best-effort, pero el plan actual de InsForge (free) no tiene `emails.send()`
   habilitado, así que en la práctica siempre fallaba; se retiró en vez de
   dejarlo a medias. El canal garantizado sigue siendo la pantalla (código +
-  token visibles al crear).
+  token visibles al crear). La encuesta de satisfacción quedó sin ningún
+  canal de entrega tras ese retiro (2026-08-13 a 2026-08-16); se cerró
+  embebiendo el formulario en `/soporte/:token` al cerrar el ticket y con un
+  botón de copiar mensaje de WhatsApp en `/tickets/:id` (ver arriba) — sigue
+  sin haber correo, el canal es la pantalla y WhatsApp manual.
 
 ## Pendientes / roadmap
 

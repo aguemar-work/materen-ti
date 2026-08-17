@@ -27,11 +27,21 @@ const store = useCuentasStore();
 const auth = useAuthStore();
 const { lista, cargando, error } = storeToRefs(store);
 
-// Regla del servidor (functions/credenciales.ts): una cuenta "personal" se
-// entrega a un empleado, no la revela el ASISTENTE — solo JEFE. Compartida/
-// reutilizable sí, porque el ASISTENTE las opera directamente.
+// Reglas del servidor (functions/credenciales.ts), en orden:
+//  1. Permiso individual "credenciales.ver" (migración 060) — sin él, nadie
+//     que no sea JEFE revela ninguna contraseña, sin importar el tipo.
+//  2. Una cuenta "personal" se entrega a un empleado, no la revela el
+//     ASISTENTE aunque tenga el permiso de arriba — solo JEFE. Compartida/
+//     reutilizable sí, porque el ASISTENTE las opera directamente.
 function puedeRevelar(cuenta) {
-  return auth.esJefe || cuenta.tipo_cuenta !== 'personal';
+  return auth.puedeVerCredenciales && (auth.esJefe || cuenta.tipo_cuenta !== 'personal');
+}
+
+// Motivo del candado, para el título/aria-label del ícono — distingue las
+// dos reglas de arriba en vez de un mensaje genérico.
+function motivoBloqueo() {
+  if (!auth.puedeVerCredenciales) return 'Sin permiso para ver contraseñas.';
+  return 'Solo un JEFE puede ver esta contraseña. Usa "Enviar por WhatsApp" para entregarla al empleado.';
 }
 
 const mostrarForm = ref(false);
@@ -222,7 +232,14 @@ onMounted(async () => {
         <span class="badge-count">{{ lista.length }}</span>
       </div>
       <div class="panel-actions">
-        <button v-if="lista.length" class="btn btn-whatsapp" type="button" :disabled="creandoEntrega" @click="enviarWhatsApp">
+        <button
+          v-if="lista.length"
+          class="btn btn-whatsapp"
+          type="button"
+          :disabled="creandoEntrega || !auth.puedeVerCredenciales"
+          :title="auth.puedeVerCredenciales ? '' : 'Sin permiso para ver contraseñas'"
+          @click="enviarWhatsApp"
+        >
           <i :class="creandoEntrega ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'" aria-hidden="true"></i>
           {{ creandoEntrega ? 'Generando enlace...' : 'Enviar por WhatsApp' }}
         </button>
@@ -300,8 +317,8 @@ onMounted(async () => {
                   v-else
                   class="password-locked"
                   role="img"
-                  aria-label="Solo un JEFE puede ver esta contraseña. Usa &quot;Enviar por WhatsApp&quot; para entregarla al empleado."
-                  title="Solo un JEFE puede ver esta contraseña. Usa &quot;Enviar por WhatsApp&quot; para entregarla al empleado."
+                  :aria-label="motivoBloqueo()"
+                  :title="motivoBloqueo()"
                 >
                   <i class="ti ti-lock" aria-hidden="true"></i>
                 </span>

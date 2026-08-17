@@ -12,7 +12,7 @@ export const useEmpleadosStore = defineStore('empleados', {
     total: 0,
     pagina: 1,
     tamPagina: 20,
-    filtros: { q: '', estado: '' },
+    filtros: { q: '', estado: '', ubicacionId: '' },
     orden: null, // { columna, direccion } — null = orden por defecto del servidor
     cargando: false,
     error: null,
@@ -78,7 +78,7 @@ export const useEmpleadosStore = defineStore('empleados', {
       // estado: 'Activo' por defecto (ago 2026) — activos e inactivos
       // mezclados en la lista era el problema reportado; "Todos los
       // estados" sigue disponible en el selector.
-      this.filtros = { q: '', estado: 'Activo' };
+      this.filtros = { q: '', estado: 'Activo', ubicacionId: '' };
       this.orden = null;
       this.pagina = 1;
     },

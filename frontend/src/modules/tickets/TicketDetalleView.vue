@@ -346,6 +346,27 @@ function onProblemaFormCerrado(creado) {
   }
 }
 
+// Copia un mensaje listo para WhatsApp con el enlace de calificación —
+// mismo patrón que copiarEnlaceSoporte() (TicketsView.vue): clipboard +
+// toast, sin abrir wa.me (el sistema no envía nada por su cuenta, el staff
+// decide a través de qué canal reenviarlo). Sin correo: el enlace de
+// calificación es el único canal de entrega desde que se retiró el aviso
+// automático (migración 055) — este botón es la vía real para que llegue.
+async function copiarMensajeSatisfaccion() {
+  const link = `${window.location.origin}/soporte/${ticket.value.token}/satisfaccion`;
+  const texto =
+    `Hola, ${ticket.value.empleado_nombre}.\n` +
+    `Su ticket ${ticket.value.codigo} fue cerrado. Le pedimos calificar el servicio recibido en el siguiente enlace:\n` +
+    `${link}\n\n` +
+    `Gracias por su tiempo.`;
+  try {
+    await navigator.clipboard.writeText(texto);
+    showToast('Mensaje de calificación copiado');
+  } catch {
+    showToast('No se pudo copiar. Copia manualmente: ' + link, 'error');
+  }
+}
+
 async function enviarComentario() {
   const mensaje = nuevoComentario.value.trim();
   if (!mensaje) return;
@@ -581,7 +602,12 @@ onUnmounted(() => store.limpiar());
               Nivel {{ satisfaccion.nivel }}/5 — {{ formatFecha(satisfaccion.fecha_envio) }}
             </p>
             <p v-if="satisfaccion.comentario" class="tk-nota">"{{ satisfaccion.comentario }}"</p>
-            <p v-if="!satisfaccion.fecha_envio" class="tk-nota">Encuesta enviada, sin respuesta todavía.</p>
+            <template v-if="!satisfaccion.fecha_envio">
+              <p class="tk-nota">Encuesta enviada, sin respuesta todavía.</p>
+              <button class="btn tk-btn-satisfaccion" type="button" @click="copiarMensajeSatisfaccion">
+                <i class="ti ti-brand-whatsapp" aria-hidden="true"></i> Copiar mensaje de WhatsApp
+              </button>
+            </template>
           </div>
         </div>
 
@@ -765,6 +791,12 @@ onUnmounted(() => store.limpiar());
   width: 100%;
   justify-content: center;
   margin-top: 6px;
+}
+
+.tk-btn-satisfaccion {
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
 }
 
 .tk-solicitante, .tk-sin-vincular {

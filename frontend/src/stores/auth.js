@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { getClient } from '../api/insforge.js';
 import { staffModulosApi } from '../api/domains/staffModulos.js';
+import { staffPermisosApi } from '../api/domains/staffPermisos.js';
 
 async function cargarStaff(userId) {
   const { data, error } = await getClient().database
@@ -23,12 +24,24 @@ async function cargarModulos(userId) {
   }
 }
 
+// Permisos individuales (migración 060). Solo importa para ASISTENTE (JEFE
+// ve credenciales siempre vía el getter puedeVerCredenciales) pero se
+// consulta igual, mismo criterio que cargarModulos.
+async function cargarPermisos(userId) {
+  try {
+    return await staffPermisosApi.misPermisos(userId);
+  } catch {
+    return [];
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     rol: null,
     nombre: null,
     modulosVisibles: [],
+    permisos: [],
     cargando: false,
     sesionCargada: false,
   }),
@@ -39,6 +52,10 @@ export const useAuthStore = defineStore('auth', {
     // JEFE siempre ve todos los módulos (migración 056), sin consultar
     // modulosVisibles.
     puedeVerModulo: (state) => (id) => state.rol === 'JEFE' || state.modulosVisibles.includes(id),
+    // JEFE siempre puede revelar/enviar credenciales (migración 060), sin
+    // consultar `permisos`. Gate cosmético: la barrera real está en
+    // functions/credenciales.ts, esto solo oculta/deshabilita botones.
+    puedeVerCredenciales: (state) => state.rol === 'JEFE' || state.permisos.includes('credenciales.ver'),
   },
 
   actions: {
@@ -64,6 +81,7 @@ export const useAuthStore = defineStore('auth', {
         this.rol = staff.rol;
         this.nombre = staff.nombre;
         this.modulosVisibles = await cargarModulos(data.user.id);
+        this.permisos = await cargarPermisos(data.user.id);
       } finally {
         this.cargando = false;
       }
@@ -75,6 +93,7 @@ export const useAuthStore = defineStore('auth', {
       this.rol = null;
       this.nombre = null;
       this.modulosVisibles = [];
+      this.permisos = [];
     },
 
     // Flujo de reestablecer contraseña (método "code"):
@@ -97,6 +116,13 @@ export const useAuthStore = defineStore('auth', {
       if (error) throw error;
     },
 
+    // Sincroniza el nombre en sesión tras editarlo (migración 061, ver
+    // StaffNombreForm.vue — ese componente hace el UPDATE real, este método
+    // solo refleja el resultado en el estado de sesión que lee el sidebar).
+    actualizarNombre(nombre) {
+      this.nombre = nombre;
+    },
+
     async cargarSesion() {
       this.cargando = true;
       try {
@@ -106,6 +132,7 @@ export const useAuthStore = defineStore('auth', {
           this.rol = null;
           this.nombre = null;
           this.modulosVisibles = [];
+          this.permisos = [];
           return;
         }
 
@@ -123,6 +150,7 @@ export const useAuthStore = defineStore('auth', {
           this.rol = null;
           this.nombre = null;
           this.modulosVisibles = [];
+          this.permisos = [];
           return;
         }
 
@@ -130,6 +158,7 @@ export const useAuthStore = defineStore('auth', {
         this.rol = staff.rol;
         this.nombre = staff.nombre;
         this.modulosVisibles = await cargarModulos(data.user.id);
+        this.permisos = await cargarPermisos(data.user.id);
       } finally {
         this.cargando = false;
         this.sesionCargada = true;

@@ -29,5 +29,15 @@ export const useStaffStore = defineStore('staff', {
       if (idx !== -1) this.lista[idx] = miembro;
       return miembro;
     },
+
+    // Toggle de "credenciales.ver" (migración 060). Sin ConfirmDialog: el
+    // otorgamiento/revocación queda auditado en accesos_log por su propio
+    // trigger (staff_permisos_log_evento), la fricción baja es aceptable.
+    async setCredencialesVer(userId, otorgar) {
+      this.error = null;
+      await insforgeApi.setCredencialesVer(userId, otorgar);
+      const idx = this.lista.findIndex((s) => s.user_id === userId);
+      if (idx !== -1) this.lista[idx] = { ...this.lista[idx], credenciales_ver: otorgar };
+    },
   },
 });

@@ -62,13 +62,39 @@ cuándo y si la contraseña se rotó después.
  el trigger `handle_new_staff_user` debe crear el `staff` **inactivo**
  (`activo=false`). Solo el JEFE aprovisiona/activa staff. Revertir esto
  reintroduce la escalada H-CRIT de la auditoría. Ese mismo trigger (migración
- 056) también siembra las 8 filas de `staff_modulos_permisos` del staff
- nuevo — si se reescribe la función, no perder ese `insert`.
+ 056, extendido en la 060) también siembra las 8 filas de
+ `staff_modulos_permisos` **y** la fila de `staff_permisos`
+ (`credenciales.ver`) del staff nuevo — si se reescribe la función, no perder
+ ninguno de los tres `insert` (staff, módulos, permisos).
 - **Permisos de módulo** (`staff_modulos_permisos`, migración 056): son
  control de UI/navegación (sidebar + router guard), no de RLS. No asumir que
  desmarcar un módulo bloquea el acceso a los datos de esa tabla por otra vía
  (RPC, otra vista) — eso requeriría tocar RLS aparte, decisión que no se
  tomó acá.
+- ⚠️ **Permiso `credenciales.ver` (`staff_permisos`, migración 060) — la regla
+ vive en DOS lugares, a propósito, y hay que mantenerlos sincronizados a
+ mano**:
+   1. `tiene_permiso_credenciales_ver(uuid)` — función SQL (`SECURITY
+      DEFINER`), pensada para RLS futuro. Hoy ninguna policy la consume.
+   2. `functions/credenciales.ts` (`tienePermisoCredenciales()`) — consulta
+      **directa** a `staff_permisos`, NO por RPC a la función de arriba. No
+      puede ir por RPC: este handler corre con `createAdminClient` (sin
+      sesión de usuario), así que `auth.uid()` sería `NULL` dentro de la
+      función SQL. Mismo motivo y mismo patrón que `revelarAccesoSensible`
+      (migración 024) con `accesos_sensibles_permisos`.
+ 
+   **Hoy las dos coinciden. Nada las mantiene sincronizadas automáticamente**
+   — si cambias quién puede ver contraseñas, cambia las dos, no una. Un
+   permiso que bloquea en una y no en la otra es exactamente el tipo de bug
+   que este aviso existe para evitar. Se evaluó unificarlas (RPC vía el
+   `userClient` de sesión que ya existe en `credenciales.ts`, en vez de
+   `admin`) pero se descartó: sería el primer uso de `userClient.database`
+   para una query de negocio en todo el repo (hoy `userClient` solo resuelve
+   identidad, en las 4 edge functions por igual) — no se introdujo sin
+   probarlo aparte. La barrera real (gate del servidor) es la de
+   `credenciales.ts`; el toggle del frontend (`StaffView.vue`) y
+   `auth.puedeVerCredenciales` son **cosméticos** — si algo falla, que falle
+   bloqueando el servidor, nunca el cliente.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — las
  asignaciones se cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, enviar `password_cambiada: true` solo si el usuario
@@ -138,33 +164,76 @@ cuándo y si la contraseña se rotó después.
  `buscarDni`/`crear` sobre `personal_registros` (sin INSERT de cliente ahí
  tampoco). No confundir la encuesta de este módulo con
  `ticket_satisfaccion` — son tablas y flujos distintos, ver README.
+- **`functions/tsconfig.json`** (migración de tooling, no de dominio) solo es
+ para `deno check`/el editor — `functions deploy` sigue tomando un único
+ archivo `.ts` con `--file`, no lee ni empaqueta el tsconfig. Tocar ese
+ archivo nunca requiere redesplegar nada.
 - **Gotcha de triggers `created_by`**: `set_created_by_only()` asume una
  columna `created_by`; en tablas con otro nombre de autor (ej.
  `ticket_comentarios.autor_id`) hay que crear una función dedicada
  (`set_autor_id_only()`) en vez de reusarla — si no, el insert falla con
  `record "new" has no field "created_by"`.
-- **Gotcha del SDK** (v1.4.0): `functions.invoke()` deriva
- `https://<app>.functions.insforge.app`, que NO existe en este backend; en
- navegador el 404 sin CORS bloquea el fallback. Por eso `getClient()`
- (`api/client.js`) pasa `functionsUrl: baseUrl + '/functions'`. No quitarlo.
+- **Gotcha del SDK** (detectado en v1.4.0, sigue vigente en `1.5.2` — H-12):
+ sin `functionsUrl` explícito, `functions.invoke()` deriva un host propio
+ (`https://<app>.functions.insforge.app` en 1.4.0; `function2.insforge.app`
+ en 1.5.2 — el propio SDK cambió el host derivado entre versiones), que NO
+ existe en este backend; en navegador el 404 sin CORS bloquea el fallback.
+ Por eso `getClient()` (`api/client.js`) pasa `functionsUrl: baseUrl +
+ '/functions'`. No quitarlo — con cada versión nueva del SDK el host que
+ "adivina" puede volver a cambiar, y este override lo hace irrelevante.
 
 ## Verificación
 
+- **Lint** (`frontend/src` + `functions/`): `npm run lint` (raíz del repo, no
+ `frontend/` — `eslint.config.js` cubre ambos árboles). Corre en CI en cada
+ push, job `lint-y-typecheck` (Q-04, cierra el hallazgo). Reglas calibradas
+ contra el estilo real: lo que hoy son 0 violaciones queda en `error`; los 8
+ hallazgos de estilo Vue preexistentes (orden de atributos, un par de
+ componentes de una sola palabra) quedan en `warn` — no bloquean el push.
+- **Type-check de las edge functions** (runtime real: Deno Subhosting, no
+ Node — verificado por los imports `npm:@insforge/sdk` y `Deno.env`):
+ `npm run typecheck:functions` (raíz), que corre
+ `deno check --config functions/tsconfig.json`. Requiere el CLI de Deno
+ (`denoland/setup-deno` en CI; local, instalar con `scoop install deno` en
+ Windows o el instalador oficial). No usar `tsc` para esto: no resuelve
+ `npm:` ni conoce el global `Deno`, daría falsos positivos o falsos negativos.
+- **Formato** (`npm run format` / `format:check`, raíz): Prettier configurado
+ (`.prettierrc.json`, infiere el estilo real: comillas simples, punto y
+ coma, `printWidth` 120) pero **no corre en CI** — `prettier --check` marca
+ 130 archivos existentes (espaciado/orden, no bugs); forzarlo ahora sería
+ reformatear el repo entero de golpe. Uso manual, no gate.
 - Build: `cd frontend && npx vite build`.
-- Tests unitarios: `cd frontend && npm test` (Vitest, ~97 casos: cifrado,
- validaciones de la edge function de tickets, dominio de tickets, formatters,
- periodos y PDF del reporte, forma de `insforgeApi`, paginación). Corren en CI
- en cada push (`.github/workflows/ci.yml`, job `build-y-tests`), junto con
+- Tests unitarios: `cd frontend && npm test` (Vitest). **Línea base real,
+ verificada 2026-08-17: 100 pasan + 12 se saltan (112 en total, 2 archivos de
+ test omitidos) — no los "96/97" ni "97/97" con los que se arrancó a cerrar
+ el hallazgo original. Esta se verificó corriendo la suite, no de memoria.**
+ Los que se saltan son los dos smoke de integración
+ (`tests/integration/tickets-api.smoke.test.js` y
+ `tests/integration/embeds.smoke.test.js`, ambos `describe.skipIf(!listo)`)
+ cuando faltan los secrets — mismo caso que `test:integration` más abajo, no
+ es un test roto. Cubre: cifrado, validaciones de la edge function de
+ tickets, dominio de tickets, formatters, periodos y PDF del reporte, forma
+ de `insforgeApi`, paginación. Corren en CI en cada push
+ (`.github/workflows/ci.yml`, job `build-y-tests`), junto con
  `node scripts/contraste.mjs` (contraste WCAG de los tokens) y
  `npm audit --omit=dev --audit-level=high` (vulnerabilidades de dependencias).
+ **CI estuvo en rojo sin que nadie lo notara** desde el commit `030cc89`
+ (2026-08-15, "Pruebas" — 30+ archivos sin relación bajo un solo mensaje) hasta
+ que se cerró esto: ese commit cambió la forma de `porTecnico`, retiró
+ `backlog`/`sinResolver` del reporte de tickets y redefinió `porSolicitante.total`
+ a histórico, todo sin documentar. Ver `docs/HISTORIAL-AUDITORIAS.md` (Q-01) y
+ `CONTRIBUTING.md` (por qué un commit = un cambio coherente).
 - Smoke de integración contra el backend real: `npm run test:integration`
- (atrapa desincronización esquema↔frontend). Corre en CI como job aparte
- (`test-integration`) — **requiere 4 secrets del repo** que hoy no existen:
- `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`, `INSFORGE_TEST_STAFF_EMAIL`,
- `INSFORGE_TEST_STAFF_PASSWORD` (la cuenta de staff debe ser **dedicada a CI**,
- nunca la de una persona real). Sin ellos el job emite un `::warning::` visible
- en la pestaña Actions/checks y **no verifica nada** — no confundir ese aviso
- con un check verde real.
+ (corre los dos archivos de `tests/integration/`: tickets y, desde el
+ incidente de producción del 2026-08-17 — ver `docs/HISTORIAL-AUDITORIAS.md`
+ Q-01 —, `embeds.smoke.test.js`, una consulta por cada `select()` con embed
+ del resto de dominios). Atrapa desincronización esquema↔frontend. Corre en
+ CI como job aparte (`test-integration`) — **requiere 4 secrets del repo**
+ que hoy no existen: `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`,
+ `INSFORGE_TEST_STAFF_EMAIL`, `INSFORGE_TEST_STAFF_PASSWORD` (la cuenta de
+ staff debe ser **dedicada a CI**, nunca la de una persona real). Sin ellos
+ el job emite un `::warning::` visible en la pestaña Actions/checks y **no
+ verifica nada** — no confundir ese aviso con un check verde real.
 - Invariantes de triggers de BD: `node scripts/test-db.mjs` (SQL con rollback).
  Job `tests-db` en CI; mismo patrón de `::warning::` si falta
  `INSFORGE_ACCESS_TOKEN`.

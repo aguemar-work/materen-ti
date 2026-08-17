@@ -13,7 +13,7 @@
 // declaración (no los valores: siguen usando los mismos var(--...)) — la
 // fuente exacta de cada una está anotada en el comentario del CSS. Es la
 // única duplicación deliberada de toda la página.
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import Pagination from '../../components/shared/Pagination.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import { NOMBRE_PRODUCTO } from '../../core/marca.js';
@@ -93,8 +93,6 @@ const FILAS_DEMO = [
   { nombre: 'Luis Peña', area: 'Contabilidad', estado: 'De baja', badge: 'badge--neutral' },
 ];
 const paginaDemo = ref(2);
-
-const anchoPx = (valor) => (typeof valor === 'string' && /^\d/.test(valor) ? valor : null);
 </script>
 
 <template>

@@ -87,7 +87,7 @@ async function guardar() {
 
 onMounted(async () => {
   try {
-    staffLista.value = (await insforgeApi.listStaff()).filter((s) => s.activo);
+    staffLista.value = await insforgeApi.nombresStaff();
   } catch (e) {
     error.value = e?.message || 'Error al cargar staff';
   } finally {

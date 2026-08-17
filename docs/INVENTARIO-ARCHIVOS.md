@@ -56,8 +56,6 @@ deja el inventario:
 
 | Falta | Hallazgo | Por qué importaría |
 |---|---|---|
-| ESLint + Prettier | Q-04 | `functions/*.ts` (1000+ líneas) nunca se compilan ni se lintean |
-| `tsconfig.json` para `functions/*.ts` | Q-04 | Sin type-check, errores de tipo llegan directo a producción |
 | `@vue/test-utils` + tests de componentes | Q-02/Q-03 | 66 componentes sin ningún test, incluidos los de flujos irreversibles (`BajaEmpleadoModal`) |
 | Tests para `functions/encuestas.ts` y `functions/personal-registro.ts` | **Q-06 (nuevo)** | A diferencia de `credenciales.ts`/`tickets.ts`, quedaron sin cobertura desde que se crearon |
 | `CONTRIBUTING.md` propio | A-05/W-04/Q-05 | La convención de commits (`fix(scope):`, `feat(scope):`) existe de hecho y no está escrita en ningún lado |
@@ -66,6 +64,8 @@ deja el inventario:
 | Cabeceras CSP/HSTS en `vercel.json` | S-04 | App que muestra contraseñas descifradas, sin defensas de navegador |
 | Observabilidad de errores (Sentry o similar) | D-01 | Hoy el primer aviso de un fallo es una llamada de un usuario |
 | Changelog de producto + plantillas de PR/issue en `.github/` | **W-06 (nuevo)** | `docs/CHANGELOG.md` es de documentación, no de producto; `.github/` solo tiene `ci.yml` |
+
+**Actualización 2026-08-16**: cerrado el gap de ESLint/Prettier/`tsconfig.json` de la tabla de arriba (Q-04, ver `docs/HISTORIAL-AUDITORIAS.md`). Archivos nuevos, todos en la raíz del repo (no dentro de `frontend/`, porque cubren tanto `frontend/src` como `functions/`): `package.json` (solo tooling — `frontend/package.json` sigue siendo el único con las dependencias de runtime de la app), `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, `functions/tsconfig.json`. Nuevo job `lint-y-typecheck` en `.github/workflows/ci.yml`.
 
 ## Cómo mantener esto al día
 

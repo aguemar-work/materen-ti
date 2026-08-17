@@ -1,22 +1,34 @@
 // Tests de la agregación del reporte de tickets contra un cliente simulado.
-// Fijan los criterios que la auditoría del 2026-08-05 dejó establecidos:
+// Fijan los criterios que la auditoría del 2026-08-05 dejó establecidos, más
+// los que fijó el commit 030cc89 (2026-08-15, sin documentar en su momento —
+// ver docs/HISTORIAL-AUDITORIAS.md Q-01 y docs/CHANGELOG.md):
 //   1. 'rechazado' NO es una resolución (migración 017: terminal alterno, sin
-//      encuesta) — columna propia, y resueltos + rechazados + sin resolver = total.
+//      encuesta) — columna propia.
 //   2. Las resoluciones salen de los eventos 'estado_cambiado' leyendo el estado
 //      destino del detalle, no de un ilike sobre ese texto: un ticket resuelto
 //      varias veces cuenta una vez, para el último técnico que lo marcó.
-//   3. La tasa de respuesta va sobre las encuestas generadas al cerrar, y
+//   3. porTecnico es un objeto por técnico ({ total, mismoPeriodo, arrastrados }),
+//      no un conteo plano — mismo desglose que "Resueltos" pero por persona.
+//   4. porSolicitante.total es el HISTÓRICO completo de ese usuario (no de este
+//      periodo — esa columna se llama "Histórico" en el modal/PDF, ver
+//      ReporteTicketsModal.vue/reporte.js); porSolicitante.creados es lo
+//      creado en este periodo. "sinResolver" y "backlog" (tickets abiertos por
+//      antigüedad) se retiraron a propósito — sin uso real, ver CHANGELOG.
+//   5. La tasa de respuesta va sobre las encuestas generadas al cerrar, y
 //      "respondida" se decide SIEMPRE por fecha_envio.
-//   4. La tasa de reapertura lleva como denominador los tickets resueltos.
-//   5. Los filtros `in` se trocean: no puede haber una sola petición gigante.
+//   6. La tasa de reapertura lleva como denominador los tickets resueltos.
+//   7. Los filtros `in` se trocean: no puede haber una sola petición gigante.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const respuestas = {};
 const llamadas = [];
 
-// Las cuatro consultas de `tickets`/`ticket_satisfaccion` se distinguen por la
-// columna del filtro `in` (creados vs backlog vs resueltos), y las de
-// `ticket_eventos` por el evento pedido.
+// Las consultas de `tickets`/`ticket_satisfaccion` se distinguen por la
+// columna del filtro `in` (creados/histórico vs resueltos), y las de
+// `ticket_eventos` por el evento pedido. Nota: la consulta de "histórico por
+// solicitante" (sin filtro de fecha) no tiene un `.in()` propio, así que cae
+// en la misma clave 'tickets' que "creados" — comparten `respuestas.tickets`
+// en estos tests (no hay forma de fijarlos por separado con este mock).
 vi.mock('../src/api/client.js', () => ({
   getClient: () => ({
     database: {
@@ -40,7 +52,6 @@ vi.mock('../src/api/client.js', () => ({
 function claveDe(est) {
   if (est.tabla === 'ticket_eventos') return est.evento || 'ticket_eventos';
   if (est.tabla === 'ticket_satisfaccion') return est.in === 'ticket_id' ? 'sat_por_ticket' : 'ticket_satisfaccion';
-  if (est.in === 'estado') return 'backlog';
   if (est.in === 'id') return 'tickets_resueltos';
   return 'tickets';
 }
@@ -59,7 +70,7 @@ beforeEach(() => {
 });
 
 describe('estado actual por solicitante', () => {
-  it('no cuenta un ticket rechazado como resuelto y la suma cierra contra el total', async () => {
+  it('no cuenta un ticket rechazado como resuelto', async () => {
     respuestas.tickets = [
       { id: 't1', estado: 'cerrado', prioridad: 'alta', vinculado: true, empleados: ana },
       { id: 't2', estado: 'rechazado', prioridad: 'baja', vinculado: true, empleados: ana },
@@ -69,11 +80,13 @@ describe('estado actual por solicitante', () => {
     const { porSolicitante } = await reportesTicketsApi.obtenerReporteTickets(PERIODO);
     const fila = porSolicitante.find((s) => s.solicitante === 'Ana Perez');
 
-    expect(fila).toMatchObject({ total: 3, resueltos: 1, rechazados: 1, sinResolver: 1 });
-    expect(fila.resueltos + fila.rechazados + fila.sinResolver).toBe(fila.total);
+    // sinResolver se retiró (sin uso real, ver CHANGELOG) — lo que queda
+    // verificable es que "rechazado" no infla resueltos, y que "creados"
+    // (este periodo) es el total de filas de la mock, no el histórico.
+    expect(fila).toMatchObject({ creados: 3, resueltos: 1, rechazados: 1 });
   });
 
-  it('cuenta "resuelto" y "cerrado" como resueltos, y reabierto como sin resolver', async () => {
+  it('cuenta "resuelto" y "cerrado" como resueltos', async () => {
     respuestas.tickets = [
       { id: 't1', estado: 'resuelto', vinculado: true, empleados: ana },
       { id: 't2', estado: 'cerrado', vinculado: true, empleados: ana },
@@ -82,7 +95,7 @@ describe('estado actual por solicitante', () => {
     ];
 
     const { porSolicitante } = await reportesTicketsApi.obtenerReporteTickets(PERIODO);
-    expect(porSolicitante[0]).toMatchObject({ total: 4, resueltos: 2, rechazados: 0, sinResolver: 2 });
+    expect(porSolicitante[0]).toMatchObject({ creados: 4, resueltos: 2, rechazados: 0 });
   });
 
   it('agrupa como "Sin vincular" los tickets sin empleado', async () => {
@@ -102,7 +115,9 @@ describe('resoluciones y reaperturas del periodo', () => {
 
     const r = await reportesTicketsApi.obtenerReporteTickets(PERIODO);
     expect(r.totalResueltos).toBe(1);
-    expect(r.porTecnico).toEqual({ 'staff-1': 1 });
+    // porTecnico es un objeto por técnico, no un conteo plano: t1 no está
+    // en `creados` (respuestas.tickets sigue vacío en este test) → arrastrado.
+    expect(r.porTecnico).toEqual({ 'staff-1': { total: 1, mismoPeriodo: 0, arrastrados: 1 } });
   });
 
   it('cuenta una vez el ticket resuelto dos veces y lo atribuye al último técnico', async () => {
@@ -114,13 +129,25 @@ describe('resoluciones y reaperturas del periodo', () => {
 
     const r = await reportesTicketsApi.obtenerReporteTickets(PERIODO);
     expect(r.totalResueltos).toBe(1);
-    expect(r.porTecnico).toEqual({ 'staff-2': 1 });
+    expect(r.porTecnico).toEqual({ 'staff-2': { total: 1, mismoPeriodo: 0, arrastrados: 1 } });
   });
 
   it('agrupa como "sin_asignar" los eventos sin user_id', async () => {
     respuestas.estado_cambiado = [resuelto('t9', null, '2026-08-04T10:00:00Z')];
     const r = await reportesTicketsApi.obtenerReporteTickets(PERIODO);
-    expect(r.porTecnico).toEqual({ sin_asignar: 1 });
+    expect(r.porTecnico).toEqual({ sin_asignar: { total: 1, mismoPeriodo: 0, arrastrados: 1 } });
+  });
+
+  it('separa mismoPeriodo de arrastrados dentro de porTecnico', async () => {
+    // t1 se creó en el periodo (está en `respuestas.tickets`), t2 no.
+    respuestas.tickets = [{ id: 't1', estado: 'cerrado', vinculado: false }];
+    respuestas.estado_cambiado = [
+      resuelto('t1', 'staff-1', '2026-08-04T10:00:00Z'),
+      resuelto('t2', 'staff-1', '2026-08-05T10:00:00Z'),
+    ];
+
+    const r = await reportesTicketsApi.obtenerReporteTickets(PERIODO);
+    expect(r.porTecnico).toEqual({ 'staff-1': { total: 2, mismoPeriodo: 1, arrastrados: 1 } });
   });
 
   it('calcula la tasa de reapertura sobre los tickets resueltos, no sobre los creados', async () => {
@@ -221,30 +248,6 @@ describe('distribuciones', () => {
       { clave: 'Redes', cantidad: 2 },
       { clave: 'Sin categoría', cantidad: 1 },
     ]);
-  });
-});
-
-describe('backlog', () => {
-  it('agrupa los pendientes por antigüedad y reporta el más viejo', async () => {
-    const hace = (dias) => new Date(Date.now() - dias * 86400000).toISOString();
-    respuestas.backlog = [
-      { created_at: hace(0), prioridad: 'alta' },
-      { created_at: hace(2), prioridad: 'alta' },
-      { created_at: hace(5), prioridad: 'media' },
-      { created_at: hace(20), prioridad: 'baja' },
-      { created_at: hace(45), prioridad: 'baja' },
-    ];
-
-    const { backlog } = await reportesTicketsApi.obtenerReporteTickets(PERIODO);
-    expect(backlog.total).toBe(5);
-    expect(backlog.tramos.map((t) => t.cantidad)).toEqual([2, 1, 1, 1]);
-    expect(backlog.diasMasAntiguo).toBe(45);
-  });
-
-  it('sin pendientes devuelve total 0 y sin antigüedad', async () => {
-    const { backlog } = await reportesTicketsApi.obtenerReporteTickets(PERIODO);
-    expect(backlog.total).toBe(0);
-    expect(backlog.diasMasAntiguo).toBeNull();
   });
 });
 

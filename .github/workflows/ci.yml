@@ -24,6 +24,33 @@ on:
         default: false
 
 jobs:
+  lint-y-typecheck:
+    # ESLint (frontend/src + functions) y type-check de las 4 edge functions
+    # (Deno, ver functions/tsconfig.json). Cierra Q-04
+    # (docs/HISTORIAL-AUDITORIAS.md): antes functions/*.ts no se compilaba ni
+    # se linteaba, y un error de tipo llegaba directo a producción (mismo
+    # patrón de fondo que causó T-05). No corre `prettier --check`: el repo
+    # existente tiene ~130 archivos que Prettier reformatearía de golpe
+    # (espaciado/orden, no bugs) — Prettier queda configurado para uso manual
+    # (`npm run format`), no como gate de CI.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Instalar dependencias de lint
+        run: npm ci
+      - name: ESLint (frontend/src + functions)
+        run: npm run lint
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check de las edge functions (runtime real: Deno)
+        run: npm run typecheck:functions
+
   build-y-tests:
     runs-on: ubuntu-latest
     defaults:

@@ -3,8 +3,9 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useLicenciasStore } from '../../stores/licencias.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
+import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { revelarClaveLicencia, revelarPassword } from '../../api/passwords.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
@@ -25,11 +26,12 @@ import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const store = useLicenciasStore();
+const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-useRealtimeRefresco('licencias:list', () => store.cargar());
+useRealtimeRefresco('licencias:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 
@@ -388,13 +390,21 @@ onMounted(async () => {
                       <button
                         class="icon-btn"
                         type="button"
-                        :title="clavesVisibles[lic.id] ? 'Ocultar' : (lic.tiene_clave ? 'Mostrar contraseña del software' : 'Mostrar contraseña del correo')"
+                        :disabled="!auth.puedeVerCredenciales"
+                        :title="!auth.puedeVerCredenciales ? 'Sin permiso para ver contraseñas' : (clavesVisibles[lic.id] ? 'Ocultar' : (lic.tiene_clave ? 'Mostrar contraseña del software' : 'Mostrar contraseña del correo'))"
                         :aria-label="clavesVisibles[lic.id] ? 'Ocultar' : (lic.tiene_clave ? 'Mostrar contraseña del software' : 'Mostrar contraseña del correo')"
                         @click="toggleClave(lic)"
                       >
                         <i :class="clavesVisibles[lic.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
                       </button>
-                      <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click="copiarClave(lic)">
+                      <button
+                        class="icon-btn"
+                        type="button"
+                        :disabled="!auth.puedeVerCredenciales"
+                        :title="auth.puedeVerCredenciales ? 'Copiar contraseña' : 'Sin permiso para ver contraseñas'"
+                        aria-label="Copiar contraseña"
+                        @click="copiarClave(lic)"
+                      >
                         <i class="ti ti-copy"></i>
                       </button>
                       <span class="clave-origen">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
@@ -402,10 +412,24 @@ onMounted(async () => {
                   </div>
                   <div v-else-if="lic.tiene_clave" class="clave-cell">
                     <span class="clave-text">{{ clavesVisibles[lic.id] || '••••••••' }}</span>
-                    <button class="icon-btn" type="button" :title="clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave'" :aria-label="clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave'" @click="toggleClave(lic)">
+                    <button
+                      class="icon-btn"
+                      type="button"
+                      :disabled="!auth.puedeVerCredenciales"
+                      :title="!auth.puedeVerCredenciales ? 'Sin permiso para ver contraseñas' : (clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave')"
+                      :aria-label="clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave'"
+                      @click="toggleClave(lic)"
+                    >
                       <i :class="clavesVisibles[lic.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
                     </button>
-                    <button class="icon-btn" type="button" title="Copiar clave" aria-label="Copiar clave" @click="copiarClave(lic)">
+                    <button
+                      class="icon-btn"
+                      type="button"
+                      :disabled="!auth.puedeVerCredenciales"
+                      :title="auth.puedeVerCredenciales ? 'Copiar clave' : 'Sin permiso para ver contraseñas'"
+                      aria-label="Copiar clave"
+                      @click="copiarClave(lic)"
+                    >
                       <i class="ti ti-copy"></i>
                     </button>
                   </div>

@@ -6,14 +6,16 @@
 //
 // Acciones (POST { action, ... }):
 //   encrypt              staff   { value }                 → { encrypted }
-//   revelar              staff*  { cuentaId, motivo }      → { password }  (audita)
+//   revelar              staff*† { cuentaId, motivo }      → { password }  (audita)
 //     (*solo JEFE si la cuenta es tipo_cuenta='personal' — se entrega a un
 //      empleado, no se opera directamente. Compartida/reutilizable: staff)
-//   revelarClaveLicencia staff   { licenciaId, motivo }    → { clave }  (audita)
-//   entregaCrear         staff   { empleadoId, cuentaIds } → { token, expiresAt }  (audita)
+//   revelarClaveLicencia staff†  { licenciaId, motivo }    → { clave }  (audita)
+//   entregaCrear         staff†  { empleadoId, cuentaIds } → { token, expiresAt }  (audita)
 //     (ASISTENTE no puede "revelar" una cuenta personal, pero sí armar y
 //      enviar por WhatsApp un enlace de un solo uso con las cuentas del
 //      empleado — decisión de producto 2026-08-07)
+//     (†migración 060: además de ser staff activo, exige el permiso
+//      individual "credenciales.ver" — staff_permisos, JEFE exento siempre)
 //   entregaAbrir         público { token }                 → { empleadoNombre, credenciales }  (un solo uso, audita)
 //   accesoDenegado       staff   { ruta }                  → { ok }  (audita un bloqueo por rol del router)
 //
@@ -32,7 +34,7 @@
 //   otro            texto plano histórico, se devuelve tal cual
 // ============================================================
 
-import { createClient, createAdminClient } from 'npm:@insforge/sdk';
+import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
 
 // Solo el frontend de producción y los puertos de desarrollo local.
 // Un origen no listado no recibe cabeceras CORS: el navegador bloquea.
@@ -83,8 +85,17 @@ function toB64(buf: ArrayBuffer | Uint8Array): string {
   return btoa(s);
 }
 
-function fromB64(b64: string): Uint8Array {
+function fromB64(b64: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
+// El SDK (postgrest-js sin Database schema generado) tipa toda relación
+// embebida en un select() como arreglo, aunque en runtime sea un solo
+// objeto cuando el embed es por FK 1:1 desde la fila consultada (ej.
+// cuentas.plataforma_id → plataformas.id). Sin esto, TS marca `.nombre`
+// como inexistente en un arreglo — el dato real siempre fue un objeto.
+function uno<T>(rel: T | T[] | null | undefined): T | null {
+  return (Array.isArray(rel) ? rel[0] : rel) ?? null;
 }
 
 // export: probado en frontend/tests/credenciales.test.js
@@ -202,6 +213,30 @@ export default async function (req: Request): Promise<Response> {
       .in('accion', ['ver', 'copiar'])
       .gte('created_at', desde);
     return data?.length || 0;
+  }
+
+  // ── Permiso "credenciales.ver" (migración 060) ─────────────
+  // Gate de quién puede revelar/enviar contraseñas de Cuentas y Licencias
+  // (no accesos_sensibles, que ya tiene su propio candado desde la 024).
+  // JEFE lo tiene siempre, sin consultar la tabla — mismo criterio que
+  // staff_modulos_permisos. Consulta DIRECTA a staff_permisos, NO RPC a
+  // tiene_permiso_credenciales_ver(): este handler corre con el cliente
+  // admin, sin sesión de usuario — auth.uid() sería NULL dentro de esa
+  // función SQL. Mismo patrón ya usado para accesos_sensibles_permisos más
+  // abajo (revelarAccesoSensible).
+  // ⚠️ Esta regla existe DOS VECES (acá y en tiene_permiso_credenciales_ver,
+  // SQL) — ver la advertencia completa en AGENTS.md antes de cambiar
+  // cualquiera de las dos: hoy coinciden, pero nada las mantiene
+  // sincronizadas automáticamente.
+  async function tienePermisoCredenciales(rol: string, userId: string): Promise<boolean> {
+    if (rol === 'JEFE') return true;
+    const { data } = await admin.database
+      .from('staff_permisos')
+      .select('staff_user_id')
+      .eq('staff_user_id', userId)
+      .eq('permiso', 'credenciales.ver')
+      .maybeSingle();
+    return !!data;
   }
 
   // ── Acción pública: abrir una entrega de un solo uso ───────
@@ -384,6 +419,10 @@ export default async function (req: Request): Promise<Response> {
     const motivo = body.motivo === 'copiar' ? 'copiar' : 'ver';
     if (!cuentaId) return json({ ok: false, code: 'cuenta_requerida' });
 
+    if (!(await tienePermisoCredenciales(staffRow.rol, user.id))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
     const { data: cuenta } = await admin.database
       .from('cuentas')
       .select('id, usuario, password, tipo_cuenta, plataformas(nombre)')
@@ -406,7 +445,7 @@ export default async function (req: Request): Promise<Response> {
       user_email: user.email || null,
       cuenta_id: cuenta.id,
       cuenta_usuario: cuenta.usuario,
-      plataforma: cuenta.plataformas?.nombre || null,
+      plataforma: uno(cuenta.plataformas)?.nombre || null,
       accion: motivo,
     });
 
@@ -420,6 +459,10 @@ export default async function (req: Request): Promise<Response> {
     const licenciaId = String(body.licenciaId || '');
     const motivo = body.motivo === 'copiar' ? 'copiar' : 'ver';
     if (!licenciaId) return json({ ok: false, code: 'licencia_requerida' });
+
+    if (!(await tienePermisoCredenciales(staffRow.rol, user.id))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
 
     if (await reveladosRecientes(user.id) >= REVELADO_MAX) {
       return json({ ok: false, code: 'demasiados_revelados' }, 429);
@@ -458,6 +501,10 @@ export default async function (req: Request): Promise<Response> {
     if (!empleadoId || !cuentaIds.length) return json({ ok: false, code: 'datos_requeridos' });
     if (cuentaIds.length > ENTREGA_MAX_CUENTAS) return json({ ok: false, code: 'demasiadas_cuentas' });
 
+    if (!(await tienePermisoCredenciales(staffRow.rol, user.id))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
     if ((await reveladosRecientes(user.id)) + cuentaIds.length > REVELADO_MAX) {
       return json({ ok: false, code: 'demasiados_revelados' }, 429);
     }
@@ -493,7 +540,7 @@ export default async function (req: Request): Promise<Response> {
     for (const c of cuentas) {
       items.push({
         cuenta_id: c.id,
-        plataforma: c.plataformas?.nombre || '',
+        plataforma: uno(c.plataformas)?.nombre || '',
         usuario: c.usuario,
         password: c.password ? await decryptAny(c.password) : '',
         url: c.url || '',

@@ -14,7 +14,7 @@
 //   responder público { slug, respuestas }    → { ok }
 // ============================================================
 
-import { createAdminClient } from 'npm:@insforge/sdk';
+import { createAdminClient } from 'npm:@insforge/sdk@1.5.2';
 
 const ORIGENES_PERMITIDOS = new Set([
   'https://materen-ti.vercel.app',
@@ -46,6 +46,16 @@ function json(body: unknown, status = 200): Response {
 // "abrir" y "responder" juntos para que alternar acciones no lo evada.
 const INTENTOS_MAX_IP = 20;
 const INTENTOS_VENTANA_MIN = 10;
+
+// El SDK (postgrest-js sin Database schema generado) tipa toda relación
+// embebida en un select() como arreglo, aunque en runtime sea un solo
+// objeto cuando el embed es por FK 1:1 desde la fila consultada (ej.
+// encuesta_rondas.encuesta_id → encuestas.id). Sin esto, TS marca
+// `.titulo`/`.descripcion`/`.preguntas` como inexistentes en un arreglo
+// — el dato real siempre fue un objeto.
+function uno<T>(rel: T | T[] | null | undefined): T | null {
+  return (Array.isArray(rel) ? rel[0] : rel) ?? null;
+}
 
 function ipDesdeHeaders(headers: Headers): string {
   const xff = (headers.get('x-forwarded-for') || '')
@@ -126,8 +136,9 @@ export default async function (req: Request): Promise<Response> {
       .select('id, cerrada, encuestas(id, titulo, descripcion, preguntas)')
       .eq('slug', slug)
       .maybeSingle();
-    if (!ronda || ronda.cerrada || !ronda.encuestas) return null;
-    return { rondaId: ronda.id, encuesta: ronda.encuestas };
+    const encuesta = ronda ? uno(ronda.encuestas) : null;
+    if (!ronda || ronda.cerrada || !encuesta) return null;
+    return { rondaId: ronda.id, encuesta };
   }
 
   if (body.action === 'abrir') {

@@ -1,0 +1,19 @@
+{
+  // Type-check de las 4 edge functions (runtime real: Deno Subhosting —
+  // verificado con `deno check` contra los imports `npm:@insforge/sdk` y
+  // los globals `Deno.env`; no es Node, ver docs/HISTORIAL-AUDITORIAS.md
+  // Q-04). Deno no detecta un archivo llamado "tsconfig.json" solo: hay
+  // que pasarle --config explícito (ver package.json raíz / ci.yml). No
+  // se fijan "target"/"lib" a propósito: Deno los controla e ignora
+  // cualquier valor de "target" (avisa con un warning si se fija), y sin
+  // "lib" explícito inyecta sus defaults (deno.window + deno.ns), que ya
+  // cubren fetch/Request/Response/crypto/atob/btoa/Blob/Headers/Deno.env
+  // — fijar "lib" a mano los reemplaza en vez de sumarse.
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["*.ts"]
+}

@@ -3,8 +3,9 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouter, useRoute } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
+import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
@@ -24,25 +25,29 @@ import { useBusqueda } from '../../composables/useBusqueda.js';
 const router = useRouter();
 const route = useRoute();
 const store = useEmpleadosStore();
+const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-useRealtimeRefresco('empleados:list', () => store.cargar());
+useRealtimeRefresco('empleados:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 // Precarga desde el link del Dashboard (ej. /empleados?estado=Inactivo);
 // sin query entrante arranca en Activo — ver activos e inactivos mezclados
 // por defecto era el problema reportado (ago 2026).
 const filtroEstado = ref(route.query.estado || 'Activo');
+const filtroUbicacion = ref('');
+const ubicaciones = ref([]);
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
 
 const estados = ['Activo', 'Inactivo', 'Suspendido'];
 
 // Búsqueda y filtros viajan al servidor (paginación server-side):
-// la búsqueda con debounce, el select de estado al instante.
+// la búsqueda con debounce, los selects al instante.
 watch(filtroEstado, (estado) => store.aplicarFiltros({ estado }));
+watch(filtroUbicacion, (ubicacionId) => store.aplicarFiltros({ ubicacionId }));
 
 const paginaActual = computed({
   get: () => store.pagina,
@@ -148,7 +153,7 @@ function accionesDe(emp) {
     {
       icono: 'ti-brand-whatsapp',
       label: 'Enviar credenciales por WhatsApp',
-      disabled: enviandoCredsId.value === emp.id,
+      disabled: enviandoCredsId.value === emp.id || !auth.puedeVerCredenciales,
       onClick: () => enviarCredenciales(emp),
     },
     {
@@ -162,6 +167,11 @@ function accionesDe(emp) {
 }
 
 onMounted(async () => {
+  try {
+    ubicaciones.value = await insforgeApi.listUbicaciones();
+  } catch {
+    // El filtro de ubicación queda vacío si falla — no rompe el listado.
+  }
   try {
     if (filtroEstado.value) {
       // Llega con un filtro desde el link del Dashboard: no resetear.
@@ -206,6 +216,13 @@ onMounted(async () => {
             <select id="filtro-estado" v-model="filtroEstado">
               <option value="">Todos los estados</option>
               <option v-for="est in estados" :key="est" :value="est">{{ est }}</option>
+            </select>
+          </div>
+          <div class="filter-field">
+            <label for="filtro-ubicacion">Ubicación</label>
+            <select id="filtro-ubicacion" v-model="filtroUbicacion">
+              <option value="">Todas las ubicaciones</option>
+              <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
             </select>
           </div>
         </div>
@@ -305,9 +322,9 @@ onMounted(async () => {
                     <button
                       class="icon-btn"
                       type="button"
-                      title="Enviar credenciales por WhatsApp"
+                      :title="auth.puedeVerCredenciales ? 'Enviar credenciales por WhatsApp' : 'Sin permiso para ver contraseñas'"
                       aria-label="Enviar credenciales por WhatsApp"
-                      :disabled="enviandoCredsId === emp.id"
+                      :disabled="enviandoCredsId === emp.id || !auth.puedeVerCredenciales"
                       @click="enviarCredenciales(emp)"
                     >
                       <i :class="enviandoCredsId === emp.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'"></i>

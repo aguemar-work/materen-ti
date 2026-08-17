@@ -22,12 +22,13 @@ const SELECT_EMPLEADO = '*, empresas(nombre), areas_obras(nombre), ubicaciones(n
 // OJO: PostgREST NO acepta dos parámetros or= repetidos (PGRST100); el
 // AND-de-ORs va anidado en UN solo or=(and(or(...),or(...))) — verificado
 // contra el backend real.
-function queryEmpleados({ q = '', estado = '', orden } = {}, { conteo = false } = {}) {
+function queryEmpleados({ q = '', estado = '', ubicacionId = '', orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('empleados')
     .select(SELECT_EMPLEADO, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
   if (estado) query = query.eq('estado', estado);
+  if (ubicacionId) query = query.eq('ubicacion_id', ubicacionId);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     const tokens = qSafe.split(' ');
@@ -45,17 +46,17 @@ function queryEmpleados({ q = '', estado = '', orden } = {}, { conteo = false } 
 export const empleadosApi = {
   // ── Listado paginado en servidor (la tabla principal) ─────────
   // listEmpleados() (completo) sigue existiendo para selects de formularios.
-  async listEmpleadosPage({ pagina = 1, tamPagina = 20, q = '', estado = '', orden } = {}) {
+  async listEmpleadosPage({ pagina = 1, tamPagina = 20, q = '', estado = '', ubicacionId = '', orden } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { data, count, error } = await queryEmpleados({ q, estado, orden }, { conteo: true })
+    const { data, count, error } = await queryEmpleados({ q, estado, ubicacionId, orden }, { conteo: true })
       .range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapEmpleado), total: count ?? 0 };
   },
 
   // Dataset filtrado completo, sin página — para exportar CSV
-  async listEmpleadosFiltrados({ q = '', estado = '' } = {}) {
-    const { data, error } = await queryEmpleados({ q, estado });
+  async listEmpleadosFiltrados({ q = '', estado = '', ubicacionId = '' } = {}) {
+    const { data, error } = await queryEmpleados({ q, estado, ubicacionId });
     if (error) throw error;
     return (data || []).map(mapEmpleado);
   },
@@ -249,12 +250,15 @@ export const empleadosApi = {
 function empleadoToRow(datos) {
   // "notas" volvió al formulario (UX4-26, docs/HISTORIAL-AUDITORIAS.md Ciclo 4):
   // se mostraba en la ficha sin ningún control de edición.
+  // ubicacion_id (migración 059): independiente de area_obra_id, sin
+  // derivarse ni sincronizarse con ella.
   return {
     nombres:         toTitleCase(datos.nombres),
     apellidos:       toTitleCase(datos.apellidos),
     dni:             onlyDigits(datos.dni),
     empresa_id:      datos.empresa_id,
     area_obra_id:    datos.area_obra_id || null,
+    ubicacion_id:    datos.ubicacion_id || null,
     estado:          datos.estado,
     fecha_alta:      datos.fecha_alta,
     telefono:        normalizarTelefono(datos.telefono),
@@ -281,6 +285,7 @@ function mapEmpleado(row) {
     empresa_nombre: empresa.nombre || '',
     area_obra_id: row.area_obra_id || '',
     area_obra_nombre: areaObra.nombre || '',
+    ubicacion_id: row.ubicacion_id || '',
     ubicacion_nombre: row.ubicaciones?.nombre || '',
     estado: row.estado,
     fecha_alta: row.fecha_alta || '',

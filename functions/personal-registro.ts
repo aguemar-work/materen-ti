@@ -11,7 +11,7 @@
 //   crear     público { dni, nombres, apellidos, celular?, correoPersonal? } → { ok, yaPendiente }
 // ============================================================
 
-import { createAdminClient } from 'npm:@insforge/sdk';
+import { createAdminClient } from 'npm:@insforge/sdk@1.5.2';
 
 const ORIGENES_PERMITIDOS = new Set([
   'https://materen-ti.vercel.app',

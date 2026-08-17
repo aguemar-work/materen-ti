@@ -13,6 +13,7 @@ import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import StaffModulosForm from './StaffModulosForm.vue';
+import StaffNombreForm from './StaffNombreForm.vue';
 
 const store = useStaffStore();
 const authStore = useAuthStore();
@@ -82,6 +83,44 @@ function gestionarModulos(miembro) {
 
 function cerrarModulos() {
   miembroModulos.value = null;
+}
+
+// Edición del nombre para mostrar (migración 061): JEFE puede editar el de
+// cualquiera desde acá; la autoedición de cada quien vive en el sidebar
+// (AppLayout.vue), mismo componente StaffNombreForm.vue.
+const miembroNombre = ref(null);
+
+function editarNombre(miembro) {
+  miembroNombre.value = miembro;
+}
+
+function cerrarNombre() {
+  miembroNombre.value = null;
+}
+
+function onNombreGuardado(actualizado) {
+  const idx = lista.value.findIndex((s) => s.user_id === actualizado.user_id);
+  if (idx !== -1) lista.value[idx] = { ...lista.value[idx], nombre: actualizado.nombre };
+}
+
+// Toggle de "credenciales.ver" (migración 060): quién puede revelar/enviar
+// contraseñas de Cuentas y Licencias. JEFE lo tiene siempre (el botón queda
+// deshabilitado para esa fila, mismo criterio que "Módulos visibles"). Sin
+// ConfirmDialog: el otorgamiento/revocación ya queda auditado en
+// accesos_log por su propio trigger — la fricción baja es aceptable.
+async function toggleCredencialesVer(miembro) {
+  if (miembro.rol === 'JEFE' || procesandoId.value) return;
+  procesandoId.value = miembro.user_id;
+  try {
+    await store.setCredencialesVer(miembro.user_id, !miembro.credenciales_ver);
+    showToast(miembro.credenciales_ver
+      ? `Se revocó a ${miembro.nombre} el acceso a ver contraseñas`
+      : `${miembro.nombre} ahora puede ver contraseñas`);
+  } catch (e) {
+    showToast(e?.message || 'Error al cambiar el permiso', 'error');
+  } finally {
+    procesandoId.value = null;
+  }
 }
 
 async function cambiarRol(miembro, nuevoRol) {
@@ -173,12 +212,32 @@ onMounted(async () => {
                     <button
                       class="icon-btn"
                       type="button"
+                      title="Editar nombre"
+                      :aria-label="`Editar nombre de ${miembro.nombre}`"
+                      @click="editarNombre(miembro)"
+                    >
+                      <i class="ti ti-pencil" aria-hidden="true"></i>
+                    </button>
+                    <button
+                      class="icon-btn"
+                      type="button"
                       :disabled="miembro.rol === 'JEFE'"
                       :title="miembro.rol === 'JEFE' ? 'JEFE ve todos los módulos' : 'Módulos visibles'"
                       :aria-label="`Módulos visibles de ${miembro.nombre}`"
                       @click="gestionarModulos(miembro)"
                     >
                       <i class="ti ti-layout-grid" aria-hidden="true"></i>
+                    </button>
+                    <button
+                      class="icon-btn"
+                      type="button"
+                      :disabled="miembro.rol === 'JEFE' || procesandoId === miembro.user_id"
+                      :title="miembro.rol === 'JEFE' ? 'JEFE siempre puede ver contraseñas' : (miembro.credenciales_ver ? 'Revocar acceso a ver contraseñas' : 'Otorgar acceso a ver contraseñas')"
+                      :aria-label="`Permiso de ver contraseñas de ${miembro.nombre}`"
+                      :aria-pressed="miembro.rol === 'JEFE' || miembro.credenciales_ver"
+                      @click="toggleCredencialesVer(miembro)"
+                    >
+                      <i :class="procesandoId === miembro.user_id ? 'ti ti-loader-2 spinner-icon' : (miembro.rol === 'JEFE' || miembro.credenciales_ver ? 'ti ti-key' : 'ti ti-key-off')" aria-hidden="true"></i>
                     </button>
                     <button
                       class="icon-btn"
@@ -226,12 +285,33 @@ onMounted(async () => {
               <button
                 class="icon-btn"
                 type="button"
+                title="Editar nombre"
+                :aria-label="`Editar nombre de ${miembro.nombre}`"
+                @click="editarNombre(miembro)"
+              >
+                <i class="ti ti-pencil" aria-hidden="true"></i>
+              </button>
+              <button
+                class="icon-btn"
+                type="button"
                 :disabled="miembro.rol === 'JEFE'"
                 :title="miembro.rol === 'JEFE' ? 'JEFE ve todos los módulos' : 'Módulos visibles'"
                 :aria-label="`Módulos visibles de ${miembro.nombre}`"
                 @click="gestionarModulos(miembro)"
               >
                 <i class="ti ti-layout-grid" aria-hidden="true"></i>
+              </button>
+              <button
+                class="icon-btn"
+                :class="{ activo: miembro.credenciales_ver }"
+                type="button"
+                :disabled="miembro.rol === 'JEFE' || procesandoId === miembro.user_id"
+                :title="miembro.rol === 'JEFE' ? 'JEFE siempre puede ver contraseñas' : (miembro.credenciales_ver ? 'Revocar acceso a ver contraseñas' : 'Otorgar acceso a ver contraseñas')"
+                :aria-label="`Permiso de ver contraseñas de ${miembro.nombre}`"
+                :aria-pressed="miembro.rol === 'JEFE' || miembro.credenciales_ver"
+                @click="toggleCredencialesVer(miembro)"
+              >
+                <i :class="procesandoId === miembro.user_id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-key'" aria-hidden="true"></i>
               </button>
               <button
                 class="icon-btn"
@@ -271,6 +351,13 @@ onMounted(async () => {
       v-if="miembroModulos"
       :miembro="miembroModulos"
       @cerrar="cerrarModulos"
+    />
+
+    <StaffNombreForm
+      v-if="miembroNombre"
+      :miembro="miembroNombre"
+      @cerrar="cerrarNombre"
+      @guardado="onNombreGuardado"
     />
   </div>
 </template>
