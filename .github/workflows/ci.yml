@@ -4,9 +4,14 @@
 # no deja datos. Auditoría integral 2026-08-05 (hallazgo Q-01): antes ambos
 # jobs hacían `exit 0` en silencio sin esos secrets, y el check quedaba en
 # verde sin haber ejecutado nada. Ahora, si faltan, el job emite un
-# ::warning:: visible en la pestaña Actions/checks del PR — no bloquea (no
-# hay forma de crearlos desde acá, requieren una cuenta de staff dedicada a
-# CI en InsForge, ver README), pero ya no se puede confundir con "verificado".
+# ::warning:: visible en la pestaña Actions/checks del PR Y un bloque en el
+# resumen del run ($GITHUB_STEP_SUMMARY) — no bloquea (no hay forma de
+# crearlos desde acá, requieren una cuenta de staff dedicada a CI en
+# InsForge, ver README), pero ya no se puede confundir con "verificado". El
+# job `resumen-verificacion` consolida ambos en un solo lugar, y el
+# schedule semanal sí falla duro si los secrets siguen ausentes — recordatorio
+# forzado para que esto no quede "documentado y olvidado" indefinidamente
+# (verificación de auditoría externa, 2026-08-17).
 name: CI
 
 on:
@@ -19,9 +24,14 @@ on:
         required: false
         default: ''
       desplegar_functions:
-        description: 'Redesplegar las 4 edge functions (credenciales, tickets, encuestas, personal-registro)'
+        description: 'Redesplegar las 5 edge functions (credenciales, tickets, encuestas, personal-registro, equipos-fotos)'
         type: boolean
         default: false
+  schedule:
+    # Todos los lunes 08:00 UTC: recordatorio forzado (job que SÍ falla) de
+    # que los secrets de smoke test siguen sin cargarse — ver job
+    # `secrets-smoke-pendientes` más abajo.
+    - cron: '0 8 * * 1'
 
 jobs:
   lint-y-typecheck:
@@ -84,6 +94,8 @@ jobs:
       VITE_INSFORGE_ANON_KEY: ${{ secrets.VITE_INSFORGE_ANON_KEY }}
       INSFORGE_TEST_STAFF_EMAIL: ${{ secrets.INSFORGE_TEST_STAFF_EMAIL }}
       INSFORGE_TEST_STAFF_PASSWORD: ${{ secrets.INSFORGE_TEST_STAFF_PASSWORD }}
+    outputs:
+      omitido: ${{ steps.smoke.outputs.omitido }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -94,11 +106,16 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
       - name: Smoke de integración (se omite con warning si faltan secrets)
+        id: smoke
         run: |
           if [ -z "$INSFORGE_TEST_STAFF_EMAIL" ] || [ -z "$VITE_INSFORGE_URL" ]; then
             echo "::warning::Sin INSFORGE_TEST_STAFF_EMAIL/PASSWORD o VITE_INSFORGE_*: se omite el smoke de integración contra el backend real. Este check NO verificó nada — ver README (cuenta de staff dedicada a CI)."
+            echo "## ⚠ SMOKE TEST DE INTEGRACIÓN: NO EJECUTADO" >> "$GITHUB_STEP_SUMMARY"
+            echo "Faltan secrets (INSFORGE_TEST_STAFF_EMAIL/PASSWORD o VITE_INSFORGE_*). Este check pasó en verde sin verificar nada real." >> "$GITHUB_STEP_SUMMARY"
+            echo "omitido=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "omitido=false" >> "$GITHUB_OUTPUT"
           npm run test:integration
 
   tests-db:
@@ -106,28 +123,76 @@ jobs:
     env:
       INSFORGE_ACCESS_TOKEN: ${{ secrets.INSFORGE_ACCESS_TOKEN }}
       INSFORGE_PROJECT_ID: ${{ secrets.INSFORGE_PROJECT_ID }}
+    outputs:
+      omitido: ${{ steps.smoke.outputs.omitido }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Tests de triggers (se omiten con warning si faltan secrets)
+        id: smoke
         run: |
           if [ -z "$INSFORGE_ACCESS_TOKEN" ]; then
             echo "::warning::Sin INSFORGE_ACCESS_TOKEN: se omiten los tests de triggers de BD. Este check NO verificó nada."
+            echo "## ⚠ TESTS DE TRIGGERS DE BD: NO EJECUTADOS" >> "$GITHUB_STEP_SUMMARY"
+            echo "Falta INSFORGE_ACCESS_TOKEN. Este check pasó en verde sin verificar nada real." >> "$GITHUB_STEP_SUMMARY"
+            echo "omitido=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "omitido=false" >> "$GITHUB_OUTPUT"
           node scripts/test-db.mjs
+
+  # Consolida en un solo lugar si los dos checks de arriba corrieron de
+  # verdad contra el backend real o si solo pasaron en verde sin verificar
+  # nada — evita tener que abrir cada job por separado para saberlo.
+  resumen-verificacion:
+    needs: [test-integration, tests-db]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resumen de qué se verificó de verdad
+        run: |
+          integ="${{ needs.test-integration.outputs.omitido }}"
+          db="${{ needs.tests-db.outputs.omitido }}"
+          echo "## Resumen de verificación real contra el backend" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | ¿Corrió de verdad? |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Smoke de integración | $([ "$integ" = "true" ] && echo '⚠ NO — omitido' || echo '✓ sí') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tests de triggers de BD | $([ "$db" = "true" ] && echo '⚠ NO — omitido' || echo '✓ sí') |" >> "$GITHUB_STEP_SUMMARY"
+
+  # Recordatorio FORZADO (falla duro, a diferencia de los jobs de arriba):
+  # si tras el schedule semanal los 4 secrets siguen sin existir, este job
+  # falla a propósito para que no quede "documentado y olvidado" — no
+  # bloquea push/PR normales (solo corre en el cron), así que no rompe el
+  # flujo de trabajo día a día.
+  secrets-smoke-pendientes:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      INSFORGE_TEST_STAFF_EMAIL: ${{ secrets.INSFORGE_TEST_STAFF_EMAIL }}
+      INSFORGE_ACCESS_TOKEN: ${{ secrets.INSFORGE_ACCESS_TOKEN }}
+    steps:
+      - name: Fallar si los secrets de smoke test siguen sin cargarse
+        run: |
+          if [ -z "$INSFORGE_TEST_STAFF_EMAIL" ] || [ -z "$INSFORGE_ACCESS_TOKEN" ]; then
+            echo "::error::Siguen sin existir los secrets de smoke test (INSFORGE_TEST_STAFF_EMAIL/PASSWORD, INSFORGE_ACCESS_TOKEN, INSFORGE_PROJECT_ID, VITE_INSFORGE_*) — ver README 'CI: secrets del smoke de integración'. Este recordatorio semanal falla a propósito hasta que se carguen."
+            exit 1
+          fi
+          echo "Secrets cargados — este recordatorio ya no debería seguir corriendo en rojo; considerar quitar el schedule si test-integration/tests-db ya son required checks reales."
 
   # Deploy manual de migraciones/edge functions a InsForge, solo bajo demanda
   # (workflow_dispatch) — nunca en push/PR, porque INSFORGE_ACCESS_TOKEN puede
   # escribir en producción. Reemplaza el flujo 100% manual de AGENTS.md (CLI
   # local en Windows, con el límite de línea de comandos y los crashes de
   # `db import` documentados ahí) por una ejecución controlada en Linux, una
-  # migración a la vez — nunca "todas las pendientes", porque el proyecto no
-  # trackea qué migraciones ya se aplicaron (decisión de la migración 035:
-  # no se usa `db migrations up`) y aplicar dos veces una ya corrida puede
-  # fallar o duplicar datos (D-02/D-03).
+  # migración a la vez — sigue sin aplicar "todas las pendientes" en un solo
+  # click (decisión de la migración 035: no se usa `db migrations up`,
+  # aplicar dos veces una ya corrida puede fallar o duplicar datos, D-02/D-03).
+  # Desde la migración 069, cada aplicación SÍ queda registrada en
+  # schema_migrations — ver el paso "Registrar en schema_migrations" — así
+  # que al menos ya se puede CONSULTAR con certeza qué está aplicado, aunque
+  # aplicarlas siga siendo una migración por vez y a mano.
   deploy-manual:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -152,10 +217,26 @@ jobs:
         if: inputs.migracion != ''
         run: |
           echo "::notice::Migración enviada — VERIFICAR MANUALMENTE contra la tabla/función afectada antes de darla por buena. db import puede reportar error de cliente aunque el statement ya se haya ejecutado en el servidor (ver AGENTS.md)."
+      - name: Registrar en schema_migrations (migración 069)
+        if: inputs.migracion != ''
+        run: |
+          archivo="${{ inputs.migracion }}"
+          nombre="$(basename "$archivo")"
+          version="$(echo "$nombre" | grep -oE '^[0-9]{3,}' || true)"
+          if [ -z "$version" ]; then
+            echo "::warning::No se pudo extraer un número de versión de $nombre — no se registra en schema_migrations."
+            exit 0
+          fi
+          checksum="$(sha256sum "$archivo" | cut -d' ' -f1)"
+          npx @insforge/cli db query -- "insert into public.schema_migrations (version, nombre_archivo, checksum, aplicada_por) values ('$version', '$nombre', '$checksum', '${{ github.actor }}') on conflict (version) do update set nombre_archivo = excluded.nombre_archivo, checksum = excluded.checksum, aplicada_por = excluded.aplicada_por, aplicada_en = now();" \
+            || echo "::warning::La migración se aplicó pero no se pudo registrar en schema_migrations (¿todavía no existe la tabla? ver migración 069, o el archivo requería db import por dollar-quoting — ver AGENTS.md)."
       - name: Redesplegar edge functions
         if: inputs.desplegar_functions == 'true'
         run: |
-          for fn in credenciales tickets encuestas personal-registro; do
+          for fn in credenciales tickets encuestas personal-registro equipos-fotos; do
             echo "== Desplegando $fn =="
             npx @insforge/cli functions deploy "$fn" --file "functions/$fn.ts"
+            sha="$(sha256sum "functions/$fn.ts" | cut -d' ' -f1)"
+            npx @insforge/cli db query -- "insert into public.function_deploys (funcion, sha256, commit_sha, desplegado_por) values ('$fn', '$sha', '${{ github.sha }}', '${{ github.actor }}');" \
+              || echo "::warning::$fn se desplegó pero no se pudo registrar en function_deploys (¿todavía no existe la tabla? ver migración 070)."
           done

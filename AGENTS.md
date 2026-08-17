@@ -4,10 +4,10 @@
 > tickets, correos, licencias y equipos. UI en
 > `frontend/src/styles/main.css` (`--mat-*`) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
-**Vigencia**: actualizado 2026-08-11 (migración 047 RLS de personal_registros;
-046 hard delete de personal_registros; 045 notificaciones; 044 aviso realtime
-de ticket nuevo; 043 encuestas; 042 pre-registro de personal; 041 exclusividad
-de cuentas personal; 040 `tiene_clave`; 039 índice único de cuentas).
+**Vigencia**: actualizado 2026-08-17 (migración 068 RLS real por módulo;
+069/070 tracking de migraciones/deploys; 066/067 hash del token de entrega;
+064/065 accesos_log ip/user_agent + límite por DNI en personal-registro;
+nueva edge function `equipos-fotos`; verificación de auditoría externa).
 
 **Precedencia documental**: ante conflicto, `README.md` y `GUIA-UX-UI.md` describen
 intención; **ganan** los valores literales en `main.css` y el esquema real en
@@ -17,6 +17,27 @@ Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
 modelo de seguridad y estructura del repo), `docs/PANORAMA_SISTEMA.md`
 (esquema real y decisiones verificadas) y `docs/HISTORIAL-AUDITORIAS.md`
 (hallazgos de seguridad/calidad con su estado).
+
+## Documentación sensible — no pegar en herramientas externas sin revisar
+
+`README.md`, este archivo, `docs/HISTORIAL-AUDITORIAS.md` y `docs/CHANGELOG.md`
+ya usan `<INSFORGE_PROJECT_URL>`/`<PROJECT_NAME>` como placeholder donde antes
+había la URL real de producción y el nombre del proyecto backend (corregido
+2026-08-17, verificación de auditoría externa). Antes de pegar cualquiera de
+estos archivos en un chat de IA externo, un ticket público o compartirlos con
+un tercero, confirmar que sigue así — no reintroducir el valor real a mano.
+
+Archivos que SÍ tienen datos reales de infraestructura y no se redactan
+(el valor es funcional, no narrativo) — no compartirlos con terceros/IA,
+tampoco "limpiarlos":
+- `frontend/vercel.json` / `frontend/public/vercel.json` — CSP con la URL
+  real de InsForge y el DSN de Sentry; un placeholder rompería el despliegue.
+- `.insforge/project.json`, `frontend/dist/**` — gitignorados, no trackeados,
+  pero pueden tener la URL real en disco; no pegarlos manualmente igual.
+- `frontend/.env` (nunca `.env.example`, que ya usa un valor de ejemplo).
+
+Nombres de tabla/columna/función SQL no son secretos — se dejan tal cual en
+toda la documentación, son necesarios para que siga siendo útil.
 
 ## Qué es
 
@@ -66,11 +87,26 @@ cuándo y si la contraseña se rotó después.
  `staff_modulos_permisos` **y** la fila de `staff_permisos`
  (`credenciales.ver`) del staff nuevo — si se reescribe la función, no perder
  ninguno de los tres `insert` (staff, módulos, permisos).
-- **Permisos de módulo** (`staff_modulos_permisos`, migración 056): son
- control de UI/navegación (sidebar + router guard), no de RLS. No asumir que
- desmarcar un módulo bloquea el acceso a los datos de esa tabla por otra vía
- (RPC, otra vista) — eso requeriría tocar RLS aparte, decisión que no se
- tomó acá.
+- **Permisos de módulo** (`staff_modulos_permisos`, migración 056): siguen
+ controlando sidebar/router en el frontend, pero desde la migración 068
+ `licencias`/`asignaciones_licencia`, `equipos`/`tipos_equipo`/
+ `asignaciones_equipo`/`eventos_equipo` y `cuentas`/`asignaciones_cuenta`
+ **también** lo exigen en RLS vía `tiene_permiso_modulo(text)` (mismo patrón
+ que `tiene_permiso_acceso_sensible` de la 024): un ASISTENTE sin el módulo
+ ya no puede leer/escribir esas tablas por otra vía (RPC, SDK directo desde
+ la consola). JEFE exento siempre (`es_jefe() or ...` en cada policy).
+ **Caso especial `empleados`, decisión explícita**: el SELECT sigue en
+ `es_staff()` sin gate de módulo — Equipos/Licencias/Correos embeben
+ `empleados(nombres, apellidos)` para mostrar a quién está asignado, y
+ gatear también la lectura dejaría esos nombres en blanco para cualquier
+ ASISTENTE sin el módulo "Empleados". Solo INSERT/UPDATE de `empleados`
+ quedan gateados por el módulo.
+ ⚠️ Igual que `credenciales.ver` más abajo: `functions/credenciales.ts`
+ (`revelar`, `revelarClaveLicencia`, `entregaCrear`) lee `cuentas`/`licencias`
+ con el cliente admin — bypasea esta RLS. Por eso tiene su propio chequeo
+ `tienePermisoModulo()` (consulta directa a `staff_modulos_permisos`, mismo
+ motivo que abajo: `auth.uid()` sería `NULL` en ese contexto). La regla vive
+ dos veces (RLS + edge function) a propósito, nada las sincroniza sola.
 - ⚠️ **Permiso `credenciales.ver` (`staff_permisos`, migración 060) — la regla
  vive en DOS lugares, a propósito, y hay que mantenerlos sincronizados a
  mano**:
@@ -113,8 +149,13 @@ cuándo y si la contraseña se rotó después.
 - **Migraciones**: archivos numerados `migrations/0XX_nombre.sql` (comentados,
  en español). Se aplican manualmente:
  `npx @insforge/cli db query --json -- "$(cat migrations/0XX_nombre.sql)"`.
- NO se usa `db migrations up` (el historial remoto del CLI está vacío a
- propósito).
+ NO se usa `db migrations up` (los nombres `0XX_snake_case.sql` son
+ incompatibles con el formato timestamp que exige ese subsistema, y su
+ historial remoto está vacío a propósito por no haberse usado nunca). Desde
+ la migración 069, `scripts/apply-migration.mjs` registra en
+ `public.schema_migrations` qué versión quedó aplicada (verifica antes de
+ reaplicar por error, salvo `--force`) — no reemplaza el CLI nativo, es
+ tracking propio.
 - **Windows + `db query`**: límite de línea de comandos ~8 KB y ejecución poco
  fiable de múltiples statements DML en una llamada. Para updates masivos:
  un solo `UPDATE ... FROM (VALUES ...)` por lote.
@@ -177,6 +218,22 @@ cuándo y si la contraseña se rotó después.
  `buscarDni`/`crear` sobre `personal_registros` (sin INSERT de cliente ahí
  tampoco). No confundir la encuesta de este módulo con
  `ticket_satisfaccion` — son tablas y flujos distintos, ver README.
+- **Edge function `equipos-fotos`** (2026-08-17): `functions/equipos-fotos.ts`
+ → desplegar con `npx @insforge/cli functions deploy equipos-fotos --file
+ functions/equipos-fotos.ts`. Requiere sesión de staff (no tiene ninguna
+ acción pública, a diferencia de las demás) — antes el navegador subía
+ directo a `storage.from('equipos-fotos').uploadAuto()` con la sesión de
+ staff, sin ninguna validación server-side; ahora valida magic bytes +
+ tamaño acá, mismo patrón que los adjuntos de `tickets.ts`. El bucket sigue
+ público (miniaturas sin firmar en los listados), y la validación de
+ contenido es el control real, no ocultar la URL.
+- **`schema_migrations`/`function_deploys`** (migraciones 069/070): tracking
+ real de qué migración y qué versión de cada edge function están aplicadas.
+ `scripts/apply-migration.mjs` lo llena solo (verifica antes de aplicar,
+ registra después); el job `deploy-manual` de CI hace lo mismo para `db
+ import` y `functions deploy`. Ninguna tiene RLS — solo el cliente admin
+ (CLI/CI) o una edge function con `createAdminClient()` las tocan (ver
+ acción `version`, presente en las 5 edge functions).
 - **`functions/tsconfig.json`** (migración de tooling, no de dominio) solo es
  para `deno check`/el editor — `functions deploy` sigue tomando un único
  archivo `.ts` con `--file`, no lee ni empaqueta el tsconfig. Tocar ese
@@ -260,7 +317,7 @@ cuándo y si la contraseña se rotó después.
 
 This project uses [InsForge](https://insforge.dev): an all-in-one, open-source Postgres-based backend (BaaS) that gives this app a database, authentication, file storage, edge functions, realtime, and payments through one platform.
 
-- **Project:** **sistema-ti** (API base `https://kjyj8t5t.us-east.insforge.app`)
+- **Project:** **`<PROJECT_NAME>`** (API base `<INSFORGE_PROJECT_URL>`)
 - **Skills:** these InsForge skills are installed for supported coding agents. Reach for them before implementing any InsForge feature instead of guessing the API:
  - `insforge`: app code with the `@insforge/sdk` client (database CRUD, auth, storage, edge functions, realtime, email, and Stripe payments).
  - `insforge-cli`: backend and infrastructure via the `insforge` CLI (projects, SQL, migrations, RLS policies, storage buckets, functions, secrets, payment setup, schedules, deploys).

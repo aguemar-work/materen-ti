@@ -110,7 +110,7 @@ async function copiar(texto, id) {
           </p>
           <RouterLink
             class="btn btn-primary entrega-accion-primaria"
-            :to="{ name: 'ticket-nuevo', query: { entrega: route.params.token } }"
+            :to="{ name: 'ticket-nuevo' }"
           >
             <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
           </RouterLink>
@@ -127,7 +127,7 @@ async function copiar(texto, id) {
           exclusivamente a través de ticket. No se atenderán consultas por WhatsApp
           ni por ningún otro canal.
         </p>
-        <RouterLink class="soporte-btn" :to="{ name: 'ticket-nuevo', query: { entrega: route.params.token } }">
+        <RouterLink class="soporte-btn" :to="{ name: 'ticket-nuevo' }">
           <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
         </RouterLink>
       </div>

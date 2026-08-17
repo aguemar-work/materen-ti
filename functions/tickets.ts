@@ -13,6 +13,7 @@
 //   buscarPorDni   público          → { tickets[] } (solo tickets ACTIVOS; limitado por IP)
 //   encuestaEstado público          → { respondida } (para no mostrar el formulario tras refrescar)
 //   encuesta       público          → { ok }
+//   version        staff            → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 //
 // Nota: el sistema no envía avisos/notificaciones por correo (se
 // retiró intencionalmente; ver docs/HISTORIAL-AUDITORIAS.md). El
@@ -20,9 +21,11 @@
 // crear); la encuesta de satisfacción se guarda pero no se notifica.
 //
 // Regla de dominio: un token de TICKET es un recurso distinto del
-// token de ENTREGA. Un token de entrega solo sirve para resolver
-// quién es el empleado al crear (si llega en la URL); nunca se usa
-// para leer/escribir un ticket.
+// token de ENTREGA. `crear` acepta opcionalmente un `tokenEntrega` en el
+// body para resolver quién es el empleado sin pedir DNI, pero ningún
+// frontend lo envía desde 2026-08-17 (ver comentario junto al bloque
+// `if (body.tokenEntrega)` más abajo); nunca se usa para leer/escribir
+// un ticket.
 // ============================================================
 
 import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
@@ -49,7 +52,9 @@ function corsPara(origin: string | null): Record<string, string> {
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
+    // no-store: buscarPorDni devuelve tokens de ticket y datos de contacto,
+    // no debe quedar cacheado en el navegador/proxy.
+    headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
 
@@ -169,6 +174,26 @@ export default async function (req: Request): Promise<Response> {
     return { id: user.id, email: user.email || null };
   }
 
+  // version: staff únicamente (cierra el pendiente de H-12 — ver el mismo
+  // comentario en functions/credenciales.ts). No es una acción pública.
+  if (body.action === 'version') {
+    const staff = await staffDeSesion();
+    if (!staff) return json({ ok: false, code: 'no_autenticado' }, 401);
+    const [{ data: migracion }, { data: deploy }] = await Promise.all([
+      admin.database.from('schema_migrations').select('version, nombre_archivo, aplicada_en')
+        .order('version', { ascending: false }).limit(1).maybeSingle(),
+      admin.database.from('function_deploys').select('sha256, commit_sha, desplegado_en')
+        .eq('funcion', 'tickets').order('desplegado_en', { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    return json({
+      ok: true,
+      funcion: 'tickets',
+      sdkVersion: '1.5.2',
+      ultimaMigracion: migracion || null,
+      ultimoDeploy: deploy || null,
+    });
+  }
+
   // ── catalogo: público, categorías/subcategorías activas para el formulario ──
   if (body.action === 'catalogo') {
     const [{ data: categorias }, { data: subcategorias }] = await Promise.all([
@@ -215,6 +240,16 @@ export default async function (req: Request): Promise<Response> {
     let vinculado = true;
     const contacto = body.contacto ? String(body.contacto).trim() : null;
 
+    // ⚠️ `tokenEntrega` ya no lo manda ningún frontend (retirado de
+    // TicketNuevoView.vue el 2026-08-17: reutilizaba el token de entrega de
+    // credenciales, ya consumido, propagado como ?entrega=<token> — quedaba
+    // en el historial/URL del navegador con un propósito distinto al que lo
+    // generó). Se deja este bloque sin retirar por tolerancia hacia atrás:
+    // el backend no rompe si nadie lo envía, simplemente no entra acá.
+    // Además, como `entregas` ya no guarda el token en claro (migración
+    // 066/067), esta búsqueda por `token` deja de poder resolver nada en
+    // cuanto se aplique el paso 2 (067) — si se quiere reactivar este
+    // camino habría que buscar por token_hash, igual que entregaAbrir.
     if (body.tokenEntrega) {
       const { data: entrega } = await admin.database
         .from('entregas')

@@ -41,8 +41,10 @@ export async function comprimirImagen(file) {
   return new File([blob], nombre, { type: 'image/jpeg' });
 }
 
-// Para enviar un archivo dentro de un JSON (ej. al crear un ticket desde
-// una página pública, sin sesión para subir directo a storage)
+// Para enviar un archivo dentro de un JSON a una edge function (ej. al
+// crear un ticket desde una página pública sin sesión, o al subir una
+// foto de equipo con sesión de staff — ambas validan el archivo en
+// servidor en vez de escribir directo a storage desde el navegador).
 export async function archivoABase64(file) {
   const buffer = await file.arrayBuffer();
   let binario = '';

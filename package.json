@@ -9,7 +9,7 @@
     "lint:fix": "eslint frontend/src functions --fix",
     "format": "prettier --write frontend/src functions",
     "format:check": "prettier --check frontend/src functions",
-    "typecheck:functions": "deno check --config functions/tsconfig.json functions/credenciales.ts functions/tickets.ts functions/encuestas.ts functions/personal-registro.ts"
+    "typecheck:functions": "deno check --config functions/tsconfig.json functions/credenciales.ts functions/tickets.ts functions/encuestas.ts functions/personal-registro.ts functions/equipos-fotos.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -10,6 +10,40 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-17** — Migraciones 064-070 + `functions/equipos-fotos.ts` (nueva)
+  (`README.md`, `AGENTS.md`, `docs/PANORAMA_SISTEMA.md`,
+  `docs/HISTORIAL-AUDITORIAS.md` Ciclo 8): verificación de un análisis de
+  seguridad externo — 7 hallazgos confirmados como gaps reales, corregidos.
+  064: `accesos_log` gana `ip`/`user_agent` + auditoría de intentos fallidos
+  de `entregaAbrir`. 065: límite por DNI en `personal-registro` (antes solo
+  IP). 066/067: `entregas.token` deja de guardarse en texto plano (paso 2
+  pendiente de aplicar, ver advertencia en el archivo). 068: RLS real por
+  módulo en `licencias`/`equipos`/`cuentas` (antes solo control de UI);
+  `empleados` excepción a propósito (solo alta/edición gateadas). 069/070:
+  tracking de qué migración/versión de cada edge function está realmente
+  aplicada/desplegada (`schema_migrations`, `function_deploys`), consultable
+  vía la acción `version` nueva en las 5 edge functions. Nueva edge function
+  `equipos-fotos.ts`: valida magic bytes + tamaño en servidor (antes subía
+  directo del navegador al bucket sin validar). `Cache-Control: no-store` en
+  `credenciales`/`tickets`/`personal-registro`. Se retira la propagación del
+  token de entrega como `?entrega=<token>` en `EntregaView.vue`/
+  `TicketNuevoView.vue`. Documentación: URL real de producción y nombre del
+  proyecto backend redactados a placeholders en README/AGENTS/CHANGELOG/
+  HISTORIAL-AUDITORIAS/`.env.example`; nota nueva en `AGENTS.md` sobre qué no
+  compartir con IA externa/terceros.
+- **2026-08-17** — Migración 063 (`README.md`, `docs/HISTORIAL-AUDITORIAS.md`):
+  segunda pasada del InsForge Backend Advisor tras la 062 (31 hallazgos).
+  Corregidos: 9 políticas RLS en 5 tablas que llamaban `auth.uid()` sin
+  envolver en subquery (`ALTER POLICY ... (select auth.uid())`, mismo
+  `qual`/`with_check`) y un grant faltante en `staff_nombres()` (migración
+  061, quedó fuera del hardening de la 062 por no estar en el reporte
+  original). Dos grupos del reporte quedan como **riesgo aceptado, sin
+  cambios**: 10 funciones `SECURITY DEFINER` que el advisor vuelve a marcar
+  "dangerous" por tener `EXECUTE` a `authenticated` (aplicar la sugerencia
+  rompería el patrón de RLS-helper/RPC-gateada) y 11 tablas con RLS de solo
+  SELECT (escriben vía trigger `SECURITY DEFINER` o edge function admin;
+  abrir INSERT a `authenticated` sería una regresión de seguridad, no una
+  mejora). Ver Ciclo 7 en `docs/HISTORIAL-AUDITORIAS.md` para el detalle.
 - **2026-08-17** — Migración 062 (`README.md`, `docs/PANORAMA_SISTEMA.md`,
   `docs/HISTORIAL-AUDITORIAS.md`, `AGENTS.md`): respuesta a los 80 hallazgos del InsForge
   Backend Advisor. `REVOKE EXECUTE ... FROM PUBLIC` en las 16 funciones
@@ -242,7 +276,7 @@
   `stores/licencias.js`, el hint de `LicenciaForm.vue`, `README.md` y la
   lista de métodos de `tests/insforge-api-shape.test.js` (150→152).
 - **2026-08-12** — **Fix de incidente en producción**: la CSP agregada en
-  S-04 bloqueaba el WebSocket del realtime (`wss://kjyj8t5t.us-east.insforge.app`)
+  S-04 bloqueaba el WebSocket del realtime (`wss://<INSFORGE_PROJECT_URL>`)
   porque `connect-src` solo tenía el esquema `https://` del mismo host.
   Agregado `wss://` explícito en `frontend/vercel.json` y su copia
   `frontend/public/vercel.json`. Actualizado el hallazgo S-04 en

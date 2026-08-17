@@ -11,11 +11,15 @@ cuándo y si la contraseña se rotó después.
 | Capa | Tecnología |
 |---|---|
 | Frontend | Vue 3 + Vite + Pinia + vue-router (`frontend/`) |
-| Backend | [InsForge](https://insforge.dev) (BaaS sobre Postgres) — proyecto `sistema-ti`, API `https://kjyj8t5t.us-east.insforge.app` |
+| Backend | [InsForge](https://insforge.dev) (BaaS sobre Postgres) — proyecto `<PROJECT_NAME>`, API `<INSFORGE_PROJECT_URL>` |
 | Seguridad | Edge function `credenciales` (`functions/credenciales.ts`) — cifrado AES-256-GCM en servidor, auditoría y entregas de un solo uso |
 | Soporte | Edge function `tickets` (`functions/tickets.ts`) — mesa de ayuda interna, reemplaza el helpdesk externo (Bitrix24) |
 | Encuestas | Edge function `encuestas` (`functions/encuestas.ts`) — encuestas anónimas reutilizables (plantilla + rondas), distintas de la encuesta de satisfacción por ticket |
 | Personal | Edge function `personal-registro` (`functions/personal-registro.ts`) — pre-registro público de personal antes del alta en Empleados |
+
+> `<PROJECT_NAME>`/`<INSFORGE_PROJECT_URL>` son placeholders a propósito — ver
+> ["Documentación sensible" en `AGENTS.md`](AGENTS.md#documentación-sensible--no-pegar-en-herramientas-externas-sin-revisar)
+> antes de compartir este README o pegarlo en una IA externa.
 
 Las 4 edge functions corren en **Deno Subhosting** (no Node) — de ahí
 `Deno.env.get(...)` y el especificador de import `npm:@insforge/sdk`.
@@ -40,10 +44,15 @@ global `Deno`.
   del rol, cada ASISTENTE tiene una lista de módulos operativos habilitados
   (Tickets, Empleados, Correos, Licencias, Equipos, Base de Conocimiento,
   Problemas, Encuestas). Un módulo sin fila para ese usuario se oculta del
-  sidebar y bloquea la navegación directa por URL (router guard). Es control
-  de UI/navegación, no de RLS: las políticas de cada tabla siguen dando
-  acceso a cualquier staff activo, sin cambios. JEFE siempre ve los 8
-  módulos, sin excepción.
+  sidebar y bloquea la navegación directa por URL (router guard) — eso
+  sigue siendo solo control de UI. Pero desde la migración 068, licencias,
+  equipos y correos (cuentas) **también lo exigen en RLS**
+  (`tiene_permiso_modulo('...')`, JEFE exento siempre): un ASISTENTE sin el
+  módulo ya no puede leer/escribir esas tablas vía SDK directo, no solo que
+  desaparecen del sidebar. `empleados` es la excepción a propósito: el
+  SELECT sigue abierto a cualquier staff activo (Equipos/Licencias/Correos
+  embeben el nombre del empleado asignado), solo alta/edición quedan
+  gateadas por el módulo. JEFE siempre ve los 8 módulos, sin excepción.
 - **Cuenta**: una credencial en una plataforma. Tres tipos (`tipo_cuenta`):
   - `personal` — de una sola persona; **se da de baja junto con el empleado**.
   - `reutilizable` — un titular a la vez; al salir el titular queda **Libre**
@@ -204,8 +213,10 @@ global `Deno`.
 - En formularios de edición, el campo contraseña vacío significa "mantener la
   actual" — la contraseña vigente nunca se precarga.
 - La página `/entrega/:token` es pública (sin sesión) e incluye la política de
-  soporte: solo por ticket, con enlace a `/soporte/nuevo` (token de entrega ya
-  en la URL) — ya no enlaza al helpdesk externo de Bitrix24.
+  soporte: solo por ticket, con enlace a `/ticket/nuevo` (pide DNI como
+  cualquier otro ingreso; desde 2026-08-17 ya no propaga el token de entrega
+  como query param — quedaba en el historial/URL del navegador reutilizando
+  un secreto ya consumido) — ya no enlaza al helpdesk externo de Bitrix24.
 - Las tablas `tickets` y `ticket_satisfaccion` no tienen política de INSERT
   para clientes: solo la edge function `tickets` (cliente admin) escribe,
   igual que `entregas`. `ticket_eventos` es append-only por trigger.
@@ -269,12 +280,13 @@ global `Deno`.
 │       ├── router/            # rutas + guards (meta.public para entregas y tickets)
 │       └── stores/            # Pinia (incluye `notificaciones` — campana del layout)
 ├── functions/
-│   ├── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir
+│   ├── credenciales.ts     # edge function: encrypt / revelar / entregaCrear / entregaAbrir / version
 │   ├── tickets.ts          # edge function: catalogo / crear / seguimiento / buscarPorDni /
-│   │                       #   encuestaEstado / encuesta
-│   ├── encuestas.ts        # edge function: abrir / responder (rondas de encuesta pública)
-│   └── personal-registro.ts # edge function: buscarDni / crear (pre-registro público)
-├── migrations/             # 001..047 — esquema completo, en orden, comentado
+│   │                       #   encuestaEstado / encuesta / version
+│   ├── encuestas.ts        # edge function: abrir / responder / version (rondas de encuesta pública)
+│   ├── personal-registro.ts # edge function: buscarDni / crear / version (pre-registro público)
+│   └── equipos-fotos.ts    # edge function: subirFoto / eliminarFoto / version (staff, valida magic bytes)
+├── migrations/             # 001..070 — esquema completo, en orden, comentado
 ├── docs/
 │   ├── GUIA-UX-UI.md          # design system y convenciones de UI
 │   ├── PANORAMA_SISTEMA.md    # arquitectura, modelo de datos y decisiones verificadas
@@ -334,6 +346,13 @@ hoy (2026-08-17) no existen en el repo.
 4. Verificar: relanzar el job `test-integration` de un PR/push — debe pasar
    de `::warning::` a ejecutar de verdad (`npm run test:integration`, cubre
    `tickets-api.smoke.test.js` + `embeds.smoke.test.js`).
+
+Mientras estos secrets no existan: el job `resumen-verificacion` (mismo
+workflow) consolida en un solo lugar del resumen del run si `test-integration`
+y `tests-db` corrieron de verdad o solo pasaron en verde sin verificar nada, y
+un recordatorio semanal (`secrets-smoke-pendientes`, `on: schedule`) falla a
+propósito hasta que se carguen — no bloquea push/PR normales, solo evita que
+esto quede olvidado indefinidamente.
 
 ## Backend: migraciones y función
 
@@ -417,6 +436,14 @@ hoy (2026-08-17) no existen en el repo.
 | 060 | Permiso individual `credenciales.ver`: tabla `staff_permisos` (mismo patrón que `staff_modulos_permisos` de 056, pero para capacidades). Gatea revelar/enviar contraseñas de Cuentas y Licencias en `functions/credenciales.ts` (consulta directa, no RPC — ver `AGENTS.md`); JEFE exento siempre. Backfill de los 3 staff activos + `handle_new_staff_user` extendido (ya sembraba `staff_modulos_permisos`). Otorgar/revocar queda auditado en `accesos_log` vía trigger `staff_permisos_log_evento` |
 | 061 | **Fix de bug en producción** (nombres de staff invisibles para un ASISTENTE — la RLS de SELECT de `staff` es "propio registro o jefe", así que cualquier UI que resolvía el nombre de un compañero caía a "Staff": reporte de tickets, bandeja, "Asignado a", Responsable de Problemas/acciones correctivas, autor de KB, reporte de satisfacción). RPC `staff_nombres()` (`SECURITY DEFINER`, mismo patrón que `kb_registrar_feedback` de 032): devuelve solo `(user_id, nombre)` de staff activo, sin ampliar la policy de SELECT. De paso, extiende el UPDATE de `staff` (antes solo JEFE) para que cualquier staff edite su propio `nombre` — JEFE sigue pudiendo editar cualquier fila — blindado con un trigger que congela `rol`/`activo` cuando quien edita no es JEFE (mismo patrón que `check_ticket_identidad_inmutable` de 019, hallazgo H-06) |
 | 062 | **InsForge Backend Advisor** (2026-08-17, 80 hallazgos): `REVOKE EXECUTE ... FROM PUBLIC` en las 16 funciones `SECURITY DEFINER` marcadas "callable by: public" (ninguna se convierte a `SECURITY INVOKER` — romperían el patrón de RLS/guard interno ya documentado), con `GRANT ... TO authenticated` de vuelta solo en las 10 que un rol autenticado realmente invoca (RLS o RPC); `log_evento_equipo`/`log_evento_ticket`/`crear_notificacion` quedan sin ningún grant de runtime — solo los llaman triggers `SECURITY DEFINER`. Elimina `_test_reporte_tickets`/`_test_reporte_tickets_resumen`/`_test_reporte_satisfaccion_consolidado`, gemelas de prueba de `scripts/paridad-reporte-tickets.mjs` que quedaron en producción por descuido **sin** el guard `es_staff()` de las reales — una fuga de datos sin autenticar más grave que el hallazgo original del advisor. 61 índices en columnas FK sin índice (`CREATE INDEX` simple, no `CONCURRENTLY` — ver detalle en `docs/PANORAMA_SISTEMA.md` §6). Autovacuum más agresivo en `entregas`/`eventos_equipo`/`asignaciones_cuenta` (>20% tuplas muertas) + `VACUUM ANALYZE` inmediato de las 3. **Aplicada en varios `db query` por lote** (no con `apply-migration.mjs`): el archivo completo excede el límite de línea de comandos de Windows del gotcha de `AGENTS.md` — cada lote es idempotente (`REVOKE`/`GRANT`/`DROP FUNCTION IF EXISTS`/`CREATE INDEX IF NOT EXISTS`), así que no hay riesgo de aplicación parcial inconsistente |
+| 063 | **InsForge Backend Advisor, segunda pasada** (2026-08-17, 31 hallazgos tras la 062): `ALTER POLICY` en 9 políticas de 5 tablas (`staff_permisos`, `kb_articulos` ×2, `notificaciones`, `notificaciones_lecturas` ×2, `staff` ×2, `staff_modulos_permisos`) para envolver `auth.uid()` en `(select auth.uid())` — Postgres lo evalúa una vez por consulta en vez de una vez por fila, mismo `qual`/`with_check` de siempre. `REVOKE`/`GRANT` faltante en `staff_nombres()` (migración 061, quedó fuera del hardening de la 062 por no estar en el reporte original de 80). Los otros 2 grupos del reporte (10 funciones `SECURITY DEFINER` marcadas "dangerous" por tener `EXECUTE` a `authenticated`, y 11 tablas marcadas por tener RLS de solo SELECT) **quedan sin cambios a propósito** — aplicar la sugerencia del advisor rompería el patrón de RLS-helper/RPC-gateada o abriría un hueco de auditoría real; ver Ciclo 7 de `docs/HISTORIAL-AUDITORIAS.md` para el detalle de por qué cada uno es riesgo aceptado |
+| 064 | **Verificación de auditoría externa** (2026-08-17): `accesos_log` gana columnas `ip`/`user_agent` (antes ausentes pese a que el patrón de extracción segura ya existía en otras edge functions) y la acción `'entrega_fallida'` en el check de `accion` — los 3 retornos tempranos de `entregaAbrir` (token inexistente/ya abierto/expirado) antes no dejaban ningún rastro en la auditoría |
+| 065 | Rate-limit de `personal-registro` gana límite también por DNI (antes solo por IP, compartido entre `buscarDni`/`crear`): cierra la misma evasión por rotación de IP que `ticket_busqueda_intentos` ya cerraba (H-02) pero que este endpoint no tenía |
+| 066 | Paso 1/2: `entregas` gana `token_hash` (sha256 del token, backfill de las filas existentes). El token en claro sigue en la columna `token` durante la transición — se retira en la 067 |
+| 067 | Paso 2/2 (aplicar solo ≥7 días después de la 066, ver advertencia en el propio archivo): retira la columna `token` en claro de `entregas` — desde acá el token de la URL pública ya no se persiste en texto plano en BD, solo su hash |
+| 068 | RLS real por módulo: `licencias`/`asignaciones_licencia`, `equipos`/`tipos_equipo`/`asignaciones_equipo`/`eventos_equipo` y `cuentas`/`asignaciones_cuenta` exigen `tiene_permiso_modulo('...')` además de `es_staff()` (JEFE exento siempre) — antes `staff_modulos_permisos` (056) solo controlaba sidebar/router, cualquier staff activo podía leer/escribir esas tablas vía SDK directo. `empleados` es un caso especial a propósito: el SELECT sigue abierto (Equipos/Licencias/Correos embeben el nombre del empleado), solo INSERT/UPDATE quedan gateados por el módulo. **Requiere `db import`, no `db query`/`apply-migration.mjs` — tiene un `create or replace function` con dollar-quoting** |
+| 069 | Tabla `schema_migrations`: tracking real de qué migración ya se aplicó (backfill de 001-068), llenada desde ahora por `scripts/apply-migration.mjs` y por el job `deploy-manual` de CI. No reemplaza `db migrations up` (sigue sin usarse, ver migración 035) |
+| 070 | Tabla `function_deploys`: qué versión (sha256 + commit) de cada edge function está realmente desplegada, llenada solo por el job `deploy-manual` de CI. Cierra el pendiente de H-12 (confirmar si el redeploy real ya ocurrió) |
 
 ## Checklist de deploy
 
@@ -475,7 +502,9 @@ Notas de equipos: el **acta de entrega imprimible** se genera desde la fila del
 equipo asignado (🖨) — HTML listo para imprimir o guardar como PDF, con datos
 del receptor, del equipo, specs, accesorios, condición, cláusula de
 responsabilidad y firmas. Las **fotos** (máx. 4 por equipo) se comprimen en el
-navegador (`core/imagenes.js`, ~200 KB c/u) antes de subir al bucket público
+navegador (`core/imagenes.js`, ~200 KB c/u) y se suben vía la edge function
+`equipos-fotos` (valida magic bytes + tamaño en servidor — ya no directo al
+storage desde el navegador, ver migración de 2026-08-17) al bucket público
 `equipos-fotos`; se guarda `{url, key}` por foto.
 
 **Importar equipos desde Excel** (`/equipos/importar`): se pegan las filas

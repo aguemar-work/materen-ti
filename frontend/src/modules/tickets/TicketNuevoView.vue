@@ -1,20 +1,21 @@
 <script setup>
 // Página PÚBLICA (sin sesión): formulario de creación de ticket.
-// Dos rutas de entrada:
-//   - Con ?entrega=<token>: el empleado llega desde /entrega/:token,
-//     el backend resuelve quién es sin pedir nada más.
-//   - Sin token: se pide el DNI para intentar el match automático (un
-//     correo puede repetirse entre empleados o una persona tener varios,
-//     el DNI no — si no hay match, el ticket se crea igual, sin bloquear).
+// Siempre se pide el DNI para intentar el match automático (un correo
+// puede repetirse entre empleados o una persona tener varios, el DNI no —
+// si no hay match, el ticket se crea igual, sin bloquear).
+//
+// Antes existía una segunda ruta de entrada (?entrega=<token>, llegando
+// desde /entrega/:token) que autoidentificaba al empleado sin pedir DNI,
+// reutilizando el token de entrega de credenciales ya consumido. Se
+// retiró (2026-08-17, verificación de auditoría externa): ese token
+// quedaba en la URL/historial del navegador con un propósito distinto al
+// que lo generó. functions/tickets.ts sigue aceptando `tokenEntrega` en
+// el body por compatibilidad, pero este formulario ya no lo envía.
 import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
 import { catalogoTickets, crearTicket, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { comprimirImagen, archivoABase64 } from '../../core/imagenes.js';
 import { esDniValido } from '../../core/utils.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
-
-const route = useRoute();
-const tokenEntrega = route.query.entrega ? String(route.query.entrega) : '';
 
 // estado: 'cargando_catalogo' | 'formulario' | 'enviando' | 'confirmacion' | 'error_catalogo'
 const estado = ref('cargando_catalogo');
@@ -34,7 +35,7 @@ const form = ref({
 // Identificación SOLO por DNI (igual que TicketBuscarView): un correo puede
 // repetirse entre empleados o una persona tener varios, el DNI no.
 const dniTocado = ref(false);
-const dniValido = computed(() => !!tokenEntrega || esDniValido(form.value.contacto));
+const dniValido = computed(() => esDniValido(form.value.contacto));
 const errorDni = computed(() =>
   dniTocado.value && !dniValido.value ? MENSAJES_ERROR_TICKETS.dni_invalido : ''
 );
@@ -97,8 +98,7 @@ async function enviar() {
       descripcion: form.value.descripcion.trim(),
       categoriaId: form.value.categoriaId,
       subcategoriaId: form.value.subcategoriaId || null,
-      tokenEntrega: tokenEntrega || undefined,
-      contacto: tokenEntrega ? undefined : form.value.contacto.trim(),
+      contacto: form.value.contacto.trim(),
       adjunto,
     });
     estado.value = 'confirmacion';
@@ -146,7 +146,7 @@ onMounted(cargarCatalogo);
         <h2 class="ticket-title">Nuevo ticket</h2>
 
         <form class="ticket-form" @submit.prevent="enviar">
-          <div v-if="!tokenEntrega" class="form-group full">
+          <div class="form-group full">
             <label for="tk-contacto">DNI *</label>
             <input
               id="tk-contacto"
@@ -162,9 +162,6 @@ onMounted(cargarCatalogo);
               @blur="dniTocado = true"
             >
             <p v-if="errorDni" id="tk-contacto-error" class="form-error" role="alert">{{ errorDni }}</p>
-          </div>
-          <div v-else class="ticket-identificado">
-            <i class="ti ti-user-check" aria-hidden="true"></i> Empleado identificado automáticamente.
           </div>
 
           <div class="form-group full">
@@ -273,17 +270,6 @@ onMounted(cargarCatalogo);
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.ticket-identificado {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-base);
-  color: var(--color-success-text);
-  background: var(--color-success-bg);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
 }
 
 .ticket-adjuntar { display: flex; }
