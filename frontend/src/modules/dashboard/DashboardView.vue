@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { RouterLink } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useAuthStore } from '../../stores/auth.js';
+import { showToast } from '../../core/toast.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
@@ -49,6 +50,10 @@ onMounted(async () => {
     pendientes.value = pend;
     pendientesTickets.value = pendTk;
     pendientesProblemas.value = pendProb;
+  } catch (e) {
+    // Un fallo de carga no debe tumbar la vista: stats queda en null y el
+    // template lo trata como "no disponible" en vez de leer sus propiedades.
+    showToast(e?.message || 'Error al cargar el dashboard', 'error');
   } finally {
     cargando.value = false;
   }
@@ -141,7 +146,8 @@ onMounted(async () => {
         <!-- Resumen: salud general de los 6 módulos, todo navegable -->
         <div class="section section--stats">
           <h2 class="section-title section-title--secondary">Resumen</h2>
-          <div class="grid-12">
+          <div v-if="!stats" class="no-results no-results--compacto">No se pudo cargar el resumen.</div>
+          <div v-else class="grid-12">
             <RouterLink v-if="auth.puedeVerModulo('empleados')" to="/empleados?estado=Activo" class="stat-card stat-card--clic col-2">
               <div class="stat-icon stat-icon--empleados"><i class="ti ti-users"></i></div>
               <div class="stat-info">

@@ -11,6 +11,11 @@ import { equiposApi } from './equipos.js';
 const ORDEN_COLUMNAS = ['dni', 'apellidos', 'cargo', 'estado', 'fecha_alta'];
 const ORDEN_DEFECTO = { columna: 'apellidos', ascending: true };
 
+// area_obra (función/asignación laboral) y ubicacion (lugar físico) son dos
+// ejes independientes desde la migración 059 — cada uno su propio embed,
+// sin relación entre sí (antes la ubicación salía de areas_obras.ubicacion_id).
+const SELECT_EMPLEADO = '*, empresas(nombre), areas_obras(nombre), ubicaciones(nombre)';
+
 // Query base del listado con filtros en servidor. La búsqueda "juan perez"
 // se trocea por tokens y cada token debe matchear nombre, apellido o DNI
 // (igual que el antiguo filtro en cliente sobre el nombre concatenado).
@@ -20,7 +25,7 @@ const ORDEN_DEFECTO = { columna: 'apellidos', ascending: true };
 function queryEmpleados({ q = '', estado = '', orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('empleados')
-    .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))', conteo ? { count: 'exact' } : undefined)
+    .select(SELECT_EMPLEADO, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
   if (estado) query = query.eq('estado', estado);
   const qSafe = sanitizarTermino(q);
@@ -58,7 +63,7 @@ export const empleadosApi = {
   async listEmpleadosRecientes(limit = 5) {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
+      .select(SELECT_EMPLEADO)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -69,7 +74,7 @@ export const empleadosApi = {
   async listEmpleados() {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
+      .select(SELECT_EMPLEADO)
       .is('deleted_at', null)
       .order('apellidos', { ascending: true });
     if (error) throw error;
@@ -79,7 +84,7 @@ export const empleadosApi = {
   async getEmpleado(id) {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
+      .select(SELECT_EMPLEADO)
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -92,7 +97,7 @@ export const empleadosApi = {
   async buscarPorDni(dni) {
     const { data, error } = await getClient().database
       .from('empleados')
-      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
+      .select(SELECT_EMPLEADO)
       .eq('dni', dni)
       .maybeSingle();
     if (error) throw error;
@@ -103,7 +108,7 @@ export const empleadosApi = {
     const { data, error } = await getClient().database
       .from('empleados')
       .insert([empleadoToRow(datos)])
-      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
+      .select(SELECT_EMPLEADO)
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -114,7 +119,7 @@ export const empleadosApi = {
       .from('empleados')
       .update(empleadoToRow(datos))
       .eq('id', id)
-      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
+      .select(SELECT_EMPLEADO)
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -234,7 +239,7 @@ export const empleadosApi = {
       .from('empleados')
       .update({ deleted_at: null, estado: 'Activo' })
       .eq('id', id)
-      .select('*, empresas(nombre), areas_obras(nombre, ubicaciones(nombre))')
+      .select(SELECT_EMPLEADO)
       .single();
     if (error) throw error;
     return mapEmpleado(data);
@@ -276,7 +281,7 @@ function mapEmpleado(row) {
     empresa_nombre: empresa.nombre || '',
     area_obra_id: row.area_obra_id || '',
     area_obra_nombre: areaObra.nombre || '',
-    ubicacion_nombre: areaObra.ubicaciones?.nombre || '',
+    ubicacion_nombre: row.ubicaciones?.nombre || '',
     estado: row.estado,
     fecha_alta: row.fecha_alta || '',
     notas: row.notas || '',
