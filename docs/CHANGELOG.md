@@ -10,6 +10,21 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-17** — Migración 062 (`README.md`, `docs/PANORAMA_SISTEMA.md`,
+  `docs/HISTORIAL-AUDITORIAS.md`, `AGENTS.md`): respuesta a los 80 hallazgos del InsForge
+  Backend Advisor. `REVOKE EXECUTE ... FROM PUBLIC` en las 16 funciones
+  `SECURITY DEFINER` marcadas "callable by: public", con `GRANT` de vuelta a
+  `authenticated` solo en las 10 que un rol autenticado realmente invoca
+  (RLS o RPC del cliente) — ninguna se convirtió a `SECURITY INVOKER`, la
+  sugerencia genérica del advisor, porque rompería el patrón de recursión de
+  RLS ya documentado. Investigando esas 16 apareció un hallazgo no reportado
+  individualmente por el advisor: 3 funciones `_test_reporte_*` (gemelas de
+  `scripts/paridad-reporte-tickets.mjs`) habían quedado en producción por
+  descuido sin el guard `es_staff()` de las reales — fuga real de datos sin
+  autenticar, eliminadas en la misma migración. Suma 61 índices en columnas
+  FK sin índice y autovacuum más agresivo (+ `VACUUM ANALYZE` inmediato) en
+  las 3 tablas con >20% de tuplas muertas. Ver Ciclo 6 en
+  `docs/HISTORIAL-AUDITORIAS.md` para el detalle hallazgo por hallazgo.
 - **2026-08-17** — Bug en producción (`README.md`, `AGENTS.md`,
   `docs/HISTORIAL-AUDITORIAS.md`): `GET /empleados` devolvía 400 `PGRST200`
   ("Could not find a relationship between 'areas_obras' and 'ubicaciones'")

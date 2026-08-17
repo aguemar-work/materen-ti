@@ -367,6 +367,36 @@ regresión de Ciclo 3/4 — se confirmó vigente todo lo ya cerrado (modales,
 `:disabled`, tap targets, foco, `aria-label`) en los archivos tocados por
 este ciclo.
 
+## Ciclo 6 — InsForge Backend Advisor (2026-08-17)
+
+Alcance: reporte automatizado del InsForge Backend Advisor contra el esquema
+real de producción — 80 hallazgos (16 críticos de seguridad, 61 de
+performance, 3 de salud). A diferencia de los ciclos 1-5 (código/estático),
+este parte de introspección directa del catálogo de Postgres (`pg_proc`,
+`pg_policies`, `pg_indexes`, estadísticas de autovacuum). Los 16 críticos se
+investigaron uno por uno (definición de cada función, quién la llama —
+policy RLS, RPC del frontend, o solo trigger interno) antes de decidir el
+fix; ninguno se resolvió aplicando ciegamente la sugerencia genérica del
+advisor. Todo aplicado y verificado en el mismo cambio (migración 062).
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| BA-01 | 16 funciones `SECURITY DEFINER` con `EXECUTE` en el default de Postgres a `PUBLIC` (incluye `anon`, sin uso en este proyecto) | Crítica ×16 | **Resuelto** | Migración 062 — `REVOKE ... FROM PUBLIC` en las 16; `GRANT ... TO authenticated` de vuelta solo en las 10 invocadas directo por un rol autenticado (RLS o RPC del cliente). Ninguna se convirtió a `SECURITY INVOKER` (romperían el patrón de RLS de §3 de `PANORAMA_SISTEMA.md`) |
+| BA-02 | Hallazgo no reportado individualmente por el advisor bajo ese nombre, encontrado al investigar BA-01: `_test_reporte_tickets`/`_test_reporte_tickets_resumen`/`_test_reporte_satisfaccion_consolidado` (gemelas de prueba de `scripts/paridad-reporte-tickets.mjs`, migración 053) quedaron en el esquema de producción por descuido, **sin** el guard `es_staff()` de las funciones reales — con `EXECUTE` abierto a `PUBLIC`, fuga real de datos de tickets/satisfacción sin autenticar | Crítica (más grave que BA-01) | **Resuelto** | Migración 062 — `DROP FUNCTION` de las 3 |
+| BA-03 | 61 columnas FK sin índice (`performance/missing-fk-index`) — JOINs con full scan, `ON DELETE CASCADE` bloqueante | Warning ×61 | **Resuelto** | Migración 062 — `CREATE INDEX IF NOT EXISTS` (no `CONCURRENTLY`: el archivo se aplicó en lotes de `db query`, cada uno una transacción implícita de protocolo simple donde `CONCURRENTLY` no puede correr; tablas de decenas/cientos de filas, lock despreciable) |
+| BA-04 | 3 tablas con >20% de tuplas muertas (`entregas` 42%, `eventos_equipo` 40%, `asignaciones_cuenta` 22%) | Info ×3 | **Resuelto** | Migración 062 — `autovacuum_vacuum_scale_factor=0.05`/`autovacuum_analyze_scale_factor=0.02` en las 3 (DDL, va en la migración) + `VACUUM ANALYZE` inmediato de las 3 corrido aparte (no puede ir dentro de una transacción) |
+
+**Nota operativa**: el archivo `migrations/062_advisor_grants_indices_autovacuum.sql`
+no se pudo aplicar con `scripts/apply-migration.mjs` (`ENAMETOOLONG` — el
+tamaño del archivo, con comentarios, excede el límite de línea de comandos
+de Windows del gotcha ya documentado en `AGENTS.md`). Se aplicó en 8 llamadas
+`db query` por concepto (revokes, grants, drops, 4 lotes de índices,
+autovacuum, 2 `VACUUM ANALYZE` sueltos); cada lote es idempotente
+(`REVOKE`/`GRANT`/`DROP FUNCTION IF EXISTS`/`CREATE INDEX IF NOT EXISTS`), así
+que no hay riesgo de aplicación parcial inconsistente. El archivo único en
+`migrations/` se conserva como fuente de verdad, igual que el precedente ya
+documentado en `AGENTS.md` (migración 031) para archivos grandes.
+
 ## Cómo mantener esto al día
 
 Cuando se cierre un hallazgo (código o config), actualizar su fila de

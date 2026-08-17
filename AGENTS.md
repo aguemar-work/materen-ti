@@ -118,6 +118,19 @@ cuándo y si la contraseña se rotó después.
 - **Windows + `db query`**: límite de línea de comandos ~8 KB y ejecución poco
  fiable de múltiples statements DML en una llamada. Para updates masivos:
  un solo `UPDATE ... FROM (VALUES ...)` por lote.
+- **Gotcha distinto en `scripts/apply-migration.mjs` con archivos grandes
+ (verificado 2026-08-17, migración 062)**: el script evita el límite de
+ `cmd.exe` de arriba con un here-string de PowerShell (`-EncodedCommand`),
+ pero ese mismo mecanismo falla con `ENAMETOOLONG` en archivos de varios KB
+ (con comentarios) — el `-EncodedCommand` va en base64/UTF-16LE, que infla
+ el tamaño ~2.7× y termina superando el límite de línea de comandos de
+ `CreateProcess` en Windows (~32767 caracteres), distinto del límite de
+ `cmd.exe`. Mitigación: aplicar con `npx @insforge/cli db query "<sql>"`
+ directo (sin el script, sin PowerShell de por medio) en varios lotes por
+ concepto, cada SQL en **una sola línea** (los saltos de línea reales como
+ argumento fallan con `Query is required`). El archivo único en
+ `migrations/` se conserva igual como fuente de verdad — mismo criterio que
+ el gotcha de la migración 031 de arriba.
 - **Gotcha del CLI en Windows (jul 2026, migración 031)**: `db query` (incluso
  vía `scripts/apply-migration.mjs`, que ya evita el límite de línea de
  comandos con un here-string de PowerShell) puede rechazar DDL con
