@@ -435,12 +435,69 @@ DNI en búsqueda de tickets) no se re-audita acá.
 | ID | Hallazgo | Severidad | Estado | Referencia |
 |----|----------|-----------|--------|------------|
 | V-01 | `README.md`, `AGENTS.md`, `docs/HISTORIAL-AUDITORIAS.md`, `docs/CHANGELOG.md` y `frontend/.env.example` tenían la URL real de producción y el nombre del proyecto backend en texto plano — documentación interna, tratable como segura para pegar en cualquier IA/tercero | Media | **Resuelto** | Reemplazados por `<INSFORGE_PROJECT_URL>`/`<PROJECT_NAME>`; nota nueva "Documentación sensible" en `AGENTS.md`. `frontend/vercel.json`/`public/vercel.json` NO se tocan (la URL/DSN de Sentry ahí son funcionales para la CSP) — quedan marcados como "no compartir", no "redactar" |
-| V-02 | Despliegue no verificable: sin tracking de qué migraciones se aplicaron, CI pasaba en verde con `::warning::` si faltaban los secrets de smoke test, sin forma de confirmar si el redeploy de una edge function ya ocurrió | Alta | **Parcial** | Migraciones 069 (`schema_migrations`) y 070 (`function_deploys`) + acción `version` en las 5 edge functions cierran la parte de "no se puede consultar". `scripts/apply-migration.mjs` verifica antes de reaplicar. CI: `resumen-verificacion` consolida el estado real, `secrets-smoke-pendientes` (schedule semanal) falla duro si los 4 secrets siguen sin cargarse. **Sigue pendiente, fuera de este ciclo a propósito**: crear esos secrets (requiere el dashboard de InsForge, coordina el usuario) y confirmar el redeploy real de las edge functions con `@insforge/sdk@1.5.2` (H-12) |
-| V-03 | Permisos de módulo (`staff_modulos_permisos`, 056) solo controlaban sidebar/router — un ASISTENTE sin un módulo podía leer/escribir esa tabla completa vía SDK directo | Alta | **Resuelto** | Migración 068 — `tiene_permiso_modulo()` en RLS de `licencias`/`equipos`/`cuentas` (+ tablas de asignación), JEFE exento. `empleados` excepción a propósito (SELECT sin gate, ver nota en la propia migración). `functions/credenciales.ts` gana el mismo chequeo para los caminos que bypasean RLS (cliente admin) |
-| V-04 | Entrega pública de credenciales (`entregas`): token en texto plano en BD, sin `Cache-Control: no-store`, reutilizado como query param al derivar a "crear ticket" (secreto ya consumido en una URL/historial), intentos fallidos/expirados sin auditar | Media | **Resuelto** (067 pendiente de aplicar) | 064 (auditoría de fallos + ip/user_agent), 066 (`token_hash`, aditivo), 067 (retira `token` en claro — **aplicar solo ≥7 días después de 066**, ver advertencia en el propio archivo). `EntregaView.vue`/`TicketNuevoView.vue` ya no propagan el token por query string. Generación del token (`crypto.getRandomValues`, 144 bits) e invalidación atómica (`UPDATE ... WHERE viewed_at IS NULL`) ya estaban bien, no se tocaron |
-| V-05 | `accesos_log` sin columnas de IP/user-agent, pese a que el patrón de extracción segura ya existía en otras edge functions | Baja | **Resuelto** | Migración 064 |
-| V-06 | `personal-registro`: rate-limit solo por IP (compartido `buscarDni`/`crear`), sin tope por DNI — permitía extraer datos de un empleado real rotando de IP | Media | **Resuelto** | Migración 065, mismo patrón que `ticket_busqueda_intentos` (H-02) |
+| V-02 | Despliegue no verificable: sin tracking de qué migraciones se aplicaron, CI pasaba en verde con `::warning::` si faltaban los secrets de smoke test, sin forma de confirmar si el redeploy de una edge function ya ocurrió | Alta | **Parcial** | Migraciones 069 (`schema_migrations`) y 070 (`function_deploys`) + acción `version` en las 5 edge functions cierran la parte de "no se puede consultar" — **aplicadas de verdad recién el 2026-08-17 en el Ciclo 9**, ver nota ahí; hasta entonces esta fila decía "Resuelto/Parcial" sin que las tablas existieran en producción. `scripts/apply-migration.mjs` verifica antes de reaplicar. CI: `resumen-verificacion` consolida el estado real, `secrets-smoke-pendientes` (schedule semanal) falla duro si los 4 secrets siguen sin cargarse. **Sigue pendiente**: crear esos secrets (requiere el dashboard de InsForge, coordina el usuario) y confirmar el redeploy real de las edge functions con `@insforge/sdk@1.5.2` (H-12) — las 5 edge functions siguen con el código anterior a 064-068 desplegado, ver Ciclo 9 |
+| V-03 | Permisos de módulo (`staff_modulos_permisos`, 056) solo controlaban sidebar/router — un ASISTENTE sin un módulo podía leer/escribir esa tabla completa vía SDK directo | Alta | **Resuelto** | Migración 068 — `tiene_permiso_modulo()` en RLS de `licencias`/`equipos`/`cuentas` (+ tablas de asignación), JEFE exento. `empleados` excepción a propósito (SELECT sin gate, ver nota en la propia migración). `functions/credenciales.ts` gana el mismo chequeo para los caminos que bypasean RLS (cliente admin). **Aplicada de verdad y verificada el 2026-08-17 (Ciclo 9)** — 24 políticas confirmadas contra `pg_policies`, ninguna dependencia de un redeploy de edge function pendiente (RLS corre siempre, sea cual sea el código desplegado) |
+| V-04 | Entrega pública de credenciales (`entregas`): token en texto plano en BD, sin `Cache-Control: no-store`, reutilizado como query param al derivar a "crear ticket" (secreto ya consumido en una URL/historial), intentos fallidos/expirados sin auditar | Media | **Parcial** (066 aplicada, 067 sigue pendiente a propósito) | 064 (auditoría de fallos + ip/user_agent — aplicada, ver Ciclo 9), 066 (`token_hash`, aditivo — aplicada y backfillada, 67/67 filas, ver Ciclo 9), 067 (retira `token` en claro — **NO aplicar todavía**: el `credenciales` desplegado hoy sigue buscando por `token` en claro, no por `token_hash`; aplicar 067 ahora rompería la apertura de cualquier entrega vigente. Requiere primero redesplegar `credenciales` con el código ya en el repo, y esperar 7 días desde ese redeploy, ver advertencia del propio archivo). `EntregaView.vue`/`TicketNuevoView.vue` ya no propagan el token por query string. Generación del token (`crypto.getRandomValues`, 144 bits) e invalidación atómica (`UPDATE ... WHERE viewed_at IS NULL`) ya estaban bien, no se tocaron |
+| V-05 | `accesos_log` sin columnas de IP/user-agent, pese a que el patrón de extracción segura ya existía en otras edge functions | Baja | **Parcial** | Migración 064 aplicada y verificada (Ciclo 9) — columnas `ip`/`user_agent` y el valor `entrega_fallida` ya existen. El `credenciales` desplegado en producción todavía no las llena (sigue con el código anterior); el código del repo ya lo hace. Sin efecto real hasta el redeploy |
+| V-06 | `personal-registro`: rate-limit solo por IP (compartido `buscarDni`/`crear`), sin tope por DNI — permitía extraer datos de un empleado real rotando de IP | Media | **Parcial** | Migración 065 aplicada y verificada (Ciclo 9), mismo patrón que `ticket_busqueda_intentos` (H-02) — columna `dni` ya existe. El `personal-registro` desplegado en producción todavía inserta solo `{ip}` en `personal_registro_intentos` (sigue con el código anterior); el código del repo ya valida también por DNI. Sin efecto real hasta el redeploy |
 | V-07 | Fotos de equipos: subida directa del navegador al bucket público `equipos-fotos`, sin validación server-side de tipo/tamaño (solo cliente) | Media | **Resuelto** | Nueva edge function `equipos-fotos.ts` — valida magic bytes + tamaño en servidor (mismo patrón que adjuntos de `tickets.ts`), key generada en servidor. Bucket sigue público a propósito (miniaturas sin firmar en listados) |
+
+## Ciclo 9 — InsForge Backend Advisor, tercera pasada (2026-08-17)
+
+Alcance: nueva corrida del advisor, 23 hallazgos. 22 son repetición exacta de
+BA-05 (10 funciones `SECURITY DEFINER`, +1 con `staff_nombres`) y BA-06 (11
+tablas RLS solo-SELECT) del Ciclo 7 — mismo ruido esperado, sin re-investigar
+desde cero, sin cambios. El único hallazgo nuevo es `tickets` cruzando el
+umbral de dead tuples que no tenía en el Ciclo 6.
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| BA-09 | Tabla `tickets` con 24% de tuplas muertas (36 de 151) — no estaba entre las 3 tablas que superaban el umbral en el Ciclo 6 | Info | **Resuelto** | Migración 071 — mismo tuning que 062 (`autovacuum_vacuum_scale_factor=0.05`/`autovacuum_analyze_scale_factor=0.02`) + `VACUUM ANALYZE public.tickets` corrido aparte. Verificado con `pg_stat_user_tables` (dead tuples a 0) y `pg_class.reloptions` |
+
+**Hallazgo no planeado, descubierto al aplicar esta migración**: al aplicar
+la 071 con `scripts/apply-migration.mjs`, el script imprimió
+`✓ Migración aplicada` pero `pg_class.reloptions` de `tickets` quedó `null`
+inmediatamente después (comparado con `entregas`/`eventos_equipo`/
+`asignaciones_cuenta`, que sí tienen sus `reloptions` de la migración 062).
+Reaplicando el mismo `ALTER TABLE` con `npx @insforge/cli db query` directo
+(sin el script) sí quedó seteado a la primera — el script falla en silencio
+al menos en este caso, causa raíz no diagnosticada.
+
+Investigar esa falla llevó a verificar el esquema real contra las
+migraciones 064-070 y confirmar que **ninguna de las 7 había llegado nunca a
+producción**, pese a estar documentadas como aplicadas en el Ciclo 8 (V-02,
+V-03, V-05, V-06). El corte era exacto entre la 063 (confirmada en vivo) y la
+064. Reaplicadas ahora, una por una, con `npx @insforge/cli db import`
+(evitando el script) y verificación contra el esquema real después de cada
+una:
+
+- **064, 065, 066, 068, 069, 070 — aplicadas y verificadas en producción
+  el 2026-08-17.** 068 en particular (el fix de RLS de V-03) se verificó
+  columna por columna contra `pg_policies`: 24 políticas nuevas, exactas al
+  archivo, y contra los datos reales de `staff_modulos_permisos` (3 cuentas
+  de staff, ninguna pierde acceso que no debiera perder). Filas V-02/V-03/
+  V-05/V-06 del Ciclo 8 actualizadas a su estado real.
+- **067 — deliberadamente NO aplicada.** El propio archivo exige que el
+  código de `functions/credenciales.ts` que busca por `token_hash` ya esté
+  desplegado, y esperar 7 días desde ese redeploy. Verificado con
+  `npx @insforge/cli functions code credenciales` que la función desplegada
+  hoy todavía busca por `token` en claro (código anterior a la 066) —
+  aplicar 067 ahora habría roto la apertura de las 67 entregas ya emitidas.
+- **Efecto colateral encontrado al verificar 064/065**: las 5 edge functions
+  desplegadas en producción corresponden todas al código anterior a este
+  lote (verificado con `functions code` para `credenciales` y
+  `personal-registro`) — las columnas nuevas (`ip`, `user_agent`, `dni`)
+  existen pero ninguna edge function las llena todavía. El beneficio real de
+  064/065/066 (auditoría de fallos, rate-limit por DNI) no está activo hasta
+  que se redespliegue el código ya presente en el repo. Sin este redeploy,
+  tampoco se puede empezar a contar los 7 días para aplicar la 067. Queda
+  pendiente, requiere que el usuario autorice el redeploy de las edge
+  functions afectadas.
+
+Ver [[migraciones-064-070-drift-produccion]] en memoria para el detalle
+completo y el estado de la causa raíz del script (no diagnosticada, la
+mitigación fue evitar el script y usar `db import`/`db query` directo con
+verificación posterior).
 
 ## Cómo mantener esto al día
 
