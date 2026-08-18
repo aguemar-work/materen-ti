@@ -27,10 +27,11 @@ const ESTADO_RECHAZADO = 'rechazado';
 // cientos y volvía el documento ilegible. Se informa el total aparte.
 const MAX_COMENTARIOS = 20;
 
-// Los filtros `in` viajan en la URL (~40 caracteres por UUID): con más de ~180
-// tickets en el periodo la petición reventaba el límite de URL y el reporte
-// entero fallaba con 414. Se trocea.
-const TAM_LOTE = 100;
+// Los filtros `in` viajan en la URL (~40 caracteres por UUID): con lotes de
+// 100 ya se vio en producción que el gateway responde 502 bastante antes de
+// llenar el lote (~90 IDs, sobre todo si el select trae joins encima), no
+// recién en algún límite mayor tipo 414. Se trocea con margen real.
+const TAM_LOTE = 30;
 
 function lotes(lista, tam = TAM_LOTE) {
   const salida = [];
@@ -263,57 +264,19 @@ export const reportesTicketsApi = {
   },
 
   // Consolidado histórico de satisfacción (TODO el histórico, sin recorte de
-  // fecha — a diferencia del resto de este archivo): todas las respuestas +
-  // el resumen por solicitante y por técnico. Se trae todo de una sola vez y
-  // se pagina/ordena en el cliente (vista ReporteSatisfaccionView.vue), a
-  // propósito: como los dos resúmenes ya necesitan el histórico completo, no
-  // tiene sentido pedirlo de nuevo página por página para la tabla.
+  // fecha): todas las respuestas + el resumen por solicitante y por técnico.
+  // Antes se armaba en el cliente con .in() troceado por lotes de IDs — con
+  // ~90 tickets ya generaba una URL lo bastante larga como para que el
+  // gateway respondiera 502 (el navegador lo reporta como bloqueo CORS,
+  // porque una respuesta de error del gateway no lleva cabeceras CORS).
+  // Ahora se delega en el RPC `reporte_satisfaccion_consolidado()`
+  // (migración 053, ya otorgado a `authenticated`): mismo cálculo, una sola
+  // consulta SQL sin `.in()` ni límite de URL posible. La paginación/orden
+  // de la tabla se sigue haciendo en el cliente (ReporteSatisfaccionView.vue).
   async obtenerSatisfaccionConsolidado() {
-    const db = getClient().database;
-    const { data, error } = await db.from('ticket_satisfaccion')
-      .select('id, ticket_id, nivel, comentario, fecha_envio, created_at')
-      .order('created_at', { ascending: false });
+    const { data, error } = await getClient().database.rpc('reporte_satisfaccion_consolidado');
     if (error) throw error;
-    const encuestas = data || [];
-    if (!encuestas.length) return { respuestas: [], porSolicitante: [], porTecnico: [] };
-
-    const ticketIds = encuestas.map((e) => e.ticket_id);
-    const [tickets, eventos] = await Promise.all([
-      porLotes(ticketIds, (lote) => db.from('tickets')
-        .select('id, codigo, titulo, empleado_id, empleados(nombres, apellidos)')
-        .in('id', lote)),
-      porLotes(ticketIds, (lote) => db.from('ticket_eventos')
-        .select('ticket_id, user_id, detalle, created_at')
-        .eq('evento', 'estado_cambiado')
-        .in('ticket_id', lote)),
-    ]);
-
-    const ticketPorId = new Map(tickets.map((t) => [t.id, t]));
-    const { resoluciones } = resolucionesPorTicket(eventos);
-
-    const respuestas = encuestas.map((e) => {
-      const ticket = ticketPorId.get(e.ticket_id);
-      return {
-        id: e.id,
-        ticket_id: e.ticket_id,
-        ticket_codigo: ticket?.codigo || '',
-        ticket_titulo: ticket?.titulo || '',
-        empleado_id: ticket?.empleado_id || null,
-        solicitante: ticket?.empleados ? `${ticket.empleados.nombres} ${ticket.empleados.apellidos}`.trim() : 'Sin datos',
-        tecnico_id: resoluciones.get(e.ticket_id)?.userId || null,
-        nivel: e.nivel,
-        comentario: e.comentario,
-        fecha_envio: e.fecha_envio,
-        created_at: e.created_at,
-        respondida: esRespondida(e),
-      };
-    });
-
-    return {
-      respuestas,
-      porSolicitante: resumenSatisfaccionPorSolicitante(respuestas),
-      porTecnico: resumenSatisfaccionPorTecnico(respuestas),
-    };
+    return data || { respuestas: [], porSolicitante: [], porTecnico: [] };
   },
 };
 
@@ -358,68 +321,6 @@ export function resolucionesPorTicket(eventos) {
 // pero la vista lo marca como poco confiable (un solo nivel 1 no debe leerse
 // igual que un promedio sobre 20 respuestas).
 export const MIN_MUESTRA_PROMEDIO = 3;
-
-export function promedioYMuestra(niveles) {
-  const conNivel = niveles.filter((n) => n !== null && n !== undefined);
-  return {
-    promedio: conNivel.length ? conNivel.reduce((a, b) => a + b, 0) / conNivel.length : null,
-    muestra: conNivel.length,
-  };
-}
-
-// Sin promedio (nadie respondió con nivel todavía) va al final, no al
-// principio: no tiene sentido leerlo como "el peor".
-export function ordenarPeorPrimero(filas) {
-  return [...filas].sort((a, b) => {
-    if (a.promedio === null && b.promedio === null) return b.encuestasGeneradas - a.encuestasGeneradas;
-    if (a.promedio === null) return 1;
-    if (b.promedio === null) return -1;
-    return a.promedio - b.promedio;
-  });
-}
-
-export function resumenSatisfaccionPorSolicitante(respuestas) {
-  const mapa = new Map();
-  for (const r of respuestas) {
-    const clave = r.empleado_id || 'sin_empleado';
-    if (!mapa.has(clave)) {
-      mapa.set(clave, { empleado_id: r.empleado_id, nombre: r.solicitante, encuestasGeneradas: 0, encuestasRespondidas: 0, niveles: [] });
-    }
-    const fila = mapa.get(clave);
-    fila.encuestasGeneradas += 1;
-    if (r.respondida) fila.encuestasRespondidas += 1;
-    fila.niveles.push(r.nivel);
-  }
-  const filas = [...mapa.values()].map((f) => ({
-    empleado_id: f.empleado_id,
-    nombre: f.nombre,
-    encuestasGeneradas: f.encuestasGeneradas,
-    encuestasRespondidas: f.encuestasRespondidas,
-    ...promedioYMuestra(f.niveles),
-  }));
-  return ordenarPeorPrimero(filas);
-}
-
-export function resumenSatisfaccionPorTecnico(respuestas) {
-  const mapa = new Map();
-  for (const r of respuestas) {
-    const clave = r.tecnico_id || 'sin_asignar';
-    if (!mapa.has(clave)) {
-      mapa.set(clave, { tecnico_id: r.tecnico_id, encuestasGeneradas: 0, encuestasRespondidas: 0, niveles: [] });
-    }
-    const fila = mapa.get(clave);
-    fila.encuestasGeneradas += 1;
-    if (r.respondida) fila.encuestasRespondidas += 1;
-    fila.niveles.push(r.nivel);
-  }
-  const filas = [...mapa.values()].map((f) => ({
-    tecnico_id: f.tecnico_id,
-    encuestasGeneradas: f.encuestasGeneradas,
-    encuestasRespondidas: f.encuestasRespondidas,
-    ...promedioYMuestra(f.niveles),
-  }));
-  return ordenarPeorPrimero(filas);
-}
 
 // Por técnico, cuántos resolvió y de esos cuántos son de este mismo periodo
 // vs. arrastrados de antes — mismo desglose que el KPI "Resueltos", pero por
