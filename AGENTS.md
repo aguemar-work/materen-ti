@@ -273,17 +273,33 @@ cuándo y si la contraseña se rotó después.
  130 archivos existentes (espaciado/orden, no bugs); forzarlo ahora sería
  reformatear el repo entero de golpe. Uso manual, no gate.
 - Build: `cd frontend && npx vite build`.
-- Tests unitarios: `cd frontend && npm test` (Vitest). **Línea base real,
- verificada 2026-08-17: 100 pasan + 12 se saltan (112 en total, 2 archivos de
- test omitidos) — no los "96/97" ni "97/97" con los que se arrancó a cerrar
- el hallazgo original. Esta se verificó corriendo la suite, no de memoria.**
- Los que se saltan son los dos smoke de integración
- (`tests/integration/tickets-api.smoke.test.js` y
- `tests/integration/embeds.smoke.test.js`, ambos `describe.skipIf(!listo)`)
- cuando faltan los secrets — mismo caso que `test:integration` más abajo, no
- es un test roto. Cubre: cifrado, validaciones de la edge function de
+- Tests unitarios: `cd frontend && npm test` (Vitest). **No fijar esta cifra
+ de memoria — corre la suite y lee su propio resumen final; ya pasó una vez
+ que este número quedó obsoleto en este mismo párrafo (2026-08-17 → 100+12,
+ desactualizado dos ciclos después) y no vale la pena repetirlo.** Snapshot
+ verificado corriendo la suite el 2026-08-18 (Ciclo 11, tras endurecer los
+ helpers de autorización): **148 pasan + 1 falla + 25 se saltan (174 en
+ total)**.
+   - **La 1 que falla es esperada, no es una regresión, y no se corrige
+     acá a propósito**: `tests/integration/autorizacion-anonima.smoke.test.js`
+     → `"tiene_permiso_modulo — debería rechazar ejecución anónima"` —
+     hallazgo P0-05 (`tiene_permiso_modulo(text)` es la única función
+     `SECURITY DEFINER` del sistema sin `revoke ... from public`), ver
+     `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11. Sigue en rojo hasta que se
+     aplique esa migración.
+   - Las 25 que se saltan son los smoke de integración condicionados a
+     secrets/cuentas que no existen hoy: `tickets-api.smoke.test.js` (1),
+     `embeds.smoke.test.js` (11) y `autorizacion-roles.smoke.test.js`
+     completo (13) — los tres `describe.skipIf(!listo)`, ninguno es un
+     test roto. `autorizacion-anonima.smoke.test.js` no está en esta
+     lista: corre completo (no se salta) porque solo necesita
+     `VITE_INSFORGE_URL`/`ANON_KEY`, que sí existen en este entorno.
+ Cubre: cifrado, validaciones de la edge function de
  tickets, dominio de tickets, formatters, periodos y PDF del reporte, forma
- de `insforgeApi`, paginación. Corren en CI en cada push
+ de `insforgeApi`, paginación, y (desde 2026-08-18) los propios discriminantes
+ de autorización del arnés de pruebas (`autorizacion-helpers.test.js`, sin
+ red — verifica que exigen un rechazo específico y que sus mensajes de
+ fallo nunca imprimen un payload). Corren en CI en cada push
  (`.github/workflows/ci.yml`, job `build-y-tests`), junto con
  `node scripts/contraste.mjs` (contraste WCAG de los tokens) y
  `npm audit --omit=dev --audit-level=high` (vulnerabilidades de dependencias).
@@ -294,19 +310,41 @@ cuándo y si la contraseña se rotó después.
  a histórico, todo sin documentar. Ver `docs/HISTORIAL-AUDITORIAS.md` (Q-01) y
  `CONTRIBUTING.md` (por qué un commit = un cambio coherente).
 - Smoke de integración contra el backend real: `npm run test:integration`
- (corre los dos archivos de `tests/integration/`: tickets y, desde el
+ (corre los 4 archivos de `tests/integration/`: tickets y, desde el
  incidente de producción del 2026-08-17 — ver `docs/HISTORIAL-AUDITORIAS.md`
  Q-01 —, `embeds.smoke.test.js`, una consulta por cada `select()` con embed
- del resto de dominios). Atrapa desincronización esquema↔frontend. Corre en
- CI como job aparte (`test-integration`) — **requiere 4 secrets del repo**
- que hoy no existen: `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`,
- `INSFORGE_TEST_STAFF_EMAIL`, `INSFORGE_TEST_STAFF_PASSWORD` (la cuenta de
- staff debe ser **dedicada a CI**, nunca la de una persona real). Sin ellos
- el job emite un `::warning::` visible en la pestaña Actions/checks y **no
- verifica nada** — no confundir ese aviso con un check verde real.
+ del resto de dominios; más las dos pruebas negativas de autorización del
+ Ciclo 11, ver el bullet de más abajo). Atrapa desincronización esquema↔frontend. Corre en
+ CI como job aparte (`test-integration`) — **requiere 4 secrets del repo**:
+ `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`, `INSFORGE_TEST_STAFF_EMAIL`,
+ `INSFORGE_TEST_STAFF_PASSWORD` (la cuenta de staff debe ser **dedicada a
+ CI**, nunca la de una persona real, creada por el dashboard de InsForge —
+ nunca por registro público, ver README). **Desde 2026-08-18 (Ciclo 10,
+ P0-04) son obligatorios: si falta cualquiera, el job FALLA** (`::error::` +
+ `exit 1`), ya no se omite en verde con un `::warning::` — ver README "CI:
+ secrets del smoke de integración" para crearlos.
 - Invariantes de triggers de BD: `node scripts/test-db.mjs` (SQL con rollback).
  Job `tests-db` en CI; mismo patrón de `::warning::` si falta
- `INSFORGE_ACCESS_TOKEN`.
+ `INSFORGE_ACCESS_TOKEN`. Desde 2026-08-18 (Ciclo 11) incluye un 4º bloque:
+ `cerrar_ticket`/`staff_nombres`/`reporte_tickets*` rechazan ejecución sin
+ sesión de staff.
+- Pruebas negativas de autorización (`tests/integration/autorizacion-*.smoke.test.js`,
+ Ciclo 11, endurecidas después de la autoauditoría del mismo ciclo):
+ `autorizacion-anonima` corre siempre (solo necesita
+ `VITE_INSFORGE_URL`/`ANON_KEY`) y demuestra que un anónimo no lee tablas
+ internas ni ejecuta RPC `SECURITY DEFINER`. **Tiene un test que falla a
+ propósito** (`tiene_permiso_modulo`, hallazgo P0-05 — ver el párrafo de
+ "Tests unitarios" más arriba) — no es ruido, es el hallazgo real quedando
+ visible. `autorizacion-roles` cubre ASISTENTE sin módulo/sin
+ `credenciales.ver`, staff inactivo y `accesos_sensibles` fila por fila,
+ pero necesita hasta 4 cuentas de staff dedicadas que hoy no existen (ver
+ README "Cuentas adicionales..." — cada bloque se omite por separado si
+ falta la suya, no bloquea CI). Los discriminantes de autorización de
+ ambos archivos (`_autorizacion-helpers.js`, compartido) exigen un
+ rechazo específico — SQLSTATE `42501`, `P0001` con el mensaje del guard,
+ o el status HTTP real de la edge function — nunca "hubo algún error" a
+ secas; sus mensajes de fallo nunca imprimen el payload devuelto. Cubierto
+ por `frontend/tests/autorizacion-helpers.test.js` (unitario, sin red).
 - Contraste WCAG de los tokens: `node scripts/contraste.mjs`.
 - Probar la función sin sesión:
  `npx @insforge/cli functions invoke credenciales --data '{"action":"entregaAbrir","token":"x"}'`

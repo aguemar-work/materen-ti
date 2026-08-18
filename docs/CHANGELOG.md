@@ -10,6 +10,43 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-18** — Autoauditoría de las pruebas negativas de autorización
+  (`README.md`, `AGENTS.md`, `.github/workflows/ci.yml`): los 3 helpers
+  compartidos (`esperarSinAcceso`/`esperarRpcRechazada`/`esperarAccionRechazada`,
+  ahora centralizados en `frontend/tests/integration/_autorizacion-helpers.js`)
+  dejan de aceptar cualquier error como prueba de rechazo — exigen
+  SQLSTATE `42501`, `P0001` con el mensaje del guard, o el `statusCode`
+  HTTP real de la edge function (verificado en vivo antes de escribirlos,
+  no supuesto). Sus mensajes de fallo ya no imprimen `JSON.stringify(data)`
+  ni `JSON.stringify({data, error})` — solo código/status/conteo. Nuevo
+  `frontend/tests/autorizacion-helpers.test.js` (17 tests unitarios, sin
+  red) prueba ambas cosas. Documentación corregida para no prometer un
+  pipeline verde con el hallazgo P0-05 (`tiene_permiso_modulo` sin
+  `revoke`) todavía en rojo a propósito, y el conteo de `npm test` de
+  `AGENTS.md` deja de fijar una cifra (ya quedó obsoleta una vez). No se
+  tocó RLS, `entregaCrear`, ninguna migración ni ninguna cuenta.
+
+- **2026-08-18** — Pruebas negativas de autorización (`README.md`,
+  `AGENTS.md`, `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11): bloque 4 nuevo en
+  `tests/db/triggers.test.sql` (cerrar_ticket/staff_nombres/reporte_tickets*
+  sin sesión — 4/4 bloques OK) y dos archivos nuevos en
+  `frontend/tests/integration/`: `autorizacion-anonima.smoke.test.js` (sin
+  cuentas nuevas, corrido contra producción: 25/26 pasan — el fallo es un
+  hallazgo real, `tiene_permiso_modulo` sin `revoke`, no corregido a
+  propósito) y `autorizacion-roles.smoke.test.js` (ASISTENTE sin
+  módulo/`credenciales.ver`, staff inactivo, accesos_sensibles fila por
+  fila — necesita 4 cuentas de staff dedicadas que hoy no existen, cada
+  bloque se omite por separado sin bloquear CI).
+
+- **2026-08-18** — `ci.yml` (`README.md`, `AGENTS.md`,
+  `docs/HISTORIAL-AUDITORIAS.md` P0-04): el job `test-integration` deja de
+  omitirse en verde con `::warning::` cuando faltan sus 4 secrets
+  (`VITE_INSFORGE_URL`/`ANON_KEY`, `INSFORGE_TEST_STAFF_EMAIL`/`PASSWORD`) —
+  ahora falla (`::error::` + `exit 1`), sin imprimir valores. `tests-db` no
+  se toca (usa un token de CLI, no una cuenta de staff). No hay branch
+  protection en `main` hoy (verificado vía API de GitHub): marcar los jobs
+  como required status check sigue pendiente de que el usuario lo configure.
+
 - **2026-08-17** — Migraciones 064-070 + `functions/equipos-fotos.ts` (nueva)
   (`README.md`, `AGENTS.md`, `docs/PANORAMA_SISTEMA.md`,
   `docs/HISTORIAL-AUDITORIAS.md` Ciclo 8): verificación de un análisis de

@@ -319,9 +319,12 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 `tests/integration/*.test.js` contra el backend real de InsForge — la única
 clase de check que atrapa una desincronización esquema↔frontend (un `select`
 con embed que pide una relación que una migración ya rompió; ver
-`docs/HISTORIAL-AUDITORIAS.md`, Q-01, incidente 2026-08-17). Sin los 4
-secrets de abajo el job se omite con `::warning::` y **no verifica nada** —
-hoy (2026-08-17) no existen en el repo.
+`docs/HISTORIAL-AUDITORIAS.md`, Q-01, incidente 2026-08-17).
+
+**Desde 2026-08-18 (Ciclo 10, P0-04) los 4 secrets de abajo son obligatorios:
+si falta cualquiera, el job FALLA** (`::error::` + `exit 1`), ya no se omite
+en verde con un aviso. Si hoy no existen en el repo, **todo push/PR quedará
+en rojo en este check** hasta completar los pasos siguientes.
 
 1. **Crear la cuenta de staff dedicada a CI** (nunca la de una persona real):
    **no por registro público** — `disable_signup = true` en `insforge.toml`
@@ -344,15 +347,67 @@ hoy (2026-08-17) no existen en el repo.
    - `INSFORGE_TEST_STAFF_EMAIL` / `INSFORGE_TEST_STAFF_PASSWORD` — las
      credenciales de la cuenta creada en el paso 1.
 4. Verificar: relanzar el job `test-integration` de un PR/push — debe pasar
-   de `::warning::` a ejecutar de verdad (`npm run test:integration`, cubre
-   `tickets-api.smoke.test.js` + `embeds.smoke.test.js`).
+   de fallar por secrets faltantes a ejecutar de verdad (`npm run
+   test:integration`, cubre los 4 archivos de `tests/integration/`:
+   `tickets-api.smoke.test.js`, `embeds.smoke.test.js`,
+   `autorizacion-anonima.smoke.test.js` y, si además se provisionan las
+   cuentas de la sección siguiente, `autorizacion-roles.smoke.test.js`).
 
-Mientras estos secrets no existan: el job `resumen-verificacion` (mismo
-workflow) consolida en un solo lugar del resumen del run si `test-integration`
-y `tests-db` corrieron de verdad o solo pasaron en verde sin verificar nada, y
-un recordatorio semanal (`secrets-smoke-pendientes`, `on: schedule`) falla a
-propósito hasta que se carguen — no bloquea push/PR normales, solo evita que
-esto quede olvidado indefinidamente.
+   **Ojo — aun con los 4 secrets bien cargados, el job va a seguir en
+   rojo, por un motivo DISTINTO**: `autorizacion-anonima.smoke.test.js`
+   incluye a propósito un test que hoy falla (`tiene_permiso_modulo` —
+   hallazgo P0-05, `tiene_permiso_modulo(text)` es la única función
+   `SECURITY DEFINER` del sistema sin `revoke ... from public`, ver
+   `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11). No es un fallo del pipeline
+   ni de los secrets — es el hallazgo real quedando visible, en vez de
+   escondido detrás de un test debilitado. Va a seguir en rojo hasta que
+   se corrija esa migración (fuera del alcance de este cambio a
+   propósito).
+
+Mientras estos secrets no existan, `test-integration` falla en cada push/PR
+(a propósito). El job `resumen-verificacion` (mismo workflow) sigue
+consolidando en un solo lugar del resumen del run si `tests-db` corrió de
+verdad o solo pasó en verde sin verificar nada (ese job, aparte, mantiene el
+patrón de omitirse con `::warning::` si falta `INSFORGE_ACCESS_TOKEN` — no se
+tocó en este cambio), y el recordatorio semanal (`secrets-smoke-pendientes`,
+`on: schedule`) sigue fallando a propósito mientras los secrets no existan.
+
+**Pendiente aparte, no cubierto por este cambio**: marcar `test-integration`
+(y `tests-db`, cuando corresponda) como *required status check* en la
+protección de la rama `main` (GitHub → Settings → Branches) — hoy `main` no
+tiene ninguna regla de protección configurada, así que aunque el job falle,
+nada impide mergear igual. Eso requiere una decisión y acción del usuario en
+la configuración del repositorio, no un cambio de código.
+
+### Cuentas adicionales para las pruebas negativas de autorización (opcionales)
+
+Desde 2026-08-18 (Ciclo 11), `tests/integration/` tiene dos archivos más:
+
+- **`autorizacion-anonima.smoke.test.js`** — no necesita ninguna cuenta
+  nueva, solo `VITE_INSFORGE_URL`/`VITE_INSFORGE_ANON_KEY` (los mismos de
+  arriba). Corre siempre que esos dos existan.
+- **`autorizacion-roles.smoke.test.js`** — necesita hasta 4 cuentas de staff
+  dedicadas **distintas** de la cuenta genérica del paso 1 de arriba. **No
+  son obligatorias**: a diferencia de los 4 secrets de arriba, si faltan
+  estas el job sigue en verde (cada bloque se omite con `console.warn`, no
+  con `::error::`). Cada una habilita un bloque de pruebas por separado —
+  se pueden ir agregando de una a la vez:
+  1. `INSFORGE_TEST_ASISTENTE_SIN_MODULO_EMAIL`/`_PASSWORD` — cuenta creada y
+     activada igual que la genérica, pero con una diferencia importante:
+     **por el default "opt-out" de las migraciones 056/060, toda cuenta
+     nueva nace con los 8 módulos y `credenciales.ver` ya otorgados** — hay
+     que entrar como JEFE a Configuración → Staff y **revocarle** el módulo
+     "Licencias" y el permiso "Ver contraseñas" a propósito. Sin ese paso
+     manual, esta cuenta no sirve como caso negativo (se comportaría igual
+     que la genérica).
+  2. `INSFORGE_TEST_STAFF_INACTIVO_EMAIL`/`_PASSWORD` — crear el usuario
+     desde el dashboard y **no activarlo**. Es la más simple: activo=false
+     ya es el estado de alta por defecto (migración 018).
+  3. `INSFORGE_TEST_JEFE_CON_FILA_EMAIL`/`_PASSWORD` y
+     `INSFORGE_TEST_JEFE_SIN_FILA_EMAIL`/`_PASSWORD` — dos cuentas JEFE
+     reales (no ASISTENTE). La más costosa de las cuatro: crear dos cuentas
+     con rol JEFE es una decisión organizativa, no solo un checkbox de CI;
+     evaluar si vale la pena antes de provisionarlas.
 
 ## Backend: migraciones y función
 
