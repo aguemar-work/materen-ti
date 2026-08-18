@@ -29,6 +29,11 @@
 --         (set_fecha_completada)
 --   [038] dar_baja_empleado exige es_staff() (guard de la función, mismo
 --         alcance de prueba que [032] — ver nota del bloque 3)
+--   [051/061/053] cerrar_ticket, staff_nombres, reporte_tickets,
+--         reporte_tickets_resumen, reporte_satisfaccion_consolidado exigen
+--         es_staff() — mismo alcance de prueba que [032]/[038] (bloque 4,
+--         agregado 2026-08-18 al implementar pruebas negativas de
+--         autorización — ver docs/HISTORIAL-AUDITORIAS.md)
 --
 -- OJO — esta conexión (project_admin, ver AGENTS.md) tiene BYPASSRLS y el
 -- CLI bloquea `SET ROLE`/`SET LOCAL` ("Changing SQL session configuration
@@ -359,5 +364,70 @@ begin
     raise exception 'TESTS_OK [038] — guard de es_staff() verificado, todo revertido';
   else
     raise exception 'TESTS_FALLARON [038]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- Bloque 4 — RPCs sensibles sin sesión de staff: cerrar_ticket (051),
+-- staff_nombres (061), reporte_tickets / reporte_tickets_resumen /
+-- reporte_satisfaccion_consolidado (053)
+-- Aparte del bloque 3 por el mismo límite de línea de comandos.
+--
+-- Agregado 2026-08-18 (pruebas negativas de autorización): estas 5 RPC
+-- tenían guard `if not es_staff() then raise exception` verificado por
+-- inspección del SQL real, pero ninguna tenía prueba ejecutable. Mismo
+-- alcance y misma limitación que [032]/[038]: esta conexión (project_admin)
+-- no tiene auth.uid() — no es una sesión de staff real —, así que solo
+-- verifica el rechazo del guard, no la lógica de negocio interna (el cierre
+-- real de un ticket, el contenido del reporte, etc.) — eso sigue pendiente
+-- de verificación funcional con una sesión de staff real, mismo criterio
+-- que el resto de este archivo. Ninguna requiere fixtures: el guard es la
+-- primera línea ejecutable de las 5 funciones (verificado leyendo
+-- migrations/051, 061 y 053 antes de escribir este bloque), así que un
+-- UUID/rango de fechas inventado nunca llega a ejecutarse.
+-- ============================================================
+do $$
+declare
+  fallos text := '';
+begin
+  begin
+    perform public.cerrar_ticket('00000000-0000-4000-8000-000000000001');
+    fallos := fallos || '[051] cerrar_ticket no rechazó una llamada sin sesión de staff; ';
+  exception when others then
+    null; -- esperado
+  end;
+
+  begin
+    perform public.staff_nombres();
+    fallos := fallos || '[061] staff_nombres no rechazó una llamada sin sesión de staff; ';
+  exception when others then
+    null; -- esperado
+  end;
+
+  begin
+    perform public.reporte_tickets(now() - interval '30 days', now());
+    fallos := fallos || '[053] reporte_tickets no rechazó una llamada sin sesión de staff; ';
+  exception when others then
+    null; -- esperado
+  end;
+
+  begin
+    perform public.reporte_tickets_resumen(now() - interval '30 days', now());
+    fallos := fallos || '[053] reporte_tickets_resumen no rechazó una llamada sin sesión de staff; ';
+  exception when others then
+    null; -- esperado
+  end;
+
+  begin
+    perform public.reporte_satisfaccion_consolidado();
+    fallos := fallos || '[053] reporte_satisfaccion_consolidado no rechazó una llamada sin sesión de staff; ';
+  exception when others then
+    null; -- esperado
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [051/061/053] — 5 invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [051/061/053]: %', fallos;
   end if;
 end $$;
