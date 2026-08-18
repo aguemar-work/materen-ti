@@ -12,9 +12,10 @@
 // Acciones (POST { action, ... }):
 //   abrir     público { slug }               → { titulo, descripcion, preguntas }
 //   responder público { slug, respuestas }    → { ok }
+//   version   staff   {}                     → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 // ============================================================
 
-import { createAdminClient } from 'npm:@insforge/sdk@1.5.2';
+import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
 
 const ORIGENES_PERMITIDOS = new Set([
   'https://materen-ti.vercel.app',
@@ -114,6 +115,34 @@ export default async function (req: Request): Promise<Response> {
 
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
+
+  // version: staff únicamente (cierra el pendiente de H-12 — ver el mismo
+  // comentario en functions/credenciales.ts). No es una acción pública.
+  if (body.action === 'version') {
+    const authHeader = req.headers.get('Authorization');
+    const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
+    if (!userToken) return json({ ok: false, code: 'no_autenticado' }, 401);
+    const userClient = createClient({ baseUrl, accessToken: userToken });
+    const { data: userData } = await userClient.auth.getCurrentUser();
+    if (!userData?.user?.id) return json({ ok: false, code: 'no_autenticado' }, 401);
+    const { data: staffRow } = await admin.database
+      .from('staff').select('activo').eq('user_id', userData.user.id).maybeSingle();
+    if (!staffRow?.activo) return json({ ok: false, code: 'no_es_staff' }, 403);
+
+    const [{ data: migracion }, { data: deploy }] = await Promise.all([
+      admin.database.from('schema_migrations').select('version, nombre_archivo, aplicada_en')
+        .order('version', { ascending: false }).limit(1).maybeSingle(),
+      admin.database.from('function_deploys').select('sha256, commit_sha, desplegado_en')
+        .eq('funcion', 'encuestas').order('desplegado_en', { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    return json({
+      ok: true,
+      funcion: 'encuestas',
+      sdkVersion: '1.5.2',
+      ultimaMigracion: migracion || null,
+      ultimoDeploy: deploy || null,
+    });
+  }
 
   async function bajoLimite(): Promise<boolean> {
     const ip = ipDesdeHeaders(req.headers);

@@ -9,9 +9,10 @@
 // Acciones (POST { action, ... }):
 //   buscarDni público { dni }                                      → { encontrado, nombres?, apellidos?, celular?, correoPersonal? }
 //   crear     público { dni, nombres, apellidos, celular?, correoPersonal? } → { ok, yaPendiente }
+//   version   staff   {}                                           → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 // ============================================================
 
-import { createAdminClient } from 'npm:@insforge/sdk@1.5.2';
+import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
 
 const ORIGENES_PERMITIDOS = new Set([
   'https://materen-ti.vercel.app',
@@ -35,7 +36,8 @@ function corsPara(origin: string | null): Record<string, string> {
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
+    // no-store: buscarDni devuelve datos personales de un empleado real.
+    headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
 
@@ -53,6 +55,10 @@ const CORREO_MAX_LEN = 200;
 // endpoint público y sin sesión, cuenta buscarDni + crear juntos para que
 // alternar acciones no lo evada.
 const INTENTOS_MAX_IP = 12;
+// Límite por DNI (migración 065): sin esto, rotar de IP permite extraer
+// nombres/celular/correo personal de un DNI fijo sin freno — mismo criterio
+// que ticket_busqueda_intentos en functions/tickets.ts (H-02).
+const INTENTOS_MAX_DNI = 10;
 const INTENTOS_VENTANA_MIN = 10;
 
 // IP de confianza del cliente — ver functions/tickets.ts para el detalle
@@ -85,18 +91,57 @@ export default async function (req: Request): Promise<Response> {
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
 
   // Rate-limit compartido por buscarDni y crear: mismo patrón que
-  // ticket_creacion_intentos (migración 037), tabla propia (042).
-  async function bajoLimite(): Promise<boolean> {
+  // ticket_creacion_intentos (migración 037), tabla propia (042). Además
+  // del tope por IP, exige un tope por DNI (migración 065) que no depende
+  // de la IP — cierra la evasión por rotación de IP contra un DNI fijo.
+  async function bajoLimite(dni: string): Promise<boolean> {
     const ip = ipDesdeHeaders(req.headers);
     const desde = new Date(Date.now() - INTENTOS_VENTANA_MIN * 60 * 1000).toISOString();
-    const { data: intentos } = await admin.database
+
+    const { data: porIp } = await admin.database
       .from('personal_registro_intentos')
       .select('id')
       .eq('ip', ip)
       .gte('created_at', desde);
-    if ((intentos?.length || 0) >= INTENTOS_MAX_IP) return false;
-    await admin.database.from('personal_registro_intentos').insert([{ ip }]);
+    if ((porIp?.length || 0) >= INTENTOS_MAX_IP) return false;
+
+    const { data: porDni } = await admin.database
+      .from('personal_registro_intentos')
+      .select('id')
+      .eq('dni', dni)
+      .gte('created_at', desde);
+    if ((porDni?.length || 0) >= INTENTOS_MAX_DNI) return false;
+
+    await admin.database.from('personal_registro_intentos').insert([{ ip, dni }]);
     return true;
+  }
+
+  // version: staff únicamente (cierra el pendiente de H-12 — ver el mismo
+  // comentario en functions/credenciales.ts). No es una acción pública.
+  if (body.action === 'version') {
+    const authHeader = req.headers.get('Authorization');
+    const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
+    if (!userToken) return json({ ok: false, code: 'no_autenticado' }, 401);
+    const userClient = createClient({ baseUrl, accessToken: userToken });
+    const { data: userData } = await userClient.auth.getCurrentUser();
+    if (!userData?.user?.id) return json({ ok: false, code: 'no_autenticado' }, 401);
+    const { data: staffRow } = await admin.database
+      .from('staff').select('activo').eq('user_id', userData.user.id).maybeSingle();
+    if (!staffRow?.activo) return json({ ok: false, code: 'no_es_staff' }, 403);
+
+    const [{ data: migracion }, { data: deploy }] = await Promise.all([
+      admin.database.from('schema_migrations').select('version, nombre_archivo, aplicada_en')
+        .order('version', { ascending: false }).limit(1).maybeSingle(),
+      admin.database.from('function_deploys').select('sha256, commit_sha, desplegado_en')
+        .eq('funcion', 'personal-registro').order('desplegado_en', { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    return json({
+      ok: true,
+      funcion: 'personal-registro',
+      sdkVersion: '1.5.2',
+      ultimaMigracion: migracion || null,
+      ultimoDeploy: deploy || null,
+    });
   }
 
   // ── buscarDni: autocompletar si esa persona ya trabajó aquí ─────────
@@ -105,7 +150,7 @@ export default async function (req: Request): Promise<Response> {
   if (body.action === 'buscarDni') {
     const dni = soloDigitos(String(body.dni || ''));
     if (dni.length !== 8) return json({ ok: false, code: 'dni_invalido' });
-    if (!(await bajoLimite())) return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    if (!(await bajoLimite(dni))) return json({ ok: false, code: 'demasiados_intentos' }, 429);
 
     const { data: empleado } = await admin.database
       .from('empleados')
@@ -142,7 +187,7 @@ export default async function (req: Request): Promise<Response> {
       return json({ ok: false, code: 'texto_muy_largo' });
     }
 
-    if (!(await bajoLimite())) return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    if (!(await bajoLimite(dni))) return json({ ok: false, code: 'demasiados_intentos' }, 429);
 
     // Ya hay un pre-registro pendiente (sin usar) con este DNI: no se
     // duplica — se responde éxito igual para no confundir a la persona.

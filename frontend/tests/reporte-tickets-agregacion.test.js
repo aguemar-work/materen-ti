@@ -304,7 +304,7 @@ describe('encuestas y comentarios', () => {
 });
 
 describe('troceo de los filtros in', () => {
-  it('parte la consulta de encuestas por ticket en lotes de 100', async () => {
+  it('parte la consulta de encuestas por ticket en lotes de 30', async () => {
     respuestas.tickets = Array.from({ length: 250 }, (_, i) => ({
       id: `t${i}`, estado: 'abierto', vinculado: false,
     }));
@@ -312,8 +312,8 @@ describe('troceo de los filtros in', () => {
     await reportesTicketsApi.obtenerReporteTickets(PERIODO);
 
     const lotesSat = llamadas.filter((l) => l.clave === 'sat_por_ticket');
-    expect(lotesSat).toHaveLength(3);
-    expect(lotesSat.map((l) => l.cantidad)).toEqual([100, 100, 50]);
+    expect(lotesSat).toHaveLength(9);
+    expect(lotesSat.map((l) => l.cantidad)).toEqual([30, 30, 30, 30, 30, 30, 30, 30, 10]);
   });
 
   it('parte también la consulta de tickets resueltos', async () => {
@@ -323,7 +323,7 @@ describe('troceo de los filtros in', () => {
     await reportesTicketsApi.obtenerReporteTickets(PERIODO);
 
     const lotesResueltos = llamadas.filter((l) => l.clave === 'tickets_resueltos');
-    expect(lotesResueltos.map((l) => l.cantidad)).toEqual([100, 50]);
+    expect(lotesResueltos.map((l) => l.cantidad)).toEqual([30, 30, 30, 30, 30]);
   });
 });
 

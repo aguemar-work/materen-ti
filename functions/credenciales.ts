@@ -18,6 +18,7 @@
 //      individual "credenciales.ver" — staff_permisos, JEFE exento siempre)
 //   entregaAbrir         público { token }                 → { empleadoNombre, credenciales }  (un solo uso, audita)
 //   accesoDenegado       staff   { ruta }                  → { ok }  (audita un bloqueo por rol del router)
+//   version              staff   {}                        → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 //
 //   -- Módulo "accesos sensibles" (más estricto que lo de arriba: no
 //      alcanza con ser staff activo, hace falta ser JEFE Y estar en
@@ -60,8 +61,24 @@ function corsPara(origin: string | null): Record<string, string> {
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
+    // no-store: toda respuesta de esta function puede llevar una contraseña
+    // o su metadata — nunca debe quedar en la caché del navegador/proxy.
+    headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
+}
+
+// IP de confianza del cliente — mismo criterio que functions/tickets.ts
+// (auditoría H-02): cf-connecting-ip/x-real-ip los pone el edge, no el
+// cliente; x-forwarded-for es el último recurso y se toma su ÚLTIMO valor.
+function ipDesdeHeaders(headers: Headers): string {
+  const xff = (headers.get('x-forwarded-for') || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  return (
+    headers.get('cf-connecting-ip') ||
+    headers.get('x-real-ip') ||
+    xff[xff.length - 1] ||
+    'desconocida'
+  );
 }
 
 // ── Cifrado AES-256-GCM ──────────────────────────────────────
@@ -160,6 +177,15 @@ function randomToken(): string {
   return toB64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// sha256(token) en hex — migración 066/067: entregas ya no guarda el token
+// de la URL pública en texto plano, solo su hash. El token en claro nunca
+// se persiste desde acá; solo se devuelve al llamador para armar la URL.
+// export: probado en frontend/tests/credenciales.test.js
+export async function hashToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 // ── Rate-limit de revelado (auditoría H-05) ──────────────────
 // Un staff activo puede revelar cualquier contraseña por ID; sin tope,
 // un insider (o una cuenta comprometida) exfiltra todo el almacén en un
@@ -191,6 +217,12 @@ export default async function (req: Request): Promise<Response> {
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
 
+  // Capturados una sola vez por request (migración 064): permite reconstruir
+  // desde dónde se hizo cada acción de accesos_log, incluyendo intentos
+  // fallidos de abrir una entrega (ver entregaAbrir más abajo).
+  const ip = ipDesdeHeaders(req.headers);
+  const userAgent = req.headers.get('user-agent') || null;
+
   async function log(entry: {
     user_id?: string | null;
     user_email?: string | null;
@@ -200,7 +232,7 @@ export default async function (req: Request): Promise<Response> {
     accion: string;
     detalle?: string | null;
   }) {
-    await admin.database.from('accesos_log').insert([entry]);
+    await admin.database.from('accesos_log').insert([{ ...entry, ip, user_agent: userAgent }]);
   }
 
   // Cuántas contraseñas reveló este usuario en la ventana reciente.
@@ -239,20 +271,69 @@ export default async function (req: Request): Promise<Response> {
     return !!data;
   }
 
+  // ── Permiso de módulo (migración 068) ──────────────────────
+  // La RLS de cuentas/licencias ya exige tiene_permiso_modulo() para el
+  // CRUD normal (crear/editar la fila desde el cliente), pero revelar/
+  // revelarClaveLicencia/entregaCrear leen esas tablas con el cliente
+  // ADMIN — bypasean esa RLS. Sin este chequeo, un ASISTENTE sin el
+  // módulo "correos"/"licencias" seguiría pudiendo revelar/entregar esas
+  // contraseñas aunque ya no pueda ver la fila por RLS. Consulta DIRECTA a
+  // staff_modulos_permisos, NO RPC a tiene_permiso_modulo(): mismo motivo
+  // que tienePermisoCredenciales — auth.uid() sería NULL en este contexto.
+  // ⚠️ Esta regla existe DOS VECES (acá y en tiene_permiso_modulo, SQL) —
+  // mismo criterio que credenciales.ver, ver advertencia en AGENTS.md.
+  async function tienePermisoModulo(rol: string, userId: string, modulo: string): Promise<boolean> {
+    if (rol === 'JEFE') return true;
+    const { data } = await admin.database
+      .from('staff_modulos_permisos')
+      .select('staff_user_id')
+      .eq('staff_user_id', userId)
+      .eq('modulo', modulo)
+      .maybeSingle();
+    return !!data;
+  }
+
   // ── Acción pública: abrir una entrega de un solo uso ───────
+  // Los 3 retornos tempranos de acá abajo (no_existe/ya_abierta/expirada)
+  // auditan igual que el camino de éxito (migración 064) — antes no dejaban
+  // rastro, así que un intento de fuerza bruta o un enlace ya usado
+  // reintentado eran invisibles en accesos_log. Solo se guardan los
+  // primeros caracteres del token en `detalle`: alcanza para correlacionar
+  // en soporte, no reconstruye el secreto.
+  async function logEntregaFallida(motivo: string, tokenRecibido: string) {
+    await log({
+      cuenta_usuario: '(entrega)',
+      accion: 'entrega_fallida',
+      detalle: `Intento fallido (${motivo}) — token ${tokenRecibido.slice(0, 8)}…`,
+    });
+  }
+
   if (body.action === 'entregaAbrir') {
     const token = String(body.token || '');
     if (!token) return json({ ok: false, code: 'token_requerido' });
 
+    // Búsqueda por hash (migración 066/067): el token en claro nunca se
+    // persiste en BD, solo su sha256. El UPDATE atómico de más abajo sigue
+    // usando el `id` ya resuelto acá, no cambia.
+    const tokenHash = await hashToken(token);
     const { data: entrega } = await admin.database
       .from('entregas')
       .select('id, empleado_nombre, payload, expires_at, viewed_at')
-      .eq('token', token)
+      .eq('token_hash', tokenHash)
       .maybeSingle();
 
-    if (!entrega) return json({ ok: false, code: 'no_existe' });
-    if (entrega.viewed_at) return json({ ok: false, code: 'ya_abierta' });
-    if (new Date(entrega.expires_at) < new Date()) return json({ ok: false, code: 'expirada' });
+    if (!entrega) {
+      await logEntregaFallida('no_existe', token);
+      return json({ ok: false, code: 'no_existe' });
+    }
+    if (entrega.viewed_at) {
+      await logEntregaFallida('ya_abierta', token);
+      return json({ ok: false, code: 'ya_abierta' });
+    }
+    if (new Date(entrega.expires_at) < new Date()) {
+      await logEntregaFallida('expirada', token);
+      return json({ ok: false, code: 'expirada' });
+    }
 
     // Marcado atómico: si dos abren a la vez, solo el primero gana
     const { data: marcada } = await admin.database
@@ -261,7 +342,10 @@ export default async function (req: Request): Promise<Response> {
       .eq('id', entrega.id)
       .is('viewed_at', null)
       .select('id');
-    if (!marcada?.length) return json({ ok: false, code: 'ya_abierta' });
+    if (!marcada?.length) {
+      await logEntregaFallida('ya_abierta', token);
+      return json({ ok: false, code: 'ya_abierta' });
+    }
 
     const credenciales = JSON.parse(await decryptAny(entrega.payload));
     for (const c of credenciales) {
@@ -302,6 +386,28 @@ export default async function (req: Request): Promise<Response> {
     .eq('user_id', user.id)
     .maybeSingle();
   if (!staffRow?.activo) return json({ ok: false, code: 'no_es_staff' }, 403);
+
+  // version: expone qué versión de esquema/SDK/deploy tiene ESTA instancia
+  // desplegada (migraciones 069/070) — cierra el pendiente de H-12 (pin a
+  // @insforge/sdk@1.5.2 resuelto en código desde 2026-08-16, pero sin forma
+  // de confirmar desde adentro si el redeploy real ya ocurrió, o si esta
+  // function quedó desincronizada respecto a las otras 3/4). Requiere
+  // sesión de staff (ya validada arriba), no es una acción pública.
+  if (body.action === 'version') {
+    const [{ data: migracion }, { data: deploy }] = await Promise.all([
+      admin.database.from('schema_migrations').select('version, nombre_archivo, aplicada_en')
+        .order('version', { ascending: false }).limit(1).maybeSingle(),
+      admin.database.from('function_deploys').select('sha256, commit_sha, desplegado_en')
+        .eq('funcion', 'credenciales').order('desplegado_en', { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    return json({
+      ok: true,
+      funcion: 'credenciales',
+      sdkVersion: '1.5.2',
+      ultimaMigracion: migracion || null,
+      ultimoDeploy: deploy || null,
+    });
+  }
 
   // accesoDenegado: el guard del router bloqueó una ruta restringida por
   // rol (ej. /accesos-sensibles para un ASISTENTE) y lo reporta acá para
@@ -422,6 +528,9 @@ export default async function (req: Request): Promise<Response> {
     if (!(await tienePermisoCredenciales(staffRow.rol, user.id))) {
       return json({ ok: false, code: 'no_autorizado' }, 403);
     }
+    if (!(await tienePermisoModulo(staffRow.rol, user.id, 'correos'))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
 
     const { data: cuenta } = await admin.database
       .from('cuentas')
@@ -463,6 +572,9 @@ export default async function (req: Request): Promise<Response> {
     if (!(await tienePermisoCredenciales(staffRow.rol, user.id))) {
       return json({ ok: false, code: 'no_autorizado' }, 403);
     }
+    if (!(await tienePermisoModulo(staffRow.rol, user.id, 'licencias'))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
 
     if (await reveladosRecientes(user.id) >= REVELADO_MAX) {
       return json({ ok: false, code: 'demasiados_revelados' }, 429);
@@ -502,6 +614,9 @@ export default async function (req: Request): Promise<Response> {
     if (cuentaIds.length > ENTREGA_MAX_CUENTAS) return json({ ok: false, code: 'demasiadas_cuentas' });
 
     if (!(await tienePermisoCredenciales(staffRow.rol, user.id))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+    if (!(await tienePermisoModulo(staffRow.rol, user.id, 'correos'))) {
       return json({ ok: false, code: 'no_autorizado' }, 403);
     }
 
@@ -550,8 +665,11 @@ export default async function (req: Request): Promise<Response> {
     const token = randomToken();
     const expiresAt = new Date(Date.now() + horas * 3600 * 1000).toISOString();
 
+    // Se inserta token_hash siempre; token en claro solo durante la
+    // transición (migración 066/067, se retira en un deploy posterior).
     const { error: insErr } = await admin.database.from('entregas').insert([{
       token,
+      token_hash: await hashToken(token),
       empleado_id: empleadoId,
       empleado_nombre: empleadoNombre,
       payload: await encryptV2(JSON.stringify(items)),

@@ -5,6 +5,7 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { toTitleCase, trimText, fechaLocalISO } from '../../core/formatters.js';
+import { archivoABase64 } from '../../core/imagenes.js';
 
 // Columnas de "equipos" ordenables desde la tabla (excluye tipo/empresa,
 // que vienen de joins, y situación/asignado a, que son calculados).
@@ -255,21 +256,29 @@ export const equiposApi = {
     }
   },
 
-  // Fotos: se suben comprimidas al bucket público "equipos-fotos".
+  // Fotos: se suben comprimidas al bucket público "equipos-fotos", pero ya
+  // no directo desde el navegador — pasan por la edge function
+  // "equipos-fotos" (2026-08-17, verificación de auditoría externa), que
+  // valida el contenido real (magic bytes) y el tamaño en servidor antes
+  // de subir. `comprimirImagen()` (core/imagenes.js) sigue siendo la
+  // primera línea de defensa en cliente, no la única.
   // Guardar SIEMPRE {url, key}: la key hace posible eliminarlas después.
   async subirFotoEquipo(file) {
-    const { data, error } = await getClient().storage
-      .from('equipos-fotos')
-      .uploadAuto(file);
+    const contenidoBase64 = await archivoABase64(file);
+    const { data, error } = await getClient().functions.invoke('equipos-fotos', {
+      body: { action: 'subirFoto', contenidoBase64 },
+    });
     if (error) throw error;
+    if (!data?.ok) throw new Error(`No se pudo subir la foto (${data?.code || 'error'})`);
     return { url: data.url, key: data.key };
   },
 
   async eliminarFotoEquipo(key) {
-    const { error } = await getClient().storage
-      .from('equipos-fotos')
-      .remove(key);
+    const { data, error } = await getClient().functions.invoke('equipos-fotos', {
+      body: { action: 'eliminarFoto', key },
+    });
     if (error) throw error;
+    if (!data?.ok) throw new Error(`No se pudo eliminar la foto (${data?.code || 'error'})`);
   },
 
   async eventosEquipo(equipoId) {

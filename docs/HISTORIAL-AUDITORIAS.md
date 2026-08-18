@@ -65,7 +65,7 @@ verificó que seguían cerrados, ver arriba).
 | S-03 / T-02 | Sin `CHECK` de prefijo de cifrado en columnas de contraseña | Seguridad/Datos | **Abierto** | Revisadas migraciones 001–053: ningún `CHECK` sobre columnas de contraseña/clave |
 | P-01 | Dashboard cuenta filas descargando todas | Performance | **Resuelto** (2026-08-13) | `api/domains/dashboard.js` `getEstadisticas()` — 6 de 7 queries pasan a `.select('id', { count: 'exact', head: true })` (patrón ya usado en `licencias.js`/`correos.js`/`tickets.js`/`equipos.js`/`kb.js`/`problemas.js`/`personalRegistros.js`/`empleados.js`, sin `head` porque ahí también necesitan las filas); leen `res.count` en vez de `res.data.length`. La 7ª (`empleados`) sigue trayendo filas porque necesita `estado` por fila para separar activos/total — ya era una consulta angosta (2 columnas, sin joins) |
 | Q-04 | `functions/*.ts` nunca se compilan; sin linter/tsconfig | QA | **Resuelto (2026-08-16)** | Runtime real verificado antes de configurar nada (`Deno.env`, imports `npm:@insforge/sdk` — no Node): `functions/tsconfig.json` + `deno check` (Deno, no `tsc`, para no fingir soporte de `npm:`/globals `Deno` que un tsconfig de Node no resuelve). `eslint.config.js` (raíz) cubre `frontend/src` (Vue 3 + JS) y `functions/*.ts` (TypeScript, sin type-aware linting — evita mezclar el tsconfig de Deno con el compilador de Node de `typescript-eslint`) con reglas alineadas al estilo ya existente; los 8 hallazgos de estilo Vue que sobrevivieron quedaron en `warn`, no en `error` (no ameritan bloquear CI). `.prettierrc.json` infiere el estilo real (comillas simples, punto y coma, `printWidth` 120) pero **no** corre en CI ni vía `eslint-plugin-prettier`: `prettier --check` marca 130 de los archivos existentes (espaciado/orden, no bugs) — forzarlo habría sido reformatear el repo entero de golpe, fuera de alcance. Nuevo job `lint-y-typecheck` en `ci.yml`. De paso, corregidos los 10 errores de tipo reales que `deno check` encontró en `functions/*.ts` (2 por una anotación de retorno laxa en `credenciales.ts#fromB64`, 7 porque el SDK sin `Database` schema generado tipa como arreglo toda relación embebida 1:1 — verificado contra el esquema real que siempre es un objeto) y 8 `no-unused-vars`/`no-useless-assignment` reales en `frontend/src` (imports muertos, un parámetro de `catch` sin usar, una asignación de PDF que no se leía después) — ninguno era un bug funcional, así que no generaron hallazgo propio |
-| S-04 | Sin CSP/HSTS/anti-framing en Vercel | Seguridad | **Resuelto (2026-08-12, corregido el mismo día)** — `frontend/vercel.json` (y su copia `frontend/public/vercel.json`) agregan CSP, HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`. **Incidente**: la primera versión de la CSP solo incluía `https://kjyj8t5t.us-east.insforge.app` en `connect-src`, y bloqueó el WebSocket del realtime (`wss://...`, socket.io) en cuanto se desplegó — justo el riesgo que ya se había anotado como "pendiente de validar en preview". Corregido agregando el esquema `wss://` explícito al mismo host en `connect-src`. Lección: `https://` en `connect-src` no cubre `wss://` de forma confiable en la práctica, aunque el spec de CSP3 diga que debería |
+| S-04 | Sin CSP/HSTS/anti-framing en Vercel | Seguridad | **Resuelto (2026-08-12, corregido el mismo día)** — `frontend/vercel.json` (y su copia `frontend/public/vercel.json`) agregan CSP, HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`. **Incidente**: la primera versión de la CSP solo incluía `<INSFORGE_PROJECT_URL>` en `connect-src`, y bloqueó el WebSocket del realtime (`wss://...`, socket.io) en cuanto se desplegó — justo el riesgo que ya se había anotado como "pendiente de validar en preview". Corregido agregando el esquema `wss://` explícito al mismo host en `connect-src`. Lección: `https://` en `connect-src` no cubre `wss://` de forma confiable en la práctica, aunque el spec de CSP3 diga que debería |
 | W-01 / W-02 | `AGENTS.md` decía "sin tests"; README omitía 10 migraciones | Documentación | **Resuelto** | Corregido en el propio ciclo 2026-08-05, reconfirmado hoy |
 | T-05 | **Bug en producción (detectado y resuelto 2026-08-12)**: crear un ticket, una cuenta, o dar de alta/baja a un empleado fallaba con 500 (`function crear_notificacion(...) is not unique`) | Datos | **Resuelto** | La migración 048 agregó un 6º parámetro opcional a `crear_notificacion()` vía `create or replace function` esperando que reemplazara la versión de 5 argumentos de la 045 — pero un cambio de firma crea una sobrecarga nueva en Postgres, no reemplaza la vieja. Las 4 llamadas de 5 argumentos (045) quedaron ambiguas entre ambas desde que se aplicó la 048. Migración 054 elimina la sobrecarga vieja; reproducido y verificado el fix directo contra producción (insert de prueba, limpiado después) |
 
@@ -73,7 +73,7 @@ verificó que seguían cerrados, ver arriba).
 
 | ID | Hallazgo | Rol | Estado (2026-08-11) |
 |----|----------|-----|----------------------|
-| T-04 | Reporte de tickets sin cota de filas | Datos | **Abierto**, confirmado — `api/domains/reportesTickets.js:60-64,190-196,217-221` sin `.limit()`; `obtenerSatisfaccionConsolidado` trae todo el histórico |
+| T-04 | Reporte de tickets sin cota de filas | Datos | **Parcial (2026-08-18)** — la mitad de `obtenerSatisfaccionConsolidado` quedó resuelta: causaba `502` en producción (~90 tickets ya generaban una URL demasiado larga para el `.in()` troceado; el navegador lo reportaba como bloqueo CORS, efecto secundario del 502, no una causa aparte). Ahora delega en el RPC `reporte_satisfaccion_consolidado()` (migración 053, con `GRANT` desde la 062), que ya existía sin usar — mismo cálculo en una sola consulta SQL, sin `.in()` ni límite de URL posible; `resumenSatisfaccionPorSolicitante`/`resumenSatisfaccionPorTecnico`/`promedioYMuestra`/`ordenarPeorPrimero` se eliminaron por quedar sin llamador. Sigue **abierto** el resto: `api/domains/reportesTickets.js:60-64,190-196,217-221` (`obtenerReporteTickets`/`obtenerResumenTickets`) sin `.limit()` — sus RPC equivalentes (`reporte_tickets`/`reporte_tickets_resumen`, misma migración 053) también existen sin usar, pero migrarlos es un cambio mayor (alcance "solo mi actividad", arrastrados, tiempos) que no ha fallado en producción; se trocean con `TAM_LOTE = 30` (bajado de 100 como hardening tras el incidente, no por falla propia) |
 | P-02 | Realtime recarga la bandeja completa en cada cambio | Performance | **Resuelto (2026-08-17)** — confirmado también en `equipos:list`: una importación masiva (`ImportarEquiposView.vue` migrando fila por fila) dispara decenas de eventos en segundos y cada uno relanzaba el `SELECT` pesado sin ninguna guardia, saturando InsForge hasta 502. Fix: `useRealtimeRefresco.js` gana `crearRefrescoDebounced` (leading + trailing coalescente + guardia de solicitud-en-curso, opt-in vía `opciones.debounceMs`), aplicado a las 4 vistas de lista (`equipos`/`empleados`/`licencias`/`correos`) y al manejo manual de `tickets:list` en `components/shared/AppLayout.vue` (ruta corregida — ya no vive en `layouts/`) vía la misma utilidad compartida. `AppNotifications.vue`/`TicketSeguimientoView.vue` quedan sin debounce a propósito: necesitan reaccionar a cada evento individual. Además se agregó `ConfirmDialog` antes de "Migrar todas las filas listas" en `ImportarEquiposView.vue`, que hasta ahora escribía en lote sin confirmación previa |
 | U-05 | Cierre de ticket sin resumen → borradores de KB vacíos | UX/Producto | **Abierto**, confirmado — `TicketDetalleView.vue:196-220,535` + `stores/ticketDetalle.js:116-123`: el borrador se crea sin campo de contenido |
 | A-02 | Roles restringidos por literal de ruta en el guard | Arquitectura | **Resuelto (2026-08-12)** — las 4 rutas declaran `meta.roles`/`meta.redirigirDenegado`; `router/guards.js` ahora lee `to.meta.roles` en un único bloque en vez de 4 `if` literales |
@@ -396,6 +396,247 @@ autovacuum, 2 `VACUUM ANALYZE` sueltos); cada lote es idempotente
 que no hay riesgo de aplicación parcial inconsistente. El archivo único en
 `migrations/` se conserva como fuente de verdad, igual que el precedente ya
 documentado en `AGENTS.md` (migración 031) para archivos grandes.
+
+## Ciclo 7 — InsForge Backend Advisor, segunda pasada (2026-08-17)
+
+Alcance: re-scan del advisor inmediatamente después de aplicar la migración
+062 (Ciclo 6) — 31 hallazgos. Dos de los tres grupos son **riesgo aceptado
+a propósito**, no pendientes: aplicar la sugerencia del advisor los habría
+empeorado. El tercer grupo (performance RLS) y un grant faltante sí se
+corrigieron (migración 063).
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| BA-05 | 10 funciones `SECURITY DEFINER` (`es_jefe`, `es_staff`, `tiene_permiso_acceso_sensible`, `tiene_permiso_credenciales_ver`, `kb_registrar_feedback`, `dar_baja_empleado`, `cerrar_ticket`, `reporte_tickets`, `reporte_tickets_resumen`, `reporte_satisfaccion_consolidado`) marcadas "dangerous" — la regla del advisor flaguea CUALQUIER `EXECUTE` a un rol no-admin sobre una función `SECURITY DEFINER`, sin distinguir el patrón RLS-helper/RPC-gateada que la 062 dejó a propósito | Crítica ×10 | **Aceptado, sin cambios** | Revocar `authenticated` y/o pasar a `SECURITY INVOKER` rompería la app: `es_jefe()`/`es_staff()` dejarían de poder evaluarse dentro de las políticas RLS que las llaman (el rol que ejecuta la consulta necesita `EXECUTE` sobre la función aunque el cuerpo corra como el dueño), y como `INVOKER` reintroducirían la recursión de RLS que el patrón evita (política de `staff` llama a `es_jefe()`, que si corriera como el invocador volvería a consultar `staff` bajo su propia RLS) — ver §3 de `PANORAMA_SISTEMA.md` y [[insforge-advisor-grants-hardening]] en memoria |
+| BA-06 | 11 tablas con RLS de solo SELECT (`notificaciones`, `transiciones_ticket_permitidas`, `accesos_log`, `eventos_equipo`, `ticket_busqueda_intentos`, `ticket_eventos`, `ticket_satisfaccion`, `ticket_creacion_intentos`, `personal_registro_intentos`, `encuesta_respuesta_intentos`, `encuesta_respuestas`) | Info ×11 | **Aceptado, sin cambios** | Verificado una por una: todas escriben SOLO vía trigger `SECURITY DEFINER` (auditoría — `accesos_log`, `eventos_equipo`, `ticket_eventos`: abrir INSERT a `authenticated` permitiría forjar el historial) o vía edge function con cliente admin que bypasea RLS (rate-limit y respuestas anónimas). La policy de INSERT que sugiere el advisor (`WITH CHECK (auth.uid() = user_id)`, plantilla genérica que ni siquiera aplica a la mayoría — varias no tienen columna `user_id`) sería una regresión de seguridad real, no una mejora |
+| BA-07 | 9 políticas RLS en 5 tablas (`staff_permisos`, `kb_articulos` ×2, `notificaciones`, `notificaciones_lecturas` ×2, `staff` ×2, `staff_modulos_permisos`) llamaban `auth.uid()` sin envolver en subquery — reevaluación por fila en vez de una sola vez por consulta | Warning ×9 | **Resuelto** | Migración 063 — `ALTER POLICY` envolviendo cada `auth.uid()` en `(select auth.uid())`, mismo `qual`/`with_check` de siempre, verificado con `pg_policies` antes/después |
+| BA-08 | `staff_nombres()` (migración 061) marcada "callable by: public" — quedó fuera del hardening de la 062 porque no estaba en el reporte original de 80 hallazgos | Crítica | **Resuelto** | Migración 063 — mismo patrón que el resto de RPCs angostas de la 062: `REVOKE` de `PUBLIC`, `GRANT` a `authenticated` |
+
+**Nota operativa**: al aplicar BA-07 por `db query` directo (lotes de una
+línea, mismo motivo que la migración 062) se coló un `AND false` accidental
+en el `qual` de "staff ve articulos kb segun estado y autoria" durante la
+edición en vivo del comando — semánticamente un no-op (`X AND false` es
+siempre falso, así que `(false) OR Y` = `Y`, ni cambiaba jefes ni acceso
+real de nadie), pero detectado y corregido con un segundo `ALTER POLICY`
+antes de seguir, verificado con `pg_policies` que el `qual` final coincide
+exacto con el original + el wrapper. Mencionado acá para que quede el
+rastro, no porque haya tenido impacto.
+
+## Ciclo 8 — Verificación de un análisis externo (2026-08-17)
+
+Alcance: un análisis de seguridad generado por una IA externa (a partir de
+documentación interna compartida fuera del repo) listó 8 hallazgos. Antes de
+actuar, cada uno se verificó contra el código real (3 exploraciones en
+paralelo, cita de archivo/línea) — algunos eran gaps reales, otros ya eran
+decisiones de producto documentadas. Solo se abre ficha para lo que resultó
+ser un gap real y se corrigió; lo que ya era una decisión aceptada (H-08:
+DNI en búsqueda de tickets) no se re-audita acá.
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| V-01 | `README.md`, `AGENTS.md`, `docs/HISTORIAL-AUDITORIAS.md`, `docs/CHANGELOG.md` y `frontend/.env.example` tenían la URL real de producción y el nombre del proyecto backend en texto plano — documentación interna, tratable como segura para pegar en cualquier IA/tercero | Media | **Resuelto** | Reemplazados por `<INSFORGE_PROJECT_URL>`/`<PROJECT_NAME>`; nota nueva "Documentación sensible" en `AGENTS.md`. `frontend/vercel.json`/`public/vercel.json` NO se tocan (la URL/DSN de Sentry ahí son funcionales para la CSP) — quedan marcados como "no compartir", no "redactar" |
+| V-02 | Despliegue no verificable: sin tracking de qué migraciones se aplicaron, CI pasaba en verde con `::warning::` si faltaban los secrets de smoke test, sin forma de confirmar si el redeploy de una edge function ya ocurrió | Alta | **Parcial** | Migraciones 069 (`schema_migrations`) y 070 (`function_deploys`) aplicadas y verificadas el 2026-08-17 (Ciclo 9). Las 5 edge functions redesplegadas el 2026-08-18 (Ciclo 10, P0-02) ya corren con `@insforge/sdk@1.5.2` fijado (H-12) y quedaron registradas en `function_deploys`. **Sigue pendiente, solo la parte de CI**: crear la cuenta de staff de CI en InsForge y cargar los 4 secrets de GitHub Actions de smoke test (ver P0-04 del Ciclo 10) — `secrets-smoke-pendientes` (schedule semanal) sigue fallando duro sin bloquear merges hasta que eso pase |
+| V-03 | Permisos de módulo (`staff_modulos_permisos`, 056) solo controlaban sidebar/router — un ASISTENTE sin un módulo podía leer/escribir esa tabla completa vía SDK directo | Alta | **Resuelto** | Migración 068 — `tiene_permiso_modulo()` en RLS de `licencias`/`equipos`/`cuentas` (+ tablas de asignación), JEFE exento. `empleados` excepción a propósito (SELECT sin gate, ver nota en la propia migración). `functions/credenciales.ts` gana el mismo chequeo para los caminos que bypasean RLS (cliente admin). **Aplicada de verdad y verificada el 2026-08-17 (Ciclo 9)** — 24 políticas confirmadas contra `pg_policies`, ninguna dependencia de un redeploy de edge function pendiente (RLS corre siempre, sea cual sea el código desplegado) |
+| V-04 | Entrega pública de credenciales (`entregas`): token en texto plano en BD, sin `Cache-Control: no-store`, reutilizado como query param al derivar a "crear ticket" (secreto ya consumido en una URL/historial), intentos fallidos/expirados sin auditar | Media | **Resuelto** | 064 (auditoría de fallos + ip/user_agent, ver Ciclo 9), 066 (`token_hash`, aditivo, ver Ciclo 9), 067 (retira la columna `token` en claro) — **aplicada el 2026-08-18, el mismo día del redeploy de `credenciales`**, antes de los 7 días de margen que recomendaba el propio archivo. Verificado que no hay riesgo real: `entregaAbrir` nunca leyó la columna `token` (busca y compara solo por `token_hash`, ya así desde el redeploy), así que soltarla no afecta ninguna de las 3 entregas todavía vigentes (`select count(*) filter (where viewed_at is null and expires_at > now())` = 3 de 67). Registrada en `schema_migrations` (faltaba). `EntregaView.vue`/`TicketNuevoView.vue` ya no propagan el token por query string. Generación del token (`crypto.getRandomValues`, 144 bits) e invalidación atómica (`UPDATE ... WHERE viewed_at IS NULL`) ya estaban bien, no se tocaron |
+| V-05 | `accesos_log` sin columnas de IP/user-agent, pese a que el patrón de extracción segura ya existía en otras edge functions | Baja | **Resuelto** | Migración 064 (Ciclo 9) + redeploy de `credenciales` el 2026-08-18 (Ciclo 10, P0-02) — ya llena `ip`/`user_agent` en cada acción |
+| V-06 | `personal-registro`: rate-limit solo por IP (compartido `buscarDni`/`crear`), sin tope por DNI — permitía extraer datos de un empleado real rotando de IP | Media | **Resuelto** | Migración 065 (Ciclo 9) + redeploy de `personal-registro` el 2026-08-18 (Ciclo 10, P0-02) — ya valida también por DNI, mismo patrón que `ticket_busqueda_intentos` (H-02) |
+| V-07 | Fotos de equipos: subida directa del navegador al bucket público `equipos-fotos`, sin validación server-side de tipo/tamaño (solo cliente) | Media | **Resuelto** | Nueva edge function `equipos-fotos.ts` — valida magic bytes + tamaño en servidor (mismo patrón que adjuntos de `tickets.ts`), key generada en servidor. Bucket sigue público a propósito (miniaturas sin firmar en listados). **El código existía desde este ciclo pero la función nunca se desplegó** hasta el 2026-08-18 (Ciclo 10, P0-01) — hasta esa fecha esta fila decía "Resuelto" sin protección real en producción |
+
+## Ciclo 9 — InsForge Backend Advisor, tercera pasada (2026-08-17)
+
+Alcance: nueva corrida del advisor, 23 hallazgos. 22 son repetición exacta de
+BA-05 (10 funciones `SECURITY DEFINER`, +1 con `staff_nombres`) y BA-06 (11
+tablas RLS solo-SELECT) del Ciclo 7 — mismo ruido esperado, sin re-investigar
+desde cero, sin cambios. El único hallazgo nuevo es `tickets` cruzando el
+umbral de dead tuples que no tenía en el Ciclo 6.
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| BA-09 | Tabla `tickets` con 24% de tuplas muertas (36 de 151) — no estaba entre las 3 tablas que superaban el umbral en el Ciclo 6 | Info | **Resuelto** | Migración 071 — mismo tuning que 062 (`autovacuum_vacuum_scale_factor=0.05`/`autovacuum_analyze_scale_factor=0.02`) + `VACUUM ANALYZE public.tickets` corrido aparte. Verificado con `pg_stat_user_tables` (dead tuples a 0) y `pg_class.reloptions` |
+
+**Hallazgo no planeado, descubierto al aplicar esta migración**: al aplicar
+la 071 con `scripts/apply-migration.mjs`, el script imprimió
+`✓ Migración aplicada` pero `pg_class.reloptions` de `tickets` quedó `null`
+inmediatamente después (comparado con `entregas`/`eventos_equipo`/
+`asignaciones_cuenta`, que sí tienen sus `reloptions` de la migración 062).
+Reaplicando el mismo `ALTER TABLE` con `npx @insforge/cli db query` directo
+(sin el script) sí quedó seteado a la primera — el script falla en silencio
+al menos en este caso, causa raíz no diagnosticada.
+
+Investigar esa falla llevó a verificar el esquema real contra las
+migraciones 064-070 y confirmar que **ninguna de las 7 había llegado nunca a
+producción**, pese a estar documentadas como aplicadas en el Ciclo 8 (V-02,
+V-03, V-05, V-06). El corte era exacto entre la 063 (confirmada en vivo) y la
+064. Reaplicadas ahora, una por una, con `npx @insforge/cli db import`
+(evitando el script) y verificación contra el esquema real después de cada
+una:
+
+- **064, 065, 066, 068, 069, 070 — aplicadas y verificadas en producción
+  el 2026-08-17.** 068 en particular (el fix de RLS de V-03) se verificó
+  columna por columna contra `pg_policies`: 24 políticas nuevas, exactas al
+  archivo, y contra los datos reales de `staff_modulos_permisos` (3 cuentas
+  de staff, ninguna pierde acceso que no debiera perder). Filas V-02/V-03/
+  V-05/V-06 del Ciclo 8 actualizadas a su estado real.
+- **067 — deliberadamente NO aplicada.** El propio archivo exige que el
+  código de `functions/credenciales.ts` que busca por `token_hash` ya esté
+  desplegado, y esperar 7 días desde ese redeploy. Verificado con
+  `npx @insforge/cli functions code credenciales` que la función desplegada
+  hoy todavía busca por `token` en claro (código anterior a la 066) —
+  aplicar 067 ahora habría roto la apertura de las 67 entregas ya emitidas.
+- **Efecto colateral encontrado al verificar 064/065**: las 5 edge functions
+  desplegadas en producción corresponden todas al código anterior a este
+  lote (verificado con `functions code` para `credenciales` y
+  `personal-registro`) — las columnas nuevas (`ip`, `user_agent`, `dni`)
+  existen pero ninguna edge function las llena todavía. El beneficio real de
+  064/065/066 (auditoría de fallos, rate-limit por DNI) no está activo hasta
+  que se redespliegue el código ya presente en el repo. Sin este redeploy,
+  tampoco se puede empezar a contar los 7 días para aplicar la 067. Queda
+  pendiente, requiere que el usuario autorice el redeploy de las edge
+  functions afectadas.
+
+Ver [[migraciones-064-070-drift-produccion]] en memoria para el detalle
+completo y el estado de la causa raíz del script (no diagnosticada, la
+mitigación fue evitar el script y usar `db import`/`db query` directo con
+verificación posterior).
+
+## Ciclo 10 — Verificación de checklist P0 externa (2026-08-18)
+
+Alcance: un análisis de seguridad externo (sin acceso al código real, solo a
+documentación compartida, con disclaimer explícito de que no podía confirmar
+implementación) entregó una checklist P0 de 9 ítems a verificar "antes de
+seguir manejando credenciales". Mismo método que el Ciclo 8: cada ítem se
+verificó contra código/producción real (3 exploraciones en paralelo) antes
+de actuar — 5 de los 9 resultaron ya correctos, sin acción de código:
+
+- **Cifrado de credenciales**: AES-256-GCM, IV aleatorio de 12 bytes por
+  operación, claves versionadas `CRED_KEY_V2`/`LEGACY`/`SENSIBLE`, nunca
+  logueadas (`functions/credenciales.ts:88-173`).
+- **Hash de tokens de entrega**: 144 bits de entropía
+  (`crypto.getRandomValues`, 18 bytes) + SHA-256 para lookup
+  (`credenciales.ts:175-187`).
+- **Un solo uso / condición de carrera**: `UPDATE entregas ... WHERE
+  viewed_at IS NULL` atómico real, sin ventana de carrera
+  (`credenciales.ts:338-348`).
+- **Permiso de módulo en `credenciales.ts`**: `tienePermisoModulo()`
+  (líneas 274-294) sí está implementado en código para
+  `revelar`/`revelarClaveLicencia`/`entregaCrear`, no solo documentado en el
+  comentario de la migración 068 — confirmado leyendo el archivo completo.
+- **Secretos de InsForge**: los 8 activos cubren lo que cada función
+  necesita; sin evidencia de ninguna clave real expuesta en `git log --all`
+  ni en docs — **rotar secretos no aplica, no hubo exposición**.
+
+Los otros 4 sí eran gaps reales:
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| P0-01 | `functions/equipos-fotos.ts` existía en el repo desde el Ciclo 8 (V-07) pero **nunca se había desplegado** — `functions list` solo devolvía 4 funciones, la protección server-side de subida de fotos no protegía nada en producción | Alta | **Resuelto** | Desplegada el 2026-08-18 con `npx @insforge/cli functions deploy equipos-fotos --file functions/equipos-fotos.ts`. Verificada con `functions code` (idéntica al repo) y registrada en `function_deploys` |
+| P0-02 | Las 4 edge functions desplegadas (`credenciales`, `personal-registro`, `tickets`, `encuestas`) corrían código anterior a las migraciones 064-070: `credenciales` buscaba entregas por `token` en claro, `personal-registro` sin rate-limit por DNI, ninguna con `@insforge/sdk@1.5.2` fijado (H-12) ni la acción `version` | Alta | **Resuelto** | Redesplegadas las 4 el 2026-08-18 (mismo comando, por CLI directo — decisión del usuario de no pasar por el `workflow_dispatch` de `ci.yml`). Verificado con `functions code` que las 5 quedaron idénticas al repo, y con `grep` que `credenciales` ya no tiene ningún `.eq('token', ...)`. Registradas las 5 en `function_deploys` (commit `1df7f4aacb22285a4c45c4ff9a966927bd4f66c4`) |
+| P0-03 | La migración 068 solo convirtió a RLS real 3 de los 8 módulos de `staff_modulos_permisos` (`licencias`/`equipos`/`correos`) — `tickets`, `problemas`, `base_conocimiento` y `encuestas` seguían gateados solo por `es_staff()`, mismo hueco que 068 dijo cerrar | Alta | **Resuelto** | Migración 072 — mismo patrón que 068 en 11 políticas de `tickets`/`problemas`/`kb_articulos`/`encuestas`/`encuesta_rondas`/`encuesta_respuestas`. Verificado con `pg_policies` y contra los datos reales de `staff_modulos_permisos` (nadie pierde acceso que no tuviera ya oculto en el sidebar) |
+| P0-04 | Smoke tests de CI (`test-integration`, `tests-db`) siguen pasando en verde con `::warning::` si faltan los secrets de InsForge de test — sin cambios desde el Ciclo 8 (V-02) | Alta | **Parcial** | `test-integration` ya no pasa en verde sin verificar: desde 2026-08-18 falla (`::error::` + `exit 1`) si falta cualquiera de sus 4 secrets (`ci.yml`, job `test-integration`) — cierra la parte de "check verde engañoso" para ese job. `tests-db` queda sin cambios a propósito (usa un token de CLI, no una cuenta de staff; fuera del alcance pedido). **Sigue pendiente, requiere al usuario**: (1) crear la cuenta de staff dedicada a CI en InsForge y cargar en GitHub los 4 secrets (`INSFORGE_TEST_STAFF_EMAIL`, `INSFORGE_TEST_STAFF_PASSWORD`, `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`) — mientras no existan, `test-integration` falla en cada push/PR a propósito; (2) marcar `test-integration`/`tests-db` como required status checks en la protección de la rama `main` — verificado por API de GitHub el 2026-08-18 que hoy `main` no tiene ninguna regla de protección (`branches/main/protection` → 404); (3) una vez (1) y (2) estén hechos, evaluar retirar el cron `secrets-smoke-pendientes` (`ci.yml`) |
+
+**Efecto del redeploy sobre V-02/V-05/V-06 del Ciclo 8** (que dependían de
+este mismo redeploy, documentado como pendiente en el Ciclo 9): V-05
+(`accesos_log.ip`/`user_agent`) y V-06 (rate-limit por DNI) pasan de
+**Parcial** a **Resuelto** — el código que llena esas columnas ya está en
+producción. V-02 sigue **Parcial**: el redeploy cierra la parte de
+"`function_deploys` ya registra qué se desplegó", pero los 4 secrets de
+GitHub Actions de smoke test (mismo pendiente que P0-04 arriba) siguen sin
+cargarse.
+
+**Migración 067 — aplicada el mismo día, antes del margen de 7 días
+recomendado**: el redeploy de `credenciales` ocurrió el 2026-08-18 ~14:24
+UTC; la 067 se aplicó ese mismo día. No siguió el margen conservador que
+recomendaba esta misma auditoría, pero se verificó que no hubo riesgo real:
+`entregaAbrir` nunca leyó la columna `token` (compara solo por
+`token_hash`, así desde el redeploy), así que soltarla no rompió ninguna de
+las 3 entregas todavía vigentes. Ver fila V-04 arriba y
+[[migraciones-064-070-drift-produccion]] en memoria.
+
+## Ciclo 11 — Pruebas negativas de autorización (2026-08-18)
+
+Alcance: construir, a partir de la matriz de autorización del Ciclo 10
+(RLS/SECURITY DEFINER/RPC/edge functions/frontend/tests, ver artefacto
+publicado), pruebas ejecutables que demuestren los rechazos esperados —
+no solo documentarlos. Tres archivos nuevos, todos corridos contra el
+backend real antes de reportar resultado (nunca asumido):
+
+- **`tests/db/triggers.test.sql` (bloque 4, nuevo)**: `cerrar_ticket` (051),
+  `staff_nombres` (061), `reporte_tickets`/`reporte_tickets_resumen`/
+  `reporte_satisfaccion_consolidado` (053) rechazan ejecución sin sesión de
+  staff — mismo alcance/limitación que [032]/[038] (solo el guard, no la
+  lógica de negocio interna). **Corrido: 4/4 bloques OK.**
+- **`frontend/tests/integration/autorizacion-anonima.smoke.test.js`
+  (nuevo)**: un anónimo (solo anon key, sin login) no puede leer 14 tablas
+  internas, no puede insertar en 4 de ellas, y 7 de 8 RPC `SECURITY DEFINER`
+  rechazan su ejecución. Solo requiere `VITE_INSFORGE_URL`/`ANON_KEY` (ya
+  necesarios para el build) — no necesita ninguna cuenta de staff. **Corrido
+  contra producción: 25/26 pasan.**
+- **`frontend/tests/integration/autorizacion-roles.smoke.test.js`
+  (nuevo)**: ASISTENTE sin módulo/sin `credenciales.ver`, staff inactivo, y
+  `accesos_sensibles` fila por fila entre dos JEFE. Requiere 4 cuentas de
+  prueba dedicadas que **hoy no existen** — cada `describe` se omite con
+  `console.warn` hasta que se provisionen (mismo patrón que el resto de
+  `tests/integration/`). Ver README "CI: secrets del smoke de integración"
+  para el detalle de cada cuenta.
+
+**1 hallazgo nuevo, confirmado por un test que falla a propósito (no
+corregido en este cambio, por decisión explícita — "no cambiar políticas
+todavía si una prueba falla")**:
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| P0-05 | `tiene_permiso_modulo(text)` es la única función `SECURITY DEFINER` del sistema sin `revoke ... from public` (a diferencia de las otras 17, endurecidas en la migración 062/063) — un anónimo puede ejecutarla directamente (`select public.tiene_permiso_modulo('tickets')` sin sesión no da error). Sin impacto de fuga de datos por sí sola (solo devuelve `false` sin `auth.uid()`), pero es una inconsistencia de hardening y el patrón que el proyecto usa para todo lo demás | Baja | **Aplicada y verificada en producción a nivel de esquema. Pendientes las pruebas end-to-end autenticadas y la ejecución real del workflow de CI** | Migración 073 (`revoke execute on function tiene_permiso_modulo(text) from public; grant execute ... to authenticated;`), aplicada en producción el 2026-08-18. Verificado por `SELECT` en vivo: `pg_proc.proacl` ya no incluye `public`. `frontend/tests/integration/autorizacion-anonima.smoke.test.js` sigue sin correrse contra producción tras el cambio — el rojo a propósito debería pasar a verde, no reconfirmado todavía. Ver Ciclo 12 |
+
+**Hallazgo de documentación, no de seguridad**: la cuenta genérica
+`INSFORGE_TEST_STAFF_EMAIL` (README, ya documentada desde el Ciclo 9) nace,
+por el default "opt-out" de las migraciones 056/060, con los 8 módulos y
+`credenciales.ver` ya otorgados — el README no lo aclaraba y podía leerse
+como si esa cuenta sirviera para probar el caso "sin permiso". No sirve
+para eso sin que un JEFE le revoque algo primero; las cuentas nuevas
+(`INSFORGE_TEST_ASISTENTE_SIN_MODULO_*`, etc.) documentan esto
+explícitamente.
+
+## Ciclo 12 — Reconciliación de migraciones frente al bug de `apply-migration.mjs` (2026-08-18)
+
+Alcance: tras confirmar y corregir un bug crítico de Windows en
+`scripts/apply-migration.mjs` (truncaba silenciosamente cualquier SQL
+multilínea pasado por `db query` vía `npx`/`cmd.exe` — causa raíz del
+falso éxito de la migración 073 en un primer intento), se inventariaron
+las 73 migraciones históricas por exposición al mismo bug y se
+reconciliaron contra el estado real de producción mediante `SELECT`,
+priorizando seguridad/RLS/grants/funciones/tokens. De 17 migraciones
+prioritarias verificadas, 2 discrepancias reales — ninguna causada por el
+bug de truncamiento en sí, ambas por el mismo patrón de fondo: una
+migración posterior reescribe por completo una función/constraint
+compartida y pierde, sin darse cuenta, una línea de hardening que una
+migración anterior había agregado.
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| PERM-060-064 | La migración 060 amplió `accesos_log_accion_check` para incluir `permiso_otorgado`/`permiso_revocado` (los usa `trg_staff_permisos_log_evento`, creado en la misma migración). La migración 064 reconstruyó el mismo constraint tomando como base la lista de la 030 (anterior a 060) y omitió esos dos valores. Efecto: cualquier INSERT/DELETE en `staff_permisos` (JEFE otorgando/revocando `credenciales.ver`) violaba el `CHECK` y revertía la transacción completa — el otorgamiento/revocación estaba roto en producción desde el 2026-08-17 | Alta (bloquea una función administrativa real) | **Aplicada y verificada en producción a nivel de esquema. Pendientes las pruebas end-to-end autenticadas y la ejecución real del workflow de CI** | Migración 074 (aditiva, restaura los 12 valores válidos), aplicada en producción el 2026-08-18. Verificado por `SELECT`: `pg_get_constraintdef` ya incluye los 12 valores. Probado de punta a punta en el branch de pruebas (otorgar → `permiso_otorgado` en `accesos_log`, revocar → `permiso_revocado`) — no repetido todavía contra producción con una cuenta JEFE real, ver limitación abajo |
+| H-CRIT-056-060 | `handle_new_staff_user()` inserta la fila `staff` sin fijar `activo` desde la migración 056 (`staff.activo` tiene `default true`, migración 003). La migración 018 (hallazgo H-CRIT original, 2026-07-07) había cerrado este hueco agregando `activo=false` explícito, como defensa en profundidad independiente de `disable_signup` pensada para el caso "alta desde el dashboard". La 056, al reescribir la función para sembrar `staff_modulos_permisos`, volvió sin querer al patrón de la 003 (sin `activo`); la 060 preservó la regresión al agregar el seeding de `staff_permisos`. Efecto: toda alta de staff (incluida la creada desde el dashboard, único canal legítimo) nacía activa e inmediatamente operativa, sin el paso de revisión manual del JEFE que la 018 exigía | Alta (reabre H-CRIT por una vía distinta a la original) | **Aplicada y verificada en producción a nivel de esquema. Pendientes las pruebas end-to-end autenticadas y la ejecución real del workflow de CI** | Migración 076 (aditiva, restaura `activo=false` explícito, sin tocar el seeding de módulos/permisos ni RLS), aplicada en producción el 2026-08-18. Verificado por `SELECT`: `pg_get_functiondef` ya incluye `activo`. Probado de punta a punta en el branch de pruebas (alta nueva → `activo=false` → no pasa `es_staff()`/`es_jefe()` → activación manual → sí pasa). **Pendiente**: revisar altas de staff ya existentes hechas mientras el bug estuvo vigente — `select user_id, nombre, rol, activo, created_at from staff order by created_at desc`, que un JEFE confirme cuáles reconoce (mismo criterio que la propia 018 ya dejaba documentado) |
+
+**Migraciones 075 y 077**: contingencias de rollback (revierten 074 y 076
+respectivamente a su estado previo, reabriendo a propósito el hallazgo
+correspondiente). **No se ejecutaron ni deben ejecutarse como parte del
+despliegue normal** — existen únicamente para el caso de que 074 o 076
+causaran una regresión distinta e inesperada. Precisión: 075 ya existe
+como archivo (`migrations/075_rollback_074_si_es_necesario.sql`); 077 por
+ahora solo quedó propuesta como texto en la auditoría de H-CRIT-056-060,
+sin crearse como archivo — si llega a necesitarse, se crea entonces,
+nunca se aplica sin antes confirmar que 076 causó el problema que se
+busca revertir.
+
+**Pendiente transversal a las 3 filas de arriba** (P0-05, PERM-060-064,
+H-CRIT-056-060): las tres correcciones están verificadas por `SELECT`
+directo contra el esquema de producción, pero ninguna se reconfirmó
+todavía mediante una prueba autenticada real de punta a punta contra
+producción (sesión JEFE real, no de prueba) ni mediante una corrida real
+del workflow de CI tras el cambio. Bloqueador conocido para lo primero:
+las cuentas JEFE de prueba de este ciclo no pudieron autenticarse en el
+branch (`Email verification required` — `smtp.enabled=false`), así que
+la validación runtime se hizo por evaluación directa de las condiciones
+de `es_staff()`/`es_jefe()` vía `SELECT`, no por login real.
 
 ## Cómo mantener esto al día
 

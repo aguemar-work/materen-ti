@@ -2,7 +2,7 @@
 // Cubre: roundtrip enc2, IV aleatorio, formato legacy enc:, texto plano
 // histórico y payloads corruptos.
 import { describe, it, expect } from 'vitest';
-import { encryptV2, decryptAny } from '../../functions/credenciales.ts';
+import { encryptV2, decryptAny, hashToken } from '../../functions/credenciales.ts';
 
 // Réplica mínima del cifrado legacy (enc:) para fabricar un valor histórico
 // con la clave CRED_KEY_LEGACY del setup y verificar que decryptAny lo lee.
@@ -55,5 +55,26 @@ describe('cifrado de credenciales', () => {
     // Se corrompe el ciphertext: GCM debe rechazarlo (autenticado)
     const corrupto = `${partes[0]}:${partes[1]}:${partes[2].slice(0, -4)}AAAA`;
     expect(await decryptAny(corrupto)).toBe('(error al descifrar)');
+  });
+});
+
+// hashToken (migración 066/067): entregas ya no guarda el token de la
+// URL pública en texto plano, solo su sha256.
+describe('hashToken', () => {
+  it('es determinístico: el mismo token produce siempre el mismo hash', async () => {
+    const a = await hashToken('mismo-token-de-entrega');
+    const b = await hashToken('mismo-token-de-entrega');
+    expect(a).toBe(b);
+  });
+
+  it('tokens distintos producen hashes distintos', async () => {
+    const a = await hashToken('token-A');
+    const b = await hashToken('token-B');
+    expect(a).not.toBe(b);
+  });
+
+  it('devuelve 64 caracteres hex (sha256)', async () => {
+    const hash = await hashToken('cualquier-token');
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
   });
 });

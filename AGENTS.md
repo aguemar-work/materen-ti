@@ -4,10 +4,10 @@
 > tickets, correos, licencias y equipos. UI en
 > `frontend/src/styles/main.css` (`--mat-*`) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
-**Vigencia**: actualizado 2026-08-11 (migración 047 RLS de personal_registros;
-046 hard delete de personal_registros; 045 notificaciones; 044 aviso realtime
-de ticket nuevo; 043 encuestas; 042 pre-registro de personal; 041 exclusividad
-de cuentas personal; 040 `tiene_clave`; 039 índice único de cuentas).
+**Vigencia**: actualizado 2026-08-17 (migración 068 RLS real por módulo;
+069/070 tracking de migraciones/deploys; 066/067 hash del token de entrega;
+064/065 accesos_log ip/user_agent + límite por DNI en personal-registro;
+nueva edge function `equipos-fotos`; verificación de auditoría externa).
 
 **Precedencia documental**: ante conflicto, `README.md` y `GUIA-UX-UI.md` describen
 intención; **ganan** los valores literales en `main.css` y el esquema real en
@@ -17,6 +17,27 @@ Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
 modelo de seguridad y estructura del repo), `docs/PANORAMA_SISTEMA.md`
 (esquema real y decisiones verificadas) y `docs/HISTORIAL-AUDITORIAS.md`
 (hallazgos de seguridad/calidad con su estado).
+
+## Documentación sensible — no pegar en herramientas externas sin revisar
+
+`README.md`, este archivo, `docs/HISTORIAL-AUDITORIAS.md` y `docs/CHANGELOG.md`
+ya usan `<INSFORGE_PROJECT_URL>`/`<PROJECT_NAME>` como placeholder donde antes
+había la URL real de producción y el nombre del proyecto backend (corregido
+2026-08-17, verificación de auditoría externa). Antes de pegar cualquiera de
+estos archivos en un chat de IA externo, un ticket público o compartirlos con
+un tercero, confirmar que sigue así — no reintroducir el valor real a mano.
+
+Archivos que SÍ tienen datos reales de infraestructura y no se redactan
+(el valor es funcional, no narrativo) — no compartirlos con terceros/IA,
+tampoco "limpiarlos":
+- `frontend/vercel.json` / `frontend/public/vercel.json` — CSP con la URL
+  real de InsForge y el DSN de Sentry; un placeholder rompería el despliegue.
+- `.insforge/project.json`, `frontend/dist/**` — gitignorados, no trackeados,
+  pero pueden tener la URL real en disco; no pegarlos manualmente igual.
+- `frontend/.env` (nunca `.env.example`, que ya usa un valor de ejemplo).
+
+Nombres de tabla/columna/función SQL no son secretos — se dejan tal cual en
+toda la documentación, son necesarios para que siga siendo útil.
 
 ## Qué es
 
@@ -66,11 +87,26 @@ cuándo y si la contraseña se rotó después.
  `staff_modulos_permisos` **y** la fila de `staff_permisos`
  (`credenciales.ver`) del staff nuevo — si se reescribe la función, no perder
  ninguno de los tres `insert` (staff, módulos, permisos).
-- **Permisos de módulo** (`staff_modulos_permisos`, migración 056): son
- control de UI/navegación (sidebar + router guard), no de RLS. No asumir que
- desmarcar un módulo bloquea el acceso a los datos de esa tabla por otra vía
- (RPC, otra vista) — eso requeriría tocar RLS aparte, decisión que no se
- tomó acá.
+- **Permisos de módulo** (`staff_modulos_permisos`, migración 056): siguen
+ controlando sidebar/router en el frontend, pero desde la migración 068
+ `licencias`/`asignaciones_licencia`, `equipos`/`tipos_equipo`/
+ `asignaciones_equipo`/`eventos_equipo` y `cuentas`/`asignaciones_cuenta`
+ **también** lo exigen en RLS vía `tiene_permiso_modulo(text)` (mismo patrón
+ que `tiene_permiso_acceso_sensible` de la 024): un ASISTENTE sin el módulo
+ ya no puede leer/escribir esas tablas por otra vía (RPC, SDK directo desde
+ la consola). JEFE exento siempre (`es_jefe() or ...` en cada policy).
+ **Caso especial `empleados`, decisión explícita**: el SELECT sigue en
+ `es_staff()` sin gate de módulo — Equipos/Licencias/Correos embeben
+ `empleados(nombres, apellidos)` para mostrar a quién está asignado, y
+ gatear también la lectura dejaría esos nombres en blanco para cualquier
+ ASISTENTE sin el módulo "Empleados". Solo INSERT/UPDATE de `empleados`
+ quedan gateados por el módulo.
+ ⚠️ Igual que `credenciales.ver` más abajo: `functions/credenciales.ts`
+ (`revelar`, `revelarClaveLicencia`, `entregaCrear`) lee `cuentas`/`licencias`
+ con el cliente admin — bypasea esta RLS. Por eso tiene su propio chequeo
+ `tienePermisoModulo()` (consulta directa a `staff_modulos_permisos`, mismo
+ motivo que abajo: `auth.uid()` sería `NULL` en ese contexto). La regla vive
+ dos veces (RLS + edge function) a propósito, nada las sincroniza sola.
 - ⚠️ **Permiso `credenciales.ver` (`staff_permisos`, migración 060) — la regla
  vive en DOS lugares, a propósito, y hay que mantenerlos sincronizados a
  mano**:
@@ -113,8 +149,13 @@ cuándo y si la contraseña se rotó después.
 - **Migraciones**: archivos numerados `migrations/0XX_nombre.sql` (comentados,
  en español). Se aplican manualmente:
  `npx @insforge/cli db query --json -- "$(cat migrations/0XX_nombre.sql)"`.
- NO se usa `db migrations up` (el historial remoto del CLI está vacío a
- propósito).
+ NO se usa `db migrations up` (los nombres `0XX_snake_case.sql` son
+ incompatibles con el formato timestamp que exige ese subsistema, y su
+ historial remoto está vacío a propósito por no haberse usado nunca). Desde
+ la migración 069, `scripts/apply-migration.mjs` registra en
+ `public.schema_migrations` qué versión quedó aplicada (verifica antes de
+ reaplicar por error, salvo `--force`) — no reemplaza el CLI nativo, es
+ tracking propio.
 - **Windows + `db query`**: límite de línea de comandos ~8 KB y ejecución poco
  fiable de múltiples statements DML en una llamada. Para updates masivos:
  un solo `UPDATE ... FROM (VALUES ...)` por lote.
@@ -177,6 +218,22 @@ cuándo y si la contraseña se rotó después.
  `buscarDni`/`crear` sobre `personal_registros` (sin INSERT de cliente ahí
  tampoco). No confundir la encuesta de este módulo con
  `ticket_satisfaccion` — son tablas y flujos distintos, ver README.
+- **Edge function `equipos-fotos`** (2026-08-17): `functions/equipos-fotos.ts`
+ → desplegar con `npx @insforge/cli functions deploy equipos-fotos --file
+ functions/equipos-fotos.ts`. Requiere sesión de staff (no tiene ninguna
+ acción pública, a diferencia de las demás) — antes el navegador subía
+ directo a `storage.from('equipos-fotos').uploadAuto()` con la sesión de
+ staff, sin ninguna validación server-side; ahora valida magic bytes +
+ tamaño acá, mismo patrón que los adjuntos de `tickets.ts`. El bucket sigue
+ público (miniaturas sin firmar en los listados), y la validación de
+ contenido es el control real, no ocultar la URL.
+- **`schema_migrations`/`function_deploys`** (migraciones 069/070): tracking
+ real de qué migración y qué versión de cada edge function están aplicadas.
+ `scripts/apply-migration.mjs` lo llena solo (verifica antes de aplicar,
+ registra después); el job `deploy-manual` de CI hace lo mismo para `db
+ import` y `functions deploy`. Ninguna tiene RLS — solo el cliente admin
+ (CLI/CI) o una edge function con `createAdminClient()` las tocan (ver
+ acción `version`, presente en las 5 edge functions).
 - **`functions/tsconfig.json`** (migración de tooling, no de dominio) solo es
  para `deno check`/el editor — `functions deploy` sigue tomando un único
  archivo `.ts` con `--file`, no lee ni empaqueta el tsconfig. Tocar ese
@@ -216,17 +273,33 @@ cuándo y si la contraseña se rotó después.
  130 archivos existentes (espaciado/orden, no bugs); forzarlo ahora sería
  reformatear el repo entero de golpe. Uso manual, no gate.
 - Build: `cd frontend && npx vite build`.
-- Tests unitarios: `cd frontend && npm test` (Vitest). **Línea base real,
- verificada 2026-08-17: 100 pasan + 12 se saltan (112 en total, 2 archivos de
- test omitidos) — no los "96/97" ni "97/97" con los que se arrancó a cerrar
- el hallazgo original. Esta se verificó corriendo la suite, no de memoria.**
- Los que se saltan son los dos smoke de integración
- (`tests/integration/tickets-api.smoke.test.js` y
- `tests/integration/embeds.smoke.test.js`, ambos `describe.skipIf(!listo)`)
- cuando faltan los secrets — mismo caso que `test:integration` más abajo, no
- es un test roto. Cubre: cifrado, validaciones de la edge function de
+- Tests unitarios: `cd frontend && npm test` (Vitest). **No fijar esta cifra
+ de memoria — corre la suite y lee su propio resumen final; ya pasó una vez
+ que este número quedó obsoleto en este mismo párrafo (2026-08-17 → 100+12,
+ desactualizado dos ciclos después) y no vale la pena repetirlo.** Snapshot
+ verificado corriendo la suite el 2026-08-18 (Ciclo 11, tras endurecer los
+ helpers de autorización): **148 pasan + 1 falla + 25 se saltan (174 en
+ total)**.
+   - **La 1 que falla es esperada, no es una regresión, y no se corrige
+     acá a propósito**: `tests/integration/autorizacion-anonima.smoke.test.js`
+     → `"tiene_permiso_modulo — debería rechazar ejecución anónima"` —
+     hallazgo P0-05 (`tiene_permiso_modulo(text)` es la única función
+     `SECURITY DEFINER` del sistema sin `revoke ... from public`), ver
+     `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11. Sigue en rojo hasta que se
+     aplique esa migración.
+   - Las 25 que se saltan son los smoke de integración condicionados a
+     secrets/cuentas que no existen hoy: `tickets-api.smoke.test.js` (1),
+     `embeds.smoke.test.js` (11) y `autorizacion-roles.smoke.test.js`
+     completo (13) — los tres `describe.skipIf(!listo)`, ninguno es un
+     test roto. `autorizacion-anonima.smoke.test.js` no está en esta
+     lista: corre completo (no se salta) porque solo necesita
+     `VITE_INSFORGE_URL`/`ANON_KEY`, que sí existen en este entorno.
+ Cubre: cifrado, validaciones de la edge function de
  tickets, dominio de tickets, formatters, periodos y PDF del reporte, forma
- de `insforgeApi`, paginación. Corren en CI en cada push
+ de `insforgeApi`, paginación, y (desde 2026-08-18) los propios discriminantes
+ de autorización del arnés de pruebas (`autorizacion-helpers.test.js`, sin
+ red — verifica que exigen un rechazo específico y que sus mensajes de
+ fallo nunca imprimen un payload). Corren en CI en cada push
  (`.github/workflows/ci.yml`, job `build-y-tests`), junto con
  `node scripts/contraste.mjs` (contraste WCAG de los tokens) y
  `npm audit --omit=dev --audit-level=high` (vulnerabilidades de dependencias).
@@ -237,19 +310,41 @@ cuándo y si la contraseña se rotó después.
  a histórico, todo sin documentar. Ver `docs/HISTORIAL-AUDITORIAS.md` (Q-01) y
  `CONTRIBUTING.md` (por qué un commit = un cambio coherente).
 - Smoke de integración contra el backend real: `npm run test:integration`
- (corre los dos archivos de `tests/integration/`: tickets y, desde el
+ (corre los 4 archivos de `tests/integration/`: tickets y, desde el
  incidente de producción del 2026-08-17 — ver `docs/HISTORIAL-AUDITORIAS.md`
  Q-01 —, `embeds.smoke.test.js`, una consulta por cada `select()` con embed
- del resto de dominios). Atrapa desincronización esquema↔frontend. Corre en
- CI como job aparte (`test-integration`) — **requiere 4 secrets del repo**
- que hoy no existen: `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`,
- `INSFORGE_TEST_STAFF_EMAIL`, `INSFORGE_TEST_STAFF_PASSWORD` (la cuenta de
- staff debe ser **dedicada a CI**, nunca la de una persona real). Sin ellos
- el job emite un `::warning::` visible en la pestaña Actions/checks y **no
- verifica nada** — no confundir ese aviso con un check verde real.
+ del resto de dominios; más las dos pruebas negativas de autorización del
+ Ciclo 11, ver el bullet de más abajo). Atrapa desincronización esquema↔frontend. Corre en
+ CI como job aparte (`test-integration`) — **requiere 4 secrets del repo**:
+ `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`, `INSFORGE_TEST_STAFF_EMAIL`,
+ `INSFORGE_TEST_STAFF_PASSWORD` (la cuenta de staff debe ser **dedicada a
+ CI**, nunca la de una persona real, creada por el dashboard de InsForge —
+ nunca por registro público, ver README). **Desde 2026-08-18 (Ciclo 10,
+ P0-04) son obligatorios: si falta cualquiera, el job FALLA** (`::error::` +
+ `exit 1`), ya no se omite en verde con un `::warning::` — ver README "CI:
+ secrets del smoke de integración" para crearlos.
 - Invariantes de triggers de BD: `node scripts/test-db.mjs` (SQL con rollback).
  Job `tests-db` en CI; mismo patrón de `::warning::` si falta
- `INSFORGE_ACCESS_TOKEN`.
+ `INSFORGE_ACCESS_TOKEN`. Desde 2026-08-18 (Ciclo 11) incluye un 4º bloque:
+ `cerrar_ticket`/`staff_nombres`/`reporte_tickets*` rechazan ejecución sin
+ sesión de staff.
+- Pruebas negativas de autorización (`tests/integration/autorizacion-*.smoke.test.js`,
+ Ciclo 11, endurecidas después de la autoauditoría del mismo ciclo):
+ `autorizacion-anonima` corre siempre (solo necesita
+ `VITE_INSFORGE_URL`/`ANON_KEY`) y demuestra que un anónimo no lee tablas
+ internas ni ejecuta RPC `SECURITY DEFINER`. **Tiene un test que falla a
+ propósito** (`tiene_permiso_modulo`, hallazgo P0-05 — ver el párrafo de
+ "Tests unitarios" más arriba) — no es ruido, es el hallazgo real quedando
+ visible. `autorizacion-roles` cubre ASISTENTE sin módulo/sin
+ `credenciales.ver`, staff inactivo y `accesos_sensibles` fila por fila,
+ pero necesita hasta 4 cuentas de staff dedicadas que hoy no existen (ver
+ README "Cuentas adicionales..." — cada bloque se omite por separado si
+ falta la suya, no bloquea CI). Los discriminantes de autorización de
+ ambos archivos (`_autorizacion-helpers.js`, compartido) exigen un
+ rechazo específico — SQLSTATE `42501`, `P0001` con el mensaje del guard,
+ o el status HTTP real de la edge function — nunca "hubo algún error" a
+ secas; sus mensajes de fallo nunca imprimen el payload devuelto. Cubierto
+ por `frontend/tests/autorizacion-helpers.test.js` (unitario, sin red).
 - Contraste WCAG de los tokens: `node scripts/contraste.mjs`.
 - Probar la función sin sesión:
  `npx @insforge/cli functions invoke credenciales --data '{"action":"entregaAbrir","token":"x"}'`
@@ -260,7 +355,7 @@ cuándo y si la contraseña se rotó después.
 
 This project uses [InsForge](https://insforge.dev): an all-in-one, open-source Postgres-based backend (BaaS) that gives this app a database, authentication, file storage, edge functions, realtime, and payments through one platform.
 
-- **Project:** **sistema-ti** (API base `https://kjyj8t5t.us-east.insforge.app`)
+- **Project:** **`<PROJECT_NAME>`** (API base `<INSFORGE_PROJECT_URL>`)
 - **Skills:** these InsForge skills are installed for supported coding agents. Reach for them before implementing any InsForge feature instead of guessing the API:
  - `insforge`: app code with the `@insforge/sdk` client (database CRUD, auth, storage, edge functions, realtime, email, and Stripe payments).
  - `insforge-cli`: backend and infrastructure via the `insforge` CLI (projects, SQL, migrations, RLS policies, storage buckets, functions, secrets, payment setup, schedules, deploys).
