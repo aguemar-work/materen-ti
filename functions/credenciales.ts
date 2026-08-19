@@ -665,10 +665,11 @@ export default async function (req: Request): Promise<Response> {
     const token = randomToken();
     const expiresAt = new Date(Date.now() + horas * 3600 * 1000).toISOString();
 
-    // Se inserta token_hash siempre; token en claro solo durante la
-    // transición (migración 066/067, se retira en un deploy posterior).
+    // Solo se inserta token_hash (migración 066/067 ya completa: la columna
+    // `token` en claro fue retirada de la tabla). `token` sigue existiendo
+    // como variable local — hace falta para calcular el hash y para el
+    // enlace que se devuelve al llamador — pero nunca se persiste en BD.
     const { error: insErr } = await admin.database.from('entregas').insert([{
-      token,
       token_hash: await hashToken(token),
       empleado_id: empleadoId,
       empleado_nombre: empleadoNombre,

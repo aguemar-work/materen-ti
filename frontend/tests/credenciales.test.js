@@ -2,6 +2,8 @@
 // Cubre: roundtrip enc2, IV aleatorio, formato legacy enc:, texto plano
 // histórico y payloads corruptos.
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { encryptV2, decryptAny, hashToken } from '../../functions/credenciales.ts';
 
 // Réplica mínima del cifrado legacy (enc:) para fabricar un valor histórico
@@ -76,5 +78,30 @@ describe('hashToken', () => {
   it('devuelve 64 caracteres hex (sha256)', async () => {
     const hash = await hashToken('cualquier-token');
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+// Test estático de regresión (incidente P0, 2026-08-19): la migración 067
+// retiró la columna `entregas.token` (texto plano), pero entregaCrear seguía
+// insertándola — cada entrega fallaba con error_guardando. Inspecciona el
+// código fuente sin ejecutar nada (sin red, sin BD, sin secrets reales) para
+// que este bug no pueda reintroducirse en silencio.
+describe('entregaCrear no persiste token en claro (regresión P0 2026-08-19)', () => {
+  const fuente = readFileSync(
+    fileURLToPath(new URL('../../functions/credenciales.ts', import.meta.url)),
+    'utf8',
+  );
+  const bloque = fuente.match(/\.from\('entregas'\)\.insert\(\[\{([\s\S]*?)\}\]\)/);
+
+  it('el INSERT en entregas existe y es único en el archivo', () => {
+    expect(bloque).not.toBeNull();
+  });
+
+  it('no incluye el campo `token` en claro (columna retirada por la migración 067)', () => {
+    expect(bloque[1]).not.toMatch(/^\s*token\s*,/m);
+  });
+
+  it('sí incluye `token_hash` (única fuente de verdad en BD desde la migración 066/067)', () => {
+    expect(bloque[1]).toMatch(/token_hash\s*:/);
   });
 });

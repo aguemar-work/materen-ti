@@ -1093,6 +1093,81 @@ problema (`page--padded` faltante o `card--fill` mal aplicada) — esta vez se
 corrigió puntualmente la reportada, no se re-auditó el resto del sistema
 contra este criterio de layout.
 
+**Segundo hallazgo (2026-08-18), en la misma vista**: `.datos-title` y
+`.tk-nota` — la clase que da tamaño/peso al título de cada tarjeta y el
+tratamiento itálico/terciario a las notas — están duplicadas como estilo
+`scoped` en cada vista que las usa (`TicketDetalleView`, `ProblemaDetalleView`,
+`KbArticuloDetalleView`, `EmpleadoDetalleView`); a `ReporteSatisfaccionView.vue`
+le faltaba esa duplicación por completo, así que "Por solicitante", "Por
+técnico" y "Todas las respuestas" renderizaban como párrafo suelto sin
+tratar, y las notas grises tampoco tenían tratamiento — pegados además
+contra el borde de la tarjeta (sin padding: ninguna de sus 3 `.card`
+tenía la clase de padding por-vista que sí tienen sus análogas, ej.
+`.kb-meta`/`.problema-meta`/`.tk-historial`). Fix: se agregó la misma
+regla de `.datos-title`/`.tk-nota` (ver comentario en el propio archivo),
+pero con el padding puesto en el título/nota en vez de en la tarjeta
+completa — a diferencia de esas vistas de detalle, acá cada tarjeta sigue
+con su tabla a sangre (mismo criterio que `.card--fill`, aunque estas
+tarjetas son `.card` con borde) porque ningún otro `.card` con tabla en
+todo el sistema mete padding alrededor de la tabla. De paso, la tabla
+"Todas las respuestas" — la única lista de todo el sistema sin buscador,
+pese a ser un histórico sin recorte de periodo que solo crece — pasó a
+usar `useBusqueda`/`useOrdenTabla`/`usePaginacion` (los mismos 3
+composables que ya comparten 12+ vistas) en vez de reimplementar
+orden/paginación a mano; `useOrdenTabla` ganó un tercer parámetro opcional
+`direccionInicial` (por defecto `'asc'`, sin tocar a nadie más) para poder
+seguir arrancando en "más reciente primero". **(a) Qué cambió**:
+`ReporteSatisfaccionView.vue`, `composables/useOrdenTabla.js` + esta guía.
+**(b) Riesgo**: bajo — mismo patrón de las otras 12 vistas, verificado con
+`npm run build` y `npm test` (149 tests, verde). **(c) Pendiente**: el
+mismo hueco de `.datos-title`/`.tk-nota` sin definir existe también en
+`ReporteTicketsModal.vue` (el modal "Reporte" de Tickets) — no se tocó
+porque no fue lo reportado esta vez.
+
+**Tercer cambio (2026-08-18), en la misma vista — completar la exportación**:
+la vista no tenía ninguna forma de exportar, a diferencia del modal
+"Reporte" de Tickets (que sí tiene CSV + PDF). Se agregó un botón
+"Descargar PDF" en el header (`.btn`, junto a "Volver") que arma un PDF de
+una página con el mismo lenguaje visual del reporte de tickets: KPIs
+(encuestas generadas/respondidas, tasa de respuesta, promedio general),
+"Por solicitante", "Por técnico" y "Todas las respuestas" (recortada a las
+40 más recientes, con nota de cuántas quedaron afuera — mismo criterio que
+`MAX_COMENTARIOS` en `reportesTickets.js`). Ver `docs/CHANGELOG.md` para el
+detalle de qué archivos cambiaron.
+
+**Cuarto cambio (2026-08-19), en la misma vista — desglose por nivel y baja
+satisfacción**: a pedido del usuario, "Por solicitante" separó su columna
+"Encuestas" (antes "3/5") en Respondidas/Pendientes, "Por técnico" en
+Total/Respondidas, y ambas ganaron 5 columnas más con el conteo de
+respuestas por nivel (1 a 5) — 9 columnas por tabla en total. Como la RPC
+`reporte_satisfaccion_consolidado()` ya trae CADA respuesta individual
+(`respuestas`, histórico completo, ya en memoria — ver el comentario de
+cabecera del archivo), el desglose se calcula agrupando ese mismo array en
+el cliente en vez de pedirle un campo nuevo a la RPC: **cero migraciones**
+para todo este cambio. `.resumenes-grid` pasó de 2 columnas lado a lado a
+apiladas a ancho completo — con 9 columnas, a la mitad del viewport
+scrolleaban casi todo el tiempo. Nuevo chip "Solo insatisfechos" (nivel ≤ 3,
+incluye "Neutral" — decisión explícita del usuario, no una lectura mía del
+umbral) sobre "Todas las respuestas", combinado con el buscador existente
+(mismo patrón AND que los chips de `TicketsView`). Nueva sección en el PDF,
+"Respuestas con baja satisfacción", con la misma forma de fila que "Todas
+las respuestas" pero ordenada peor-nivel-primero (el objetivo es entender
+el motivo, no leer en orden cronológico).
+
+Hallazgo de paso, verificado generando el PDF real y decodificando su
+contenido (no asumido): el glifo **"≤" rompe la fuente `helvetica` estándar
+de jsPDF** (solo trae WinAnsi/Latin-1, sin ese símbolo) — el texto sale con
+un espacio entre cada letra en vez de una palabra normal. Se evitó en el
+título de la sección nueva (texto plano: "nivel 3 o menos") y, por el mismo
+motivo, las 5 columnas de nivel usan encabezados "1".."5" en el PDF en vez
+de "★" (que sí se usa en pantalla, donde el navegador no tiene ese
+problema). **(a) Qué cambió**: `ReporteSatisfaccionView.vue`,
+`reporteSatisfaccion.js` + esta guía. **(b) Riesgo**: bajo — sin
+migraciones, verificado con `npm run build` y `npm test` (132 tests,
+verde). **(c) Pendiente**: ninguno señalado por el usuario; queda abierto
+si en algún momento se quiere el mismo desglose/filtro en el modal
+"Reporte" de Tickets (`ReporteTicketsModal.vue`), que hoy no lo tiene.
+
 ## Arquitectura general
 
 El frontend **no usa Tailwind ni librería de componentes**. Todo el diseño vive en:

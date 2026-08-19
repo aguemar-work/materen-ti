@@ -127,7 +127,17 @@ global `Deno`.
   la encuesta esté sin responder) que copia al portapapeles un mensaje con
   el enlace directo — mismo patrón de copiar-y-pegar que el enlace de
   soporte (`copiarEnlaceSoporte()`, `TicketsView.vue`), sin abrir WhatsApp
-  por su cuenta.
+  por su cuenta. El consolidado histórico (`/tickets/satisfaccion`, sin
+  recorte de periodo) tiene buscador propio + chip **"Solo insatisfechos"**
+  (nivel ≤ 3) sobre "Todas las respuestas"; "Por solicitante"
+  (Respondidas/Pendientes) y "Por técnico" (Total/Respondidas) muestran
+  además el desglose de respuestas por nivel (1 a 5), calculado en el
+  cliente sobre el histórico ya cargado — sin tocar la RPC. Botón
+  **"Descargar PDF"** con KPIs + esas dos tablas + "Todas las respuestas"
+  (40 más recientes) + una sección aparte de "Respuestas con baja
+  satisfacción" ordenada peor-primero (`reporteSatisfaccion.js`, mismas
+  primitivas de layout que el PDF del "Reporte" de Tickets, extraídas a
+  `core/pdfReporte.js`).
 
 - **Equipo**: activo físico con código de inventario único (etiqueta), tipo
   (catálogo `tipos_equipo` con plantilla de specs y accesorios por tipo),

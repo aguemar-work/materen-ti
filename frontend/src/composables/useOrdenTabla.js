@@ -2,11 +2,14 @@
 // una versión ordenada + el estado de orden para pintar el ícono del <th>.
 // Uso: const { listaOrdenada, columna, direccion, ordenarPor } = useOrdenTabla(listaFiltrada);
 // luego usePaginacion(listaOrdenada) en vez de listaFiltrada directamente.
+// direccionInicial: solo cuando el orden por defecto natural es "desc"
+// (ej. más reciente primero) — el resto de las vistas no lo necesita y
+// se queda con el 'asc' de siempre.
 import { ref, computed, unref } from 'vue';
 
-export function useOrdenTabla(lista, columnaInicial = '') {
+export function useOrdenTabla(lista, columnaInicial = '', direccionInicial = 'asc') {
   const columna = ref(columnaInicial);
-  const direccion = ref('asc');
+  const direccion = ref(direccionInicial);
 
   function ordenarPor(clave) {
     if (columna.value === clave) {

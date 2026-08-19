@@ -10,6 +10,34 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-19** — Desglose 1-5 y baja satisfacción (`README.md`,
+  `docs/GUIA-UX-UI.md`): "Por solicitante" separa Respondidas/Pendientes y
+  "Por técnico" separa Total/Respondidas; ambas ganan 5 columnas con el
+  conteo por nivel (1 a 5), calculado en el cliente agrupando el histórico
+  ya cargado (`respuestas`), sin tocar la RPC `reporte_satisfaccion_consolidado()`.
+  Nuevo chip "Solo insatisfechos" (nivel ≤ 3, incluye "Neutral" — decisión
+  explícita del usuario) sobre "Todas las respuestas", y nueva sección
+  "Respuestas con baja satisfacción" en el PDF (ordenada peor-primero).
+  `.resumenes-grid` pasa de 2 columnas lado a lado a apiladas (las tablas ya
+  no entran cómodas a media pantalla con 9 columnas). Hallazgo de paso: el
+  glifo "≤" en un título de PDF rompe la fuente helvetica estándar de jsPDF
+  (WinAnsi/Latin-1, sin ese símbolo) — sale con espacios entre cada letra;
+  se evitó ahí y en las columnas de nivel (que usan "1".."5", no "★", a
+  diferencia de la pantalla). `tests/reporte-satisfaccion-pdf.test.js`
+  actualizado (9 tests).
+
+- **2026-08-18** — PDF de "Satisfacción de tickets" (`README.md`,
+  `docs/GUIA-UX-UI.md`): `/tickets/satisfaccion` gana un botón "Descargar
+  PDF" (histórico completo: KPIs, por solicitante, por técnico y las 40
+  respuestas más recientes con nota de cuántas quedaron afuera). Las
+  primitivas de layout de PDF de `reporte.js` (título de sección, nota,
+  bloque de KPIs, tabla, pie de página) se extrajeron a
+  `frontend/src/core/pdfReporte.js` para que `reporteSatisfaccion.js` (nuevo)
+  las reuse en vez de duplicarlas — mismo lenguaje visual en los dos
+  documentos. `reporte.js` no cambia de comportamiento (mismos 2 exports
+  públicos, mismos tests en verde). Nuevo
+  `frontend/tests/reporte-satisfaccion-pdf.test.js` (6 tests).
+
 - **2026-08-18** — Autoauditoría de las pruebas negativas de autorización
   (`README.md`, `AGENTS.md`, `.github/workflows/ci.yml`): los 3 helpers
   compartidos (`esperarSinAcceso`/`esperarRpcRechazada`/`esperarAccionRechazada`,
