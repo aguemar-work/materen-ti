@@ -13,7 +13,7 @@
 import { formatFecha, formatFechaHora, formatHoras as horas, formatDelta as delta } from '../../core/formatters.js';
 import { aISO } from './reportePeriodo.js';
 import {
-  ANCHO, ALTO, MARGEN, UTIL, GRIS_LINEA, GRIS_TEXTO, NEGRO, ESTILOS_TABLA,
+  ANCHO, MARGEN, UTIL, GRIS_LINEA, GRIS_TEXTO, NEGRO, ESTILOS_TABLA,
   celdaVacia, ubicarSeccion, abrirSeccion, nota, bloqueKpis, tabla, piePaginas, crearDocumentoPdf,
 } from '../../core/pdfReporte.js';
 
