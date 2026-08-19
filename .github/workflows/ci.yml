@@ -256,7 +256,7 @@ jobs:
           npx @insforge/cli db query -- "insert into public.schema_migrations (version, nombre_archivo, checksum, aplicada_por) values ('$version', '$nombre', '$checksum', '${{ github.actor }}') on conflict (version) do update set nombre_archivo = excluded.nombre_archivo, checksum = excluded.checksum, aplicada_por = excluded.aplicada_por, aplicada_en = now();" \
             || echo "::warning::La migración se aplicó pero no se pudo registrar en schema_migrations (¿todavía no existe la tabla? ver migración 069, o el archivo requería db import por dollar-quoting — ver AGENTS.md)."
       - name: Redesplegar edge functions
-        if: inputs.desplegar_functions == 'true'
+        if: inputs.desplegar_functions
         env:
           FUNCION_SELECCIONADA: ${{ inputs.funcion }}
         run: |
