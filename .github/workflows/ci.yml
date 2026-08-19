@@ -38,6 +38,17 @@ on:
         description: 'Redesplegar las 5 edge functions (credenciales, tickets, encuestas, personal-registro, equipos-fotos)'
         type: boolean
         default: false
+      funcion:
+        description: 'Funcion a redesplegar cuando desplegar_functions=true ("todas" = las 5)'
+        type: choice
+        options:
+          - todas
+          - credenciales
+          - tickets
+          - encuestas
+          - personal-registro
+          - equipos-fotos
+        default: 'todas'
   schedule:
     # Todos los lunes 08:00 UTC: recordatorio forzado (job que SÍ falla) de
     # que los secrets de smoke test siguen sin cargarse — ver job
@@ -246,8 +257,22 @@ jobs:
             || echo "::warning::La migración se aplicó pero no se pudo registrar en schema_migrations (¿todavía no existe la tabla? ver migración 069, o el archivo requería db import por dollar-quoting — ver AGENTS.md)."
       - name: Redesplegar edge functions
         if: inputs.desplegar_functions == 'true'
+        env:
+          FUNCION_SELECCIONADA: ${{ inputs.funcion }}
         run: |
-          for fn in credenciales tickets encuestas personal-registro equipos-fotos; do
+          case "$FUNCION_SELECCIONADA" in
+            todas)
+              fns="credenciales tickets encuestas personal-registro equipos-fotos"
+              ;;
+            credenciales|tickets|encuestas|personal-registro|equipos-fotos)
+              fns="$FUNCION_SELECCIONADA"
+              ;;
+            *)
+              echo "::error::Valor de 'funcion' no permitido: '$FUNCION_SELECCIONADA'. Debe ser una de: todas, credenciales, tickets, encuestas, personal-registro, equipos-fotos."
+              exit 1
+              ;;
+          esac
+          for fn in $fns; do
             echo "== Desplegando $fn =="
             npx @insforge/cli functions deploy "$fn" --file "functions/$fn.ts"
             sha="$(sha256sum "functions/$fn.ts" | cut -d' ' -f1)"
