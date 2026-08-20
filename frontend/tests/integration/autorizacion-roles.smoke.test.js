@@ -51,14 +51,17 @@ async function cerrarSesion() {
 }
 
 // ── Objetivos 1 y 5 — ASISTENTE al que un JEFE le revocó explícitamente
-// el módulo "licencias" y el permiso "credenciales.ver" ──────────────────
+// el módulo "licencias", el módulo "equipos" y el permiso
+// "credenciales.ver" ────────────────────────────────────────────────────
 // Provisión requerida (una sola cuenta, no reutilizar la de tickets-api):
 //   1. Crear el usuario desde el dashboard de InsForge (nunca por registro
 //      público) y activarlo, igual que la cuenta genérica del README.
 //   2. Con una sesión JEFE, en Configuración → Staff: revocar el módulo
-//      "licencias" Y el permiso "credenciales.ver" de esa cuenta — nacen
-//      otorgados por defecto (migraciones 056/060), hay que quitarlos a
-//      mano para que sirva como caso negativo.
+//      "licencias", el módulo "equipos" (2026-08-20, hallazgo de
+//      functions/equipos-fotos.ts sin gate de módulo) Y el permiso
+//      "credenciales.ver" de esa cuenta — nacen otorgados por defecto
+//      (migraciones 056/060), hay que quitarlos a mano para que sirva
+//      como caso negativo.
 const EMAIL_RESTRINGIDO = process.env.INSFORGE_TEST_ASISTENTE_SIN_MODULO_EMAIL;
 const PASSWORD_RESTRINGIDO = process.env.INSFORGE_TEST_ASISTENTE_SIN_MODULO_PASSWORD;
 const BASE_URL = import.meta.env.VITE_INSFORGE_URL;
@@ -123,6 +126,25 @@ describe.skipIf(!listoRestringido)('autorización — ASISTENTE sin permiso de m
       empleadoId: '00000000-0000-4000-8000-000000000000',
       cuentaIds: [],
       horas: 1,
+    });
+  });
+
+  // equipos-fotos: hallazgo de auditoría externa (2026-08-20) — la función
+  // solo exigía staff activo, sin mirar el módulo "equipos". Content
+  // inventado a propósito en subirFoto: el gate de módulo corre ANTES de
+  // decodificar/validar el archivo (verificado leyendo
+  // functions/equipos-fotos.ts), así que nunca hace falta una imagen real.
+  it('subirFoto (sin módulo "equipos") — rechazada', async () => {
+    await esperarAccionRechazada('equipos-fotos', {
+      action: 'subirFoto',
+      contenidoBase64: 'AA==',
+    });
+  });
+
+  it('eliminarFoto (sin módulo "equipos") — rechazada', async () => {
+    await esperarAccionRechazada('equipos-fotos', {
+      action: 'eliminarFoto',
+      key: 'equipos/00000000-0000-4000-8000-000000000000.jpg',
     });
   });
 });

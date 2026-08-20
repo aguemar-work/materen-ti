@@ -9,8 +9,14 @@
 // functions/tickets.ts para adjuntos: se ignora el `tipo` declarado por el
 // cliente y se valida el contenido real por magic bytes.
 //
-// Requiere sesión de staff activo (mismo patrón que functions/credenciales.ts:
-// Authorization: Bearer <token>, no hay acción pública acá).
+// Requiere sesión de staff activo CON el módulo "equipos" otorgado
+// (mismo patrón que functions/credenciales.ts: Authorization: Bearer
+// <token>, no hay acción pública acá). Hasta 2026-08-20 solo exigía staff
+// activo, sin mirar el módulo — un ASISTENTE sin "equipos" podía subir o
+// borrar cualquier foto del bucket completo aunque la RLS de la tabla
+// `equipos` (migración 068) ya se lo negara ahí. Hallazgo de auditoría
+// externa, cerrado agregando tienePermisoModulo('equipos') a subirFoto/
+// eliminarFoto.
 //
 // Acciones (POST { action, ... }):
 //   subirFoto   staff { contenidoBase64 } → { url, key }
@@ -82,6 +88,25 @@ export default async function (req: Request): Promise<Response> {
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
 
+  // Permiso de módulo (migración 068) — mismo patrón y mismo motivo que
+  // tienePermisoModulo() en functions/credenciales.ts: la RLS de `equipos`
+  // ya exige tiene_permiso_modulo('equipos') para el CRUD normal de la
+  // tabla, pero esta función usa el cliente ADMIN (bypasea esa RLS) para
+  // subir/eliminar en el bucket. Sin este chequeo, cualquier staff activo
+  // sin el módulo "equipos" podía igual subir/borrar fotos del bucket
+  // completo (hallazgo de auditoría externa, 2026-08-20). Duplicado a
+  // propósito, no se comparte código entre edge functions (ver AGENTS.md).
+  async function tienePermisoModulo(rol: string, userId: string, modulo: string): Promise<boolean> {
+    if (rol === 'JEFE') return true;
+    const { data } = await admin.database
+      .from('staff_modulos_permisos')
+      .select('staff_user_id')
+      .eq('staff_user_id', userId)
+      .eq('modulo', modulo)
+      .maybeSingle();
+    return !!data;
+  }
+
   // Toda acción requiere staff activo — no hay ninguna pública acá.
   const authHeader = req.headers.get('Authorization');
   const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
@@ -94,7 +119,7 @@ export default async function (req: Request): Promise<Response> {
 
   const { data: staffRow } = await admin.database
     .from('staff')
-    .select('activo')
+    .select('activo, rol')
     .eq('user_id', user.id)
     .maybeSingle();
   if (!staffRow?.activo) return json({ ok: false, code: 'no_es_staff' }, 403);
@@ -125,6 +150,10 @@ export default async function (req: Request): Promise<Response> {
     const contenidoBase64 = String(body.contenidoBase64 || '');
     if (!contenidoBase64) return json({ ok: false, code: 'archivo_requerido' });
 
+    if (!(await tienePermisoModulo(staffRow.rol, user.id, 'equipos'))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
     let bytes: Uint8Array<ArrayBuffer>;
     try {
       const binario = atob(contenidoBase64);
@@ -153,6 +182,10 @@ export default async function (req: Request): Promise<Response> {
   if (body.action === 'eliminarFoto') {
     const key = String(body.key || '');
     if (!key.startsWith('equipos/')) return json({ ok: false, code: 'key_invalida' });
+
+    if (!(await tienePermisoModulo(staffRow.rol, user.id, 'equipos'))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
 
     const { error } = await admin.storage.from('equipos-fotos').remove(key);
     if (error) return json({ ok: false, code: 'error_eliminando' }, 500);

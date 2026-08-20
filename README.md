@@ -407,9 +407,10 @@ Desde 2026-08-18 (Ciclo 11), `tests/integration/` tiene dos archivos más:
      **por el default "opt-out" de las migraciones 056/060, toda cuenta
      nueva nace con los 8 módulos y `credenciales.ver` ya otorgados** — hay
      que entrar como JEFE a Configuración → Staff y **revocarle** el módulo
-     "Licencias" y el permiso "Ver contraseñas" a propósito. Sin ese paso
-     manual, esta cuenta no sirve como caso negativo (se comportaría igual
-     que la genérica).
+     "Licencias", el módulo "Equipos" (2026-08-20, cierra el hallazgo de
+     `equipos-fotos` sin gate de módulo) y el permiso "Ver contraseñas" a
+     propósito. Sin ese paso manual, esta cuenta no sirve como caso
+     negativo (se comportaría igual que la genérica).
   2. `INSFORGE_TEST_STAFF_INACTIVO_EMAIL`/`_PASSWORD` — crear el usuario
      desde el dashboard y **no activarlo**. Es la más simple: activo=false
      ya es el estado de alta por defecto (migración 018).
