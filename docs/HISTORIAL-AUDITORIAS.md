@@ -675,6 +675,63 @@ entregada al usuario; identidad de "quién estaba al teclado" no
 confirmable desde los logs — Confirmado por el usuario (2026-08-20):
 actividad propia, sin hallazgo.
 
+## Pendientes
+
+Consolidado de todo lo que sigue abierto a esta fecha (2026-08-20), no solo
+lo del Ciclo 13 — incluye proceso/CI y una nota de roadmap de producto
+todavía sin auditar. No reemplaza las tablas de cada ciclo — es un índice
+para no tener que releer todo el historial buscando qué falta. Al cerrar
+cualquiera de estos, actualizar esta lista **y**, si vino de un hallazgo
+con fila propia en algún ciclo, esa fila también.
+
+### Prioridad alta — antes de empezar multi-empresa/multi-agencia
+
+1. ~~Branch protection en `main`~~ — **Resuelto (2026-08-20)**: PR
+   obligatorio para todo cambio (push directo bloqueado), sin exigir
+   aprobación de otro colaborador (`required_approving_review_count: 0`),
+   `lint-y-typecheck` y `build-y-tests` como checks obligatorios,
+   force-push y borrado de la rama bloqueados, administradores sin
+   `enforce_admins` (pueden saltarse la regla en una emergencia).
+   Configurado y verificado vía `GET
+   /repos/aguemar-work/materen-ti/branches/main/protection`.
+2. Secrets de CI para tests de integración autenticados
+   (`VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`,
+   `INSFORGE_TEST_STAFF_EMAIL`, `INSFORGE_TEST_STAFF_PASSWORD`) + cuenta de
+   staff dedicada a CI. Sube de prioridad de cara al refactor multi-tenant.
+3. Diagnosticar y resolver el bug de autenticación del CLI en
+   `deploy-manual` (login interactivo pese a tener `INSFORGE_ACCESS_TOKEN`).
+
+### Prioridad media — limpieza antes del refactor grande
+
+4. Eliminar la rama muerta en `tickets.ts` que consulta `entregas.token`
+   (columna eliminada por la migración 067).
+5. Confirmar paridad repo↔producción de `tickets.ts` (nunca verificada).
+6. Registrar la migración 072 en `schema_migrations` (ya aplicada, falta
+   el `INSERT` de bookkeeping).
+
+### Prioridad baja — deuda menor, no urgente
+
+7. `MAX_FOTOS=4` sin tope server-side en `equipos-fotos.ts`.
+8. `Cache-Control: no-store` faltante en `encuestas.ts`.
+9. Bug del test `entregaCrear` en `autorizacion-roles.smoke.test.js`
+   (`cuentaIds: []` no llega al chequeo) — fix: usar un UUID dummy.
+10. Registrar en documentación el redeploy manual de `equipos-fotos.ts`
+    del 2026-08-18 (por "SIG"), sin entrada equivalente en el historial.
+
+### Fuera de esta auditoría, sin fecha
+
+11. Backup / RPO / RTO / procedimiento de restauración — sin definir.
+12. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
+    endurecida.
+
+### Roadmap de producto (nuevo, no auditado todavía)
+
+13. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
+    propio ciclo de auditoría/diseño antes de escribir código: probablemente
+    toca la mayoría de las policies RLS existentes. Definir el modelo de
+    aislamiento (RLS por `empresa_id` vs. schemas separados) antes de
+    migrar.
+
 ## Cómo mantener esto al día
 
 Cuando se cierre un hallazgo (código o config), actualizar su fila de
