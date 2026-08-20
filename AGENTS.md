@@ -218,15 +218,26 @@ cuándo y si la contraseña se rotó después.
  `buscarDni`/`crear` sobre `personal_registros` (sin INSERT de cliente ahí
  tampoco). No confundir la encuesta de este módulo con
  `ticket_satisfaccion` — son tablas y flujos distintos, ver README.
-- **Edge function `equipos-fotos`** (2026-08-17): `functions/equipos-fotos.ts`
- → desplegar con `npx @insforge/cli functions deploy equipos-fotos --file
- functions/equipos-fotos.ts`. Requiere sesión de staff (no tiene ninguna
+- **Edge function `equipos-fotos`** (2026-08-17, endurecida 2026-08-20):
+ `functions/equipos-fotos.ts` → desplegar con `npx @insforge/cli functions
+ deploy equipos-fotos --file functions/equipos-fotos.ts`. Requiere sesión
+ de staff activo **con el módulo "equipos" otorgado** (no tiene ninguna
  acción pública, a diferencia de las demás) — antes el navegador subía
  directo a `storage.from('equipos-fotos').uploadAuto()` con la sesión de
  staff, sin ninguna validación server-side; ahora valida magic bytes +
  tamaño acá, mismo patrón que los adjuntos de `tickets.ts`. El bucket sigue
  público (miniaturas sin firmar en los listados), y la validación de
- contenido es el control real, no ocultar la URL.
+ contenido es el control real, no ocultar la URL. Hasta 2026-08-20 solo
+ exigía `staff.activo`, sin mirar el módulo — cualquier ASISTENTE activo,
+ con o sin "equipos", podía subir o borrar cualquier foto del bucket
+ completo aunque la RLS de `equipos` (migración 068) ya se lo negara para
+ el CRUD normal de la tabla (hallazgo de auditoría externa). `subirFoto`/
+ `eliminarFoto` ahora exigen `tienePermisoModulo('equipos')`, mismo patrón
+ y mismo motivo que `tienePermisoModulo()` en `credenciales.ts` (cliente
+ admin bypasea la RLS, hay que repetir el chequeo a mano). **Pendiente
+ aparte, no cerrado por este cambio**: `MAX_FOTOS=4` (tope de fotos por
+ equipo) solo existe en `EquipoForm.vue`, del lado del cliente — la edge
+ function no lo aplica.
 - **`schema_migrations`/`function_deploys`** (migraciones 069/070): tracking
  real de qué migración y qué versión de cada edge function están aplicadas.
  `scripts/apply-migration.mjs` lo llena solo (verifica antes de aplicar,

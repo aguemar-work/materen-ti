@@ -10,6 +10,15 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-20** — `functions/equipos-fotos.ts` gana `tienePermisoModulo('equipos')`
+  en `subirFoto`/`eliminarFoto` (hallazgo de auditoría externa: la función
+  solo exigía staff activo, sin mirar el módulo — mismo patrón que
+  `credenciales.ts`). `AGENTS.md` (línea de esta función), `README.md`
+  (cuenta `INSFORGE_TEST_ASISTENTE_SIN_MODULO_*` también necesita revocado
+  "equipos") y `frontend/tests/integration/autorizacion-roles.smoke.test.js`
+  (2 casos nuevos) actualizados en el mismo cambio. Ver Ciclo 13 de
+  `docs/HISTORIAL-AUDITORIAS.md`. Pendiente aparte, no cerrado acá:
+  `MAX_FOTOS=4` sin tope server-side.
 - **2026-08-19** — Desglose 1-5 y baja satisfacción (`README.md`,
   `docs/GUIA-UX-UI.md`): "Por solicitante" separa Respondidas/Pendientes y
   "Por técnico" separa Total/Respondidas; ambas ganan 5 columnas con el
