@@ -672,8 +672,8 @@ misma cuenta Google logueada en el CLI de esta sesión) desde la misma IP
 que una sesión activa de la cuenta JEFE en la app — vía el editor de SQL
 del dashboard de InsForge, no vía CLI ni edge function. Evidencia cruda
 entregada al usuario; identidad de "quién estaba al teclado" no
-confirmable desde los logs — queda pendiente de confirmación humana, no
-se cierra en este documento.
+confirmable desde los logs — Confirmado por el usuario (2026-08-20):
+actividad propia, sin hallazgo.
 
 ## Cómo mantener esto al día
 
