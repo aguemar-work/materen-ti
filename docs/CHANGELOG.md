@@ -10,6 +10,21 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-21** — Fusión visual "Resuelto"/"Cerrado" en Tickets (decisión
+  de producto): el staff ya no distingue los dos estados en badges,
+  filtro y notificaciones — la columna `estado` sigue guardando los 2
+  valores reales sin cambios (`crear_encuesta_al_cerrar()` depende del
+  literal `'cerrado'`). `ESTADOS_TICKET`/`OPCIONES_FILTRO_ESTADO`
+  (`dominio-tickets.js`), filtro "Vigentes" corregido para excluir los 3
+  valores reales — antes excluía solo 2, dejando pasar `resuelto` como si
+  siguiera necesitando atención (`api/domains/tickets.js`, bug real, no
+  solo de UI) —, `<select>` de estado sin opción duplicada
+  (`TicketsView.vue`), y `notify_ticket_personal()` ya no manda las dos
+  notificaciones consecutivas del cierre atómico (migración 078, probada
+  antes en un branch de InsForge). Timeline de `TicketDetalleView.vue` sin
+  cambios a propósito — sigue siendo el registro histórico real. Hallazgo
+  colateral anotado en Pendientes (búsqueda pública por DNI, severidad
+  baja, sin tocar).
 - **2026-08-21** — "Revocar" en `CuentasPanel.vue` para cuentas
   `tipo_cuenta='personal'` ahora hace soft-delete real (RPC
   `revocar_cuenta_personal`, migración 077): antes solo cerraba la

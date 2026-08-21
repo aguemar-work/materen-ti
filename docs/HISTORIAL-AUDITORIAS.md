@@ -786,16 +786,26 @@ con fila propia en algún ciclo, esa fila también.
    (`cuentaIds: []` no llega al chequeo) — fix: usar un UUID dummy.
 10. Registrar en documentación el redeploy manual de `equipos-fotos.ts`
     del 2026-08-18 (por "SIG"), sin entrada equivalente en el historial.
+11. Hallazgo colateral de la fusión resuelto/cerrado (2026-08-21): en la
+    búsqueda pública por DNI (`functions/tickets.ts`, acción de
+    `TicketBuscarView.vue`), los tickets en estado `resuelto` no aparecen
+    ni en `activos` (solo `abierto`/`en_progreso`/`reabierto`) ni en
+    `cerrados` (solo `estado='cerrado'` exacto, para calcular encuesta
+    pendiente) — desaparecen por completo de los resultados mientras
+    están en ese estado. No es un bug activo hoy (`cerrar_ticket()` hace
+    el salto resuelto→cerrado atómico, nadie queda parado ahí), pero es
+    un gap latente si algún día existiera un camino que sí lo deje ahí.
+    No se toca sin pedirlo aparte.
 
 ### Fuera de esta auditoría, sin fecha
 
-11. Backup / RPO / RTO / procedimiento de restauración — sin definir.
-12. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
+12. Backup / RPO / RTO / procedimiento de restauración — sin definir.
+13. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
     endurecida.
 
 ### Roadmap de producto (nuevo, no auditado todavía)
 
-13. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
+14. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
     propio ciclo de auditoría/diseño antes de escribir código: probablemente
     toca la mayoría de las policies RLS existentes. Definir el modelo de
     aislamiento (RLS por `empresa_id` vs. schemas separados) antes de

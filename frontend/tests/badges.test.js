@@ -7,8 +7,12 @@ describe('badgeInfo', () => {
   });
 
   it('resuelve estados de ticket', () => {
-    expect(badgeInfo('ticket', 'cerrado').label).toBe('Cerrado');
-    expect(badgeInfo('ticket', 'cerrado').clase).toBe('badge--neutral');
+    // 'cerrado' se muestra fusionado con 'resuelto' (decisión de producto
+    // 2026-08-21, ver dominio-tickets.js) — mismo label y color, aunque la
+    // columna real de la tabla sigue guardando los 2 valores distintos.
+    expect(badgeInfo('ticket', 'cerrado').label).toBe('Resuelto');
+    expect(badgeInfo('ticket', 'cerrado').clase).toBe('badge--success');
+    expect(badgeInfo('ticket', 'resuelto')).toEqual(badgeInfo('ticket', 'cerrado'));
   });
 
   it('resuelve tipo de cuenta', () => {
