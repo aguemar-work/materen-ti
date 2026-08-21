@@ -207,6 +207,8 @@ Agrupado por tabla. Todos corren `SECURITY DEFINER` salvo donde se indica.
 - `notify_ticket_creado()` (AFTER INSERT, migración 044) — publica detalle mínimo (id/código/título) al canal `tickets:nuevos`, para el aviso emergente con sonido del sidebar; convive con `notify_list_changed('tickets:list')` sin reemplazarlo.
 - `notify_ticket_notificacion()` (AFTER INSERT, migración 045) — alimenta la campana persistente de notificaciones (tabla `notificaciones`), distinto del aviso efímero anterior.
 
+**"Resuelto"/"Cerrado" fusionados en la UI, no en la base (decisión de producto, 2026-08-21)**: la columna `estado` sigue guardando los 2 valores reales sin cambios — `crear_encuesta_al_cerrar()` sigue dependiendo del literal `'cerrado'`, y la whitelist de transiciones (050) sigue exigiendo el salto `resuelto → cerrado` en dos pasos internos. Lo que cambia es solo lo que ve el staff: `ESTADOS_TICKET` (frontend, `dominio-tickets.js`) les da el mismo label/color a ambos, el filtro "Vigentes" excluye los 3 valores terminales (`resuelto`/`cerrado`/`rechazado`, antes excluía solo 2), y `notify_ticket_personal()` (049, corregida en la migración 078) ya no manda las dos notificaciones consecutivas del cierre atómico — solo una, con el texto ya alineado ("Resuelto"). El timeline de `TicketDetalleView.vue` no se tocó a propósito: sigue mostrando los 2 hitos reales (`ticket_eventos` los registra por separado, uno por cada `UPDATE` interno de `cerrar_ticket()`).
+
 **`ticket_comentarios`**
 - `set_autor_id_only()` (variante de `set_created_by_only()` para la columna `autor_id`).
 - `check_ticket_no_cerrado()` — rechaza comentar un ticket `cerrado`/`rechazado`.

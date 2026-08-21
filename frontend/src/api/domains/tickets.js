@@ -5,6 +5,7 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { trimText } from '../../core/formatters.js';
+import { ESTADO_FILTRO_VIGENTES } from '../../core/dominio-tickets.js';
 
 // Columnas de "tickets" ordenables desde la tabla (excluye solicitante y
 // asignado_a: el primero viene de un join y el segundo es un UUID sin
@@ -229,7 +230,15 @@ async function queryTickets(
 ) {
   const db = getClient().database;
   let query = db.from('tickets').select(SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined);
-  if (estado) query = query.eq('estado', estado);
+  // 'resuelto' agrupa los 2 valores reales (resuelto+cerrado, fusionados
+  // en la UI — ver dominio-tickets.js) — de ahí el .in() en vez de .eq().
+  // "vigentes" excluye los mismos 3 valores que ya excluyen dashboard.js
+  // y el RPC de reportes (053): antes solo excluía 2, dejando pasar
+  // 'resuelto' como si siguiera necesitando atención (bug real, no solo
+  // de UI, corregido junto con la fusión de labels).
+  if (estado === ESTADO_FILTRO_VIGENTES) query = query.not('estado', 'in', '("resuelto","cerrado","rechazado")');
+  else if (estado === 'resuelto') query = query.in('estado', ['resuelto', 'cerrado']);
+  else if (estado) query = query.eq('estado', estado);
   if (prioridad) query = query.eq('prioridad', prioridad);
   if (sinAsignar) query = query.is('asignado_a', null);
   else if (asignadoA) query = query.eq('asignado_a', asignadoA);

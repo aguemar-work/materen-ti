@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { ESTADOS_TICKET as ESTADOS, PRIORIDADES_TICKET as PRIORIDADES } from '../../core/dominio-tickets.js';
+import { OPCIONES_FILTRO_ESTADO, PRIORIDADES_TICKET as PRIORIDADES, ESTADO_FILTRO_VIGENTES } from '../../core/dominio-tickets.js';
 import { badgeInfo } from '../../core/badges.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
@@ -32,7 +32,7 @@ const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 // única, así el sonido de "ticket nuevo" suena en cualquier pantalla).
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
-const filtroEstado = ref('');
+const filtroEstado = ref(ESTADO_FILTRO_VIGENTES);
 const filtroPrioridad = ref('');
 const soloSinAsignar = ref(false);
 const soloSinVincular = ref(false);
@@ -153,8 +153,9 @@ onMounted(async () => {
           <div class="filter-field">
             <label for="filtro-estado">Estado</label>
             <select id="filtro-estado" v-model="filtroEstado">
+              <option value="vigentes">Vigentes (sin cerrar)</option>
               <option value="">Todos los estados</option>
-              <option v-for="(v, k) in ESTADOS" :key="k" :value="k">{{ v.label }}</option>
+              <option v-for="op in OPCIONES_FILTRO_ESTADO" :key="op.valor" :value="op.valor">{{ op.label }}</option>
             </select>
           </div>
           <div class="filter-field">
@@ -223,7 +224,7 @@ onMounted(async () => {
                   <div class="user-name">{{ t.titulo }}</div>
                 </td>
                 <td>
-                  <span v-if="t.categoria" class="badge badge--accent">{{ t.categoria }}</span>
+                  <span v-if="t.categoria" class="badge badge--neutral">{{ t.categoria }}</span>
                   <TextoVacio v-else />
                 </td>
                 <td><BadgeEstado tipo="ticket" :valor="t.estado" /></td>
@@ -262,7 +263,7 @@ onMounted(async () => {
             <div class="tarjeta-fila__badges">
               <BadgeEstado tipo="ticket" :valor="t.estado" />
               <BadgeEstado tipo="prioridad" :valor="t.prioridad" />
-              <span v-if="t.categoria" class="badge badge--accent">{{ t.categoria }}</span>
+              <span v-if="t.categoria" class="badge badge--neutral">{{ t.categoria }}</span>
             </div>
           </li>
         </ul>
