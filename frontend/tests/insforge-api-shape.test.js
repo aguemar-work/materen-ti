@@ -23,7 +23,7 @@ const METODOS = [
   'listCuentasPorEmpleado', 'createCuenta', 'updateCuenta', 'traspasarCuenta',
   'historialCuenta', 'cerrarAsignacion', 'revocarCuentaPersonal',
   // dashboard / actividad
-  'getEstadisticas', 'getTendencias', 'listPendientes', 'pendientesTickets', 'listActividad',
+  'getEstadisticas', 'listPendientes', 'pendientesTickets', 'listActividad',
   // correos
   'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados',
   'createCorreo', 'updateCorreo',
