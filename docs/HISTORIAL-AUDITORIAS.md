@@ -724,6 +724,52 @@ con fila propia en algún ciclo, esa fila también.
    el CLI no toma el token) — queda como su propio punto de esta lista,
    no se aborda junto con esta actualización de alcance.
 
+   **Causa raíz confirmada (2026-08-21, evidencia de código —
+   `@insforge/cli` 0.2.8, bundle inspeccionado con `npm pack` + lectura
+   directa de `dist/index.js`)**: `requireAuth()` — el gate que corre
+   antes de prácticamente todo comando (`db query`, `db import`,
+   `functions deploy`, etc.) — nunca consulta `INSFORGE_ACCESS_TOKEN`.
+   Solo revisa `getCredentials()`, que lee exclusivamente
+   `~/.insforge/credentials.json` en disco; si ese archivo no existe
+   (cualquier runner de CI limpio, siempre) cae directo a login OAuth
+   interactivo, sin importar qué contenga la env var. La env var recién
+   se consulta más abajo, dentro de `platformFetch()`, para el header
+   `Authorization` de la llamada real — pero a esa altura `requireAuth()`
+   ya trabó todo. Por eso el fallo es sistémico (9/9) y no intermitente:
+   no depende del azar, depende de que el runner nunca tuvo esa sesión
+   guardada. Explica también por qué funciona en local: la máquina del
+   desarrollador ya tiene un `credentials.json` real de un login OAuth
+   por navegador hecho alguna vez, no una configuración especial de env
+   var.
+
+   Se evaluaron y descartaron tres alternativas, cada una con su motivo:
+   - **`uak_` (Personal API Key)**: sí pasa por `requireAuth()` con
+     refresh automático (el CLI detecta el prefijo `uak_` y renueva
+     sola), pero es acceso total a la cuenta personal, no
+     acotado al proyecto — mismo motivo por el que ya se descartó una
+     vez en esta sesión al provisionar la cuenta de CI; se mantiene la
+     misma decisión.
+   - **Bypass OSS/self-hosted** (`link --api-base-url <url> --api-key
+     <key>` con el proyecto real, dejando que el CLI guarde el
+     `project_id` sentinela que activa `isOssProject()`): evita
+     `requireAuth()` por completo, confirmado en el código — pero es un
+     modo no diseñado para el servicio cloud (la clave `ik_` del
+     dashboard, pensada para otro flujo), frágil ante cualquier
+     actualización del CLI que valide mejor esa condición, y exigiría
+     cambiar la arquitectura de cómo `ci.yml` linkea el proyecto (hoy
+     usa `INSFORGE_PROJECT_ID` con el UUID real, no el sentinela).
+   - **Reportar el bug a InsForge** (`requireAuth()` debería consultar
+     `INSFORGE_ACCESS_TOKEN` igual que `getAccessToken()` ya hace): la
+     única que resuelve la causa real, pero no depende de nosotros.
+
+   **Decisión (2026-08-21): no aplicar ningún workaround por ahora.**
+   `deploy-manual`/`tests-db` siguen sin funcionar en CI, documentado
+   como limitación conocida del CLI (no un bug propio del repo) — el
+   deploy real sigue siendo manual, como ya viene funcionando en toda
+   esta sesión (`equipos-fotos`, migración 077). Se retoma en una
+   auditoría futura, evaluando entonces si InsForge ya corrigió el bug
+   o si conviene reconsiderar alguna de las alternativas descartadas.
+
 ### Prioridad media — limpieza antes del refactor grande
 
 4. Eliminar la rama muerta en `tickets.ts` que consulta `entregas.token`
