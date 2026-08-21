@@ -45,6 +45,14 @@ export const useCuentasStore = defineStore('cuentas', {
       this.lista = this.lista.filter((c) => c.asignacion_id !== asignacionId);
     },
 
+    // Solo para tipo_cuenta === 'personal' (ver el comentario de
+    // revocarCuentaPersonal en api/domains/cuentas.js) — hallazgo 2026-08-20.
+    async revocarCuentaPersonal(asignacionId) {
+      this.error = null;
+      await insforgeApi.revocarCuentaPersonal(asignacionId);
+      this.lista = this.lista.filter((c) => c.asignacion_id !== asignacionId);
+    },
+
     async traspasar(asignacionId, nuevoEmpleadoId, notas) {
       this.error = null;
       await insforgeApi.traspasarCuenta(asignacionId, nuevoEmpleadoId, notas);

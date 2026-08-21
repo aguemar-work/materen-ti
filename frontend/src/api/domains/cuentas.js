@@ -162,6 +162,23 @@ export const cuentasApi = {
       .is('fecha_fin', null);
     if (error) throw error;
   },
+
+  // Solo para tipo_cuenta === 'personal': a diferencia de cerrarAsignacion
+  // (que solo cierra la asignación, dejando la cuenta viva para
+  // reutilizarse — correcto para compartida/reutilizable), esto cierra la
+  // asignación Y hace soft-delete de la cuenta en la misma transacción
+  // (RPC revocar_cuenta_personal, migración 077). Una cuenta personal sin
+  // dueño no tiene sentido mantenerla viva; dejarla viva bloqueaba para
+  // siempre el índice único usuario+plataforma (hallazgo 2026-08-20,
+  // reportado con almacen.nufago.06@gmail.com / VPN). No toca
+  // cerrarAsignacion en sí: licencias.js (liberarUsuario) la reutiliza para
+  // un caso sin relación con este hallazgo.
+  async revocarCuentaPersonal(asignacionId) {
+    const { error } = await getClient().database.rpc('revocar_cuenta_personal', {
+      p_asignacion_id: asignacionId,
+    });
+    if (error) throw error;
+  },
 };
 
 export function mapAsignacion(row) {

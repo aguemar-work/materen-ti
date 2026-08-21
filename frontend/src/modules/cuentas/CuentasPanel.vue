@@ -119,13 +119,23 @@ const porRevocar = ref(null);
 const revocando = ref(false);
 const dialogoRevocar = ref(null);
 
-const tituloRevocar = computed(() =>
-  porRevocar.value?.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar cuenta'
-);
+// “Personal” ya no es un simple cierre de asignación: revocarCuentaPersonal
+// también hace soft-delete de la cuenta (hallazgo 2026-08-20, ver
+// api/domains/cuentas.js) — el título/mensaje/acción de esta rama son
+// distintos a propósito, para no repetir la confusión original (“Revocar”
+// sonaba a reversible y no lo era).
+const tituloRevocar = computed(() => {
+  const t = porRevocar.value?.tipo_cuenta;
+  if (t === 'personal') return 'Eliminar cuenta';
+  return t === 'compartida' ? 'Revocar acceso' : 'Revocar cuenta';
+});
 
 const mensajeRevocar = computed(() => {
   const c = porRevocar.value;
   if (!c) return '';
+  if (c.tipo_cuenta === 'personal') {
+    return `¿Eliminar la cuenta de “${c.plataforma_nombre}”? Se cerrará la asignación y se eliminará la cuenta por completo — no se puede deshacer.`;
+  }
   return c.tipo_cuenta === 'compartida'
     ? `¿Revocar acceso de este empleado a “${c.plataforma_nombre}”? La cuenta seguirá existiendo para otros.`
     : `¿Revocar la cuenta de ${c.plataforma_nombre}? Se cerrará la asignación.`;
@@ -136,8 +146,13 @@ async function confirmarRevocar() {
   if (!c) return;
   revocando.value = true;
   try {
-    await store.revocarAsignacion(c.asignacion_id);
-    showToast('Asignación revocada');
+    if (c.tipo_cuenta === 'personal') {
+      await store.revocarCuentaPersonal(c.asignacion_id);
+      showToast('Cuenta eliminada');
+    } else {
+      await store.revocarAsignacion(c.asignacion_id);
+      showToast('Asignación revocada');
+    }
     dialogoRevocar.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al revocar', 'error');
@@ -351,8 +366,8 @@ onMounted(async () => {
                 <button
                   class="icon-btn danger"
                   type="button"
-                  :title="cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar'"
-                  :aria-label="cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar'"
+                  :title="cuenta.tipo_cuenta === 'personal' ? 'Eliminar' : (cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar')"
+                  :aria-label="cuenta.tipo_cuenta === 'personal' ? 'Eliminar' : (cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar')"
                   @click="porRevocar = cuenta"
                 >
                   <i class="ti ti-user-minus"></i>
@@ -468,7 +483,7 @@ onMounted(async () => {
     icono="ti-user-minus"
     :titulo="tituloRevocar"
     :mensaje="mensajeRevocar"
-    confirmar-label="Revocar"
+    :confirmar-label="porRevocar?.tipo_cuenta === 'personal' ? 'Eliminar' : 'Revocar'"
     :cargando="revocando"
     @cancel="porRevocar = null"
     @confirm="confirmarRevocar"

@@ -58,6 +58,8 @@ Leyenda de la columna RLS: `staff` = `es_staff()`, `jefe` = `es_jefe()`. Cuando 
 | `accesos_log` | user_id, user_email, cuenta_usuario, plataforma, `accion` (ver/copiar/enviar/entrega_creada/entrega_abierta/creado/editado/eliminado), detalle | `cuenta_id→cuentas` | **solo jefe ve**; insert únicamente vía edge function admin (sin policy INSERT) |
 | `entregas` | token, empleado_nombre, `payload` (cifrado), expires_at, viewed_at | `empleado_id→empleados` | staff ve, jefe elimina; insert/update (marcar `viewed_at`) solo por edge function admin |
 
+**"Revocar" en `CuentasPanel.vue` no es lo mismo para los 3 `tipo_cuenta`** (hallazgo 2026-08-20, migración 077): para `compartida`/`reutilizable` sigue siendo solo cerrar la asignación (`fecha_fin`) — la cuenta sigue viva, sin dueño, para reasignarse después. Para `personal` es distinto: el RPC `revocar_cuenta_personal()` cierra la asignación **y** hace soft-delete de la cuenta (`deleted_at`) en la misma transacción, porque antes de esta migración la cuenta personal quedaba viva para siempre y bloqueaba permanentemente `uq_cuentas_usuario_plataforma` (migración 039) — nadie podía volver a registrar ese usuario en esa plataforma, ni siquiera "revocando" de nuevo. No usa `SECURITY DEFINER`: corre con el RLS normal del que llama (mismo módulo `correos`² de la fila de arriba).
+
 ### Licencias
 
 | Tabla | Columnas clave | FKs | RLS |

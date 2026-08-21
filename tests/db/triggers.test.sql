@@ -34,6 +34,10 @@
 --         es_staff() — mismo alcance de prueba que [032]/[038] (bloque 4,
 --         agregado 2026-08-18 al implementar pruebas negativas de
 --         autorización — ver docs/HISTORIAL-AUDITORIAS.md)
+--   [077] revocar_cuenta_personal exige es_staff() (guard de la función),
+--         y rechaza cuentas tipo 'compartida'/'reutilizable' (bloque 5,
+--         agregado 2026-08-20 — hallazgo de "Revocar" sin soft-delete real
+--         en cuentas personales, ver docs/HISTORIAL-AUDITORIAS.md)
 --
 -- OJO — esta conexión (project_admin, ver AGENTS.md) tiene BYPASSRLS y el
 -- CLI bloquea `SET ROLE`/`SET LOCAL` ("Changing SQL session configuration
@@ -429,5 +433,66 @@ begin
     raise exception 'TESTS_OK [051/061/053] — 5 invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [051/061/053]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- Bloque 5 — [077] revocar_cuenta_personal
+-- Aparte del bloque 4 por el mismo límite de línea de comandos.
+--
+-- OJO: mismo alcance y misma limitación que [032]/[038]/[051] — esta
+-- conexión (project_admin) no tiene auth.uid(), así que solo verifica el
+-- guard de rechazo (es_staff(), y el rechazo de compartida/reutilizable
+-- vía un fixture real). La lógica de negocio interna (que cierre la
+-- asignación Y haga soft-delete de la cuenta EN LA MISMA transacción, y
+-- que eso libere de verdad el índice único usuario+plataforma) exige una
+-- sesión de staff real — cubierta por
+-- frontend/tests/integration/cuentas-revocar-personal.smoke.test.js
+-- (pendiente de la cuenta dedicada, mismo patrón que autorizacion-roles).
+-- ============================================================
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_cuenta_reutilizable uuid;
+  v_asig uuid;
+  fallos text := '';
+begin
+  -- ── [077] sin sesión de staff, rechaza ──────────────────────
+  begin
+    perform public.revocar_cuenta_personal('00000000-0000-4000-8000-000000000001');
+    fallos := fallos || '[077] revocar_cuenta_personal no rechazó una llamada sin sesión de staff; ';
+  exception when others then
+    null; -- esperado
+  end;
+
+  -- ── [077] sobre una cuenta 'reutilizable', rechaza sin tocar nada ──
+  -- (aunque esta conexión no es staff y ya rechazaría por eso, el mensaje
+  -- de la excepción debe ser el de tipo_cuenta, no el de es_staff() — se
+  -- verifica igual por si algún día esta suite corre con BYPASSRLS +
+  -- auth.uid() simulado; hoy documenta la intención de la función)
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 077')
+    returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    values ('Test', 'CI 077', '99999977', v_empresa) returning id into v_emp;
+  insert into public.plataformas (id, nombre)
+    values ('__test_ci_077__', '__TEST_CI__ Plataforma 077');
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta)
+    values ('__test_ci_077__', '__test_ci_077__@correo.test', 'reutilizable')
+    returning id into v_cuenta_reutilizable;
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id)
+    values (v_cuenta_reutilizable, v_emp) returning id into v_asig;
+
+  begin
+    perform public.revocar_cuenta_personal(v_asig);
+    fallos := fallos || '[077] revocar_cuenta_personal no rechazó una cuenta tipo "reutilizable"; ';
+  exception when others then
+    null; -- esperado (rechaza por es_staff() o por tipo_cuenta, cualquiera de los dos es correcto acá)
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [077] — 2 invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [077]: %', fallos;
   end if;
 end $$;

@@ -21,9 +21,9 @@ const METODOS = [
   'listCatalogoAlmacen', 'createCatalogoAlmacen', 'updateCatalogoAlmacen', 'softDeleteCatalogoAlmacen',
   // cuentas
   'listCuentasPorEmpleado', 'createCuenta', 'updateCuenta', 'traspasarCuenta',
-  'historialCuenta', 'cerrarAsignacion',
+  'historialCuenta', 'cerrarAsignacion', 'revocarCuentaPersonal',
   // dashboard / actividad
-  'getEstadisticas', 'listPendientes', 'pendientesTickets', 'listActividad',
+  'getEstadisticas', 'getTendencias', 'listPendientes', 'pendientesTickets', 'listActividad',
   // correos
   'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados',
   'createCorreo', 'updateCorreo',
@@ -74,7 +74,7 @@ const METODOS = [
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 162 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 163 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();
