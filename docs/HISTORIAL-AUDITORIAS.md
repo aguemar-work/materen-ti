@@ -701,8 +701,28 @@ con fila propia en algún ciclo, esa fila también.
    (`VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`,
    `INSFORGE_TEST_STAFF_EMAIL`, `INSFORGE_TEST_STAFF_PASSWORD`) + cuenta de
    staff dedicada a CI. Sube de prioridad de cara al refactor multi-tenant.
-3. Diagnosticar y resolver el bug de autenticación del CLI en
-   `deploy-manual` (login interactivo pese a tener `INSFORGE_ACCESS_TOKEN`).
+3. Diagnosticar y resolver el bug de autenticación del CLI — **alcance
+   ampliado (2026-08-21): no es exclusivo de `deploy-manual`**. El job
+   `tests-db` tiene exactamente el mismo patrón: el CLI (`npx
+   @insforge/cli db query`, invocado desde `scripts/test-db.mjs`) cae a
+   login interactivo por OAuth pese a tener `INSFORGE_ACCESS_TOKEN`
+   presente y no vacío (confirmado: el propio job valida que el secret
+   existe antes de correr el script), imprime la URL de
+   `https://api.insforge.dev/api/oauth/v1/authorize?...` y `Waiting for
+   authentication...`, y termina en `Error: Authentication timed out.`
+   ~25 minutos después (14:31:26Z → 14:56:36Z en el run #79, mismo tiempo
+   de espera en los 5 bloques de `tests/db/triggers.test.sql`, uno por
+   uno). Confirmado sistémico: **9/9 corridas recientes de `tests-db`
+   (runs #71 a #79) fallan**, mientras `lint-y-typecheck` pasa en las 9 y
+   `test-integration`/`build-y-tests` pasan en casi todas — no es ruido
+   aleatorio, es reproducible en cada corrida. El run #80
+   (`workflow_dispatch` manual) se canceló a mano tras confirmar el mismo
+   patrón en curso — sin riesgo: los bloques SQL nunca llegan a
+   ejecutarse (la conexión nunca se autentica), así que no hay ninguna
+   transacción a medias ni lock en producción que limpiar. Misma causa
+   raíz en ambos jobs, todavía sin diagnosticar (no investigado por qué
+   el CLI no toma el token) — queda como su propio punto de esta lista,
+   no se aborda junto con esta actualización de alcance.
 
 ### Prioridad media — limpieza antes del refactor grande
 
