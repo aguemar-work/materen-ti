@@ -10,6 +10,17 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-21** — "Revocar" en `CuentasPanel.vue` para cuentas
+  `tipo_cuenta='personal'` ahora hace soft-delete real (RPC
+  `revocar_cuenta_personal`, migración 077): antes solo cerraba la
+  asignación y la cuenta quedaba viva para siempre, bloqueando
+  `uq_cuentas_usuario_plataforma` sin ningún camino de UI para liberarlo
+  (reportado por un usuario real con `almacen.nufago.06@gmail.com`/VPN).
+  Backfill por ID explícito de las 4 filas huérfanas ya existentes, mismo
+  hallazgo. `compartida`/`reutilizable` sin cambios — deben poder quedar
+  sin asignar. `docs/PANORAMA_SISTEMA.md` (tabla de Credenciales) y la fila
+  del hallazgo en Ciclo 13 de `docs/HISTORIAL-AUDITORIAS.md` actualizados
+  en el mismo cambio.
 - **2026-08-20** — `functions/equipos-fotos.ts` gana `tienePermisoModulo('equipos')`
   en `subirFoto`/`eliminarFoto` (hallazgo de auditoría externa: la función
   solo exigía staff activo, sin mirar el módulo — mismo patrón que
