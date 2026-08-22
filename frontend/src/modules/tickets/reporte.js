@@ -14,48 +14,15 @@ import { formatFecha, formatFechaHora, formatHoras as horas, formatDelta as delt
 import { aISO } from './reportePeriodo.js';
 import {
   ANCHO, MARGEN, UTIL, GRIS_LINEA, GRIS_TEXTO, NEGRO, ESTILOS_TABLA,
+  GRIS_GUIA, GROSOR_MAX, HUECO_MIN, barra, ejeTexto, graficoCategorias,
   celdaVacia, ubicarSeccion, abrirSeccion, nota, bloqueKpis, tabla, piePaginas, crearDocumentoPdf,
 } from '../../core/pdfReporte.js';
 
 export { ubicarSeccion };
 
-// ── Gráficos ────────────────────────────────────────────────────────────────
-// Cada gráfico lleva UNA sola serie y un único gris: el documento se imprime en
-// blanco y negro, así que no hay paleta categórica que validar (la comprobación
-// de color que aplica es el contraste del relleno sobre el papel: #4A4A4A sobre
-// blanco ≈ 8.9:1). Marcas según la guía de dataviz: barras finas con el extremo
-// de dato redondeado y la base recta, hueco de papel entre barras vecinas, ejes
-// y guías en hairline continuo (nunca punteado), sin caja de leyenda (serie
-// única: el título ya dice qué se grafica) y etiquetas selectivas — el pico y
-// los extremos del eje, nunca un número sobre cada barra. Cada gráfico tiene su
-// tabla equivalente en el mismo documento, así que ningún valor queda encerrado
-// en la imagen.
-const GRIS_DATO = [74, 74, 74];
-const GRIS_GUIA = [214, 214, 214];
-const GROSOR_MAX = 4.5;      // ≈24px: la barra no llena su carril, deja aire
-const HUECO_MIN = 0.6;       // ≈2px de papel entre barras vecinas
-const RADIO_DATO = 1;        // ≈4px de redondeo en el extremo de dato
-
-// Barra con el extremo de dato redondeado y la base recta: jsPDF solo sabe
-// redondear las cuatro esquinas, así que se tapa el lado de la base con un
-// rectángulo recto del mismo relleno.
-function barra(doc, x, y, ancho, alto, orientacion) {
-  if (alto <= 0 || ancho <= 0) return;
-  doc.setFillColor(...GRIS_DATO);
-  const corto = orientacion === 'vertical' ? alto : ancho;
-  if (corto <= RADIO_DATO * 1.5) {
-    doc.rect(x, y, ancho, alto, 'F');
-    return;
-  }
-  const radio = Math.min(RADIO_DATO, corto / 2);
-  doc.roundedRect(x, y, ancho, alto, radio, radio, 'F');
-  if (orientacion === 'vertical') doc.rect(x, y + alto - radio, ancho, radio, 'F');
-  else doc.rect(x, y, radio, alto, 'F');
-}
-
-function ejeTexto(doc) {
-  doc.setFont('helvetica', 'normal').setFontSize(6.5).setTextColor(...GRIS_TEXTO);
-}
+// graficoCategorias (barras horizontales) y las primitivas de dibujo viven en
+// pdfReporte.js desde que reporteEquipos.js las necesitó también — acá solo
+// queda graficoPorDia (columnas verticales), específico de tickets.
 
 // Volumen por día: columnas desde una única línea base. Con menos de dos días no
 // se dibuja — un gráfico de una sola barra no aporta nada que el KPI no diga.
@@ -97,39 +64,6 @@ function graficoPorDia(doc, porDia, y) {
 
   doc.setTextColor(NEGRO);
   return base + bandaEtiquetas + 4;
-}
-
-// Volumen por categoría: barras horizontales (los nombres son largos), todas del
-// mismo gris — la longitud ya codifica la magnitud, teñir de más oscuro al mayor
-// sería duplicar el encoding.
-function graficoCategorias(doc, items, y, tope = 5) {
-  if (!items.length) return y;
-
-  const visibles = items.slice(0, tope);
-  const resto = items.slice(tope);
-  if (resto.length) {
-    visibles.push({ clave: `Otras (${resto.length})`, cantidad: resto.reduce((a, b) => a + b.cantidad, 0) });
-  }
-
-  const anchoEtiqueta = 46;
-  const anchoValor = 10;
-  const x0 = MARGEN + anchoEtiqueta;
-  const anchoPlot = UTIL - anchoEtiqueta - anchoValor;
-  const maximo = Math.max(...visibles.map((c) => c.cantidad));
-  const grosor = 4;
-  const pitch = grosor + 2.6;   // deja hueco de papel entre barras vecinas
-
-  visibles.forEach((c, i) => {
-    const yb = y + i * pitch;
-    doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...GRIS_TEXTO);
-    doc.text(doc.splitTextToSize(c.clave, anchoEtiqueta - 2)[0], MARGEN, yb + grosor / 2 + 1);
-    barra(doc, x0, yb, (c.cantidad / maximo) * anchoPlot, grosor, 'horizontal');
-    doc.setTextColor(NEGRO);
-    doc.text(String(c.cantidad), x0 + (c.cantidad / maximo) * anchoPlot + 1.5, yb + grosor / 2 + 1);
-  });
-
-  doc.setTextColor(NEGRO);
-  return y + visibles.length * pitch + 3;
 }
 
 // Categoría / prioridad / estado van una al lado de la otra: son listas cortas
