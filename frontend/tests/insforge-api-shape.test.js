@@ -35,7 +35,7 @@ const METODOS = [
   // equipos
   'listEquipos', 'listEquiposPage', 'listEquiposFiltrados', 'asignacionActivaEquipo', 'moverEquipo', 'createEquipo', 'updateEquipo',
   'cambiarEstadoEquipo', 'softDeleteEquipo', 'asignarEquipo', 'devolverEquipo',
-  'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado',
+  'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado', 'ultimosMovimientos',
   // bandeja de importación de equipos desde Excel (migración 057)
   'listImportacionPendiente', 'bulkCrearImportacion', 'updateImportacion',
   'eliminarImportacion', 'vaciarImportacion',
@@ -74,7 +74,7 @@ const METODOS = [
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 163 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los 164 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

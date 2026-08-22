@@ -11,6 +11,7 @@ import { formatFechaHora } from '../../core/formatters.js';
 import { SITUACIONES_EQUIPO, situacionInfo } from '../../core/dominio-equipos.js';
 import { generarActa } from './acta.js';
 import { generarActaDevolucion } from './acta-devolucion.js';
+import { construirDatosReporteEquipos, generarReporteEquipos, LIMITE_MOVIMIENTOS_PDF } from './reporteEquipos.js';
 import EquipoForm from './EquipoForm.vue';
 import Pagination from '../../components/shared/Pagination.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
@@ -51,6 +52,25 @@ const paginaActual = computed({
   get: () => store.pagina,
   set: (p) => store.irAPagina(p),
 });
+
+// PDF: siempre el inventario COMPLETO (sin los filtros del toolbar), es la
+// foto de todo el parque — decisión de producto 2026-08-22, distinto del
+// CSV de arriba, que sí exporta lo que esté filtrado.
+const generandoPdf = ref(false);
+async function descargarPdf() {
+  generandoPdf.value = true;
+  try {
+    const [equipos, movimientos] = await Promise.all([
+      insforgeApi.listEquiposFiltrados({}),
+      insforgeApi.ultimosMovimientos(LIMITE_MOVIMIENTOS_PDF),
+    ]);
+    await generarReporteEquipos({ ...construirDatosReporteEquipos(equipos), movimientos });
+  } catch (e) {
+    showToast(e?.message || 'No se pudo generar el PDF', 'error');
+  } finally {
+    generandoPdf.value = false;
+  }
+}
 
 const exportando = ref(false);
 async function exportar() {
@@ -456,6 +476,10 @@ onMounted(async () => {
       <template #acciones>
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
           <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
+        </button>
+        <button class="btn" type="button" :disabled="generandoPdf" @click="descargarPdf">
+          <i :class="generandoPdf ? 'ti ti-loader-2 spinner-icon' : 'ti ti-download'" aria-hidden="true"></i>
+          {{ generandoPdf ? 'Generando...' : 'Descargar PDF' }}
         </button>
         <RouterLink class="btn" to="/equipos/importar" title="Importar equipos desde un Excel de activos">
           <i class="ti ti-file-import" aria-hidden="true"></i> Importar desde Excel

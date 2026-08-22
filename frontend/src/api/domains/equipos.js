@@ -291,6 +291,41 @@ export const equiposApi = {
     return data || [];
   },
 
+  // Últimos movimientos de TODO el inventario (para el reporte PDF, sección
+  // "Últimas asignaciones y devoluciones") — a diferencia de eventosEquipo()
+  // de arriba, que es la hoja de vida de UN equipo. `detalle` ya trae el
+  // texto legible completo (a quién se entregó, de quién se devolvió, motivo)
+  // porque lo arma el trigger evento_asignacion_equipo() en el momento del
+  // evento (migraciones 013/014) — acá no hay que resolver nada más.
+  //
+  // Se pide de más (limite * MARGEN) porque algunos eventos pueden ser de
+  // equipos ya eliminados (soft-delete) — se descartan después de traerlos,
+  // ya que filtrar por una columna de una tabla embebida (equipos.deleted_at)
+  // no es una operación confiable de mandar directo en el WHERE de esta
+  // consulta. Si el margen no alcanza (muy eliminación reciente y masiva),
+  // devuelve menos de `limite` filas — no es crítico, es una lista de
+  // actividad reciente, no un total auditado.
+  async ultimosMovimientos(limite = 20) {
+    const MARGEN = 3;
+    const { data, error } = await getClient().database
+      .from('eventos_equipo')
+      .select('evento, detalle, created_at, equipos(codigo, deleted_at, tipos_equipo(nombre))')
+      .in('evento', ['asignado', 'devuelto'])
+      .order('created_at', { ascending: false })
+      .limit(limite * MARGEN);
+    if (error) throw error;
+    return (data || [])
+      .filter((e) => e.equipos && !e.equipos.deleted_at)
+      .slice(0, limite)
+      .map((e) => ({
+        fecha: e.created_at,
+        evento: e.evento,
+        detalle: e.detalle || '',
+        codigo: e.equipos.codigo,
+        tipo: e.equipos.tipos_equipo?.nombre || '',
+      }));
+  },
+
   // Equipos que porta un empleado (para la ficha y el resumen de baja)
   async equiposPorEmpleado(empleadoId) {
     const { data, error } = await getClient().database
