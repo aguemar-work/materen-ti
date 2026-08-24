@@ -665,6 +665,19 @@ sin escribir nada hasta que cada hallazgo se aprobó por separado.
 | GIT-ADD-CONTAMINACION-01 | Hallazgo de proceso, no solo de git: el commit `950b89c` (PR #7) incluyó por error la línea `'getTendencias'` en `insforge-api-shape.test.js` — un cambio de una sesión concurrente sin commitear, presente en el mismo working tree, que un `git add <archivo>` re-stageó sin querer al ejecutarse sobre un archivo que había sido restaurado a su versión "con ambos cambios" entre una verificación anterior y el `add` final. La verificación posterior (`git diff --cached` + `git status --short`) no lo detectó porque confirmó "¿son los archivos correctos?", no "¿es el CONTENIDO exactamente el esperado, línea por línea, incluso en archivos ya verificados en un paso previo?". La causa raíz real no es el comando de git en sí — es trabajar un cambio quirúrgico sobre un working tree que en ese momento tenía ~27 archivos ajenos sin commitear: ese volumen es en sí mismo un costo operativo real y creciente, no solo un detalle técnico puntual de esta corrección | Baja (detectado por CI antes de mergear a `main`, gracias a la branch protection del hallazgo #1 de "Pendientes", ya cerrado — esa protección funcionó exactamente para esto) | **Resuelto** | Commit `63a410d`, corregido sin `amend` ni force-push (push normal al mismo branch), verificado con `git stash --keep-index` contra el estado exacto a pushear antes de commitear |
 | MIGR-078-APLICADA-POR-DASHBOARD | Al verificar la migración 078 (`notify_ticket_personal()`, fusión resuelto/cerrado) en `sistema-ti` tras abrir el PR, apareció ya aplicada en producción sin estar registrada en `schema_migrations` — pese a que solo se había corrido `db import` contra un branch de InsForge descartable, nunca contra el proyecto padre. Investigación forense (mismo método que el hallazgo 1.3, `insforge.logs`): reproducción controlada confirmó que un branch NO filtra DDL/funciones hacia el padre sin un `branch merge` explícito (nunca ejecutado), descartando esa hipótesis. El audit log (`EXECUTE_RAW_SQL`, actor `cloud:65d80c91-...`, IP real, `POST /rawsql` vía el SQL Editor del dashboard, 2026-08-21T21:24:55Z) identificó la causa real: el usuario aplicó la función manualmente desde el dashboard, adelantándose al ciclo de aprobación coordinado, mientras la prueba en el branch seguía en curso — confirmado por el propio usuario. No hay tercer actor ni sesión comprometida | Baja (sin impacto real: el código aplicado coincide exactamente con lo probado y aprobado; solo faltaba el bookkeeping) | **Resuelto** (2026-08-21) | `schema_migrations` registrada manualmente (`aplicada_por='dashboard-manual-2026-08-21'`), verificada por `SELECT` independiente. Sin cambio de código — es un hallazgo de proceso: coordinar antes de aplicar manualmente cuando hay una prueba en curso en paralelo |
 | ACCESOS-SENSIBLES-UPDATE-DELETE-TEST | Al provisionar las 4 cuentas de fixture del ítem 2 de Pendientes y correr por primera vez contra un JEFE real sin permiso de fila, 2 tests de `autorizacion-roles.smoke.test.js` ("JEFE sin permiso de fila no puede editar/eliminar") fallan con `expected null to be truthy` — esperan `error` en la respuesta, pero un `UPDATE`/`DELETE` bloqueado por `USING` en Postgres/PostgREST no lanza error: solo afecta 0 filas en silencio (a diferencia de `INSERT`, que sí viola `WITH CHECK` con error real) | Baja | **Abierto, confirmado sin riesgo real (2026-08-24)** | Diagnóstico aislado en una rama descartable (borrada tras el diagnóstico, sin llegar a `main`): fixture creado por `INSFORGE_TEST_JEFE_CON_FILA`, intento de `UPDATE` y luego `DELETE` por `INSFORGE_TEST_JEFE_SIN_FILA`, `SELECT` de verificación con sesión de JEFE_A después de cada intento, antes de limpiar nada. La fila quedó exactamente intacta en ambos casos (`updated_at` sin cambiar, `notas` sin escribir, fila presente hasta el cleanup real) — RLS bloqueó de verdad, sin bypass. Mismo patrón de deuda que `AUTH-TEST-004`/`ENTREGACREAR-TEST-BUG` (ítem 9). Fix propuesto, no aplicado: reemplazar `expect(error).toBeTruthy()` por una verificación de que la fila no cambió (re-`SELECT` o comprobar `data` vacío) |
+| REPORTE-TICKETS-RPC-MUERTOS | La migración 053 creó `reporte_tickets(p_desde,p_hasta)`/`reporte_tickets_resumen(p_desde,p_hasta)` explícitamente para reemplazar las consultas crudas de `obtenerReporteTickets()`/`obtenerResumenTickets()` (comentario propio de la migración lo dice) — pero el frontend nunca migró: `frontend/src/api/domains/reportesTickets.js` sigue haciendo las mismas consultas de siempre. Detectado al auditar el flujo completo de tickets de punta a punta | Baja | **Abierto** (detectado 2026-08-24) | `migrations/053_reporte_tickets_rpc.sql` vs. `frontend/src/api/domains/reportesTickets.js:61-241`; el único código que invoca esos 2 RPC hoy es `frontend/tests/integration/autorizacion-anonima.smoke.test.js:119-126` (verifica que rechacen a un anónimo). Hipótesis de por qué el corte quedó a medias: ninguno de los 2 RPC recibe un parámetro `asignadoA`/`p_asignado`, necesario para el filtro "Solo mi actividad" que sí soporta el camino actual |
+| TICKET-EVENTOS-REASIGNADO-SIN-DETALLE | `evento_ticket_cambios()` registra el evento `'reasignado'` siempre con `detalle = null`, a diferencia de los demás eventos que dispara la misma función (`estado_cambiado`, `prioridad_cambiada`, `nivel_atencion_cambiado`, `tipo_cambiado`), que sí arman un `detalle` tipo "De X a Y". Detectado al auditar el flujo completo de tickets de punta a punta | Baja | **Abierto** (detectado 2026-08-24) | `migrations/035_tickets_tipo.sql` (definición vigente de `evento_ticket_cambios()`) |
+
+**Nota de documentación (2026-08-24)**: de los 9 valores permitidos en el
+`CHECK` de `ticket_eventos.evento`, dos quedaron vestigiales desde la
+migración 055 (retiro de todo envío de correo en `functions/tickets.ts`):
+`'correo_fallido'` y `'encuesta_enviada'`. Ningún código inserta esos
+eventos hoy, y el trigger `notify_correo_fallido()` (migración 049, que
+escucha `evento='correo_fallido'` en `ticket_eventos`) quedó sin poder
+dispararse nunca — no se retira nada del `CHECK` ni del código (puede haber
+filas históricas con esos valores, y retirarlos no es parte de esta
+auditoría), pero un lector futuro de la tabla no debería asumir que los 9
+valores siguen produciéndose por igual.
 
 **Nota de contexto, no cerrada como hallazgo**: durante esta auditoría se
 detectó una consulta SQL fallida en `postgres.logs`/`insforge.logs`
@@ -848,16 +861,22 @@ con fila propia en algún ciclo, esa fila también.
     riesgo real mediante diagnóstico aislado (2026-08-24, ver
     `ACCESOS-SENSIBLES-UPDATE-DELETE-TEST`, Ciclo 13). Fix: verificar que
     la fila no cambió en vez de esperar `error`.
+13. `reporte_tickets`/`reporte_tickets_resumen` (migración 053) nunca
+    fueron adoptados por el frontend — código muerto en producción, ver
+    `REPORTE-TICKETS-RPC-MUERTOS` (Ciclo 13).
+14. Evento `'reasignado'` en `ticket_eventos` siempre loguea
+    `detalle = null`, a diferencia de los demás eventos del mismo
+    trigger — ver `TICKET-EVENTOS-REASIGNADO-SIN-DETALLE` (Ciclo 13).
 
 ### Fuera de esta auditoría, sin fecha
 
-13. Backup / RPO / RTO / procedimiento de restauración — sin definir.
-14. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
+15. Backup / RPO / RTO / procedimiento de restauración — sin definir.
+16. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
     endurecida.
 
 ### Roadmap de producto (nuevo, no auditado todavía)
 
-15. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
+17. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
     propio ciclo de auditoría/diseño antes de escribir código: probablemente
     toca la mayoría de las policies RLS existentes. Definir el modelo de
     aislamiento (RLS por `empresa_id` vs. schemas separados) antes de
