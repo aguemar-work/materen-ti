@@ -651,11 +651,11 @@ sin escribir nada hasta que cada hallazgo se aprobó por separado.
 |----|----------|-----------|--------|------------|
 | EQ-FOTOS-01 | `functions/equipos-fotos.ts` exigía solo staff activo, sin `tiene_permiso_modulo('equipos')` — cualquier staff sin el módulo podía subir o borrar cualquier foto del bucket `equipos-fotos` completo, mismo patrón que ya tenían `revelar`/`entregaCrear` de `credenciales.ts` antes de la migración 068 | Alta (decisión del usuario, ver discusión) | **Resuelto** (2026-08-20) | `subirFoto`/`eliminarFoto` ganan `tienePermisoModulo('equipos')`, mismo patrón que `credenciales.ts`. No se agregó verificación de que la key pertenezca a un `equipo_id` real: `EquipoForm.vue` sube/descarta fotos antes de guardar el equipo (sin `equipo_id` todavía), así que esa verificación estricta rompería el alta de equipos nuevos; con el acceso siendo por módulo completo (no por fila, igual que el resto de RLS de `equipos`), una verificación laxa no habría agregado protección real más allá del gate de módulo |
 | EQ-FOTOS-02 | `MAX_FOTOS=4` (tope de fotos por equipo) solo existe en `EquipoForm.vue`, del lado del cliente — la edge function no lo aplica | Baja | **Abierto, pendiente aparte** (detectado 2026-08-20, no cerrado en el mismo cambio que EQ-FOTOS-01 a pedido explícito) | `functions/equipos-fotos.ts` |
-| MIGR-072-TRACKING | La migración 072 (RLS de tickets/problemas/kb_articulos/encuestas, cierra P0-03) está aplicada y verificada por `pg_policies` (11/11 policies exactas), pero ausente de `public.schema_migrations` (salta de 071 a 073) | Baja | **Abierto** | Registrar el `INSERT` en `schema_migrations` — solo bookkeeping, no toca ningún objeto de negocio |
+| MIGR-072-TRACKING | La migración 072 (RLS de tickets/problemas/kb_articulos/encuestas, cierra P0-03) está aplicada y verificada por `pg_policies` (11/11 policies exactas), pero ausente de `public.schema_migrations` (salta de 071 a 073) | Baja | **Resuelto** (2026-08-22) | Reconfirmado que seguía sin registrar (0 filas para version='072') antes de aplicar nada. `INSERT` en `schema_migrations` con checksum real del archivo (`aplicada_por='verificacion-manual-2026-08-22'`, mismo patrón que 073/074/076), verificado por `SELECT` independiente contra producción — solo bookkeeping, sin tocar ningún objeto de negocio |
 | — | Cuentas de staff activas (3, JEFE + 2 ASISTENTE): ninguna se creó en la ventana vulnerable de H-CRIT-056-060 (~2026-08-15 a 08-18) — cierra el pendiente que dejó abierto el Ciclo 12 ("revisar altas hechas mientras el bug estuvo vigente") | — | **Cerrado sin hallazgo** | `staff`/`auth.users`, 3/3 filas verificadas |
 | — | Ventana PERM-060-064: `accesos_log` con `accion in ('permiso_otorgado','permiso_revocado')` tiene 0 filas en toda su historia — confirma que el modo de falla fue "transacción revertida completa", no "operación exitosa sin auditar" | — | **Confirmado, sin cambio de severidad al alza** | — |
 | — | `tiene_permiso_modulo` (P0-05, migración 073): confirmado en vivo que las 16 funciones `SECURITY DEFINER` no-trigger tienen `REVOKE ... FROM PUBLIC`; las 40 funciones `RETURNS trigger` conservan el ACL default de Postgres pero no son invocables fuera de un trigger, sin importar el GRANT — no es un hallazgo | — | **Cerrado sin hallazgo nuevo** | — |
-| TICKETS-TOKEN-DEAD | `functions/tickets.ts` (rama muerta de `crear` con `tokenEntrega`) sigue consultando `entregas.token`, columna eliminada por la migración 067 — mismo patrón que motivó el hallazgo P0 `entregaCrear` original, pero en código sin uso desde 2026-08-17 | Baja | **Abierto** | `tickets.ts`, rama `if (body.tokenEntrega)` |
+| TICKETS-TOKEN-DEAD | `functions/tickets.ts` (rama muerta de `crear` con `tokenEntrega`) sigue consultando `entregas.token`, columna eliminada por la migración 067 — mismo patrón que motivó el hallazgo P0 `entregaCrear` original, pero en código sin uso desde 2026-08-17 | Baja | **Resuelto** (2026-08-24) | Antes de tocar código: confirmada paridad repo↔producción byte a byte (mismo SHA-256, `functions code tickets`) — primera vez que se verifica `tickets.ts` (a diferencia de `credenciales.ts`, Ciclo 10). PR #14 elimina la rama `if (body.tokenEntrega)` y el comentario asociado (`deno check` + `eslint` + suite completa en verde). Redeploy manual a producción tras el merge; reverificada la paridad post-deploy con el mismo método de hash — coincide exactamente |
 | — | `main` sin ninguna protección de rama ni ruleset; las 3 PRs mergeadas hasta ahora se mergearon sin revisión (`reviewDecision` vacío) | Alta (proceso) | **Abierto, requiere decisión del usuario** | GitHub API, `branches/main/protection` → 404 |
 | — | Job `deploy-manual` → paso "Redesplegar edge functions" falla por timeout de login interactivo del CLI pese a tener `INSFORGE_ACCESS_TOKEN` como secret (run `32307942841`, 2026-08-19) | Media | **Abierto** | `.github/workflows/ci.yml` |
 | — | `encuestas.ts` es la única de las 5 edge functions sin `Cache-Control: no-store` en su `json()` | Baja | **Abierto** | `functions/encuestas.ts:39-44` |
@@ -794,11 +794,14 @@ con fila propia en algún ciclo, esa fila también.
 
 ### Prioridad media — limpieza antes del refactor grande
 
-4. Eliminar la rama muerta en `tickets.ts` que consulta `entregas.token`
-   (columna eliminada por la migración 067).
-5. Confirmar paridad repo↔producción de `tickets.ts` (nunca verificada).
-6. Registrar la migración 072 en `schema_migrations` (ya aplicada, falta
-   el `INSERT` de bookkeeping).
+4. ~~Eliminar la rama muerta en `tickets.ts` que consulta
+   `entregas.token`~~ — **Resuelto (2026-08-24)**: ver fila
+   TICKETS-TOKEN-DEAD (Ciclo 13).
+5. ~~Confirmar paridad repo↔producción de `tickets.ts`~~ — **Resuelto
+   (2026-08-24)**: paridad confirmada byte a byte, antes y después del
+   redeploy — ver fila TICKETS-TOKEN-DEAD.
+6. ~~Registrar la migración 072 en `schema_migrations`~~ — **Resuelto
+   (2026-08-22)**: ver fila MIGR-072-TRACKING (Ciclo 13).
 
 ### Prioridad baja — deuda menor, no urgente
 
