@@ -664,6 +664,7 @@ sin escribir nada hasta que cada hallazgo se aprobó por separado.
 | TEST-DB-CRLF | Al escribir el bloque 5 de arriba se encontró que `scripts/test-db.mjs` corta comentarios `--...` con una regex (`/--.*$/`) que no es CRLF-safe: en Windows con `core.autocrlf=true`, el archivo `tests/db/triggers.test.sql` queda con `\r\n` en el working tree, `.` no matchea `\r` en JS, y la regex deja de recortar nada — el comando que se manda al CLI se vuelve mucho más largo y dispara "línea de comandos demasiado larga" en el bloque más grande. No afecta CI (Linux, sin CRLF) ni lo committeado (git normaliza a LF); solo rompe la corrida local en Windows, y de forma silenciosa hasta que un bloque se pasa del límite | Baja (solo tooling local) | **Abierto** | `scripts/test-db.mjs` — fix propuesto: normalizar `\r\n`→`\n` antes de recortar comentarios, o usar `/--.*/` con flag que trate `\r` como parte de `.` |
 | GIT-ADD-CONTAMINACION-01 | Hallazgo de proceso, no solo de git: el commit `950b89c` (PR #7) incluyó por error la línea `'getTendencias'` en `insforge-api-shape.test.js` — un cambio de una sesión concurrente sin commitear, presente en el mismo working tree, que un `git add <archivo>` re-stageó sin querer al ejecutarse sobre un archivo que había sido restaurado a su versión "con ambos cambios" entre una verificación anterior y el `add` final. La verificación posterior (`git diff --cached` + `git status --short`) no lo detectó porque confirmó "¿son los archivos correctos?", no "¿es el CONTENIDO exactamente el esperado, línea por línea, incluso en archivos ya verificados en un paso previo?". La causa raíz real no es el comando de git en sí — es trabajar un cambio quirúrgico sobre un working tree que en ese momento tenía ~27 archivos ajenos sin commitear: ese volumen es en sí mismo un costo operativo real y creciente, no solo un detalle técnico puntual de esta corrección | Baja (detectado por CI antes de mergear a `main`, gracias a la branch protection del hallazgo #1 de "Pendientes", ya cerrado — esa protección funcionó exactamente para esto) | **Resuelto** | Commit `63a410d`, corregido sin `amend` ni force-push (push normal al mismo branch), verificado con `git stash --keep-index` contra el estado exacto a pushear antes de commitear |
 | MIGR-078-APLICADA-POR-DASHBOARD | Al verificar la migración 078 (`notify_ticket_personal()`, fusión resuelto/cerrado) en `sistema-ti` tras abrir el PR, apareció ya aplicada en producción sin estar registrada en `schema_migrations` — pese a que solo se había corrido `db import` contra un branch de InsForge descartable, nunca contra el proyecto padre. Investigación forense (mismo método que el hallazgo 1.3, `insforge.logs`): reproducción controlada confirmó que un branch NO filtra DDL/funciones hacia el padre sin un `branch merge` explícito (nunca ejecutado), descartando esa hipótesis. El audit log (`EXECUTE_RAW_SQL`, actor `cloud:65d80c91-...`, IP real, `POST /rawsql` vía el SQL Editor del dashboard, 2026-08-21T21:24:55Z) identificó la causa real: el usuario aplicó la función manualmente desde el dashboard, adelantándose al ciclo de aprobación coordinado, mientras la prueba en el branch seguía en curso — confirmado por el propio usuario. No hay tercer actor ni sesión comprometida | Baja (sin impacto real: el código aplicado coincide exactamente con lo probado y aprobado; solo faltaba el bookkeeping) | **Resuelto** (2026-08-21) | `schema_migrations` registrada manualmente (`aplicada_por='dashboard-manual-2026-08-21'`), verificada por `SELECT` independiente. Sin cambio de código — es un hallazgo de proceso: coordinar antes de aplicar manualmente cuando hay una prueba en curso en paralelo |
+| ACCESOS-SENSIBLES-UPDATE-DELETE-TEST | Al provisionar las 4 cuentas de fixture del ítem 2 de Pendientes y correr por primera vez contra un JEFE real sin permiso de fila, 2 tests de `autorizacion-roles.smoke.test.js` ("JEFE sin permiso de fila no puede editar/eliminar") fallan con `expected null to be truthy` — esperan `error` en la respuesta, pero un `UPDATE`/`DELETE` bloqueado por `USING` en Postgres/PostgREST no lanza error: solo afecta 0 filas en silencio (a diferencia de `INSERT`, que sí viola `WITH CHECK` con error real) | Baja | **Abierto, confirmado sin riesgo real (2026-08-24)** | Diagnóstico aislado en una rama descartable (borrada tras el diagnóstico, sin llegar a `main`): fixture creado por `INSFORGE_TEST_JEFE_CON_FILA`, intento de `UPDATE` y luego `DELETE` por `INSFORGE_TEST_JEFE_SIN_FILA`, `SELECT` de verificación con sesión de JEFE_A después de cada intento, antes de limpiar nada. La fila quedó exactamente intacta en ambos casos (`updated_at` sin cambiar, `notas` sin escribir, fila presente hasta el cleanup real) — RLS bloqueó de verdad, sin bypass. Mismo patrón de deuda que `AUTH-TEST-004`/`ENTREGACREAR-TEST-BUG` (ítem 9). Fix propuesto, no aplicado: reemplazar `expect(error).toBeTruthy()` por una verificación de que la fila no cambió (re-`SELECT` o comprobar `data` vacío) |
 
 **Nota de contexto, no cerrada como hallazgo**: durante esta auditoría se
 detectó una consulta SQL fallida en `postgres.logs`/`insforge.logs`
@@ -698,10 +699,30 @@ con fila propia en algún ciclo, esa fila también.
    `enforce_admins` (pueden saltarse la regla en una emergencia).
    Configurado y verificado vía `GET
    /repos/aguemar-work/materen-ti/branches/main/protection`.
-2. Secrets de CI para tests de integración autenticados
-   (`VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`,
-   `INSFORGE_TEST_STAFF_EMAIL`, `INSFORGE_TEST_STAFF_PASSWORD`) + cuenta de
-   staff dedicada a CI. Sube de prioridad de cara al refactor multi-tenant.
+2. ~~Secrets de CI para tests de integración autenticados~~ —
+   **Resuelto (2026-08-24)**: eran dos partes distintas que este ítem no
+   separaba. **(a)** Los 4 secrets base (`VITE_INSFORGE_URL`,
+   `VITE_INSFORGE_ANON_KEY`, `INSFORGE_TEST_STAFF_EMAIL`,
+   `INSFORGE_TEST_STAFF_PASSWORD`) + la cuenta genérica de staff dedicada a
+   CI (`ci-tests@materen-ti-test.local`) ya estaban resueltos desde antes
+   de esta auditoría. **(b)** Las 4 cuentas de rol específico que sí
+   faltaban (`INSFORGE_TEST_ASISTENTE_SIN_MODULO_*`,
+   `INSFORGE_TEST_STAFF_INACTIVO_*`, `INSFORGE_TEST_JEFE_CON_FILA_*`,
+   `INSFORGE_TEST_JEFE_SIN_FILA_*`) — creadas en InsForge (dashboard +
+   activación/rol manual) y sus 8 secrets cargados en GitHub Actions. En
+   el camino se encontró y corrigió un problema de workflow real: el
+   bloque `env:` del job `test-integration` (`.github/workflows/ci.yml`)
+   nunca reenviaba esos 8 secrets al proceso, aunque ya existieran a nivel
+   de repo — PR #16 agrega las 8 líneas faltantes al mismo bloque.
+   Verificado con el log real del job `test-integration` (run
+   `32775965136`, PR #16): de los 18 tests que estaban en `skipped`, 15
+   corren y pasan de verdad. Los 3 restantes (`entregaCrear` y 2 del
+   bloque `accesos_sensibles` fila por fila) fallan por deuda de test ya
+   documentada aparte, no por las cuentas — ver `ENTREGACREAR-TEST-BUG`
+   (ítem 9 de esta lista) y el nuevo hallazgo
+   `ACCESOS-SENSIBLES-UPDATE-DELETE-TEST` (Ciclo 13, ítem 12 de esta
+   lista), este último confirmado sin riesgo real mediante un diagnóstico
+   aislado antes de documentarlo.
 3. Diagnosticar y resolver el bug de autenticación del CLI — **alcance
    ampliado (2026-08-21): no es exclusivo de `deploy-manual`**. El job
    `tests-db` tiene exactamente el mismo patrón: el CLI (`npx
@@ -821,16 +842,22 @@ con fila propia en algún ciclo, esa fila también.
     el salto resuelto→cerrado atómico, nadie queda parado ahí), pero es
     un gap latente si algún día existiera un camino que sí lo deje ahí.
     No se toca sin pedirlo aparte.
+12. Los 2 tests de `accesos_sensibles` fila por fila (`UPDATE`/`DELETE`
+    sin permiso) esperan `error` truthy, pero un bloqueo por RLS bajo
+    `USING` no lanza error — afecta 0 filas en silencio. Confirmado sin
+    riesgo real mediante diagnóstico aislado (2026-08-24, ver
+    `ACCESOS-SENSIBLES-UPDATE-DELETE-TEST`, Ciclo 13). Fix: verificar que
+    la fila no cambió en vez de esperar `error`.
 
 ### Fuera de esta auditoría, sin fecha
 
-12. Backup / RPO / RTO / procedimiento de restauración — sin definir.
-13. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
+13. Backup / RPO / RTO / procedimiento de restauración — sin definir.
+14. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
     endurecida.
 
 ### Roadmap de producto (nuevo, no auditado todavía)
 
-14. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
+15. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
     propio ciclo de auditoría/diseño antes de escribir código: probablemente
     toca la mayoría de las policies RLS existentes. Definir el modelo de
     aislamiento (RLS por `empresa_id` vs. schemas separados) antes de
