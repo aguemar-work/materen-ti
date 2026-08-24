@@ -21,11 +21,10 @@
 // crear); la encuesta de satisfacción se guarda pero no se notifica.
 //
 // Regla de dominio: un token de TICKET es un recurso distinto del
-// token de ENTREGA. `crear` acepta opcionalmente un `tokenEntrega` en el
-// body para resolver quién es el empleado sin pedir DNI, pero ningún
-// frontend lo envía desde 2026-08-17 (ver comentario junto al bloque
-// `if (body.tokenEntrega)` más abajo); nunca se usa para leer/escribir
-// un ticket.
+// token de ENTREGA — nunca se usa para leer/escribir un ticket. `crear`
+// aceptaba opcionalmente un `tokenEntrega` en el body para resolver al
+// empleado sin pedir DNI; se retiró (código muerto desde la migración
+// 067, que eliminó entregas.token — ver docs/HISTORIAL-AUDITORIAS.md).
 // ============================================================
 
 import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
@@ -240,25 +239,7 @@ export default async function (req: Request): Promise<Response> {
     let vinculado = true;
     const contacto = body.contacto ? String(body.contacto).trim() : null;
 
-    // ⚠️ `tokenEntrega` ya no lo manda ningún frontend (retirado de
-    // TicketNuevoView.vue el 2026-08-17: reutilizaba el token de entrega de
-    // credenciales, ya consumido, propagado como ?entrega=<token> — quedaba
-    // en el historial/URL del navegador con un propósito distinto al que lo
-    // generó). Se deja este bloque sin retirar por tolerancia hacia atrás:
-    // el backend no rompe si nadie lo envía, simplemente no entra acá.
-    // Además, como `entregas` ya no guarda el token en claro (migración
-    // 066/067), esta búsqueda por `token` deja de poder resolver nada en
-    // cuanto se aplique el paso 2 (067) — si se quiere reactivar este
-    // camino habría que buscar por token_hash, igual que entregaAbrir.
-    if (body.tokenEntrega) {
-      const { data: entrega } = await admin.database
-        .from('entregas')
-        .select('empleado_id')
-        .eq('token', String(body.tokenEntrega))
-        .maybeSingle();
-      empleadoId = entrega?.empleado_id || null;
-      vinculado = !!empleadoId;
-    } else if (staff && body.empleadoIdManual) {
+    if (staff && body.empleadoIdManual) {
       empleadoId = String(body.empleadoIdManual);
     } else if (origen === 'empleado' && contacto) {
       // Identificación SOLO por DNI: un correo puede repetirse entre
@@ -275,7 +256,7 @@ export default async function (req: Request): Promise<Response> {
         vinculado = false; // sin match o ambiguo: no bloquea, queda para revisión
       }
     } else if (origen === 'empleado') {
-      // Ni token de entrega ni contacto: no hay forma de identificar al empleado
+      // Sin contacto (ni asignación manual de staff): no hay forma de identificar al empleado
       vinculado = false;
     }
 
