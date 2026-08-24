@@ -84,13 +84,14 @@ global `Deno`.
   en el Dashboard. La baja de empleado también libera sus asientos.
 
 - **Ticket**: reporte de soporte, público y sin sesión (el empleado **nunca**
-  entra al sistema). Se crea desde `/soporte/nuevo` de dos formas: (a) con el
-  **token de entrega** en la URL → se autorresuelve el empleado, sin pedirle
-  datos; (b) sin token → intenta emparejar por correo/DNI contra `empleados`
-  (si no hay match único, el ticket se crea igual con `vinculado = false` para
-  revisión manual — el emparejamiento nunca bloquea el envío). No confundir el
-  **token de entrega** (credenciales) con el **token de ticket** (seguimiento
-  del reporte): son dos tokens distintos con propósitos distintos. El staff
+  entra al sistema). Se crea desde `/soporte/nuevo` pidiendo el **DNI** del
+  empleado: el backend intenta emparejar por DNI contra `empleados` (si no
+  hay match, el ticket se crea igual con `vinculado = false` para revisión
+  manual — el emparejamiento nunca bloquea el envío). Ya no existe la ruta de
+  entrada con **token de entrega** en la URL (autorresolvía el empleado sin
+  pedirle DNI) — se retiró el 2026-08-17 (migración 067, ver
+  `docs/HISTORIAL-AUDITORIAS.md`); el único token de este flujo es el
+  **token de ticket** (seguimiento del reporte). El staff
   también puede abrir tickets internos desde `/tickets` (a nombre propio o de
   un empleado), donde además tiene botones para copiar los enlaces públicos
   de reportar (`/soporte/nuevo`) y de búsqueda por DNI (`/soporte/buscar`) para
