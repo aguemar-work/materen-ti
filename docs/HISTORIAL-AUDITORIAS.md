@@ -667,6 +667,7 @@ sin escribir nada hasta que cada hallazgo se aprobó por separado.
 | ACCESOS-SENSIBLES-UPDATE-DELETE-TEST | Al provisionar las 4 cuentas de fixture del ítem 2 de Pendientes y correr por primera vez contra un JEFE real sin permiso de fila, 2 tests de `autorizacion-roles.smoke.test.js` ("JEFE sin permiso de fila no puede editar/eliminar") fallan con `expected null to be truthy` — esperan `error` en la respuesta, pero un `UPDATE`/`DELETE` bloqueado por `USING` en Postgres/PostgREST no lanza error: solo afecta 0 filas en silencio (a diferencia de `INSERT`, que sí viola `WITH CHECK` con error real) | Baja | **Abierto, confirmado sin riesgo real (2026-08-24)** | Diagnóstico aislado en una rama descartable (borrada tras el diagnóstico, sin llegar a `main`): fixture creado por `INSFORGE_TEST_JEFE_CON_FILA`, intento de `UPDATE` y luego `DELETE` por `INSFORGE_TEST_JEFE_SIN_FILA`, `SELECT` de verificación con sesión de JEFE_A después de cada intento, antes de limpiar nada. La fila quedó exactamente intacta en ambos casos (`updated_at` sin cambiar, `notas` sin escribir, fila presente hasta el cleanup real) — RLS bloqueó de verdad, sin bypass. Mismo patrón de deuda que `AUTH-TEST-004`/`ENTREGACREAR-TEST-BUG` (ítem 9). Fix propuesto, no aplicado: reemplazar `expect(error).toBeTruthy()` por una verificación de que la fila no cambió (re-`SELECT` o comprobar `data` vacío) |
 | REPORTE-TICKETS-RPC-MUERTOS | La migración 053 creó `reporte_tickets(p_desde,p_hasta)`/`reporte_tickets_resumen(p_desde,p_hasta)` explícitamente para reemplazar las consultas crudas de `obtenerReporteTickets()`/`obtenerResumenTickets()` (comentario propio de la migración lo dice) — pero el frontend nunca migró: `frontend/src/api/domains/reportesTickets.js` sigue haciendo las mismas consultas de siempre. Detectado al auditar el flujo completo de tickets de punta a punta | Baja | **Abierto** (detectado 2026-08-24) | `migrations/053_reporte_tickets_rpc.sql` vs. `frontend/src/api/domains/reportesTickets.js:61-241`; el único código que invoca esos 2 RPC hoy es `frontend/tests/integration/autorizacion-anonima.smoke.test.js:119-126` (verifica que rechacen a un anónimo). Hipótesis de por qué el corte quedó a medias: ninguno de los 2 RPC recibe un parámetro `asignadoA`/`p_asignado`, necesario para el filtro "Solo mi actividad" que sí soporta el camino actual |
 | TICKET-EVENTOS-REASIGNADO-SIN-DETALLE | `evento_ticket_cambios()` registra el evento `'reasignado'` siempre con `detalle = null`, a diferencia de los demás eventos que dispara la misma función (`estado_cambiado`, `prioridad_cambiada`, `nivel_atencion_cambiado`, `tipo_cambiado`), que sí arman un `detalle` tipo "De X a Y". Detectado al auditar el flujo completo de tickets de punta a punta | Baja | **Abierto** (detectado 2026-08-24) | `migrations/035_tickets_tipo.sql` (definición vigente de `evento_ticket_cambios()`) |
+| EQUIPOS-TABLAS-SATELITE-SIN-GATE | Las migraciones 068/072 instalaron `es_jefe() OR (es_staff() AND tiene_permiso_modulo('equipos'))` en `equipos`/`tipos_equipo`/`asignaciones_equipo`/`eventos_equipo` con el objetivo declarado de cerrar el hueco de módulo en todo el dominio Equipos — pero nunca tocaron 3 tablas satélite del mismo dominio: `equipo_accesorios`, `catalogo_almacen`, `equipos_importacion`. Confirmado por `SELECT` directo a `pg_policies` (no por el nombre de la migración): las 3 seguían con `es_staff()` plano en SELECT/INSERT/UPDATE (y también en DELETE para `equipo_accesorios`/`equipos_importacion`; `catalogo_almacen` ya tenía DELETE `es_jefe()`, igual que las 4 tablas principales). Un ASISTENTE sin el módulo `equipos` podía leer/escribir directo por SDK las 3 tablas — accesorios de cualquier equipo, el catálogo de almacén, y la bandeja completa de importación masiva (con `empleado_id`/`ubicacion_id` de destino). Detectado al auditar el flujo completo de Equipos de punta a punta | Media-Alta (acceso no autorizado real vía SDK directo — requiere ser staff activo, no explotable de forma anónima ni remota trivial) | **Resuelto** (2026-08-25) | Migración 079 (`079_rls_equipos_tablas_satelite.sql`) reemplaza las 11 policies que usaban `es_staff()` plano por el mismo patrón de 068/072; el DELETE de `catalogo_almacen` (ya `es_jefe()`) queda sin tocar. Verificación en dos capas antes de aplicar a producción: (1) evaluación directa por `SELECT` de `es_jefe()`/`es_staff()`/`tiene_permiso_modulo('equipos')` contra los datos reales de las cuentas fixture — confirmó que `ci-tests-sin-modulo` (ASISTENTE activo, sin módulos) pasaba la policy vieja y no la nueva, que otorgándole el módulo `equipos` sí vuelve a pasar (sin sobre-restringir), y que ambas cuentas JEFE pasan igual en las dos versiones (sin regresión) — mismo método ya aceptado en el Ciclo 12 para cuando no es viable autenticar una sesión HTTP real en un branch; (2) pruebas de flujo real en un branch de InsForge descartable ya con la migración aplicada: `reemplazarAccesoriosEquipo()` (delete+insert de línea de accesorio sobre un equipo real), alta/edición/soft-delete de `catalogo_almacen`, y el flujo completo de la bandeja de importación (`bulkCrearImportacion` → edición → `migrarFila` → `eliminarImportacion`) — los 3 funcionaron igual que antes. Aplicado a producción y verificado byte a byte contra `pg_policies` (12/12 policies idénticas al branch probado), registrado en `schema_migrations` (`aplicada_por='claude-deploy-2026-08-25'`), branch descartable borrado |
 
 **Nota de documentación (2026-08-24)**: de los 9 valores permitidos en el
 `CHECK` de `ticket_eventos.evento`, dos quedaron vestigiales desde la
@@ -836,16 +837,21 @@ con fila propia en algún ciclo, esa fila también.
    redeploy — ver fila TICKETS-TOKEN-DEAD.
 6. ~~Registrar la migración 072 en `schema_migrations`~~ — **Resuelto
    (2026-08-22)**: ver fila MIGR-072-TRACKING (Ciclo 13).
+7. ~~3 tablas satélite de Equipos (`equipo_accesorios`, `catalogo_almacen`,
+   `equipos_importacion`) sin el gate de módulo `tiene_permiso_modulo
+   ('equipos')` que sí tienen las 4 tablas principales~~ — **Resuelto
+   (2026-08-25)**: ver fila EQUIPOS-TABLAS-SATELITE-SIN-GATE (Ciclo 13),
+   migración 079.
 
 ### Prioridad baja — deuda menor, no urgente
 
-7. `MAX_FOTOS=4` sin tope server-side en `equipos-fotos.ts`.
-8. `Cache-Control: no-store` faltante en `encuestas.ts`.
-9. Bug del test `entregaCrear` en `autorizacion-roles.smoke.test.js`
-   (`cuentaIds: []` no llega al chequeo) — fix: usar un UUID dummy.
-10. Registrar en documentación el redeploy manual de `equipos-fotos.ts`
+8. `MAX_FOTOS=4` sin tope server-side en `equipos-fotos.ts`.
+9. `Cache-Control: no-store` faltante en `encuestas.ts`.
+10. Bug del test `entregaCrear` en `autorizacion-roles.smoke.test.js`
+    (`cuentaIds: []` no llega al chequeo) — fix: usar un UUID dummy.
+11. Registrar en documentación el redeploy manual de `equipos-fotos.ts`
     del 2026-08-18 (por "SIG"), sin entrada equivalente en el historial.
-11. Hallazgo colateral de la fusión resuelto/cerrado (2026-08-21): en la
+12. Hallazgo colateral de la fusión resuelto/cerrado (2026-08-21): en la
     búsqueda pública por DNI (`functions/tickets.ts`, acción de
     `TicketBuscarView.vue`), los tickets en estado `resuelto` no aparecen
     ni en `activos` (solo `abierto`/`en_progreso`/`reabierto`) ni en
@@ -855,28 +861,28 @@ con fila propia en algún ciclo, esa fila también.
     el salto resuelto→cerrado atómico, nadie queda parado ahí), pero es
     un gap latente si algún día existiera un camino que sí lo deje ahí.
     No se toca sin pedirlo aparte.
-12. Los 2 tests de `accesos_sensibles` fila por fila (`UPDATE`/`DELETE`
+13. Los 2 tests de `accesos_sensibles` fila por fila (`UPDATE`/`DELETE`
     sin permiso) esperan `error` truthy, pero un bloqueo por RLS bajo
     `USING` no lanza error — afecta 0 filas en silencio. Confirmado sin
     riesgo real mediante diagnóstico aislado (2026-08-24, ver
     `ACCESOS-SENSIBLES-UPDATE-DELETE-TEST`, Ciclo 13). Fix: verificar que
     la fila no cambió en vez de esperar `error`.
-13. `reporte_tickets`/`reporte_tickets_resumen` (migración 053) nunca
+14. `reporte_tickets`/`reporte_tickets_resumen` (migración 053) nunca
     fueron adoptados por el frontend — código muerto en producción, ver
     `REPORTE-TICKETS-RPC-MUERTOS` (Ciclo 13).
-14. Evento `'reasignado'` en `ticket_eventos` siempre loguea
+15. Evento `'reasignado'` en `ticket_eventos` siempre loguea
     `detalle = null`, a diferencia de los demás eventos del mismo
     trigger — ver `TICKET-EVENTOS-REASIGNADO-SIN-DETALLE` (Ciclo 13).
 
 ### Fuera de esta auditoría, sin fecha
 
-15. Backup / RPO / RTO / procedimiento de restauración — sin definir.
-16. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
+16. Backup / RPO / RTO / procedimiento de restauración — sin definir.
+17. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
     endurecida.
 
 ### Roadmap de producto (nuevo, no auditado todavía)
 
-17. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
+18. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
     propio ciclo de auditoría/diseño antes de escribir código: probablemente
     toca la mayoría de las policies RLS existentes. Definir el modelo de
     aislamiento (RLS por `empresa_id` vs. schemas separados) antes de
