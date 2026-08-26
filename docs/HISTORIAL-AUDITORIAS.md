@@ -708,6 +708,58 @@ entregada al usuario; identidad de "quién estaba al teclado" no
 confirmable desde los logs — Confirmado por el usuario (2026-08-20):
 actividad propia, sin hallazgo.
 
+### Patrón transversal: tablas satélite sin gate de módulo (2026-08-25/26)
+
+Entre las migraciones 079 y 083 se encontró y corrigió **4 veces** la
+misma clase de hallazgo: una migración de "gate por módulo"
+(`es_jefe() OR (es_staff() AND tiene_permiso_modulo('X')))`) cubrió las
+tablas *principales* de un dominio, pero no las tablas *satélite* del
+mismo dominio (catálogos propios, tablas de vínculo N a N, historiales
+append-only) — que quedaron con `es_staff()` plano indefinidamente,
+porque el alcance de cada migración se definió por intuición de qué
+tablas "eran" el módulo, no por un barrido sistemático de todo lo que
+tiene FK hacia ese dominio.
+
+Los primeros 3 casos (Equipos, Cuentas, Tickets/Problemas cuentan como
+uno solo detectado en la misma pasada) se encontraron **dominio por
+dominio**, durante auditorías de flujo de punta a punta. El barrido
+general del 2026-08-26 (esta sesión) recorrió `pg_policies`/
+`information_schema` de las 44 tablas con RLS del esquema `public` de
+una sola vez, cruzando FKs y consumidores de código para inferir el
+dominio real de cada tabla con `es_staff()` plano — así se encontraron
+los 2 últimos casos (Tickets, Problemas) y los 3 pendientes de abajo,
+sin depender de auditar cada módulo por separado.
+
+| Dominio | Tablas satélite | Migración que las dejó afuera | Hallazgo | Migración de fix | Estado |
+|---|---|---|---|---|---|
+| Equipos | `equipo_accesorios`, `catalogo_almacen`, `equipos_importacion` | 068 | EQUIPOS-TABLAS-SATELITE-SIN-GATE | 079 | **Resuelto** (2026-08-25) |
+| Cuentas | `plataformas`, `entregas` | 068 | CUENTAS-TABLAS-SATELITE-SIN-GATE | 081 | **Resuelto** (2026-08-26) |
+| Tickets | `ticket_comentarios`, `ticket_eventos`, `ticket_satisfaccion`, `subcategorias_ticket`, `transiciones_ticket_permitidas` | 072 | TICKETS-TABLAS-SATELITE-SIN-GATE | 082 | **Resuelto** (2026-08-26) |
+| Problemas | `acciones_correctivas`, `problema_tickets` | 072 | PROBLEMAS-TABLAS-SATELITE-SIN-GATE | 083 | **Resuelto** (2026-08-26) |
+| Empleados | `areas_obras` | 068 | Sin fila propia todavía — confirmado por el mismo barrido, no corregido | — | **Abierto**, mismo patrón, sin migración |
+
+**2 tablas más encontradas por el barrido, pero sin fix mecánico posible**:
+`categorias_ticket` y `ubicaciones` son satélites de **dos** dominios a
+la vez (la primera de Tickets y de Base de Conocimiento —
+`KbArticuloForm.vue` llama `listCategoriasTicket()` directamente; la
+segunda de Equipos y de Empleados), así que gatearlas con
+`tiene_permiso_modulo('un_solo_módulo')` rompería al otro consumidor.
+Necesitan una decisión de diseño (¿OR de los 2 módulos? ¿dejarlas
+transversales a propósito, como `empresas`?) antes de escribir
+cualquier migración — quedan explícitamente fuera del patrón mecánico
+de arriba.
+
+**Recomendación para no repetir esto una sexta vez**: cuando se cree un
+módulo nuevo, o se agregue una tabla a un dominio que ya tiene su gate
+de `tiene_permiso_modulo`, revisar explícitamente — antes de mergear,
+no después — si esa tabla nueva (o las que ya existían y se pasaron por
+alto) necesitan el mismo gate. La forma más barata de verificarlo es la
+misma query usada en el barrido general: `SELECT tablename, cmd,
+qual FROM pg_policies WHERE tablename IN (...)` sobre todas las tablas
+del dominio, comparado contra sus FKs (`information_schema.
+table_constraints`) — no confiar en que "ya se cubrió todo" solo porque
+la migración que gateó la tabla principal lo dice en el nombre.
+
 ## Pendientes
 
 Consolidado de todo lo que sigue abierto a esta fecha (2026-08-20), no solo
@@ -941,16 +993,28 @@ con fila propia en algún ciclo, esa fila también.
     permiso no quedan auditados — solo se registran los éxitos, las
     entregas fallidas y los bloqueos de ruta por rol. Ver
     CREDENCIALES-REVELADO-DENEGADO-SIN-AUDITAR (Ciclo 13).
+31. `areas_obras` (dominio Empleados) tiene el mismo patrón que los 4
+    hallazgos "tabla satélite sin gate" ya resueltos (equipos/cuentas/
+    tickets/problemas) — quedó con `es_staff()` plano pese a que
+    `empleados` ya gatea alta/edición por módulo desde la 068. Sin
+    migración todavía. Ver la tabla de "Patrón transversal: tablas
+    satélite sin gate de módulo" más arriba en este mismo documento.
+32. `categorias_ticket` (Tickets + Base de Conocimiento) y `ubicaciones`
+    (Equipos + Empleados) quedaron con `es_staff()` plano en el mismo
+    barrido — pero son satélites de 2 módulos a la vez, así que no
+    admiten el fix mecánico de un solo `tiene_permiso_modulo(...)`.
+    Requiere decisión de diseño antes de escribir una migración. Ver la
+    misma sección de "Patrón transversal" arriba.
 
 ### Fuera de esta auditoría, sin fecha
 
-28. Backup / RPO / RTO / procedimiento de restauración — sin definir.
-29. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
+33. Backup / RPO / RTO / procedimiento de restauración — sin definir.
+34. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
     endurecida.
 
 ### Roadmap de producto (nuevo, no auditado todavía)
 
-30. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
+35. Diseño de arquitectura multi-empresa / multi-agencia — tratar como su
     propio ciclo de auditoría/diseño antes de escribir código: probablemente
     toca la mayoría de las policies RLS existentes. Definir el modelo de
     aislamiento (RLS por `empresa_id` vs. schemas separados) antes de
