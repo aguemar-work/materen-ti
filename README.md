@@ -54,9 +54,10 @@ global `Deno`.
   embeben el nombre del empleado asignado), solo alta/edición quedan
   gateadas por el módulo. JEFE siempre ve los 8 módulos, sin excepción.
 - **Cuenta**: una credencial en una plataforma. Tres tipos (`tipo_cuenta`):
-  - `personal` — de una sola persona; **se da de baja junto con el empleado**.
+  - `personal` — de una sola persona; **se da de baja junto con el empleado**
+    (un trigger de BD impide dos titulares activos, igual que `reutilizable`).
   - `reutilizable` — un titular a la vez; al salir el titular queda **Libre**
-    para heredarse al siguiente (un trigger de BD impide dos titulares activos).
+    para heredarse al siguiente (mismo trigger de exclusividad).
   - `compartida` — varios titulares simultáneos.
 - **Asignación** (`asignaciones_cuenta`): quién tiene/tuvo cada cuenta.
   `fecha_fin NULL` = activa. Nunca se borra: es el historial.
