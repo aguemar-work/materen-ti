@@ -219,6 +219,12 @@ formulario.
 
 #### Changelog — propuesta de rediseño de paleta (2026-08-12, tercera pasada)
 
+> **Archivada (2026-08-27)**: esta propuesta (verde/teal, notación de
+> puntos) nunca se portó a producción. La dirección real de marca terminó
+> siendo la azul validada en el Style Lab — ver "Identidad de marca" y su
+> changelog "migración de marca al azul, Fases G0-G5". Se deja el registro
+> completo abajo por valor histórico, no como propuesta vigente.
+
 Reemplazo completo de los tokens de color de `design.pen` (no de
 `main.css`) por una propuesta nueva, anclada en los dos colores del logo
 (`#34D399`/`#072E2A`, sin modificar) y en notación de puntos
@@ -1168,6 +1174,166 @@ verde). **(c) Pendiente**: ninguno señalado por el usuario; queda abierto
 si en algún momento se quiere el mismo desglose/filtro en el modal
 "Reporte" de Tickets (`ReporteTicketsModal.vue`), que hoy no lo tiene.
 
+#### Changelog — auditoría UI/UX completa desde cero, 57 hallazgos (2026-08-26, décimonovena pasada)
+
+Pedido explícito del usuario: auditoría completa del sistema desde cero
+(no una reconciliación contra el "Repaso de consistencia — módulo por
+módulo" de ago-2026 de más abajo), ignorando deliberadamente lo ya
+revisado por si el criterio hubiera cambiado desde entonces. 15 agentes en
+paralelo (uno por grupo de módulos + uno para
+`frontend/src/components/shared/`), cada uno con verificación cruzada de
+sus propios hallazgos (segundo agente que reabre archivo y guía antes de
+confirmar) — 57 hallazgos confirmados, 0 descartados en verificación. El
+grupo `shared-components` no llegó a verificarse (límite de gasto de la
+cuenta a mitad del run); su resultado de 0 hallazgos queda sin confirmar,
+no leer como "componentes compartidos limpios". Detalle completo hallazgo
+por hallazgo en `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 14 (UX6-01 a UX6-12);
+acá el resumen agrupado por patrón — la mayoría no son 57 problemas
+distintos sino ~9 patrones sistémicos repetidos en muchos archivos.
+
+Se corrigieron los 9 hallazgos de severidad alta que son de producción (4
+aplicados directo por ser solo texto; 5 estructurales mediante agentes en
+paralelo con verificación posterior); el resto (medio/bajo) queda
+documentado para priorizar después:
+
+- **Tuteo nuevo, no cubierto por UX4-52/UX5-08/UX5-09**: corregido en los
+  4 paneles de Configuración, `LoginView.vue` (la puerta de entrada al
+  sistema) y `PersonalRegistroView.vue` (formulario público) — ambos en
+  segunda persona informal de punta a punta pese a ser las superficies
+  más expuestas del sistema — y `AccesosSensiblesView.vue` (10 ocurrencias
+  de "No tienes permiso..." → "No tiene permiso..."). El mismo patrón
+  sigue pendiente en Tickets, Equipos, Encuestas y Correos/KB — ver UX6-01
+  en `docs/HISTORIAL-AUDITORIAS.md`.
+- **Modales hand-rolled sin `Modal.vue`** (sin Escape ni bloqueo de scroll
+  del body): migrados `TicketInternoForm.vue`, `ReporteTicketsModal.vue`,
+  los 2 modales de `CuentasPanel.vue` (Traspasar/Historial), `CuentaForm.vue`,
+  `EmpresasView.vue` y `PlataformasView.vue` — mismo patrón que las
+  migraciones de Ciclo 4/5 (`form="..."` + slot `#acciones`), sin cambiar
+  contenido ni comportamiento de guardado; donde ya existía un guard de
+  "cambios sin guardar" se conectó al prop `confirmarCierre` de `Modal.vue`
+  en vez de reimplementarlo. `EmpleadoForm.vue` y `LicenciaForm.vue`
+  quedan con el mismo bug (UX6-03).
+- **`LicenciasView.vue`, tarjeta móvil sin paridad con escritorio**: le
+  faltaban el bloque de credenciales (mostrar/copiar clave, respetando
+  `auth.puedeVerCredenciales`) y la lista de usuarios con "Liberar
+  asiento" — agregados reutilizando las mismas funciones que ya usa la
+  tabla de escritorio, sin reimplementar lógica.
+- **`StaffView.vue`**: los 4 botones sueltos por fila (Editar nombre,
+  Módulos visibles, Permiso de ver contraseñas, Activar/Desactivar) tenían
+  markup duplicado e independiente entre escritorio y móvil (con una clase
+  `.icon-btn.activo` muerta, solo en la copia móvil). Consolidados en una
+  única `accionesDe(miembro)` + `<MenuAcciones>` compartida entre ambas
+  superficies (mismo patrón que `EquiposView.vue`); el header de esa
+  columna pasa de `sr-only` a texto visible.
+- **Nota de alcance**: al corregir la tarjeta móvil de `LicenciasView.vue`,
+  el agente encontró que la tabla de escritorio tenía el mismo problema de
+  `StaffView.vue`/`CuentasPanel.vue` (4 acciones sueltas, header `sr-only`)
+  y, como el archivo ya usaba `accionesDe(lic)`/`MenuAcciones` en la
+  tarjeta móvil, reusó la misma función en la fila de escritorio en vez de
+  duplicar markup — pese a que la instrucción decía explícitamente no
+  tocar esa tabla. Se decidió conservar el cambio (correcto, consistente
+  con el resto de este mismo ciclo, verificado con `npm test`) en vez de
+  revertirlo; queda trazado acá y en UX6-07 para que no sea un desvío
+  silencioso.
+
+**(a) Qué cambió**: `AreasObrasPanel.vue`, `UbicacionesPanel.vue`,
+`TiposEquipoPanel.vue`, `CategoriasTicketPanel.vue`, `LoginView.vue`,
+`PersonalRegistroView.vue`, `AccesosSensiblesView.vue`,
+`TicketInternoForm.vue`, `ReporteTicketsModal.vue`, `CuentasPanel.vue`,
+`CuentaForm.vue`, `StaffView.vue`, `EmpresasView.vue`, `PlataformasView.vue`,
+`LicenciasView.vue` + esta guía + `docs/HISTORIAL-AUDITORIAS.md` (Ciclo 14).
+**(b) Riesgo**: bajo en los fixes de texto; medio en las 6 migraciones a
+`Modal.vue` y en la consolidación de `StaffView.vue`/`LicenciasView.vue`
+(mismo tipo de cambio de markup ya validado en ciclos anteriores) —
+verificado con `npm test` (184/214, 30 skip, misma línea base) tras
+consolidar todos los lotes. **(c) Pendiente**: 48 hallazgos de severidad
+media/baja quedan documentados sin corregir en `docs/HISTORIAL-AUDITORIAS.md`
+(Ciclo 14) para priorizar después; `frontend/src/components/shared/` no
+llegó a verificarse por límite de gasto — repetir esa verificación cuando
+se libere; el hueco de `styleLab`/`designSystem` (dirección azul, WIP) no
+cuenta como incumplimiento de producción pero queda igual documentado
+(UX6-12), a corregir antes de portar esa dirección a `main.css`.
+
+#### Changelog — migración de marca al azul, Fases G0-G5 (2026-08-27, vigésima pasada)
+
+Pedido explícito del usuario, confirmando la dirección azul del Style Lab como
+la identidad definitiva (cierra la fractura de dos direcciones de marca en
+competencia señalada en la auditoría de coherencia previa). Seis pasadas
+secuenciales, cada una en su propio commit verificado (`npm run build` +
+`npm test` + `node scripts/contraste.mjs`):
+
+- **G0** (`feaa226`) — corrige `StyleLabView.vue` ANTES de usarlo como
+  referencia (cierra UX6-12 de `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 14):
+  tuteo→usted en 6 strings, los 3 colores semánticos (warning/danger/info)
+  revertidos a los valores EXACTOS de `main.css` (el lab los tenía
+  divergentes, violando su propia promesa de "los semánticos no se tocan"),
+  redirección de `--color-primary` a `--color-accent-text` que el resto del
+  plan ya daba por cerrada, ejemplo de Toast agregado a la sección
+  "Elevación" (antes no la cubría), `:focus-visible` en el ítem de nav de
+  ejemplo.
+- **G1** (`cd21c9a`) — tokens `brand-500/600/700` nuevos; `accent`/
+  `accent-hover`/`accent-alt`/`accent-soft`/`accent-subtle`/`accent-text`/
+  `accent-2` repuntados a alias de la escala nueva; `--color-primary`
+  redirigido a `accent-text` en vez de `accent` directo, en el mismo commit
+  (sin ventana intermedia). **Hallazgo de esta pasada, no planeado**: el
+  valor real de `main.css` antes de este commit era teal-green
+  (`--mat-color-accent: #157955`), no navy/mint como decía este documento
+  — ver corrección en "Identidad de marca" arriba.
+- **G2** (`f69ad79`) — fondos/texto (`bg`, `bg-elevated`, `text-primary/
+  -secondary/-tertiary`). Cierra la tensión de dos valores en competencia
+  para `text-tertiary` (U-01 vs. `design.pen`) tomando el de U-01 como base
+  y **recalculando el lado oscuro en vivo**: el valor planeado fallaba AA
+  contra el `bg-elevated` nuevo (más claro que el viejo), se ajustó a
+  `#818A96` (4.71:1) sin tocar el resto del commit. `scripts/contraste.mjs`
+  gana un chequeo permanente para este par (antes no existía).
+- **G3** (`6fbf11a`) — anillo de foco a `brand-500`, sin tocar ningún `.vue`
+  (11 reglas `:focus` existentes ya consumían `--mat-ring`).
+- **G4** (`5bf42bd`) — radios (`lg`/`xl` dejan de ser idénticos), sombras
+  reales (antes `none`), política de elevación por componente aplicada
+  (no una sombra genérica). Efecto colateral encontrado y corregido en el
+  mismo commit: 3 sombras que habían quedado inertes bajo el token viejo
+  (`.panel-lista` y `.stat-card` del Dashboard, y `.aviso-card` de
+  `AppNotifications.vue`, además del ejemplo `.ds-aviso-demo` de
+  `DesignSystemView.vue`) habrían aparecido con sombra no deseada o de
+  nivel modal al activarse el token real — corregidas antes de mergear, no
+  después.
+- **G5** (`9c60e8d`) — jerarquía de bordes de 3 niveles, `--color-border-
+  default` nuevo. `.card--clicable:hover` bajado de `--color-border-strong`
+  a `-default` en el mismo commit (decisión ya anotada en el comentario de
+  G4, ejecutada acá). `scripts/contraste.mjs` gana verificación permanente
+  del umbral WCAG 1.4.11 (3:1) para `border-default`/`-strong`.
+
+**Trabajo ajeno sin commitear, no tocado**: el repo tenía un diff sin
+commitear en `main.css` que mezclaba varias de estas pasadas con valores
+distintos a los de este plan (radios equivocados, sin tokens `brand-500/
+600/700`, más un cambio de escala tipográfica y `--header-h` 64→56 sin
+relación con esta migración) — se guardó con `git stash` en vez de
+descartarse o mezclarse (recuperable con `git stash pop`). Varios archivos
+tocados en G4/G5 (`AppSearch.vue`, `NotificacionesCampana.vue`,
+`AppNotifications.vue`, `contraste.mjs`, y sobre todo `DashboardView.vue`)
+tenían además otro trabajo pendiente sin commitear (rediseño de panel de
+tickets/dashboard) — aislado quirúrgicamente vía git plumbing para que cada
+commit de esta migración contenga solo su diff intencional, sin perder ni
+mezclar ese otro trabajo.
+
+**(a) Qué cambió**: `main.css`, `StyleLabView.vue`, `scripts/contraste.mjs`
+(2 checks nuevos), `MenuAcciones.vue`, `BuscadorCombo.vue`, `AppSearch.vue`,
+`NotificacionesCampana.vue`, `AppNotifications.vue`, `DesignSystemView.vue`,
+`DashboardView.vue` (quitada una sombra no deseada) + esta guía +
+`docs/CHANGELOG.md` + `docs/HISTORIAL-AUDITORIAS.md` (cierra UX6-12).
+**(b) Riesgo**: bajo-medio — 6 commits verificados individualmente, pero
+**sin QA visual real**: no hubo navegador/capturas en esta sesión, la
+verificación fue build+test+contraste+auditoría de valores de token. Falta
+confirmar visualmente en ambos temas: popovers, toast, modal, degradé de
+avatar (accent→accent-2 ahora es un salto de tono menos dramático que
+antes — puede necesitar ajuste de opinión de diseño, no es un bug) y
+navegación por Tab del sidebar completo. **(c) Pendiente**: QA visual de
+arriba; decidir el destino del diff guardado en `git stash` (recuperar como
+rama propia o descartar, coordinar con quien lo dejó); TK1/TK2 (selección
+múltiple en Tickets) sigue bloqueada, sin relación con esta migración;
+propuesta de paleta dot-notation de `design.pen` queda archivada, no
+retomada.
+
 ## Arquitectura general
 
 El frontend **no usa Tailwind ni librería de componentes**. Todo el diseño vive en:
@@ -1213,29 +1379,123 @@ flowchart TB
 
 ## Identidad de marca
 
-> **Principio (jul 2026, decisión del JEFE): la marca no es la paleta del
-> sistema.** El logo (verde pino + menta) es identidad; las superficies, bordes
-> y texto de la UI son **grises neutros** en ambos temas. La marca se conecta a
-> la interfaz únicamente a través del **acento** (botón primario, nav activo,
-> focus ring) y del propio logo. Antes de esta corrección el ink petróleo teñía
-> títulos/stats/toast y el tema oscuro entero era lienzo petróleo.
+> **Actualizado 2026-08-27 — corrección de una discrepancia documental
+> heredada, no solo cambio de paleta**: esta sección decía que producción
+> ya estaba en navy/mint (`#00203F`/`#36ECDE`) desde una reconciliación del
+> 2026-08-22, contra la paleta teal-green (`#157955`/`#34D399`) de una
+> pasada de julio. **Esa reconciliación estaba mal**: verificado al portar
+> la dirección azul (G1, 2026-08-27), `main.css` seguía en teal-green real
+> — el "navy/mint" nunca existió en el código, solo en el texto de esta
+> guía. La cadena real de producción es **teal-green → azul**, directo, sin
+> pasar nunca por navy/mint. Queda anotado acá porque es el mismo patrón de
+> fondo que ya rompió CI una vez sin que nadie lo notara (Q-01,
+> `docs/HISTORIAL-AUDITORIAS.md`) — documentación afirmando un estado que
+> el código no tenía.
 
-| Token | Hex | Rol en Sistema TI |
-|-------|-----|-------------------|
-| `--mat-color-brand` | `#072E2A` | Reservado a piezas de marca (logo); **no es color de sistema** |
-| `--mat-color-accent` | `#157955` | Botón primario, links, foco (teal-deep, AA) — único punto de marca en la UI |
-| `--mat-color-accent-alt` | `#34D399` | Gradiente de marca — no texto sobre blanco |
-| `--mat-color-bg` | `#F6F7F8` | Fondo de página (gris neutro) |
+> **Principio (jul 2026, decisión del JEFE, sigue vigente): la marca no es la
+> paleta del sistema.** El logo es identidad; las superficies, bordes y texto
+> de la UI son **grises neutros** en ambos temas. La marca se conecta a la
+> interfaz únicamente a través del **acento** (botón primario, nav activo,
+> focus ring) y del propio logo — el logo en sí (`logo_materen_sisti.svg`,
+> `icon_sisti.svg`) es arte vectorial con color fijo dentro del archivo, no
+> un token CSS: cambiar la paleta de la UI no le cambia un solo píxel. Si el
+> rebranding requiere un logo nuevo en azul, es un entregable de diseño
+> aparte, fuera de alcance de la migración de tokens.
 
-El icono de marca usa **gradiente teal-deep → verde acento**:
+### Estado actual en producción (azul — desde 2026-08-27, Fases G0-G5)
+
+| Token | Claro | Oscuro | Rol en Sistema TI |
+|-------|-------|--------|-------------------|
+| `--mat-color-brand-500` | `#0082FB` | `#0082FB` (invariante) | Foco, focus ring, indicadores no textuales — **nunca texto ni fondo con texto blanco** (3.76:1, bajo AA) |
+| `--mat-color-brand-600` | `#0064E0` | `#0064E0` (invariante) | Botón primario, links, nav activo, estados interactivos sólidos |
+| `--mat-color-brand-700` | `#0052B8` | `#0052B8` (invariante) | Hover/pressed del acento |
+| `--mat-color-accent` | `#0064E0` (=brand-600) | `#0064E0` | Ya no salta de hue entre temas, a diferencia de la paleta anterior |
+| `--mat-color-accent-hover` | `#0052B8` (=brand-700) | `#0052B8` | — |
+| `--mat-color-accent-alt` / `-soft` | `#0082FB` (=brand-500) | `#0082FB` | Alias de brand-500, no color propio |
+| `--mat-color-accent-2` | `#0052B8` (=brand-700) | `#0052B8` | Gradiente de avatar (`AppLayout.vue`, `DashboardView.vue`, `EmpleadoDetalleView.vue`) |
+| `--mat-color-accent-subtle` | `#E5F2FF` | `rgba(0,130,251,0.16)` | — |
+| `--mat-color-accent-text` | `#0064E0` (=brand-600) | `#3D9CFF` | **Distinto del botón en oscuro** — brand-600 como texto sobre superficie oscura mide 3.06:1, bajo AA |
+| `--color-primary` (alias legacy) | = `--mat-color-accent-text` | = `--mat-color-accent-text` | **Ya no es alias directo de `--mat-color-accent`** — sigue al valor de texto (`#3D9CFF` en oscuro), no al del botón |
+
+`success`/`warning`/`danger`/`info` **sin cambios** — la migración de marca nunca tocó los semánticos (confirmado también en `StyleLabView.vue`, ver changelog abajo).
+
+`--mat-color-brand` (`#072E2A`), `--mat-color-brand-elevated` (`#0A2E28`) y
+`--mat-color-brand-ink` (`#072E2A` claro / `#34D399` oscuro — sin consumidores
+reales hoy, verificado por grep) son el verde petróleo original del logo,
+reservados a piezas de marca y **no tocados por G1** (confirmado con
+`git show cd21c9a -- frontend/src/styles/main.css`).
+
+### Fondos y texto (ambos temas, actualizado con la migración de marca)
+
+| Token | Claro | Oscuro | Nota |
+|-------|-------|--------|------|
+| `--mat-color-bg` | `#F1F5F8` | `#0F1720` | — |
+| `--mat-color-bg-elevated` | `#FFFFFF` (sin cambio) | `#16202B` (antes `#16181B`) | — |
+| `--mat-color-text-primary` | `#1C2B33` | `#EDF2F5` | — |
+| `--mat-color-text-secondary` | `#52636D` | `#9FB0BA` | — |
+| `--mat-color-text-tertiary` | `#697281` (4.86:1 vs. bg-elevated) | `#818A96` (4.71:1 vs. bg-elevated nuevo) | **El valor de oscuro se recalculó en vivo**: el planeado (`#747C8B`) medía 4.23:1 contra el `bg-elevated` nuevo (más claro que el viejo) y fallaba AA — se ajustó a `#818A96` durante la propia migración (G2), no quedó como se había planeado originalmente. Cierra U-01 (`docs/HISTORIAL-AUDITORIAS.md`) de forma definitiva. |
+| `--mat-color-text-disabled` / `-inverse` | sin cambio | sin cambio | No tocados por esta migración |
+
+### Bordes — jerarquía de 3 niveles (ya portada, no "pendiente")
+
+| Nivel | Token | Claro | Oscuro | Uso |
+|---|---|---|---|---|
+| Sutil | `--mat-color-border` / `-subtle` | `#D9E2E8` | `#1F2A35` | Decorativo — card/tabla/modal, sin umbral WCAG exigible |
+| Default | `--mat-color-border-default` | `#7E96A3` (3.10:1) | `#5A6E7E` (3.11:1) | Input, select, textarea, botón secundario en reposo |
+| Fuerte | `--mat-color-border-strong` | `#526A7B` (5.67:1) | `#7B93A3` (5.13:1) | Hover de controles, seleccionado no enfocado, toast |
+
+### Sombras y radios (ya portadas)
 
 ```css
-background: linear-gradient(135deg, var(--mat-color-accent) 0%, var(--mat-color-accent-alt) 100%);
+--radius-lg: 12px;   /* antes 14px */
+--radius-xl: 16px;   /* antes 14px — deja de ser idéntico a radius-lg */
+--shadow-sm: 0 1px 2px rgba(28,43,51,.06);
+--shadow-md: 0 4px 12px rgba(28,43,51,.08);
+--shadow-lg: 0 16px 40px rgba(28,43,51,.16);
+--shadow-modal: var(--shadow-lg);   /* alias, no valor propio */
 ```
 
-**Estilo shadcn (sin la librería):** un acento por vista, botones outline/solid,
-inputs `h-36px` con focus ring, contenedores separados por **borde** (sin
-`box-shadow` decorativo).
+Política de elevación por componente, ya aplicada:
+
+| Componente | Token | Estado |
+|---|---|---|
+| `.card`, `.stat-card`, tabla, paneles normales | ninguno | ✅ sin cambio, sigue así |
+| `.card--clicable` (nueva variante, solo hover/focus) | `--shadow-sm` + borde `--color-border-default` en hover; `--shadow-sm` + `--mat-ring` + borde acento en focus | ✅ nueva clase creada en G4 |
+| Popovers (`MenuAcciones`, `BuscadorCombo`, `AppSearch`, `NotificacionesCampana`, `AppNotifications`) | `--shadow-md` | ✅ bajado de `--shadow-lg` (3 de 5 lo tenían mal, nivel modal) |
+| Toast | `--shadow-md` | ✅ antes no tenía ninguna |
+| Modal | `--shadow-lg` (=`--shadow-modal`) | ✅ antes no tenía ninguna |
+
+**Nota de la propia migración**: al activar `--shadow-sm` con valor real
+(antes era `none`), `.panel-lista` y `.stat-card` del Dashboard quedaron con
+sombra no deseada en contenedores estáticos — se corrigieron quitándoles la
+regla en el mismo pase (G4), junto con el mismo hallazgo en `.aviso-card`
+de `AppNotifications.vue` (bajado de `--shadow-lg` a `--shadow-md`, mismo
+patrón que los popovers). Si aparece otra sombra "fantasma" en algún
+componente que antes de esta migración tenía `box-shadow: var(--shadow-sm)`
+de forma inerte, es la misma causa — revisar contra la lista de "Repaso de
+consistencia" más abajo en este documento.
+
+### Anillo de foco
+
+```css
+--mat-ring: rgba(0, 130, 251, 0.28);   /* claro */
+--mat-ring: rgba(0, 130, 251, 0.35);   /* oscuro */
+```
+
+Derivado de brand-500 (indicador no textual, umbral 3:1), no de brand-600.
+
+### Sigue pendiente, sin relación con esta migración
+
+- **Selección múltiple en tablas ITSM (`TK1`/`TK2`)**: sigue bloqueada por la
+  tensión sin resolver del principio "sin bordes de costado" (ver
+  "Ambigüedad documental encontrada", más abajo en "Un solo acento visible
+  por vista") — no depende del color, sigue esperando decisión del JEFE.
+- **Propuesta de paleta dot-notation de `design.pen`** (tercera pasada,
+  verde/teal, ver changelog "propuesta de rediseño de paleta"): queda
+  formalmente **descontinuada** — no se portó nunca a producción y la
+  dirección real terminó siendo la azul del Style Lab. El bloque
+  correspondiente de este documento queda como archivado, no se borra
+  (valor histórico).
 
 ---
 
@@ -1246,39 +1506,83 @@ que apuntan a ellos.
 
 ### Fondos y texto — tema claro (`:root`)
 
-Grises neutros (jul 2026 — reemplazan los neutros cálidos/crema de v0.3; ni el
-petróleo ni la calidez del logo son colores de cuerpo):
+Grises neutros, valores reales de `main.css` (ver nota de reconciliación en
+"Identidad de marca" — esta tabla listaba antes los valores de la pasada
+teal-green, ya reemplazados por navy/mint en el código sin actualizar acá):
 
 | Token | Valor | Uso |
 |-------|-------|-----|
-| `--mat-color-bg` | `#F6F7F8` | Fondo de página |
+| `--mat-color-bg` | `#F4F6F7` | Fondo de página |
 | `--mat-color-bg-elevated` | `#FFFFFF` | Tarjetas, header |
-| `--mat-color-bg-subtle` | `#F0F2F4` | Filtros, cabeceras de tabla |
-| `--mat-color-bg-hover` | `#EAEDF0` | Hover en filas/elementos |
-| `--mat-color-text-primary` | `#23282D` | Texto de cuerpo |
+| `--mat-color-bg-subtle` | `#E6E9EC` | Filtros, cabeceras de tabla |
+| `--mat-color-bg-hover` | `#D9DDE1` | Hover en filas/elementos |
+| `--mat-color-text-primary` | `#2F2F2F` | Texto de cuerpo |
 | `--mat-color-text-secondary` | `#6B7280` | Subtítulos, labels |
 | `--mat-color-text-tertiary` | `#9CA3AF` | Placeholders |
-| `--mat-color-border` | `#E4E7EB` | Bordes estándar |
+| `--mat-color-border` | `#DADFE3` | Bordes estándar |
 
 En oscuro el lienzo también es gris neutro (`#0F1113` página, `#16181B`
-tarjetas, bordes `#282D33`) — ya no petróleo. El acento sube a `#34D399`.
+tarjetas, bordes `#282D33`). El acento sube a `#36ECDE` (mint) — ver nota de
+"cambio de comportamiento" en Identidad de marca: la dirección aprobada
+pendiente de portar deja de saltar de hue entre temas.
+
+**Dirección aprobada, pendiente de portar** — valores **específicos por
+tema**, no un único valor compartido (corrección 2026-08-22: una versión
+anterior de este párrafo podía leerse como que claro y oscuro comparten
+fondo/texto; no es así):
+
+| Token | Claro | Oscuro |
+|---|---|---|
+| `--mat-color-bg` (app) | `#F1F5F8` | `#0F1720` |
+| `--mat-color-bg-elevated` (superficie) | `#FFFFFF` | `#16202B` |
+| `--mat-color-text-primary` | `#1C2B33` | `#EDF2F5` |
+| `--mat-color-text-secondary` | `#52636D` | `#9FB0BA` |
+
+Valores de oscuro tomados de `.sl-lab.sl-oscuro` en
+`frontend/src/modules/styleLab/StyleLabView.vue`. Detalle completo, incluida
+la tabla de bordes por tema, en "Identidad de marca".
 
 ### Acento / identidad
 
 | Token | Claro | Oscuro |
 |-------|-------|--------|
-| `--mat-color-accent` | `#157955` | `#34D399` |
-| `--mat-color-accent-alt` | `#34D399` | `#34D399` |
-| `--mat-color-accent-hover` | `#126B48` | `#2DD4A0` |
-| `--mat-color-accent-subtle` | `#E6F7F1` | `rgba(52,211,153,0.14)` |
-| `--mat-color-accent-text` | `#157955` | `#6EE7B7` |
+| `--mat-color-accent` | `#00203F` | `#36ECDE` |
+| `--mat-color-accent-hover` | `#0B3A61` | `#21C9BC` |
+| `--mat-color-accent-subtle` | `#E1FBF8` | `rgba(54,236,222,0.14)` |
+| `--mat-color-accent-text` | `#00203F` | `#7DF3E9` |
+| `--color-primary` (alias legacy, ~20 consumidores de texto/borde) | `#00203F` | `#36ECDE` |
 
 Títulos (toolbar, modal) y valores de stats usan `--color-text-primary`, igual
-que el cuerpo — la jerarquía se logra con tamaño/peso, no con el ink de marca.
-`--mat-color-brand` quedó reservado al área del logo (`.brand-text h1` vía
-`--color-brand-ink`).
+que el cuerpo — la jerarquía se logra con tamaño/peso, no con el color de
+marca. `--mat-color-brand` queda reservado al área del logo.
+
+**Dirección aprobada, pendiente de portar** (commit `G1` del plan de
+migración): `--mat-color-accent` → `#0064E0` en **ambos** temas (no salta a
+otro hue en oscuro); `--mat-color-accent-hover` → `#0052B8`;
+`--mat-color-accent-subtle` → `#E5F2FF` (claro) / `rgba(0,130,251,0.16)`
+(oscuro — tinte de baja opacidad sobre la superficie oscura, no un hex
+sólido, tomado de `.sl-lab.sl-oscuro` en `StyleLabView.vue`);
+`--mat-color-accent-text` → `#0064E0` (claro) / `#3D9CFF` (oscuro, ver por
+qué en "Identidad de marca"); **`--color-primary` deja de ser un alias
+directo de `--mat-color-accent` y pasa a apuntar a
+`--mat-color-accent-text`** — mismo commit, sin ventana intermedia donde uno
+esté migrado y el otro no (hallazgo de la planificación: `--color-primary`
+usado como color de *texto* en `.empleado-link:hover`, `BuscadorCombo.vue`,
+`ThOrdenable.vue`, `CorreoForm.vue`, `CuentaForm.vue`, `LicenciaForm.vue`,
+`EquipoForm.vue`, `EquiposView.vue`, `EmpleadoDetalleView.vue`,
+`EntregaView.vue`, `PersonalRegistrosView.vue`, `PreguntaCampo.vue`,
+`LoginView.vue`, `CorreosView.vue`, `CuentasPanel.vue` — con el alias viejo,
+brand-600 como texto sobre la superficie oscura mide 3.06:1, bajo AA).
 
 ### Colores semánticos (convención de dominio)
+
+> **Sin cambios en la migración de paleta azul** (ago 2026): `success`,
+> `warning`, `danger`, `info` conservan su semántica y valores propios,
+> independientes del acento de marca. Nota aparte, no bloqueante: la fórmula
+> HSL de abajo es una descripción de diseño, no necesariamente el valor hex
+> exacto que tiene hoy cada token en `main.css` (no verificado en esta
+> pasada — quedaría para una auditoría de documentación aparte, sin relación
+> con el rebranding).
 
 Cada familia comparte **una sola fórmula** de saturación/luminosidad; solo
 cambia el hue (H). Esto garantiza que las 8 familias se lean como *un mismo
@@ -1381,15 +1685,42 @@ Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
 
 ### Sombras y radios
 
+Estado actual (valores reales de `main.css`):
+
 ```
---radius-sm: 6px      --shadow-sm: sutil
---radius-md: 10px     --shadow-md: tarjetas hover
---radius-lg: 14px     --shadow-lg: modales
---radius-xl: 20px
+--radius-sm: 6px      --shadow-sm: none
+--radius-md: 8px      --shadow-md: none
+--radius-lg: 14px     --shadow-lg: none
+--radius-xl: 14px     (idéntico a --radius-lg — no diferenciados hoy)
 --radius-pill: 999px  (badges, capacity-bar, timeline-dot)
 ```
 
-Escala en `main.css` (`--radius-*`).
+Los 3 `--shadow-*` valen literalmente `none` — decisión de producto "sin
+sombras en contenedores" (DS v0.3 §3.4). Ningún componente (`.card`,
+`.stat-card`, `.modal`, popovers) tiene sombra visible hoy en producción.
+
+**Dirección aprobada, pendiente de portar** (commit `G4` del plan de
+migración — token + consumidor en el mismo commit, para no dejar una ventana
+donde el valor ya es real pero algún componente sigue mal alineado):
+
+```
+--radius-lg: 12px     --shadow-sm: 0 1px 2px rgba(28,43,51,.06)   md
+--radius-xl: 16px     --shadow-md: 0 4px 12px rgba(28,43,51,.08)  lg
+                      --shadow-lg: 0 16px 40px rgba(28,43,51,.16) --shadow-modal alias de --shadow-lg
+```
+
+Elevación por componente (política cerrada, no una sombra genérica "para
+separar secciones"):
+
+| Componente | Token | Estado hoy |
+|---|---|---|
+| `.card`, `.stat-card`, tabla, paneles normales | ninguno — solo borde sutil | ✅ ya así |
+| Card clicable, en hover/focus únicamente | `--shadow-sm` | pendiente (no existe hoy la variante "clicable") |
+| Dropdown / popover / menú contextual (`BuscadorCombo`, `NotificacionesCampana`, `AppSearch`, `MenuAcciones`) | `--shadow-md` | pendiente — 3 de los 4 hoy apuntan a `--shadow-lg` (el nivel de modal) y 1 no tiene ninguna |
+| Toast | `--shadow-md` | pendiente — hoy no tiene ninguna |
+| Modal | `--shadow-lg` (= `--shadow-modal`) | pendiente — hoy no tiene ninguna |
+
+Escala en `main.css` (`--radius-*`, `--shadow-*`).
 
 ### Escala de z-index
 
@@ -1417,11 +1748,43 @@ stacking context de su modal y pasa a competir contra toda la escala: por eso
 que sigue dentro del árbol del modal (posicionado con `absolute`) no participa
 de la escala y le basta un `z-index` local.
 
+### Bordes — jerarquía de 3 niveles (dirección aprobada, pendiente de portar)
+
+Hoy `main.css` usa un solo nivel "genérico" (`--color-border`) para
+cards, tabla, modal, inputs, selects, textareas y botones por igual. La
+dirección aprobada separa 3 niveles, verificados a los umbrales reales de
+WCAG 1.4.11 (3:1 para el borde de un componente interactivo; un borde
+puramente decorativo, como el de una card, no está sujeto a ese umbral):
+
+| Nivel | Token | Claro | Oscuro | Uso | Contraste vs. superficie |
+|---|---|---|---|---|---|
+| Sutil | `--color-border` / `--color-border-subtle` | `#D9E2E8` | `#1F2A35` | Separadores, borde de card/tabla/modal — decorativo | no exigible |
+| Default | `--color-border-default` (nuevo) | `#7E96A3` | `#5A6E7E` | Input, select, textarea, botón secundario en reposo | 3.10:1 (claro) / 3.11:1 (oscuro) |
+| Fuerte | `--color-border-strong` | `#526A7B` | `#7B93A3` | Hover de controles, seleccionado no enfocado, toast | 5.67:1 (claro) / 5.13:1 (oscuro) |
+
+Nota de proceso: el primer valor propuesto para "default" (`#A9BBC6`) medía
+1.98:1 — bajo el umbral. Se ajustó manteniendo el matiz. El valor de
+"fuerte" también se re-ajustó una vez corregido "default", porque ambos
+quedaban casi idénticos entre sí sobre blanco (no hay margen en esta franja
+gris-azulada para dos tonos que pasen 3:1 y además se distingan). El foco
+**nunca** se resuelve solo con un cambio de borde — siempre borde de acento
++ anillo (`--color-focus`/`--color-focus-ring`), ver más abajo.
+
 ### Excepciones hardcodeadas
 
-- Botón WhatsApp: `#25d366`
-- Overlay de modal: `rgba(15,23,42,0.45)` + `backdrop-filter: blur(4px)`
-- Focus ring en inputs: `box-shadow: 0 0 0 3px rgba(13,148,136,0.18)`
+- Botón WhatsApp: `#25d366` (sin cambios — no forma parte del rebranding, es
+  color de marca de un tercero)
+- Overlay de modal (`.modal-bg`): `rgba(12,15,17,0.55)`, sin `blur` — mismo
+  valor en ambos temas
+- Focus ring en inputs/botones (`--mat-ring`): `rgba(0,32,63,0.28)` (claro,
+  derivado del navy actual) / `rgba(54,236,222,0.28)` (oscuro, derivado del
+  mint actual)
+
+**Dirección aprobada, pendiente de portar** (commit `G3`): el anillo de foco
+pasa a `rgba(0,130,251,0.28)` (claro) / `rgba(0,130,251,0.35)` (oscuro) —
+derivado de brand-500, no de brand-600, porque un anillo es un indicador no
+textual (umbral 3:1) y brand-500 ya cumple ahí sin necesidad del ajuste que
+sí hace falta para texto.
 
 ---
 
@@ -1542,6 +1905,98 @@ borde y radio normales. Las vistas de detalle mantienen su header
 contextual (botón volver + entidad) sobre la misma base `site-header` +
 `header-inner`.
 
+### Página split-view (Tickets, ago 2026)
+
+Cuarto tipo de página, distinto de los tres de arriba: no es un solo `.card`
+(listado) ni varios cards apilados en una columna (multi-card) — son **tres
+paneles lado a lado**, cada uno con su propio scroll interno. Aplica cuando
+una vista necesita navegar entre ítems de una lista y ver el detalle de uno
+sin perder el contexto de la lista (a diferencia de un listado normal, donde
+seleccionar una fila reemplaza toda la pantalla).
+
+```
+┌──────────┬────────────────┬──────────────────────────┐
+│  nav     │  lista angosta │  panel de detalle         │
+│  ~15%    │  ~25%          │  resto                    │
+│  filtros │  tarjetas      │  TicketDetallePanel.vue    │
+│  rápidos │  reducidas     │  (o estado vacío)          │
+└──────────┴────────────────┴──────────────────────────┘
+```
+
+Implementado en `TicketsView.vue` + `TicketDetallePanel.vue` (el panel
+comparte lógica de negocio con `TicketDetalleView.vue` vía el composable
+`useTicketDetalleLogica.js` — mismo store, mismas acciones; lo único que
+cambia es el contenedor). Decisiones que quedan documentadas acá para que no
+se reviertan sin contexto:
+
+- **Solo desktop.** En ≤768px (`useEsMovil.js`, mismo corte que
+  `.solo-movil`/`.solo-escritorio`) el nav y el panel ni se montan
+  (`v-if="!esMovil"`); la fila de la lista vuelve a navegar a la ruta
+  `/tickets/:id` de página completa, sin cambios respecto al comportamiento
+  de antes del split-view. La ruta de página completa **sigue existiendo**
+  en ambos breakpoints — la usan los enlaces externos (Empleados, Dashboard,
+  notificaciones) y es la única forma de llegar al detalle en mobile.
+- **Fondo "island".** Los tres paneles flotan sobre `--color-bg` (el mismo
+  gris-azulado del body, no un valor nuevo) con `gap: 16px` entre ellos, cada
+  uno con su propio borde + `--radius-lg` + fondo `--color-bg-elevated`. Es
+  lo opuesto al patrón "página tipo listado" (arriba), donde `.card--fill` es
+  a propósito full-bleed, sin borde ni radio, pegado a los bordes del área de
+  contenido — **cada pantalla usa el patrón que le corresponde según su
+  estructura**: una tabla densa de un solo bloque se sirve mejor full-bleed
+  (más espacio útil, sin marco que compita con las filas); un layout
+  multi-panel necesita separación visual entre paneles para leerse como
+  "tres zonas", no como una sola superficie partida — ahí el borde+gap+radio
+  de cada isla cumple ese rol. No es una preferencia estética suelta, es la
+  misma regla de "separar por bordes, no por sombra" aplicada al nivel de
+  panel en vez de al nivel de card individual.
+- **Detalle en 2 columnas** (`.tdp-grid`, 300px + resto): izquierda angosta
+  con "Datos del ticket" (prioridad/nivel/técnico/tipo, editables inline) e
+  "Historial" (timeline de hitos, tope de 280px con scroll propio);
+  derecha ancha con "Conversación" — separadas porque tienen ritmos de
+  lectura distintos (datos estructurados de un vistazo vs. hilo de mensajes
+  que se lee de arriba a abajo) y porque Conversación necesita el espacio
+  horizontal que los otros dos no piden.
+- **Conversación a todo el alto disponible.** A diferencia del resto de
+  secciones (alto natural, `flex-shrink: 0`), la card de Conversación se
+  estira al 100% de la fila del grid y scrollea con su propio scroll interno
+  (`.tdp-conversacion-scroll`) — el composer de "nuevo comentario" queda fijo
+  abajo por flujo normal, no por `position: sticky`. Es la sección que más
+  contenido puede acumular (un ticket viejo con muchos comentarios) y la que
+  el usuario más necesita ver sin scrollear el panel entero para llegar a
+  ella. En ≤1100px (el panel ya angosto, aunque siga siendo "desktop" para
+  `useEsMovil`) esto se desactiva y vuelve a alto natural con `.tdp-body`
+  scrolleando como una sola unidad — con las 2 columnas apiladas no hay
+  "alto sobrante" que repartirle a Conversación.
+- **Criterio de CTAs en el header del panel**: orden fijo
+  `KB → Problema → acción principal del estado` (Iniciar atención / Marcar
+  resuelto / Reabrir), con Rechazar como par de Iniciar atención (van juntos,
+  no es "la principal" de "abierto"). La acción principal queda **al final**
+  a propósito — es la más importante, pero KB/Problema son toggles/enlaces
+  de contexto que tienen sentido revisar primero, antes de decidir la
+  transición de estado.
+- **Satisfacción no vive en el panel** — se sacó por completo (rompía el
+  ritmo visual de las cards, era una fila entera de forma despareja). El
+  acceso sigue existiendo desde el header de `TicketsView.vue` ("Satisfacción"
+  en el toolbar) y desde la página completa; no se perdió funcionalidad, se
+  reubicó.
+- **Nav de filtros rápidos** (columna izquierda, ~15%): 2 dimensiones
+  independientes que se cruzan — "Mis tickets" (toggle) + Estado (lista de
+  selección única: Todos/En progreso/Resuelto/Rechazados). Prioridad vive
+  ahí también (select), no es parte de la selección única de Estado. Mismo
+  par tenue/acento (`--color-accent-subtle` + `--color-accent-text`) que el
+  ítem activo del sidebar real, un solo lenguaje para "esto está
+  seleccionado" en toda la app.
+
+**Selección múltiple con checkboxes**: validada en el Style Lab **contra un
+patrón de `<table>`** (ver "Selección múltiple en tablas ITSM" más abajo),
+**todavía no portada** a `TicketsView.vue`. Con el split-view ya en
+producción, la lista angosta de Tickets ya no es una tabla — es
+`<ul class="lista-tarjetas">` (mismo elemento que usan las tarjetas móviles
+de todos los módulos). La validación de checkboxes queda pendiente de
+revisarse contra este formato de tarjeta antes de portarla; no se resolvió
+acá, solo se señala para que quien la porte no asuma que sigue siendo una
+fila de `<tr>`/`<td>`.
+
 ### Página con sidebar propio (Configuración)
 
 `ConfiguracionView.vue` (ago 2026, reemplaza las pestañas horizontales que
@@ -1592,14 +2047,32 @@ elemento necesita `display:flex`). Son la base del dual render de tablas.
 
 ### Patrón tabla → tarjetas (módulos operativos en móvil)
 
-En ≤768px las tablas de **Tickets, Empleados y Equipos** se reemplazan por
-tarjetas apiladas (dual render: el `<table>` lleva `.solo-escritorio` y a su
-lado vive una `<ul class="lista-tarjetas solo-movil">` sobre la **misma
-lista paginada**; `<Pagination>` queda fuera de ambos para no ocultarse).
-El resto de vistas de lista (Correos, Licencias, Actividad, Accesos
-sensibles, Configuración) conserva la tabla con scroll horizontal — el
-`.table-wrap` global ya pinta sombras de scroll en los bordes como
-indicador (sin JS, `background-attachment: local`).
+En ≤768px las tablas se reemplazan por tarjetas apiladas (dual render: el
+`<table>` lleva `.solo-escritorio` y a su lado vive una
+`<ul class="lista-tarjetas solo-movil">` sobre la **misma lista paginada**;
+`<Pagination>` queda fuera de ambos para no ocultarse). **Corrección (ago
+2026, repaso de consistencia)**: esta sección decía que solo Empleados y
+Equipos tenían este dual render y que Correos/Licencias/Accesos sensibles se
+quedaban con la tabla sin tarjetas — no era así al revisar el código: **todos
+los módulos de lista con tabla lo tienen** (Empleados, Equipos, Correos,
+Licencias, Base de Conocimiento, Problemas, Encuestas —ambas tablas—,
+Accesos sensibles). No se verificó Configuración en este repaso, queda
+pendiente de confirmar. **Actividad** es la única excepción real, confirmada
+a propósito: es un log de auditoría denso de 6 columnas de solo lectura, sin
+acciones por fila — forzarlo a tarjetas apiladas sería más difícil de
+escanear que la tabla con scroll horizontal (el `.table-wrap` global ya
+pinta sombras de scroll en los bordes como indicador, sin JS,
+`background-attachment: local`).
+
+**Tickets ya no usa `<table>`** (ago 2026, ver "Página split-view" arriba):
+tanto la lista angosta del split-view (desktop) como la vista mobile son
+`<ul class="lista-tarjetas">` sobre la misma lista paginada — la diferencia
+entre ambas es de **contenido**, no de elemento: la tarjeta de escritorio
+muestra menos campos (código+fecha, título, badges+avatar) porque es una
+columna angosta al lado del panel de detalle; solicitante/categoría/
+prioridad completa quedan solo en el panel al seleccionar. La tarjeta mobile
+(`.solo-movil`, sin split-view) sí muestra esos campos porque no hay panel
+al lado que los complete.
 
 Anatomía de `.tarjeta-fila` (todas las zonas son opcionales):
 
@@ -1630,8 +2103,10 @@ acciones condicionales es `accionesDe(eq)` (EquiposView.vue): cada acción
 puede llevar `overflow: true`; la tarjeta móvil siempre cuelga el arreglo
 completo del menú ⋮, y el escritorio separa con `accionesInlineDe(eq)`
 (las sueltas como icon-btn) y `accionesOverflowDe(eq)` (las que van al
-mismo `MenuAcciones` también en escritorio, ver regla de umbral abajo) — no
-dupliques condiciones entre ambos.
+mismo `MenuAcciones` también en escritorio) — no dupliques condiciones
+entre ambos. Ver "Umbral de acciones por fila" en "Reglas de tabla" más
+abajo para el criterio completo de cuándo aplica este reparto híbrido
+(Equipos) frente a consolidar todo en `MenuAcciones` o dejar todo suelto.
 
 ### BuscadorCombo.vue (campo de búsqueda con lista de resultados)
 
@@ -1897,9 +2372,16 @@ pocas filas, sin buscador), no un listado global.
 ### Reglas de tabla (jul 2026, tras auditoría de accesibilidad)
 
 - **Semántica**: todo `<th>` lleva `scope="col"`; toda `<table>` lleva
-  `aria-label` descriptivo; la columna de acciones usa
-  `<th scope="col"><span class="sr-only">Acciones</span></th>` — nunca un
-  `<th>` vacío.
+  `aria-label` descriptivo; la columna de acciones nunca queda con un `<th>`
+  vacío. **Texto visible (ago 2026, repaso de consistencia)**: el header de
+  esa columna es `<th scope="col">Acciones</th>`, con el texto a la vista —
+  reemplaza al `<span class="sr-only">Acciones</span>` que tenían Empleados,
+  Equipos, Correos, Licencias, Encuestas (ambas tablas) y Accesos sensibles
+  antes de esa ronda. Se prefiere visible porque el resto de headers de la
+  fila ya muestran su texto — un solo header oculto entre columnas con texto
+  rompía la lectura visual de la fila de encabezados, no aportaba nada a
+  cambio (el `sr-only` no es necesario para el lector de pantalla: cada botón
+  de la celda ya lleva su propio `aria-label`).
 - **Botones de icono**: siempre `title` **y** `aria-label` con el mismo
   texto (o `:aria-label` con la misma expresión si el title es dinámico).
   Aplica también a links solo-icono (URL externa, foto).
@@ -1930,15 +2412,44 @@ pocas filas, sin buscador), no un listado global.
   color permitido es el modificador `.danger`, reservado para acciones
   destructivas, y solo se activa en hover/focus — en reposo se ve igual
   que cualquier otra acción.
-- **Umbral de acciones por fila (ago 2026)**: si una fila puede mostrar más
-  de 3 íconos de acción simultáneos en escritorio (ej. `EquiposView.vue`,
-  hasta 6 según el estado del equipo antes de este cambio), las secundarias
-  se cuelgan del mismo `MenuAcciones.vue` que ya arma la tarjeta móvil —
-  nunca un componente nuevo. Regla de reparto: la acción principal de esa
-  fila (la transición de estado más relevante) + "Editar" quedan sueltas
-  como `.icon-btn`; el resto (consultas como "Hoja de vida", acciones poco
-  frecuentes o destructivas) va al menú ⋮. Ver `accionesInlineDe`/
-  `accionesOverflowDe` en `EquiposView.vue` para el patrón de referencia.
+- **Umbral de acciones por fila (ago 2026, criterio completo tras el repaso
+  módulo por módulo)**: tres tratamientos posibles según cuántas acciones
+  tiene la fila en escritorio y si hay una razón documentada para separarlas.
+  Nunca un componente nuevo — siempre `MenuAcciones.vue`, el mismo que ya
+  arma la tarjeta móvil.
+
+  1. **3 o más acciones, sin justificación documentada → consolidar TODAS en
+     `MenuAcciones`**, también en escritorio (no solo mobile). Es el caso más
+     común: Empleados (4 → 1 menú), Licencias (4 → 1 menú), Encuestas (3 → 1
+     menú, en las dos tablas del módulo — plantillas y rondas). La función
+     que arma el array de acciones (`accionesDe(fila)` o equivalente) se
+     define **una sola vez** y se reusa igual en la celda de escritorio y en
+     la tarjeta móvil — nunca duplicar la lista de acciones entre ambas.
+  2. **2 acciones o menos → dejarlas sueltas** como `.icon-btn` en
+     escritorio, aunque la tarjeta móvil sí las cuelgue de un
+     `MenuAcciones` propio (mobile consolida más agresivo que desktop,
+     porque el espacio horizontal de una tarjeta angosta es más escaso que
+     el de una fila de tabla). Casos: Correos y Accesos sensibles, ambos con
+     Editar + Eliminar sueltos — 2 acciones no justifican el clic extra de
+     abrir un menú, y "Eliminar" ya está protegido por su propio
+     `ConfirmDialog`, no depende de estar "escondido" en un menú para ser
+     seguro.
+  3. **3 o más acciones, CON justificación documentada en el código → el
+     reparto híbrido queda como está**, no se fuerza a ninguno de los dos
+     casos de arriba. Único caso real: `EquiposView.vue`, hasta 6 íconos
+     posibles según el estado del equipo — la acción principal (la
+     transición de estado más relevante) + "Editar" quedan sueltas como
+     `.icon-btn`; el resto (consultas como "Hoja de vida", acciones poco
+     frecuentes o destructivas) va al menú ⋮. Ver `accionesInlineDe`/
+     `accionesOverflowDe` en `EquiposView.vue` para el patrón de referencia.
+     La diferencia con el caso 1 no es solo el número de acciones — es que
+     acá hay una razón escrita en el código (evitar hasta 6 íconos sin
+     etiqueta en una sola fila) que ya fue evaluada y aceptada; sin ese
+     comentario, tratarlo como caso 1.
+
+  No hay un umbral automático que decida solo entre 1 y 3 — si una fila con
+  3+ acciones ya tiene un comentario explicando por qué siguen sueltas,
+  respetarlo (caso 3); si no lo tiene, consolidar (caso 1).
 - **Edición inline en vez de ícono + modal**: cuando una acción de fila solo
   cambia **un campo**, de bajo riesgo y reversible (ej. la ubicación de un
   equipo), se edita directamente en la celda — un `<select>`/control suelto
@@ -1958,6 +2469,45 @@ pocas filas, sin buscador), no un listado global.
   `StaffView.vue` (sin filtro de estado) todavía no siguen este criterio —
   aplicarlo ahí si se reporta la misma confusión.
 
+### Selección múltiple en tablas ITSM (dirección aprobada, pendiente de portar)
+
+Validado en el Style Lab para el patrón de tabla de Tickets — **todavía no
+portado a `TicketsView.vue`** (bloqueado a propósito, ver más abajo).
+
+- Checkbox por fila + "seleccionar todos" en el header, con estado
+  `indeterminate` real (propiedad DOM, no simulado) cuando hay selección
+  parcial.
+- Fila marcada: fondo `--color-accent-subtle` + indicador izquierdo *inset*
+  de **2px** en `--color-accent` (`box-shadow: inset 2px 0 0
+  var(--color-accent)` en la primera celda — no un `border-left`, que
+  empujaría el contenido; no un borde alrededor de las 4 celdas).
+- Barra de acciones masivas (aparece solo con ≥1 fila marcada): superficie
+  neutra (`--color-bg-subtle`, la misma del header de tabla) — **nunca**
+  azul de marca de fondo. Acción destructiva del lote en `.btn-danger`, el
+  resto en `.btn` secundario.
+- Azul de marca reservado a: link del título, ícono de orden activo,
+  checkbox marcado, indicador de fila, foco — nunca estructura ni
+  decoración repetida por fila.
+
+> **Nota de conflicto con el principio existente "sin bordes de acento en
+> los costados"** (ver "Principios de diseño" al final de este documento):
+> el indicador de 2px de arriba **es** un borde de costado, aunque
+> capado a 2px según la regla vigente hoy en el proyecto (ver
+> `docs/HISTORIAL-AUDITORIAS.md`, `.accion-item--vencida` en
+> `ProblemaDetalleView.vue`, ya es una excepción de este tipo en
+> producción). Este documento no resuelve la tensión entre "nunca un borde
+> de costado" (texto original del principio) y "borde de costado permitido
+> hasta 2px" (práctica real ya vigente) — queda señalado para que el JEFE lo
+> confirme antes de portar esta tabla, no decidido unilateralmente acá.
+
+**Checkbox/selección múltiple bloqueado a propósito** hasta resolver, sin
+relación con CSS: operaciones reales en lote (¿existen RPCs de
+asignar/cambiar prioridad/cerrar en lote, o habría que llamar la operación
+individual N veces?), permisos (un usuario puede no tener permiso sobre
+todos los tickets seleccionados), auditoría (¿registro por ticket o por
+lote?), confirmación de la acción destructiva en lote, y manejo de fallos
+parciales (¿qué pasa si la operación tiene éxito en 8 de 10 tickets?).
+
 ### Errores de formulario/acción (`.form-error`)
 
 Antes duplicado idéntico en 10 módulos; ahora global. Distinto del toast:
@@ -1971,6 +2521,37 @@ Licencias y Equipos, además de los formularios de creación/edición.
 ```
 
 `.form-grid .form-error` obtiene automáticamente `grid-column: 1 / -1`.
+
+## Repaso de consistencia — módulo por módulo (ago 2026)
+
+Recorrida completa del sidebar aplicando los criterios de esta guía (umbral
+de acciones, header de columna Acciones, patrón de layout) módulo por
+módulo, en un worktree aislado. Queda el registro de qué se tocó y qué se
+revisó y se dejó igual **a propósito** — para que una revisión futura no
+vuelva a auditar estos módulos desde cero pensando que quedaron sin mirar.
+
+**Tocados:**
+
+| Módulo | Cambio |
+|---|---|
+| Empleados | 4 `.icon-btn` sueltos → `MenuAcciones` en escritorio (caso 1 del umbral) |
+| Equipos | Header "Acciones" de `sr-only` a texto visible (el híbrido de acciones se dejó igual — caso 3, ya documentado en el código) |
+| Correos | Header "Acciones" visible (las 2 acciones sueltas se dejaron igual — caso 2) |
+| Licencias | 4 sueltas → `MenuAcciones` (caso 1) + header visible |
+| Problemas | 2 `aria-label` faltantes en `ProblemaDetalleView.vue` (no tenía columna Acciones que tocar) |
+| Encuestas | 3 sueltas → `MenuAcciones` en **ambas** tablas del módulo (plantillas y rondas), caso 1, + 2 headers visibles. Primer módulo donde ni mobile usaba `MenuAcciones` antes de esta ronda |
+| Accesos sensibles | Header "Acciones" visible (2 sueltas se dejaron igual — caso 2) |
+
+**Revisados, sin cambios (a propósito, no salteados):**
+
+| Módulo | Por qué no se tocó |
+|---|---|
+| Base de Conocimiento | Sin columna Acciones en la lista — toda la gestión vive en el detalle como botones `.btn` con label, ya consistente |
+| Actividad | Log de auditoría de solo lectura, sin acciones por fila — confirmado explícitamente que la ausencia de tarjetas móviles es intencional (ver "Patrón tabla → tarjetas") |
+| Dashboard | Ya alineado — sin header sr-only, sin iconos sueltos que consolidar, sin colores fuera de los tokens existentes. Único hallazgo: `box-shadow: var(--shadow-sm)` en `.stat-card`/`.panel-lista`, inerte porque `--shadow-sm` está en `none` a nivel token (ver "Sombras y radios") — no exclusivo del Dashboard, aparece en 7 archivos más del sistema; limpieza pendiente de alcance mayor, no parte de este repaso |
+
+**Fuera de este repaso:** Pre-registro de personal (vista borrador, no
+forma parte del sistema todavía).
 
 ## Animaciones y micro-interacciones
 
@@ -1993,9 +2574,12 @@ Licencias y Equipos, además de los formularios de creación/edición.
 ## Resumen
 
 Panel con **CSS custom estilo shadcn** (sin Tailwind ni librería), tokens
-**neutros grises + acento de marca** (`#157955`/`#34D399`), **Inter + Sora**, iconos **Tabler**,
-separación por **bordes** (sin sombras en contenedores), y clases globales en
-`main.css`.
+**neutros grises + acento de marca** (hoy `#00203F`/`#36ECDE` navy/mint;
+dirección aprobada pendiente de portar: `#0064E0`/`#0082FB` azul — ver
+"Identidad de marca"), **Inter + Sora**, iconos **Tabler**, separación por
+**bordes** (sin sombras en contenedores en producción hoy; la dirección
+aprobada activa sombra discreta solo en card clicable/dropdown/modal, ver
+"Sombras y radios"), y clases globales en `main.css`.
 
 ### Principios de diseño (definidos por el JEFE)
 
@@ -2013,6 +2597,20 @@ separación por **bordes** (sin sombras en contenedores), y clases globales en
   que sí existen (contenedores `.card`/`.stat-card`, `1px solid
   --color-border`) delimitan la superficie completa, no un costado; no
   confundir ese patrón con un acento de estado.
+
+  > **Ambigüedad documental encontrada (2026-08-22), sin resolver acá**:
+  > este principio, tal como está escrito, ya no describe la práctica real.
+  > `.accion-item--vencida` (`ProblemaDetalleView.vue`) usa un borde de
+  > costado de 2px como acento de severidad, aceptado como excepción (ver
+  > `docs/HISTORIAL-AUDITORIAS.md`, hallazgo UX4-04) — la regla operativa
+  > que se viene citando en la práctica es "ningún borde/acento estructural
+  > supera 2px", no un veto total a bordes de costado. La dirección de
+  > tablas ITSM aprobada (fila seleccionada con indicador izquierdo *inset*
+  > de 2px, card de alerta con `border-left`) sigue ese tope de 2px, no el
+  > veto total. **No reescribí este principio para que diga otra cosa** —
+  > señalo la contradicción entre el texto y la práctica para que el JEFE
+  > confirme cuál de las dos es la regla vigente antes de portar la tabla
+  > de Tickets (commit `TK1`/`TK2` del plan de migración).
 - **Un solo acento visible por vista** — el botón `.btn-primary`
   del header/toolbar de cada módulo (ej. "Nueva licencia") es el acento fijo
   de esa vista. **Corrección (jul 2026)**: en 7 vistas (Empleados, Correos,

@@ -10,6 +10,21 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-27** — Migración de marca al azul (`#0064E0`/`#0082FB`),
+  reemplazando la paleta teal-green real de producción — no navy/mint como
+  esta documentación afirmaba erróneamente desde el 2026-08-22 (corregido
+  en el mismo cambio, ver `docs/GUIA-UX-UI.md`, "Identidad de marca"). Seis
+  pasadas verificadas (G0-G5): `StyleLabView.vue` corregido antes de usarse
+  como referencia (cierra UX6-12), tokens de acento/fondo/texto/borde/
+  sombra/radio portados a `main.css`, `--color-primary` redirigido a
+  `accent-text` en vez de `accent` directo (evita una falla de AA en
+  oscuro), y 2 sombras que habrían aparecido no deseadas al activarse el
+  token real (antes `none`) corregidas en el mismo pase. Nuevos checks
+  permanentes en `scripts/contraste.mjs` para `text-tertiary` y `border-
+  default/-strong`. `docs/GUIA-UX-UI.md` y `docs/HISTORIAL-AUDITORIAS.md`
+  (UX6-12) actualizados en el mismo cambio. **Pendiente**: QA visual real
+  (sin navegador en esta sesión) y decidir el destino de un diff ajeno sin
+  commitear que quedó en `git stash` durante esta migración.
 - **2026-08-21** — Fusión visual "Resuelto"/"Cerrado" en Tickets (decisión
   de producto): el staff ya no distingue los dos estados en badges,
   filtro y notificaciones — la columna `estado` sigue guardando los 2

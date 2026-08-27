@@ -674,6 +674,7 @@ sin escribir nada hasta que cada hallazgo se aprobó por separado.
 | PERSONAL-REGISTRO-DNI-EXOFFBOARD | `functions/personal-registro.ts`'s `buscarDni` no filtra `deleted_at is null` al buscar coincidencia por DNI, a diferencia de `functions/tickets.ts` (`crear` y `buscarPorDni`), que sí excluyen empleados offboardeados explícitamente. El DNI de un ex-empleado autocompleta el formulario público de pre-registro con sus datos, mientras que ese mismo DNI queda invisible para vincular un ticket nuevo o para la búsqueda pública de tickets. Asimetría de comportamiento entre los 2 únicos endpoints públicos sin sesión que resuelven por DNI — no es un hallazgo de seguridad: `dni` es único a nivel de tabla (migración 002), no hay riesgo de match ambiguo, solo de criterio inconsistente entre ambos. Detectado al auditar el flujo completo de Empleados de punta a punta | Baja | **Abierto** (detectado 2026-08-25) | `functions/personal-registro.ts` (`buscarDni`) vs. `functions/tickets.ts` (`crear`, `buscarPorDni`) |
 | EMPLEADOS-SIN-AUDITORIA | No existe ninguna tabla ni mecanismo equivalente a `ticket_eventos`/`eventos_equipo` para `empleados` — ningún cambio a una fila de empleado (incluida la baja, `dar_baja_empleado()`, un evento de negocio significativo) deja registro de qué cambió ni de cuál era el valor anterior. Los únicos triggers sobre `empleados` son genéricos: `set_updated_at`, `set_created_updated_by`, `notify_list_changed` (sin payload, solo "la lista cambió, refrescá"), y 2 notificaciones de campana (alta/baja) sin captura de valores. `dar_baja_empleado()` tampoco escribe en `accesos_log`. Contraste directo con Tickets (9 tipos de evento) y Equipos (4 tipos de evento), ambos con tabla append-only dedicada. Detectado al auditar el flujo completo de Empleados de punta a punta | Baja | **Abierto** (detectado 2026-08-25) | `migrations/002_empleados_cuentas.sql`, `005_created_by.sql`, `026_realtime_listas.sql`, `045_notificaciones.sql`, `038_baja_empleado_atomica.sql` — ningún `insert` a una tabla de auditoría en ninguno |
 | EMPLEADOS-ROUTER-MAS-ESTRICTO-QUE-RLS | El router (`meta.modulo: 'empleados'` en `frontend/src/router/routes/staff.routes.js`, tanto `/empleados` como `/empleados/:id`) bloquea la pantalla completa a un ASISTENTE sin el módulo `empleados` otorgado — pero la policy RLS de SELECT sobre `empleados` es `es_staff()` puro, sin ningún gate de módulo (decisión explícita de la migración 068, para no dejar en blanco los nombres de empleado embebidos en Equipos/Licencias/Correos). Esa misma sesión, consultando la tabla directo por SDK, sí podría leerla completa. **Nota de contexto, no vulnerabilidad**: la apertura de SELECT ya es intencional y está documentada (`README.md`, `docs/PANORAMA_SISTEMA.md`); lo que no estaba anotado en ningún lado hasta ahora es que, en la dirección opuesta, el router es más estricto que la base de datos. Detectado al auditar el flujo completo de Empleados de punta a punta | Info (nota de contexto, no es un hallazgo de seguridad) | **Confirmado, sin acción — documentado como nota** (2026-08-25) | `frontend/src/router/routes/staff.routes.js`, `frontend/src/router/guards.js` vs. `migrations/068_rls_modulos_reales.sql` (SELECT sin gate) |
+| CUENTAS-TABLAS-SATELITE-SIN-GATE | La migración 068 instaló `es_jefe() OR (es_staff() AND tiene_permiso_modulo('correos'))` en `cuentas`/`asignaciones_cuenta` con el objetivo declarado de cerrar el hueco de módulo en el dominio Cuentas — pero nunca tocó 2 tablas satélite del mismo dominio: `plataformas` y `entregas`. Mismo patrón exacto que EQUIPOS-TABLAS-SATELITE-SIN-GATE (fila anterior, migración 079). Confirmado por `SELECT` directo a `pg_policies` (no por el nombre de la migración): las 2 seguían con `es_staff()` plano en los comandos que no eran DELETE jefe-only (`plataformas`: SELECT/INSERT/UPDATE; `entregas`: SELECT — no tiene policy de INSERT/UPDATE para el cliente, solo la edge function `credenciales.ts` con cliente admin crea entregas y marca `viewed_at`). Un ASISTENTE sin el módulo `correos` podía leer/escribir directo por SDK el catálogo completo de `plataformas`, y leer el listado completo de `entregas` de toda la empresa (`empleado_nombre`, `expires_at`, `viewed_at`, `token_hash`, `payload` cifrado de credenciales). Detectado al auditar el flujo completo de Cuentas de punta a punta | Media-Alta (acceso no autorizado real vía SDK directo — requiere ser staff activo, no explotable de forma anónima ni remota trivial; mismo criterio de severidad que el hallazgo gemelo de Equipos) | **Resuelto** (2026-08-26) | Migración 081 (`081_rls_cuentas_tablas_satelite.sql`) reemplaza las 4 policies que usaban `es_staff()` plano por el mismo patrón de 068 (3 en `plataformas`: SELECT/INSERT/UPDATE; 1 en `entregas`: SELECT); el DELETE de ambas (ya `es_jefe()`) queda sin tocar. Verificación en dos capas antes de aplicar a producción, mismo método aceptado desde EQUIPOS-TABLAS-SATELITE-SIN-GATE: (1) evaluación directa por `SELECT` de `es_jefe()`/`es_staff()`/`tiene_permiso_modulo('correos')` contra los datos reales de las cuentas fixture en un branch de InsForge descartable — confirmó que `ci-tests-sin-modulo` y `ci-tests@materen-ti-test.local` (ambos ASISTENTE activo sin el módulo `correos`) pasaban la policy vieja y no la nueva, que otorgándole el módulo `correos` a `ci-tests-sin-modulo` sí vuelve a pasar (sin sobre-restringir), y que ambas cuentas JEFE pasan igual en las dos versiones (sin regresión); (2) revisión de los flujos reales que leen estas tablas: `CuentaForm.vue`/`CorreoForm.vue` ya están detrás del router gate `modulo:'correos'`; `LicenciaForm.vue` también lee `plataformas` para su sub-flujo "vincular correo nuevo", pero ese sub-flujo ya requería el módulo `correos` desde la 068 (el `INSERT` en `cuentas` que dispara `createCorreo` ya estaba gateado) — no es una regresión nueva, solo extiende la misma restricción ya vigente al catálogo; la pestaña Configuración→Plataformas no tiene gate de módulo en el router (igual que Configuración→Tipos de equipo desde 068/079) — un staff sin `correos` ahora ve la lista vacía, mismo patrón ya aceptado; `entregas` no tiene ningún consumidor UI directo (solo la edge function con cliente admin), sin impacto de flujo. Aplicado a producción y verificado byte a byte contra `pg_policies` (6/6 policies idénticas al branch probado), registrado en `schema_migrations` (`aplicada_por='INACONS'`), branch descartable borrado |
 
 **Nota de documentación (2026-08-24)**: de los 9 valores permitidos en el
 `CHECK` de `ticket_eventos.evento`, dos quedaron vestigiales desde la
@@ -928,6 +929,77 @@ con fila propia en algún ciclo, esa fila también.
     toca la mayoría de las policies RLS existentes. Definir el modelo de
     aislamiento (RLS por `empresa_id` vs. schemas separados) antes de
     migrar.
+
+## Ciclo 14 — Auditoría UI/UX completa desde cero (2026-08-26)
+
+Alcance: pedido explícito del usuario, auditoría completa del sistema
+**desde cero** — a diferencia de los ciclos anteriores, sin apoyarse en
+"qué ya se revisó" (el "Repaso de consistencia — módulo por módulo" de
+`docs/GUIA-UX-UI.md`, ago-2026), para el caso de que el criterio hubiera
+cambiado desde entonces. Método: 15 agentes en paralelo (uno por grupo de
+módulos, agrupando los más chicos, más uno para
+`frontend/src/components/shared/`), cada uno contra `docs/GUIA-UX-UI.md`
+completo, con un segundo agente que reabre archivo y guía para confirmar o
+descartar cada hallazgo antes de reportarlo. 57 hallazgos confirmados, 0
+descartados en verificación. El grupo `shared-components` no llegó a
+verificarse (límite de gasto de la cuenta a mitad del run) — su resultado
+de 0 hallazgos queda **sin confirmar**, no leer como "componentes
+compartidos limpios"; repetir esa verificación cuando se libere el límite.
+El grupo `wip-direccion-azul` (`StyleLabView.vue`/`DesignSystemView.vue`,
+la migración de paleta azul ya "aprobada, pendiente de portar") se evaluó
+con un criterio distinto: no contra navy/mint actual, sino contra lo que
+la propia guía documenta como plan aprobado — sus hallazgos no son
+incumplimiento de producción.
+
+Se corrigieron los 9 hallazgos de severidad alta que sí son de producción
+(4 aplicados directo por ser solo texto; 5 estructurales — migración a
+`<Modal>`, paridad tabla→tarjetas, consolidación en `MenuAcciones` —
+mediante 5 agentes en paralelo con verificación posterior); el resto
+(medio/bajo) queda documentado para priorizar después. Verificado con
+`npm test` (184/214, 30 skip, misma línea base) tras consolidar todos los
+lotes. La mayoría de los 57 no son problemas independientes sino ~9
+patrones sistémicos repetidos en muchos archivos — agrupados así abajo en
+vez de una fila por instancia.
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| UX6-01 | Tuteo nuevo en `EmptyState`/validaciones/placeholders/tooltips, no cubierto por UX4-52/UX5-08/UX5-09 (alto en accesos públicos y de credenciales: es la puerta de entrada al sistema y un formulario público) | Alto/Medio | **Resuelto (parcial)** | Corregido: `AreasObrasPanel.vue`, `UbicacionesPanel.vue`, `TiposEquipoPanel.vue`, `CategoriasTicketPanel.vue` (6 strings), `LoginView.vue` (4), `PersonalRegistroView.vue` (6), `AccesosSensiblesView.vue` (10× "No tienes permiso" → "No tiene permiso"). Pendiente, mismo patrón: `TicketInternoForm.vue`, `TicketNuevoView.vue`, `TicketDetalleView.vue`, `TicketDetallePanel.vue`, `EquiposView.vue`, `EquipoForm.vue`, `ImportarEquiposView.vue`, `acta.js`, `acta-devolucion.js`, `EncuestaDetalleView.vue`, `EncuestaForm.vue`, `CorreosView.vue`, `KbView.vue`, `KbArticuloDetalleView.vue`, `CuentasPanel.vue`, `CuentaForm.vue` |
+| UX6-02 | Tuteo — `ConfirmDialog` "Tienes cambios sin guardar, ¿deseas continuar?" sigue igual en los 8 archivos que UX4-52 ya nombró (`AccesoSensibleForm.vue`, el 9º, ya no lo usa) | Bajo | **Pendiente** | `CorreoForm.vue`, `CuentaForm.vue`, `EmpleadoForm.vue`, `EncuestaForm.vue`, `EquipoForm.vue`, `KbArticuloForm.vue`, `LicenciaForm.vue`, `ProblemaForm.vue` — mismo string en los 8, candidato a fix único de texto si se pide |
+| UX6-03 | Modales hand-rolled sin `<Modal>` compartido (sin Escape ni bloqueo de scroll del body) | Alto | **Resuelto (parcial)** | Migrados: `TicketInternoForm.vue`, `ReporteTicketsModal.vue`, `CuentasPanel.vue` (modales "Traspasar" e "Historial"), `CuentaForm.vue`, `EmpresasView.vue`, `PlataformasView.vue`. Pendiente, mismo patrón: `EmpleadoForm.vue`, `LicenciaForm.vue` + el modal "Asignar asiento" de `LicenciasView.vue` |
+| UX6-04 | Botones de ícono sin `aria-label` (solo `title`) | Medio/Bajo | **Pendiente** | `TicketDetalleView.vue`, `TicketDetallePanel.vue`, `EquiposView.vue` (×4, edición inline de Ubicación), `EmpleadoDetalleView.vue` (×2), `ProblemaDetalleView.vue` (×2), `KbArticuloDetalleView.vue` |
+| UX6-05 | Header de columna "Acciones" en `sr-only` en vez de texto visible — quedó fuera del "Repaso de consistencia" de ago-2026 | Medio/Bajo | **Resuelto (parcial)** | Corregido: `StaffView.vue`, `LicenciasView.vue` (ver nota de alcance en UX6-07). Pendiente: `AreasObrasPanel.vue`, `UbicacionesPanel.vue`, `TiposEquipoPanel.vue`, `CuentasPanel.vue`, `EmpresasView.vue`, `PlataformasView.vue` |
+| UX6-06 | Falta el patrón tabla→tarjetas en móvil — mismo hueco declarado pendiente en la guía para Configuración | Medio | **Pendiente** | `AreasObrasPanel.vue`, `UbicacionesPanel.vue`, `TiposEquipoPanel.vue`, `CuentasPanel.vue`, `EmpresasView.vue`, `PlataformasView.vue` |
+| UX6-07 | Acciones sueltas sin consolidar en `MenuAcciones` (umbral de 3+ ya documentado) | Alto | **Resuelto (parcial)** | Corregido: `StaffView.vue` (`accionesDe(miembro)` nueva, markup unificado desktop/móvil, borra la clase muerta `.icon-btn.activo`). `LicenciasView.vue`: la tabla de escritorio tenía el mismo problema (4 acciones sueltas) — la corrección de UX6-08 pedía explícitamente no tocar esa tabla, pero como la tarjeta móvil ya usaba `accionesDe(lic)`/`MenuAcciones`, el agente reusó esa misma función también en la fila de escritorio en vez de duplicar markup; se decidió conservarlo (correcto y consistente, verificado con `npm test`) en vez de revertirlo — trazado acá para que quede como decisión, no como desvío silencioso. Pendiente: `CuentasPanel.vue` |
+| UX6-08 | Tarjeta móvil de `LicenciasView.vue` sin paridad con escritorio: faltaban credenciales (mostrar/copiar clave) y la lista de usuarios con "Liberar asiento" | Alto | **Resuelto** | `LicenciasView.vue` — reutiliza las mismas funciones que ya usa la tabla de escritorio (`toggleClave`, `copiarClave`, `pedirLiberar`), sin reimplementar lógica |
+| UX6-09 | Hallazgos puntuales de un solo módulo | Medio/Bajo | **Pendiente** | 7 tablas de `ReporteTicketsModal.vue` sin `scope="col"`/`aria-label`; `title`/`aria-label` divergentes en los botones de clave de `LicenciasView.vue` cuando falta permiso; `.acceso-option:hover` sin fondo tenue en `LicenciaForm.vue`; `TiposEquipoPanel.vue` reinventa badges con `.chip` en vez de `.badge`; doble acento `.btn-primary` visible en `ProblemaDetalleView.vue`; texto en negrita en celda de tabla (`ProblemasView.vue`, `KbView.vue`); `LoginView.vue` no reutiliza el shell público (`.public-page`/`PublicBrand`) y `.login-error` duplica `.form-error` con `--color-danger` en vez de `--color-danger-text`; `.password-toggle` sin `:focus-visible`; `CorreoForm.vue` reinventa el color de "seleccionado" en vez de `--color-accent-subtle` |
+| UX6-10 | `DashboardView.vue` abandonó la grilla de 12 columnas documentada (`.dashboard-row`/`grid-template-areas` propio) sin que la guía se actualizara | Medio | **Pendiente** | `DashboardView.vue` — decisión a tomar: documentar el layout nuevo en `docs/GUIA-UX-UI.md` o revertir a la grilla estándar |
+| UX6-11 | Reconfirmaciones de deuda ya nombrada en la guía, sin hallazgo nuevo | Bajo | **Reconfirmado, sin cambios** | Sombra inerte `--shadow-sm: none` en `.panel-lista`/`.stat-card` del Dashboard (la guía ya la marca como "limpieza de alcance mayor, no parte de este repaso"); filtro "Situación" de `EquiposView.vue` sin default no-vacío (la guía ya lo marca "aplicar si se reporta la misma confusión") |
+| UX6-12 | `styleLab`/`designSystem` (dirección azul, WIP): tuteo/voseo en el propio lab, colores semánticos (warning/danger/info) que divergen de lo que la guía dice que "no se tocan" en esta migración, `--color-primary` sin la redirección a `--mat-color-accent-text` que la guía ya da por cerrada (fallaría AA en oscuro si se usara), la sección "Elevación" no cubre el caso Toast que el propio plan incluye, ítem de nav de ejemplo sin `:focus-visible` | Alto (interno al lab) | **Resuelto** (2026-08-27, previo al porteo a `main.css` — ver `docs/GUIA-UX-UI.md`, changelog "migración de marca al azul, Fases G0-G5") | `frontend/src/modules/styleLab/StyleLabView.vue` |
+
+**(a) Qué cambió**: `AreasObrasPanel.vue`, `UbicacionesPanel.vue`,
+`TiposEquipoPanel.vue`, `CategoriasTicketPanel.vue`, `LoginView.vue`,
+`PersonalRegistroView.vue`, `AccesosSensiblesView.vue`,
+`TicketInternoForm.vue`, `ReporteTicketsModal.vue`, `CuentasPanel.vue`,
+`CuentaForm.vue`, `StaffView.vue`, `EmpresasView.vue`, `PlataformasView.vue`,
+`LicenciasView.vue` + `docs/GUIA-UX-UI.md` + este documento. **(b) Riesgo**:
+bajo en los fixes de texto; medio en las 6 migraciones a `<Modal>` y en la
+consolidación de `StaffView.vue`/`LicenciasView.vue` (mismo tipo de cambio
+de markup ya validado en Ciclos 4/5) — verificado con `npm test` tras
+consolidar todos los lotes, sin regresiones. **(c) Pendiente**: 48
+hallazgos de severidad media/baja documentados arriba sin corregir, para
+priorizar después; verificación de `frontend/src/components/shared/`
+repetida cuando se libere el límite de gasto; UX6-12 (`styleLab`) antes de
+portar la dirección azul a producción.
+
+**Nota de documentación (2026-08-27), sin fila propia por ser hallazgo de
+documentación, no de código**: la sección "Identidad de marca" de
+`docs/GUIA-UX-UI.md` afirmaba desde el 2026-08-22 que producción ya estaba
+en navy/mint (`#00203F`/`#36ECDE`). Verificado al portar la migración de
+marca al azul (2026-08-27): el valor real de `main.css` en ese momento era
+teal-green (`#157955`), la reconciliación del 22-ago nunca fue correcta.
+Corregido en el mismo cambio que la migración de marca — mismo patrón de
+fondo que Q-01 (documentación/check afirmando un estado que el código no
+tenía), esta vez detectado antes de que causara un incidente real.
 
 ## Cómo mantener esto al día
 
