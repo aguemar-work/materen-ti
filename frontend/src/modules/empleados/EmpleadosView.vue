@@ -20,7 +20,10 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import SelectorVista from '../../components/shared/SelectorVista.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import { useVistaModulo } from '../../composables/useVistaModulo.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -29,6 +32,20 @@ const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
+
+// ── Selector Tabla/Tarjetas (FASE 4) ────────────────────────────────────
+// "Lista con avatar" queda pendiente (falta el mockup de proporciones) —
+// solo 2 opciones por ahora, se suma la 3ª en un commit aparte cuando
+// esté. Mobile siempre muestra tarjetas sin importar la preferencia (ya
+// era así antes de que este selector existiera) — ver el v-if de las
+// tarjetas y de la tabla más abajo, que se resuelven contra `esMovil`
+// además de contra `vista`.
+const OPCIONES_VISTA_EMPLEADOS = [
+  { valor: 'tabla', icono: 'ti-table', label: 'Tabla' },
+  { valor: 'tarjetas', icono: 'ti-id', label: 'Tarjetas' },
+];
+const { esMovil } = useEsMovil();
+const { vista } = useVistaModulo('empleados', ['tabla', 'tarjetas']);
 
 useRealtimeRefresco('empleados:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
@@ -190,6 +207,7 @@ onMounted(async () => {
   <div class="empleados-page vista-modulo">
     <PageHeader titulo="Empleados" icono="ti ti-users" :conteo="total">
       <template #acciones>
+        <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio" />
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
           <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
         </button>
@@ -244,7 +262,7 @@ onMounted(async () => {
 
         <template v-if="!error && (cargando || total > 0)">
         <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
-        <div class="table-wrap solo-escritorio">
+        <div v-if="vista === 'tabla' && !esMovil" class="table-wrap">
           <table aria-label="Inventario de empleados">
             <thead>
               <tr>
@@ -347,8 +365,16 @@ onMounted(async () => {
           </table>
         </div>
 
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Inventario de empleados">
+        <!-- Tarjetas no tiene un equivalente propio de SkeletonTabla (esa
+             es la del modo Tabla) — mismo texto genérico que ya usa mobile
+             mientras carga, mostrado acá también cuando la vista elegida
+             en escritorio es Tarjetas (mobile ya lo cubre el div de
+             arriba, .solo-movil). -->
+        <div v-if="cargando && vista === 'tarjetas' && !esMovil" class="no-results">Cargando empleados...</div>
+
+        <!-- Tarjetas: vista de escritorio elegida por el usuario, o mobile
+             sin importar la preferencia (mobile nunca muestra tabla). -->
+        <ul v-if="!cargando && (vista === 'tarjetas' || esMovil)" class="lista-tarjetas" aria-label="Inventario de empleados">
           <li v-for="emp in lista" :key="emp.id" class="tarjeta-fila tarjeta-fila--clic" @click="verFicha(emp)">
             <div class="tarjeta-fila__principal user-name">{{ nombreCompleto(emp) }}</div>
             <div class="tarjeta-fila__sec">

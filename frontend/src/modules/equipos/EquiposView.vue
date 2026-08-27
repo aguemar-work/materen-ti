@@ -22,14 +22,27 @@ import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import SelectorVista from '../../components/shared/SelectorVista.vue';
 import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
 import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import { useVistaModulo } from '../../composables/useVistaModulo.js';
 
 const store = useEquiposStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
+
+// ── Selector Tabla/Tarjetas (FASE 4) — mismo criterio que EmpleadosView:
+// "Lista con avatar" queda pendiente, solo 2 opciones por ahora; mobile
+// siempre tarjetas sin importar la preferencia. ──────────────────────────
+const OPCIONES_VISTA_EQUIPOS = [
+  { valor: 'tabla', icono: 'ti-table', label: 'Tabla' },
+  { valor: 'tarjetas', icono: 'ti-id', label: 'Tarjetas' },
+];
+const { esMovil } = useEsMovil();
+const { vista } = useVistaModulo('equipos', ['tabla', 'tarjetas']);
 
 useRealtimeRefresco('equipos:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
@@ -474,6 +487,7 @@ onMounted(async () => {
   <div class="equipos-page vista-modulo">
     <PageHeader titulo="Equipos" icono="ti ti-devices" :conteo="total">
       <template #acciones>
+        <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EQUIPOS" class="solo-escritorio" />
         <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
           <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
         </button>
@@ -529,7 +543,7 @@ onMounted(async () => {
 
         <template v-if="!error && (cargando || total > 0)">
         <p v-if="cargando" class="sr-only" role="status">Cargando equipos…</p>
-        <div class="table-wrap solo-escritorio">
+        <div v-if="vista === 'tabla' && !esMovil" class="table-wrap">
           <table aria-label="Inventario de equipos">
             <thead>
               <tr>
@@ -635,8 +649,16 @@ onMounted(async () => {
           </table>
         </div>
 
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Inventario de equipos">
+        <!-- Tarjetas no tiene equivalente propio de SkeletonTabla (esa es
+             la del modo Tabla) — mismo texto genérico que ya usa mobile
+             mientras carga, mostrado acá también cuando la vista elegida
+             en escritorio es Tarjetas (mobile ya lo cubre el div de
+             arriba, .solo-movil). -->
+        <div v-if="cargando && vista === 'tarjetas' && !esMovil" class="no-results">Cargando equipos...</div>
+
+        <!-- Tarjetas: vista de escritorio elegida por el usuario, o mobile
+             sin importar la preferencia (mobile nunca muestra tabla). -->
+        <ul v-if="!cargando && (vista === 'tarjetas' || esMovil)" class="lista-tarjetas" aria-label="Inventario de equipos">
           <li v-for="eq in lista" :key="eq.id" class="tarjeta-fila">
             <div class="tarjeta-fila__cab">
               <span class="eq-codigo">{{ eq.codigo }}</span>
