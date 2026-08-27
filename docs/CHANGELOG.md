@@ -10,6 +10,22 @@
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
 
+- **2026-08-27** — Rediseño de arquitectura de filtros en
+  `TicketsView.vue`: reemplaza el modelo de 2 superficies separadas
+  manteniendo el mismo estado (Tabla: dropdown Estado + chips sueltos;
+  Isla: nav-list Estado + toggles) por una sola lista de Vistas
+  (`VISTAS_TICKETS`, combos cerrados de estado+asignación) compartida
+  entre ambos modos — origen directo de 2 bugs de sincronización
+  consecutivos ya corregidos puntualmente antes de este cambio de fondo.
+  3 componentes compartidos nuevos (`ListaVistas.vue`, `ChipsFiltro.vue`,
+  `MasFiltros.vue`); Prioridad pasa de `<select>` único a chips de
+  selección múltiple (cambio de contrato real en `stores/tickets.js` y
+  `api/domains/tickets.js`, `prioridad` de `string` a `array`); "Sin
+  vincular" degrada a filtro secundario en popover. "Mis tickets" arranca
+  siempre sin marcar, sin `localStorage`, a propósito. Seis commits
+  verificados (`npm run build` + `npm test` +
+  `node scripts/contraste.mjs` después de cada uno). Detalle completo en
+  `docs/GUIA-UX-UI.md`, "Filtros de Tickets: modelo de Vistas".
 - **2026-08-27** — Migración de marca al azul (`#0064E0`/`#0082FB`),
   reemplazando la paleta teal-green real de producción — no navy/mint como
   esta documentación afirmaba erróneamente desde el 2026-08-22 (corregido

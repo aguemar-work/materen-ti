@@ -1003,6 +1003,20 @@ Corregido en el mismo cambio que la migración de marca — mismo patrón de
 fondo que Q-01 (documentación/check afirmando un estado que el código no
 tenía), esta vez detectado antes de que causara un incidente real.
 
+**Nota (2026-08-27), sin fila propia por no venir de un ciclo de auditoría
+formal**: `TicketsView.vue` (Tabla/Isla, ver UX6-12 arriba) tuvo 2 bugs de
+sincronización consecutivos por mantener el mismo estado de filtros en 2
+superficies separadas (dropdown+chips en Tabla, nav-list+toggles en
+Isla) — el segundo (cambiar a Isla con "Sin asignar" activo lo descartaba
+en silencio, `sinAsignar: false` fijo en esa rama del watcher) se detectó
+inmediatamente después de corregir el primero. Resuelto de raíz, no con
+otro parche puntual: reemplazado por un solo modelo de Vistas
+(`VISTAS_TICKETS`) compartido entre ambos modos, con un solo watcher — ver
+`docs/GUIA-UX-UI.md`, "Filtros de Tickets: modelo de Vistas". Mismo patrón
+que otros hallazgos de este historial (Q-01, la nota de arriba): un
+síntoma puntual corregido dos veces era la señal de un problema
+estructural, no de casos aislados.
+
 ## Cómo mantener esto al día
 
 Cuando se cierre un hallazgo (código o config), actualizar su fila de

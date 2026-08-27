@@ -1979,18 +1979,14 @@ se reviertan sin contexto:
   acceso sigue existiendo desde el header de `TicketsView.vue` ("Satisfacción"
   en el toolbar) y desde la página completa; no se perdió funcionalidad, se
   reubicó.
-- **Nav de filtros rápidos** (columna izquierda, ~15%): Estado es una lista
-  de selección única (Todos/En progreso/Resuelto/Rechazados); "Mis
-  tickets", "Sin asignar" y "Sin vincular" son 3 toggles independientes
-  que se cruzan entre sí y con Estado — mismas variables y mismas reglas
-  de cruce que los chips de modo Tabla (Mis tickets/Sin asignar se
-  excluyen entre sí; Sin vincular es libre). **Corrección (2026-08-27)**:
-  Sin asignar/Sin vincular no estaban en el nav — al cambiar de Tabla a
-  Isla con alguno activo, el watcher los descartaba en silencio (forzaba
-  `sinAsignar: false` sin importar el estado previo, ni leía
-  `sinVincular`); ahora persisten al cambiar de modo, en cualquier
-  dirección. Prioridad vive ahí también (select), no es parte de la
-  selección única de Estado. Mismo par tenue/acento
+- **Nav de filtros rápidos** (columna izquierda, ~15%): de arriba a abajo,
+  `ListaVistas` (las 6 Vistas, ver "Filtros de Tickets: modelo de Vistas"
+  más abajo — mismo componente y mismos datos que la fila horizontal de
+  modo Tabla), separador, el trigger de `MasFiltros` ("Sin vincular"),
+  Prioridad (`ChipsFiltro`, más compacto acá que en Tabla — 30px de alto
+  en vez de 40px, ver `.tnav-prioridad :deep(.chip-filtro)`), separador,
+  "Vencidos" (deshabilitado, no es una Vista — no tiene combo
+  estado+asignación propio). Mismo par tenue/acento
   (`--color-accent-subtle` + `--color-accent-text`) que el ítem activo del
   sidebar real, un solo lenguaje para "esto está seleccionado" en toda la
   app.
@@ -2004,6 +2000,64 @@ de todos los módulos). La validación de checkboxes queda pendiente de
 revisarse contra este formato de tarjeta antes de portarla; no se resolvió
 acá, solo se señala para que quien la porte no asuma que sigue siendo una
 fila de `<tr>`/`<td>`.
+
+### Filtros de Tickets: modelo de Vistas (2026-08-27)
+
+`TicketsView.vue` tenía dos superficies de filtro separadas manteniendo el
+**mismo estado**: Tabla (dropdown de Estado + chips sueltos "Mis
+tickets"/"Sin asignar"/"Sin vincular") e Isla (nav-list de Estado + los
+mismos 3 toggles, repetidos). Esa duplicación produjo 2 bugs de
+sincronización consecutivos entre ambas superficies (el más reciente:
+cambiar de Tabla a Isla con "Sin asignar" activo lo descartaba en
+silencio). Reemplazado por un solo modelo, compartido entre Tabla e Isla:
+
+- **`VISTAS_TICKETS`** (definido en `TicketsView.vue`) es la fuente de
+  verdad — un array de 6 vistas, cada una un combo **cerrado** de
+  estado+asignación elegido de una sola vez, no editable por separado
+  (`sin_asignar`, `mis_tickets`, `todos` [vigentes], `en_progreso`,
+  `resuelto`, `rechazado`). `'__yo__'` en el campo `asignadoA` de una
+  vista se resuelve a `auth.user?.id` recién al aplicarla, nunca se
+  hardcodea el id en el array.
+- **`vistaActiva`** es un solo ref, con un solo `watch(vistaActiva,
+  aplicarVista, { immediate: true })` — reemplaza el watcher de doble
+  rama tabla/isla que causaba los bugs de sincronización. Arranca
+  **siempre en `'sin_asignar'`, cada sesión, sin `localStorage`** — a
+  diferencia de `useVistaModulo` (tema claro/oscuro, colapso del sidebar,
+  y el propio selector Tabla/Isla de esta misma vista): "Mis tickets"
+  nunca debe recordarse de una sesión a otra, sería fácil perder de vista
+  tickets sin asignar de otro turno.
+- **`ListaVistas.vue`** (`components/shared/`) es el componente que
+  renderiza `VISTAS_TICKETS` — reutilizado tal cual, mismos datos, en la
+  fila horizontal de Tabla y en la columna del nav de Isla. No impone
+  ningún `display`/`flex-direction` propio: cada consumidor pasa su
+  propia clase de layout (`.tickets-vistas-fila` en Tabla,
+  `.tickets-nav-vistas` en Isla) — evita apostar a la especificidad CSS
+  entre 2 componentes con scope distinto para resolver un conflicto de
+  layout. Reusa `.tnav-item`/`.tnav-label`/`.tnav-contador` (movidas acá
+  desde el scoped de `TicketsView.vue`, ahora en un `<style>` **sin**
+  scope — el botón "Vencidos", que no es una Vista, también las usa fuera
+  del componente).
+- **Prioridad** dejó de ser un `<select>` de un solo valor: es
+  **`ChipsFiltro.vue`** (`components/shared/`), selección **múltiple
+  libre** (a diferencia de `ListaVistas`, que es exclusiva) — un ticket
+  puede filtrarse por más de una prioridad a la vez. Ninguna marcada al
+  entrar = todas. `filtros.prioridad` pasó de `string` a `array` en
+  `stores/tickets.js`/`api/domains/tickets.js` (`.in('prioridad', [...])`
+  en vez de `.eq('prioridad', valor)`).
+- **"Sin vincular"** dejó de ser un chip/toggle suelto en la fila
+  principal: es un filtro **secundario**, dentro de un popover que abre
+  **`MasFiltros.vue`** (`components/shared/`) — ícono de filtro que se
+  resalta (color acento) cuando hay algo activo adentro. Mismo patrón de
+  interacción que `MenuAcciones.vue` (Teleport a `body`, posicionamiento,
+  cierre por click afuera/Escape/resize), pero con un slot libre en vez
+  de una lista fija de acciones que se auto-cierra al hacer click en
+  cualquier ítem — el contenedor queda preparado para sumar más filtros
+  secundarios después sin sobre-construir hoy.
+
+Los 3 componentes (`ListaVistas`, `ChipsFiltro`, `MasFiltros`) se
+reutilizan **con los mismos datos** en Tabla e Isla — layout distinto
+según el contexto (fila vs. columna) es aceptable, pero nunca una segunda
+implementación del mismo filtro.
 
 ### Página con sidebar propio (Configuración)
 
@@ -2193,7 +2247,7 @@ Todo en `main.css` — no hay átomos Vue separados:
 
 **Estado:** `.status`, `.badge`/`.badge--*` (ver sistema unificado abajo), `.badge-count`
 
-**Interacción:** `.icon-btn`, `.actions`, `.filters`, `.search-wrap`, `MenuAcciones.vue` (menú ⋮, ver arriba)
+**Interacción:** `.icon-btn`, `.actions`, `.filters`, `.search-wrap`, `MenuAcciones.vue` (menú ⋮, ver arriba), `ListaVistas.vue`/`ChipsFiltro.vue`/`MasFiltros.vue` (filtros de Tickets — selección única exclusiva, selección múltiple libre, y popover de filtros secundarios respectivamente; ver "Filtros de Tickets: modelo de Vistas")
 
 **Overlays:** `.modal-bg`, `.modal`, `.modal-lg`, `.modal-actions`
 
