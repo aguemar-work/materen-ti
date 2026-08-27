@@ -6,7 +6,14 @@
        ============================================================ */
     :root {
       /* ── Marca (muestreado del logo) ───────────────────────── */
-      --mat-color-brand: #072E2A;           /* verde petróleo — reservado a piezas de marca (logo); no es color de sistema */
+      /* Actualizado con el logo nuevo (FASE 1, rediseño de marca):
+         #0082FB, mismo valor que --mat-color-brand-500 pero token
+         conceptualmente distinto (identidad de marca/logo, no escala de
+         acento de UI) — no fusionar en un alias sin confirmar que ambos
+         deben cambiar siempre juntos. Sin consumidores reales hoy
+         (verificado por grep: cero var(--mat-color-brand) en frontend/src;
+         el logo es un SVG estático, no lee esta variable). */
+      --mat-color-brand: #0082FB;           /* reservado a piezas de marca (logo); no es color de sistema */
       --mat-color-brand-elevated: #0A2E28;
       --mat-color-brand-ink: #072E2A;        /* texto de marca (títulos); vira a acento en oscuro para no fundirse con --bg-elevated */
       /* G1 — migración de marca a la paleta azul aprobada en el Style Lab
