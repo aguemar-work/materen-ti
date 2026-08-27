@@ -9,7 +9,8 @@ export const useTicketsStore = defineStore('tickets', {
     total: 0,
     pagina: 1,
     tamPagina: 20,
-    filtros: { q: '', estado: '', prioridad: '', sinAsignar: false, sinVincular: false, asignadoA: '' },
+    // prioridad: array (PASO 3, selección múltiple libre) — [] = todas.
+    filtros: { q: '', estado: '', prioridad: [], sinAsignar: false, sinVincular: false, asignadoA: '' },
     orden: null,
     cargando: false,
     cargandoMas: false,
@@ -100,7 +101,7 @@ export const useTicketsStore = defineStore('tickets', {
 
     // Se llama al montar la vista: ver nota en stores/empleados.js.
     resetearFiltros() {
-      this.filtros = { q: '', estado: '', prioridad: '', sinAsignar: false, sinVincular: false, asignadoA: '' };
+      this.filtros = { q: '', estado: '', prioridad: [], sinAsignar: false, sinVincular: false, asignadoA: '' };
       this.orden = null;
       this.pagina = 1;
     },

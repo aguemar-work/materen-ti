@@ -225,7 +225,7 @@ const SELECT_RESUMEN = `
 // del embed: se preresuelven ids de empleados por nombre (cap 50 homónimos)
 // y entran al or() como empleado_id.in.(...) — los UUID no llevan comas.
 async function queryTickets(
-  { q = '', estado = '', prioridad = '', sinAsignar = false, sinVincular = false, asignadoA = '', orden } = {},
+  { q = '', estado = '', prioridad = [], sinAsignar = false, sinVincular = false, asignadoA = '', orden } = {},
   { conteo = false } = {},
 ) {
   const db = getClient().database;
@@ -239,7 +239,10 @@ async function queryTickets(
   if (estado === ESTADO_FILTRO_VIGENTES) query = query.not('estado', 'in', '("resuelto","cerrado","rechazado")');
   else if (estado === 'resuelto') query = query.in('estado', ['resuelto', 'cerrado']);
   else if (estado) query = query.eq('estado', estado);
-  if (prioridad) query = query.eq('prioridad', prioridad);
+  // Selección múltiple libre (PASO 3) — no exclusiva como una Vista, un
+  // ticket puede filtrarse por más de una prioridad a la vez. Array vacío
+  // (ninguna marcada) = todas, mismo criterio que el '' anterior.
+  if (prioridad?.length) query = query.in('prioridad', prioridad);
   if (sinAsignar) query = query.is('asignado_a', null);
   else if (asignadoA) query = query.eq('asignado_a', asignadoA);
   if (sinVincular) query = query.eq('vinculado', false);

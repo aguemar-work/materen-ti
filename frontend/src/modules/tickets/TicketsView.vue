@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { PRIORIDADES_TICKET as PRIORIDADES, ESTADO_FILTRO_VIGENTES, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
+import { OPCIONES_PRIORIDAD, ESTADO_FILTRO_VIGENTES, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
 import { badgeInfo } from '../../core/badges.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
@@ -22,6 +22,7 @@ import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
 import ListaVistas from '../../components/shared/ListaVistas.vue';
+import ChipsFiltro from '../../components/shared/ChipsFiltro.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
@@ -104,13 +105,14 @@ watch(vistaActiva, aplicarVista, { immediate: true });
 // aparte deshabilitado con su propio tratamiento visual ("Próximamente",
 // no candado/gris de error — ver .tnav-proximamente).
 
-// ── Sin vincular (independiente de las Vistas) y Prioridad (todavía
-// single-select, PASO 3 la pasa a chips múltiples) — mismo watcher propio,
-// separado del de vistaActiva: aplicarFiltros() mergea sobre this.filtros,
-// así que cambiar de vista nunca pisa estos 2 valores ni viceversa. ───────
-const filtroPrioridad = ref('');
+// ── Sin vincular (independiente de las Vistas) y Prioridad (PASO 3:
+// selección múltiple libre, ninguna marcada al entrar = todas) — mismo
+// watcher propio, separado del de vistaActiva: aplicarFiltros() mergea
+// sobre this.filtros, así que cambiar de vista nunca pisa estos 2
+// valores ni viceversa. ───────────────────────────────────────────────────
+const prioridadSeleccionada = ref([]);
 const soloSinVincular = ref(false);
-watch([filtroPrioridad, soloSinVincular], ([prioridad, sinVincular]) => {
+watch([prioridadSeleccionada, soloSinVincular], ([prioridad, sinVincular]) => {
   store.aplicarFiltros({ prioridad, sinVincular });
 });
 
@@ -255,13 +257,6 @@ onMounted(async () => {
             <i class="ti ti-search"></i>
             <input v-model="busqueda" type="text" placeholder="Buscar por código, título o solicitante...">
           </div>
-          <div class="filter-field">
-            <label for="filtro-prioridad">Prioridad</label>
-            <select id="filtro-prioridad" v-model="filtroPrioridad">
-              <option value="">Toda prioridad</option>
-              <option v-for="(v, k) in PRIORIDADES" :key="k" :value="k">{{ v.label }}</option>
-            </select>
-          </div>
           <div class="chips-filtro">
             <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': soloSinVincular }" @click="soloSinVincular = !soloSinVincular">
               Sin vincular
@@ -278,6 +273,10 @@ onMounted(async () => {
           class="tickets-vistas-fila"
         />
 
+        <!-- Prioridad: chips de selección múltiple libre (PASO 3),
+             mismo componente/datos que en el nav de Isla más abajo. -->
+        <ChipsFiltro v-model="prioridadSeleccionada" :opciones="OPCIONES_PRIORIDAD" label="Prioridad" class="tickets-prioridad-fila" />
+
         <div v-if="cargando" class="no-results solo-movil">Cargando tickets...</div>
         <div v-else-if="error" class="no-results tk-error">{{ error }}</div>
 
@@ -285,7 +284,7 @@ onMounted(async () => {
           v-else-if="!cargando && total === 0"
           icono="ti ti-headset"
           titulo="Sin tickets"
-          :mensaje="busqueda || vistaActiva !== 'sin_asignar' || filtroPrioridad || soloSinVincular ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
+          :mensaje="busqueda || vistaActiva !== 'sin_asignar' || prioridadSeleccionada.length || soloSinVincular ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
         />
 
         <template v-if="!error && (cargando || total > 0)">
@@ -403,11 +402,8 @@ onMounted(async () => {
         </button>
 
         <div class="tnav-prioridad">
-          <label for="tnav-filtro-prioridad">Prioridad</label>
-          <select id="tnav-filtro-prioridad" v-model="filtroPrioridad">
-            <option value="">Toda prioridad</option>
-            <option v-for="(v, k) in PRIORIDADES" :key="k" :value="k">{{ v.label }}</option>
-          </select>
+          <span class="tnav-prioridad-label" aria-hidden="true">Prioridad</span>
+          <ChipsFiltro v-model="prioridadSeleccionada" :opciones="OPCIONES_PRIORIDAD" label="Prioridad" />
         </div>
 
         <div class="tnav-separador" role="separator"></div>
@@ -439,7 +435,7 @@ onMounted(async () => {
             v-else-if="!cargando && total === 0"
             icono="ti ti-headset"
             titulo="Sin tickets"
-            :mensaje="busqueda || vistaActiva !== 'sin_asignar' || filtroPrioridad || soloSinVincular ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
+            :mensaje="busqueda || vistaActiva !== 'sin_asignar' || prioridadSeleccionada.length || soloSinVincular ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
           />
 
           <template v-if="!error && (cargando || total > 0)">
@@ -540,17 +536,19 @@ onMounted(async () => {
   padding: 4px 10px 8px;
 }
 
-.tnav-prioridad label {
+.tnav-prioridad-label {
   display: block;
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--color-text-tertiary);
-  margin-bottom: 3px;
+  margin-bottom: 5px;
 }
 
-.tnav-prioridad select {
-  width: 100%;
-  box-sizing: border-box;
+/* Chips en columna angosta: mismo componente que la fila de Tabla, altura
+   más compacta acá para no ocupar tanto alto vertical del nav. */
+.tnav-prioridad :deep(.chip-filtro) {
+  height: 30px;
+  padding: 0 10px;
 }
 
 .tnav-proximamente:disabled {
@@ -653,12 +651,10 @@ onMounted(async () => {
   text-decoration: underline;
 }
 
-.chips-filtro {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
+/* .chips-filtro/.chip-filtro* se movieron a ChipsFiltro.vue (global, sin
+   scope) — "Sin vincular" (arriba, toggle único) también las usa y no es
+   parte de ese componente (selección múltiple), mismo criterio que
+   "Vencidos" con .tnav-item en ListaVistas.vue. */
 
 /* Vistas en modo Tabla: mismos .tnav-item que la columna de Isla, en fila
    horizontal con wrap en vez de columna — mismo componente/datos, layout
@@ -671,35 +667,8 @@ onMounted(async () => {
   margin-top: 10px;
 }
 
-/* Mismo par tenue-acento que el ítem activo del sidebar (GUIA-UX-UI):
-   sin bordes, solo fondo/color de acento cuando el filtro está activo. */
-.chip-filtro {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 40px;
-  padding: 0 12px;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.chip-filtro:hover { background: var(--color-bg-hover); }
-
-.chip-filtro:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--mat-ring);
-}
-
-.chip-filtro--activo {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
+.tickets-prioridad-fila {
+  margin-top: 10px;
 }
 
 .tk-antiguedad {
