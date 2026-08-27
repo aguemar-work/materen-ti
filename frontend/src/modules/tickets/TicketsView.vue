@@ -21,6 +21,7 @@ import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
+import ListaVistas from '../../components/shared/ListaVistas.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
@@ -268,25 +269,14 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Vistas: fila horizontal (Tabla) del mismo dato/misma clase que
-             la columna del nav de Isla más abajo — la extracción a un
-             componente compartido (ListaVistas.vue) es el siguiente commit,
-             acá todavía es markup inline pero ya sobre el modelo nuevo. -->
-        <div class="tickets-vistas-fila" role="group" aria-label="Vistas">
-          <button
-            v-for="v in VISTAS_TICKETS"
-            :key="v.id"
-            type="button"
-            class="tnav-item"
-            :class="{ 'tnav-item--activo': vistaActiva === v.id }"
-            :aria-pressed="vistaActiva === v.id"
-            @click="vistaActiva = v.id"
-          >
-            <i v-if="v.icono" class="ti" :class="v.icono" aria-hidden="true"></i>
-            <span class="tnav-label">{{ v.label }}</span>
-            <span v-if="conteosVistas && vistaActiva === v.id" class="tnav-contador">{{ conteosVistas[v.id] }}</span>
-          </button>
-        </div>
+        <!-- Vistas: fila horizontal en Tabla, mismos datos/componente que
+             la columna del nav de Isla más abajo (ver ListaVistas.vue). -->
+        <ListaVistas
+          v-model="vistaActiva"
+          :vistas="VISTAS_TICKETS"
+          :conteos="conteosVistas"
+          class="tickets-vistas-fila"
+        />
 
         <div v-if="cargando" class="no-results solo-movil">Cargando tickets...</div>
         <div v-else-if="error" class="no-results tk-error">{{ error }}</div>
@@ -390,22 +380,11 @@ onMounted(async () => {
          panel de detalle ═══ -->
     <div v-else class="tickets-layout">
       <nav class="tickets-nav" aria-label="Filtros rápidos de tickets">
-        <!-- Mismo dato/misma clase que la fila horizontal de modo Tabla más
-             arriba — ver comentario ahí sobre la extracción a componente
-             compartido en el próximo commit. -->
-        <button
-          v-for="v in VISTAS_TICKETS"
-          :key="v.id"
-          type="button"
-          class="tnav-item"
-          :class="{ 'tnav-item--activo': vistaActiva === v.id }"
-          :aria-pressed="vistaActiva === v.id"
-          @click="vistaActiva = v.id"
-        >
-          <i v-if="v.icono" class="ti" :class="v.icono" aria-hidden="true"></i>
-          <span class="tnav-label">{{ v.label }}</span>
-          <span v-if="conteosVistas && vistaActiva === v.id" class="tnav-contador">{{ conteosVistas[v.id] }}</span>
-        </button>
+        <!-- Mismos datos/componente que la fila horizontal de modo Tabla
+             más arriba (ver ListaVistas.vue) — el componente no impone
+             ningún display propio, cada consumidor pasa su propia clase de
+             layout (acá columna, allá fila). -->
+        <ListaVistas v-model="vistaActiva" :vistas="VISTAS_TICKETS" :conteos="conteosVistas" class="tickets-nav-vistas" />
 
         <div class="tnav-separador" role="separator"></div>
 
@@ -542,52 +521,13 @@ onMounted(async () => {
   gap: 2px;
 }
 
-.tnav-item {
+/* .tnav-item/.tnav-label/.tnav-contador/.tnav-item--activo se movieron a
+   ListaVistas.vue (global, sin scope) — los usa ese componente Y el botón
+   "Vencidos" de acá abajo, que no es una vista más. */
+.tickets-nav-vistas {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 10px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s, color 0.15s;
-}
-
-.tnav-item:hover:not(:disabled) { background: var(--color-bg-hover); }
-
-.tnav-item:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--mat-ring);
-}
-
-.tnav-item--activo {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-}
-
-.tnav-item:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.tnav-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tnav-contador {
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .tnav-separador {
