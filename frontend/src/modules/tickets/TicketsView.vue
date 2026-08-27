@@ -40,8 +40,8 @@ const { esMovil } = useEsMovil();
 // montan en mobile. Por eso `vistaEfectiva` fuerza 'tabla' en mobile sin
 // importar la preferencia guardada: es el mismo comportamiento que ya
 // tenía el sistema antes de que Isla existiera, y evita dejar al usuario
-// de mobile con los filtros del nav (que ahí no tiene forma de cambiar)
-// o sin "Sin asignar"/"Sin vincular" (que el nav de Isla no contempla).
+// de mobile con los filtros del nav (que ahí no tiene forma de cambiar,
+// el nav no se monta en mobile).
 const OPCIONES_VISTA_TICKETS = [
   { valor: 'tabla', icono: 'ti-table', label: 'Tabla' },
   { valor: 'isla', icono: 'ti-layout-columns', label: 'Isla' },
@@ -77,10 +77,12 @@ function toggleSinAsignar() {
   if (soloSinAsignar.value) misTickets.value = false;
 }
 
-// ── Filtros modo Isla (nav lateral, 2 dimensiones independientes que se
-// cruzan: "Mis tickets" arriba + Estado como lista de selección única.
-// "Sin asignar"/"Sin vincular" salen del nav — no tienen equivalente acá,
-// solo existen en modo Tabla) ────────────────────────────────────────────
+// ── Filtros modo Isla (nav lateral): Estado es una lista de selección
+// única aparte; "Mis tickets", "Sin asignar" y "Sin vincular" son 3
+// toggles independientes que se cruzan entre sí y con Estado — mismas
+// variables reactivas y mismas reglas de cruce que modo Tabla
+// (toggleMisTickets/toggleSinAsignar más arriba), el nav solo les da un
+// contenedor distinto. ───────────────────────────────────────────────────
 const ESTADOS_NAV = [
   { id: '', label: 'Todos' },
   { id: 'en_progreso', label: 'En progreso' },
@@ -122,7 +124,12 @@ watch(
     if (modo === 'tabla') {
       store.aplicarFiltros({ estado, prioridad, sinAsignar, sinVincular, asignadoA });
     } else {
-      store.aplicarFiltros({ estado: estadoNav, prioridad, sinAsignar: false, asignadoA });
+      // Antes forzaba sinAsignar:false y omitía sinVincular acá — Sin
+      // asignar/Sin vincular se descartaban en silencio al pasar a Isla
+      // con alguno activo. Ahora lee las mismas variables reactivas que
+      // la rama Tabla: el filtro persiste al cambiar de modo, en
+      // cualquier dirección.
+      store.aplicarFiltros({ estado: estadoNav, prioridad, sinAsignar, sinVincular, asignadoA });
     }
   },
 );
@@ -388,10 +395,37 @@ onMounted(async () => {
           class="tnav-item"
           :class="{ 'tnav-item--activo': misTickets }"
           :aria-pressed="misTickets"
-          @click="misTickets = !misTickets"
+          @click="toggleMisTickets"
         >
           <i class="ti ti-user" aria-hidden="true"></i>
           <span class="tnav-label">Mis tickets</span>
+        </button>
+
+        <!-- Mismas 2 variables y misma regla de cruce que los chips de modo
+             Tabla (toggleMisTickets/toggleSinAsignar más arriba en el
+             script) — Sin asignar sigue excluyéndose con Mis tickets; Sin
+             vincular es independiente, se cruza libre con cualquiera de
+             los otros dos. -->
+        <button
+          type="button"
+          class="tnav-item"
+          :class="{ 'tnav-item--activo': soloSinAsignar }"
+          :aria-pressed="soloSinAsignar"
+          @click="toggleSinAsignar"
+        >
+          <i class="ti ti-user-off" aria-hidden="true"></i>
+          <span class="tnav-label">Sin asignar</span>
+        </button>
+
+        <button
+          type="button"
+          class="tnav-item"
+          :class="{ 'tnav-item--activo': soloSinVincular }"
+          :aria-pressed="soloSinVincular"
+          @click="soloSinVincular = !soloSinVincular"
+        >
+          <i class="ti ti-link-off" aria-hidden="true"></i>
+          <span class="tnav-label">Sin vincular</span>
         </button>
 
         <div class="tnav-prioridad">

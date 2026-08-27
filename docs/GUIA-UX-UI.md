@@ -1979,13 +1979,21 @@ se reviertan sin contexto:
   acceso sigue existiendo desde el header de `TicketsView.vue` ("Satisfacción"
   en el toolbar) y desde la página completa; no se perdió funcionalidad, se
   reubicó.
-- **Nav de filtros rápidos** (columna izquierda, ~15%): 2 dimensiones
-  independientes que se cruzan — "Mis tickets" (toggle) + Estado (lista de
-  selección única: Todos/En progreso/Resuelto/Rechazados). Prioridad vive
-  ahí también (select), no es parte de la selección única de Estado. Mismo
-  par tenue/acento (`--color-accent-subtle` + `--color-accent-text`) que el
-  ítem activo del sidebar real, un solo lenguaje para "esto está
-  seleccionado" en toda la app.
+- **Nav de filtros rápidos** (columna izquierda, ~15%): Estado es una lista
+  de selección única (Todos/En progreso/Resuelto/Rechazados); "Mis
+  tickets", "Sin asignar" y "Sin vincular" son 3 toggles independientes
+  que se cruzan entre sí y con Estado — mismas variables y mismas reglas
+  de cruce que los chips de modo Tabla (Mis tickets/Sin asignar se
+  excluyen entre sí; Sin vincular es libre). **Corrección (2026-08-27)**:
+  Sin asignar/Sin vincular no estaban en el nav — al cambiar de Tabla a
+  Isla con alguno activo, el watcher los descartaba en silencio (forzaba
+  `sinAsignar: false` sin importar el estado previo, ni leía
+  `sinVincular`); ahora persisten al cambiar de modo, en cualquier
+  dirección. Prioridad vive ahí también (select), no es parte de la
+  selección única de Estado. Mismo par tenue/acento
+  (`--color-accent-subtle` + `--color-accent-text`) que el ítem activo del
+  sidebar real, un solo lenguaje para "esto está seleccionado" en toda la
+  app.
 
 **Selección múltiple con checkboxes**: validada en el Style Lab **contra un
 patrón de `<table>`** (ver "Selección múltiple en tablas ITSM" más abajo),
