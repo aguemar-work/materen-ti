@@ -77,9 +77,20 @@
       --mat-color-text-disabled: #C7CBD1;
       --mat-color-text-inverse: #FFFFFF;
 
-      --mat-color-border: #E4E7EB;
-      --mat-color-border-subtle: #EEF0F3;
-      --mat-color-border-strong: #D2D7DC;
+      /* G5 — jerarquía de bordes de 3 niveles, portada del Style Lab sin
+         cambio de valor. border/border-subtle siguen siendo el nivel
+         decorativo (separadores, borde de card/tabla/modal — sin umbral de
+         contraste exigible, WCAG 1.4.11 no aplica a bordes no esenciales
+         para identificar el componente). border-default es nuevo: el único
+         borde que sí debe distinguirse del fondo por sí solo (input, select,
+         textarea, botón secundario en reposo — controles interactivos,
+         WCAG 1.4.11 exige 3:1). border-strong sube de tono para mantener
+         distancia visual con border-default ya corregido (hover de
+         controles, seleccionado no enfocado, toast). */
+      --mat-color-border-subtle: #D9E2E8;
+      --mat-color-border: var(--mat-color-border-subtle);
+      --mat-color-border-default: #7E96A3;   /* 3.10:1 sobre bg-elevated */
+      --mat-color-border-strong: #526A7B;    /* 5.67:1 sobre bg-elevated */
 
       --mat-ring: rgba(0, 130, 251, 0.28);   /* brand-500 — indicador no textual, umbral 3:1, sin el ajuste que sí hace falta para texto */
       /* Anillos de foco por variante de botón (Fase B) — mismo alfa 0.28
@@ -208,6 +219,7 @@
       --color-text-inverse: var(--mat-color-text-inverse);
       --color-border: var(--mat-color-border);
       --color-border-subtle: var(--mat-color-border-subtle);
+      --color-border-default: var(--mat-color-border-default);
       --color-border-strong: var(--mat-color-border-strong);
       --color-brand-ink: var(--mat-color-brand-ink);
 
@@ -277,9 +289,10 @@
       --mat-color-text-disabled: #4B5563;
       --mat-color-text-inverse: #0F1113;
 
-      --mat-color-border: #282D33;
-      --mat-color-border-subtle: #1F2429;
-      --mat-color-border-strong: #363C44;
+      --mat-color-border-subtle: #1F2A35;
+      --mat-color-border: var(--mat-color-border-subtle);
+      --mat-color-border-default: #5A6E7E;   /* 3.11:1 sobre bg-elevated */
+      --mat-color-border-strong: #7B93A3;    /* 5.13:1 sobre bg-elevated */
       --mat-color-brand-ink: #34D399;
 
       /* accent, accent-hover y accent-soft NO se redefinen acá a propósito:
@@ -603,18 +616,18 @@
     }
 
     /* Card clicable (G4) — única variante de .card con elevación, y solo en
-       hover/focus: en reposo es idéntica a .card (sin sombra). El hover usa
-       --color-border-strong (mismo token que el hover de controles de
-       formulario) hasta que --color-border-default exista (G5); en ese
-       momento este hover puede bajar a -default para quedar un escalón más
-       liviano, como ya hace el Style Lab. */
+       hover/focus: en reposo es idéntica a .card (sin sombra). Hover usa
+       --color-border-default (G5), no -strong: "strong" queda reservado
+       para hover de CONTROLES de formulario — una card clicable es una
+       señal más liviana, un escalón abajo en la escala (mismo criterio que
+       el Style Lab). */
     .card--clicable {
       cursor: pointer;
       transition: box-shadow 0.15s, border-color 0.15s;
     }
     .card--clicable:hover {
       box-shadow: var(--shadow-sm);
-      border-color: var(--color-border-strong);
+      border-color: var(--color-border-default);
     }
     .card--clicable:focus-visible {
       outline: none;
@@ -738,7 +751,7 @@
       gap: 6px;
       height: 36px;
       padding: 0 16px;
-      border: 1px solid var(--color-border);
+      border: 1px solid var(--color-border-default);
       border-radius: var(--radius-md);
       background: var(--color-bg-elevated);
       color: var(--color-text-primary);
@@ -847,7 +860,7 @@
       width: 100%;
       height: 36px;
       padding: 0 10px 0 34px;
-      border: 1px solid var(--color-border);
+      border: 1px solid var(--color-border-default);
       border-radius: var(--radius-md);
       font-size: var(--fs-base);
       background: var(--color-bg-elevated);
@@ -870,7 +883,7 @@
     select {
       height: 36px;
       padding: 0 30px 0 12px;
-      border: 1px solid var(--color-border);
+      border: 1px solid var(--color-border-default);
       border-radius: var(--radius-md);
       font-size: var(--fs-base);
       background-color: var(--color-bg-elevated);
@@ -1465,7 +1478,7 @@
     .form-group select {
       height: 36px;
       padding: 0 12px;
-      border: 1px solid var(--color-border);
+      border: 1px solid var(--color-border-default);
       border-radius: var(--radius-md);
       font-size: var(--fs-base);
       background-color: var(--color-bg-elevated);
@@ -1482,7 +1495,7 @@
     .form-group textarea {
       min-height: 72px;
       padding: 8px 12px;
-      border: 1px solid var(--color-border);
+      border: 1px solid var(--color-border-default);
       border-radius: var(--radius-md);
       font-size: var(--fs-base);
       background: var(--color-bg-elevated);

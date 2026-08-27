@@ -55,18 +55,30 @@ const OSCURO = {
   textoTerciario: { bg: '#16202B', text: '#818A96' },
 };
 
-function reportar(nombre, tabla) {
+// Bordes de controles interactivos (G5, WCAG 1.4.11 — umbral 3:1, no 4.5:1:
+// no son texto, son el límite de un componente que sí debe distinguirse del
+// fondo por sí solo). bg-elevated en ambos temas: input/select/textarea/
+// botón secundario viven sobre esa superficie, nunca sobre --color-bg.
+const BORDES = {
+  claroDefault:  { bg: '#FFFFFF', text: '#7E96A3' },
+  claroStrong:   { bg: '#FFFFFF', text: '#526A7B' },
+  oscuroDefault: { bg: '#16202B', text: '#5A6E7E' },
+  oscuroStrong:  { bg: '#16202B', text: '#7B93A3' },
+};
+
+function reportar(nombre, tabla, umbral = 4.5) {
   console.log(`\n== ${nombre} ==`);
   let fallas = 0;
   for (const [familia, { bg, text }] of Object.entries(tabla)) {
     const ratio = contraste(bg, text);
-    const ok = ratio >= 4.5;
+    const ok = ratio >= umbral;
     if (!ok) fallas++;
-    console.log(`${ok ? 'OK  ' : 'FAIL'} ${familia.padEnd(9)} bg=${bg} text=${text}  ratio=${ratio.toFixed(2)}:1${ok ? '' : '  <-- bajo 4.5:1'}`);
+    console.log(`${ok ? 'OK  ' : 'FAIL'} ${familia.padEnd(13)} bg=${bg} text=${text}  ratio=${ratio.toFixed(2)}:1${ok ? '' : `  <-- bajo ${umbral}:1`}`);
   }
   return fallas;
 }
 
 const f1 = reportar('TEMA CLARO', CLARO);
 const f2 = reportar('TEMA OSCURO', OSCURO);
-console.log(`\nTotal fallas: ${f1 + f2}`);
+const f3 = reportar('BORDES DE CONTROLES (umbral 3:1, WCAG 1.4.11)', BORDES, 3.0);
+console.log(`\nTotal fallas: ${f1 + f2 + f3}`);
