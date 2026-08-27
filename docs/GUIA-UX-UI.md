@@ -1319,7 +1319,7 @@ mezclar ese otro trabajo.
 **(a) Qué cambió**: `main.css`, `StyleLabView.vue`, `scripts/contraste.mjs`
 (2 checks nuevos), `MenuAcciones.vue`, `BuscadorCombo.vue`, `AppSearch.vue`,
 `NotificacionesCampana.vue`, `AppNotifications.vue`, `DesignSystemView.vue`,
-`DashboardView.vue` (quitada una sombra no deseada) + esta guía +
+`DashboardView.vue` (quitadas 2 sombras no deseadas) + esta guía +
 `docs/CHANGELOG.md` + `docs/HISTORIAL-AUDITORIAS.md` (cierra UX6-12).
 **(b) Riesgo**: bajo-medio — 6 commits verificados individualmente, pero
 **sin QA visual real**: no hubo navegador/capturas en esta sesión, la
