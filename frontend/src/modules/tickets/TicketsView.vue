@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { OPCIONES_FILTRO_ESTADO, PRIORIDADES_TICKET as PRIORIDADES, ESTADO_FILTRO_VIGENTES, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
+import { PRIORIDADES_TICKET as PRIORIDADES, ESTADO_FILTRO_VIGENTES, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
 import { badgeInfo } from '../../core/badges.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
@@ -60,45 +60,59 @@ const ticketSeleccionado = ref(null);
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 
-// ── Filtros modo Tabla (sin cambios respecto al comportamiento previo
-// a Isla) ───────────────────────────────────────────────────────────────
-const filtroEstado = ref(ESTADO_FILTRO_VIGENTES);
-const soloSinAsignar = ref(false);
-const soloSinVincular = ref(false);
-
-// "Mis tickets" y "Sin asignar" se excluyen entre sí (un ticket no puede
-// ser ambas cosas): activar uno apaga el otro.
-function toggleMisTickets() {
-  misTickets.value = !misTickets.value;
-  if (misTickets.value) soloSinAsignar.value = false;
-}
-function toggleSinAsignar() {
-  soloSinAsignar.value = !soloSinAsignar.value;
-  if (soloSinAsignar.value) misTickets.value = false;
-}
-
-// ── Filtros modo Isla (nav lateral): Estado es una lista de selección
-// única aparte; "Mis tickets", "Sin asignar" y "Sin vincular" son 3
-// toggles independientes que se cruzan entre sí y con Estado — mismas
-// variables reactivas y mismas reglas de cruce que modo Tabla
-// (toggleMisTickets/toggleSinAsignar más arriba), el nav solo les da un
-// contenedor distinto. ───────────────────────────────────────────────────
-const ESTADOS_NAV = [
-  { id: '', label: 'Todos' },
-  { id: 'en_progreso', label: 'En progreso' },
-  { id: 'resuelto', label: 'Resuelto' },
-  { id: 'rechazado', label: 'Rechazados' },
+// ── Vistas (reemplaza el modelo anterior de Estado dropdown/nav-list +
+// "Mis tickets"/"Sin asignar" como 2 toggles sueltos que se cruzaban con
+// él). Antes eran 2 superficies separadas manteniendo el mismo estado
+// (dropdown+chips en Tabla, nav-list+toggles en Isla) — 2 bugs de
+// desincronización seguidos entre ellas. Ahora es UNA sola lista de
+// vistas, cada una un combo cerrado de estado+asignación elegido de una
+// vez, no editable por separado — mismos datos, mismo componente
+// (ListaVistas.vue, PASO 2) en ambos modos. ────────────────────────────────
+const VISTAS_TICKETS = [
+  { id: 'sin_asignar', label: 'Sin asignar', icono: 'ti-user-off',
+    filtro: { estado: ESTADO_FILTRO_VIGENTES, asignadoA: '', sinAsignar: true } },
+  { id: 'mis_tickets', label: 'Mis tickets', icono: 'ti-user',
+    filtro: { estado: ESTADO_FILTRO_VIGENTES, asignadoA: '__yo__', sinAsignar: false } },
+  { id: 'todos', label: 'Todos (vigentes)', icono: null,
+    filtro: { estado: ESTADO_FILTRO_VIGENTES, asignadoA: '', sinAsignar: false } },
+  { id: 'en_progreso', label: 'En progreso', icono: null,
+    filtro: { estado: 'en_progreso', asignadoA: '', sinAsignar: false } },
+  { id: 'resuelto', label: 'Resuelto', icono: null,
+    filtro: { estado: 'resuelto', asignadoA: '', sinAsignar: false } },
+  { id: 'rechazado', label: 'Rechazados', icono: null,
+    filtro: { estado: 'rechazado', asignadoA: '', sinAsignar: false } },
 ];
-const filtroEstadoNav = ref('');
 
-// "Vencidos" sigue sin funcionar de verdad (falta query de servidor) —
-// separado de ESTADOS_NAV porque no es una opción más del mismo selector,
-// es un ítem aparte deshabilitado con su propio tratamiento visual
-// ("Próximamente", no candado/gris de error — ver .tnav-proximamente).
+// Arranca SIEMPRE en 'sin_asignar', cada sesión — a propósito sin
+// localStorage (a diferencia de useVistaModulo/tema/sidebar): "Mis
+// tickets" nunca debe recordarse de una sesión a otra, quedaría fácil
+// perder de vista tickets sin asignar de otro turno.
+const vistaActiva = ref('sin_asignar');
 
-// ── Compartidos entre ambos modos ───────────────────────────────────────
+// '__yo__' se resuelve acá (no se hardcodea en VISTAS_TICKETS) — mismo
+// patrón que ya usaba "Mis tickets" antes de este cambio.
+function aplicarVista(id) {
+  const vista = VISTAS_TICKETS.find((v) => v.id === id) || VISTAS_TICKETS[0];
+  const asignadoA = vista.filtro.asignadoA === '__yo__' ? (auth.user?.id || '') : vista.filtro.asignadoA;
+  store.aplicarFiltros({ estado: vista.filtro.estado, asignadoA, sinAsignar: vista.filtro.sinAsignar });
+}
+watch(vistaActiva, aplicarVista, { immediate: true });
+
+// "Vencidos" sigue sin funcionar de verdad (falta query de servidor) — no
+// es una vista más (no tiene combo estado+asignación propio), es un ítem
+// aparte deshabilitado con su propio tratamiento visual ("Próximamente",
+// no candado/gris de error — ver .tnav-proximamente).
+
+// ── Sin vincular (independiente de las Vistas) y Prioridad (todavía
+// single-select, PASO 3 la pasa a chips múltiples) — mismo watcher propio,
+// separado del de vistaActiva: aplicarFiltros() mergea sobre this.filtros,
+// así que cambiar de vista nunca pisa estos 2 valores ni viceversa. ───────
 const filtroPrioridad = ref('');
-const misTickets = ref(false);
+const soloSinVincular = ref(false);
+watch([filtroPrioridad, soloSinVincular], ([prioridad, sinVincular]) => {
+  store.aplicarFiltros({ prioridad, sinVincular });
+});
+
 const mostrarNuevo = ref(false);
 const mostrarReporte = ref(false);
 const staffLista = ref([]);
@@ -109,30 +123,10 @@ const staffPorId = computed(() => {
   return mapa;
 });
 
-// Búsqueda y filtros viajan al servidor (paginación server-side): la
-// búsqueda con debounce, el resto al instante. El filtro de Estado usa un
-// modelo distinto según el modo (dropdown+chips en Tabla vs. nav de 4
-// ítems en Isla) — se resuelve acá cuál de los dos manda antes de llamar
-// a aplicarFiltros, sin duplicar la llamada. Cambiar de modo también
-// dispara este watcher (vistaEfectiva es una de sus dependencias): al
-// pasar a Isla se re-aplican sus propios filtros (y viceversa), en vez de
-// dejar la lista mostrando resultados del modo anterior.
-watch(
-  [vistaEfectiva, filtroEstado, filtroEstadoNav, filtroPrioridad, soloSinAsignar, soloSinVincular, misTickets],
-  ([modo, estado, estadoNav, prioridad, sinAsignar, sinVincular, mios]) => {
-    const asignadoA = mios ? (auth.user?.id || '') : '';
-    if (modo === 'tabla') {
-      store.aplicarFiltros({ estado, prioridad, sinAsignar, sinVincular, asignadoA });
-    } else {
-      // Antes forzaba sinAsignar:false y omitía sinVincular acá — Sin
-      // asignar/Sin vincular se descartaban en silencio al pasar a Isla
-      // con alguno activo. Ahora lee las mismas variables reactivas que
-      // la rama Tabla: el filtro persiste al cambiar de modo, en
-      // cualquier dirección.
-      store.aplicarFiltros({ estado: estadoNav, prioridad, sinAsignar, sinVincular, asignadoA });
-    }
-  },
-);
+// Contador junto a la vista activa en el nav de Isla (ver ListaVistas más
+// adelante) — no hay conteo por vista del servidor, solo el total ya
+// cargado de la vista actualmente activa.
+const conteosVistas = computed(() => (cargando.value ? null : { [vistaActiva.value]: total.value }));
 
 const paginaActual = computed({
   get: () => store.pagina,
@@ -261,14 +255,6 @@ onMounted(async () => {
             <input v-model="busqueda" type="text" placeholder="Buscar por código, título o solicitante...">
           </div>
           <div class="filter-field">
-            <label for="filtro-estado">Estado</label>
-            <select id="filtro-estado" v-model="filtroEstado">
-              <option value="vigentes">Vigentes (sin cerrar)</option>
-              <option value="">Todos los estados</option>
-              <option v-for="op in OPCIONES_FILTRO_ESTADO" :key="op.valor" :value="op.valor">{{ op.label }}</option>
-            </select>
-          </div>
-          <div class="filter-field">
             <label for="filtro-prioridad">Prioridad</label>
             <select id="filtro-prioridad" v-model="filtroPrioridad">
               <option value="">Toda prioridad</option>
@@ -276,16 +262,30 @@ onMounted(async () => {
             </select>
           </div>
           <div class="chips-filtro">
-            <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': misTickets }" @click="toggleMisTickets">
-              <i class="ti ti-user" aria-hidden="true"></i> Mis tickets
-            </button>
-            <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': soloSinAsignar }" @click="toggleSinAsignar">
-              Sin asignar
-            </button>
             <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': soloSinVincular }" @click="soloSinVincular = !soloSinVincular">
               Sin vincular
             </button>
           </div>
+        </div>
+
+        <!-- Vistas: fila horizontal (Tabla) del mismo dato/misma clase que
+             la columna del nav de Isla más abajo — la extracción a un
+             componente compartido (ListaVistas.vue) es el siguiente commit,
+             acá todavía es markup inline pero ya sobre el modelo nuevo. -->
+        <div class="tickets-vistas-fila" role="group" aria-label="Vistas">
+          <button
+            v-for="v in VISTAS_TICKETS"
+            :key="v.id"
+            type="button"
+            class="tnav-item"
+            :class="{ 'tnav-item--activo': vistaActiva === v.id }"
+            :aria-pressed="vistaActiva === v.id"
+            @click="vistaActiva = v.id"
+          >
+            <i v-if="v.icono" class="ti" :class="v.icono" aria-hidden="true"></i>
+            <span class="tnav-label">{{ v.label }}</span>
+            <span v-if="conteosVistas && vistaActiva === v.id" class="tnav-contador">{{ conteosVistas[v.id] }}</span>
+          </button>
         </div>
 
         <div v-if="cargando" class="no-results solo-movil">Cargando tickets...</div>
@@ -295,7 +295,7 @@ onMounted(async () => {
           v-else-if="!cargando && total === 0"
           icono="ti ti-headset"
           titulo="Sin tickets"
-          :mensaje="busqueda || filtroEstado || filtroPrioridad ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
+          :mensaje="busqueda || vistaActiva !== 'sin_asignar' || filtroPrioridad || soloSinVincular ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
         />
 
         <template v-if="!error && (cargando || total > 0)">
@@ -390,33 +390,28 @@ onMounted(async () => {
          panel de detalle ═══ -->
     <div v-else class="tickets-layout">
       <nav class="tickets-nav" aria-label="Filtros rápidos de tickets">
+        <!-- Mismo dato/misma clase que la fila horizontal de modo Tabla más
+             arriba — ver comentario ahí sobre la extracción a componente
+             compartido en el próximo commit. -->
         <button
+          v-for="v in VISTAS_TICKETS"
+          :key="v.id"
           type="button"
           class="tnav-item"
-          :class="{ 'tnav-item--activo': misTickets }"
-          :aria-pressed="misTickets"
-          @click="toggleMisTickets"
+          :class="{ 'tnav-item--activo': vistaActiva === v.id }"
+          :aria-pressed="vistaActiva === v.id"
+          @click="vistaActiva = v.id"
         >
-          <i class="ti ti-user" aria-hidden="true"></i>
-          <span class="tnav-label">Mis tickets</span>
+          <i v-if="v.icono" class="ti" :class="v.icono" aria-hidden="true"></i>
+          <span class="tnav-label">{{ v.label }}</span>
+          <span v-if="conteosVistas && vistaActiva === v.id" class="tnav-contador">{{ conteosVistas[v.id] }}</span>
         </button>
 
-        <!-- Mismas 2 variables y misma regla de cruce que los chips de modo
-             Tabla (toggleMisTickets/toggleSinAsignar más arriba en el
-             script) — Sin asignar sigue excluyéndose con Mis tickets; Sin
-             vincular es independiente, se cruza libre con cualquiera de
-             los otros dos. -->
-        <button
-          type="button"
-          class="tnav-item"
-          :class="{ 'tnav-item--activo': soloSinAsignar }"
-          :aria-pressed="soloSinAsignar"
-          @click="toggleSinAsignar"
-        >
-          <i class="ti ti-user-off" aria-hidden="true"></i>
-          <span class="tnav-label">Sin asignar</span>
-        </button>
+        <div class="tnav-separador" role="separator"></div>
 
+        <!-- Sin vincular sigue independiente de las Vistas (se cruza libre
+             con cualquiera) — degrada a filtro secundario en PASO 4, sigue
+             acá tal cual por ahora. -->
         <button
           type="button"
           class="tnav-item"
@@ -437,18 +432,6 @@ onMounted(async () => {
         </div>
 
         <div class="tnav-separador" role="separator"></div>
-
-        <button
-          v-for="item in ESTADOS_NAV"
-          :key="item.id"
-          type="button"
-          class="tnav-item"
-          :class="{ 'tnav-item--activo': filtroEstadoNav === item.id }"
-          @click="filtroEstadoNav = item.id"
-        >
-          <span class="tnav-label">{{ item.label }}</span>
-          <span v-if="filtroEstadoNav === item.id && !cargando" class="tnav-contador">{{ total }}</span>
-        </button>
 
         <button
           type="button"
@@ -477,7 +460,7 @@ onMounted(async () => {
             v-else-if="!cargando && total === 0"
             icono="ti ti-headset"
             titulo="Sin tickets"
-            :mensaje="busqueda || filtroEstadoNav || misTickets || filtroPrioridad ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
+            :mensaje="busqueda || vistaActiva !== 'sin_asignar' || filtroPrioridad || soloSinVincular ? 'No hay resultados con los filtros aplicados.' : 'Aquí aparecerán las solicitudes de soporte.'"
           />
 
           <template v-if="!error && (cargando || total > 0)">
@@ -735,6 +718,17 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+/* Vistas en modo Tabla: mismos .tnav-item que la columna de Isla, en fila
+   horizontal con wrap en vez de columna — mismo componente/datos, layout
+   distinto por contexto (ver comentario en el template). */
+.tickets-vistas-fila {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 10px;
 }
 
 /* Mismo par tenue-acento que el ítem activo del sidebar (GUIA-UX-UI):
