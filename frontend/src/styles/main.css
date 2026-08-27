@@ -81,7 +81,7 @@
       --mat-color-border-subtle: #EEF0F3;
       --mat-color-border-strong: #D2D7DC;
 
-      --mat-ring: rgba(21, 121, 85, 0.28);
+      --mat-ring: rgba(0, 130, 251, 0.28);   /* brand-500 — indicador no textual, umbral 3:1, sin el ajuste que sí hace falta para texto */
       /* Anillos de foco por variante de botón (Fase B) — mismo alfa 0.28
          que --mat-ring, sobre el color sólido de cada variante. Invariantes
          entre temas: --mat-color-danger-solid y --mat-color-whatsapp ya
@@ -282,7 +282,7 @@
       --mat-color-whatsapp: #25d366;
       --mat-color-whatsapp-hover: #1ebe57;
 
-      --mat-ring: rgba(52, 211, 153, 0.28);
+      --mat-ring: rgba(0, 130, 251, 0.35);   /* brand-500, alfa más alto en oscuro para mantener 3:1 sobre superficie oscura */
 
       --mat-color-success: #34D399;
       --mat-color-success-bg: rgba(52, 211, 153, 0.12);
