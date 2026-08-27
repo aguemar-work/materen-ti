@@ -9,15 +9,25 @@
       --mat-color-brand: #072E2A;           /* verde petróleo — reservado a piezas de marca (logo); no es color de sistema */
       --mat-color-brand-elevated: #0A2E28;
       --mat-color-brand-ink: #072E2A;        /* texto de marca (títulos); vira a acento en oscuro para no fundirse con --bg-elevated */
-      --mat-color-accent-alt: #34D399;      /* verde acento bruto — no texto sobre blanco */
-      --mat-color-accent: #157955;          /* teal-deep — botones, links, foco */
-      --mat-color-accent-hover: #126B48;
-      --mat-color-accent-soft: #34D399;
-      --mat-color-accent-subtle: #E6F7F1;
-      --mat-color-accent-subtle-bg: #E6F7F1;
-      --mat-color-accent-subtle-text: #157955;
-      --mat-color-accent-text: #157955;
-      --mat-color-accent-2: var(--mat-color-accent-alt);
+      /* G1 — migración de marca a la paleta azul aprobada en el Style Lab
+         (docs/GUIA-UX-UI.md). brand-500 (#0082FB) es el tono "bruto", foco/
+         indicador — nunca portador de texto (falla AA como texto, 3.76:1);
+         brand-600 (#0064E0) es el tono que SÍ funciona como texto/fondo con
+         texto encima (botón primario, links, foco); brand-700 (#0052B8) es
+         hover/pressed, invariante entre temas (no se redefine en oscuro,
+         mismo criterio ya usado acá para --mat-color-danger-hover/-solid). */
+      --mat-color-brand-500: #0082FB;
+      --mat-color-brand-600: #0064E0;
+      --mat-color-brand-700: #0052B8;
+      --mat-color-accent-alt: var(--mat-color-brand-500);      /* no texto sobre blanco */
+      --mat-color-accent: var(--mat-color-brand-600);          /* botones, links, foco */
+      --mat-color-accent-hover: var(--mat-color-brand-700);     /* invariante entre temas */
+      --mat-color-accent-soft: var(--mat-color-brand-500);
+      --mat-color-accent-subtle: #E5F2FF;
+      --mat-color-accent-subtle-bg: var(--mat-color-accent-subtle);
+      --mat-color-accent-subtle-text: var(--mat-color-accent-text);
+      --mat-color-accent-text: var(--mat-color-brand-600);
+      --mat-color-accent-2: var(--mat-color-brand-700);
       --mat-color-whatsapp: #25d366;         /* verde de marca WhatsApp — solo para .btn-whatsapp */
       --mat-color-whatsapp-hover: #1ebe57;
       --mat-color-whatsapp-text: #072E2A;    /* texto/ícono sobre fondo whatsapp — mismo verde petróleo de marca, no blanco */
@@ -159,7 +169,12 @@
       --z-toast: 500;
 
       /* ── Alias legacy (--color-*, --fs-*, etc.) — no usar en código nuevo */
-      --color-primary: var(--mat-color-accent);
+      /* --color-primary es alias de --mat-color-accent-text, NO de
+         --mat-color-accent directo: brand-600 como texto sobre superficie
+         oscura mide 3.06:1 (bajo AA) — el alias de texto tiene que seguir
+         al valor que SÍ cambia por tema (#3D9CFF en oscuro), no al del
+         botón, que es invariante. */
+      --color-primary: var(--mat-color-accent-text);
       --font-sans: var(--mat-font-sans);
       --font-display: var(--mat-font-display);
       --font-mono: var(--mat-font-mono);
@@ -250,13 +265,15 @@
       --mat-color-border-strong: #363C44;
       --mat-color-brand-ink: #34D399;
 
-      --mat-color-accent: #34D399;
-      --mat-color-accent-hover: #2DD4A0;
-      --mat-color-accent-soft: #6EE7B7;
-      --mat-color-accent-subtle: rgba(52, 211, 153, 0.14);
-      --mat-color-accent-subtle-bg: rgba(52, 211, 153, 0.14);
-      --mat-color-accent-subtle-text: #6EE7B7;
-      --mat-color-accent-text: #6EE7B7;
+      /* accent, accent-hover y accent-soft NO se redefinen acá a propósito:
+         caen al valor invariante de :root (brand-600/700/500) — mismo
+         criterio ya usado en este archivo para --mat-color-danger-hover/
+         -solid. Solo lo que SÍ cambia con el fondo (subtle, text) se
+         redefine abajo. */
+      --mat-color-accent-subtle: rgba(0, 130, 251, 0.16);
+      --mat-color-accent-subtle-bg: var(--mat-color-accent-subtle);
+      --mat-color-accent-subtle-text: var(--mat-color-accent-text);
+      --mat-color-accent-text: #3D9CFF;
       --mat-color-whatsapp: #25d366;
       --mat-color-whatsapp-hover: #1ebe57;
 
