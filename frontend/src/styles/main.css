@@ -66,14 +66,14 @@
 
       /* ── Superficies (grises neutros — la marca no tiñe el sistema,
          solo se conecta a través del acento) ─────────────────── */
-      --mat-color-bg: #F6F7F8;
+      --mat-color-bg: #F1F5F8;
       --mat-color-bg-elevated: #FFFFFF;
       --mat-color-bg-subtle: #F0F2F4;
       --mat-color-bg-hover: #EAEDF0;
 
-      --mat-color-text-primary: #23282D;    /* cuerpo — gris neutro, no marca */
-      --mat-color-text-secondary: #6B7280;
-      --mat-color-text-tertiary: #9CA3AF;
+      --mat-color-text-primary: #1C2B33;    /* cuerpo — gris neutro, no marca */
+      --mat-color-text-secondary: #52636D;
+      --mat-color-text-tertiary: #697281;   /* U-01: 4.86:1 sobre bg-elevated (#FFFFFF) */
       --mat-color-text-disabled: #C7CBD1;
       --mat-color-text-inverse: #FFFFFF;
 
@@ -249,14 +249,19 @@
 
     /* ── Tema oscuro (lienzo gris neutro; la marca solo en el acento) ─ */
     [data-theme="dark"] {
-      --mat-color-bg: #0F1113;
-      --mat-color-bg-elevated: #16181B;
+      --mat-color-bg: #0F1720;
+      --mat-color-bg-elevated: #16202B;
       --mat-color-bg-subtle: #1C1F23;
       --mat-color-bg-hover: #24282D;
 
-      --mat-color-text-primary: #E7E9EB;
-      --mat-color-text-secondary: #9CA3AF;
-      --mat-color-text-tertiary: #6B7280;
+      --mat-color-text-primary: #EDF2F5;
+      --mat-color-text-secondary: #9FB0BA;
+      /* #6B7280 (heredado de la migración anterior) medía apenas 4.23:1
+         contra el bg-elevated viejo (#16181B) — ya bajo AA antes de esta
+         migración. Con el bg-elevated nuevo (#16202B, más claro) caía a
+         3.92:1. Aclarado a #818A96 (4.71:1 sobre bg-elevated, 5.16:1 sobre
+         bg) para volver a pasar 4.5:1 con margen. */
+      --mat-color-text-tertiary: #818A96;
       --mat-color-text-disabled: #4B5563;
       --mat-color-text-inverse: #0F1113;
 

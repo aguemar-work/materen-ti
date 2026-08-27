@@ -34,6 +34,9 @@ const CLARO = {
   sky:     { bg: '#E5F2F0', text: '#256B7A' },
   teal:    { bg: '#E1EEF5', text: '#1D5C8A' },
   neutral: { bg: '#EFF1F3', text: '#525862' },
+  // No es un badge semántico: --mat-color-text-tertiary sobre
+  // --mat-color-bg-elevated, el par más ajustado de la jerarquía de texto.
+  textoTerciario: { bg: '#FFFFFF', text: '#697281' },
 };
 
 // Oscuro: los -bg semánticos son rgba(); acá van pre-compuestos sobre
@@ -47,6 +50,9 @@ const OSCURO = {
   sky:     { bg: '#18252A', text: '#7ECBE0' },
   teal:    { bg: '#17232D', text: '#81BBE4' },
   neutral: { bg: '#24282D', text: '#9CA3AF' },
+  // --mat-color-text-tertiary sobre --mat-color-bg-elevated real (no
+  // precompuesto): ambos son hex sólidos, sin alfa de por medio.
+  textoTerciario: { bg: '#16202B', text: '#818A96' },
 };
 
 function reportar(nombre, tabla) {
