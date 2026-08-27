@@ -142,19 +142,30 @@
       --mat-color-teal-bg-subtle: #F4F8FB;
       --mat-color-teal-border: #B7D0E1;
 
-      /* Sin sombras en contenedores (DS v0.3 §3.4) */
-      --mat-shadow-sm: none;
-      --mat-shadow-md: none;
-      --mat-shadow-lg: none;
+      /* G4 — cierra la política de elevación: sin sombra en contenedores
+         normales (card, stat-card, tabla), solo en capas realmente
+         elevadas o en el hover/focus de una superficie clicable. Antes
+         estos 3 tokens valían "none" (DS v0.3 §3.4) y ningún componente
+         los consumía; ahora sí tienen valor, así que las ~7 reglas que ya
+         escribían box-shadow: var(--shadow-sm) de forma inerte empiezan a
+         mostrar sombra real (ver docs/GUIA-UX-UI.md, "Repaso de
+         consistencia"). --shadow-modal existía como duplicado con el
+         mismo valor que --shadow-lg desde siempre — queda resuelto como
+         alias, un solo nombre "gana". */
+      --mat-shadow-sm: 0 1px 2px rgba(28, 43, 51, 0.06);
+      --mat-shadow-md: 0 4px 12px rgba(28, 43, 51, 0.08);
+      --mat-shadow-lg: 0 16px 40px rgba(28, 43, 51, 0.16);
+      --mat-shadow-modal: var(--mat-shadow-lg);
 
       /* Sombra del indicador de scroll horizontal en .table-wrap */
       --mat-scroll-shadow: rgba(15, 23, 42, 0.14);
 
-      /* Radios: 8px controles · 14px contenedores */
+      /* Radios: 8px controles · 12/16px contenedores (lg y xl dejan de
+         ser idénticos) */
       --mat-radius-sm: 6px;
       --mat-radius-md: 8px;
-      --mat-radius-lg: 14px;
-      --mat-radius-xl: 14px;
+      --mat-radius-lg: 12px;
+      --mat-radius-xl: 16px;
       --mat-radius-pill: 999px;
 
       --header-h: 64px;
@@ -240,6 +251,7 @@
       --shadow-sm: var(--mat-shadow-sm);
       --shadow-md: var(--mat-shadow-md);
       --shadow-lg: var(--mat-shadow-lg);
+      --shadow-modal: var(--mat-shadow-modal);
       --radius-sm: var(--mat-radius-sm);
       --radius-md: var(--mat-radius-md);
       --radius-lg: var(--mat-radius-lg);
@@ -588,6 +600,26 @@
       border: 0;
       border-radius: 0;
       overflow: auto; /* contenido no-tabla (ej. acordeón) scrollea dentro */
+    }
+
+    /* Card clicable (G4) — única variante de .card con elevación, y solo en
+       hover/focus: en reposo es idéntica a .card (sin sombra). El hover usa
+       --color-border-strong (mismo token que el hover de controles de
+       formulario) hasta que --color-border-default exista (G5); en ese
+       momento este hover puede bajar a -default para quedar un escalón más
+       liviano, como ya hace el Style Lab. */
+    .card--clicable {
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .card--clicable:hover {
+      box-shadow: var(--shadow-sm);
+      border-color: var(--color-border-strong);
+    }
+    .card--clicable:focus-visible {
+      outline: none;
+      box-shadow: var(--shadow-sm), 0 0 0 3px var(--mat-ring);
+      border-color: var(--color-accent);
     }
 
     /* La tabla scrollea internamente y el thead queda fijo arriba */
@@ -1308,6 +1340,7 @@
       background: var(--color-bg-elevated);
       border-radius: var(--radius-lg);
       border: 1px solid var(--color-border);
+      box-shadow: var(--shadow-modal);
       padding: 1.5rem;
       width: 100%;
       max-width: 540px;
@@ -1513,6 +1546,7 @@
       padding: 10px 18px;
       border-radius: var(--radius-md);
       border: 1px solid var(--color-border-strong);
+      box-shadow: var(--shadow-md);
       font-size: var(--fs-base);
       font-weight: 500;
       z-index: var(--z-toast);

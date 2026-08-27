@@ -284,7 +284,7 @@ function irALicencia(lic) {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
   border-radius: 10px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
   max-height: 340px;
   overflow-y: auto;
   padding: 4px;

@@ -166,7 +166,7 @@ onBeforeUnmount(cerrar);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
   padding: 4px;
 }
 

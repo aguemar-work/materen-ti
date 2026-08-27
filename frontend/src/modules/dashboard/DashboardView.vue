@@ -261,7 +261,6 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  box-shadow: var(--shadow-sm);
   text-align: left;
   font: inherit;
 }
@@ -351,7 +350,6 @@ onMounted(async () => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg, 12px);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
 }
 
 .feed-item {

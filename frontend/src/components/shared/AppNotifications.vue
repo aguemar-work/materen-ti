@@ -119,7 +119,7 @@ async function irAAviso(aviso) {
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
   cursor: pointer;
 }
 

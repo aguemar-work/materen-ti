@@ -775,7 +775,7 @@ const paginaDemo = ref(2);
 .ds-aviso-demo {
   display: flex; align-items: center; gap: 10px; padding: 12px 14px; max-width: 320px;
   background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md);
 }
 .ds-aviso-demo i { color: var(--color-accent-soft); font-size: 18px; }
 .ds-aviso-texto { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }

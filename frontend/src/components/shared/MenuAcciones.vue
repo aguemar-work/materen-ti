@@ -167,6 +167,7 @@ onBeforeUnmount(cerrar);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   padding: 4px;
+  box-shadow: var(--shadow-md);
 }
 
 .menu-acciones__item {
