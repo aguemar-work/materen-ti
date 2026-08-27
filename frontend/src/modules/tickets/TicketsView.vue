@@ -659,10 +659,12 @@ onMounted(async () => {
   text-decoration: underline;
 }
 
-/* .chips-filtro/.chip-filtro* se movieron a ChipsFiltro.vue (global, sin
-   scope) — "Sin vincular" (arriba, toggle único) también las usa y no es
-   parte de ese componente (selección múltiple), mismo criterio que
-   "Vencidos" con .tnav-item en ListaVistas.vue. */
+/* .chips-filtro/.chip-filtro* de esta vista se movieron a ChipsFiltro.vue
+   (global, sin scope) — acá ya no queda ningún consumidor directo (Sin
+   vincular pasó a checkbox dentro de MasFiltros.vue, PASO 4). Siguen en
+   uso real en otro módulo: ReporteSatisfaccionView.vue tiene su propia
+   copia scoped de estas mismas reglas para "Solo insatisfechos" —
+   independiente, no se tocó. */
 
 /* Vistas en modo Tabla: mismos .tnav-item que la columna de Isla, en fila
    horizontal con wrap en vez de columna — mismo componente/datos, layout
