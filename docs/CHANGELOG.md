@@ -18,10 +18,10 @@
   como referencia (cierra UX6-12), tokens de acento/fondo/texto/borde/
   sombra/radio portados a `main.css`, `--color-primary` redirigido a
   `accent-text` en vez de `accent` directo (evita una falla de AA en
-  oscuro), y 2 sombras que habrían aparecido no deseadas al activarse el
-  token real (antes `none`) corregidas en el mismo pase. Nuevos checks
-  permanentes en `scripts/contraste.mjs` para `text-tertiary` y `border-
-  default/-strong`. `docs/GUIA-UX-UI.md` y `docs/HISTORIAL-AUDITORIAS.md`
+  oscuro), y 3 sombras que habrían aparecido no deseadas o de nivel modal
+  al activarse el token real (antes `none`) corregidas en el mismo pase.
+  Nuevos checks permanentes en `scripts/contraste.mjs` para `text-tertiary`
+  y `border-default/-strong`. `docs/GUIA-UX-UI.md` y `docs/HISTORIAL-AUDITORIAS.md`
   (UX6-12) actualizados en el mismo cambio. **Pendiente**: QA visual real
   (sin navegador en esta sesión) y decidir el destino de un diff ajeno sin
   commitear que quedó en `git stash` durante esta migración.

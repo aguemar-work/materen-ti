@@ -988,8 +988,10 @@ de markup ya validado en Ciclos 4/5) — verificado con `npm test` tras
 consolidar todos los lotes, sin regresiones. **(c) Pendiente**: 48
 hallazgos de severidad media/baja documentados arriba sin corregir, para
 priorizar después; verificación de `frontend/src/components/shared/`
-repetida cuando se libere el límite de gasto; UX6-12 (`styleLab`) antes de
-portar la dirección azul a producción.
+repetida cuando se libere el límite de gasto. UX6-12 (`styleLab`), que este
+párrafo listaba como bloqueante antes de portar la dirección azul, quedó
+**resuelto el 2026-08-27** (ver fila de la tabla arriba) — cerrado antes
+del porteo, no después.
 
 **Nota de documentación (2026-08-27), sin fila propia por ser hallazgo de
 documentación, no de código**: la sección "Identidad de marca" de
