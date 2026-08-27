@@ -15,6 +15,7 @@ import soporteRoutes from './routes/soporte.routes.js';
 import actividadRoutes from './routes/actividad.routes.js';
 import encuestasRoutes from './routes/encuestas.routes.js';
 import designSystemRoutes from './routes/design-system.routes.js';
+import ticketPanelPreviewRoutes from './routes/ticket-panel-preview.routes.js';
 
 const routes = [
   ...authRoutes,
@@ -30,6 +31,9 @@ const routes = [
   ...encuestasRoutes,
   // Solo en desarrollo: /design-system no existe en el router de producción.
   ...(import.meta.env.DEV ? designSystemRoutes : []),
+  // Preview standalone de TicketDetallePanel.vue (split-view en construcción)
+  // — mismo criterio dev-only, ver ticket-panel-preview.routes.js.
+  ...(import.meta.env.DEV ? ticketPanelPreviewRoutes : []),
   // Catch-all: SIEMPRE al final para no interceptar ninguna ruta real.
   // Sin esto, una URL mal escrita no matchea nada y Vue Router no
   // renderiza componente alguno (pantalla en blanco).
