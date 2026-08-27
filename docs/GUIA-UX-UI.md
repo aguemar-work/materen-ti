@@ -2043,7 +2043,13 @@ definido pero ningún selector lo usaba; el contenido es de ancho completo).
 elemento necesita `display:flex`). Son la base del dual render de tablas.
 
 **Targets táctiles:** `@media (pointer: coarse)` sube el padding de
-`.icon-btn` a 10px (~40px de target) sin afectar la densidad en escritorio.
+`.icon-btn` a 13.5px (44px de target exacto, WCAG 2.5.5) sin afectar la
+densidad en escritorio. El icono `.ti` mide `font-size` exacto como alto de
+contenido (`line-height: 1` en el webfont de Tabler, no el `1.5` heredado
+del `body`) — 17px de contenido + 13.5px×2 de padding = 44px. El valor
+anterior (10px de padding) daba 37px reales, no los ~40px que decía esta
+nota; corregido en el mismo cambio que subió el padding (fix a11y,
+2026-08-27).
 
 ### Patrón tabla → tarjetas (módulos operativos en móvil)
 

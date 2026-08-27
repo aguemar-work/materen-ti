@@ -1689,7 +1689,11 @@
 
     /* Targets táctiles: solo dispositivos sin puntero fino */
     @media (pointer: coarse) {
-      .icon-btn { padding: 10px; }
+      /* WCAG 2.5.5: target >= 44x44px. Icono .ti mide font-size exacto
+         (line-height:1 en el webfont de Tabler) = 17px de contenido;
+         17 + padding×2 = 44 exige padding: 13.5px, no un valor redondo.
+         10px (heredado) daba 37px reales, no los ~40px documentados. */
+      .icon-btn { padding: 13.5px; }
     }
   
 .btn-whatsapp { background: var(--mat-color-whatsapp); color: var(--mat-color-whatsapp-text); border-color: var(--mat-color-whatsapp); }
