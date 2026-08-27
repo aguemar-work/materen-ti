@@ -23,6 +23,7 @@ import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
 import ListaVistas from '../../components/shared/ListaVistas.vue';
 import ChipsFiltro from '../../components/shared/ChipsFiltro.vue';
+import MasFiltros from '../../components/shared/MasFiltros.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
@@ -257,11 +258,12 @@ onMounted(async () => {
             <i class="ti ti-search"></i>
             <input v-model="busqueda" type="text" placeholder="Buscar por código, título o solicitante...">
           </div>
-          <div class="chips-filtro">
-            <button type="button" class="chip-filtro" :class="{ 'chip-filtro--activo': soloSinVincular }" @click="soloSinVincular = !soloSinVincular">
+          <MasFiltros :activo="soloSinVincular">
+            <label class="mas-filtros-item">
+              <input v-model="soloSinVincular" type="checkbox">
               Sin vincular
-            </button>
-          </div>
+            </label>
+          </MasFiltros>
         </div>
 
         <!-- Vistas: fila horizontal en Tabla, mismos datos/componente que
@@ -387,19 +389,17 @@ onMounted(async () => {
 
         <div class="tnav-separador" role="separator"></div>
 
-        <!-- Sin vincular sigue independiente de las Vistas (se cruza libre
-             con cualquiera) — degrada a filtro secundario en PASO 4, sigue
-             acá tal cual por ahora. -->
-        <button
-          type="button"
-          class="tnav-item"
-          :class="{ 'tnav-item--activo': soloSinVincular }"
-          :aria-pressed="soloSinVincular"
-          @click="soloSinVincular = !soloSinVincular"
-        >
-          <i class="ti ti-link-off" aria-hidden="true"></i>
-          <span class="tnav-label">Sin vincular</span>
-        </button>
+        <!-- Sin vincular: filtro secundario (PASO 4), mismo componente/
+             popover que en modo Tabla más arriba (ver MasFiltros.vue). -->
+        <div class="tnav-mas-filtros">
+          <MasFiltros :activo="soloSinVincular">
+            <label class="mas-filtros-item">
+              <input v-model="soloSinVincular" type="checkbox">
+              Sin vincular
+            </label>
+          </MasFiltros>
+          <span class="tnav-label">Más filtros</span>
+        </div>
 
         <div class="tnav-prioridad">
           <span class="tnav-prioridad-label" aria-hidden="true">Prioridad</span>
@@ -530,6 +530,14 @@ onMounted(async () => {
   height: 1px;
   background: var(--color-border-subtle);
   margin: 8px 4px;
+}
+
+.tnav-mas-filtros {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
 }
 
 .tnav-prioridad {
