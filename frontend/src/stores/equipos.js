@@ -1,84 +1,24 @@
-import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
+import { crearStorePaginado } from './crearStorePaginado.js';
 
-// Paginación server-side en la lista; tipos y ubicaciones se cachean
-// (catálogos pequeños, no cambian con cada página).
-export const useEquiposStore = defineStore('equipos', {
-  state: () => ({
-    lista: [],
-    total: 0,
-    pagina: 1,
-    tamPagina: 20,
-    filtros: { q: '', tipoId: '', situacion: '' },
-    orden: null,
-    tipos: [],
-    ubicaciones: [],
-    cargando: false,
-    error: null,
-    _peticionId: 0,
-  }),
+// Paginación server-side en la lista (esqueleto común en
+// crearStorePaginado.js); tipos y ubicaciones se cachean en el propio store
+// (catálogos pequeños, no cambian con cada página) y se piden en la MISMA
+// tanda que la página, no en un viaje aparte.
+export const useEquiposStore = crearStorePaginado('equipos', {
+  async listarPagina(params, store) {
+    const [pageRes, tipos, ubicaciones] = await Promise.all([
+      insforgeApi.listEquiposPage(params),
+      store.tipos.length ? store.tipos : insforgeApi.listTiposEquipo(),
+      store.ubicaciones.length ? store.ubicaciones : insforgeApi.listUbicaciones(),
+    ]);
+    return { ...pageRes, extra: { tipos, ubicaciones } };
+  },
+  filtrosIniciales: () => ({ q: '', tipoId: '', situacion: '' }),
+  mensajeError: 'Error al cargar equipos',
+  state: () => ({ tipos: [], ubicaciones: [] }),
 
   actions: {
-    // _peticionId descarta respuestas obsoletas: si dos cargar() se
-    // superponen (búsqueda con debounce + cambio de página/filtro rápido),
-    // solo se aplica el resultado de la petición más reciente.
-    async cargar() {
-      const peticionId = ++this._peticionId;
-      this.cargando = true;
-      this.error = null;
-      try {
-        const [pageRes, tipos, ubicaciones] = await Promise.all([
-          insforgeApi.listEquiposPage({
-            pagina: this.pagina,
-            tamPagina: this.tamPagina,
-            ...this.filtros,
-            orden: this.orden,
-          }),
-          this.tipos.length ? Promise.resolve(this.tipos) : insforgeApi.listTiposEquipo(),
-          this.ubicaciones.length ? Promise.resolve(this.ubicaciones) : insforgeApi.listUbicaciones(),
-        ]);
-        if (peticionId !== this._peticionId) return;
-        this.lista = pageRes.items;
-        this.total = pageRes.total;
-        this.tipos = tipos;
-        this.ubicaciones = ubicaciones;
-      } catch (e) {
-        if (peticionId !== this._peticionId) return;
-        this.error = e?.message || 'Error al cargar equipos';
-        throw e;
-      } finally {
-        if (peticionId === this._peticionId) this.cargando = false;
-      }
-    },
-
-    async irAPagina(pagina) {
-      this.pagina = pagina;
-      await this.cargar();
-    },
-
-    async aplicarFiltros(filtros) {
-      this.filtros = { ...this.filtros, ...filtros };
-      this.pagina = 1;
-      await this.cargar();
-    },
-
-    // Se llama al montar la vista: ver nota en stores/empleados.js.
-    resetearFiltros() {
-      this.filtros = { q: '', tipoId: '', situacion: '' };
-      this.orden = null;
-      this.pagina = 1;
-    },
-
-    async ordenarPor(columna) {
-      if (this.orden?.columna === columna) {
-        this.orden = { columna, direccion: this.orden.direccion === 'asc' ? 'desc' : 'asc' };
-      } else {
-        this.orden = { columna, direccion: 'asc' };
-      }
-      this.pagina = 1;
-      await this.cargar();
-    },
-
     async listaParaExportar() {
       return insforgeApi.listEquiposFiltrados(this.filtros);
     },
