@@ -1,29 +1,9 @@
 // Lado público de una ronda de encuesta: pasa por la edge function
-// "encuestas" — igual patrón que personalRegistro.js, el cliente nunca
-// lee/escribe directo en encuesta_rondas/encuesta_respuestas.
-import { getClient } from './insforge.js';
-import { esErrorRed, esperarReintento, MENSAJE_ERROR_RED } from '../core/error-red.js';
+// "encuestas" — el cliente nunca lee/escribe directo en
+// encuesta_rondas/encuesta_respuestas.
+import { crearInvocador } from './invocarFuncion.js';
 
-async function invoke(body) {
-  const { data, error } = await getClient().functions.invoke('encuestas', { body });
-  if (error) {
-    if (esErrorRed(error)) {
-      try {
-        await esperarReintento();
-      } catch {
-        throw new Error(MENSAJE_ERROR_RED);
-      }
-      return invoke(body);
-    }
-    throw new Error(error.message || 'Error en el servidor de encuestas');
-  }
-  if (!data?.ok) {
-    const e = new Error(mensajeError(data?.code));
-    e.code = data?.code;
-    throw e;
-  }
-  return data;
-}
+const invoke = crearInvocador('encuestas', mensajeError);
 
 export const MENSAJES_ERROR_ENCUESTA = {
   slug_requerido: 'Enlace inválido',

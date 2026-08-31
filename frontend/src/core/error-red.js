@@ -1,6 +1,7 @@
 // Fallback global de error de red: cuando una llamada ni siquiera llega
-// al servidor (sin conexión, DNS caído, timeout), los wrappers de la API
-// (ticketsPublicos.js, passwords.js) muestran una única pantalla de
+// al servidor (sin conexión, DNS caído, timeout), el wrapper compartido de
+// las edge functions (api/invocarFuncion.js, que usan passwords.js,
+// ticketsPublicos.js y encuestaPublica.js) muestra una única pantalla de
 // reintento (ErrorRedView) en vez de duplicar la detección en cada vista.
 // Un error de negocio de la API (4xx/5xx con { ok:false, code }) NO pasa
 // por acá: eso lo sigue manejando cada vista con su propio catch.

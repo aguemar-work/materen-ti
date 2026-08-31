@@ -1,32 +1,9 @@
 // Todo lo público de tickets (creación, seguimiento, encuesta de
 // satisfacción) pasa por la edge function "tickets" — igual patrón que
 // passwords.js: el cliente nunca escribe directo en la tabla `tickets`.
-import { getClient } from './insforge.js';
-import { esErrorRed, esperarReintento, MENSAJE_ERROR_RED } from '../core/error-red.js';
+import { crearInvocador } from './invocarFuncion.js';
 
-async function invoke(body) {
-  const { data, error } = await getClient().functions.invoke('tickets', { body });
-  if (error) {
-    // Fallo de transporte (sin red, DNS caído, timeout): fallback global
-    // con reintento de ESTA misma petición (core/error-red.js). Distinto
-    // de un error de negocio { ok:false, code }, que maneja cada vista.
-    if (esErrorRed(error)) {
-      try {
-        await esperarReintento();
-      } catch {
-        throw new Error(MENSAJE_ERROR_RED);
-      }
-      return invoke(body);
-    }
-    throw new Error(error.message || 'Error en el servidor de tickets');
-  }
-  if (!data?.ok) {
-    const e = new Error(mensajeError(data?.code));
-    e.code = data?.code;
-    throw e;
-  }
-  return data;
-}
+const invoke = crearInvocador('tickets', mensajeError);
 
 // Exportado para que las vistas reutilicen el mismo texto en validaciones
 // locales (ej. el aviso de DNI en vivo de TicketBuscarView) sin duplicarlo.
