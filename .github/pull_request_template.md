@@ -7,7 +7,7 @@
 
 - [ ] **Documentación actualizada en el mismo cambio** (regla de `AGENTS.md`,
       no es opcional): si este PR cambia dominio, seguridad, esquema o UI,
-      se actualizó `README.md` / `docs/PANORAMA_SISTEMA.md` /
+      se actualizó `README.md` / `docs/PANORAMA-SISTEMA.md` /
       `docs/GUIA-UX-UI.md` según corresponda, más una línea en
       `docs/CHANGELOG.md`. Si el PR solo toca código sin cambiar
       comportamiento visible (refactor puro, fix de typo), marca esta

@@ -4,19 +4,77 @@
 > tickets, correos, licencias y equipos. UI en
 > `frontend/src/styles/main.css` (`--mat-*`) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
-**Vigencia**: actualizado 2026-08-17 (migración 068 RLS real por módulo;
-069/070 tracking de migraciones/deploys; 066/067 hash del token de entrega;
-064/065 accesos_log ip/user_agent + límite por DNI en personal-registro;
-nueva edge function `equipos-fotos`; verificación de auditoría externa).
+**Estado del repo — a propósito no se anota a mano acá.** Este encabezado
+llevaba una fecha y una lista de migraciones escritas a mano, y quedó 14 días y
+16 migraciones atrás de su propio cuerpo sin que nada lo detectara (corregido
+2026-08-31 quitando el dato, no actualizándolo: si se escribe a mano, vuelve a
+podrirse). Para saber el estado real, mirar la fuente — nunca este archivo:
+
+| Qué | Dónde |
+| --- | --- |
+| Migraciones aplicadas | `public.schema_migrations` + último número en `migrations/` |
+| Qué cambió y cuándo | `docs/CHANGELOG.md` |
+| Hallazgos de seguridad, abiertos y cerrados | `docs/HISTORIAL-AUDITORIAS.md` |
+| Conteo de tests | correr la suite (`cd frontend && npm test`) |
+
+⚠️ Una rama de trabajo puede no tener las últimas migraciones de `main`: antes
+de numerar una nueva, comparar contra `origin/main`, no contra el working tree.
 
 **Precedencia documental**: ante conflicto, `README.md` y `GUIA-UX-UI.md` describen
 intención; **ganan** los valores literales en `main.css` y el esquema real en
 `migrations/*.sql`.
 
 Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
-modelo de seguridad y estructura del repo), `docs/PANORAMA_SISTEMA.md`
-(esquema real y decisiones verificadas) y `docs/HISTORIAL-AUDITORIAS.md`
-(hallazgos de seguridad/calidad con su estado).
+modelo de seguridad y estructura del repo), `docs/PANORAMA-SISTEMA.md`
+(esquema real y decisiones verificadas), `docs/HISTORIAL-AUDITORIAS.md`
+(hallazgos de seguridad/calidad con su estado) y
+[`docs/GOTCHAS-CLI.md`](docs/GOTCHAS-CLI.md) — **obligatorio antes de aplicar
+una migración**, ahí viven los tres gotchas del CLI de InsForge con su
+workaround (se movieron ahí el 2026-08-31: son detalle de ejecución que no
+hacía falta cargar en cada tarea, pero perderlos cuesta una migración a
+medio aplicar).
+
+## Invariantes — no romper sin leer el porqué más abajo
+
+Estas son las reglas que no se negocian. Cada una tiene su justificación
+completa más abajo en el documento; acá van sin narrativa a propósito, para que
+no compitan por atención con el resto del contexto.
+
+1. **`disable_signup` = `true`, siempre.** El trigger `handle_new_staff_user`
+   crea el staff **inactivo** (`activo=false`) y siembra sus **tres** `insert`
+   (staff + 8 filas de `staff_modulos_permisos` + la fila de `staff_permisos`).
+   Si se reescribe la función, no perder ninguno. Revertir esto reintroduce la
+   escalada **H-CRIT**.
+2. **Contraseñas: nunca en listados ni precargadas en formularios.** Todo pasa
+   por `api/passwords.js` → edge function `credenciales`. **Nunca** cifrado en
+   el cliente.
+3. **Softdelete (`deleted_at`) en todo.** DELETE físico solo JEFE, vía RLS.
+4. **`credenciales.ver` vive en DOS lugares (tres, contando el atajo de JEFE)
+   y nada los sincroniza en runtime:** `tiene_permiso_credenciales_ver()`
+   (SQL) y `tienePermisoCredenciales()` (`functions/credenciales.ts`). Si
+   cambia quién puede ver contraseñas, se cambian **las dos**. Hay un test
+   que compara ambas rutas
+   (`tests/integration/permisos-credenciales-sincronizados.smoke.test.js`),
+   pero **hoy se salta** por falta de cuentas de prueba (P0-04) — no confiar
+   en que CI lo atrape todavía.
+5. **`tienePermisoModulo()` idem:** la regla vive en RLS **y** repetida a mano en
+   `functions/credenciales.ts` y `functions/equipos-fotos.ts`, porque el cliente
+   admin bypasea RLS. Una validación que solo existe del lado del cliente no es
+   una validación.
+6. **No usar `db migrations up`.** Leer
+   [`docs/GOTCHAS-CLI.md`](docs/GOTCHAS-CLI.md) antes de aplicar una migración y
+   verificar con un `select` después — siempre.
+7. **No quitar `functionsUrl` de `getClient()`** (`api/client.js`). El SDK
+   adivina un host que no existe en este backend, y lo cambió entre versiones
+   menores.
+8. **No fijar de memoria el conteo de tests.** Correr la suite y leer su
+   resumen.
+9. **Documentación en el mismo cambio.** Un PR que cambia comportamiento y no
+   toca documentación queda incompleto, igual que uno sin tests.
+10. **Ante conflicto entre documentación y código, gana el código:** los valores
+    literales de `main.css` y el esquema real de `migrations/*.sql`.
+11. **Español en todo** (UI, dominio, comentarios, mensajes) y nunca tutear en
+    la UI: impersonal en títulos, imperativo de usted en formularios y errores.
 
 ## Documentación sensible — no pegar en herramientas externas sin revisar
 
@@ -53,7 +111,7 @@ cuándo y si la contraseña se rotó después.
   dominio, seguridad, esquema o UI debe actualizar la documentación
   correspondiente **en el mismo cambio**, no después: `README.md` (dominio,
   flujos, historial de migraciones), este archivo (reglas/gotchas),
-  `docs/PANORAMA_SISTEMA.md` (esquema/decisiones) y/o `docs/GUIA-UX-UI.md`
+  `docs/PANORAMA-SISTEMA.md` (esquema/decisiones) y/o `docs/GUIA-UX-UI.md`
   (design system), según lo que se tocó. Dejar además una línea en
   `docs/CHANGELOG.md`. Un hallazgo de auditoría cerrado o abierto se
   actualiza en `docs/HISTORIAL-AUDITORIAS.md`, no en un informe nuevo suelto.
@@ -62,7 +120,7 @@ cuándo y si la contraseña se rotó después.
 - **Diagnóstico/pruebas contra producción**: para reproducir un bug o
  verificar un fix, preferir un branch de InsForge (`npx @insforge/cli
  branch create`) en vez de escribir sobre datos reales (ver
- `docs/PANORAMA_SISTEMA.md` §7 — hasta ahora esa regla solo cubría tablas
+ `docs/PANORAMA-SISTEMA.md` §7 — hasta ahora esa regla solo cubría tablas
  de prueba nuevas; se extiende a cualquier INSERT/UPDATE/DELETE de
  diagnóstico). Si no es viable (ej. confirmar que un fix ya corre en el
  backend real), es obligatorio: (1) limpiar los datos de prueba en la
@@ -119,8 +177,15 @@ cuándo y si la contraseña se rotó después.
       función SQL. Mismo motivo y mismo patrón que `revelarAccesoSensible`
       (migración 024) con `accesos_sensibles_permisos`.
  
-   **Hoy las dos coinciden. Nada las mantiene sincronizadas automáticamente**
-   — si cambias quién puede ver contraseñas, cambia las dos, no una. Un
+   **Hoy las dos coinciden. Nada las mantiene sincronizadas en runtime**
+   — si cambias quién puede ver contraseñas, cambia las dos, no una. Desde
+   2026-08-31 hay un test que las compara cuenta por cuenta
+   (`tests/integration/permisos-credenciales-sincronizados.smoke.test.js`,
+   ver "Verificación"), pero **se salta mientras no existan las cuentas de
+   prueba de P0-04**: es una red de seguridad instalada, no activa.
+   Ojo con un tercer lugar que el test dejó a la vista: `credenciales.ts`
+   corta por `rol === 'JEFE'` antes de mirar el permiso, y la función SQL
+   **no tiene ese atajo**. Un
    permiso que bloquea en una y no en la otra es exactamente el tipo de bug
    que este aviso existe para evitar. Se evaluó unificarlas (RPC vía el
    `userClient` de sesión que ya existe en `credenciales.ts`, en vez de
@@ -139,66 +204,89 @@ cuándo y si la contraseña se rotó después.
 - Formato de código: seguir el estilo existente (componentes `<script setup>`,
  stores Pinia por módulo, capa de datos en `api/` por dominio con barrel
  `insforge.js`, mappers en `api/domains/*`).
+- **Helpers compartidos que NO hay que volver a duplicar** (Ciclo 15,
+ 2026-08-31 — los seis nacieron de una copia que ya había divergido, ver
+ ARQ-01 a ARQ-08 en `docs/HISTORIAL-AUDITORIAS.md`):
+   1. `api/invocarFuncion.js` — `crearInvocador(nombre, mensajeError)` es la
+      ÚNICA mecánica de llamada a una edge function (reintento de red,
+      `{ok:false,code}` → error con `.code`). Un archivo nuevo que hable con
+      una edge function lo usa; no se escribe otro `invoke()` a mano. Lo
+      propio de cada dominio es solo su mapa de códigos → mensaje.
+   2. `modules/equipos/acta-base.js` — estilos, escapado y armado de las
+      actas imprimibles. Un acta nueva aporta sus secciones/cláusula/firmas,
+      no otra copia del `<style>` ni de `window.open`/`print`.
+   3. `modules/tickets/TicketCamposGestion|TicketComentarios|TicketComposer|
+      TicketHistorial.vue` — contenido compartido entre la página completa
+      (`TicketDetalleView.vue`) y el panel del split-view
+      (`TicketDetallePanel.vue`), que son **dos contenedores distintos del
+      mismo detalle**. Las diferencias reales entre ambos van como prop
+      (`id-prefijo`, `label-asignado`, `fecha-inline`, `acotado`); si hace
+      falta cambiar el contenido, se cambia en el componente, nunca en uno
+      solo de los dos contenedores.
+   4. `stores/crearStorePaginado.js` — **todo listado con paginación
+      server-side sale de acá** (hoy: tickets, empleados, correos, equipos,
+      licencias, kb, problemas), igual que todo catálogo simple sale de
+      `crearCatalogoStore()` en `stores/catalogos.js`. Trae
+      `cargar/irAPagina/aplicarFiltros/resetearFiltros/ordenarPor` y el
+      guard `_peticionId`; lo propio se pasa por `state`/`getters`/
+      `actions`, y para los casos raros hay `enriquecer` (datos extra de la
+      página) y `extra` (state que se llena en la misma tanda que la
+      página). La **regla de coherencia** post-mutación (in-place vs.
+      recargar) está en su encabezado: leerla antes de agregar un
+      `crear`/`actualizar`/`softDelete` nuevo.
+   5. `composables/useFormularioModal.js` — ref del modal + detección de
+      cambios + descarte con confirmación, para todo formulario dentro de
+      `<Modal>` (hoy 7). `EquipoForm.vue`/`LicenciaForm.vue` todavía no lo
+      usan porque siguen siendo modales hand-rolled: al migrarlos a
+      `<Modal>`, migran también a este composable.
+   6. `composables/usePopoverFlotante.js` — abrir/cerrar, posicionar contra
+      el trigger, cerrar al puntear afuera o con Escape (devolviendo el
+      foco), para popovers teletransportados a `<body>` (`MenuAcciones`,
+      `NotificacionesCampana`). No confundir con `useCerrarConEscape`/
+      `useFocoAtrapado`, que son para modales hand-rolled.
 - **UI/UX**: colores, tipografías y clases reutilizables en
  `docs/GUIA-UX-UI.md` y `frontend/src/styles/main.css` (tokens `--mat-*`,
  sin Tailwind ni librería de componentes). Nombre del producto en UI:
  **Materen — Sistema TI**.
+- **Gotcha del padding de tabla (ago 2026)**: el alto de fila vive en **dos**
+ lugares que tienen que moverse juntos — `th`/`td` en `main.css` (hoy `9px`
+ de padding vertical) y `.th-ordenable-btn` en
+ `components/shared/ThOrdenable.vue`, porque ese `<th>` va a `padding: 0` y
+ el alto lo pone el botón de adentro. Tocar solo uno deja la fila de
+ encabezados desalineada contra el resto de las columnas.
+- **Gotcha de `resetearFiltros()` en cada montaje (patrón de 18 módulos,
+ Tickets es la ÚNICA excepción desde ago 2026)**: Empleados/Correos/
+ Equipos/KB/Licencias/Problemas llaman
+ `store.resetearFiltros()` en el `onMounted` de su vista — es a propósito
+ (bug real reportado jul 2026, ver `stores/empleados.js`): sus filtros son
+ refs LOCALES del componente, frescos en cada montaje, así que sin ese
+ reset el store podía quedar con un filtro viejo aplicado mientras la UI
+ se veía en blanco. Tickets dejó de llamarlo (tiene `resetearBusqueda()`,
+ más angosto) porque migró sus filtros a `computed({get,set})` atado
+ directo al store — ya no hay mismatch que corregir. **No copiar el cambio
+ de Tickets a otro módulo sin migrar también sus filtros al store** — quitar
+ el reset con los filtros todavía en refs locales reintroduce el bug de
+ jul 2026. Desde el Ciclo 15 (2026-08-31) `resetearFiltros()` ya no se
+ escribe en cada store: lo trae `crearStorePaginado.js`, que lo arma con los
+ `filtrosIniciales` de cada uno. `resetearBusqueda()` de Tickets sigue
+ siendo propio, por la misma razón de siempre.
 
 ## Flujo de trabajo backend
 
 - **Migraciones**: archivos numerados `migrations/0XX_nombre.sql` (comentados,
- en español). Se aplican manualmente:
- `npx @insforge/cli db query --json -- "$(cat migrations/0XX_nombre.sql)"`.
- NO se usa `db migrations up` (los nombres `0XX_snake_case.sql` son
- incompatibles con el formato timestamp que exige ese subsistema, y su
- historial remoto está vacío a propósito por no haberse usado nunca). Desde
- la migración 069, `scripts/apply-migration.mjs` registra en
- `public.schema_migrations` qué versión quedó aplicada (verifica antes de
- reaplicar por error, salvo `--force`) — no reemplaza el CLI nativo, es
- tracking propio.
-- **Windows + `db query`**: límite de línea de comandos ~8 KB y ejecución poco
- fiable de múltiples statements DML en una llamada. Para updates masivos:
- un solo `UPDATE ... FROM (VALUES ...)` por lote.
-- **Gotcha distinto en `scripts/apply-migration.mjs` con archivos grandes
- (verificado 2026-08-17, migración 062)**: el script evita el límite de
- `cmd.exe` de arriba con un here-string de PowerShell (`-EncodedCommand`),
- pero ese mismo mecanismo falla con `ENAMETOOLONG` en archivos de varios KB
- (con comentarios) — el `-EncodedCommand` va en base64/UTF-16LE, que infla
- el tamaño ~2.7× y termina superando el límite de línea de comandos de
- `CreateProcess` en Windows (~32767 caracteres), distinto del límite de
- `cmd.exe`. Mitigación: aplicar con `npx @insforge/cli db query "<sql>"`
- directo (sin el script, sin PowerShell de por medio) en varios lotes por
- concepto, cada SQL en **una sola línea** (los saltos de línea reales como
- argumento fallan con `Query is required`). El archivo único en
- `migrations/` se conserva igual como fuente de verdad — mismo criterio que
- el gotcha de la migración 031 de arriba.
-- **Gotcha del CLI en Windows (jul 2026, migración 031)**: `db query` (incluso
- vía `scripts/apply-migration.mjs`, que ya evita el límite de línea de
- comandos con un here-string de PowerShell) puede rechazar DDL con
- `Query could not be parsed and was rejected for security reasons` sin
- razón aparente — pasó incluso con un `CREATE TABLE` mínimo. `db import
- <archivo.sql>` (sin `--truncate`) es más confiable para DDL, pero puede
- crashear (`Assertion failed ... src\win\async.c`) con archivos grandes que
- mezclan CREATE TABLE + RLS + DML en un solo archivo. Mitigación que
- funcionó: partir la migración en archivos temporales por concepto (tabla+
- triggers, políticas RLS, backfill de datos, ALTER final) y aplicar cada uno
- por separado con `db import`. El archivo único en `migrations/` se
- conserva igual como fuente de verdad — el fraccionamiento es solo para la
- ejecución, no cambia la convención de un archivo por migración.
- **Verificar siempre después de aplicar** (`db query "select ..."` sobre la
- tabla/columna afectada): un `db import` que reporta error igual puede haber
- ejecutado parte de los statements antes de crashear.
-- **Gotcha del CLI (verificado 2026-08-05, migración 038)**: `db query` (con o
- sin `scripts/apply-migration.mjs`, en bash o en PowerShell — no es un
- problema de shell) **no soporta cuerpos de función/bloque con dollar-quoting
- (`$$ ... $$`)**: falla con `{"error":"no language specified"}` incluso en un
- `CREATE FUNCTION` de una sola línea sin ningún `;` interno. Cualquier
- migración con `create function`/`do $$ ... end $$` (la mayoría desde la 008)
- debe aplicarse con `db import <archivo.sql>`, nunca con `db query` ni con
- `apply-migration.mjs` (usa `db query` por dentro). `db import` puede seguir
- reportando el crash de cliente (`Assertion failed ... src\win\async.c`) de
- arriba aun cuando el statement se ejecutó bien en el servidor — la
- verificación posterior sigue siendo obligatoria en ambos casos.
+ en español), un archivo por migración como fuente de verdad. **NO se usa `db
+ migrations up`** (nombres incompatibles con el formato timestamp que exige ese
+ subsistema). **Antes de aplicar una migración, leer
+ [`docs/GOTCHAS-CLI.md`](docs/GOTCHAS-CLI.md)**: el CLI tiene tres fallas
+ conocidas con causa raíz distinta (DDL rechazado, dollar-quoting,
+ `ENAMETOOLONG` en Windows), cada una con su propio workaround. Y
+ **verificar el resultado con un `select` después de aplicar es obligatorio**
+ — tanto `db query` como `db import` pueden reportar un error habiendo
+ ejecutado parte de los statements. `scripts/apply-migration.mjs` registra en
+ `public.schema_migrations` qué versión quedó aplicada (desde la 069).
+- **Windows, updates masivos**: `db query` ejecuta de forma poco fiable
+ múltiples statements DML en una sola llamada — usar un solo
+ `UPDATE ... FROM (VALUES ...)` por lote.
 - **Edge function**: `functions/credenciales.ts` → desplegar con
  `npx @insforge/cli functions deploy credenciales --file functions/credenciales.ts`.
  Secrets que usa: `CRED_KEY_V2`, `CRED_KEY_LEGACY`, `API_KEY`,
@@ -210,13 +298,11 @@ cuándo y si la contraseña se rotó después.
  `ticket_satisfaccion` no tienen INSERT de cliente: solo esta función
  escribe. El **token de entrega** (`entregas`) y el **token de ticket**
  (`tickets`) son conceptos distintos — no reusar uno para el otro.
-- **Edge functions `encuestas` y `personal-registro`**: mismo patrón CORS/
- admin-client y mismo comando de deploy (`npx @insforge/cli functions
- deploy <nombre> --file functions/<nombre>.ts`). `encuestas.ts` expone
- `abrir`/`responder` sobre `encuesta_rondas`/`encuesta_respuestas` (sin
- INSERT de cliente en `encuesta_respuestas`); `personal-registro.ts` expone
- `buscarDni`/`crear` sobre `personal_registros` (sin INSERT de cliente ahí
- tampoco). No confundir la encuesta de este módulo con
+- **Edge function `encuestas`**: mismo patrón CORS/admin-client y mismo
+ comando de deploy (`npx @insforge/cli functions deploy <nombre> --file
+ functions/<nombre>.ts`). Expone `abrir`/`responder` sobre
+ `encuesta_rondas`/`encuesta_respuestas` (sin INSERT de cliente en
+ `encuesta_respuestas`). No confundir la encuesta de este módulo con
  `ticket_satisfaccion` — son tablas y flujos distintos, ver README.
 - **Edge function `equipos-fotos`** (2026-08-17, endurecida 2026-08-20):
  `functions/equipos-fotos.ts` → desplegar con `npx @insforge/cli functions
@@ -234,10 +320,21 @@ cuándo y si la contraseña se rotó después.
  el CRUD normal de la tabla (hallazgo de auditoría externa). `subirFoto`/
  `eliminarFoto` ahora exigen `tienePermisoModulo('equipos')`, mismo patrón
  y mismo motivo que `tienePermisoModulo()` en `credenciales.ts` (cliente
- admin bypasea la RLS, hay que repetir el chequeo a mano). **Pendiente
- aparte, no cerrado por este cambio**: `MAX_FOTOS=4` (tope de fotos por
- equipo) solo existe en `EquipoForm.vue`, del lado del cliente — la edge
- function no lo aplica.
+ admin bypasea la RLS, hay que repetir el chequeo a mano).
+ ⚠️ **Tope de fotos — el valor `4` vive en DOS lugares que se mueven
+ juntos** (2026-08-31, EQ-FOTOS-02): `MAX_FOTOS` en `EquipoForm.vue` y
+ `MAX_FOTOS_POR_EQUIPO` en `equipos-fotos.ts`. Las fotos son la columna
+ `equipos.fotos jsonb` (array de `{url, key}`, migración 015) — no hay tabla
+ `equipos_fotos`, y las keys del bucket son planas
+ (`equipos/<uuid>.<ext>`), así que **contar por storage es imposible**: el
+ conteo sale de un SELECT a esa columna. Dos límites conocidos y aceptados,
+ no olvidos: (1) en el **alta** de un equipo no hay fila que contar todavía
+ (el formulario sube antes del primer INSERT), así que ahí no hay tope
+ server-side; (2) un cliente que **omita `equipoId`** a propósito esquiva el
+ conteo. Cierra el bypass accidental/DevTools, **no es una frontera dura** —
+ esa sería un `check (jsonb_array_length(fotos) <= 4)` en `equipos`, no
+ hecho todavía (el array lo escribe el cliente con su propia sesión, no esta
+ función).
 - **`schema_migrations`/`function_deploys`** (migraciones 069/070): tracking
  real de qué migración y qué versión de cada edge function están aplicadas.
  `scripts/apply-migration.mjs` lo llena solo (verifica antes de aplicar,
@@ -285,26 +382,25 @@ cuándo y si la contraseña se rotó después.
  reformatear el repo entero de golpe. Uso manual, no gate.
 - Build: `cd frontend && npx vite build`.
 - Tests unitarios: `cd frontend && npm test` (Vitest). **No fijar esta cifra
- de memoria — corre la suite y lee su propio resumen final; ya pasó una vez
- que este número quedó obsoleto en este mismo párrafo (2026-08-17 → 100+12,
- desactualizado dos ciclos después) y no vale la pena repetirlo.** Snapshot
- verificado corriendo la suite el 2026-08-18 (Ciclo 11, tras endurecer los
- helpers de autorización): **148 pasan + 1 falla + 25 se saltan (174 en
- total)**.
-   - **La 1 que falla es esperada, no es una regresión, y no se corrige
-     acá a propósito**: `tests/integration/autorizacion-anonima.smoke.test.js`
-     → `"tiene_permiso_modulo — debería rechazar ejecución anónima"` —
-     hallazgo P0-05 (`tiene_permiso_modulo(text)` es la única función
-     `SECURITY DEFINER` del sistema sin `revoke ... from public`), ver
-     `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11. Sigue en rojo hasta que se
-     aplique esa migración.
-   - Las 25 que se saltan son los smoke de integración condicionados a
-     secrets/cuentas que no existen hoy: `tickets-api.smoke.test.js` (1),
-     `embeds.smoke.test.js` (11) y `autorizacion-roles.smoke.test.js`
-     completo (13) — los tres `describe.skipIf(!listo)`, ninguno es un
-     test roto. `autorizacion-anonima.smoke.test.js` no está en esta
-     lista: corre completo (no se salta) porque solo necesita
-     `VITE_INSFORGE_URL`/`ANON_KEY`, que sí existen en este entorno.
+ de memoria — corre la suite y lee su propio resumen final.** Este párrafo ya
+ fijó una cifra a mano tres veces y las tres quedaron obsoletas
+ (2026-08-17 → `100+12`; 2026-08-18 → `148+1+25`, que además siguió afirmando
+ durante 13 días que una falla era "esperada" cuando ya estaba corregida).
+ Por eso acá no va ningún número: **la suite debe cerrar en 0 fallas**, y si
+ falla algo es una regresión real, no un rojo tolerado.
+   - **No hay ningún test que falle a propósito.** El que lo hacía
+     (`autorizacion-anonima.smoke.test.js` → `tiene_permiso_modulo`, hallazgo
+     **P0-05**) está en verde desde que la **migración 073** aplicó el
+     `revoke ... from public` en producción (2026-08-18, verificado contra
+     `pg_proc.proacl`). Si vuelve a ponerse rojo, es un hallazgo nuevo.
+   - **Los que se saltan son smoke de integración condicionados a
+     secrets/cuentas que hoy no existen**, no tests rotos:
+     `tickets-api.smoke.test.js`, `embeds.smoke.test.js` y
+     `autorizacion-roles.smoke.test.js`, todos con `describe.skipIf(!listo)`
+     (ver P0-04 en `docs/HISTORIAL-AUDITORIAS.md`: mientras falten los 4
+     secrets, el job `test-integration` de CI falla a propósito).
+     `autorizacion-anonima.smoke.test.js` **no** se salta: corre completo
+     porque solo necesita `VITE_INSFORGE_URL`/`ANON_KEY`.
  Cubre: cifrado, validaciones de la edge function de
  tickets, dominio de tickets, formatters, periodos y PDF del reporte, forma
  de `insforgeApi`, paginación, y (desde 2026-08-18) los propios discriminantes
@@ -343,10 +439,10 @@ cuándo y si la contraseña se rotó después.
  Ciclo 11, endurecidas después de la autoauditoría del mismo ciclo):
  `autorizacion-anonima` corre siempre (solo necesita
  `VITE_INSFORGE_URL`/`ANON_KEY`) y demuestra que un anónimo no lee tablas
- internas ni ejecuta RPC `SECURITY DEFINER`. **Tiene un test que falla a
- propósito** (`tiene_permiso_modulo`, hallazgo P0-05 — ver el párrafo de
- "Tests unitarios" más arriba) — no es ruido, es el hallazgo real quedando
- visible. `autorizacion-roles` cubre ASISTENTE sin módulo/sin
+ internas ni ejecuta RPC `SECURITY DEFINER` — incluido
+ `tiene_permiso_modulo` (hallazgo P0-05), que pasó a verde con la migración
+ 073 y **ya no falla a propósito**: hoy la suite entera cierra en 0 fallas.
+ `autorizacion-roles` cubre ASISTENTE sin módulo/sin
  `credenciales.ver`, staff inactivo y `accesos_sensibles` fila por fila,
  pero necesita hasta 4 cuentas de staff dedicadas que hoy no existen (ver
  README "Cuentas adicionales..." — cada bloque se omite por separado si
@@ -356,6 +452,20 @@ cuándo y si la contraseña se rotó después.
  o el status HTTP real de la edge function — nunca "hubo algún error" a
  secas; sus mensajes de fallo nunca imprimen el payload devuelto. Cubierto
  por `frontend/tests/autorizacion-helpers.test.js` (unitario, sin red).
+- **Sincronía de `credenciales.ver` entre sus dos implementaciones**
+ (`tests/integration/permisos-credenciales-sincronizados.smoke.test.js`,
+ 2026-08-31): compara, cuenta por cuenta, la RPC
+ `tiene_permiso_credenciales_ver` contra lo que la edge function `credenciales`
+ realmente permite, y falla si divergen — la red de seguridad que faltaba para
+ la regla duplicada a mano (ver invariante 4). Traduce la respuesta de forma
+ determinista por el orden real de chequeos de `credenciales.ts` (permiso →
+ módulo → lookup): **403 = bloqueó**, **200 + `no_existe` = dejó pasar**, usando
+ un `cuentaId` inexistente a propósito para que "permitido" no dispare un
+ descifrado real ni escriba en `accesos_log`. Omite en runtime (`ctx.skip`) el
+ caso de una cuenta sin el módulo `correos`, porque ahí los dos rechazos son
+ 403 indistinguibles — preferido a pasar por el motivo equivocado. **Hoy la
+ suite lo salta completo**: necesita las cuentas de staff de P0-04, que no
+ existen.
 - Contraste WCAG de los tokens: `node scripts/contraste.mjs`.
 - Probar la función sin sesión:
  `npx @insforge/cli functions invoke credenciales --data '{"action":"entregaAbrir","token":"x"}'`

@@ -9,7 +9,610 @@
 > Regla asociada (`AGENTS.md`, "Reglas del proyecto"): toda modificación de
 > código/esquema que cambie dominio, seguridad o UI debe actualizar la
 > documentación correspondiente en el mismo cambio, y dejar una línea acá.
+>
+> **Historial detallado de diseño**: el detalle completo (archivos exactos,
+> riesgo, pendiente) de cada pasada de diseño sobre `design.pen`/
+> `docs/GUIA-UX-UI.md` vive en el apéndice al final de este archivo — se
+> migró desde dentro de `GUIA-UX-UI.md` en la reorganización de
+> documentación de 2026-08-29 (esa guía quedó como referencia pura del
+> estado actual, sin historia mezclada). Las entradas de abajo son la
+> versión condensada de los mismos eventos.
 
+- **2026-08-31** (revisión de `AGENTS.md` como documento para agentes + cierre
+  de dos deudas que la revisión destapó) — Pedido directo: auditar `AGENTS.md`
+  a partir de una crítica externa. De esa crítica, **verificado contra el
+  código**: 6 puntos ciertos, 3 falsos por estar desactualizados (el peor: daba
+  por abierto el hallazgo **P0-05**, cerrado por la migración 073 desde el
+  2026-08-18, y proponía asignarle dueño y sacar su "test rojo" a un job de CI
+  aparte — ese test está en verde; también proponía pinnear `@insforge/sdk`, ya
+  exacto en `1.5.2` sin `^`). Cambios aplicados:
+  **(1) Bloque de 11 invariantes** al principio de `AGENTS.md`, en imperativo y
+  sin narrativa, para que las reglas no-negociables no compitan por atención
+  con el contexto (`disable_signup` + los 3 `insert` del trigger, contraseñas,
+  softdelete, los dos lugares de `credenciales.ver`, `tienePermisoModulo()`,
+  `db migrations up`, `functionsUrl`, conteo de tests, doc por cambio,
+  precedencia código>docs, español/no tutear).
+  **(2) El campo `Vigencia` se eliminó en vez de actualizarse**: llevaba una
+  fecha y una lista de migraciones a mano y había quedado 14 días y 16
+  migraciones atrás de su propio cuerpo. Lo reemplaza una tabla que apunta a la
+  fuente real de cada dato (`schema_migrations`, este changelog,
+  `HISTORIAL-AUDITORIAS.md`, correr la suite) — sin dato escrito a mano no hay
+  nada que se pueda podrir, así que no hizo falta un script de CI que lo
+  vigile.
+  **(3) Eliminado el conteo de tests y el párrafo del "1 falla esperada"**, que
+  era el daño activo: `AGENTS.md` le decía a cada agente que una falla era
+  normal 13 días después de que dejara de fallar — exactamente el
+  entrenamiento a ignorar rojos que causó el incidente `030cc89`. Ahora dice
+  que la suite cierra en 0 fallas y que cualquier rojo es una regresión.
+  **(4) Separación parcial del archivo**: los 43 renglones de gotchas del CLI
+  salieron a `docs/GOTCHAS-CLI.md` (nuevo, con una tabla de "qué gotcha aplica
+  a tu caso" que antes había que deducir leyendo los tres), indexado en el
+  árbol de docs del `README.md`. En `AGENTS.md` quedaron las reglas duras
+  inline (`NO db migrations up`, verificar con `select` después) más el puntero
+  marcado como obligatorio. **No se movió nada de seguridad ni de dominio**: una
+  regla de seguridad detrás de un puntero es una regla que el agente puede
+  decidir no leer.
+  **(5) P0-05 cerrado de verdad**: tenía pendiente la verificación end-to-end
+  ("el rojo debería pasar a verde, no reconfirmado todavía"). Corrida contra
+  producción: 26/26 en verde. El test se conserva como **no-regresión** y se
+  renombró (ya no dice "hoy no lo hace"), con el comentario explicando que un
+  `CREATE OR REPLACE` que recree la función le devolvería el `EXECUTE` a
+  `PUBLIC` por default de Postgres.
+  **(6) EQ-FOTOS-02 mitigado**: el tope de 4 fotos por equipo, que solo existía
+  en `EquipoForm.vue`, ahora también se aplica en `functions/equipos-fotos.ts`.
+  Esquema verificado antes de escribirlo, no asumido: las fotos son la columna
+  `equipos.fotos jsonb` (migración 015), no hay tabla `equipos_fotos` y las keys
+  del bucket son planas, así que contar por storage era imposible. De paso
+  `api/domains/equipos.js` pasó de `functions.invoke()` a mano a
+  `crearInvocador()` — era el último consumidor que lo hacía a mano (ARQ-01).
+  Queda **abierto a propósito**: el `check (jsonb_array_length(fotos) <= 4)` en
+  BD y el **deploy manual** de la function, sin el cual el tope sigue siendo
+  solo de cliente.
+  **(7) Red de seguridad para la regla duplicada de `credenciales.ver`**: nuevo
+  `tests/integration/permisos-credenciales-sincronizados.smoke.test.js`, que
+  compara cuenta por cuenta la RPC SQL contra lo que la edge function realmente
+  permite. **Se salta mientras no existan las cuentas de prueba de P0-04**: es
+  una red instalada, no activa, y así queda documentado para no dar una falsa
+  sensación de cobertura. El test dejó a la vista un tercer lugar donde vive la
+  regla: `credenciales.ts` corta por `rol === 'JEFE'` y la función SQL no tiene
+  ese atajo.
+  Verificación: suite completa **215 pasan / 34 se saltan / 0 fallan** (249),
+  `npm run typecheck:functions` (Deno 2.9.5, 4 functions) y `npm run lint` en
+  verde. Fichado en `docs/HISTORIAL-AUDITORIAS.md` (P0-05, EQ-FOTOS-02), no en
+  un informe suelto.
+- **2026-08-31** (auditoría de arquitectura/clean code de `frontend/src` —
+  Ciclo 15) — Pedido directo: revisión de arquitectura, no de UI/UX (capas,
+  acoplamiento, duplicación, mantenibilidad) sobre todo `frontend/src`, con 6
+  agentes en paralelo por capa leyendo los archivos completos. 22 hallazgos,
+  fichados con estado en `docs/HISTORIAL-AUDITORIAS.md` (ARQ-01 a ARQ-22),
+  no en un informe suelto. Los 3 críticos quedaron corregidos en el mismo
+  cambio: `invoke()` triplicado en las 3 vías a edge functions → nuevo
+  `api/invocarFuncion.js`; duplicación de contenido entre
+  `TicketDetalleView.vue` y `TicketDetallePanel.vue` → 4 componentes
+  compartidos (`TicketCamposGestion`/`TicketComentarios`/`TicketComposer`/
+  `TicketHistorial`), con las diferencias reales como props en vez de
+  copias divergentes; `acta.js`/`acta-devolucion.js` idénticas → nuevo
+  `equipos/acta-base.js`. Dos suites de test nuevas (`invocarFuncion`,
+  `acta-equipos`; esta última no existía pese a que las actas son un
+  documento que se firma). Continuando en la misma pasada se cerraron 13
+  más (16 de 22 en total): factory `crearStorePaginado.js` para los 7
+  listados paginados (mismo criterio que el `crearCatalogoStore()` que ya
+  existía), `useFormularioModal.js` para los 7 formularios sobre `<Modal>`,
+  `usePopoverFlotante.js` para los 2 popovers del shell, y un barrido de
+  duplicados menores (alias `aISO`, `todayISO` muerto, getters de staff,
+  `.sb-logout`, `dominio-empleados` fuera de patrón). Dos hallazgos
+  resultaron ser más que cosméticos al tocarlos: el barrel `insforge.js`
+  cerraba un ciclo real de imports, y `todayISO()` era código muerto.
+  `AGENTS.md` suma la convención de los helpers compartidos. En la misma
+  pasada se cerraron además ARQ-05 (`useCrudCatalogo.js` para 3 de las
+  pantallas de catálogo; los templates NO se unificaron a propósito) y
+  ARQ-06: las 4 clases del vocabulario de ficha (`.datos-title`,
+  `.tk-seccion`, `.tk-detalle`, `.tk-nota`) pasan a `main.css` — eran 23
+  copias en 8 archivos, y su ausencia dejaba sin estilo a
+  `ReporteTicketsModal.vue`, hueco que este cambio cierra sin tocar ese
+  archivo (ver `docs/GUIA-UX-UI.md`, "Vocabulario de ficha"). **18 de 22
+  cerrados**; quedan ARQ-09/ARQ-13 (god-components y god-composable, que
+  requieren verificación visual y conviene hacer de a uno) y dos de
+  nomenclatura/organización.
+
+- **2026-08-29** (diseño de tabla de Tickets replicado a 13 módulos más) —
+  Pedido directo: "el mismo diseño de las tablas que se replique a todos
+  los módulos". Tickets ya era "el módulo modelo" documentado (`docs/
+  GUIA-UX-UI.md`, "Tabla de Tickets"), pero su rediseño tenía dos capas: lo
+  ya global en `main.css` (densidad, `tabular-nums`, `thead` sticky —
+  confirmado que TODAS las demás tablas ya lo heredaban sin tocar nada) y
+  lo opt-in por módulo (`.celda-apilada`, `col-elastica`, `col-num`, "una
+  sola píldora de color por fila", el patrón "Edad") que **ningún otro
+  módulo usaba todavía**. Se auditaron con 3 agentes en paralelo las 17
+  vistas reales del sistema con `<table>` antes de tocar código.
+  - **`.celda-apilada`** (identificador arriba en gris chico, dato
+    principal abajo) en 9 archivos: `CorreosView.vue` (Plataforma+Tipo →
+    "Cuenta"), `UbicacionesPanel.vue` (Tipo → "Nombre"),
+    `ActividadView.vue` (Plataforma → "Cuenta"), `EmpleadosView.vue`
+    tabla (DNI → "Nombre"), `CuentasPanel.vue` (Usuario → "Plataforma"),
+    `KbView.vue` (Categoría+Síntoma → "Título"), `LicenciasView.vue`
+    (Proveedor → "Software"), `AccesosSensiblesView.vue` (Categoría →
+    "Nombre"), `EquiposView.vue` (migra `.eq-info` ya armado a mano a las
+    clases oficiales — corrige de paso que `.eq-modelo` no tenía el gris
+    terciario que exige `__meta`, heredaba el color de texto normal).
+  - **Una sola píldora de color por fila** — mismo argumento que Tickets
+    (Estado real se queda, clasificación fija baja a texto): Tipo en
+    Correos/Cuentas, Tipo en Ubicaciones, Categoría en KB — los tres
+    resueltos como parte de la celda apilada de arriba. `ProblemasView.vue`
+    sumó un indicador punto+texto **local al archivo** para Severidad
+    (mismo mecanismo visual que `IndicadorPrioridad.vue` de Tickets, sin
+    generalizar ese componente — Severidad es dominio propio de Problemas,
+    `severidadProblemaInfo()`; alta conserva el púrpura y crítica el rojo
+    que ya tenía el badge, baja/media sin color). `StaffView.vue`: Rol baja
+    a texto con versalitas cuando el viewer no es JEFE (antes badge,
+    competía con el badge de Estado) — el badge del JEFE se queda intacto
+    en la tarjeta móvil, no se tocó.
+  - **`col-elastica`** en la columna de lectura real de cada tabla (Nombre,
+    Título, Software, Equipo, etc.) y **`col-num`** en columnas
+    numéricas/fecha (Actividad, KB, Licencias, Problemas, las 2 tablas de
+    Encuestas) — ninguna de las 13 lo tenía antes.
+  - **Patrón "Edad"** (`formatAntiguedad`/`formatFechaHora`, ya en
+    `core/formatters.js` — nada nuevo que escribir) en 5 archivos:
+    Actividad, KB, Problemas, y las 2 tablas de Encuestas.
+  - **2 bugs reales corregidos de paso, fuera del alcance de "replicar"**:
+    `.kb-titulo-link`/`.problema-titulo-link` forzaban `font-weight:600`
+    en el link de título, pisando la regla global "ningún dato de tabla en
+    negrita" — no eran una excepción a propósito.
+  - **Fuera de alcance, explícito**: `ImportarEquiposView.vue` (grilla de
+    staging con inputs, no un listado), las tablas de reporte agregado de
+    Tickets (otra naturaleza), `AreasObrasPanel.vue`/`TiposEquipoPanel.vue`/
+    `EmpresasView.vue`/`PlataformasView.vue` (sin badges que reducir ni
+    celda apilada que aporte valor real), `LicenciasView.vue` Vencimiento
+    (ya resuelve el mismo problema de urgencia con un mecanismo propio más
+    específico — forzar el patrón formal ahí sería peor, no mejor). Solo
+    se tocaron las tablas de escritorio — las tarjetas móviles (`.lista-
+    tarjetas`/`.tarjeta-fila`) quedaron sin tocar a propósito, el pedido
+    era "solamente el diseño de tablas".
+  - Ver "Tabla de Tickets — el módulo modelo" en `docs/GUIA-UX-UI.md` para
+    el patrón original; sin sección nueva en la guía (es una aplicación
+    repetida de un patrón ya documentado, no un patrón nuevo).
+- **2026-08-29** (sidebar: fusión de "Personas" en "Día a día") — El
+  retiro del módulo de Pre-registro (migración 084) dejó el grupo
+  "Personas" con un solo ítem (Empleados) — un encabezado de sección para
+  una sola fila no agrupa nada, solo agrega peso visual. Se evaluaron 3
+  propuestas (mínima: solo mover Encuestas a Personas; moderada: fusionar
+  Personas en Día a día; ambigua: renombrar grupos por frecuencia de uso +
+  badges de conteo) y se eligió la moderada. El sidebar pasa de 5 a 4
+  grupos: "Día a día" ahora es Dashboard + Tickets + Empleados. El resto
+  (Activos y credenciales, Conocimiento y mejora, Administración) no
+  cambia. De paso, corregidas 2 referencias internas rotas en
+  `docs/GUIA-UX-UI.md` que apuntaban a una sección "Rediseño de sidebar"
+  que ya no existe ahí desde que el changelog se extrajo al apéndice de
+  este archivo (2026-08-29, reorganización de documentación) — quedaron
+  apuntando al apéndice correcto.
+- **2026-08-29** (tipografía: Inter + Sora → Geist, una sola familia) —
+  Decisión del JEFE tras consulta directa: Inter se sentía "muy común"; Sora
+  se había elegido para acompañar el logotipo viejo (verde), motivo que dejó
+  de aplicar con el rebranding a azul del 2026-08-27 — cierra también la
+  nota "Axiforma pendiente" que quedaba abierta en el comentario de
+  `main.css` desde la primera versión de ese token. Se consolida a **una
+  sola familia** (Geist) para cuerpo y títulos, en vez de buscar OTRO par
+  cuerpo+título — la jerarquía la sigue dando el peso (600–700 en títulos)
+  y el tamaño, mismo criterio que "ningún dato en negrita en celdas de
+  tabla". `--mat-font-mono` pasa de la pila del sistema operativo (Cascadia
+  en Windows, SF Mono en Mac — variaba entre usuarios) a **Geist Mono**.
+  Verificado ANTES de tocar código, no asumido: se consultó la
+  disponibilidad real de Geist en Google Fonts (entró al catálogo el
+  2026-10-02) y se confirmó contra el endpoint `css2` real
+  (`family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700`)
+  que las 8 combinaciones familia+peso necesarias resuelven — mismo
+  mecanismo de carga que ya usaba Inter/Sora, sin hosting nuevo que
+  resolver. Los 4 pesos (400/500/600/700) son exactamente los que usa el
+  CSS real hoy (grep de `font-weight:` en todo `main.css`+`modules`+
+  `components`), ninguno de más. La escala de tamaños (`--mat-fs-*`,
+  11–26px) **no cambia** — Geist se diseñó explícitamente para legibilidad
+  en tamaños chicos de interfaz, el mismo rango donde vive casi todo el
+  texto de este panel; único punto señalado para revisar visualmente más
+  adelante (no verificable sin navegador en esta sesión): el x-height más
+  alto de Geist puede leerse un poco más grande/pesado que Inter en el
+  escalón más chico (`--mat-fs-xs`, 11px, badges y headers de tabla
+  uppercase). De paso se retira **Montserrat** del `<link>` de Google Fonts
+  en `index.html`: se cargaba sin que nada del código la usara (confirmado
+  por grep) — no era una tercera fuente del sistema, era peso muerto.
+  Archivos: `frontend/index.html`, `frontend/src/styles/main.css`,
+  `docs/GUIA-UX-UI.md` ("Tipografía").
+- **2026-08-29** (retiro del módulo "Pre-registro de personal", migración
+  084) — El módulo fue un experimento puntual para recolectar datos de
+  candidatos/nuevos ingresos antes del alta en Empleados; después sirvió de
+  piloto para lo que maduró en el módulo de Encuestas (043). Ya cumplió su
+  propósito y sus datos ya estaban exportados y en uso (0 filas verificadas
+  en producción antes de aplicar) — se retiró por completo en vez de
+  dejarlo vivo sin consumidor: tablas `personal_registros`/
+  `personal_registro_intentos` (dropeadas), edge function
+  `personal-registro` (des-desplegada de InsForge), módulo frontend
+  `modules/personal/` + store + dominios de API (`personalRegistros.js`,
+  `personalRegistro.js`), rutas `/personal-registro`/`/personal-registros`
+  e ítem de sidebar. Documentación actualizada en el mismo cambio:
+  `README.md` (stack, conceptos, estructura del repo, historial de
+  migraciones — 042/046/047/065 anotadas como revertidas, fila nueva 084),
+  `AGENTS.md`, `docs/PANORAMA-SISTEMA.md` (esquema, rutas, sidebar, capa de
+  datos, decisiones §6) y `docs/HISTORIAL-AUDITORIAS.md` (Q-06 parcial,
+  PERSONAL-REGISTRO-DNI-EXOFFBOARD cerrado por retiro,
+  EMPLEADOS-REINGRESO-DNI-SIN-MANEJO anotado). **Pendiente aparte, fuera de
+  este cambio**: `design.pen` probablemente todavía tiene el mockup de este
+  módulo — requiere una pasada separada con la herramienta Pencil, no se
+  tocó acá.
+
+- **2026-08-29** (Empleados: "Tarjetas" pasa a ser una grilla real, no una
+  lista de filas) — Feedback directo de uso: "tarjetas se ven filas y no
+  cards". Diagnóstico: `EmpleadosView.vue` reusaba `.tarjeta-fila` (la fila
+  compacta de una sola columna, pensada como fallback móvil de tablas) para
+  su modo de escritorio "Tarjetas" — en pantalla ancha se veía como una
+  lista angosta de filas, no como una grilla de tarjetas. `.lista-tarjetas`
+  se mantiene en el `<ul>` (le da el scroll-container ya resuelto dentro de
+  `.card--fill`); se suma `.emp-tarjetas` (`display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px,1fr))`, responsive
+  sin media query — con un viewport angosto ya entra 1 sola columna) y cada
+  `<li>` pasa de `.tarjeta-fila` a `.card.card--clicable` (la variante de
+  card con elevación en hover/focus ya definida en `main.css` desde G4, sin
+  ningún consumidor real en producción hasta ahora). Contenido reorganizado
+  en cabecera (avatar de iniciales nuevo, mismo criterio que
+  `TicketsView.vue`: dos letras en mayúscula vía JS + nombre/DNI + el
+  disparador de `MenuAcciones`, reubicado de pie a cabecera — más natural
+  en una card real), línea secundaria (cargo · empresa) y pie (badge de
+  estado + conteos de cuentas/equipos/licencias, ahora con `flex-wrap` para
+  no romper en una tarjeta angosta). Mismos datos que antes, ningún campo
+  nuevo. Ver "`TicketDetallePanel.vue`..." y la pasada de Tickets para el
+  precedente de `.card--clicable`/avatares de iniciales que se reutiliza
+  acá.
+- **2026-08-29** (Empleados: misma pasada de diseño que Tickets) — Auditoría
+  con 3 agentes de exploración de los 4 archivos del módulo + `CuentasPanel.vue`
+  (vive en `modules/cuentas/` pero solo lo consume Empleados), contrastando
+  contra los patrones ya corregidos en Tickets. Buena noticia: tipografía,
+  íconos, el selector Tabla/Tarjetas y `input[type="date"]` ya estaban
+  limpios — no repiten los problemas de Tickets. Se encontraron y corrigieron
+  4 hallazgos concretos: **(1)** `CuentasPanel.vue`: "Agregar cuenta" de la
+  toolbar era `.btn-primary` incondicional — con un empleado Inactivo
+  convivía con "Reactivar" del header, dos acentos compitiendo en la misma
+  vista (viola "un solo acento por vista", ya corregido antes en otras 7
+  vistas); baja a `.btn`, mismo peso que "Asignar" en Equipos/Licencias.
+  **(2)** `.panel-toolbar`/`.panel-title`, duplicados byte a byte en
+  `EmpleadoDetalleView.vue` y `CuentasPanel.vue`, se retiran — el template
+  pasa a usar `.card-toolbar`/`.toolbar-title` (ya global en `main.css`,
+  misma toolbar que usa Tickets). **(3)** `BajaEmpleadoModal.vue`: un ícono
+  usaba `--fs-md` (token de texto) en vez de `--icon-sm` (mismo valor, 14px,
+  token correcto) — deuda suelta del barrido de íconos de Tickets. **(4)**
+  `EmpleadoForm.vue` migra de modal hand-rolled a `Modal.vue` compartido
+  (bug real, UX6-03: no bloqueaba el scroll del body, sin Teleport) — sigue
+  al pie de la letra el patrón ya probado en `AccesoSensibleForm.vue` (y 8
+  formularios más): `<Modal :confirmar-cierre @close>` + `<form id>` en el
+  slot por defecto + `<button type="submit" form="...">` en `#acciones`
+  (los slots de Modal.vue son DOM separado, no admite un único `<form>`
+  continuo como el hand-rolled). Revisado y dejado sin tocar: el grid fijo
+  300px+1fr de `.detalle-grid` (mismo patrón que `.tdp-grid` en
+  `TicketDetallePanel.vue`, no una desviación) y el empty-state de texto
+  plano en Equipos/Licencias (paneles a mitad de ancho, el `EmptyState`
+  completo se vería sobredimensionado — ya documentado en su propio
+  comentario de código). Fuera de alcance a propósito: tuteo en
+  `ConfirmDialog` (UX6-02) y la migración de Modal.vue en los otros 7
+  formularios pendientes — hallazgos reales pero transversales a todo el
+  sistema, no específicos de Empleados.
+- **2026-08-29** (base global para `input[type="date"]`, disparado desde
+  Tickets) — Pedido puntual: "mejorar el componente DATE que siga el mismo
+  estilo de Materen". El filtro "Fecha de creación" de Tickets
+  (`FiltroFechaCreacion.vue`) no vivía dentro de `.form-group`, así que no
+  heredaba NADA del sistema — un input nativo pelado (sin borde, sin radio,
+  glifo de calendario del sistema operativo) al lado de bandejas y botones
+  con tratamiento Materen completo. En vez de un fix local a ese componente,
+  se agregó una base global `input[type="date"] { ... }` en `main.css`,
+  mismo criterio que ya existía para `<select>` ("Rediseño de dropdowns"):
+  un solo lugar da borde/radio/alto/tipografía a CUALQUIER date input del
+  sistema, esté envuelto o suelto. El glifo nativo (inconsistente entre
+  SO/navegador, la misma razón por la que `<select>` perdió su flecha
+  nativa) se reemplaza por un trazo propio vía
+  `::-webkit-calendar-picker-indicator`, mismo stroke/grosor que el chevron
+  del select y mismo par de grises claro/oscuro (`#9CA3AF`/`#6B7280`) — solo
+  Chromium/Edge; Firefox no expone ese pseudo-elemento y sigue con su ícono
+  nativo sin estilar, límite del navegador. Efecto lateral (no scope creep:
+  una sola regla global, cero archivos tocados) — los 6 date-input de
+  Empleados/Equipos/Licencias/Problemas, que ya tenían borde vía
+  `.form-group input`, ganan el mismo ícono de calendario gratis. Sin
+  navegador disponible para confirmar el render final; se validó que los 2
+  SVG data-URI son XML bien formado y la geometría del ícono coincide con el
+  calendario estándar de Tabler (rect + 2 "anillos" + divisor horizontal).
+- **2026-08-29** (décima pasada — Tickets: "Reporte" se consolida en "Más") —
+  Feedback directo de uso: "me gustó el menú de Más [...] así debemos incluir
+  Reporte también, el orden sería Enlace + Reporte + Satisfacción + Exportar
+  datos". El header de Tickets baja de 4 controles a 3 (selector de vista,
+  "Más", el único `.btn-primary`) — "Reporte" deja de ser un botón propio
+  del header (lo era desde la séptima pasada) y se suma a "Más" con el mismo
+  criterio que ya aplicaba a Satisfacción/Enlace soporte/Exportar: ninguna
+  de las cuatro se usa varias veces por turno. `accionesMas` fija el orden
+  Enlace soporte → Reporte → Satisfacción → Exportar datos (antes sin orden
+  explícito, y "Reporte" solo aparecía ahí en móvil vía un `visible:
+  esMovil.value` que se retira); "Exportar" pasa a "Exportar datos" como
+  label, más descriptivo dentro del menú. Ver "Header de Tickets: 'Reporte'
+  se consolida en 'Más'" en `GUIA-UX-UI.md`.
+- **2026-08-28** (novena pasada — `TicketDetallePanel.vue`: una tarjeta, no
+  tarjetas dentro de tarjetas) — Feedback directo de uso, misma sesión que
+  la octava pasada: el panel de detalle (tercera columna del shell en modo
+  Triage) tenía **5 `.card` propias** flotando dentro de sí mismo (header,
+  solicitante, datos del ticket, historial, conversación) sobre su propio
+  telón gris — el mismo problema de "tarjeta dentro de tarjeta" que la
+  octava pasada ya había corregido un nivel más arriba, sin detectarlo acá
+  adentro. El panel completo pasa a ser LA tarjeta (`class="... card"`,
+  reusando la clase global en vez de redeclarar fondo/borde/radio); las 5
+  secciones se separan con `.tk-seccion` (título + divisor horizontal), la
+  misma herramienta que `TicketDetalleView.vue` ya usaba para esto y que
+  llevaba copiada en este archivo sin consumidor real desde antes. Nuevo
+  divisor vertical (`border-right` en `.tdp-col-izq`) reemplaza el límite
+  que antes daban 2 cards con borde propio lado a lado; se invierte a
+  horizontal cuando el panel angosto colapsa a 1 columna. Un detalle que
+  dependía implícitamente de `.card{overflow:hidden}` (`.tdp-conversacion`,
+  contención del scroll interno) quedó sin esa propiedad al retirar la
+  clase — se hizo explícita en la propia regla. Ver "`TicketDetallePanel.vue`:
+  una tarjeta, no una tarjeta llena de tarjetas" en `GUIA-UX-UI.md`.
+- **2026-08-28** (octava pasada — Tickets: chrome unificado + "Isla" se
+  renombra a Triage) — Feedback directo de uso: alternar entre Tabla e Isla se
+  sentía "mal hecho" porque los dos modos NO compartían tratamiento visual
+  (Tabla full-bleed sin marco, Isla flotando con gap/padding) — una decisión
+  que la propia guía documentaba como deliberada. `.tickets-shell` gana
+  `gap`/`padding` incondicional, se retira el override que reducía el nav de
+  Tabla a un riel sin radio, y el override de tarjeta del contenido pasa de
+  `.tickets-lista .card--fill` (solo Isla) a `.tickets-shell .card--fill`
+  (las dos). **Bug real atrapado sin poder renderizar** (sin navegador
+  disponible en la sesión): el override ampliado no tenía guarda de mobile,
+  así que en ≤768px la tarjeta de Tabla —que sí se monta en mobile, a
+  diferencia de Isla— habría quedado con borde+radio pegada a los 4 bordes de
+  la pantalla; se corrigió con un reset en `@media (max-width: 768px)`
+  colocado DESPUÉS de la regla de escritorio (empate de especificidad se
+  resuelve por orden de aparición en el archivo), verificado leyendo
+  directamente el CSS ya compilado. Además, **"Isla" se renombra a "Triage"**
+  en vez de al "Panel" evaluado primero: "Panel" colisionaba con el
+  vocabulario ya existente para la columna de detalle
+  (`TicketDetallePanel.vue`, 16+ referencias a "panel de detalle"); "Triage"
+  ya era el término orgánico del propio proyecto para esta interacción (6+
+  usos previos en comentarios/docs). Cambia el valor persistido
+  (`'isla'` → `'triage'`, cae solo al default si quedó guardado el viejo) y
+  las clases `--isla` → `--triage`. El shell queda pensado para que un futuro
+  modo Kanban entre en el mismo hueco sin cambios de shell. Ver "Bandejas y
+  filtros de Tickets — octava pasada" en `GUIA-UX-UI.md`.
+- **2026-08-28** (escala de íconos + barrido tipográfico, todo el frontend) —
+  El proyecto tenía disciplina de color casi perfecta (cero hex hardcodeados
+  fuera de las vistas de laboratorio) y **ninguna** en tamaños: **131
+  declaraciones `font-size` en px sueltos** repartidas en 20+ archivos,
+  incluidos medios píxeles que no existen en ninguna escala (`10.5`, `11.5`,
+  `12.5`, `13.5px`), y **11 tamaños distintos de ícono**
+  (13/14/16/17/18/19/20/22/24/28/40px) sin criterio que dijera cuál usar. Se
+  agrega una **escala de íconos propia** (`--mat-icon-xs` … `--mat-icon-hero`,
+  7 pasos, alias `--icon-*`) separada de la tipográfica —los íconos se
+  dimensionan con `font-size` pero no son texto— y se migran las 131
+  declaraciones a `--fs-*` o `--icon-*`. Quedan **2 excepciones declaradas y
+  anotadas en su archivo** (`.ds-swatch span` 9px, `.nivel-btn` 24px).
+  Efecto lateral bueno: `.icon-btn` pasa de 17px a `--icon-lg` (18px), con lo
+  que el target táctil de WCAG 2.5.5 cierra en `padding: 13px` entero en vez
+  del `13.5px` que el propio comentario del código señalaba como valor feo.
+  Ver "Escala de íconos (tokenizada)" en `GUIA-UX-UI.md`.
+- **2026-08-28** (séptima pasada — Bandejas de Tickets: se va la duplicación
+  y el estado deshabilitado) — Las seis pasadas anteriores fueron sumando
+  ejes al riel de 200px sin volver a mirarlo entero: quedó con **12 ítems, 8
+  de ellos los mismos 4 sub-estados repetidos dos veces** (bajo "Mis tickets"
+  y bajo "Equipo") **y 4 siempre deshabilitados**, mientras las 2 bandejas más
+  miradas eran las únicas 2 sin contador. Ahora: 4 bandejas al mismo nivel,
+  las 4 con contador, y **una** lista de sub-estados contextual (la de la
+  bandeja activa) que desaparece en `sin_asignar`/`sin_vincular` — cero
+  controles apagados en pantalla. El modelo de datos no cambia (siguen los
+  dos campos separados del store). Además: **Nivel de atención** pierde su
+  columna (tabla 7 → 6) y se funde en la línea de metadatos de "Ticket";
+  header de 5 controles a 4 ("Satisfacción" y "Enlace soporte" al menú "Más",
+  que ahora existe también en escritorio); **"Exportar" se muda al header y
+  con eso queda disponible en Isla, donde no existía**; `ticketSeleccionado`
+  arranca en `store.ultimoAbierto` para que cambiar de Tabla a Isla no pierda
+  el ticket en curso; `FiltroFechaCreacion.vue` deduplica el bloque de fechas
+  que estaba copiado entre nav y barra móvil; el panel vacío de Isla usa
+  `EmptyState`. `ListaVistas.vue` gana la variante `segmento`, cuyo par de
+  contraste **con texto** (no solo-ícono como `SelectorVista`) destapó un
+  fallo AA real: `.tnav-contador` en terciario cae a 4.33:1 sobre
+  `--color-bg-subtle`; se sube a secundario solo en esa variante y los 3
+  pares quedan verificados en `scripts/contraste.mjs`. Ver "Bandejas y
+  filtros de Tickets — séptima pasada" en `GUIA-UX-UI.md`.
+- **2026-08-28** (corrección de deriva documental en `GUIA-UX-UI.md`) — El
+  "Resumen" seguía afirmando que producción estaba en navy/mint
+  (`#00203F`/`#36ECDE`) con el azul "pendiente de portar" y sin sombras en
+  ningún contenedor: las dos cosas eran falsas desde las fases G1–G4 del
+  2026-08-27, que la sección "Identidad de marca" ya documentaba bien. Mismo
+  patrón Q-01 de `HISTORIAL-AUDITORIAS.md`. Quedan **señaladas y sin tocar**
+  otras dos secciones con la misma deriva ("Bordes — jerarquía de 3 niveles
+  (dirección aprobada, pendiente de portar)" y "Excepciones hardcodeadas"),
+  porque son duplicados de secciones que sí están al día y fusionarlas es
+  decisión del JEFE.
+- **2026-08-28** (sexta pasada — suma "Equipo" a las Bandejas de Tickets) —
+  Tras la quinta pasada ("Mis tickets" como requisito) dejó de existir
+  cualquier vista sin restricción de técnico: no había forma de ver todos
+  los tickets de todos los técnicos. Se agregó **"Equipo"**, bandeja
+  hermana de "Mis tickets" con los mismos 4 sub-estados
+  (`ESTADOS_SUBFILTRO`: Todos/En progreso/Resuelto/Rechazados) pero
+  `asignadoA: ''` (sin acotar a nadie) en vez de `auth.user.id`.
+  `vistaActiva` pasa a 4 valores (`sin_asignar`/`sin_vincular`/
+  `mis_tickets`/`equipo`); cada bandeja tiene su propio campo de sub-estado
+  en el store (`estadoMisTickets`/`estadoEquipo`, no comparten uno) para
+  que cambiar de una a otra no pise en qué sub-estado estaba la otra.
+  `conteosVistas` pasa de objeto plano a `{ sin_asignar, sin_vincular,
+  misTickets: {...}, equipo: {...} }` — evita que ambas bandejas (mismos
+  `id` de sub-estado) lean el mismo número de un objeto compartido;
+  `cargarConteos()` pasa de 6 a 10 queries de conteo en paralelo. Ver
+  "Bandejas y filtros de Tickets — sexta pasada" en `GUIA-UX-UI.md`.
+- **2026-08-28** (pasada de contención de la vista Isla, sobre la quinta) —
+  **el shell de 3 columnas no estaba acotado en vertical y las islas se
+  derramaban fuera de su contenedor**. `.tickets-shell` pasa a declarar
+  `grid-template-rows: minmax(0, 1fr)` (antes usaba la fila implícita `auto`,
+  dimensionada por el hijo más alto): ese era además el motivo por el que
+  `overflow-y: auto` del nav y de la lista no hacía nada — sin alto acotado
+  no hay nada de qué desbordar, y el scroll terminaba siendo el de la página.
+  Se suman `overflow-x: hidden` en `.tickets-nav` (con `overflow-y:auto` el
+  eje X computa a `auto` y el riel de 200px se scrolleaba de costado) y
+  `overflow: hidden` en `.tickets-lista .card--fill` (scrolleaba la card
+  entera, llevándose fuera de vista el buscador y los chips, y pasaba por
+  encima de las esquinas redondeadas). En la tarjeta angosta, `.tk-antiguedad`
+  deja de partirse en dos renglones (`flex-shrink: 0`) y el título se corta en
+  2 líneas con `title` completo. **`TicketDetallePanel.vue`: el colapso del
+  split interno pasa de `@media (max-width: 1100px)` a
+  `@container tdp (max-width: 800px)`** — el umbral medía la ventana y no el
+  panel, que como tercera isla mide ~650px en una pantalla de 1440px, así que
+  nunca disparaba y Conversación quedaba en ~334px. Solo CSS + un `:title`;
+  sin cambios de estructura, navegación ni copy. Ver "Contención de las tres
+  islas" en `GUIA-UX-UI.md`.
+- **2026-08-28** (quinta pasada, corrección de la cuarta tras revisarla en
+  uso real) — **"Todos" pasó de significar "vigentes" a significar
+  literalmente todos los estados** (`ESTADOS_MIS_TICKETS` en
+  `TicketsView.vue`: `{ id: 'todos', estado: '' }`, no
+  `ESTADO_FILTRO_VIGENTES`) — el label prometía "todos" y entregaba "no
+  resuelto/rechazado", bug real detectado en uso;
+  `ESTADO_FILTRO_VIGENTES` sigue vigente para `sin_asignar`/`sin_vincular`,
+  donde sí corresponde. **"Mis tickets" pasó de toggle opcional a
+  bandeja-requisito**: ya no se puede navegar "En progreso"/"Resuelto"/
+  "Rechazados" global (todos los técnicos) sin activar antes "Mis
+  tickets" — `vistaActiva` es ahora `'sin_asignar' | 'sin_vincular' |
+  'mis_tickets'` (3 valores exclusivos, `stores/tickets.js`), y los 4
+  sub-estados se deshabilitan enteros fuera de `mis_tickets` (prop
+  `disabled` nueva en `ListaVistas.vue`). Contrapartida aceptada: se pierde
+  la vista global de un estado por todos los técnicos a la vez; no era el
+  pedido de esta pasada. **"Sin vincular" se agrupó con "Sin asignar"** en
+  la misma sección del nav (antes bandeja suelta al final). **Prioridad,
+  Nivel de atención, Tipo y Categoría se ELIMINARON como filtros del
+  listado** (no solo se reubicaron, como en la cuarta pasada) — el dato
+  sigue en la tabla/detalle, se quitó la capacidad de filtrar por ellos;
+  `queryTickets()`/`contarTickets()` (`api/domains/tickets.js`) ya no
+  reciben esos 4 parámetros. `ChipsFiltro.vue` quedó sin consumidores y se
+  eliminó — sus clases globales se movieron a `main.css` (la fila de
+  "chips de filtros activos" seguía necesitándolas). **Fecha de creación**
+  (único filtro secundario que queda) se rediseñó: Desde/Hasta pasaron de
+  lado a lado sin etiqueta visible a apilados verticalmente con
+  mini-etiqueta propia. Ver "Bandejas y filtros de Tickets — quinta
+  pasada" en `GUIA-UX-UI.md`.
+- **2026-08-28** (cuarta pasada, correcciones de flujo de trabajo sobre la
+  tercera) — **"Mis tickets" pasó de Vista plana a toggle independiente**
+  (`store.misTicketsActivo`) que se combina con las 4 Vistas de estado
+  (`todos`/`en_progreso`/`resuelto`/`rechazado` — `VISTAS_CON_MIS_TICKETS`
+  en `TicketsView.vue`), en vez de ser un combo cerrado propio: ahora se
+  puede ver "mis tickets en progreso" o "mis tickets rechazados", cosa que
+  antes obligaba a salir de la Vista "Mis tickets". Deshabilitado en
+  `sin_asignar`/`sin_vincular` (no aplica: un ticket sin asignar no es de
+  nadie, y "sin vincular" no depende del técnico). `VISTAS_TICKETS` vuelve
+  a 6 ítems; los contadores por Vista ahora recalculan también con el
+  toggle. **Se retiró `MasFiltros.vue`** (componente eliminado, sin
+  consumidores) — sus filtros (Nivel, Tipo, Categoría, Fecha, y Prioridad en
+  mobile) dejaron de vivir detrás de un popover oculto y pasaron a un bloque
+  siempre visible (`.tk-filtros-secundarios`) bajo las Bandejas en el nav de
+  escritorio y en su propia fila en mobile — Tickets es la plantilla de
+  diseño para los demás módulos, y el patrón "oculto hasta que alguien lo
+  busque" no es el que se quiere replicar. Se retiró el atajo `f` de
+  Tickets (`useAtajosLista.js` sigue existiendo, genérico, por si otro
+  módulo usa un popover). Ver "Bandejas y filtros de Tickets — cuarta
+  pasada" en `GUIA-UX-UI.md`.
+- **2026-08-28** (tercera pasada, checklist de revisión externa sobre la
+  segunda) — Cada punto se verificó contra el código antes de aplicarlo; el
+  checklist tenía varios que ya estaban resueltos y dos que contradecían
+  decisiones de producto ya tomadas. **Aplicado**: bandeja "Sin vincular"
+  (antes checkbox suelto en `MasFiltros`, ahora una Vista más — combo
+  `estado: vigentes, sinVincular: true` — al final del orden de flujo de
+  trabajo); filtros nuevos **Nivel, Tipo, Categoría y Fecha de creación**
+  (`queryTickets()`/`contarTickets()` en `api/domains/tickets.js` suman
+  `nivelAtencion`/`tipo`/`categoriaId`/`fechaDesde`/`fechaHasta`; **no** se
+  sumó un filtro de "Estado" — habría sido la misma duplicación de 2
+  fuentes de verdad para el mismo dato que el modelo de Vistas cerró en la
+  primera pasada); chips removibles de filtros activos + botón "Limpiar
+  filtros" + contador en el badge de `MasFiltros.vue` (prop `contador`
+  nueva); "N resultados" en Isla; indicador "sin vincular" en la tarjeta
+  angosta de Isla (faltaba, la tarjeta móvil ya lo tenía). **Persistencia
+  de filtros al navegar al detalle y volver** (bug real: en modo Tabla,
+  abrir un ticket navega a `/tickets/:id` y desmonta `TicketsView.vue`) —
+  `vistaActiva` y los 6 filtros secundarios se movieron de refs locales a
+  `stores/tickets.js` (`vistaActiva` en el state; los filtros ya vivían ahí,
+  ahora los controles leen/escriben directo con `computed({get,set})` en
+  vez de un ref+watcher aparte); `resetearFiltros()` ya NO se llama en cada
+  montaje — se agregó `resetearBusqueda()`, más angosto (solo `filtros.q`),
+  para seguir evitando el mismatch buscador-vacío-pero-filtro-vivo
+  reportado en jul 2026 (ver `stores/empleados.js`) sin volver a pisar Vista/
+  Prioridad/Nivel/Tipo/Categoría/Fecha en cada remontaje. **No aplicado,
+  contradice una decisión de producto ya tomada**: "Todos (vigentes)" sin
+  filtro de estado (repurposearía el mismo recorte que ya comparten
+  `dashboard.js` y el RPC de reportes 053) y una bandeja "Cerrados" separada
+  de "Resuelto" (deshace la fusión resuelto+cerrado del 2026-08-21 —
+  `cerrar_ticket()` encadena ambos en un clic a propósito). **No aplicado,
+  requiere una operación de backend que no existe**: vincular/desvincular un
+  ticket a un empleado desde el detalle — el único "vincular" de tickets que
+  existe hoy es ticket↔problema (`api/domains/problemas.js`), no
+  ticket↔empleado; hace falta una RPC nueva, no es solo UI. **Ya estaba
+  implementado, solo se verificó** (sin cambios): las 3 bandejas por estado
+  ya mostraban todos los técnicos, no solo el usuario actual; el resaltado
+  de fila/tarjeta seleccionada (segunda pasada); el scroll horizontal de
+  `.table-wrap`; prioridad+asignado+vinculado en la tarjeta angosta de
+  Isla (salvo vinculado, sumado ahora); el badge "Sin vincular" en el panel
+  de detalle; la diferenciación nota interna/visible en la conversación;
+  las 4 acciones guiadas por estado (Iniciar atención exige
+  prioridad+nivel+asignado+tipo, Rechazar y Reabrir exigen motivo vía
+  `ConfirmDialog`, Marcar resuelto pide confirmación); el contraste de la
+  fila activa (`filaActivaTexto`); Nivel en texto plano; la paginación
+  server-side (ya existía, no carga todo el listado). Verificado con
+  `npm run build`, `npm test` (184/30/0) y `node scripts/contraste.mjs`
+  (0 fallas). Pendientes que quedan fuera — filtro por "Asignado a" (choca
+  con el eje asignado de las Vistas, necesita diseño propio antes de
+  sumarse), columna de Acciones por fila, drawer <1200px, filtros en la
+  URL y contadores en tiempo real — ver `docs/GUIA-UX-UI.md`.
+- **2026-08-28** (segunda pasada, contra una guía de diseño externa) —
+  Se aplicó lo viable de esa guía y se documentó lo que no. **Aplicado**:
+  Bandejas como panel lateral en las DOS vistas (`.tickets-shell`, un solo
+  esqueleto `nav + contenido` — antes el nav existía solo en Isla y alternar
+  de vista movía las bandejas de arriba a la izquierda); columna **Nivel**
+  (exigió sumar `nivel_atencion` a `SELECT_RESUMEN`/`mapTicketResumen` y al
+  export por periodo — solo viajaba en `getTicket()`), en texto plano y no
+  como badge de color; **selección visible** de fila y de tarjeta
+  (`.fila-ticket--activa`/`.tarjeta-fila--activa`, con `ultimoAbierto` en el
+  store para sobrevivir a la navegación al detalle); **atajos de teclado**
+  `/` y `f` (`composables/useAtajosLista.js`, `defineExpose` en
+  `MasFiltros.vue` porque es multi-root); botón **Exportar** en la toolbar,
+  extrayendo la forma del CSV a `core/exportar-tickets.js` compartida por los
+  3 consumidores (antes vivía solo dentro de `ReporteTicketsModal.vue`).
+  **No aplicado, con motivo**: columna de Acciones por fila (obligaría a
+  inventar operaciones que hoy no existen fuera del panel de detalle),
+  detalle de 420px con tabs (revertiría el layout de 2 columnas documentado
+  en ago 2026, que le da a Conversación el ancho que las tabs le quitarían) y
+  drawer <1200px (necesita decidir overlay vs. push, no es una traducción
+  mecánica). **Errores de la guía detectados y no propagados**: sus 6 tokens
+  CSS (`--color-surface`, `--border-subtle`, `--bg-tertiary`, `--brand-50`,
+  `--space-3`, `--z-dropdown`) no existen en `main.css`; sus 6 métodos de API
+  (`listar`/`obtener`/`rechazar`/`iniciarAtencion`/`marcarResuelto`/`reabrir`)
+  tampoco; separaba `cerrado` de `resuelto`, contra la fusión decidida el
+  2026-08-21; y proponía `<th></th>` vacío y `@click` en el `<th>`, ambos
+  contra las reglas de tabla vigentes. Nuevo par verificado en
+  `scripts/contraste.mjs` (`filaActivaTexto`): sobre `--accent-subtle`,
+  `text-tertiary` da 4.27:1 claro / 3.87:1 oscuro y **no pasa** — la fila
+  activa sube esos tonos a `text-secondary` (5.49:1 / 6.05:1). Verificado con
+  `npm run build`, `npm test` (184/30/0), `npx eslint` (0 errores) y
+  `node scripts/contraste.mjs` (0 fallas).
+- **2026-08-28** — Rediseño de la tabla y la vista Isla de Tickets, con la
+  parte reutilizable bajada a `main.css` como capa global de tabla. Global
+  (llega solo a las ~20 tablas del sistema, sin tocar ninguna vista):
+  densidad `12px`→`9px` de padding vertical en `td`/`th` (fila de ~38px a
+  ~32px), `tbody tr:focus-within` para dar a la fila enfocada por teclado el
+  mismo realce que el hover, y tres utilidades nuevas — `col-elastica`
+  (la columna que absorbe el ancho sobrante), `col-num` y `.celda-apilada`
+  (celda de dos líneas, la forma de dar jerarquía sin negrita). `col-elastica`
+  queda portada **solo en Tickets**: es opt-in de un atributo por módulo.
+  Tickets: de 8 columnas a 6 y de hasta 3 píldoras de color por fila a 1
+  (Estado); Prioridad pasa a punto+texto en `IndicadorPrioridad.vue` (nuevo,
+  `components/shared/`) y a primera columna; Código+Categoría+Título colapsan
+  en una celda, Fecha+Antigüedad en la columna "Edad" de una línea; la barra
+  de filtros baja de 3 filas a 1 (Prioridad se muda al popover de
+  `MasFiltros` en modo Tabla). Isla: contadores en las 6 Vistas y no solo en
+  la activa (`insforgeApi.contarTickets()`, nuevo — `queryTickets()` acepta
+  `soloConteo`), se retira el ítem muerto "Vencidos · Próximamente" (la
+  función sigue pendiente, anotada en la guía), y la tarjeta angosta suma
+  Prioridad y Solicitante en lugar de la píldora de Tipo. Corrige además la
+  única cadena con voseo de la app ("Seleccioná un ticket…", estado vacío del
+  panel). `scripts/contraste.mjs` suma el par `prioridadUrgente`
+  (`danger-text` sobre `bg-elevated`, 7.01:1 claro / 6.42:1 oscuro): hasta
+  acá ese token solo se había verificado dentro de `danger-bg`. Verificado
+  con `npm run build`, `npm test` (184 pasan, 30 se saltan, 0 en rojo),
+  `npx eslint` (0 errores) y `node scripts/contraste.mjs` (0 fallas).
+  Detalle en `docs/GUIA-UX-UI.md`, "Rediseño de tabla (ago 2026) — capa
+  global" y "Tabla de Tickets (ago 2026) — el módulo modelo".
 - **2026-08-27** — Rediseño de arquitectura de filtros en
   `TicketsView.vue`: reemplaza el modelo de 2 superficies separadas
   manteniendo el mismo estado (Tabla: dropdown Estado + chips sueltos;
@@ -64,7 +667,7 @@
   (reportado por un usuario real con `almacen.nufago.06@gmail.com`/VPN).
   Backfill por ID explícito de las 4 filas huérfanas ya existentes, mismo
   hallazgo. `compartida`/`reutilizable` sin cambios — deben poder quedar
-  sin asignar. `docs/PANORAMA_SISTEMA.md` (tabla de Credenciales) y la fila
+  sin asignar. `docs/PANORAMA-SISTEMA.md` (tabla de Credenciales) y la fila
   del hallazgo en Ciclo 13 de `docs/HISTORIAL-AUDITORIAS.md` actualizados
   en el mismo cambio.
 - **2026-08-20** — `functions/equipos-fotos.ts` gana `tienePermisoModulo('equipos')`
@@ -142,7 +745,7 @@
   como required status check sigue pendiente de que el usuario lo configure.
 
 - **2026-08-17** — Migraciones 064-070 + `functions/equipos-fotos.ts` (nueva)
-  (`README.md`, `AGENTS.md`, `docs/PANORAMA_SISTEMA.md`,
+  (`README.md`, `AGENTS.md`, `docs/PANORAMA-SISTEMA.md`,
   `docs/HISTORIAL-AUDITORIAS.md` Ciclo 8): verificación de un análisis de
   seguridad externo — 7 hallazgos confirmados como gaps reales, corregidos.
   064: `accesos_log` gana `ip`/`user_agent` + auditoría de intentos fallidos
@@ -175,7 +778,7 @@
   SELECT (escriben vía trigger `SECURITY DEFINER` o edge function admin;
   abrir INSERT a `authenticated` sería una regresión de seguridad, no una
   mejora). Ver Ciclo 7 en `docs/HISTORIAL-AUDITORIAS.md` para el detalle.
-- **2026-08-17** — Migración 062 (`README.md`, `docs/PANORAMA_SISTEMA.md`,
+- **2026-08-17** — Migración 062 (`README.md`, `docs/PANORAMA-SISTEMA.md`,
   `docs/HISTORIAL-AUDITORIAS.md`, `AGENTS.md`): respuesta a los 80 hallazgos del InsForge
   Backend Advisor. `REVOKE EXECUTE ... FROM PUBLIC` en las 16 funciones
   `SECURITY DEFINER` marcadas "callable by: public", con `GRANT` de vuelta a
@@ -208,7 +811,7 @@
   `test-integration` todavía no existen en el repo; pasos para crearlos
   documentados en `README.md`, sección "CI: secrets del smoke de
   integración").
-- **2026-08-17** — Migración 061 (`README.md`, `docs/PANORAMA_SISTEMA.md`,
+- **2026-08-17** — Migración 061 (`README.md`, `docs/PANORAMA-SISTEMA.md`,
   `docs/HISTORIAL-AUDITORIAS.md`): fix de bug en producción — un ASISTENTE
   que genera el reporte de tickets veía a sus compañeros como "Staff" (la
   RLS de SELECT de `staff` es "propio registro o jefe"). Mismo patrón
@@ -255,11 +858,11 @@
   "Total" a "Histórico" en el modal y el PDF, con nota aclaratoria, porque
   dentro de un reporte por periodo "Total" se leía como si fuera de ese
   periodo. `tasaReapertura` sin cambios (ya usa resueltos como denominador,
-  como fija `docs/PANORAMA_SISTEMA.md` §5). Línea base real verificada:
+  como fija `docs/PANORAMA-SISTEMA.md` §5). Línea base real verificada:
   **95 tests pasan + 1 se salta (96 total, 0 en rojo)** — ni el "88/97" ni
   el "96/97" que se habían documentado antes eran correctos; `AGENTS.md`
   corregido con la cifra real. Detalle completo en
-  `docs/PANORAMA_SISTEMA.md` §6.
+  `docs/PANORAMA-SISTEMA.md` §6.
 - **2026-08-16** — Proceso (hallazgo A-05/W-04/Q-05): agrega
   `.github/pull_request_template.md` (checklist de documentación/tests/capa
   de deploy afectada) y `CONTRIBUTING.md` (convención de commits `fix(scope):`/
@@ -279,7 +882,7 @@
   `EmpleadoForm.vue` gana un select de Ubicación independiente del de
   Área/Obra; `EmpleadosView.vue` gana un filtro de Ubicación;
   `AreasObrasPanel.vue` pierde el campo de ubicación; `UbicacionesPanel.vue`
-  gana el select de tipo. Cierra el pendiente de `docs/PANORAMA_SISTEMA.md`
+  gana el select de tipo. Cierra el pendiente de `docs/PANORAMA-SISTEMA.md`
   §7 sobre "consolidar en un catálogo único" — la idea original era la
   equivocada, ver §6. "Obra" queda sin dividir (cero referencias reales,
   pendiente sin urgencia).
@@ -349,7 +952,7 @@
   solo se conectó. Además, `/tickets/:id` gana un botón "Copiar mensaje de
   WhatsApp" (mismo patrón que `copiarEnlaceSoporte()`, sin abrir `wa.me`),
   para lo cual `getTicket()` ahora expone `token`. Detalle en
-  `docs/PANORAMA_SISTEMA.md` §5 y `docs/HISTORIAL-AUDITORIAS.md`.
+  `docs/PANORAMA-SISTEMA.md` §5 y `docs/HISTORIAL-AUDITORIAS.md`.
 - **2026-08-13** — Observabilidad y rendimiento del dashboard (roadmap
   pedido explícitamente por el usuario). `@sentry/vue` instalado e
   inicializado en `main.js` (solo `PROD` + `VITE_SENTRY_DSN` configurado,
@@ -384,7 +987,7 @@
   referencias a `correo_fallido`/`ticket_correo_fallido` en
   `dominio-tickets.js`/`notificacionIconos.js`. La encuesta de satisfacción
   sigue generándose al cerrar, pero sin ningún aviso — el enlace queda sin
-  canal de entrega. Actualizados README.md, `docs/PANORAMA_SISTEMA.md` y
+  canal de entrega. Actualizados README.md, `docs/PANORAMA-SISTEMA.md` y
   `docs/HISTORIAL-AUDITORIAS.md` (S-01 marcado como superado).
 - **2026-08-13** — Primer porteo real de `design.pen` a producción, 5
   commits (Fases A-E): tokens aditivos en `main.css` (`space-1..12`,
@@ -414,10 +1017,10 @@
   `docs/HISTORIAL-AUDITORIAS.md` con el incidente y la lección aprendida.
 - **2026-08-12** — Nueva regla en `AGENTS.md` ("Diagnóstico/pruebas contra
   producción"): extiende la práctica de usar un branch de InsForge (antes
-  solo para tablas de prueba nuevas, `docs/PANORAMA_SISTEMA.md` §7) a
+  solo para tablas de prueba nuevas, `docs/PANORAMA-SISTEMA.md` §7) a
   cualquier INSERT/UPDATE/DELETE de diagnóstico contra datos reales —
   limpieza en la misma sesión + registro explícito obligatorio. Agregada
-  nota junto a `siguiente_codigo_ticket()` en `docs/PANORAMA_SISTEMA.md`
+  nota junto a `siguiente_codigo_ticket()` en `docs/PANORAMA-SISTEMA.md`
   explicando que los huecos de `TCK-00XX` son esperables (`nextval()` no
   es transaccional), a raíz del salto 0096→0120 documentado en T-05.
 - **2026-08-12** — **Fix de bug en producción** (migración 054): eliminada
@@ -428,7 +1031,7 @@
   Reproducido y verificado el fix directo contra producción. Agregado
   hallazgo T-05 (Resuelto) a `docs/HISTORIAL-AUDITORIAS.md`, fila 054 en
   el historial de migraciones de `README.md`, y corregida la descripción
-  de `crear_notificacion()` en `docs/PANORAMA_SISTEMA.md`.
+  de `crear_notificacion()` en `docs/PANORAMA-SISTEMA.md`.
 - **2026-08-12** — Dividido `AppLayout.vue` (1161 líneas, A-06) en
   `AppSearch.vue`, `AppNav.vue` y `AppNotifications.vue`; queda en 517
   líneas como orquestador (socket realtime, drawer/colapso, tema, logout).
@@ -494,8 +1097,1245 @@
 - **2026-08-11** — Revisión general de toda la documentación: `README.md`
   (migraciones 039–047, módulos Notificaciones/Encuestas/Pre-registro de
   personal), `AGENTS.md` (vigencia, regla de "docs por cambio"),
-  `docs/PANORAMA_SISTEMA.md` (esquema hasta 047, decisiones revisadas),
+  `docs/PANORAMA-SISTEMA.md` (esquema hasta 047, decisiones revisadas),
   `docs/GUIA-UX-UI.md` (vigencia, componente `NotificacionesCampana`). Se
   fusionaron los dos informes de auditoría sueltos en la raíz en
   `docs/HISTORIAL-AUDITORIAS.md` (con estado reconciliado hallazgo por
   hallazgo) y se crea este changelog.
+
+---
+
+## Apéndice — Historial detallado de decisiones de diseño (migrado desde `docs/GUIA-UX-UI.md`)
+
+> Bloque movido tal cual desde el interior de `docs/GUIA-UX-UI.md` (vivía ahí
+> bajo "Componentes compartidos", mezclado con la referencia del design
+> system) en la reorganización de documentación de 2026-08-29. Orden
+> original preservado (más antiguo primero, según se fue escribiendo cada
+> pasada) — no resecuenciado contra las entradas de arriba, que están en
+> orden inverso. Contenido sin editar más allá de esta nota.
+
+#### Changelog — auditoría y estandarización (2026-08-12)
+
+- **Bug de renderizado (sesión anterior)**: se auditaron los 46 componentes
+  y los 3 tableros nodo por nodo (bounds + captura). No se encontraron
+  nodos fantasma persistentes — el problema de la sesión anterior era caché
+  de render del cliente en nodos creados con `Insert` dentro de la misma
+  sesión en vivo (no repintaban hasta recargar), no corrupción de datos.
+  **El mismo bug reapareció dos veces durante esta auditoría** al insertar
+  el componente `Logotipo compacto` desde cero: los nodos quedaban con
+  datos correctos (confirmado con `bounds`) pero invisibles hasta recargar.
+  Patrón de corrección usado: `Copy` de un nodo recién insertado fuerza el
+  repintado inmediato, mientras que el `Insert` original se queda en blanco
+  en la misma sesión — por eso el componente final se promovió desde una
+  copia verificada en vez de dejar el `Insert` original.
+- **Nomenclatura**: se renombraron los 46 componentes raíz con el prefijo
+  de familia (ver arriba) y se corrigieron 7 capas internas con nombres
+  genéricos ambiguos (`Texto` usado a la vez para un texto suelto y para un
+  frame contenedor en `Modal`, `Tarjeta`, `Diálogo de confirmación`,
+  `Cabecera de módulo` e `Ítem de notificación`; ahora `Título`/`Textos`
+  según corresponda). El texto "sistema ti" del logotipo pasó de estar
+  nombrado por su contenido a `Texto de marca`.
+- **Tokens**: se compararon los 71 `--mat-*` declarados en `main.css`
+  contra las variables de `design.pen`. Se agregaron 13 tokens reales que
+  faltaban y estaban en uso activo en el código: `font-mono`, `ring`
+  (`--mat-ring`, el anillo de foco), `accent-2`, `success` (color base,
+  distinto de `success-text` en oscuro), `warning-text-strong`,
+  `warning-bg-strong`, `teal-bg-subtle`, `brand-elevated`, `brand-ink`,
+  `purple-border`, `sky-border`, `teal-border`, `scroll-shadow`. Se
+  corrigió un bug de fidelidad ya presente en la primera versión: el
+  overlay de `Modal` tenía un valor de tema oscuro inventado (`main.css` no
+  define uno — el `.modal-bg` no tiene override por tema) y `Barra de
+  capacidad` usaba `$success-text` en vez de `$success` (diverge en oscuro:
+  `#6EE7B7` vs `#34D399`), igual que `.capacity-fill--ok` en `main.css`.
+  `brand-elevated`, `brand-ink`, `purple-border`, `sky-border`,
+  `teal-border` y `radius-xl` están declarados en `main.css` pero **ninguna
+  regla los consume actualmente** — deuda del código fuente, migrados de
+  todos modos para paridad 1:1, y señalados como no usados. `scroll-shadow`
+  tampoco es replicable 1:1: `main.css` lo usa dentro de 4 gradientes en
+  capas con `background-position`, que el modelo de `Fill` de Pencil no
+  soporta — se migró el color plano, no el efecto compuesto.
+  `accent-alt`/`accent-subtle-bg`/`accent-subtle-text` no generaron tokens
+  nuevos a propósito: son duplicados exactos (mismo valor, mismos temas) de
+  `accent-2`/`accent-subtle`/`accent-text` ya existentes en el propio
+  `main.css`, y crear una segunda variable idéntica habría violado la regla
+  de "sin duplicados". `shadow-sm/md/lg` valen `none` en las tres — no son
+  representables como variable de color/número; se honran por ausencia de
+  efecto de sombra en todos los componentes (ningún componente de la
+  librería usa `effect: shadow`), consistente con la decisión de producto
+  "sin sombras en contenedores" (DS v0.3 §3.4).
+- **Estados y variantes**: se agregaron filas "Estados" con casos reales
+  del código (no inventados) a `Primitivas/Botón` (hover, focus con anillo
+  visible, cargando con `spinner-icon` — patrón usado en 35+ archivos —, y
+  un "deshabilitado" anotado como inferido porque `.btn` no define
+  `:disabled` en `main.css`), `Formularios/Campo de texto` (focus con
+  `$ring`, "con error" mostrando el patrón real: sin borde rojo, solo
+  `.form-error` + `aria-invalid` para lectores de pantalla, y
+  "deshabilitado" con la misma salvedad que `.btn`) y
+  `Navegación y marca/Ítem de navegación` (hover; sin `:focus-visible`
+  propio, anotado). `Badge estado` se dejó explícitamente sin estados de
+  interacción con una nota: no es interactivo en el código (`<span>` de
+  solo lectura). Se agregó una variante "alerta" a `Tarjeta de métrica`
+  usando `warning-bg-strong`/`warning-text`, el único uso real de esos
+  tokens (`.stat-icon--alerta` en `DashboardView.vue`).
+- **Logo (posicionamiento absoluto)**: se evaluó convertir el logotipo a
+  auto layout escalable. **Confirmado empíricamente que no es posible con
+  las primitivas actuales de Pencil**: sobreescribir `width`/`height` en
+  una instancia no reescala sus hijos con `layout: "none"` (quedan con las
+  coordenadas absolutas originales y se desbordan o se ven diminutos según
+  el caso) — verificado con `bounds` reales, no con capturas (una captura
+  de un nodo aislado no sirve para juzgar escala real: la herramienta
+  ajusta la imagen a un tamaño de miniatura consistente sin importar el
+  tamaño real del nodo, lo que produjo un falso positivo inicial). Por eso
+  el logotipo se mantiene como dos componentes independientes con
+  geometría propia (`Logotipo Materen — Sistema TI` 394×100 y
+  `Logotipo compacto` 110×28), no como variantes de tamaño de un mismo
+  componente. Es la única forma de que ambos tamaños rendericen fielmente
+  hoy; queda anotado en el tablero (ficha `Marca`) para que no se intente
+  "simplificar" de nuevo sin volver a probar. `Símbolo Sistema TI` (28×28,
+  icono solo) se mantiene aparte porque corresponde a un archivo fuente
+  distinto (`icon_sisti.svg`), no es una variante de tamaño del lockup.
+- **Accesibilidad (WCAG AA)**: se midió contraste real (fórmula de
+  luminancia relativa, no aproximado) de los 9 pares badge fondo/texto en
+  ambos temas — todos pasan AA (mínimo 4.86:1 en claro, 5.84:1 en oscuro
+  compuesto sobre `bg-elevated`), botón primario en ambos temas (5.39:1 /
+  9.84:1) y los 13 tokens nuevos. Dos hallazgos reales, ambos del código
+  fuente (no de la migración): la deuda ya conocida de `text-muted`
+  terciario, ampliada con la medición en oscuro (ver arriba), y un bug
+  nuevo no registrado antes en `.btn-danger:hover` (ver arriba). Ninguno
+  se "corrigió" en Figma — se documentan y, en el caso del botón de
+  peligro, se reproducen visiblemente en el propio tablero para que no
+  pasen desapercibidos.
+
+**Pendiente / requiere decisión de diseño** (no resuelto en esta pasada):
+
+- El patrón "aviso de advertencia" (`warning-bg` + `warning-text-strong`,
+  fondo suave con texto reforzado) se usa en 3 vistas
+  (`BajaEmpleadoModal.vue`, `EntregaView.vue` ×2) pero no tiene componente
+  propio en la librería — no se agregó por estar fuera del alcance de "los
+  46 componentes existentes"; queda como candidato a incorporar.
+  `--mat-color-brand-elevated`/`brand-ink`/`purple-border`/`sky-border`/
+  `teal-border`/`radius-xl` migrados pero sin ningún consumidor en el
+  código actual — decidir si se eliminan de `main.css` o se usan.
+- El bug de `.btn-danger:hover` en oscuro y la extensión de la deuda U-01
+  a tema oscuro no están todavía en `docs/HISTORIAL-AUDITORIAS.md` — se
+  señalan aquí porque surgieron de esta auditoría de `design.pen`, no se
+  registró un hallazgo formal nuevo ahí para no invadir ese documento sin
+  pedido explícito.
+
+#### Changelog — propuesta de rediseño de paleta (2026-08-12, tercera pasada)
+
+> **Archivada (2026-08-27)**: esta propuesta (verde/teal, notación de
+> puntos) nunca se portó a producción. La dirección real de marca terminó
+> siendo la azul validada en el Style Lab — ver "Identidad de marca" y su
+> changelog "migración de marca al azul, Fases G0-G5". Se deja el registro
+> completo abajo por valor histórico, no como propuesta vigente.
+
+Reemplazo completo de los tokens de color de `design.pen` (no de
+`main.css`) por una propuesta nueva, anclada en los dos colores del logo
+(`#34D399`/`#072E2A`, sin modificar) y en notación de puntos
+(`brand.400`, `text.primary`, `success.bg`...) en vez del `kebab-case`
+anterior. Iniciativa del usuario con cálculos de contraste propios; yo
+verifiqué cada valor, encontré y resolví un problema real antes de aplicar
+nada, derivé los tokens que faltaban con la misma metodología, y reescribí
+las 383 referencias de color de los 46 componentes (290 propiedades
+directas + 93 overrides de instancia).
+
+- **Bug encontrado en el brief antes de implementarlo**: `brand.600`
+  (candidato obvio para "acento sólido", ya que su valor en oscuro
+  coincidía con el patrón del `accent-hover` anterior) fallaba contraste
+  con texto blanco en **ambos** temas — 3.77:1 en claro, **1.92:1 en
+  oscuro** (porque `brand.600` oscuro = `brand.400` = el verde crudo del
+  logo). Es el mismo número exacto que el bug de `accent-soft` que esta
+  paleta buscaba eliminar (punto 3 del brief), reaparecido un paso más
+  arriba en la escala. Consultado con el usuario; resuelto usando
+  `brand.700` como acento (5.48:1 claro) y tematizando `text.on-brand`
+  (blanco en claro, `#072E2A` en oscuro, 8.91:1) en vez de dejarlo fijo en
+  blanco como pedía el brief original — necesario porque ningún verde de
+  la mitad superior de la escala en modo oscuro despeja 4.5:1 con blanco.
+- **Segundo hallazgo, encontrado ya en producción de las muestras**: el
+  brief no incluye un hue "teal/cian" (evita a propósito la zona
+  verde-teal para no competir con la marca), pero el sistema anterior
+  usaba teal para la prioridad "Media" de tickets. Mi primer intento
+  reasignó esa prioridad a `categoric.blue` — que resultó ser el mismo hex
+  exacto que `info.solid` (#2563EB), recreando la colisión semántica que
+  el punto 2 del brief buscaba eliminar (esta vez entre "Abierto" y
+  "Media"). Corregido reasignando a `categoric.indigo`, con su propio par
+  bg/text/border derivado y verificado.
+- **Tokens sin equivalente en el brief, derivados con la misma
+  metodología** (tinte ~90% hacia blanco/superficie para `.bg`,
+  oscurecido/aclarado por tema para `.text`, verificados ≥4.5:1; bordes
+  decorativos verificados ≥3:1 donde fue posible):
+  `border.subtle`, `ring` (basado en `brand.700` al 28% alfa, mismo patrón
+  que el sistema anterior), `success/warning/danger/info.border`,
+  `warning.text-strong`/`warning.bg-strong` (mismos roles que ya existían:
+  avisos reforzados y `.stat-icon--alerta`), `neutral.bg/text/border`
+  (sobre `categoric.slate`, reemplaza al `neutral` que el brief no
+  contemplaba pero que sigue en uso real para Inactivo/Cerrado/De baja) y
+  `categoric.*.bg/.text/.border` para los 8 hues (el brief solo daba
+  sólidos). Todos marcados como "derivado" en el tablero (sección
+  `Tokens`), no como parte del brief original.
+- **50 tokens del sistema anterior eliminados** de `design.pen` tras
+  confirmar cero referencias rotas (`bg-elevated`, `accent*`,
+  `success/warning/danger-bg/text/border`, `info-*`, `neutral-*`,
+  `purple/sky/teal-*`, `logo-acento`/`logo-tinta` — consolidados en
+  `brand.400`/`brand.900` porque son el mismo valor —, `brand`,
+  `brand-elevated`, `brand-ink`). `ring`, `overlay`, `font-mono` y la
+  escala de radios/tipografía no cambiaron (fuera del alcance de esta
+  paleta).
+- **No se tocó**: `main.css`, ningún archivo `.vue`, ni
+  `core/dominio-*.js` (que sigue mapeando a las clases `.badge--*`
+  antiguas). Portar esta paleta a producción es un trabajo aparte, no
+  incluido en esta pasada.
+
+**Pendiente de esta pasada:**
+
+- Decidir si `categoric.blue` (idéntico a `info.solid`, sin uso hoy) se
+  conserva para uso futuro o se retira del brief por ser redundante.
+- Portar la paleta a `main.css`/Vue queda pendiente de aprobación
+  explícita — no se tocó ningún archivo de producción en esta pasada.
+- Los derivados (`border.subtle`, `ring`, bordes semánticos, pares
+  categóricos completos) están verificados por mí pero no vienen
+  aprobados por el autor del brief — revisar antes de dar por definitiva
+  la paleta.
+
+#### Changelog — plan de migración a producción en 4 fases (2026-08-12, cuarta pasada)
+
+`design.pen` lleva tres pasadas de trabajo puramente de diseño. Esta cuarta
+pasada arma el **plan para llevarlo a producción sin romperla**: audita qué
+tan alejado está el archivo del código real, aplica lo de bajo riesgo,
+redacta specs para lo que sí requiere tocar `main.css`/`.vue`, y construye
+la base para que Correos, Licencias, Equipos, Base de Conocimiento,
+Problemas y Encuestas (ya tienen ruta y vista en el código, no tienen
+tablero propio en `design.pen`) hereden un sistema consistente en vez de
+reinventar cada uno el suyo.
+
+**Fase 0 — Auditoría de estado real.** Releída completa de `main.css`
+(1461 líneas, ya con los fixes de U-02/U-03/U-04/S-04/A-02/A-06 aplicados
+desde la última vez que este documento se actualizó) y de
+`components/shared/*.vue`. Confirmadas las 3 divergencias conocidas
+(`:disabled`, borde de error, uso real de `$ring`) y encontradas 3 más,
+todas nuevas — ver DS-01 a DS-05 en `docs/HISTORIAL-AUDITORIAS.md` para el
+detalle y las fichas de desarrollo. Resumen de riesgo: DS-01 (a), DS-02
+(b), DS-03 (b), DS-04 (b), DS-05 (c) — DS-05 es el único que toca 10
+archivos de markup a la vez, el resto es CSS aislado.
+
+**Fase 1 — Fixes de bajo riesgo, aplicados en `design.pen`:**
+- `text.tertiary` (claro): mismo nombre de token, valor corregido de
+  `#7D8590` (3,51:1) a `#6B737E` (4,51:1 contra `bg`, 4,80:1 contra
+  `bg.elevated`) — **solo valor de token**, cero cambio de código si se
+  porta a `main.css` (ver propuesta de valor para el token real,
+  `#697281`/`#747C8B`, en el hallazgo U-01 ampliado).
+- `danger.hover` (nuevo token, invariante `#DC2626`, 4,83:1 con blanco en
+  ambos temas): reemplaza el hex hardcodeado `#E88870` del hallazgo de
+  accesibilidad de la auditoría anterior. **Requiere código** — no es solo
+  valor, hay que introducir la variable nueva y cambiar el selector
+  `.btn-danger:hover` (ficha DS-01). El tablero (`Primitivas/Botón` → fila
+  "⚠ Hallazgo de accesibilidad") ahora muestra el antes (bug reproducido
+  tal cual) y el después (con `$danger.hover`) lado a lado.
+- Labels de los selects de filtro: reactivados en
+  `Contenedores/Barra de filtros` (estaban con `enabled:false` a propósito,
+  reproduciendo el bug real). **Requiere código** — no había nada que
+  reactivar en el markup real (no existe un label oculto, nunca hubo
+  ninguno); es agregar `<label>` nuevo en 10 vistas (ficha DS-05).
+
+**Fase 2 — Fichas para desarrollo.** DS-02 (`:disabled` unificado), DS-03
+(estado de error visual) y DS-04 (cobertura de `:focus-visible`/`$ring` en
+`.sb-nav-item`, `ThOrdenable`, `BuscadorCombo` y `AppSearch` — ninguno de
+los 4 tiene hoy tratamiento de foco propio) quedaron documentados como
+fichas completas (qué cambia / selector / cómo verificar en QA) en
+`docs/HISTORIAL-AUDITORIAS.md`, no en este archivo, siguiendo la regla de
+`AGENTS.md` de que los hallazgos de auditoría viven ahí. Ninguno de los 3
+se implementó en `design.pen` más allá de lo que ya existía (los variant
+sets de Fase 3 ya modelan visualmente DS-02/DS-03).
+
+**Fase 3 — Fundación de escalamiento**, nueva sección en el tablero
+(`Librería de componentes` → "Fundación de escalamiento"):
+- Escala `space-1` a `space-12` (2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 40,
+  48px) — cubre el 90%+ de los valores crudos ya en uso en `main.css`
+  (medido por frecuencia: 2/3/4/5/6/8/10/12/16px y sus equivalentes en
+  `rem`). Migración progresiva, no total: los componentes nuevos
+  (Correos, Licencias, etc.) la usan desde ya; los 1461 líneas de
+  `main.css` existentes se migran en su próximo ciclo de cambio cada uno,
+  no de una vez — no se tocó ningún `padding`/`gap` crudo de `main.css` en
+  esta pasada.
+- Variant sets completos (variante × estado) de `Primitivas/Botón` (4
+  variantes × 5 estados = 20 combinaciones), `Formularios/Campo de texto`
+  y `Formularios/Campo select` (4 estados cada uno, con nota de qué es real
+  del código y qué es inferido). Reemplazan las filas de "Estados"
+  sueltas de la auditoría anterior como referencia canónica para módulos
+  nuevos — esas filas sueltas se dejaron intactas (documentan detalle de
+  foco con más precisión que la celda compacta de la matriz), la matriz
+  es la vista de conjunto.
+- Propuesta de reagrupación del sidebar: los mismos 8 ítems planos de hoy
+  bajo "GESTIÓN" reorganizados en 3 subgrupos semánticos (Personas;
+  Activos y credenciales; Conocimiento y mejora) — **mismos `path` e
+  íconos, verificados contra `router/routes/*.js`**, solo cambia el
+  encabezado de grupo en `AppNav.vue` (`navGrupos`). No se aplicó en esta
+  pasada: era un cambio de arquitectura de información que requería
+  validación de producto antes de tocar código, no solo de diseño —
+  **validado y portado a producción el 2026-08-13**, ver sección "Sidebar
+  (minimalista, sigue el tema)" y el changelog al final de este documento.
+
+**Qué requiere coordinación con desarrollo antes de aplicarse**: DS-01,
+DS-02, DS-03, DS-04 (las 4 fichas de `docs/HISTORIAL-AUDITORIAS.md`) y
+DS-05 (la de mayor alcance, 10 archivos). Ninguna se tocó en el código en
+esta pasada.
+
+**Qué se puede aplicar de inmediato sin dependencias**: el valor de
+`text.tertiary`/`--mat-color-text-tertiary` (fix (a) puro, un solo número
+en `:root` y otro en `[data-theme="dark"]`, cero riesgo de romper nada);
+todo lo de Fase 3 en `design.pen` ya está aplicado y no depende de nada
+del código.
+
+#### Changelog — cierre de la migración, ronda 2 (2026-08-12, quinta pasada)
+
+Los 5 puntos que quedaban abiertos de la Fase 3 anterior, resueltos en
+`design.pen` (ninguno toca `main.css`/`.vue` — son cambios de diseño puro):
+
+1. **Adopción real de `space-1..12`**: se auditaron los valores crudos de
+   `gap`/`padding` de los 46 componentes + las 2 pantallas de ejemplo (el
+   tablero de documentación, `Librería de componentes`, se excluyó a
+   propósito del barrido — sus filas "Fila" y paddings de ficha son
+   maquetación de la documentación, no parte del sistema que se envía a
+   producción; los valores 22/32/36/48 que parecían "sin mapear" solo
+   existían ahí). De 17 valores crudos reales: 9 coincidían exacto con un
+   token (2/4/6/8/10/12/16/20/24), 7 quedaron a mitad de camino entre dos
+   tokens (3, 5, 9, 11, 13, 14, 18) y se resolvieron con una regla
+   consistente — empate exacto → redondear hacia el token mayor — excepto
+   dos excepciones documentadas que se dejaron en valor crudo: `Eje` en
+   `Ítem de timeline` (`padding-top: 3px`, alinea ópticamente el punto con
+   la primera línea de texto) y `Estado vacío` (`padding: 56px` vertical,
+   aire intencional alrededor del ilustrativo, por encima del tope de la
+   escala). Resultado: **83 propiedades migradas, 0 valores crudos
+   mapeables restantes, 2 excepciones documentadas**.
+2. **Sidebar real reagrupado**: `Navegación y marca/Barra lateral` ya no
+   tiene el grupo plano "GESTIÓN" — sus 8 ítems se movieron (no se
+   recrearon, mismas instancias) a 3 subgrupos nuevos (PERSONAS; ACTIVOS Y
+   CREDENCIALES; CONOCIMIENTO Y MEJORA). "Empleados" conserva su estado
+   activo (`fill: $brand.50`, texto `$brand.700`, `fontWeight: 600`) sin
+   cambios — se movió el nodo, no se recreó. Ambas pantallas de ejemplo
+   (`Empleados — listado`, claro y oscuro) lo heredan automáticamente por
+   ser instancias de `Barra lateral`, no copias independientes.
+3. **`$social.whatsapp`/`$social.whatsapp.hover`** (`#25D366`/`#1EBE57`,
+   mismo valor en ambos temas — coincide con `--mat-color-whatsapp(-hover)`
+   real, que tampoco varía por tema): reemplazan el hex hardcodeado en las
+   5 celdas de la variante WhatsApp del variant set de Botón, más la
+   muestra suelta de `Primitivas/Botón`.
+4. **`Primitivas/Botón icono`**: padding subido de `$space-3`(6) a
+   `$space-7`(16) — área táctil 49×49px (antes ~29×29), sin tocar el
+   ícono (sigue en 17×17). Se agregó `context` en el componente base
+   documentando la obligación de `aria-label` por instancia, más una capa
+   de texto oculta (`enabled:false`) como refuerzo visual en el árbol de
+   capas, y se anotó el `context` de las 10 instancias reales
+   (Anterior/Siguiente de Paginación, Menú de Fila de tarjeta y de Fila de
+   tabla, Editar de Fila de tabla, Cerrar de Modal, Descartar de Aviso
+   emergente, Colapsar/Tema/Salir del sidebar) con el texto exacto — 4 ya
+   confirmados contra el código real (`Pagination.vue`, `Modal.vue`,
+   `AppNotifications.vue`), 6 propuestos y marcados como pendientes de
+   confirmar con desarrollo. Extendido también a `Campana de
+   notificaciones` (32×30→44×44): no es una instancia de `Botón icono`
+   pero en el código real comparte la clase `.icon-btn` — mismo problema,
+   mismo fix; queda anotado como candidato a refactor (componer sobre
+   `Botón icono` en vez de duplicar su estructura).
+5. **Foco visible extendido**: `Ítem de navegación` (nueva fila "Focus",
+   con nota actualizada — ya no dice solo "no tiene foco", ahora aclara que
+   esa fila es la propuesta del hallazgo DS-04), `Paginación` (fila
+   "Estados — foco en controles" sobre el botón "Anterior") e `Ítem de
+   menú` (fila "Estados" aislada, Default vs. Hover=Focus — se muestran
+   **idénticos a propósito**: `.menu-acciones__item:hover` y
+   `:focus-visible` comparten literalmente la misma regla en `main.css`,
+   no es una omisión). `Ítem de combo` se dejó **sin** anillo de foco, con
+   nota explícita: usa el patrón `aria-activedescendant` (el `<input>`
+   conserva el foco de DOM, `@mousedown.prevent` evita que el `<li>` se
+   enfoque) — agregar un `:focus-visible` ahí sería modelar una interacción
+   que el componente no tiene.
+
+**Bug de renderizado, tercera aparición**: volvió a pasar exactamente lo
+mismo que en la auditoría original — un frame nuevo creado con `Insert`
+("Anillo de foco" de `Ítem de navegación`) quedó con datos correctos
+(confirmado con `bounds`) pero invisible hasta que se promovió vía `Copy`.
+Mismo patrón, misma corrección; se sigue sin poder prevenir, solo detectar
+y corregir con el mismo truco.
+
+**(a) Qué cambió**: los 5 puntos, todos en `design.pen`. **(b) Riesgo**:
+ninguno toca `main.css`/`.vue` — son cambios de diseño puro, sin
+coordinación de desarrollo necesaria para *este* archivo (el sidebar real y
+`aria-label` sí la necesitan para pasar a producción, pero eso ya estaba
+señalado y sigue igual). **(c) Pendiente**: los 6 `aria-label` propuestos
+(no confirmados contra código) para `Botón icono`; decidir si `Campana de
+notificaciones` se refactoriza para componer `Botón icono`; los 5
+hallazgos DS-01 a DS-05 de la pasada anterior siguen abiertos, no se
+tocaron acá.
+
+#### Changelog — primer porteo a producción, Fases A-E (2026-08-13, sexta pasada)
+
+Primera vez que algo de `design.pen` sale del propio archivo y toca
+`main.css`/`.vue` en producción. Cinco commits separados:
+
+- **Fase A (tokens)**: `--mat-space-1..12` (base 4px), `--mat-color-whatsapp-text`,
+  y los invariantes `--mat-color-danger-hover`/`-solid` (#DC2626 en ambos
+  temas). **Deliberadamente aditivo**: no se tocó ningún nombre `--mat-color-*`
+  ni `--color-*` existente — la propuesta de paleta en notación de puntos
+  (tercera pasada) sigue sin aprobación explícita para portarse.
+- **Fase B (botón)**: `.btn-danger-solid` nuevo (confirmaciones destructivas
+  irreversibles, sólido desde el default — distinto de `.btn-danger`, que es
+  el tratamiento "soft" existente). Foco de las 5 variantes migrado de
+  `outline` a anillo externo (`box-shadow`), color de anillo propio por
+  variante (verde de marca / rojo / verde WhatsApp). Efecto colateral:
+  **DS-01 resuelto** (`.btn-danger:hover` ya no hereda el salmón de
+  `--color-danger` en oscuro). Decisión de producto confirmada con el
+  usuario: `:disabled` unificado a `opacity:.5` en las 5 variantes +
+  `.icon-btn` (antes `.4`, único con regla propia) — **DS-02 solo
+  parcialmente resuelto**, `input`/`select` de formulario siguen sin regla
+  propia (fuera de alcance, no se preguntó por eso).
+- **Fase C (toast)**: 4 variantes semánticas (`.toast-success/-error/-warning/-info`)
+  con fondo de color real (antes: fondo neutro con solo el ícono verde,
+  sin distinguir tipo). `toast.js` gana un mapa de íconos por tipo
+  (warning/info sin uso real todavía, listos para cuando se necesiten).
+- **Fase D (hover)**: de los 5 componentes pedidos, 4 ya tenían hover propio
+  (combo, menú de acciones, ítem de sidebar, ítem de notificación) — solo
+  `ThOrdenable` lo tenía a medias (cambiaba color, no fondo). Único cambio
+  real de esta fase.
+- **Fase E (logo)**: ya estaba resuelta al empezar esta pasada (trabajo de
+  una sesión anterior, sin commitear) — se verificó contra el nodo
+  `Símbolo Sistema TI` de `design.pen` y se commiteó tal cual.
+
+**Qué sigue sin portar, a propósito**: DS-03 (borde de error de formulario)
+y DS-04 (cobertura de `:focus-visible` en navegación/`ThOrdenable`/buscadores)
+— ambos requieren la misma decisión de producto que `:disabled`, no se
+tocaron. DS-05 (labels de filtro) tampoco. La propuesta de paleta de puntos
+sigue solo en `design.pen`.
+
+#### Changelog — sidebar reagrupado a producción (2026-08-13, séptima pasada)
+
+Se portó a `AppNav.vue` la propuesta de reagrupación semántica del sidebar
+que hasta ahora solo vivía en `design.pen` (ver "Propuesta de reagrupación
+del sidebar" más arriba, en el changelog de la quinta pasada). Validado con
+el usuario antes de tocar código (mismo grupo elegido que ya estaba diseñado,
+más el título "Día a día" agregado al bloque superior por consistencia
+visual con el resto de los grupos).
+
+- El grupo plano "Gestión" (8 ítems sin subdivisión) se dividió en 3
+  subgrupos: **Personas** (Empleados, Pre-registro de personal solo JEFE),
+  **Activos y credenciales** (Correos, Licencias, Equipos), **Conocimiento y
+  mejora** (Base de Conocimiento, Problemas, Encuestas). Mismos `path` e
+  íconos que antes — solo cambió el array `navGrupos` en `AppNav.vue`, cero
+  CSS nuevo.
+- El bloque superior (Dashboard, Tickets), antes sin título de grupo, ahora
+  lleva el título "Día a día" — mismo tratamiento visual que los demás
+  grupos (uppercase 10.5px, oculto en modo colapsado).
+- "Administración" no cambió.
+
+**(a) Qué cambió**: `frontend/src/components/shared/AppNav.vue` (`navGrupos`
+y su comentario) + esta guía (sección "Sidebar" y la nota de la propuesta
+original). **(b) Riesgo**: ninguno — mismas rutas, mismos íconos, sin tocar
+`main.css`. **(c) Pendiente**: nada abierto por este cambio puntual; sigue
+sin decidir todo lo de DS-03/DS-04/DS-05 y la paleta de puntos, sin relación
+con el sidebar.
+
+#### Changelog — acordeón por grupo en el sidebar (2026-08-13, octava pasada)
+
+Pedido explícito del usuario, distinto del colapso general del sidebar (rail
+de 64px): cada grupo de `navGrupos` ahora se pliega/despliega individualmente
+al hacer click en su título.
+
+- Cada grupo ganó un `id` fijo (`dia-a-dia`, `personas`,
+  `activos-credenciales`, `conocimiento-mejora`, `administracion`),
+  desacoplado del `label` visible, usado como clave de persistencia.
+- `.sb-nav-titulo` pasó de `<div>` a `<button>` con chevron
+  (`ti-chevron-right`/`ti-chevron-down`, cambio de ícono — mismo criterio que
+  `CategoriasTicketPanel.vue`, sin `transform: rotate` porque no existe esa
+  clase en `main.css`) y `aria-expanded`/`aria-controls`.
+- Persistencia en `localStorage`, clave nueva `sistema-ti-sidebar-grupos`
+  (ids separados por coma, string plano — separada de `sistema-ti-sidebar`,
+  que sigue siendo el colapso general/rail).
+- Tres reglas de interacción (detalladas en la sección "Sidebar" arriba):
+  el modo rail ignora el colapso por grupo; la ruta activa revela su grupo
+  sin persistir ese cambio; el badge de "Tickets sin asignar" se reubica en
+  el título de "Día a día" mientras ese grupo está colapsado.
+
+**(a) Qué cambió**: solo `frontend/src/components/shared/AppNav.vue` (estado,
+`toggleGrupo`, `grupoVisible`, `badgeDeGrupo`, template, estilos nuevos) +
+esta guía. **(b) Riesgo**: bajo — cambio autocontenido, no tocó
+`AppLayout.vue` ni ninguna ruta; el `<button>` nuevo suma un
+`:focus-visible` que antes no existía (mejora, no regresión) sobre un
+elemento que antes ni siquiera era interactivo. **(c) Pendiente**: nada
+abierto por este cambio; DS-03/DS-04/DS-05 y la paleta de puntos siguen
+igual de pendientes que antes, sin relación con esto.
+
+#### Changelog — footer de usuario condensado (2026-08-13, novena pasada)
+
+Hallazgo del usuario: a 240px de ancho, avatar + nombre + 3 botones de ícono
+(campana, tema, logout) en una sola fila dejaban al nombre solo ~66px antes
+de truncarse (verificado con captura real: "a.gueva…").
+
+- "Cambiar tema" y "Cerrar sesión" se movieron a un menú `⋮` en
+  `AppLayout.vue`, reusando `MenuAcciones.vue` (mismo componente ya usado en
+  menús de fila de tabla en `EmpleadosView.vue`/`CorreosView.vue`/etc.) —
+  cero componente nuevo. Array `accionesUsuario` (computed) con las dos
+  acciones + un separador.
+- La campana de notificaciones (`NotificacionesCampana`) queda fuera del
+  menú, visible directo — es información urgente/frecuente, no una acción
+  de cuenta.
+- Se eliminó `.sb-logout--salir` (clase que solo usaba el botón de logout
+  quitado); `.sb-logout` se mantiene porque el toggle de colapso del
+  sidebar (`.sb-collapse`) sigue usándola.
+
+**(a) Qué cambió**: `frontend/src/components/shared/AppLayout.vue` (script:
+`accionesUsuario` + import de `MenuAcciones`; template: footer; estilos:
+comentario actualizado, clase muerta eliminada) + esta guía. **(b) Riesgo**:
+bajo — tema y logout pasan de 1 click a 2 (abrir menú → elegir), aceptado
+como costo del arreglo; verificado con capturas reales en modo expandido,
+menú abierto, y rail. **(c) Pendiente**: nada abierto por este cambio.
+
+#### Changelog — cierre de DS-04/DS-05, cumplimiento contra `design.pen` (2026-08-13, décima pasada)
+
+Pedido explícito del usuario: que todo el sistema quede bajo las reglas del
+design system y `design.pen`, corrigiendo cualquier inconveniente. Se
+reauditaron directamente los nodos de `design.pen` vía Pencil MCP (no solo
+`docs/HISTORIAL-AUDITORIAS.md`, que tenía algunas fichas desactualizadas)
+antes de tocar código.
+
+- **DS-04 (foco visible) resuelto**: `.sb-nav-item` (`AppNav.vue`) y
+  `.th-ordenable-btn` (`ThOrdenable.vue`) ganaron `outline: 2px solid
+  var(--color-accent); outline-offset: -2px` — mismo criterio ya usado en
+  `.sb-nav-titulo`, para que el anillo no se recorte contra el `gap` de 2px
+  entre ítems. `.sb-busqueda input` (`AppSearch.vue`) ganó
+  `box-shadow: 0 0 0 3px var(--mat-ring)`. `.combo-wrap input`
+  (`BuscadorCombo.vue`) **ya estaba resuelto de hecho**: siempre vive dentro
+  de `.form-group`, que ya trae anillo — la ficha original no lo había
+  reverificado.
+- **Dos gaps reales adicionales, no listados en DS-04, encontrados al
+  comparar contra `design.pen` nodo por nodo**: `MenuAcciones.vue`
+  (`.menu-acciones__item:focus-visible`) y `BuscadorCombo.vue`
+  (`.combo-lista li.is-activo`) solo cambiaban el fondo en su estado de
+  foco/activo; `design.pen` (`rowY1dDW`/`rowlEgjG`) modela además un anillo
+  `$brand.700`. Ambos ganaron `box-shadow: 0 0 0 3px var(--mat-ring)`,
+  separado del `:hover` puro (que sigue sin anillo, solo fondo).
+- **DS-05 (nombre accesible en selects de filtro) resuelto**: cada
+  `<select>` de filtro se envolvió en `.filter-field` (clase nueva en
+  `main.css`, reemplaza el `flex`/`min-width` que tenía `.filters select`
+  directamente) con un `<label>` visible arriba. Corrección al conteo de la
+  ficha original: son **7 archivos con 11 selects**, no 10 archivos —
+  `ActividadView`, `CorreosView`, `EmpleadosView`, `EquiposView` (×2),
+  `KbView` (×2), `ProblemasView` (×2), `TicketsView` (×2);
+  `LicenciasView.vue` no tiene ningún select de filtro, la ficha original
+  la listó por error.
+- La página `/design-system` se actualizó en el mismo cambio para reflejar
+  los fixes (ver `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 3): las notas
+  "pendiente" de sidebar/menú/combo/ordenable pasaron a notas "resuelto", y
+  sus demos ahora muestran el anillo real en vez de simularlo igual que
+  `Hover`.
+- El reporte suelto `AUDITORIA-DESIGN-SYSTEM-PAGINA.md` (auditoría de la
+  propia página `/design-system`, sin código) tenía varios hallazgos ya
+  desactualizados contra el código real (el punto de "no leída" y el
+  `.ds-toc` sticky que reportaba como faltantes ya estaban en el código) —
+  se descartó en vez de aplicarlo a ciegas; lo verificable se reconcilió acá
+  y en `docs/HISTORIAL-AUDITORIAS.md`.
+
+**(a) Qué cambió**: `AppNav.vue`, `ThOrdenable.vue`, `AppSearch.vue`,
+`MenuAcciones.vue`, `BuscadorCombo.vue`, `main.css` (`.filter-field`), 7
+vistas con filtros, `DesignSystemView.vue` + esta guía +
+`docs/HISTORIAL-AUDITORIAS.md`. **(b) Riesgo**: bajo — solo CSS de foco
+(nuevo, no reemplaza nada visible en reposo) y markup de label/wrapper sin
+tocar lógica; verificado con `npm run build`. **(c) Pendiente**: DS-02
+(`input`/`select` sin regla de `:disabled` propia) y DS-03 (borde de error)
+siguen abiertos — pendientes de decisión de producto, sin relación con este
+cambio.
+
+#### Changelog — 6 bugs del Ciclo 4 corregidos (2026-08-13, undécima pasada)
+
+Auditoría de superficie UI/UX completa (skill `ui-ux-pro-max`, 65 archivos,
+ver `docs/HISTORIAL-AUDITORIAS.md` Ciclo 4). De ~50 hallazgos, se corrigieron
+en el momento los 6 de impacto real (bug funcional o violación directa de
+una regla de producto ya fijada); el resto queda documentado como deuda
+abierta (UX4-07 a UX4-53) para priorizar después.
+
+- **Historial de ticket sin color**: `main.css` gana 5 reglas
+  `.timeline-dot--info/warning/success/neutral/danger` (mismos tokens que
+  usan los badges de estado) — antes no existían y el punto quedaba sin
+  `background`.
+- **Buscador global inoperable por teclado**: `AppSearch.vue` — los 5
+  botones de resultado ganan `@click` (el `@mousedown.prevent` se deja vacío,
+  solo para no perder el foco del input); `cerrarBusqueda()` ya no cierra la
+  lista si el foco quedó dentro de ella (Tab desde el input hacia un
+  resultado).
+- **Regresión de contraste en WhatsApp**: `CuentasPanel.vue` tenía un
+  `<style scoped>` que reintroducía `color:#fff` sobre `#25d366` (~2:1) —
+  el mismo bug que `.btn-whatsapp` global ya evita a propósito. Se quitó el
+  override, solo queda el ajuste de tamaño del botón.
+- **Avatar de usuario**: `.sb-user-avatar` (`AppLayout.vue`) fijaba
+  `color:#fff` sobre un gradiente que en tema oscuro es monocromo
+  `--color-accent-2` (#34D399, ~1.9:1) — pasa a `var(--color-text-inverse)`,
+  mismo token que ya usa `.btn-primary` para este caso exacto.
+- **Borde de severidad a 3px**: `.accion-item--vencida`
+  (`ProblemaDetalleView.vue`) bajó a 2px — ninguna otra excepción a la regla
+  de "sin bordes &gt;2px" se agregó en esta pasada.
+- **2 modales sin Escape/scroll-lock**: `TiposEquipoPanel.vue` y
+  `CategoriasTicketPanel.vue` usaban un modal hand-rolled con
+  `useFocoAtrapado` (solo atrapa Tab, no maneja Escape ni bloquea el scroll
+  del body) en vez del `<Modal>` compartido que ya usan sus 2 pares
+  equivalentes (`AreasObrasPanel.vue`/`UbicacionesPanel.vue`). Migrados al
+  mismo patrón — mismo markup de formulario, sin cambios de comportamiento
+  de guardado.
+
+**(a) Qué cambió**: `main.css`, `AppSearch.vue`, `CuentasPanel.vue`,
+`AppLayout.vue`, `ProblemaDetalleView.vue`, `TiposEquipoPanel.vue`,
+`CategoriasTicketPanel.vue` + esta guía + `docs/HISTORIAL-AUDITORIAS.md`.
+**(b) Riesgo**: bajo — todos son fixes puntuales verificados contra el
+código real (`npm run build`, `npm test`, `node scripts/contraste.mjs`, los
+tres en verde); ninguno cambia markup de formularios salvo la migración a
+`<Modal>`, que reutiliza el mismo patrón ya probado en 2 paneles hermanos.
+**(c) Pendiente**: los ~47 hallazgos restantes del Ciclo 4 (patrones
+sistémicos como tarjetas móviles faltantes en 7 vistas, botones de
+contraseña sin `aria-label`, objetivos táctiles bajo 44px, y hallazgos
+puntuales por archivo) quedan abiertos en `docs/HISTORIAL-AUDITORIAS.md`
+para una pasada futura.
+
+#### Changelog — alineación de la barra de filtros (2026-08-13, duodécima pasada)
+
+Pedido explícito del usuario ("arreglar y alinear los filtros en cada
+módulo"). `.filters` (`main.css`) no fijaba `align-items`, así que heredaba
+`stretch`: `.search-wrap` (sin label, 36px) quedaba top-aligned dentro de una
+fila estirada a la altura de `.filter-field` (label + select, ~54px),
+mientras el `<select>` se dibuja al fondo de su propia columna — resultado:
+el buscador flotaba visiblemente ~18px más arriba que los selects en las 6
+vistas que combinan ambos (Tickets, Problemas, KB, Equipos, Empleados,
+Correos).
+
+- **Fix de un solo token**: `.filters { align-items: flex-end; }` — todos
+  los hijos directos (`.search-wrap`, `.filter-field`, `.chips-filtro` en
+  Tickets, el `.btn` de "Solo pendientes" en Pre-registros) miden 36px de
+  alto en su fila de control real, así que alinear por el borde inferior los
+  deja en la misma línea de base sin tocar ningún archivo `.vue`.
+  `LicenciasView`/`EmpresasView`/`PlataformasView` (solo buscador, sin
+  selects) no cambian visualmente — ya estaban alineados al no tener un
+  segundo elemento con el que desalinearse.
+- **Verificado con captura real** (no solo lectura de CSS): página estática
+  de prueba servida por el dev server de Vite, cargando el `main.css` real
+  del proyecto, capturada con Playwright en desktop (960px, filas de
+  Tickets/Equipos) y en móvil (375px, filtros apilados) — confirmado el
+  borde inferior común en ambos casos antes de aplicar el fix a producción.
+  El archivo de prueba se borró al terminar, no quedó en el repo.
+
+**(a) Qué cambió**: `main.css` (`.filters`) + esta guía +
+`docs/HISTORIAL-AUDITORIAS.md` (UX4-54). **(b) Riesgo**: bajo — un solo
+token de layout, sin cambios de markup; verificado con `npm run build`,
+`npm test` y captura visual real antes y después. **(c) Pendiente**: nada
+abierto por este cambio puntual; los ~47 hallazgos restantes del Ciclo 4
+siguen igual de pendientes, sin relación con esto.
+
+#### Changelog — rediseño de sidebar y dropdowns (2026-08-13, décimotercera pasada)
+
+Pedido explícito del usuario: sidebar "profesional y usable, que no
+confunda", Configuración movida al menú donde están tema/salir, y rediseño
+de "todos los dropdowns del sistema". Dirección del sidebar confirmada con
+el usuario antes de tocar código (retirar el acordeón, no solo pulirlo).
+
+- **Acordeón por grupo retirado**: con ~12 ítems en 5 grupos, plegar/
+  desplegar cada sección agregaba más reglas de comportamiento (rail que lo
+  ignora, ruta activa que revela sin persistir, badge que se reubicaba en
+  el título de "Día a día" al colapsar) que valor real — patrón más cercano
+  a un sidebar de 40+ ítems que a este. `AppNav.vue` pierde `toggleGrupo`,
+  `grupoVisible`, `grupoContieneRutaActiva`, `badgeDeGrupo` y la clave de
+  `localStorage` `sistema-ti-sidebar-grupos`; `.sb-nav-titulo` pasa de
+  `<button>` con chevron a un `<div>` estático, siempre expandido. El
+  colapso general del sidebar a rail (64px, `sistema-ti-sidebar`) no
+  cambia — sigue siendo el único eje de colapso.
+- **Grupos vacíos no se renderizan**: al sacar Configuración de
+  "Administración", ese grupo queda sin ítems para ASISTENTE (Actividad/
+  Accesos sensibles son solo JEFE) — `navGrupos` filtra grupos con
+  `items.length === 0` antes de pintarlos, para no mostrar un encabezado
+  "Administración" sin filas debajo.
+- **Configuración se mueve al menú `⋮`** (`AppLayout.vue`,
+  `accionesUsuario`): primer ítem, antes de tema/logout — no es una
+  sección de uso diario. El `label` accesible del trigger pasa de "Más
+  acciones de la cuenta" a "Configuración y cuenta".
+- **Jerarquía visual pulida**: `gap` entre grupos de 14px a 18px (más aire
+  entre secciones sin agregar líneas divisorias, regla ya fijada del
+  proyecto); `.sb-nav-titulo` de 10.5px a 11px con algo más de padding
+  vertical, ahora que es una etiqueta y no un control que necesitaba caber
+  en una fila angosta; `.sb-nav-item` de `9px 12px` a `10px 12px` de
+  padding (objetivo de toque un poco más generoso).
+- **Rediseño de dropdowns nativos, base global**: el primer intento estiló
+  solo `.filters select`/`.form-group select` — pero varios `<select>` viven
+  sueltos, sin ninguno de los dos wrappers (`StaffView.vue` `.rol-select`,
+  `CategoriasTicketPanel.vue` dentro de `.cat-sub-nueva`, `ProblemaDetalleView.vue`
+  en `.accion-item`/`.accion-form-nueva`, `ReporteTicketsModal.vue` el
+  selector de mes/año), y esos se quedaban con el look nativo del
+  navegador — justo "fuera del sistema" (hallazgo del usuario tras ver el
+  primer intento). Corregido moviendo la base completa (altura, padding,
+  borde, radio, fondo, chevron, foco) a un selector `select` global, sin
+  atarla a ningún contenedor; `.filters select` y `.form-group select`
+  quedan solo con sus ajustes de contexto (ancho 100%, padding-right del
+  formulario). El chevron pierde la flecha nativa del navegador
+  (`appearance: none`) por una de línea propia (mismo trazo que Tabler) en
+  `--color-text-tertiary`, con su valor por tema (`#9CA3AF` claro / `#6B7280`
+  oscuro, mismos hex que ya usa ese token). Los popovers custom
+  (`MenuAcciones.vue`, `BuscadorCombo.vue`, `NotificacionesCampana.vue`) ya
+  compartían borde/radio/sombra (`--color-border-strong`, `--radius-md`,
+  `--shadow-lg`) — no necesitaron cambios, son el sistema al que los
+  `<select>` nativos se suman ahora, envueltos o no.
+- **Verificado con captura real**: reconstrucción estática del sidebar
+  completo (mismo CSS de `AppNav.vue`/`AppLayout.vue` pegado literal, sin
+  el hash de scope de Vue) servida por el dev server y capturada con
+  Playwright — confirmado visualmente el estado activo, hover, el menú `⋮`
+  con Configuración arriba de tema/logout, y el chevron de los `<select>`
+  en ambos temas (`<html data-theme="dark">`, no un `<div>` anidado — los
+  tokens de tema cuelgan de `:root`). Repetido después del fix a base
+  global: 4 `<select>` lado a lado (envuelto en `.form-group`, suelto tipo
+  `.rol-select`, suelto dentro de un toolbar mixto con input+botón, y
+  `disabled`) — los 4 con el mismo borde/radio/chevron. Los archivos de
+  prueba se borraron
+  al terminar, no quedaron en el repo.
+
+**(a) Qué cambió**: `AppNav.vue`, `AppLayout.vue`, `main.css` (`.filters
+select`, `.form-group select`) + esta guía. **(b) Riesgo**: medio — a
+diferencia de los cambios anteriores de este documento, este sí quita una
+función que el propio usuario había pedido antes (el acordeón); confirmado
+explícitamente con él antes de implementar. Verificado con `npm run build`,
+`npm test` y captura visual real en ambos temas. **(c) Pendiente**: nada
+abierto por este cambio; los ~47 hallazgos del Ciclo 4 y la propuesta de
+paleta de puntos siguen sin relación con esto.
+
+#### Changelog — atajo de teclado para el buscador global (2026-08-13, décimocuarta pasada)
+
+Parte del roadmap de mejoras para el público de TI (junto con
+observabilidad y rendimiento del dashboard, ver `docs/CHANGELOG.md` y
+`docs/HISTORIAL-AUDITORIAS.md`). El buscador global (`AppSearch.vue`) ya
+existe y ya tiene navegación por teclado dentro de sus resultados (pasada
+anterior), pero solo se abría con clic/tap — Ctrl/Cmd+K (mismo atajo que
+Linear/Notion/Vercel/GitHub) ahorra el viaje del mouse en el flujo más
+repetido del día: buscar un ticket/empleado/cuenta.
+
+- **`AppSearch.vue`** expone el método que ya usaba el botón de lupa del
+  sidebar colapsado (`expandirYBuscar`) vía
+  `defineExpose({ enfocar: expandirYBuscar })` — mismo patrón que
+  `Modal.vue` (`defineExpose({ cerrar })`).
+- **`AppLayout.vue`** agrega `ref="appSearchRef"` al `<AppSearch>` ya
+  montado y un listener `keydown` en el mismo ciclo `onMounted`/
+  `onUnmounted` que ya usa para el socket realtime. Guard: si el foco está
+  dentro de un `[role="dialog"]` (`Modal.vue`/`ConfirmDialog.vue`), el
+  atajo no hace nada — saltar al buscador del sidebar detrás de un overlay
+  con foco atrapado sería confuso.
+- **Verificado con la app real, no una reconstrucción**: a diferencia de
+  las capturas estáticas de pasadas anteriores (que no pueden probar
+  interacción JS), se montó `AppSearch.vue` de verdad en un componente
+  `.vue` de prueba servido por Vite, y se usó Playwright para presionar
+  Ctrl+K y confirmar por código (`document.activeElement`) que el foco
+  cae en el input — y que con un `role="dialog"` enfocado, Ctrl+K no lo
+  mueve. El primer intento de esta verificación usó un `h()` manual sin
+  compilador de templates y el `ref` nunca se resolvía (warning de Vue
+  "Missing ref owner context") — no era un bug del código real, era el
+  arnés de prueba; se corrigió escribiéndolo como un `.vue` de verdad. Los
+  4 archivos de prueba (`.vue`, `.js`, `.html`, script de Playwright) se
+  borraron al terminar, no quedaron en el repo ni en `package.json`
+  (Playwright se instaló solo temporalmente con `--no-save` para poder
+  ejecutar el script, y se dejó fuera del lockfile).
+
+**(a) Qué cambió**: `AppSearch.vue`, `AppLayout.vue` + esta guía. **(b)
+Riesgo**: bajo — no reemplaza ninguna interacción existente, solo agrega
+una nueva vía de entrada al mismo buscador ya probado. Verificado con
+`npm run build`, `npm test` y la app real montada con Playwright. **(c)
+Pendiente**: nada abierto por este cambio; sin hint visual del atajo (ej.
+"⌘K" en el placeholder) — no estaba en el plan aprobado, se puede agregar
+si se pide.
+
+#### Changelog — cierre del backlog Ciclo 4, 47 hallazgos (2026-08-13, décimoquinta pasada)
+
+Pedido explícito del usuario: seguir con el backlog de UX/UI ya documentado
+(UX4-07 a UX4-53, `docs/HISTORIAL-AUDITORIAS.md`) en vez de seguir
+agregando mejoras nuevas. 6 agentes en paralelo, cada uno sobre un conjunto
+de archivos sin superposición entre sí (sin riesgo de choque de ediciones
+concurrentes) — detalle completo hallazgo por hallazgo en
+`docs/HISTORIAL-AUDITORIAS.md`, acá solo el resumen de patrones que tocan
+el sistema de diseño:
+
+- **Patrón `.lista-tarjetas` extendido a 7 vistas más** (`LicenciasView`,
+  `AccesosSensiblesView`, `PersonalRegistrosView`, `StaffView`, `KbView`,
+  `EncuestasView`, `EncuestaDetalleView`), replicado desde
+  `ProblemasView.vue`/`EquiposView.vue` — mismas clases ya existentes en
+  `main.css`, sin tokens nuevos.
+- **`ConfirmDialog` reemplaza 2 patrones fuera del sistema**: `confirm()`
+  nativo del navegador en `StaffView.vue` (desactivar staff) y un clic
+  directo sin confirmación en `EncuestaDetalleView.vue` (cerrar ronda) —
+  ambos ahora usan el componente compartido, mismo patrón que
+  `TiposEquipoPanel.vue`/`AreasObrasPanel.vue`.
+- **Un widget interactivo mal anidado, corregido**: `CategoriasTicketPanel.vue`
+  tenía botones reales (editar/eliminar) dentro de un `role="button"` — se
+  separó en un `<button>` real para expandir/colapsar (`.cat-fila-toggle`)
+  y `.actions` como hermano, no hijo.
+- **Foco visible añadido** a radios ocultos (`CorreoForm.vue`/`LicenciaForm.vue`)
+  y a chips/botones que caían al outline nativo (`TicketsView.vue`,
+  `ResponderEncuestaView.vue`) — mismo criterio de anillo ya establecido.
+- **Campo "Notas" reactivado** en `EmpleadoForm.vue` (se mostraba en la
+  ficha sin forma de editarlo) — se verificó que su remoción del
+  formulario, años atrás, no tenía ninguna decisión de producto documentada
+  en contra antes de reactivarlo.
+
+**(a) Qué cambió**: 43 archivos (ver `docs/HISTORIAL-AUDITORIAS.md` para el
+detalle completo por ítem) + esta guía + `docs/CHANGELOG.md`. **(b)
+Riesgo**: bajo-medio — la mayoría son adiciones de accesibilidad/CSS
+aisladas; los 2 cambios de mayor superficie (`StaffView.vue`,
+`CategoriasTicketPanel.vue`) se revisaron manualmente además de la
+verificación automática. `npm run build` + `npm test` (96/97) en verde
+tras consolidar los 6 lotes. **(c) Pendiente**: el tuteo de UX4-52 se
+repite en otros 9 `ConfirmDialog` fuera de este alcance (ver
+`docs/HISTORIAL-AUDITORIAS.md`); nada más queda abierto del Ciclo 4.
+
+#### Changelog — compactación del sidebar y colapso inteligente (2026-08-14, décimosexta pasada)
+
+Pedido explícito del usuario: el sidebar "ocupa mucho espacio" — al aclarar,
+el problema es la **densidad/alto vertical** (títulos de grupo, gaps entre
+secciones, padding de ítems), no el ancho. Esto revierte parcialmente la
+pasada del 13-ago-2026 ("rediseño de sidebar y dropdowns", ver arriba), que
+había aumentado a propósito ese mismo padding/gap — confirmado con el
+usuario que ahora se quiere ir en la dirección contraria. Revertir solo esos
+dos valores puntuales recuperaba ~40px en total, poco perceptible dado que
+la queja es sobre el peso general del bloque, así que se aplicó un paso de
+compactación coordinado sobre todo el espaciado vertical, sin tocar
+estructura, grupos, ítems ni copy (fuera de alcance sin pedido explícito).
+
+- **Espaciado vertical reducido** en `AppLayout.vue` (`.sb-logo` de
+  `20px 18px 14px` a `16px 16px 12px`; `.sb-footer` de `12px 14px` a
+  `10px 14px`, mismo ajuste en su variante colapsada), `AppSearch.vue`
+  (`.sb-busqueda` de `12px 14px 4px` a `10px 14px 4px`) y `AppNav.vue`
+  (`.sb-nav` padding de `10px 10px` a `8px 10px`; gap entre grupos de
+  `18px` a `12px` — revierte el `18px` de ayer; `.sb-nav-titulo` padding de
+  `6px 12px 4px` a `4px 12px 2px`; `.sb-nav-item` padding de `10px 12px` a
+  `8px 12px` — revierte el `10px` de ayer; los mismos valores se replican en
+  los overrides de `.sidebar--colapsado`).
+- **Colapso a rail inteligente por defecto**: `AppLayout.vue`, valor inicial
+  de `sidebarColapsado` — si el usuario ya usó el toggle alguna vez, su
+  preferencia guardada en `localStorage` (`sistema-ti-sidebar`) sigue
+  mandando igual que antes; sin preferencia guardada, arranca colapsado
+  (rail de 64px) en ventanas `≤1200px` — mismo breakpoint que ya usa
+  `main.css`/`DashboardView.vue` para el reflow de columnas, no uno nuevo.
+  Así el ancho del sidebar deja de competirle al contenido en laptops
+  comunes sin que el usuario tenga que descubrir el botón de colapso. Sin
+  listener de `resize`: es solo el valor inicial al montar.
+
+**(a) Qué cambió**: `AppNav.vue`, `AppLayout.vue`, `AppSearch.vue` + esta
+guía. **(b) Riesgo**: bajo-medio — revierte parte de una decisión de ayer
+(el aumento de padding/gap) más allá de lo literal, confirmado con el
+usuario antes de implementar; el nuevo default de colapso no tiene listener
+de `resize`, por lo que redimensionar la ventana en caliente no recalcula el
+estado (solo el valor inicial al montar/recargar). **(c) Pendiente**: nada
+abierto por este cambio.
+
+#### Changelog — reconciliación de design system, 13 hallazgos corregidos (2026-08-14, décimoctava pasada)
+
+Pedido explícito del usuario: revisar todas las páginas contra el design
+system y la implementación de componentes, y aplicar la lista de mejoras
+resultante. Mismo método que la pasada anterior (6 agentes en paralelo,
+uno por grupo de módulos, briefeados con la deuda ya documentada acá y en
+`docs/HISTORIAL-AUDITORIAS.md` para no repetir hallazgos), esta vez con eje
+en tipografía cruda, fallbacks CSS muertos y tono, dimensiones que la
+pasada anterior (auditoría de consistencia global) no cubrió. Detalle
+completo hallazgo por hallazgo en `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 5
+(UX5-01 a UX5-13); acá solo el resumen de lo que toca el sistema de diseño.
+
+- **Regresión real de la pasada anterior, encontrada y corregida**: el
+  `core/dominio-licencias.js` nuevo (centralización del umbral de
+  vencimiento) dejó `LicenciasView.vue` con una referencia a `HOY`, variable
+  que el propio refactor eliminó del scope — `ReferenceError` al usar
+  "Renovar" en una licencia por suscripción. No es un hallazgo de diseño,
+  pero se corrigió en el mismo pase por aparecer en la misma auditoría.
+- **Gap real en `Modal.vue` compartido**: Escape, clic en el backdrop y la
+  "X" cerraban el modal sin pasar por el chequeo de "cambios sin guardar"
+  (`estaSucio`) que sí respetaba el botón "Cancelar" — la migración de
+  `KbArticuloForm.vue`/`ProblemaForm.vue` a `Modal.vue` en la pasada
+  anterior heredó este gap del propio componente, no lo introdujo. Fix:
+  nuevo prop opcional `confirmarCierre` (función guard) en `Modal.vue`,
+  default `null` — sin cambio de comportamiento para los ~10 consumidores
+  que no lo pasan. Los 4 formularios afectados (`KbArticuloForm.vue`,
+  `ProblemaForm.vue`, `EncuestaForm.vue`, `AccesoSensibleForm.vue`, este
+  último migrado a `Modal.vue` en este mismo pase) ahora lo usan.
+- **`AccesoSensibleForm.vue` migrado a `Modal.vue`**: quedó como el único
+  formulario grande con modal hand-rolled tras la migración de
+  `ProblemaForm.vue`/`KbArticuloForm.vue` — mismo patrón (`form="..."` +
+  slot `#acciones`), sin cambiar campos ni comportamiento de guardado.
+- **`BajaEmpleadoModal.vue` migrado a `Modal.vue`**: mismo patrón que
+  `TiposEquipoPanel.vue`/`CategoriasTicketPanel.vue` en Ciclo 4 — ganó
+  scroll-lock y Escape reales; sin `useDetectorDeCambios` (es una
+  confirmación de solo lectura), así que no recibe `confirmarCierre`.
+- **Tono**: cluster de tuteo nuevo, distinto del ya documentado en
+  `ConfirmDialog` (UX4-52) — mensajes de `EmptyState`, validaciones de
+  formulario ("Escribe" → "Escriba", "Describe" → "Describa", "Revisa" →
+  "Revise") y copy público, en Encuestas, Empleados, Problemas, KB y el
+  toast nuevo de `router/guards.js`.
+- **Tipografía cruda → tokens** en 8 archivos que no habían pasado por
+  ninguna auditoría anterior de este tipo (`DashboardView.vue`,
+  `LoginView.vue`, `EntregaView.vue`, `EmpleadoDetalleView.vue` y otros 4)
+  — valores sin token exacto se dejaron sin tocar y quedan anotados como
+  pendiente de decisión de diseño en `docs/HISTORIAL-AUDITORIAS.md`.
+- **Fallbacks CSS muertos** (`var(--x, var(--x))`, o fallback a un token
+  que siempre está definido): completa lo que UX4-51 había dejado parcial
+  en `CuentaForm.vue`, más `EquipoForm.vue` (incluía además un rojo
+  inventado en vez de `--mat-color-danger-hover`) y `LoginView.vue` — este
+  último con un bug real de contraste de paso: `.login-aviso` usaba
+  `--color-success` (alta saturación, pensado para íconos/botones sólidos)
+  como color de texto sobre su propio `-bg` en vez de `--color-success-text`.
+
+**(a) Qué cambió**: `Modal.vue`, `AccesoSensibleForm.vue`,
+`BajaEmpleadoModal.vue`, `LicenciasView.vue`, `DesignSystemView.vue`,
+`TicketsView.vue`, `DashboardView.vue`, `EmpleadoDetalleView.vue`,
+`EmpleadosView.vue`, `EncuestasView.vue`, `EncuestaDetalleView.vue`,
+`EncuestaForm.vue`, `EncuestaPublicaView.vue`, `KbArticuloForm.vue`,
+`ProblemaForm.vue`, `ProblemaDetalleView.vue`, `router/guards.js`,
+`LoginView.vue`, `EntregaView.vue`, `LicenciaForm.vue`, `CorreoForm.vue`,
+`PersonalRegistrosView.vue`, `EquipoForm.vue`, `CuentaForm.vue` +
+esta guía + `docs/HISTORIAL-AUDITORIAS.md` (Ciclo 5). **(b) Riesgo**: bajo
+en general (fixes puntuales, `confirmarCierre` es aditivo); medio en las 2
+migraciones a `Modal.vue` (mismo tipo de cambio de markup ya validado 2
+veces en pasadas anteriores) — verificado con `npm run build` y
+`npm test` (96/97 en verde, misma línea base) tras consolidar los 8 lotes.
+**(c) Pendiente**: los valores de tipografía sin token exacto anotados en
+`docs/HISTORIAL-AUDITORIAS.md`; nada más abierto por este cambio.
+
+#### Changelog — auditoría de consistencia global, 11 hallazgos corregidos (2026-08-14, décimoséptima pasada)
+
+Pedido explícito del usuario: revisar todas las páginas del sistema (~55
+vistas) contra los patrones ya documentados acá (`PageHeader`, `EmptyState`,
+`BadgeEstado`, `Modal`, "un solo `.btn-primary` visible por vista", colores
+por dominio). 6 agentes en paralelo, uno por grupo de módulos; Correos,
+Licencias, Equipos, Cuentas, Encuestas, Accesos sensibles, Actividad,
+Empresas, Plataformas, Personal y Configuración salieron sin hallazgos
+reales. Se corrigieron los 11 hallazgos reales encontrados, priorizando el
+módulo nuevo de Staff/permisos (migración 056, todavía sin commitear al
+momento de la auditoría).
+
+- **`StaffModulosForm.vue` (módulo nuevo)**: modal hand-rolled migrado a
+  `Modal.vue` compartido (mismo patrón que `EncuestaForm.vue`: `modal.value?.cerrar()`
+  + `form="..."` en el botón de submit) — antes sin scroll-lock real. Los
+  checkboxes de permisos ganaron `:focus-visible` propio
+  (`outline: 2px solid var(--color-accent)`): viven fuera de `.form-group`,
+  así que no heredaban el anillo de foco que sí tienen los checkboxes de
+  formularios normales.
+- **`StaffView.vue` (`.rol-select`, preexistente)**: quitados los overrides
+  de borde/radio/fondo que pisaban el `select` global y le borraban el
+  chevron (el propio comentario de `main.css` línea ~808 ya citaba este
+  archivo como el caso que motivó unificar todo `<select>` bajo un solo
+  estilo) — queda solo el `margin-right` de contexto.
+- **Un solo `.btn-primary` por vista** (regla de "Principios de diseño",
+  más abajo en este documento) — 3 hallazgos:
+  - `TicketDetalleView.vue`: "Comentar" competía con la acción de estado
+    (Iniciar atención/Marcar resuelto); bajado a `.btn` secundario.
+  - `ReporteTicketsModal.vue`: el selector de granularidad (diario/semanal/
+    mensual) usaba `.btn-primary` como estado "seleccionado", compitiendo
+    con "Descargar PDF" — pasa a una clase `.is-activo` propia
+    (`background: var(--color-accent-subtle)`, mismo par tenue-acento que
+    `.chip-filtro--activo` de `TicketsView.vue`, sin ser la misma clase
+    porque el control es un grupo `.btn` rectangular, no chips-pill).
+  - `ProblemaDetalleView.vue`: el botón de cambio de estado seguía visible
+    en modo edición junto al "Guardar" del formulario inline; se envolvió
+    en `v-if="!editando"` (mismo patrón que ya usa `KbArticuloDetalleView.vue`
+    con su botón "Publicar").
+- **Borde de acento lateral + color inline** (`ProblemaDetalleView.vue`,
+  tag "VENCIDA" de acciones correctivas): iba contra el principio ya fijado
+  "sin bordes de acento en los costados, severidad por color de ícono +
+  badge" (sección "Principios de diseño"). `.accion-item--vencida`
+  (`border-left-color`) y `.accion-vencida-tag` (color inline) se
+  eliminaron; la etiqueta pasa a un badge real (`badge badge--danger
+  badge-inline`, texto "Vencida").
+- **`BadgeEstado` no reutilizado** — 2 hallazgos, ambos en vistas públicas
+  de tickets que reimplementaban `estadoInfo(ticket.estado)` a mano en vez
+  de importar el componente (no dependen de sesión, podían usarlo igual):
+  `TicketSeguimientoView.vue` y `TicketBuscarView.vue` pasan a
+  `<BadgeEstado tipo="ticket" :valor="..." />`.
+- **Modales hand-rolled sin `Modal.vue`** — 2 hallazgos: `KbArticuloForm.vue`
+  y `ProblemaForm.vue` (ambos con el patrón de "cambios sin guardar" +
+  `ConfirmDialog`) migrados al mismo patrón ya usado por `EncuestaForm.vue`
+  — sin Escape/scroll-lock reales antes del cambio.
+- **Badge "Sin vincular" de tickets duplicado 3 veces a mano**
+  (`TicketsView.vue` ×2, `TicketDetalleView.vue` ×1): centralizado como
+  `case 'ticket_sin_vincular'` en `core/badges.js` (label + clase); el
+  ícono `ti-alert-triangle` se mantiene en el markup de cada sitio porque
+  `BadgeEstado` no soporta contenido con ícono, solo texto.
+- **Badge de vencimiento de licencia duplicado**: `EmpleadoDetalleView.vue`
+  resolvía el vencimiento de licencia con una función local
+  (`vencimientoLicencia()`) mientras su propio panel de Equipos sí usaba
+  `BadgeEstado`/`core/badges.js` — inconsistencia dentro del mismo archivo,
+  y la misma lógica de umbral (30 días) estaba duplicada en
+  `LicenciasView.vue` (`estadoVencimiento()`). Nuevo módulo
+  `core/dominio-licencias.js` (`estadoVencimientoLicencia()` +
+  `CLASE_VENCIMIENTO_LICENCIA`) centraliza el umbral y la clase de badge;
+  cada vista sigue formateando su propio texto (`LicenciasView` siempre
+  muestra la fecha; `EmpleadoDetalleView` omite a propósito las licencias
+  sanas, ver su comentario) porque son presentaciones legítimamente
+  distintas, no la misma duplicación que sí se resolvió.
+
+**(a) Qué cambió**: `StaffModulosForm.vue`, `StaffView.vue`,
+`TicketDetalleView.vue`, `ReporteTicketsModal.vue`, `ProblemaDetalleView.vue`,
+`TicketSeguimientoView.vue`, `TicketBuscarView.vue`, `KbArticuloForm.vue`,
+`ProblemaForm.vue`, `TicketsView.vue`, `EmpleadoDetalleView.vue`,
+`LicenciasView.vue`, `core/badges.js` (nuevo caso `ticket_sin_vincular`),
+`core/dominio-licencias.js` (nuevo) + esta guía. **(b) Riesgo**: bajo — todos
+son fixes puntuales que reutilizan patrones ya existentes en el propio
+código (no hay componente ni convención nueva); verificado con
+`npm run build` y `npm test` (96 tests, verde) tras cada tanda de cambios.
+**(c) Pendiente**: sin commitear a pedido explícito del usuario — falta el
+commit real de estos 13 archivos + el módulo nuevo.
+
+**Hallazgo adicional, encontrado por el usuario después de esta pasada**:
+`/tickets/satisfaccion` (`ReporteSatisfaccionView.vue`) no tenía el mismo
+aspecto que otras vistas multi-tarjeta — los 9 criterios de reutilización de
+componentes de arriba no lo detectan porque el problema es de **layout**, no
+de componentes: (1) `<main class="page">` sin `page--padded` (el comentario
+de `main.css` línea ~452 ya documenta que las vistas multi-tarjeta tipo
+Dashboard/detalle necesitan `page--padded`; esta vista tiene 2 tarjetas de
+resumen + una tabla, es multi-tarjeta, pero le faltaba la clase) — sin eso,
+todo queda pegado a los bordes de la ventana; (2) la tarjeta de "Todas las
+respuestas" usaba `.card--fill` (pensada para una sola tarjeta de listado a
+sangre, sin borde/radio) mientras las 2 tarjetas de resumen usan `.card`
+normal — la de abajo se veía sin caja mientras las de arriba sí. Fix: quitar
+`card--fill` (queda `.card` normal, igual que sus vecinas) y agregar
+`page--padded` al `<main>`. Verificado montando el componente real (no una
+reconstrucción) en un arnés temporal servido por el propio dev server de
+Vite (`insforgeApi` con datos mock, router en memoria para que `RouterLink`
+resuelva sus inyecciones — el compilador de `<script setup>` importa
+`RouterLink` real de `vue-router` en vez de resolverlo en runtime, así que
+un componente stub registrado por `app.component()` no alcanza) y capturado
+con Playwright; archivos del arnés borrados al terminar, no quedaron en el
+repo. **(a) Qué cambió**: `ReporteSatisfaccionView.vue` + esta guía. **(b)
+Riesgo**: bajo — dos clases CSS, sin cambios de markup más allá de eso.
+**(c) Pendiente**: revisar si alguna otra vista multi-tarjeta tiene el mismo
+problema (`page--padded` faltante o `card--fill` mal aplicada) — esta vez se
+corrigió puntualmente la reportada, no se re-auditó el resto del sistema
+contra este criterio de layout.
+
+**Segundo hallazgo (2026-08-18), en la misma vista**: `.datos-title` y
+`.tk-nota` — la clase que da tamaño/peso al título de cada tarjeta y el
+tratamiento itálico/terciario a las notas — están duplicadas como estilo
+`scoped` en cada vista que las usa (`TicketDetalleView`, `ProblemaDetalleView`,
+`KbArticuloDetalleView`, `EmpleadoDetalleView`); a `ReporteSatisfaccionView.vue`
+le faltaba esa duplicación por completo, así que "Por solicitante", "Por
+técnico" y "Todas las respuestas" renderizaban como párrafo suelto sin
+tratar, y las notas grises tampoco tenían tratamiento — pegados además
+contra el borde de la tarjeta (sin padding: ninguna de sus 3 `.card`
+tenía la clase de padding por-vista que sí tienen sus análogas, ej.
+`.kb-meta`/`.problema-meta`/`.tk-historial`). Fix: se agregó la misma
+regla de `.datos-title`/`.tk-nota` (ver comentario en el propio archivo),
+pero con el padding puesto en el título/nota en vez de en la tarjeta
+completa — a diferencia de esas vistas de detalle, acá cada tarjeta sigue
+con su tabla a sangre (mismo criterio que `.card--fill`, aunque estas
+tarjetas son `.card` con borde) porque ningún otro `.card` con tabla en
+todo el sistema mete padding alrededor de la tabla. De paso, la tabla
+"Todas las respuestas" — la única lista de todo el sistema sin buscador,
+pese a ser un histórico sin recorte de periodo que solo crece — pasó a
+usar `useBusqueda`/`useOrdenTabla`/`usePaginacion` (los mismos 3
+composables que ya comparten 12+ vistas) en vez de reimplementar
+orden/paginación a mano; `useOrdenTabla` ganó un tercer parámetro opcional
+`direccionInicial` (por defecto `'asc'`, sin tocar a nadie más) para poder
+seguir arrancando en "más reciente primero". **(a) Qué cambió**:
+`ReporteSatisfaccionView.vue`, `composables/useOrdenTabla.js` + esta guía.
+**(b) Riesgo**: bajo — mismo patrón de las otras 12 vistas, verificado con
+`npm run build` y `npm test` (149 tests, verde). **(c) Pendiente**: el
+mismo hueco de `.datos-title`/`.tk-nota` sin definir existe también en
+`ReporteTicketsModal.vue` (el modal "Reporte" de Tickets) — no se tocó
+porque no fue lo reportado esta vez.
+
+**Tercer cambio (2026-08-18), en la misma vista — completar la exportación**:
+la vista no tenía ninguna forma de exportar, a diferencia del modal
+"Reporte" de Tickets (que sí tiene CSV + PDF). Se agregó un botón
+"Descargar PDF" en el header (`.btn`, junto a "Volver") que arma un PDF de
+una página con el mismo lenguaje visual del reporte de tickets: KPIs
+(encuestas generadas/respondidas, tasa de respuesta, promedio general),
+"Por solicitante", "Por técnico" y "Todas las respuestas" (recortada a las
+40 más recientes, con nota de cuántas quedaron afuera — mismo criterio que
+`MAX_COMENTARIOS` en `reportesTickets.js`). Ver `docs/CHANGELOG.md` para el
+detalle de qué archivos cambiaron.
+
+**Cuarto cambio (2026-08-19), en la misma vista — desglose por nivel y baja
+satisfacción**: a pedido del usuario, "Por solicitante" separó su columna
+"Encuestas" (antes "3/5") en Respondidas/Pendientes, "Por técnico" en
+Total/Respondidas, y ambas ganaron 5 columnas más con el conteo de
+respuestas por nivel (1 a 5) — 9 columnas por tabla en total. Como la RPC
+`reporte_satisfaccion_consolidado()` ya trae CADA respuesta individual
+(`respuestas`, histórico completo, ya en memoria — ver el comentario de
+cabecera del archivo), el desglose se calcula agrupando ese mismo array en
+el cliente en vez de pedirle un campo nuevo a la RPC: **cero migraciones**
+para todo este cambio. `.resumenes-grid` pasó de 2 columnas lado a lado a
+apiladas a ancho completo — con 9 columnas, a la mitad del viewport
+scrolleaban casi todo el tiempo. Nuevo chip "Solo insatisfechos" (nivel ≤ 3,
+incluye "Neutral" — decisión explícita del usuario, no una lectura mía del
+umbral) sobre "Todas las respuestas", combinado con el buscador existente
+(mismo patrón AND que los chips de `TicketsView`). Nueva sección en el PDF,
+"Respuestas con baja satisfacción", con la misma forma de fila que "Todas
+las respuestas" pero ordenada peor-nivel-primero (el objetivo es entender
+el motivo, no leer en orden cronológico).
+
+Hallazgo de paso, verificado generando el PDF real y decodificando su
+contenido (no asumido): el glifo **"≤" rompe la fuente `helvetica` estándar
+de jsPDF** (solo trae WinAnsi/Latin-1, sin ese símbolo) — el texto sale con
+un espacio entre cada letra en vez de una palabra normal. Se evitó en el
+título de la sección nueva (texto plano: "nivel 3 o menos") y, por el mismo
+motivo, las 5 columnas de nivel usan encabezados "1".."5" en el PDF en vez
+de "★" (que sí se usa en pantalla, donde el navegador no tiene ese
+problema). **(a) Qué cambió**: `ReporteSatisfaccionView.vue`,
+`reporteSatisfaccion.js` + esta guía. **(b) Riesgo**: bajo — sin
+migraciones, verificado con `npm run build` y `npm test` (132 tests,
+verde). **(c) Pendiente**: ninguno señalado por el usuario; queda abierto
+si en algún momento se quiere el mismo desglose/filtro en el modal
+"Reporte" de Tickets (`ReporteTicketsModal.vue`), que hoy no lo tiene.
+
+#### Changelog — auditoría UI/UX completa desde cero, 57 hallazgos (2026-08-26, décimonovena pasada)
+
+Pedido explícito del usuario: auditoría completa del sistema desde cero
+(no una reconciliación contra el "Repaso de consistencia — módulo por
+módulo" de ago-2026 de más abajo), ignorando deliberadamente lo ya
+revisado por si el criterio hubiera cambiado desde entonces. 15 agentes en
+paralelo (uno por grupo de módulos + uno para
+`frontend/src/components/shared/`), cada uno con verificación cruzada de
+sus propios hallazgos (segundo agente que reabre archivo y guía antes de
+confirmar) — 57 hallazgos confirmados, 0 descartados en verificación. El
+grupo `shared-components` no llegó a verificarse (límite de gasto de la
+cuenta a mitad del run); su resultado de 0 hallazgos queda sin confirmar,
+no leer como "componentes compartidos limpios". Detalle completo hallazgo
+por hallazgo en `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 14 (UX6-01 a UX6-12);
+acá el resumen agrupado por patrón — la mayoría no son 57 problemas
+distintos sino ~9 patrones sistémicos repetidos en muchos archivos.
+
+Se corrigieron los 9 hallazgos de severidad alta que son de producción (4
+aplicados directo por ser solo texto; 5 estructurales mediante agentes en
+paralelo con verificación posterior); el resto (medio/bajo) queda
+documentado para priorizar después:
+
+- **Tuteo nuevo, no cubierto por UX4-52/UX5-08/UX5-09**: corregido en los
+  4 paneles de Configuración, `LoginView.vue` (la puerta de entrada al
+  sistema) y `PersonalRegistroView.vue` (formulario público) — ambos en
+  segunda persona informal de punta a punta pese a ser las superficies
+  más expuestas del sistema — y `AccesosSensiblesView.vue` (10 ocurrencias
+  de "No tienes permiso..." → "No tiene permiso..."). El mismo patrón
+  sigue pendiente en Tickets, Equipos, Encuestas y Correos/KB — ver UX6-01
+  en `docs/HISTORIAL-AUDITORIAS.md`.
+- **Modales hand-rolled sin `Modal.vue`** (sin Escape ni bloqueo de scroll
+  del body): migrados `TicketInternoForm.vue`, `ReporteTicketsModal.vue`,
+  los 2 modales de `CuentasPanel.vue` (Traspasar/Historial), `CuentaForm.vue`,
+  `EmpresasView.vue` y `PlataformasView.vue` — mismo patrón que las
+  migraciones de Ciclo 4/5 (`form="..."` + slot `#acciones`), sin cambiar
+  contenido ni comportamiento de guardado; donde ya existía un guard de
+  "cambios sin guardar" se conectó al prop `confirmarCierre` de `Modal.vue`
+  en vez de reimplementarlo. `EmpleadoForm.vue` y `LicenciaForm.vue`
+  quedan con el mismo bug (UX6-03).
+- **`LicenciasView.vue`, tarjeta móvil sin paridad con escritorio**: le
+  faltaban el bloque de credenciales (mostrar/copiar clave, respetando
+  `auth.puedeVerCredenciales`) y la lista de usuarios con "Liberar
+  asiento" — agregados reutilizando las mismas funciones que ya usa la
+  tabla de escritorio, sin reimplementar lógica.
+- **`StaffView.vue`**: los 4 botones sueltos por fila (Editar nombre,
+  Módulos visibles, Permiso de ver contraseñas, Activar/Desactivar) tenían
+  markup duplicado e independiente entre escritorio y móvil (con una clase
+  `.icon-btn.activo` muerta, solo en la copia móvil). Consolidados en una
+  única `accionesDe(miembro)` + `<MenuAcciones>` compartida entre ambas
+  superficies (mismo patrón que `EquiposView.vue`); el header de esa
+  columna pasa de `sr-only` a texto visible.
+- **Nota de alcance**: al corregir la tarjeta móvil de `LicenciasView.vue`,
+  el agente encontró que la tabla de escritorio tenía el mismo problema de
+  `StaffView.vue`/`CuentasPanel.vue` (4 acciones sueltas, header `sr-only`)
+  y, como el archivo ya usaba `accionesDe(lic)`/`MenuAcciones` en la
+  tarjeta móvil, reusó la misma función en la fila de escritorio en vez de
+  duplicar markup — pese a que la instrucción decía explícitamente no
+  tocar esa tabla. Se decidió conservar el cambio (correcto, consistente
+  con el resto de este mismo ciclo, verificado con `npm test`) en vez de
+  revertirlo; queda trazado acá y en UX6-07 para que no sea un desvío
+  silencioso.
+
+**(a) Qué cambió**: `AreasObrasPanel.vue`, `UbicacionesPanel.vue`,
+`TiposEquipoPanel.vue`, `CategoriasTicketPanel.vue`, `LoginView.vue`,
+`PersonalRegistroView.vue`, `AccesosSensiblesView.vue`,
+`TicketInternoForm.vue`, `ReporteTicketsModal.vue`, `CuentasPanel.vue`,
+`CuentaForm.vue`, `StaffView.vue`, `EmpresasView.vue`, `PlataformasView.vue`,
+`LicenciasView.vue` + esta guía + `docs/HISTORIAL-AUDITORIAS.md` (Ciclo 14).
+**(b) Riesgo**: bajo en los fixes de texto; medio en las 6 migraciones a
+`Modal.vue` y en la consolidación de `StaffView.vue`/`LicenciasView.vue`
+(mismo tipo de cambio de markup ya validado en ciclos anteriores) —
+verificado con `npm test` (184/214, 30 skip, misma línea base) tras
+consolidar todos los lotes. **(c) Pendiente**: 48 hallazgos de severidad
+media/baja quedan documentados sin corregir en `docs/HISTORIAL-AUDITORIAS.md`
+(Ciclo 14) para priorizar después; `frontend/src/components/shared/` no
+llegó a verificarse por límite de gasto — repetir esa verificación cuando
+se libere; el hueco de `styleLab`/`designSystem` (dirección azul, WIP) no
+cuenta como incumplimiento de producción pero queda igual documentado
+(UX6-12), a corregir antes de portar esa dirección a `main.css`.
+
+#### Changelog — migración de marca al azul, Fases G0-G5 (2026-08-27, vigésima pasada)
+
+Pedido explícito del usuario, confirmando la dirección azul del Style Lab como
+la identidad definitiva (cierra la fractura de dos direcciones de marca en
+competencia señalada en la auditoría de coherencia previa). Seis pasadas
+secuenciales, cada una en su propio commit verificado (`npm run build` +
+`npm test` + `node scripts/contraste.mjs`):
+
+- **G0** (`feaa226`) — corrige `StyleLabView.vue` ANTES de usarlo como
+  referencia (cierra UX6-12 de `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 14):
+  tuteo→usted en 6 strings, los 3 colores semánticos (warning/danger/info)
+  revertidos a los valores EXACTOS de `main.css` (el lab los tenía
+  divergentes, violando su propia promesa de "los semánticos no se tocan"),
+  redirección de `--color-primary` a `--color-accent-text` que el resto del
+  plan ya daba por cerrada, ejemplo de Toast agregado a la sección
+  "Elevación" (antes no la cubría), `:focus-visible` en el ítem de nav de
+  ejemplo.
+- **G1** (`cd21c9a`) — tokens `brand-500/600/700` nuevos; `accent`/
+  `accent-hover`/`accent-alt`/`accent-soft`/`accent-subtle`/`accent-text`/
+  `accent-2` repuntados a alias de la escala nueva; `--color-primary`
+  redirigido a `accent-text` en vez de `accent` directo, en el mismo commit
+  (sin ventana intermedia). **Hallazgo de esta pasada, no planeado**: el
+  valor real de `main.css` antes de este commit era teal-green
+  (`--mat-color-accent: #157955`), no navy/mint como decía este documento
+  — ver corrección en "Identidad de marca" arriba.
+- **G2** (`f69ad79`) — fondos/texto (`bg`, `bg-elevated`, `text-primary/
+  -secondary/-tertiary`). Cierra la tensión de dos valores en competencia
+  para `text-tertiary` (U-01 vs. `design.pen`) tomando el de U-01 como base
+  y **recalculando el lado oscuro en vivo**: el valor planeado fallaba AA
+  contra el `bg-elevated` nuevo (más claro que el viejo), se ajustó a
+  `#818A96` (4.71:1) sin tocar el resto del commit. `scripts/contraste.mjs`
+  gana un chequeo permanente para este par (antes no existía).
+- **G3** (`6fbf11a`) — anillo de foco a `brand-500`, sin tocar ningún `.vue`
+  (11 reglas `:focus` existentes ya consumían `--mat-ring`).
+- **G4** (`5bf42bd`) — radios (`lg`/`xl` dejan de ser idénticos), sombras
+  reales (antes `none`), política de elevación por componente aplicada
+  (no una sombra genérica). Efecto colateral encontrado y corregido en el
+  mismo commit: 3 sombras que habían quedado inertes bajo el token viejo
+  (`.panel-lista` y `.stat-card` del Dashboard, y `.aviso-card` de
+  `AppNotifications.vue`, además del ejemplo `.ds-aviso-demo` de
+  `DesignSystemView.vue`) habrían aparecido con sombra no deseada o de
+  nivel modal al activarse el token real — corregidas antes de mergear, no
+  después.
+- **G5** (`9c60e8d`) — jerarquía de bordes de 3 niveles, `--color-border-
+  default` nuevo. `.card--clicable:hover` bajado de `--color-border-strong`
+  a `-default` en el mismo commit (decisión ya anotada en el comentario de
+  G4, ejecutada acá). `scripts/contraste.mjs` gana verificación permanente
+  del umbral WCAG 1.4.11 (3:1) para `border-default`/`-strong`.
+
+**Trabajo ajeno sin commitear, no tocado**: el repo tenía un diff sin
+commitear en `main.css` que mezclaba varias de estas pasadas con valores
+distintos a los de este plan (radios equivocados, sin tokens `brand-500/
+600/700`, más un cambio de escala tipográfica y `--header-h` 64→56 sin
+relación con esta migración) — se guardó con `git stash` en vez de
+descartarse o mezclarse (recuperable con `git stash pop`). Varios archivos
+tocados en G4/G5 (`AppSearch.vue`, `NotificacionesCampana.vue`,
+`AppNotifications.vue`, `contraste.mjs`, y sobre todo `DashboardView.vue`)
+tenían además otro trabajo pendiente sin commitear (rediseño de panel de
+tickets/dashboard) — aislado quirúrgicamente vía git plumbing para que cada
+commit de esta migración contenga solo su diff intencional, sin perder ni
+mezclar ese otro trabajo.
+
+**(a) Qué cambió**: `main.css`, `StyleLabView.vue`, `scripts/contraste.mjs`
+(2 checks nuevos), `MenuAcciones.vue`, `BuscadorCombo.vue`, `AppSearch.vue`,
+`NotificacionesCampana.vue`, `AppNotifications.vue`, `DesignSystemView.vue`,
+`DashboardView.vue` (quitadas 2 sombras no deseadas) + esta guía +
+`docs/CHANGELOG.md` + `docs/HISTORIAL-AUDITORIAS.md` (cierra UX6-12).
+**(b) Riesgo**: bajo-medio — 6 commits verificados individualmente, pero
+**sin QA visual real**: no hubo navegador/capturas en esta sesión, la
+verificación fue build+test+contraste+auditoría de valores de token. Falta
+confirmar visualmente en ambos temas: popovers, toast, modal, degradé de
+avatar (accent→accent-2 ahora es un salto de tono menos dramático que
+antes — puede necesitar ajuste de opinión de diseño, no es un bug) y
+navegación por Tab del sidebar completo. **(c) Pendiente**: QA visual de
+arriba; decidir el destino del diff guardado en `git stash` (recuperar como
+rama propia o descartar, coordinar con quien lo dejó); TK1/TK2 (selección
+múltiple en Tickets) sigue bloqueada, sin relación con esta migración;
+propuesta de paleta dot-notation de `design.pen` queda archivada, no
+retomada.
+
