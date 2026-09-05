@@ -16,6 +16,7 @@
 import { ref, onMounted, watch } from 'vue';
 import Pagination from '../../components/shared/Pagination.vue';
 import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
 import { NOMBRE_PRODUCTO } from '../../core/marca.js';
 import {
   leerTokensReales,
@@ -106,10 +107,13 @@ const paginaDemo = ref(2);
           página lo refleja sola. Página interna, solo disponible en desarrollo.
         </p>
       </div>
-      <button type="button" class="btn" @click="tema = tema === 'light' ? 'dark' : 'light'">
-        <i class="ti" :class="tema === 'dark' ? 'ti-sun' : 'ti-moon'" aria-hidden="true"></i>
+      <CarbonButton
+        variante="secondary"
+        :icono="tema === 'dark' ? 'ti-sun' : 'ti-moon'"
+        @click="tema = tema === 'light' ? 'dark' : 'light'"
+      >
         Vista previa: {{ tema === 'dark' ? 'oscuro' : 'claro' }}
-      </button>
+      </CarbonButton>
     </header>
 
     <nav class="ds-toc" aria-label="Secciones">
@@ -154,7 +158,7 @@ const paginaDemo = ref(2);
       </div>
 
       <h3>Escala de espaciado</h3>
-      <p class="ds-sub"><code>--mat-space-1</code> a <code>--mat-space-12</code>, base 4px (Fase A) — adopción progresiva, no reemplaza valores crudos existentes.</p>
+      <p class="ds-sub"><code>--space-1</code> a <code>--space-12</code>, base 4px (Fase A) — adopción progresiva, no reemplaza valores crudos existentes.</p>
       <div class="ds-espaciado">
         <div v-for="e in espaciado" :key="e.nombre" class="ds-espaciado-fila">
           <code class="ds-espaciado-nombre">{{ e.nombre }}</code>
@@ -447,10 +451,10 @@ const paginaDemo = ref(2);
 
         <h3>Diálogo de confirmación — destructivo</h3>
         <div class="ds-modal-demo">
-          <div class="modal modal-sm confirm-dialog--destructive-demo" style="width: 100%; max-width: 380px;">
+          <div class="modal modal-sm" style="width: 100%; max-width: 380px;">
             <div class="modal-title">
               <span class="confirm-titulo">
-                <span class="modal-icon"><i class="ti ti-alert-triangle" aria-hidden="true"></i></span>
+                <span class="icon-box icon-box--danger"><i class="ti ti-alert-triangle" aria-hidden="true"></i></span>
                 Dar de baja a Ana Torres
               </span>
             </div>
@@ -520,7 +524,7 @@ const paginaDemo = ref(2);
         (<code>icon_sisti.svg</code>) a distinto tamaño; no existe un tercer archivo separado.
       </p>
       <div class="ds-marca-grid">
-        <div v-for="par in [{ tema: 'claro', bg: tokens.claro['--mat-color-bg'], invertir: false }, { tema: 'oscuro', bg: tokens.oscuro['--mat-color-bg'], invertir: true }]" :key="par.tema" class="ds-marca-col">
+        <div v-for="par in [{ tema: 'claro', bg: tokens.claro['--color-bg'], invertir: false }, { tema: 'oscuro', bg: tokens.oscuro['--color-bg'], invertir: true }]" :key="par.tema" class="ds-marca-col">
           <h4>Fondo {{ par.tema }}</h4>
           <div class="ds-marca-caja" :style="{ background: par.bg }">
             <div class="ds-marca-item">
@@ -532,7 +536,7 @@ const paginaDemo = ref(2);
               <span>Compacto (20px)</span>
             </div>
             <div class="ds-marca-item">
-              <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" height="26" loading="lazy" :style="{ filter: par.invertir ? 'brightness(0) invert(1)' : 'none' }">
+              <img src="/logo_materen_sisti.svg" :alt="NOMBRE_PRODUCTO" height="26" loading="lazy" :style="{ filter: par.invertir ? 'brightness(0) invert(1)' : 'none' }">
               <span>Completo</span>
             </div>
           </div>
@@ -560,14 +564,14 @@ const paginaDemo = ref(2);
 
 .ds-header h1 {
   font-family: var(--font-display);
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-heading-03);
   font-weight: 600;
   margin-bottom: 6px;
 }
 
 .ds-header p {
   color: var(--color-text-secondary);
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   max-width: 640px;
 }
 
@@ -588,7 +592,7 @@ const paginaDemo = ref(2);
 }
 
 .ds-toc a {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   font-weight: 600;
   color: var(--color-accent-text);
   text-decoration: none;
@@ -603,19 +607,19 @@ const paginaDemo = ref(2);
 
 .ds-seccion h2 {
   font-family: var(--font-display);
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   margin-bottom: 4px;
 }
 
 .ds-seccion h3 {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   margin: 22px 0 6px;
 }
 
 .ds-seccion h4 {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   font-weight: 600;
   color: var(--color-text-secondary);
   text-transform: uppercase;
@@ -624,7 +628,7 @@ const paginaDemo = ref(2);
 }
 
 .ds-sub {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   margin-bottom: 10px;
 }
@@ -633,9 +637,9 @@ const paginaDemo = ref(2);
    fondo tenue), color según severidad: info = neutro/acento, ok = éxito,
    warn = advertencia. */
 .ds-nota {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   padding: 8px 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   border-left: 3px solid transparent;
   margin: 8px 0;
 }
@@ -647,19 +651,23 @@ const paginaDemo = ref(2);
 /* ── Tokens: swatches ─────────────────────────────────────────── */
 .ds-familia { margin-top: 12px; }
 .ds-swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-.ds-swatch-par { font-size: var(--fs-xs); }
+.ds-swatch-par { font-size: var(--fs-label-01); }
 .ds-swatch-nombre { margin-bottom: 4px; word-break: break-all; }
 .ds-swatch-fila { display: flex; gap: 4px; }
 .ds-swatch {
   flex: 1;
   height: 40px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-base);
   border: 1px solid var(--color-border);
   display: flex;
   align-items: flex-end;
   padding: 3px 5px;
 }
 .ds-swatch span {
+  /* Excepción declarada a la escala tipográfica: micro-etiqueta con el hex
+     DENTRO del swatch de color. No es texto de UI (nadie la lee de corrido,
+     se consulta), y --fs-label-01 (11px) no entra en el cuadro sin agrandarlo.
+     Única en el sistema junto a .nivel-btn de EncuestaSatisfaccionForm.vue. */
   font-size: 9px;
   font-weight: 600;
   color: #fff;
@@ -668,7 +676,7 @@ const paginaDemo = ref(2);
 .ds-swatch-valores { display: flex; justify-content: space-between; gap: 4px; margin-top: 3px; color: var(--color-text-tertiary); }
 
 .ds-espaciado { display: flex; flex-direction: column; gap: 6px; }
-.ds-espaciado-fila { display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); }
+.ds-espaciado-fila { display: flex; align-items: center; gap: 10px; font-size: var(--fs-label-01); }
 .ds-espaciado-nombre { width: 110px; flex-shrink: 0; }
 .ds-espaciado-barra { height: 12px; background: var(--color-accent); border-radius: 2px; }
 
@@ -677,17 +685,17 @@ const paginaDemo = ref(2);
 .ds-tipografia-muestra { color: var(--color-text-primary); }
 
 .ds-radios { display: flex; gap: 20px; flex-wrap: wrap; }
-.ds-radio-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: var(--fs-xs); }
+.ds-radio-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: var(--fs-label-01); }
 .ds-radio-caja { width: 56px; height: 56px; background: var(--color-bg-subtle); border: 1px solid var(--color-border-strong); }
 
 /* ── Botón / grilla comparativa ───────────────────────────────── */
 .ds-tabla-wrap { overflow-x: auto; }
 .ds-grid { border-collapse: separate; border-spacing: 8px; }
-.ds-grid th { background: none; text-transform: none; letter-spacing: normal; font-size: var(--fs-sm); color: var(--color-text-secondary); padding: 4px 8px; white-space: nowrap; }
+.ds-grid th { background: none; text-transform: none; letter-spacing: normal; font-size: var(--fs-label-01); color: var(--color-text-secondary); padding: 4px 8px; white-space: nowrap; }
 .ds-grid td { border: none; padding: 4px 8px; }
 
 .ds-icon-btn-demo { display: flex; gap: 20px; align-items: center; }
-.ds-icon-btn-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--color-text-secondary); }
+.ds-icon-btn-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: var(--fs-label-01); color: var(--color-text-secondary); }
 /* main.css .icon-btn:focus-visible usa outline, no el anillo box-shadow de .btn (Fase B no tocó icon-btn) */
 .icon-btn.force-hover { background: var(--color-bg-subtle); color: var(--color-text-primary); }
 .icon-btn.force-focus { outline: 2px solid var(--color-accent); outline-offset: 2px; }
@@ -706,7 +714,7 @@ const paginaDemo = ref(2);
 /* AppNav.vue .sb-nav-item */
 .ds-nav-item {
   display: flex; align-items: center; padding: 9px 12px; border-radius: 8px;
-  color: var(--color-text-secondary); text-decoration: none; font-size: 13.5px; font-weight: 500;
+  color: var(--color-text-secondary); text-decoration: none; font-size: var(--fs-body-01); font-weight: 500;
 }
 .ds-nav-item.force-hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 .ds-nav-item.force-focus { outline: 2px solid var(--color-accent); outline-offset: -2px; }
@@ -715,23 +723,23 @@ const paginaDemo = ref(2);
 .ds-menu-demo { display: flex; gap: 8px; flex-wrap: wrap; }
 /* MenuAcciones.vue .menu-acciones__item */
 .ds-menu-item {
-  padding: 11px 12px; border: none; border-radius: var(--radius-sm); background: var(--color-bg-elevated);
+  padding: 11px 12px; border: none; border-radius: var(--radius-base); background: var(--color-bg-elevated);
   border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-sans);
-  font-size: var(--fs-base); cursor: pointer;
+  font-size: var(--fs-body-01); cursor: pointer;
 }
 .ds-menu-item.force-hover { background: var(--color-bg-hover); }
-.ds-menu-item.force-focus { background: var(--color-bg-hover); box-shadow: 0 0 0 3px var(--mat-ring); }
+.ds-menu-item.force-focus { background: var(--color-bg-hover); box-shadow: 0 0 0 2px var(--ring); }
 
-.ds-combo-demo { list-style: none; display: flex; flex-direction: column; gap: 2px; max-width: 260px; padding: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-elevated); }
+.ds-combo-demo { list-style: none; display: flex; flex-direction: column; gap: 2px; max-width: 260px; padding: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-base); background: var(--color-bg-elevated); }
 /* BuscadorCombo.vue .combo-lista li */
-.ds-combo-item { padding: 8px 10px; border-radius: 6px; font-size: var(--fs-base); }
+.ds-combo-item { padding: 8px 10px; border-radius: 6px; font-size: var(--fs-body-01); }
 .ds-combo-item.force-hover { background: var(--color-accent-subtle); }
-.ds-combo-item--activo { background: var(--color-accent-subtle); box-shadow: 0 0 0 3px var(--mat-ring); }
+.ds-combo-item--activo { background: var(--color-accent-subtle); box-shadow: 0 0 0 2px var(--ring); }
 
 /* ThOrdenable.vue .th-ordenable-btn */
 .ds-th-ordenable { padding: 0; }
 .ds-th-btn { display: flex; align-items: center; gap: 4px; width: 100%; padding: 10px 1.25rem; background: none; border: none; font: inherit; color: inherit; cursor: pointer; }
-.ds-th-btn--suelto { width: auto; border-radius: var(--radius-sm); }
+.ds-th-btn--suelto { width: auto; border-radius: var(--radius-base); }
 .ds-th-btn.force-hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 .ds-th-btn.force-focus {
   outline: 2px solid var(--color-accent);
@@ -739,7 +747,7 @@ const paginaDemo = ref(2);
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
 }
-.ds-th-icono { font-size: 13px; opacity: 0.5; }
+.ds-th-icono { font-size: var(--icon-sm); opacity: 0.5; }
 .ds-th-btn.force-hover .ds-th-icono,
 .ds-th-btn.force-focus .ds-th-icono { opacity: 1; }
 
@@ -752,22 +760,21 @@ const paginaDemo = ref(2);
 
 /* ── Superposiciones ──────────────────────────────────────────── */
 .ds-modal-demo { display: flex; }
-.confirm-dialog--destructive-demo { border-top: 2px solid var(--color-danger-text); }
 .confirm-titulo { display: flex; align-items: center; gap: 10px; }
-.confirm-mensaje { font-size: var(--fs-base); color: var(--color-text-secondary); }
+.confirm-mensaje { font-size: var(--fs-body-01); color: var(--color-text-secondary); }
 
 /* NotificacionesCampana.vue .campana-trigger/.campana-badge */
 .ds-campana-trigger-demo .icon-btn { position: relative; }
-.ds-campana-trigger-badge { position: absolute; top: 0; right: 0; font-size: 10px; line-height: 1; padding: 1px 5px; }
+.ds-campana-trigger-badge { position: absolute; top: 0; right: 0; font-size: var(--fs-label-01); line-height: 1; padding: 1px 5px; }
 
-.ds-campana-demo { display: flex; flex-direction: column; gap: 2px; max-width: 320px; padding: 4px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-bg-elevated); }
+.ds-campana-demo { display: flex; flex-direction: column; gap: 2px; max-width: 320px; padding: 4px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-base); background: var(--color-bg-elevated); }
 /* NotificacionesCampana.vue .campana-panel__item */
-.ds-campana-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); }
+.ds-campana-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border-radius: var(--radius-base); }
 .ds-campana-item.force-hover { background: var(--color-bg-hover); }
-.ds-campana-item i { font-size: 16px; color: var(--color-accent-soft); margin-top: 1px; }
+.ds-campana-item i { font-size: var(--icon-sm); color: var(--color-accent-soft); margin-top: 1px; }
 .ds-campana-item-texto { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.ds-campana-item-titulo { font-size: 12.5px; font-weight: 500; color: var(--color-text-primary); }
-.ds-campana-item-fecha { font-size: 11px; color: var(--color-text-secondary); }
+.ds-campana-item-titulo { font-size: var(--fs-body-01); font-weight: 500; color: var(--color-text-primary); }
+.ds-campana-item-fecha { font-size: var(--fs-label-01); color: var(--color-text-secondary); }
 /* NotificacionesCampana.vue .campana-panel__punto — omitido antes en esta demo */
 .ds-campana-item-punto { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); flex-shrink: 0; margin-top: 5px; }
 
@@ -775,16 +782,16 @@ const paginaDemo = ref(2);
 .ds-aviso-demo {
   display: flex; align-items: center; gap: 10px; padding: 12px 14px; max-width: 320px;
   background: var(--color-bg-elevated); border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+  border-radius: var(--radius-base); box-shadow: var(--shadow-overlay);
 }
-.ds-aviso-demo i { color: var(--color-accent-soft); font-size: 18px; }
-.ds-aviso-texto { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+.ds-aviso-demo i { color: var(--color-accent-soft); font-size: var(--icon-md); }
+.ds-aviso-texto { font-size: var(--fs-body-01); font-weight: 600; color: var(--color-text-primary); }
 
 /* ── Marca ────────────────────────────────────────────────────── */
 .ds-marca-grid { display: flex; gap: 16px; flex-wrap: wrap; }
 .ds-marca-col h4 { margin-top: 0; }
-.ds-marca-caja { display: flex; gap: 20px; padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--color-border); }
-.ds-marca-item { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: var(--fs-xs); color: var(--color-text-secondary); }
+.ds-marca-caja { display: flex; gap: 20px; padding: 20px; border-radius: var(--radius-base); border: 1px solid var(--color-border); }
+.ds-marca-item { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: var(--fs-label-01); color: var(--color-text-secondary); }
 
 /* ── Botón: anillo de foco por variante (Fase B), duplicado acá porque
    no se puede sostener :focus-visible real en varias filas a la vez ── */
@@ -792,20 +799,20 @@ const paginaDemo = ref(2);
   background: var(--color-bg-subtle); border-color: var(--color-border-strong);
 }
 .btn-primary.force-hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
-.btn-danger.force-hover { background: var(--mat-color-danger-hover); color: #fff; border-color: var(--mat-color-danger-hover); }
-.btn-danger-solid.force-hover { background: var(--mat-color-danger-hover); border-color: var(--mat-color-danger-hover); }
-.btn-whatsapp.force-hover { background: var(--mat-color-whatsapp-hover); border-color: var(--mat-color-whatsapp-hover); }
+.btn-danger.force-hover { background: var(--color-danger-hover); color: #fff; border-color: var(--color-danger-hover); }
+.btn-danger-solid.force-hover { background: var(--color-danger-hover); border-color: var(--color-danger-hover); }
+.btn-whatsapp.force-hover { background: var(--color-whatsapp-hover); border-color: var(--color-whatsapp-hover); }
 
 .btn.force-focus:not(.btn-danger):not(.btn-danger-solid):not(.btn-whatsapp) {
-  border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--mat-ring);
+  border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--ring);
 }
 .btn-danger.force-focus,
-.btn-danger-solid.force-focus { border-color: var(--color-danger-border); box-shadow: 0 0 0 3px var(--mat-ring-danger); }
-.btn-whatsapp.force-focus { border-color: var(--mat-color-whatsapp); box-shadow: 0 0 0 3px var(--mat-ring-whatsapp); }
+.btn-danger-solid.force-focus { border-color: var(--color-danger-border); box-shadow: 0 0 0 2px var(--ring-danger); }
+.btn-whatsapp.force-focus { border-color: var(--color-whatsapp); box-shadow: 0 0 0 2px var(--ring-whatsapp); }
 
 /* Formularios: mismo anillo que .form-group input:focus, forzado por clase */
 .form-group input.force-focus,
 .form-group select.force-focus {
-  border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--mat-ring); outline: none;
+  border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--ring); outline: none;
 }
 </style>

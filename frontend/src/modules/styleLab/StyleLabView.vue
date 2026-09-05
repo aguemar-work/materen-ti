@@ -6,7 +6,7 @@
 // Cómo funciona: TODOS los tokens de la paleta nueva viven scoped dentro
 // de la clase raíz .sl-lab (ver <style> al final), redefiniendo los mismos
 // nombres de variable que ya usa el sistema real (--color-accent,
-// --color-text-primary, --fs-lg, --radius-lg, etc.). Como las custom
+// --color-text-primary, --fs-heading-02, --radius-base, etc.). Como las custom
 // properties de CSS heredan por el árbol del DOM, todo lo que está DENTRO
 // de .sl-lab y usa una clase global real (.btn, .badge--*, .stat-card,
 // table/th/td, .modal, .avatar, .toast-*, .timeline, .capacity-bar,
@@ -26,6 +26,7 @@ import EmptyState from '../../components/shared/EmptyState.vue';
 import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import { NOMBRE_PRODUCTO } from '../../core/marca.js';
+import { tonoAvatar } from '../../core/avatar.js';
 
 const oscuro = ref(false);
 const modalAbierto = ref(false);
@@ -157,7 +158,7 @@ const GRUPOS_PALETA = [
     items: [
       { nombre: 'Fondo danger', token: '--color-danger-bg', hex: '#FAEAE3', uso: 'Fondo de badge / alerta de error — sin cambio: la migración de marca no toca los semánticos, valor idéntico al que ya existe en main.css' },
       { nombre: 'Texto danger', token: '--color-danger-text', hex: '#963D28', uso: 'Texto sobre fondo danger (badge) — sin cambio: la migración de marca no toca los semánticos, valor idéntico al que ya existe en main.css' },
-      { nombre: 'Danger sólido', token: '--color-danger-solid', hex: '#DC2626', uso: 'Fondo de botón "peligro sólido" — invariante entre temas, sin cambio: mismo valor que ya existe en main.css (--mat-color-danger-solid)' },
+      { nombre: 'Danger sólido', token: '--color-danger-solid', hex: '#DC2626', uso: 'Fondo de botón "peligro sólido" — invariante entre temas, sin cambio: mismo valor que ya existe en main.css (--color-danger-solid)' },
     ],
   },
   {
@@ -180,12 +181,12 @@ const PALETA_ACTIVA = [
 // ── Tipografía ──────────────────────────────────────────────────────────
 const TIPOGRAFIA = [
   { nombre: 'Título de página', clase: 'sl-fs-pagina', token: '--fs-3xl', size: '24px', peso: 700, lh: '1.2', familia: 'Sora', ejemplo: 'Dashboard' },
-  { nombre: 'Título de sección', clase: 'sl-fs-seccion', token: '--fs-xl', size: '18px', peso: 600, lh: '1.3', familia: 'Sora', ejemplo: 'Tickets recientes' },
-  { nombre: 'Título de card', clase: 'sl-fs-card', token: '--fs-lg', size: '16px', peso: 600, lh: '1.3', familia: 'Sora', ejemplo: 'Pendientes' },
-  { nombre: 'Body', clase: 'sl-fs-body', token: '--fs-md', size: '14px', peso: 400, lh: '1.5', familia: 'Inter', ejemplo: 'El ticket fue reasignado a soporte de infraestructura.' },
-  { nombre: 'Texto secundario', clase: 'sl-fs-secundario', token: '--fs-base', size: '13px', peso: 400, lh: '1.5', familia: 'Inter', ejemplo: 'Actualizado hace 12 minutos' },
-  { nombre: 'Metadata', clase: 'sl-fs-metadata', token: '--fs-sm', size: '12px', peso: 500, lh: '1.4', familia: 'Inter', ejemplo: 'TCK-2026-0341 · Hoy, 09:14' },
-  { nombre: 'Número KPI', clase: 'sl-fs-kpi', token: '--fs-stat', size: '26px', peso: 700, lh: '1.1', familia: 'Inter', ejemplo: '24' },
+  { nombre: 'Título de sección', clase: 'sl-fs-seccion', token: '--fs-heading-02', size: '18px', peso: 600, lh: '1.3', familia: 'Sora', ejemplo: 'Tickets recientes' },
+  { nombre: 'Título de card', clase: 'sl-fs-card', token: '--fs-heading-02', size: '16px', peso: 600, lh: '1.3', familia: 'Sora', ejemplo: 'Pendientes' },
+  { nombre: 'Body', clase: 'sl-fs-body', token: '--fs-body-01', size: '14px', peso: 400, lh: '1.5', familia: 'Inter', ejemplo: 'El ticket fue reasignado a soporte de infraestructura.' },
+  { nombre: 'Texto secundario', clase: 'sl-fs-secundario', token: '--fs-body-01', size: '13px', peso: 400, lh: '1.5', familia: 'Inter', ejemplo: 'Actualizado hace 12 minutos' },
+  { nombre: 'Metadata', clase: 'sl-fs-metadata', token: '--fs-label-01', size: '12px', peso: 500, lh: '1.4', familia: 'Inter', ejemplo: 'TCK-2026-0341 · Hoy, 09:14' },
+  { nombre: 'Número KPI', clase: 'sl-fs-kpi', token: '--fs-heading-05', size: '26px', peso: 700, lh: '1.1', familia: 'Inter', ejemplo: '24' },
 ];
 
 // ── Botones ─────────────────────────────────────────────────────────────
@@ -237,13 +238,11 @@ const TICKETS_DEMO = [
 // Los tamaños (sm/lg, base sin modificador) son el único eje de variación
 // además del tono — nunca el color. Sin nombre (usuario desconocido/
 // eliminado) → tono neutro, nunca uno de los 5 categóricos ni un semántico.
-const AVATAR_TONOS = ['sl-avatar--azul', 'sl-avatar--slate', 'sl-avatar--teal', 'sl-avatar--violeta', 'sl-avatar--arena'];
-function tonoAvatar(nombre) {
-  if (!nombre) return 'sl-avatar--neutro';
-  let hash = 0;
-  for (let i = 0; i < nombre.length; i++) hash = (hash * 31 + nombre.charCodeAt(i)) >>> 0;
-  return AVATAR_TONOS[hash % AVATAR_TONOS.length];
-}
+// Portado: tonoAvatar y los tonos .avatar--* viven en core/avatar.js y
+// main.css desde el rediseño Materen (Fase 1). Esta página los importa como
+// cualquier vista real en vez de mantener su copia .sl-avatar--*, que era el
+// prototipo — dejarla sería recrear acá la divergencia que la Fase 1 fue a
+// cerrar.
 
 // ── Navegación (ítem activo) — mismos tokens que .sb-nav-item.is-activo
 // real (AppNav.vue): fondo --color-accent-subtle, texto --color-accent-text,
@@ -698,11 +697,11 @@ const ROLES_COLOR = [
       </div>
       <p class="sl-seccion-nota">Escala categórica completa (5 tonos, ciclo determinista por hash del nombre) + variante neutra para usuarios sin nombre:</p>
       <div class="sl-fila-demo">
-        <span class="avatar sl-avatar--azul">AZ</span>
-        <span class="avatar sl-avatar--slate">SL</span>
-        <span class="avatar sl-avatar--teal">TE</span>
-        <span class="avatar sl-avatar--violeta">VI</span>
-        <span class="avatar sl-avatar--arena">AR</span>
+        <span class="avatar avatar--azul">AZ</span>
+        <span class="avatar avatar--slate">SL</span>
+        <span class="avatar avatar--teal">TE</span>
+        <span class="avatar avatar--violeta">VI</span>
+        <span class="avatar avatar--arena">AR</span>
         <span class="avatar" :class="tonoAvatar('')" aria-label="Usuario sin nombre">
           <i class="ti ti-user" aria-hidden="true"></i>
         </span>
@@ -794,7 +793,7 @@ const ROLES_COLOR = [
       </div>
 
       <h3>Menú contextual / dropdown</h3>
-      <p class="sl-seccion-nota">Única capa de esta página que usa <code>--shadow-md</code> — el resto de los contenedores (cards, tabla) queda sin sombra permanente.</p>
+      <p class="sl-seccion-nota">Única capa de esta página que usa <code>--shadow-overlay</code> — el resto de los contenedores (cards, tabla) queda sin sombra permanente.</p>
       <div class="sl-popover">
         <div class="sl-popover-item"><i class="ti ti-edit" aria-hidden="true"></i> Editar</div>
         <div class="sl-popover-item"><i class="ti ti-user-check" aria-hidden="true"></i> Reasignar</div>
@@ -1210,7 +1209,7 @@ const ROLES_COLOR = [
 
       <h4>D. Dropdown / menú contextual</h4>
       <p class="sl-seccion-nota">
-        Único consumidor de <code>--shadow-md</code>. Abre/cierra de verdad, con la misma lógica
+        Único consumidor de <code>--shadow-overlay</code>. Abre/cierra de verdad, con la misma lógica
         de <code>MenuAcciones.vue</code> real (Escape, click afuera, foco de vuelta al botón) — ver
         nota de por qué no se importó el componente literal en el comentario del script.
       </p>
@@ -1240,7 +1239,7 @@ const ROLES_COLOR = [
       </div>
 
       <h4>E. Modal</h4>
-      <p class="sl-seccion-nota">Reutiliza <code>Modal.vue</code> real. Overlay con <code>.modal-bg</code> compartido (sin token de sombra propio, es un scrim de color). El panel usa <code>--shadow-lg</code> — alias de <code>--shadow-modal</code>, ver nota en el bloque de tokens.</p>
+      <p class="sl-seccion-nota">Reutiliza <code>Modal.vue</code> real. Overlay con <code>.modal-bg</code> compartido (sin token de sombra propio, es un scrim de color). El panel usa <code>--shadow-overlay</code> — alias de <code>--shadow-overlay</code>, ver nota en el bloque de tokens.</p>
       <button type="button" class="btn" @click="modalElevacionAbierto = true">Abrir modal de ejemplo</button>
       <Modal v-if="modalElevacionAbierto" titulo="Reasignar ticket" size="sm" @close="modalElevacionAbierto = false">
         <div class="form-group">
@@ -1257,7 +1256,7 @@ const ROLES_COLOR = [
       </Modal>
 
       <h4>F. Toast</h4>
-      <p class="sl-seccion-nota">Segundo consumidor de <code>--shadow-md</code>, junto al dropdown — el plan de migración (G4) lo suma explícitamente: hoy <code>.toast</code> no lleva ninguna sombra en <code>main.css</code>, se ve "pegado" a lo que tiene detrás en vez de flotar sobre la página.</p>
+      <p class="sl-seccion-nota">Segundo consumidor de <code>--shadow-overlay</code>, junto al dropdown — el plan de migración (G4) lo suma explícitamente: hoy <code>.toast</code> no lleva ninguna sombra en <code>main.css</code>, se ve "pegado" a lo que tiene detrás en vez de flotar sobre la página.</p>
       <div class="sl-fila-demo sl-fila-demo--col">
         <div class="toast toast-info" style="position: static">
           <i class="ti ti-info-circle" aria-hidden="true"></i> Se sincronizaron los datos
@@ -1300,12 +1299,12 @@ const ROLES_COLOR = [
   --color-text-link: var(--color-brand-600);
   --color-focus: var(--color-brand-500);
   --color-focus-ring: rgba(0, 130, 251, 0.28);
-  /* --shadow-modal era un token con valor propio (idéntico a --shadow-lg)
+  /* --shadow-overlay era un token con valor propio (idéntico a --shadow-overlay)
      desde la primera pasada de esta paleta — dos nombres para el mismo
      número, nunca resuelto. Se cierra acá como decisión final de
-     elevación: alias de --shadow-lg (declarado más abajo), no un valor
+     elevación: alias de --shadow-overlay (declarado más abajo), no un valor
      paralelo — un solo tono de "capa siempre elevada". */
-  --shadow-modal: var(--shadow-lg);
+  --shadow-overlay: var(--shadow-overlay);
 
   /* Remapeo de los alias --color-*, --fs-*, --radius-*, --shadow-* que
      main.css ya usa en sus componentes — acá es donde el sistema
@@ -1350,7 +1349,7 @@ const ROLES_COLOR = [
   /* warning/danger/info: sin cambio respecto a main.css — la dirección de
      marca azul solo toca brand/bg/text/border, nunca los semánticos. Los 3
      bloques de acá abajo (claro y oscuro) son una copia exacta de
-     --mat-color-warning/-danger/-info en main.css, no una propuesta nueva. */
+     --color-warning/-danger/-info en main.css, no una propuesta nueva. */
   --color-warning-bg: #FBF0DC;
   --color-warning-text: #845A0E;
   --color-warning-text-strong: #6B4809;
@@ -1370,22 +1369,22 @@ const ROLES_COLOR = [
   --color-neutral-text: var(--color-text-secondary);
   --color-neutral-border: var(--color-border);
 
-  --mat-ring: var(--color-focus-ring);
+  --ring: var(--color-focus-ring);
   /* Invariantes entre temas, igual que en main.css — no se redefinen en
      .sl-lab.sl-oscuro más abajo. */
-  --mat-color-danger-hover: #DC2626;
-  --mat-color-danger-solid: #DC2626;
+  --color-danger-hover: #DC2626;
+  --color-danger-solid: #DC2626;
 
-  /* Tipografía: --fs-lg/--fs-xl suben de 15/17 a 16/18 (brief);
+  /* Tipografía: --fs-heading-02/--fs-heading-02 suben de 15/17 a 16/18 (brief);
      --fs-3xl es nuevo (título de página). Resto de la escala sin cambio. */
-  --fs-lg: 16px;
-  --fs-xl: 18px;
+  --fs-heading-02: 16px;
+  --fs-heading-02: 18px;
   --fs-3xl: 24px;
 
   /* Radio: lg/xl dejan de ser iguales (14/14 en el sistema real) y
      pasan a 12/16, más diferenciados. sm/md no cambian. */
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-base: 12px;
+  --radius-base: 16px;
 
   /* Sombras — decisión de elevación CERRADA (ver sección "Elevación y
      superficies"). El sistema real declara --shadow-sm/md/lg pero NINGÚN
@@ -1395,20 +1394,20 @@ const ROLES_COLOR = [
      componente por componente:
        --shadow-sm     → .sl-card--clicable, SOLO en :hover/:focus-visible
                           (nunca en reposo) — única "elevación" de una card.
-       --shadow-md     → .sl-popover (dropdown/menú contextual, estático y
+       --shadow-overlay     → .sl-popover (dropdown/menú contextual, estático y
                           el real con toggle de "Elevación y superficies")
                           y .toast (flota sobre la página, no es un
                           contenedor de layout — mismo nivel que el popover).
-       --shadow-lg     → .modal (única capa "siempre elevada").
-       --shadow-modal  → alias de --shadow-lg (mismo valor, ver abajo) —
+       --shadow-overlay     → .modal (única capa "siempre elevada").
+       --shadow-overlay  → alias de --shadow-overlay (mismo valor, ver abajo) —
                           existían los dos nombres desde la primera pasada
                           sin resolver cuál "ganaba"; queda resuelto así.
      Cards, stat-cards y tabla quedan con superficie blanca + borde sutil,
      sin sombra permanente — cero box-shadow en las reglas .card/.stat-card
      más abajo, confirmado en la sección de validación de esta ronda. */
   --shadow-sm: 0 1px 2px rgba(28, 43, 51, 0.06);
-  --shadow-md: 0 4px 12px rgba(28, 43, 51, 0.08);
-  --shadow-lg: 0 16px 40px rgba(28, 43, 51, 0.16);
+  --shadow-overlay: 0 4px 12px rgba(28, 43, 51, 0.08);
+  --shadow-overlay: 0 16px 40px rgba(28, 43, 51, 0.16);
 
   /* Espaciado ícono/input (Ajuste "ruido visual") — el ícono de
      .search-wrap real (main.css) queda a 11px del borde y el texto arranca
@@ -1433,8 +1432,8 @@ const ROLES_COLOR = [
 /* Sombras — ver política completa en el comentario de --shadow-* arriba.
    .card/.stat-card NO llevan box-shadow (Ajuste 2): quedan solo con borde
    sutil. El modal es la única capa "siempre elevada". */
-.sl-lab .modal { box-shadow: var(--shadow-lg); }
-.sl-lab .toast { box-shadow: var(--shadow-md); }
+.sl-lab .modal { box-shadow: var(--shadow-overlay); }
+.sl-lab .toast { box-shadow: var(--shadow-overlay); }
 
 /* Jerarquía de bordes de controles interactivos (Ajuste 1) — main.css usa
    el mismo --color-border para cards Y para input/select/textarea/botón;
@@ -1505,7 +1504,7 @@ const ROLES_COLOR = [
    (anillo) — nunca solo con un cambio de tono de borde neutro. Ya es el
    comportamiento nativo de main.css (.form-group input:focus, .btn:focus-visible,
    select:focus todos fijan border-color: var(--color-accent) + box-shadow con
-   var(--mat-ring)); acá remapeado --mat-ring: var(--color-focus-ring) arriba,
+   var(--ring)); acá remapeado --ring: var(--color-focus-ring) arriba,
    así que no hace falta ningún override adicional para foco. */
 
 /* ── Tema oscuro — toggle propio (.sl-oscuro), independiente del
@@ -1556,9 +1555,22 @@ const ROLES_COLOR = [
   --color-info-text: #9CAAE2;
   --color-info-border: rgba(59, 79, 160, 0.32);
 
+  /* Tonos de avatar: mismos valores que el bloque [data-theme="dark"] de
+     main.css. Van acá porque el lab no usa data-theme, sino esta clase. */
+  --color-avatar-azul-bg: rgba(46, 90, 142, 0.28);
+  --color-avatar-azul-text: #9CC0EA;
+  --color-avatar-slate-bg: rgba(120, 112, 96, 0.32);
+  --color-avatar-slate-text: #C9C4BA;
+  --color-avatar-teal-bg: rgba(31, 110, 92, 0.30);
+  --color-avatar-teal-text: #7FD3BC;
+  --color-avatar-violeta-bg: rgba(91, 75, 150, 0.30);
+  --color-avatar-violeta-text: #C3B4EA;
+  --color-avatar-arena-bg: rgba(122, 90, 53, 0.30);
+  --color-avatar-arena-text: #E0BE8E;
+
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+  --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 16px 40px rgba(0, 0, 0, 0.6);
 }
 
 /* ── Shell de la página (prefijo sl-, no colisiona con nada global) ── */
@@ -1566,22 +1578,22 @@ const ROLES_COLOR = [
 .sl-header-titulo { display: flex; flex-direction: column; gap: 12px; }
 .sl-header-marca { display: flex; align-items: flex-start; gap: 12px; }
 .sl-logo { width: 32px; height: 32px; flex-shrink: 0; margin-top: 2px; }
-.sl-header h1 { font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -0.01em; margin-bottom: 4px; }
-.sl-header p { font-size: var(--fs-base); color: var(--color-text-secondary); max-width: 60ch; }
+.sl-header h1 { font-family: var(--font-display); font-size: var(--fs-heading-03); font-weight: 700; letter-spacing: -0.01em; margin-bottom: 4px; }
+.sl-header p { font-size: var(--fs-body-01); color: var(--color-text-secondary); max-width: 60ch; }
 .sl-header code { font-family: var(--font-mono); font-size: 0.9em; }
 
 .sl-paleta-activa { display: flex; gap: 8px; flex-wrap: wrap; }
 .sl-paleta-chip {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: var(--fs-xs); color: var(--color-text-secondary);
+  font-size: var(--fs-label-01); color: var(--color-text-secondary);
   background: var(--color-bg-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill); padding: 3px 10px 3px 4px;
+  border-radius: var(--radius-base); padding: 3px 10px 3px 4px;
 }
 .sl-paleta-swatch { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 1px solid var(--color-border); }
 .sl-paleta-chip code { font-family: var(--font-mono); }
 
 .sl-toc { display: flex; gap: 14px; flex-wrap: wrap; margin: 20px 0; padding: 8px 0 12px; border-bottom: 1px solid var(--color-border); }
-.sl-toc a { font-size: var(--fs-sm); color: var(--color-text-link); text-decoration: none; font-weight: 600; }
+.sl-toc a { font-size: var(--fs-label-01); color: var(--color-text-link); text-decoration: none; font-weight: 600; }
 .sl-toc a:hover { text-decoration: underline; }
 
 /* position, no flex — hallazgo de esta ronda: con display:flex, un <p> que
@@ -1593,7 +1605,7 @@ const ROLES_COLOR = [
    siempre es el primer hijo en las 7 instancias de .sl-nota del archivo;
    con position:absolute se posiciona sin tocar el flujo del resto del
    contenido, que vuelve a ser texto corrido normal. */
-.sl-nota { position: relative; font-size: var(--fs-sm); padding: 10px 14px 10px 34px; border-radius: var(--radius-md); margin-bottom: 8px; }
+.sl-nota { position: relative; font-size: var(--fs-label-01); padding: 10px 14px 10px 34px; border-radius: var(--radius-base); margin-bottom: 8px; }
 .sl-nota > i:first-child { position: absolute; left: 14px; top: 12px; }
 .sl-nota--info { background: var(--color-info-bg); color: var(--color-info-text); }
 .sl-nota--ok { background: var(--color-success-bg); color: var(--color-success-text); }
@@ -1601,35 +1613,35 @@ const ROLES_COLOR = [
 
 .sl-seccion { padding: 32px 0; border-bottom: 1px solid var(--color-border-subtle); }
 .sl-seccion:last-child { border-bottom: none; }
-.sl-seccion h2 { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; margin-bottom: 16px; letter-spacing: -0.01em; }
-.sl-seccion h3 { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 600; margin: 20px 0 10px; }
-.sl-seccion h4 { font-family: var(--font-display); font-size: var(--fs-md); font-weight: 600; margin: 24px 0 10px; }
-.sl-seccion-nota { font-size: var(--fs-sm); color: var(--color-text-secondary); margin-bottom: 12px; }
+.sl-seccion h2 { font-family: var(--font-display); font-size: var(--fs-heading-02); font-weight: 600; margin-bottom: 16px; letter-spacing: -0.01em; }
+.sl-seccion h3 { font-family: var(--font-display); font-size: var(--fs-heading-02); font-weight: 600; margin: 20px 0 10px; }
+.sl-seccion h4 { font-family: var(--font-display); font-size: var(--fs-body-01); font-weight: 600; margin: 24px 0 10px; }
+.sl-seccion-nota { font-size: var(--fs-label-01); color: var(--color-text-secondary); margin-bottom: 12px; }
 
 .sl-familia { margin-top: 16px; }
 .sl-familia h3 { margin-top: 0; }
 .sl-swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.sl-swatch-card { background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
+.sl-swatch-card { background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-base); overflow: hidden; }
 .sl-swatch-color { height: 56px; }
 .sl-swatch-info { padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
-.sl-swatch-nombre { font-weight: 600; font-size: var(--fs-base); }
-.sl-swatch-token, .sl-swatch-hex { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--color-text-secondary); }
-.sl-swatch-uso { font-size: var(--fs-xs); color: var(--color-text-tertiary); margin-top: 4px; }
-.sl-swatch-ajustado { font-size: var(--fs-xs); color: var(--color-warning-text); background: var(--color-warning-bg); border-radius: var(--radius-sm); padding: 4px 6px; margin-top: 6px; display: flex; gap: 4px; align-items: flex-start; }
+.sl-swatch-nombre { font-weight: 600; font-size: var(--fs-body-01); }
+.sl-swatch-token, .sl-swatch-hex { font-family: var(--font-mono); font-size: var(--fs-label-01); color: var(--color-text-secondary); }
+.sl-swatch-uso { font-size: var(--fs-label-01); color: var(--color-text-tertiary); margin-top: 4px; }
+.sl-swatch-ajustado { font-size: var(--fs-label-01); color: var(--color-warning-text); background: var(--color-warning-bg); border-radius: var(--radius-base); padding: 4px 6px; margin-top: 6px; display: flex; gap: 4px; align-items: flex-start; }
 
 .sl-tipo-tabla { display: flex; flex-direction: column; gap: 14px; }
 .sl-tipo-fila { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--color-border-subtle); }
 .sl-tipo-meta { display: flex; flex-direction: column; gap: 2px; }
-.sl-tipo-meta strong { font-size: var(--fs-base); }
-.sl-tipo-meta span { font-size: var(--fs-xs); color: var(--color-text-tertiary); font-family: var(--font-mono); }
+.sl-tipo-meta strong { font-size: var(--fs-body-01); }
+.sl-tipo-meta span { font-size: var(--fs-label-01); color: var(--color-text-tertiary); font-family: var(--font-mono); }
 
 .sl-fs-pagina { font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
-.sl-fs-seccion { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; line-height: 1.3; }
-.sl-fs-card { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 6px; }
-.sl-fs-body { font-size: var(--fs-md); font-weight: 400; line-height: 1.5; }
-.sl-fs-secundario { font-size: var(--fs-base); font-weight: 400; line-height: 1.5; color: var(--color-text-secondary); }
-.sl-fs-metadata { font-size: var(--fs-sm); font-weight: 500; line-height: 1.4; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
-.sl-fs-kpi { font-size: var(--fs-stat); font-weight: 700; line-height: 1.1; }
+.sl-fs-seccion { font-family: var(--font-display); font-size: var(--fs-heading-02); font-weight: 600; line-height: 1.3; }
+.sl-fs-card { font-family: var(--font-display); font-size: var(--fs-heading-02); font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 6px; }
+.sl-fs-body { font-size: var(--fs-body-01); font-weight: 400; line-height: 1.5; }
+.sl-fs-secundario { font-size: var(--fs-body-01); font-weight: 400; line-height: 1.5; color: var(--color-text-secondary); }
+.sl-fs-metadata { font-size: var(--fs-label-01); font-weight: 500; line-height: 1.4; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
+.sl-fs-kpi { font-size: var(--fs-heading-05); font-weight: 700; line-height: 1.1; }
 
 .sl-fila-demo { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .sl-fila-demo--col { flex-direction: column; align-items: flex-start; }
@@ -1651,14 +1663,14 @@ const ROLES_COLOR = [
   color: var(--color-text-secondary);
 }
 .sl-btn-ghost:hover { background: var(--color-bg-muted); color: var(--color-text-primary); border-color: transparent; }
-.sl-btn-ghost:focus-visible { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--mat-ring); }
+.sl-btn-ghost:focus-visible { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--ring); }
 
 /* Icon-box consolidado — reemplaza .feed-icon (Dashboard) y
    .soporte-accion-icono (Soporte), hoy divergentes en tamaño/radio. */
 .sl-icon-box {
-  width: 36px; height: 36px; border-radius: var(--radius-md);
+  width: 36px; height: 36px; border-radius: var(--radius-base);
   display: flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0;
+  font-size: var(--icon-md); flex-shrink: 0;
 }
 /* --color-accent-subtle/-text en vez de --color-brand-100/-600 directos:
    esos dos SÍ están tematizados para oscuro (ver .sl-lab.sl-oscuro) — usar
@@ -1670,42 +1682,14 @@ const ROLES_COLOR = [
 .sl-icon-box--danger  { background: var(--color-danger-bg); color: var(--color-danger-text); }
 .sl-icon-box--info    { background: var(--color-info-bg); color: var(--color-info-text); }
 
-/* Avatar — una sola familia visual para CUALQUIER persona de la página
-   (ronda de "una sola familia": ya no hay un tono "para responsables" y un
-   tratamiento plano aparte para el resto — ese enfoque trataba el color
-   como si comunicara peso de acción). Tamaño (sm/base/lg) es el único
-   modificador además del tono; ninguno de los 6 (5 categóricos + neutro)
-   reutiliza success/warning/danger. Fondo claro + texto saturado (mismo
-   lenguaje visual que badge/icon-box), verificados ≥5.2:1 en claro /
-   ≥8.6:1 en oscuro. Asignación determinista vía tonoAvatar(nombre) en el
-   script, no aleatoria — nombre vacío cae en --neutro. */
-.sl-avatar--azul    { background: #E4ECF7; color: #2E5A8E; border: none; }
-/* Gris CÁLIDO neutro (sin canal azul) a propósito — con tinte azulado
-   (como el primer intento) quedaba casi indistinguible de --azul al lado
-   en una tabla; hallazgo real de una ronda anterior, verificado con el
-   color computado de cada avatar, no solo a ojo. */
-.sl-avatar--slate   { background: #ECEAE7; color: #5C574E; border: none; }
-.sl-avatar--teal    { background: #E0F1EC; color: #1F6E5C; border: none; }
-.sl-avatar--violeta { background: #ECE7F6; color: #5B4B96; border: none; }
-.sl-avatar--arena   { background: #F5EDE3; color: #7A5A35; border: none; }
-/* Neutro (usuario sin nombre) — gris liso, NO uno de los 5 tonos
-   categóricos ni un color semántico: reusa los mismos --color-bg-muted/
-   --color-text-secondary que ya usa el resto del sistema para "esto es
-   neutro", en vez de inventar un séptimo hex. */
-.sl-avatar--neutro  { background: var(--color-bg-muted); color: var(--color-text-secondary); border: none; }
-
-.sl-lab.sl-oscuro .sl-avatar--azul    { background: rgba(46, 90, 142, 0.28); color: #9CC0EA; }
-.sl-lab.sl-oscuro .sl-avatar--slate   { background: rgba(120, 112, 96, 0.32); color: #C9C4BA; }
-.sl-lab.sl-oscuro .sl-avatar--teal    { background: rgba(31, 110, 92, 0.30); color: #7FD3BC; }
-.sl-lab.sl-oscuro .sl-avatar--violeta { background: rgba(91, 75, 150, 0.30); color: #C3B4EA; }
-.sl-lab.sl-oscuro .sl-avatar--arena   { background: rgba(122, 90, 53, 0.30); color: #E0BE8E; }
-/* --neutro no necesita override de oscuro: --color-bg-muted/-text-secondary
-   ya están tematizados globalmente (ver .sl-lab.sl-oscuro arriba). */
-
-/* Único modificador de tamaño que no existe hoy en main.css (que solo
-   tiene .avatar/.avatar.sm) — mismo criterio de proporción que sm (36→32),
-   ahora hacia arriba. */
-.sl-lab .avatar.lg { width: 44px; height: 44px; font-size: var(--fs-base); }
+/* Avatar — portado a main.css (.avatar/.avatar.sm/.avatar.lg + los 6
+   .avatar--*, con sus valores en tokens --color-avatar-*). Las reglas
+   .sl-avatar--* que vivían acá eran el prototipo y se retiraron: la página
+   usa ahora las clases reales, así que lo que se ve acá ES lo que se ve en
+   producción. El tema oscuro del lab redefine los 10 tokens en
+   .sl-lab.sl-oscuro, igual que hace con danger/warning/info.
+   Contraste medido de los 5 tonos: 5.22:1 a 5.99:1 en claro, 6.64:1 a
+   7.34:1 en oscuro (scripts/contraste.mjs, pares avatar*). */
 
 /* Fila de tabla seleccionada (demo de click único, sección "Tabla ITSM") —
    mismo criterio que .sl-fila-marcada (checkbox): inset, no border-left,
@@ -1733,10 +1717,10 @@ const ROLES_COLOR = [
    para hover de CONTROLES de formulario (input/select/botón) — una card
    clicable es una señal más liviana, un escalón abajo en la escala. */
 .sl-card--clicable { cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; }
-.sl-card--clicable:hover { box-shadow: var(--shadow-sm); border-color: var(--color-border-default); }
+.sl-card--clicable:hover { box-shadow: none; border-color: var(--color-border-default); }
 .sl-card--clicable:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-sm), 0 0 0 3px var(--mat-ring);
+  box-shadow: 0 0 0 2px var(--ring);
   border-color: var(--color-accent);
 }
 
@@ -1744,8 +1728,8 @@ const ROLES_COLOR = [
 .sl-nav-demo { display: flex; flex-direction: column; gap: 2px; max-width: 220px; }
 .sl-nav-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 9px 12px; border-radius: var(--radius-md);
-  font-size: var(--fs-base); font-weight: 500;
+  padding: 9px 12px; border-radius: var(--radius-base);
+  font-size: var(--fs-body-01); font-weight: 500;
   color: var(--color-text-secondary); text-decoration: none;
 }
 .sl-nav-item:hover { background: var(--color-bg-muted); color: var(--color-text-primary); }
@@ -1761,15 +1745,15 @@ const ROLES_COLOR = [
   font-weight: 600;
 }
 
-/* Menú contextual / dropdown — único consumidor de --shadow-md. La demo
+/* Menú contextual / dropdown — único consumidor de --shadow-overlay. La demo
    estática de "Componentes operativos" (siempre visible, div) y la de
    "Elevación y superficies" (real, button + toggle) comparten estas
    clases — mismo componente visual, dos usos distintos. */
 .sl-popover {
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-base);
+  box-shadow: var(--shadow-overlay);
   padding: 6px;
   width: 220px;
 }
@@ -1780,13 +1764,13 @@ const ROLES_COLOR = [
 
 .sl-popover-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 8px 10px; border-radius: var(--radius-sm);
-  font-size: var(--fs-base); font-family: var(--font-sans);
+  padding: 8px 10px; border-radius: var(--radius-base);
+  font-size: var(--fs-body-01); font-family: var(--font-sans);
   color: var(--color-text-primary); text-align: left;
   background: none; border: none; cursor: pointer;
 }
 .sl-popover-item:hover { background: var(--color-bg-muted); }
-.sl-popover-item:focus-visible { outline: none; background: var(--color-bg-muted); box-shadow: 0 0 0 3px var(--mat-ring); }
+.sl-popover-item:focus-visible { outline: none; background: var(--color-bg-muted); box-shadow: 0 0 0 2px var(--ring); }
 .sl-popover-item--danger { color: var(--color-danger-text); }
 .sl-popover-item--danger i { color: var(--color-danger-text); }
 .sl-popover-sep { height: 1px; margin: 4px 8px; background: var(--color-border-subtle); }
@@ -1797,16 +1781,16 @@ const ROLES_COLOR = [
 .sl-pantalla-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 
 /* ── Auditoría de color ── */
-.sl-auditoria-bloque h3 { font-size: var(--fs-base); margin: 20px 0 6px; }
-.sl-auditoria-tabla { display: flex; flex-direction: column; gap: 1px; background: var(--color-border-subtle); border-radius: var(--radius-md); overflow: hidden; margin-top: 8px; }
+.sl-auditoria-bloque h3 { font-size: var(--fs-body-01); margin: 20px 0 6px; }
+.sl-auditoria-tabla { display: flex; flex-direction: column; gap: 1px; background: var(--color-border-subtle); border-radius: var(--radius-base); overflow: hidden; margin-top: 8px; }
 .sl-auditoria-fila { display: grid; grid-template-columns: 1.2fr 1.4fr 1fr 2fr; gap: 12px; padding: 8px 12px; background: var(--color-bg-surface); align-items: center; }
-.sl-auditoria-fila--header { background: var(--color-bg-subtle); font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
-.sl-auditoria-fila code { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--color-text-secondary); }
+.sl-auditoria-fila--header { background: var(--color-bg-subtle); font-size: var(--fs-label-01); font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.sl-auditoria-fila code { font-family: var(--font-mono); font-size: var(--fs-label-01); color: var(--color-text-secondary); }
 
 /* ── Validación operativa — A. Lista (estado vacío compacto) ── */
 .sl-vacio-compacto {
   text-align: center; padding: 1.5rem 1rem;
-  color: var(--color-text-secondary); font-size: var(--fs-base);
+  color: var(--color-text-secondary); font-size: var(--fs-body-01);
 }
 
 /* Ticket enlazable — mismo criterio que .empleado-link real (main.css):
@@ -1820,7 +1804,7 @@ const ROLES_COLOR = [
 
 /* Marca semántica LOCALIZADA de SLA en riesgo — un ícono junto al título,
    nunca la fila entera pintada de warning/danger/azul. */
-.sl-sla-flag { margin-left: 6px; color: var(--color-warning-text); font-size: 14px; vertical-align: middle; }
+.sl-sla-flag { margin-left: 6px; color: var(--color-warning-text); font-size: var(--icon-sm); vertical-align: middle; }
 
 /* Checkboxes de selección — accent-color para que el estado "marcado" use
    el azul de marca (no el azul nativo del navegador, que no coincide con
@@ -1862,11 +1846,11 @@ const ROLES_COLOR = [
 .sl-detalle-meta { display: flex; gap: 32px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--color-border-subtle); border-bottom: 1px solid var(--color-border-subtle); }
 .sl-detalle-meta > div { display: flex; flex-direction: column; gap: 4px; }
 .sl-detalle-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start; }
-.sl-detalle-principal h4 { font-family: var(--font-display); font-size: var(--fs-md); font-weight: 600; margin: 4px 0 10px; }
+.sl-detalle-principal h4 { font-family: var(--font-display); font-size: var(--fs-body-01); font-weight: 600; margin: 4px 0 10px; }
 .sl-detalle-sidebar { display: flex; flex-direction: column; gap: 12px; }
 .sl-relacionado { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--color-border-subtle); flex-wrap: wrap; }
 .sl-relacionado:first-of-type { border-top: none; }
-.sl-relacionado code { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--color-text-secondary); }
+.sl-relacionado code { font-family: var(--font-mono); font-size: var(--fs-label-01); color: var(--color-text-secondary); }
 .sl-relacionado .sl-fs-secundario { flex: 1; min-width: 120px; }
 
 /* ── Validación operativa — C. Dashboard 3 columnas ── */
@@ -1877,7 +1861,7 @@ const ROLES_COLOR = [
 .sl-pendiente-fila:first-of-type { border-top: none; padding-top: 12px; }
 .sl-resumen-fila { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--color-border-subtle); }
 .sl-resumen-fila:first-of-type { border-top: none; padding-top: 12px; }
-.sl-resumen-valor { font-size: var(--fs-lg); font-weight: 700; color: var(--color-text-primary); }
+.sl-resumen-valor { font-size: var(--fs-heading-02); font-weight: 700; color: var(--color-text-primary); }
 
 /* ── Elevación y superficies (A/B lado a lado) ── */
 .sl-elevacion-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
@@ -1885,7 +1869,7 @@ const ROLES_COLOR = [
 .sl-card-clicable-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 /* Neutro (text-tertiary) a propósito: el chevron es una pista de "esto
    navega", no necesita el azul de marca para cumplir su función. */
-.sl-card-clicable-chevron { font-size: 18px; color: var(--color-text-tertiary); flex-shrink: 0; }
+.sl-card-clicable-chevron { font-size: var(--icon-md); color: var(--color-text-tertiary); flex-shrink: 0; }
 
 @media (max-width: 768px) {
   .sl-inputs-grid { grid-template-columns: 1fr; }

@@ -80,14 +80,14 @@ const FAMILIAS_COLOR = [
 
 export function paletaPorFamilia() {
   const { claro, oscuro } = leerTokensReales();
-  const nombresColor = Object.keys(claro).filter((n) => n.startsWith('--mat-'));
+  const nombresColor = Object.keys(claro).filter((n) => n.startsWith('--'));
   const familias = FAMILIAS_COLOR.map((f) => ({ ...f, tokens: [] }));
   const otros = [];
 
   for (const nombre of nombresColor) {
     // Solo color: se excluyen tipografía/espaciado/radios/z-index, que se
     // muestran en sus propias secciones.
-    if (/^--mat-(fs|font|space|radius|shadow|scroll)/.test(nombre) || nombre === '--header-h') continue;
+    if (/^--(fs|font|space|radius|shadow|scroll)/.test(nombre) || nombre === '--header-h') continue;
     if (/^--z-/.test(nombre)) continue;
     const familia = familias.find((f) => f.patron.test(nombre));
     const destino = familia ? familia.tokens : otros;
@@ -102,36 +102,41 @@ export function paletaPorFamilia() {
 export function escalaEspaciado() {
   const { claro } = leerTokensReales();
   return Object.keys(claro)
-    .filter((n) => /^--mat-space-\d+$/.test(n))
+    .filter((n) => /^--space-\d+$/.test(n))
     .sort((a, b) => Number(a.match(/\d+$/)[0]) - Number(b.match(/\d+$/)[0]))
     .map((nombre) => ({ nombre, valor: claro[nombre] }));
 }
 
-const ORDEN_FS = ['xs', 'sm', 'base', 'md', 'lg', 'xl', '2xl', 'stat'];
+// Los 5 pasos del type set productivo de Carbon, en orden de tamano
+// (2026-09-02). Antes eran los 8 pasos de la escala propia
+// (xs/sm/base/md/lg/xl/2xl/stat); dejarlos habria mandado los cinco
+// nombres nuevos al indice 99 y la vitrina los listaria en el orden
+// arbitrario en que el CSSOM los devuelve.
+const ORDEN_FS = ['label-01', 'body-01', 'heading-02', 'heading-03', 'heading-05'];
 
 export function escalaTipografica() {
   const { claro } = leerTokensReales();
   return Object.keys(claro)
-    .filter((n) => /^--mat-fs-/.test(n))
+    .filter((n) => /^--fs-/.test(n))
     .map((nombre) => ({ nombre, valor: claro[nombre] }))
     .sort((a, b) => {
-      const ca = ORDEN_FS.indexOf(a.nombre.replace('--mat-fs-', ''));
-      const cb = ORDEN_FS.indexOf(b.nombre.replace('--mat-fs-', ''));
+      const ca = ORDEN_FS.indexOf(a.nombre.replace('--fs-', ''));
+      const cb = ORDEN_FS.indexOf(b.nombre.replace('--fs-', ''));
       return (ca === -1 ? 99 : ca) - (cb === -1 ? 99 : cb);
     });
 }
 
+// Con Carbon la geometria es UN radio y vale 0 (--radius-base): ya no hay
+// escala de la que elegir un paso, asi que tampoco hay orden que imponer.
+// Se conserva la funcion —la vitrina sigue mostrando el token, que es
+// informacion util— pero sin la lista de ordenamiento de los 5 pasos
+// retirados, que dejaba de ordenar nada.
 export function escalaRadios() {
   const { claro } = leerTokensReales();
-  const orden = ['sm', 'md', 'lg', 'xl', 'pill'];
   return Object.keys(claro)
-    .filter((n) => /^--mat-radius-/.test(n))
-    .map((nombre) => ({ nombre, valor: claro[nombre] }))
-    .sort((a, b) => {
-      const ca = orden.indexOf(a.nombre.replace('--mat-radius-', ''));
-      const cb = orden.indexOf(b.nombre.replace('--mat-radius-', ''));
-      return (ca === -1 ? 99 : ca) - (cb === -1 ? 99 : cb);
-    });
+    .filter((n) => /^--radius-/.test(n))
+    .sort()
+    .map((nombre) => ({ nombre, valor: claro[nombre] }));
 }
 
 // Aplica el snapshot completo de :root (+ overrides de oscuro si corresponde)

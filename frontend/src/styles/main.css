@@ -1,359 +1,545 @@
 
     /* ============================================================
        Tokens de UI — docs/GUIA-UX-UI.md
-       Tokens canónicos: --mat-*  ·  Alias legacy: --color-*, --fs-*.
-       Estética tipo shadcn: un acento, bordes en lugar de sombras.
+       ============================================================
+       CAPA DE ROLES sobre IBM Carbon Design System v11.
+
+       Este bloque no contiene ni un hex: cada token dice QUÉ ES algo en
+       Sistema TI (`--color-danger-text`, `--color-bg-elevated`) y toma su
+       VALOR de la capa vendor de Carbon (`styles/carbon-theme.css`,
+       tokens `--cds-*`). La frontera está explicada ahí arriba; en una
+       línea: un cambio de opinión del producto se hace acá, una versión
+       nueva de la paleta de Carbon se hace allá.
+
+       POR QUÉ ESTA INDIRECCIÓN NO ES LA CAPA QUE SE BORRÓ EL 2026-09-01
+       Aquella eran DOS NOMBRES DE ROL para el mismo rol
+       (`--mat-color-accent` y `--color-accent`, ambos "el acento"), 190
+       tokens para 104 conceptos, con el código usando la capa marcada
+       "no usar" el 86% de las veces. Esta es un rol apuntando a un
+       VALOR de escala (`--color-accent` → `--cds-blue-60`): dos cosas
+       distintas, que es justo para lo que sirve un design system —
+       `--color-accent` puede dejar de ser Blue 60 sin que Blue 60 deje de
+       ser #0f62fe. scripts/tokens-vs-guia.mjs distingue los dos casos:
+       exime la indirección hacia `--cds-*` y sigue fallando ante dos
+       nombres de rol para el mismo rol.
+
+       QUÉ CAMBIÓ RESPECTO DEL SISTEMA ANTERIOR (2026-09-02)
+       El sistema previo era una estética tipo shadcn: acento azul
+       muestreado del logo, radios de 6-16px, sombras de elevación,
+       tipografía Geist, 8 pasos de escala tipográfica. Se sustituyó
+       completo por Carbon v11 — decisión de producto, ver
+       docs/GUIA-UX-UI.md, "IBM Carbon v11 como estándar". Los tres
+       cambios que se notan en cada pantalla:
+         · Geometría: escala de radios `--radius-sm/md/lg/xl/pill`
+           (4/6/8/12px + píldora), `--radius-base` = `--radius-md`.
+         · Elevación: micro-sombras `--shadow-sm/md/lg` y `--shadow-overlay`
+           en tarjetas, campos y superficies flotantes. La jerarquía la dan
+           bordes sutiles + sombra, no solo capas de gris.
+         · Tipografía: 8 pasos → los 5 del type set productivo de Carbon.
+       Los pares de color pasaron de márgenes justos (4.5-5.3:1) a
+       5.8-7.8:1 — Carbon publica sus pares ya verificados, y
+       scripts/contraste.mjs los re-verifica en CI.
+
+       REVISIÓN DEL 2026-09-03 — "MODERN CLEAN ENTERPRISE"
+       Un día después de adoptar Carbon v11 estricto se revirtió SOLO la
+       geometría y la elevación: radio 0 en todo + campos filled (fondo
+       gris + línea inferior) + botón secundario en bloque gris sólido se
+       leían como industrial-brutalista para una V2 del producto. Se
+       reintrodujo una escala de radios (`--radius-sm/md/lg/xl/pill`) y de
+       sombras (`--shadow-sm/md/lg/overlay`), inspirada en Linear/GitHub/
+       Supabase — no idéntica a la escala pre-Carbon del 2026-09-01, que
+       tenía otros valores (6/8/12/16px). Todo lo demás de Carbon se
+       mantiene sin cambios: paleta de color, type set IBM Plex, shell de
+       48px/256px, contraste WCAG y esta misma arquitectura de dos capas.
+       Ver docs/GUIA-UX-UI.md, "Revisión Modern Clean Enterprise
+       (2026-09-03)".
        ============================================================ */
     :root {
-      /* ── Marca (muestreado del logo) ───────────────────────── */
-      /* Actualizado con el logo nuevo (FASE 1, rediseño de marca):
-         #0082FB, mismo valor que --mat-color-brand-500 pero token
-         conceptualmente distinto (identidad de marca/logo, no escala de
-         acento de UI) — no fusionar en un alias sin confirmar que ambos
-         deben cambiar siempre juntos. Sin consumidores reales hoy
-         (verificado por grep: cero var(--mat-color-brand) en frontend/src;
-         el logo es un SVG estático, no lee esta variable). */
-      --mat-color-brand: #0082FB;           /* reservado a piezas de marca (logo); no es color de sistema */
-      --mat-color-brand-elevated: #0A2E28;
-      --mat-color-brand-ink: #072E2A;        /* texto de marca (títulos); vira a acento en oscuro para no fundirse con --bg-elevated */
-      /* G1 — migración de marca a la paleta azul aprobada en el Style Lab
-         (docs/GUIA-UX-UI.md). brand-500 (#0082FB) es el tono "bruto", foco/
-         indicador — nunca portador de texto (falla AA como texto, 3.76:1);
-         brand-600 (#0064E0) es el tono que SÍ funciona como texto/fondo con
-         texto encima (botón primario, links, foco); brand-700 (#0052B8) es
-         hover/pressed, invariante entre temas (no se redefine en oscuro,
-         mismo criterio ya usado acá para --mat-color-danger-hover/-solid). */
-      --mat-color-brand-500: #0082FB;
-      --mat-color-brand-600: #0064E0;
-      --mat-color-brand-700: #0052B8;
-      --mat-color-accent-alt: var(--mat-color-brand-500);      /* no texto sobre blanco */
-      --mat-color-accent: var(--mat-color-brand-600);          /* botones, links, foco */
-      --mat-color-accent-hover: var(--mat-color-brand-700);     /* invariante entre temas */
-      --mat-color-accent-soft: var(--mat-color-brand-500);
-      --mat-color-accent-subtle: #E5F2FF;
-      --mat-color-accent-subtle-bg: var(--mat-color-accent-subtle);
-      --mat-color-accent-subtle-text: var(--mat-color-accent-text);
-      --mat-color-accent-text: var(--mat-color-brand-600);
-      --mat-color-accent-2: var(--mat-color-brand-700);
-      --mat-color-whatsapp: #25d366;         /* verde de marca WhatsApp — solo para .btn-whatsapp */
-      --mat-color-whatsapp-hover: #1ebe57;
-      --mat-color-whatsapp-text: #072E2A;    /* texto/ícono sobre fondo whatsapp — mismo verde petróleo de marca, no blanco */
+      /* ── Marca (muestreado del logo) ─────────────────────────
+         #0082FB es el azul del LOGOTIPO de Materen, y no es un color de
+         sistema: no lo consume ninguna regla (el logo es un SVG
+         estático). Se conserva declarado para que el día que una pieza de
+         marca lo necesite no se vuelva a muestrear a ojo. Ver
+         VIVOS_POR_DECISION en scripts/tokens-vs-guia.mjs.
 
-      /* ── Tipografía: Inter cuerpo + Sora títulos (Axiforma pendiente) ─ */
-      --mat-font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
-                       'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      --mat-font-display: 'Sora', var(--mat-font-sans);
-      --mat-font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas,
-                       'Liberation Mono', monospace;
-      --mat-fs-xs: 11px;
-      --mat-fs-sm: 12px;
-      --mat-fs-base: 13px;
-      --mat-fs-md: 14px;
-      --mat-fs-lg: 15px;
-      --mat-fs-xl: 17px;
-      --mat-fs-2xl: 20px;
-      --mat-fs-stat: 26px;
+         Ya NO alimenta el acento de la UI. Hasta el 2026-09-01 el acento
+         era una escala derivada del logo (--color-brand-500/600/700);
+         con Carbon el acento es Blue 60, un valor del design system, no
+         de la identidad. Los tres tokens de esa escala se retiraron: el
+         acento se mapea directo a --cds-blue-*. Eso desacopla dos cosas
+         que nunca debieron ir juntas — que el logo cambie de azul no
+         debería mover el color de los botones. */
+      --color-brand: #0082FB;           /* solo piezas de marca; no es color de sistema */
 
-      /* ── Escala de espaciado (base 4px, design.pen $space-1..12) ──
-         Invariante entre temas. Adopción progresiva: no reemplaza los
-         valores crudos ya existentes en este archivo, disponible para
-         componentes nuevos. */
-      --mat-space-1: 2px;
-      --mat-space-2: 4px;
-      --mat-space-3: 6px;
-      --mat-space-4: 8px;
-      --mat-space-5: 10px;
-      --mat-space-6: 12px;
-      --mat-space-7: 16px;
-      --mat-space-8: 20px;
-      --mat-space-9: 24px;
-      --mat-space-10: 32px;
-      --mat-space-11: 40px;
-      --mat-space-12: 48px;
+      /* ── Tipografía: IBM Plex, el type set productivo ─────────
+         IBM Plex Sans + IBM Plex Mono reemplazan a Geist/Geist Mono
+         (cargadas en index.html). Plex es la tipografía de Carbon y no
+         un gusto: sus métricas son las que el type set asume.
 
-      /* ── Superficies (grises neutros — la marca no tiñe el sistema,
-         solo se conecta a través del acento) ─────────────────── */
-      --mat-color-bg: #F1F5F8;
-      --mat-color-bg-elevated: #FFFFFF;
-      --mat-color-bg-subtle: #F0F2F4;
-      --mat-color-bg-hover: #EAEDF0;
+         La escala se comprimió de 8 pasos a 5. Carbon publica dos type
+         sets; manda el "productive" (UI densa de software de gestión,
+         que es exactamente este panel) y sus tamaños discretos en rango
+         de UI son 12 · 14 · 16 · 20 · 32. El sistema anterior tenía
+         11/12/13/14/15/17/20/26 — ocho pasos donde Carbon tiene cinco.
+         Mantener los ocho habría dejado tres pares de tokens con el
+         mismo valor, o sea tres veces el problema que se cerró el
+         2026-09-01. Se comprimió, y los nombres pasaron a ser los de
+         Carbon para que el paso y su rol sean la misma cosa:
 
-      --mat-color-text-primary: #1C2B33;    /* cuerpo — gris neutro, no marca */
-      --mat-color-text-secondary: #52636D;
-      --mat-color-text-tertiary: #697281;   /* U-01: 4.86:1 sobre bg-elevated (#FFFFFF) */
-      --mat-color-text-disabled: #C7CBD1;
-      --mat-color-text-inverse: #FFFFFF;
+           --fs-label-01   (11px) ─┐
+           --fs-label-01   (12px) ─┴→ --fs-label-01     12px
+           --fs-body-01 (13px) ─┐
+           --fs-body-01   (14px) ─┴→ --fs-body-01      14px
+           --fs-heading-02   (15px) ─┐
+           --fs-heading-02   (17px) ─┴→ --fs-heading-02   16px
+           --fs-heading-03  (20px) ──→ --fs-heading-03   20px
+           --fs-heading-05 (26px) ──→ --fs-heading-05   32px
 
-      /* G5 — jerarquía de bordes de 3 niveles, portada del Style Lab sin
-         cambio de valor. border/border-subtle siguen siendo el nivel
-         decorativo (separadores, borde de card/tabla/modal — sin umbral de
-         contraste exigible, WCAG 1.4.11 no aplica a bordes no esenciales
-         para identificar el componente). border-default es nuevo: el único
-         borde que sí debe distinguirse del fondo por sí solo (input, select,
-         textarea, botón secundario en reposo — controles interactivos,
-         WCAG 1.4.11 exige 3:1). border-strong sube de tono para mantener
-         distancia visual con border-default ya corregido (hover de
-         controles, seleccionado no enfocado, toast). */
-      --mat-color-border-subtle: #D9E2E8;
-      --mat-color-border: var(--mat-color-border-subtle);
-      --mat-color-border-default: #7E96A3;   /* 3.10:1 sobre bg-elevated */
-      --mat-color-border-strong: #526A7B;    /* 5.67:1 sobre bg-elevated */
+         Los interlineados y el letter-spacing de cada paso viven en la
+         capa vendor (--cds-*-lh / --cds-*-ls) y se consumen desde las
+         reglas de este archivo. No se tokenizan como rol propio: no hay
+         ninguna decisión de producto que tomar sobre ellos, son parte
+         indivisible del paso tipográfico. */
+      --font-sans: var(--cds-font-family-sans);
+      --font-display: var(--font-sans);
+      --font-mono: var(--cds-font-family-mono);
 
-      --mat-ring: rgba(0, 130, 251, 0.28);   /* brand-500 — indicador no textual, umbral 3:1, sin el ajuste que sí hace falta para texto */
-      /* Anillos de foco por variante de botón (Fase B) — mismo alfa 0.28
-         que --mat-ring, sobre el color sólido de cada variante. Invariantes
-         entre temas: --mat-color-danger-solid y --mat-color-whatsapp ya
-         lo son. */
-      --mat-ring-danger: rgba(220, 38, 38, 0.28);
-      --mat-ring-whatsapp: rgba(37, 211, 102, 0.28);
+      --fs-label-01: var(--cds-label-01-size);       /* label · helper · badge · encabezado de tabla */
+      --fs-body-01: var(--cds-body-01-size);         /* cuerpo por defecto · celda de tabla */
+      --fs-heading-02: var(--cds-heading-02-size);   /* título de sección */
+      --fs-heading-03: var(--cds-heading-03-size);   /* h1 de módulo */
+      --fs-heading-05: var(--cds-heading-05-size);   /* cifra de KPI */
 
-      /* ── Semánticos v0.3 (alejados de rojo/verde/azul plantilla) ─ */
-      --mat-color-success: #157955;
-      --mat-color-success-bg: #E6F7F1;
-      --mat-color-success-text: #157955;
-      --mat-color-success-border: #B8E6D5;
+      /* ── Escala de íconos ────────────────────────────────────
+         Los íconos son un sistema aparte (webfont Tabler, `.ti`), no
+         texto: se dimensionan con `font-size` pero NO pertenecen a la
+         escala tipográfica. `.ti` trae line-height:1, así que el valor de
+         font-size ES el lado del cuadro del ícono.
 
-      --mat-color-warning-bg: #FBF0DC;
-      --mat-color-warning-text: #845A0E;
-      --mat-color-warning-text-strong: #6B4809;
-      --mat-color-warning-bg-strong: #F5E4C4;
-      --mat-color-warning-border: #E8D4A8;
+         Carbon publica cuatro tamaños de ícono: 16 · 20 · 24 · 32. El
+         sistema anterior tenía siete (13/14/16/18/20/28/40), así que la
+         escala se comprimió igual que la tipográfica:
+           --icon-xs/-sm/-md (13/14/16) → --icon-sm   16px
+           --icon-lg/-xl     (18/20)    → --icon-md   20px
+           --icon-2xl/-hero  (28/40)    → --icon-lg   32px
+         Quedan tres pasos, los tres con consumidor. El cuarto tamaño de
+         Carbon (24px) NO se declara: es el que Carbon usa para un ícono
+         prominente dentro de un contenedor grande, y acá el contenedor
+         más grande es .icon-box (32px), donde el que corresponde es 20px.
+         Un token sin consumidor en una escala que se acaba de escribir no
+         es deuda declarada, es peso muerto.
 
-      --mat-color-danger: #963D28;
-      --mat-color-danger-bg: #FAEAE3;
-      --mat-color-danger-text: #963D28;
-      --mat-color-danger-border: #E8C4B4;
-      /* Invariantes entre temas (design.pen $danger.hover/$danger.solid):
-         no heredan el comportamiento por tema de --mat-color-danger. Fijan
-         el bug de contraste de .btn-danger:hover en oscuro (DS-01: el
-         --mat-color-danger de oscuro es un salmón que no pasa AA con
-         texto blanco) y dan el rojo sólido para la variante "peligro
-         sólido" (confirmaciones destructivas irreversibles). */
-      --mat-color-danger-hover: #DC2626;
-      --mat-color-danger-solid: #DC2626;
+         Nota sobre los íconos en sí: Carbon tiene su propia librería
+         (@carbon/icons), 2000+ glifos con la misma grilla de 16px. NO se
+         migró en esta pasada y es a propósito: son ~230 usos de `ti ti-*`
+         repartidos en 85 vistas, cada uno con un mapeo de nombre distinto
+         (`ti-headset` → `Headset`, `ti-alert-hexagon` → ?), y ninguno de
+         esos cambios se puede verificar salvo mirando la pantalla una por
+         una. Es una migración propia, no un efecto colateral de esta.
+         Tabler comparte la grilla y el peso de trazo de Carbon, así que
+         a estos tamaños conviven sin que se note el origen distinto. */
+      --icon-sm: 16px;    /* default: campo, toast, ítem de menú, celda */
+      --icon-md: 20px;    /* botón de ícono, shell, acción de fila, .icon-box */
+      --icon-lg: 32px;    /* ilustrativo: empty-state, 404, vistas públicas */
 
-      /* info: antes #EDEBF7/#5B58A0 — casi idéntico a purple, se corrigió a
-         azul propio para que "Abierto" (ticket) no se confunda con "Alta"
-         (prioridad) cuando aparecen en la misma fila. */
-      --mat-color-info-bg: #E7EAF7;
-      --mat-color-info-text: #3B4FA0;
-      --mat-color-info-border: #C5CCE7;
+      /* ── Escala de espaciado (invariante entre temas) ─────────
+         NO se re-basó a la escala de Carbon, y la razón es concreta: la
+         escala de Carbon es 2·4·8·12·16·24·32·40·48·64·80·96, y esta es
+         2·4·6·8·10·12·16·20·24·32·40·48. Nueve de los doce pasos
+         coinciden; los que no son space-3 (6px), space-5 (10px) y
+         space-8 (20px). Mapear los doce nombres a la escala de Carbon
+         desplazaría cada paso un lugar (space-10 pasaría de 32px a 64px)
+         y estos tokens no se consumen solo como separación: `.avatar.sm`
+         usa `var(--space-10)` como ANCHO. Re-basar no habría movido
+         márgenes, habría duplicado el tamaño de los avatares.
+         Los tres pasos fuera de la grilla de 8 quedan como deuda
+         declarada, ver docs/GUIA-UX-UI.md, "Espaciado". */
+      --space-1: 2px;
+      --space-2: 4px;
+      --space-3: 6px;    /* fuera de la grilla de Carbon */
+      --space-4: 8px;
+      --space-5: 10px;   /* fuera de la grilla de Carbon */
+      --space-6: 12px;
+      --space-7: 16px;
+      --space-8: 20px;   /* fuera de la grilla de Carbon */
+      --space-9: 24px;
+      --space-10: 32px;
+      --space-11: 40px;
+      --space-12: 48px;
 
-      --mat-color-neutral-bg: #EFF1F3;
-      --mat-color-neutral-text: #525862;
-      --mat-color-neutral-border: #E4E7EB;
+      /* ── Superficies — tema Gray 10 ──────────────────────────
+         Carbon publica cuatro temas; este producto usa Gray 10 (claro) y
+         Gray 100 (oscuro), el par que Carbon documenta como "high
+         contrast pairing". En Gray 10 el workspace es gris (#f4f4f4) y
+         las tarjetas/tablas son blancas: al revés que el tema White, y es
+         el que Carbon recomienda para paneles con mucha tabla, porque la
+         fila blanca se despega del lienzo sin necesitar sombra.
 
-      /* Categóricas de dominio TI (armonizadas con paleta neutra) */
-      --mat-color-purple-bg: #EDE8F5;
-      --mat-color-purple-text: #534878;
-      --mat-color-purple-border: #D4CBE8;
+         Los cuatro roles y para qué sirve cada uno:
+           bg          workspace, el lienzo detrás de todo
+           bg-elevated layer-01: tarjeta, tabla, modal, popover
+           bg-subtle   field-01: campo, bloque anidado, riel de segmentos
+           bg-accent   layer-accent-01: SOLO encabezado de tabla y de
+                       grupo — un gris que pesa más que field-01 y marca
+                       "esto rotula, no contiene datos"
+           bg-hover    layer-hover-01: hover de fila y de ítem de lista */
+      --color-bg: var(--cds-g10-bg);
+      --color-bg-elevated: var(--cds-white);
+      --color-bg-subtle: var(--cds-gray-10);
+      --color-bg-accent: var(--cds-gray-20);
+      --color-bg-hover: var(--cds-layer-hover-light);
 
-      --mat-color-sky-bg: #E5F2F0;
-      --mat-color-sky-text: #256B7A;
-      --mat-color-sky-border: #B8D9D4;
+      --color-text-primary: var(--cds-gray-100);
+      --color-text-secondary: var(--cds-gray-70);
+      --color-text-tertiary: var(--cds-gray-60);    /* 5.02:1 sobre blanco, 4.57:1 sobre el workspace */
+      --color-text-disabled: var(--cds-gray-30);
+      /* Dos roles que este sistema tenía confundidos en uno, y Carbon separa
+         a propósito (`$text-inverse` vs `$text-on-color`):
 
-      /* teal: antes #E6F7F1/#126B52 — idéntico a success (bg) y casi
-         idéntico en texto; "Media" (prioridad) se veía igual que un estado
-         resuelto/activo. Se corrigió a azul propio, distinto también de info. */
-      --mat-color-teal-bg: #E1EEF5;
-      --mat-color-teal-text: #1D5C8A;
-      --mat-color-teal-bg-subtle: #F4F8FB;
-      --mat-color-teal-border: #B7D0E1;
+         on-color  texto sobre un RELLENO DE COLOR sólido — botón primario,
+                   botón destructivo, contador sobre acento. Esos fondos son
+                   INVARIANTES entre temas (Blue 60 es Blue 60 en los cuatro),
+                   así que su texto también tiene que serlo: blanco, siempre.
+         inverse   texto sobre una superficie de GRIS INVERTIDO — el segmento
+                   seleccionado de un ContentSwitcher, un tooltip. Ese fondo
+                   SÍ se invierte con el tema, y el texto lo acompaña.
 
-      /* G4 — cierra la política de elevación: sin sombra en contenedores
-         normales (card, stat-card, tabla), solo en capas realmente
-         elevadas o en el hover/focus de una superficie clicable. Antes
-         estos 3 tokens valían "none" (DS v0.3 §3.4) y ningún componente
-         los consumía; ahora sí tienen valor, así que las ~7 reglas que ya
-         escribían box-shadow: var(--shadow-sm) de forma inerte empiezan a
-         mostrar sombra real (ver docs/GUIA-UX-UI.md, "Repaso de
-         consistencia"). --shadow-modal existía como duplicado con el
-         mismo valor que --shadow-lg desde siempre — queda resuelto como
-         alias, un solo nombre "gana". */
-      --mat-shadow-sm: 0 1px 2px rgba(28, 43, 51, 0.06);
-      --mat-shadow-md: 0 4px 12px rgba(28, 43, 51, 0.08);
-      --mat-shadow-lg: 0 16px 40px rgba(28, 43, 51, 0.16);
-      --mat-shadow-modal: var(--mat-shadow-lg);
+         Confundirlos era un bug real y estuvo vivo hasta el 2026-09-02: el
+         botón primario usaba `inverse` sobre Blue 60, así que en tema oscuro
+         renderizaba texto casi negro (#161616) sobre azul — **3.4:1, falla
+         AA**. Lo mismo el contador del SideNav y el de la campana. El
+         proyecto ya lo había diagnosticado UNA vez, en `.btn-danger-solid`,
+         y lo había parcheado con un `#fff` literal y un comentario que
+         explicaba justo este razonamiento; nunca se generalizó. */
+      --color-text-on-color: var(--cds-white);
+      --color-text-inverse: var(--cds-white);
+      /* La superficie que acompaña a --color-text-inverse: el gris invertido
+         del tema (`$background-inverse` de Carbon). Lo usan el segmento
+         seleccionado de un ContentSwitcher y, cuando exista, el tooltip.
+         No confundir con --color-bg-accent (Gray 20), que es un escalón más
+         de la MISMA dirección; este da vuelta el tema. */
+      --color-bg-inverse: var(--cds-gray-100);
 
-      /* Sombra del indicador de scroll horizontal en .table-wrap */
-      --mat-scroll-shadow: rgba(15, 23, 42, 0.14);
+      /* ── Bordes: tres niveles de jerarquía ────
+         El borde sigue siendo un recurso central de jerarquía junto a la
+         capa de gris y, desde la revisión "Modern Clean Enterprise" del
+         2026-09-03, la micro-sombra (`--shadow-*`) — de ahí que Carbon
+         tenga tres niveles y no uno:
+           subtle   separador y borde de contenedor. Decorativo: WCAG
+                    1.4.11 no le exige umbral (no identifica el
+                    componente por sí solo).
+           default  borde de CONTROL en reposo (input, select, textarea,
+                    botón secundario). Sí debe distinguirse del fondo por
+                    sí solo → 3:1. Gray 50 da 3.32:1.
+           strong   hover de control, seleccionado sin foco, toast.
+                    Gray 60, 5.02:1 — mantiene distancia visible con
+                    default. */
+      --color-border-subtle: var(--cds-gray-20);
+      --color-border: var(--color-border-subtle);
+      --color-border-default: var(--cds-gray-50);   /* 3.32:1 sobre bg-elevated */
+      --color-border-strong: var(--cds-gray-60);    /* 5.02:1 sobre bg-elevated */
 
-      /* Radios: 8px controles · 12/16px contenedores (lg y xl dejan de
-         ser idénticos) */
-      --mat-radius-sm: 6px;
-      --mat-radius-md: 8px;
-      --mat-radius-lg: 12px;
-      --mat-radius-xl: 16px;
-      --mat-radius-pill: 999px;
+      /* ── Interactivo — Blue 60 ───────────────────────────────
+         Blue 60 (#0f62fe) es el `interactive` de Carbon: botón primario,
+         indicador de foco, borde de elemento activo. Su hover (#0353e9)
+         es un token propio de Carbon, no un paso de la escala.
 
+         accent vs accent-text: Blue 60 como TEXTO sobre blanco da 5.00:1
+         — pasa AA, pero Carbon reserva el rol de texto/enlace a Blue 70
+         (7.79:1), y este sistema lo respeta. Por eso `--color-primary`
+         sigue siendo alias de accent-text y no de accent: el token de
+         texto tiene que seguir al valor que SÍ cambia por tema
+         (Blue 40 en oscuro), no al del botón, que es invariante.
+
+         accent, accent-hover y accent-soft NO se redefinen en oscuro: el
+         botón primario de Carbon es Blue 60 en los cuatro temas. Solo se
+         redefine lo que depende del fondo (subtle, text). */
+      --color-accent: var(--cds-blue-60);            /* botón primario, borde activo */
+      --color-accent-hover: var(--cds-blue-60-hover);
+      --color-accent-soft: var(--cds-blue-50);       /* ícono decorativo; no portador de texto */
+      --color-accent-subtle: var(--cds-blue-20);     /* fila/ítem seleccionado (`highlight` de Carbon) */
+      --color-accent-text: var(--cds-blue-70);       /* enlace, texto de acento */
+      --color-primary: var(--color-accent-text);
+
+      /* Botón secundario — Modern Clean Enterprise: superficie limpia, borde
+         sutil y micro-sombra, elevando la claridad visual. */
+      --color-btn-secondary: var(--color-bg-elevated);
+      --color-btn-secondary-hover: var(--color-bg-subtle);
+
+      /* ── Foco ────────────────────────────────────────────────
+         Carbon dibuja el foco como una línea SÓLIDA de 2px en Blue 60,
+         no como un halo difuso. El sistema anterior usaba
+         `box-shadow: 0 0 0 3px rgba(0,130,251,.28)` — un anillo
+         semitransparente de 3px, que es el idioma de shadcn/Tailwind, no
+         de Carbon. Los tokens siguen consumiéndose por box-shadow (el
+         mecanismo no cambia, así no hay que reordenar las reglas que
+         combinan foco con `outline: none`), pero ahora el valor es opaco
+         y el grosor 2px: se ve como el foco de Carbon. */
+      --ring: var(--cds-blue-60);
+      --ring-danger: var(--cds-red-60);
+      --ring-whatsapp: var(--color-whatsapp);
+
+      /* ── Semánticos ──────────────────────────────────────────
+         Los pares -bg/-text son los `tag-*` de Carbon v11: paso 20 de
+         fondo, paso 70 de texto. Vienen verificados de origen (5.8-5.9:1
+         los siete) y scripts/contraste.mjs los re-verifica.
+         Los tokens sin sufijo (--color-success, --color-danger) son el
+         color SÓLIDO del `support-*` de Carbon: punto de estado, ícono,
+         borde izquierdo de aviso — no llevan texto encima. */
+      --color-success: var(--cds-green-60);          /* Green 60 — operativo */
+      --color-success-bg: var(--cds-green-20);
+      --color-success-text: var(--cds-green-70);
+      --color-success-border: var(--cds-green-30);
+
+      /* Advertencia = Yellow. Carbon no publica un `tag-yellow`, así que
+         el par de texto se arma con Yellow 10 + Yellow 70 (7.11:1).
+         Yellow 30 (#f1c21b) es el `support-warning` de Carbon, el mismo
+         valor en claro y oscuro, y NO sirve como portador de texto en
+         ninguno de los dos: es el color del ícono/punto, no del texto.
+         Es el par que viste `requiere_rotacion` en Correos y Cuentas. */
+      --color-warning: var(--cds-yellow-30);         /* support-warning: punto/ícono, nunca texto */
+      --color-warning-bg: var(--cds-yellow-10);
+      --color-warning-text: var(--cds-yellow-70);
+      --color-warning-text-strong: var(--cds-yellow-80);
+      --color-warning-bg-strong: var(--cds-yellow-20);
+      --color-warning-border: var(--cds-yellow-20);
+
+      /* Peligro = Red. Red 60 es el `support-error` de Carbon: P1, falta
+         de devolución, acción destructiva. -hover y -solid son
+         invariantes entre temas (el rojo del botón destructivo no se
+         aclara en oscuro, se mantiene). */
+      --color-danger: var(--cds-red-60);             /* Red 60 — P1, sin devolver */
+      --color-danger-bg: var(--cds-red-20);
+      --color-danger-text: var(--cds-red-70);
+      --color-danger-border: var(--cds-red-30);
+      --color-danger-hover: var(--cds-red-60-hover);
+      --color-danger-solid: var(--cds-red-60);
+
+      --color-info-bg: var(--cds-blue-20);
+      --color-info-text: var(--cds-blue-70);
+      --color-info-border: var(--cds-blue-30);
+
+      --color-neutral-bg: var(--cds-gray-20);
+      --color-neutral-text: var(--cds-gray-100);
+      --color-neutral-border: var(--cds-gray-30);
+
+      /* Categóricas de dominio TI (prioridad, tipo de cuenta). Purple,
+         Cyan y Teal de Carbon: tres familias que NO comparten hue con
+         success/warning/danger/info, para que "Media" no se lea como
+         "resuelto" ni "Alta" como "abierto" en la misma fila. */
+      --color-purple-bg: var(--cds-purple-20);
+      --color-purple-text: var(--cds-purple-70);
+      --color-purple-border: var(--cds-purple-30);
+
+      --color-sky-bg: var(--cds-cyan-20);
+      --color-sky-text: var(--cds-cyan-70);
+      --color-sky-border: var(--cds-cyan-30);
+
+      --color-teal-bg: var(--cds-teal-20);
+      --color-teal-text: var(--cds-teal-70);
+      --color-teal-bg-subtle: var(--cds-teal-10);
+      --color-teal-border: var(--cds-teal-30);
+
+      /* ── Verde de WhatsApp ───────────────────────────────────
+         Color de una marca EXTERNA, igual que --color-brand: no sale de
+         Carbon y no debe. Lo consume solo `.btn-whatsapp`, cuyo sentido
+         es "este botón abre WhatsApp" — teñirlo de Green 60 lo volvería
+         un botón de éxito genérico. Invariante entre temas.
+         El texto es un verde oscuro propio: sobre #25d366 el blanco da
+         2.4:1 y no pasa; este par sí (verificado en contraste.mjs). */
+      --color-whatsapp: #25d366;
+      --color-whatsapp-hover: #1ebe57;
+      --color-whatsapp-text: #072E2A;
+
+      /* ── Tonos de avatar — DECORATIVOS, no semánticos ────────
+         El color identifica a una PERSONA (hash del nombre, ver
+         core/avatar.js), no comunica estado: por eso son familia aparte
+         y ninguno reutiliza success/warning/danger. Un avatar teñido de
+         "danger" leería como una alerta sobre esa persona.
+
+         Usan los pasos 10/70 de Carbon, un escalón por fuera de los
+         pares 20/70 de los tags semánticos: así un avatar violeta no se
+         confunde con un tag de prioridad Alta aunque compartan hue. Los
+         cinco dan 7.0-7.2:1, más parejo que los cinco tonos anteriores
+         (que iban de 4.9 a 6.6). Cada nombre sigue siendo honesto:
+         azul=Blue, slate=Cool Gray, teal=Teal, violeta=Purple,
+         arena=Orange. */
+      --color-avatar-azul-bg: var(--cds-blue-10);
+      --color-avatar-azul-text: var(--cds-blue-70);
+      --color-avatar-slate-bg: var(--cds-cool-gray-10);
+      --color-avatar-slate-text: var(--cds-cool-gray-70);
+      --color-avatar-teal-bg: var(--cds-teal-10);
+      --color-avatar-teal-text: var(--cds-teal-70);
+      --color-avatar-violeta-bg: var(--cds-purple-10);
+      --color-avatar-violeta-text: var(--cds-purple-70);
+      --color-avatar-arena-bg: var(--cds-orange-10);
+      --color-avatar-arena-text: var(--cds-orange-70);
+
+      /* ── Elevación y Sombras Modern Clean Enterprise ─────────
+         Micro-elevación sutil y limpia que separa capas sin estridencias. */
+      --shadow-sm: var(--cds-shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.05));
+      --shadow-md: var(--cds-shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.04));
+      --shadow-lg: var(--cds-shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04));
+      --shadow-overlay: var(--cds-shadow-overlay, var(--shadow-lg));
+
+      /* Indicador de scroll horizontal de .table-wrap: un degradado que
+         avisa "esta tabla sigue a la derecha". No es elevación. */
+      --scroll-shadow: rgba(22, 22, 22, 0.14);
+
+      /* Velo detrás de una superficie de foco. INVARIANTE entre temas a
+         propósito: oscurece lo que hay debajo, no sigue al tema. Es el
+         `overlay` de Carbon. Lo consumen .modal-bg y el .sb-overlay del
+         drawer móvil. */
+      --color-overlay: rgba(22, 22, 22, 0.5);
+
+      /* ── Geometría Modern Clean Enterprise ───────────────────
+         Radios calibrados: suaves, modernos y no agresivos. */
+      --radius-sm: var(--cds-border-radius-sm, 4px);       /* tags, badges, chips pequeños */
+      --radius-md: var(--cds-border-radius-md, 6px);       /* botones, inputs, selects */
+      --radius-lg: var(--cds-border-radius-lg, 8px);       /* tarjetas, contenedores, tablas */
+      --radius-xl: var(--cds-border-radius-xl, 12px);      /* modales, popovers flotantes */
+      --radius-pill: 9999px;                               /* cápsulas y avatares */
+      --radius-base: var(--radius-md);                     /* 6px por defecto */
+
+      /* Alto del header de PÁGINA (.site-header: h1 del módulo +
+         acciones). No confundir con el header del SHELL, que mide 48px y
+         vive en --cds-shell-header-h: son dos barras distintas, una
+         encima de la otra. 64px = spacing-10 de Carbon. */
       --header-h: 64px;
 
       --z-header: 50;
-      --z-header-mobile: 60;
+      /* El header del shell va por ENCIMA del SideNav: en móvil el panel
+         deslizante del nav proyecta sombra en todas las direcciones,
+         incluida hacia arriba, y sin esto le pintaba encima del borde
+         inferior del header. Ocupa el lugar que tenía --z-header-mobile,
+         retirado con la topbar móvil que lo consumía — el header del
+         shell existe en todos los anchos, no solo en móvil. */
+      --z-shell-header: 110;
       --z-nav: 100;
       --z-popover: 300;
       --z-modal: 400;
       --z-modal-stacked: 410;
       --z-popover-modal: 420;
       --z-toast: 500;
-
-      /* ── Alias legacy (--color-*, --fs-*, etc.) — no usar en código nuevo */
-      /* --color-primary es alias de --mat-color-accent-text, NO de
-         --mat-color-accent directo: brand-600 como texto sobre superficie
-         oscura mide 3.06:1 (bajo AA) — el alias de texto tiene que seguir
-         al valor que SÍ cambia por tema (#3D9CFF en oscuro), no al del
-         botón, que es invariante. */
-      --color-primary: var(--mat-color-accent-text);
-      --font-sans: var(--mat-font-sans);
-      --font-display: var(--mat-font-display);
-      --font-mono: var(--mat-font-mono);
-      --fs-xs: var(--mat-fs-xs);
-      --fs-sm: var(--mat-fs-sm);
-      --fs-base: var(--mat-fs-base);
-      --fs-md: var(--mat-fs-md);
-      --fs-lg: var(--mat-fs-lg);
-      --fs-xl: var(--mat-fs-xl);
-      --fs-2xl: var(--mat-fs-2xl);
-      --fs-stat: var(--mat-fs-stat);
-
-      --color-bg: var(--mat-color-bg);
-      --color-bg-elevated: var(--mat-color-bg-elevated);
-      --color-bg-subtle: var(--mat-color-bg-subtle);
-      --color-bg-hover: var(--mat-color-bg-hover);
-      --color-text-primary: var(--mat-color-text-primary);
-      --color-text-secondary: var(--mat-color-text-secondary);
-      --color-text-tertiary: var(--mat-color-text-tertiary);
-      --color-text-inverse: var(--mat-color-text-inverse);
-      --color-border: var(--mat-color-border);
-      --color-border-subtle: var(--mat-color-border-subtle);
-      --color-border-default: var(--mat-color-border-default);
-      --color-border-strong: var(--mat-color-border-strong);
-      --color-brand-ink: var(--mat-color-brand-ink);
-
-      --color-accent: var(--mat-color-accent);
-      --color-accent-2: var(--mat-color-accent-2);
-      --color-accent-soft: var(--mat-color-accent-soft);
-      --color-accent-hover: var(--mat-color-accent-hover);
-      --color-accent-subtle: var(--mat-color-accent-subtle);
-      --color-accent-text: var(--mat-color-accent-text);
-
-      --color-danger: var(--mat-color-danger);
-      --color-danger-bg: var(--mat-color-danger-bg);
-      --color-danger-text: var(--mat-color-danger-text);
-      --color-danger-border: var(--mat-color-danger-border);
-      --color-success: var(--mat-color-success);
-      --color-success-bg: var(--mat-color-success-bg);
-      --color-success-text: var(--mat-color-success-text);
-      --color-success-border: var(--mat-color-success-border);
-      --color-warning-bg: var(--mat-color-warning-bg);
-      --color-warning-text: var(--mat-color-warning-text);
-      --color-warning-text-strong: var(--mat-color-warning-text-strong);
-      --color-warning-bg-strong: var(--mat-color-warning-bg-strong);
-      --color-warning-border: var(--mat-color-warning-border);
-      --color-info-bg: var(--mat-color-info-bg);
-      --color-info-text: var(--mat-color-info-text);
-      --color-info-border: var(--mat-color-info-border);
-      --color-purple-bg: var(--mat-color-purple-bg);
-      --color-purple-text: var(--mat-color-purple-text);
-      --color-purple-border: var(--mat-color-purple-border);
-      --color-sky-bg: var(--mat-color-sky-bg);
-      --color-sky-text: var(--mat-color-sky-text);
-      --color-sky-border: var(--mat-color-sky-border);
-      --color-teal-bg: var(--mat-color-teal-bg);
-      --color-teal-text: var(--mat-color-teal-text);
-      --color-teal-bg-subtle: var(--mat-color-teal-bg-subtle);
-      --color-teal-border: var(--mat-color-teal-border);
-      --color-neutral-bg: var(--mat-color-neutral-bg);
-      --color-neutral-text: var(--mat-color-neutral-text);
-      --color-neutral-border: var(--mat-color-neutral-border);
-
-      --shadow-sm: var(--mat-shadow-sm);
-      --shadow-md: var(--mat-shadow-md);
-      --shadow-lg: var(--mat-shadow-lg);
-      --shadow-modal: var(--mat-shadow-modal);
-      --radius-sm: var(--mat-radius-sm);
-      --radius-md: var(--mat-radius-md);
-      --radius-lg: var(--mat-radius-lg);
-      --radius-xl: var(--mat-radius-xl);
-      --radius-pill: var(--mat-radius-pill);
     }
 
-    /* ── Tema oscuro (lienzo gris neutro; la marca solo en el acento) ─ */
+    /* ══════════════════════════════════════════════════════════
+       Tema Gray 100 (oscuro)
+       ══════════════════════════════════════════════════════════
+       Gray 100 es el par oscuro que Carbon documenta junto a Gray 10.
+       Acá solo se redefine lo que DEPENDE DEL FONDO. Lo que es una
+       constante del sistema (el Blue 60 del botón primario, el rojo del
+       botón destructivo, el verde de WhatsApp, el velo del modal) cae al
+       valor de :root a propósito.
+
+       Diferencia notable con el tema oscuro anterior: los -bg semánticos
+       eran `rgba()` que había que pre-componer a mano sobre la superficie
+       para poder verificar su contraste (y el que los tocaba tenía que
+       acordarse de recomponerlos). Acá son los `tag-*` de Carbon en
+       oscuro — pasos 70 de fondo, 20 de texto, opacos. Se verifican
+       directo, sin composición.
+       ══════════════════════════════════════════════════════════ */
     [data-theme="dark"] {
-      --mat-color-bg: #0F1720;
-      --mat-color-bg-elevated: #16202B;
-      --mat-color-bg-subtle: #1C1F23;
-      --mat-color-bg-hover: #24282D;
+      --color-bg: var(--cds-gray-100);
+      --color-bg-elevated: var(--cds-gray-90);        /* layer-01 */
+      --color-bg-subtle: var(--cds-gray-80);          /* field-02 / layer-02 */
+      --color-bg-accent: var(--cds-gray-80);          /* layer-accent-01: en g100 coincide con layer-02 */
+      --color-bg-hover: var(--cds-layer-hover-dark);
 
-      --mat-color-text-primary: #EDF2F5;
-      --mat-color-text-secondary: #9FB0BA;
-      /* #6B7280 (heredado de la migración anterior) medía apenas 4.23:1
-         contra el bg-elevated viejo (#16181B) — ya bajo AA antes de esta
-         migración. Con el bg-elevated nuevo (#16202B, más claro) caía a
-         3.92:1. Aclarado a #818A96 (4.71:1 sobre bg-elevated, 5.16:1 sobre
-         bg) para volver a pasar 4.5:1 con margen. */
-      --mat-color-text-tertiary: #818A96;
-      --mat-color-text-disabled: #4B5563;
-      --mat-color-text-inverse: #0F1113;
+      --color-text-primary: var(--cds-gray-10);
+      --color-text-secondary: var(--cds-gray-30);
+      /* Gray 40 y no Gray 50: sobre layer-01 los dos pasan (6.36:1 vs
+         4.56:1), pero el texto terciario también aparece sobre
+         bg-subtle/layer-02 (#393939) y ahí Gray 50 cae a 3.48:1. Gray 40
+         da 4.86:1 en la superficie más exigente de las dos. */
+      --color-text-tertiary: var(--cds-gray-40);
+      --color-text-disabled: var(--cds-gray-60);
+      --color-text-inverse: var(--cds-gray-100);
+      --color-bg-inverse: var(--cds-gray-10);
 
-      --mat-color-border-subtle: #1F2A35;
-      --mat-color-border: var(--mat-color-border-subtle);
-      --mat-color-border-default: #5A6E7E;   /* 3.11:1 sobre bg-elevated */
-      --mat-color-border-strong: #7B93A3;    /* 5.13:1 sobre bg-elevated */
-      --mat-color-brand-ink: #34D399;
+      --color-border-subtle: var(--cds-gray-80);
+      --color-border: var(--color-border-subtle);
+      --color-border-default: var(--cds-gray-50);     /* 4.56:1 sobre bg-elevated */
+      --color-border-strong: var(--cds-gray-40);      /* 6.36:1 sobre bg-elevated */
 
-      /* accent, accent-hover y accent-soft NO se redefinen acá a propósito:
-         caen al valor invariante de :root (brand-600/700/500) — mismo
-         criterio ya usado en este archivo para --mat-color-danger-hover/
-         -solid. Solo lo que SÍ cambia con el fondo (subtle, text) se
-         redefine abajo. */
-      --mat-color-accent-subtle: rgba(0, 130, 251, 0.16);
-      --mat-color-accent-subtle-bg: var(--mat-color-accent-subtle);
-      --mat-color-accent-subtle-text: var(--mat-color-accent-text);
-      --mat-color-accent-text: #3D9CFF;
-      --mat-color-whatsapp: #25d366;
-      --mat-color-whatsapp-hover: #1ebe57;
+      /* Selección e interacción en oscuro. accent/accent-hover/accent-soft
+         no se redefinen (ver :root). subtle sube a Blue 80: es el
+         `highlight` de Carbon en g100, y sobre él los cinco colores de
+         texto que pueden caer dentro de una fila seleccionada
+         (primario, secundario, prioridad baja/media, advertencia) dan
+         entre 4.8:1 y 8.4:1. */
+      --color-accent-subtle: var(--cds-blue-80);
+      --color-accent-text: var(--cds-blue-40);        /* enlace: Blue 40, 6.43:1 sobre layer-01 */
 
-      --mat-ring: rgba(0, 130, 251, 0.35);   /* brand-500, alfa más alto en oscuro para mantener 3:1 sobre superficie oscura */
+      /* Gray 60/50 y no Gray 80/60: sobre un workspace oscuro el gris del
+         botón secundario tiene que despegarse del fondo, no fundirse. Es lo
+         que hace Carbon en g100. */
+      --color-btn-secondary: var(--cds-gray-60);
+      --color-btn-secondary-hover: var(--cds-gray-60-hover);
 
-      --mat-color-success: #34D399;
-      --mat-color-success-bg: rgba(52, 211, 153, 0.12);
-      --mat-color-success-text: #6EE7B7;
-      --mat-color-success-border: rgba(52, 211, 153, 0.32);
+      /* Foco en oscuro: Carbon usa BLANCO, no el azul. Sobre una
+         superficie oscura el azul de foco pierde el contraste que lo
+         hace visible (Blue 60 sobre layer-01 da 2.0:1); el blanco da
+         15.1:1. Es la misma decisión que ya se toma acá para el texto de
+         enlace, aplicada al indicador no textual. */
+      --ring: var(--cds-white);
 
-      --mat-color-warning-bg: rgba(156, 107, 18, 0.18);
-      --mat-color-warning-text: #E8C878;
-      --mat-color-warning-text-strong: #F5DCA0;
-      --mat-color-warning-bg-strong: rgba(156, 107, 18, 0.28);
-      --mat-color-warning-border: rgba(156, 107, 18, 0.35);
+      --color-success: var(--cds-green-40);
+      --color-success-bg: var(--cds-green-70);
+      --color-success-text: var(--cds-green-20);
+      --color-success-border: var(--cds-green-60);
 
-      --mat-color-danger: #E88870;
-      --mat-color-danger-bg: rgba(176, 80, 58, 0.16);
-      --mat-color-danger-text: #E88870;
-      --mat-color-danger-border: rgba(176, 80, 58, 0.35);
+      --color-warning-bg: var(--cds-yellow-70);
+      --color-warning-text: var(--cds-yellow-20);
+      --color-warning-text-strong: var(--cds-yellow-10);
+      --color-warning-bg-strong: var(--cds-yellow-80);
+      --color-warning-border: var(--cds-yellow-30);
 
-      --mat-color-info-bg: rgba(59, 79, 160, 0.16);
-      --mat-color-info-text: #9CAAE2;
-      --mat-color-info-border: rgba(59, 79, 160, 0.32);
+      --color-danger: var(--cds-red-50);
+      --color-danger-bg: var(--cds-red-70);
+      --color-danger-text: var(--cds-red-20);
+      --color-danger-border: var(--cds-red-60);
 
-      --mat-color-neutral-bg: #24282D;
-      --mat-color-neutral-text: #9CA3AF;
-      --mat-color-neutral-border: #31373E;
+      --color-info-bg: var(--cds-blue-70);
+      --color-info-text: var(--cds-blue-20);
+      --color-info-border: var(--cds-blue-60);
 
-      --mat-color-purple-bg: rgba(83, 72, 120, 0.18);
-      --mat-color-purple-text: #B8A8E8;
-      --mat-color-purple-border: rgba(83, 72, 120, 0.32);
+      --color-neutral-bg: var(--cds-gray-70);
+      --color-neutral-text: var(--cds-gray-10);
+      --color-neutral-border: var(--cds-gray-60);
 
-      --mat-color-sky-bg: rgba(37, 107, 122, 0.16);
-      --mat-color-sky-text: #7ECBE0;
-      --mat-color-sky-border: rgba(37, 107, 122, 0.32);
+      --color-purple-bg: var(--cds-purple-70);
+      --color-purple-text: var(--cds-purple-20);
+      --color-purple-border: var(--cds-purple-30);
 
-      --mat-color-teal-bg: rgba(29, 92, 138, 0.16);
-      --mat-color-teal-text: #81BBE4;
-      --mat-color-teal-bg-subtle: rgba(29, 92, 138, 0.1);
-      --mat-color-teal-border: rgba(29, 92, 138, 0.32);
+      --color-sky-bg: var(--cds-cyan-70);
+      --color-sky-text: var(--cds-cyan-20);
+      --color-sky-border: var(--cds-cyan-30);
 
-      --mat-scroll-shadow: rgba(0, 0, 0, 0.55);
+      --color-teal-bg: var(--cds-teal-70);
+      --color-teal-text: var(--cds-teal-20);
+      --color-teal-bg-subtle: var(--cds-teal-80);
+      --color-teal-border: var(--cds-teal-30);
+
+      /* Tonos de avatar en oscuro: pasos 80 de fondo, 30 de texto — el
+         espejo del 10/70 del tema claro. Los cinco dan 6.6-6.9:1. */
+      --color-avatar-azul-bg: var(--cds-blue-80);
+      --color-avatar-azul-text: var(--cds-blue-30);
+      --color-avatar-slate-bg: var(--cds-cool-gray-80);
+      --color-avatar-slate-text: var(--cds-cool-gray-30);
+      --color-avatar-teal-bg: var(--cds-teal-80);
+      --color-avatar-teal-text: var(--cds-teal-30);
+      --color-avatar-violeta-bg: var(--cds-purple-80);
+      --color-avatar-violeta-text: var(--cds-purple-30);
+      --color-avatar-arena-bg: var(--cds-orange-80);
+      --color-avatar-arena-text: var(--cds-orange-30);
+
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+      --shadow-overlay: var(--shadow-lg);
+
+      --scroll-shadow: rgba(0, 0, 0, 0.55);
     }
 
     html[data-theme="dark"] { color-scheme: dark; }
@@ -362,10 +548,15 @@
 
     body {
       font-family: var(--font-sans);
-      font-size: var(--fs-md);
+      font-size: var(--fs-body-01);
       color: var(--color-text-primary);
       background: var(--color-bg);
-      line-height: 1.5;
+      /* Interlineado y tracking del paso body-01 de Carbon, no un 1.5
+         elegido aca: en el type set cada paso trae los tres valores y se
+         consumen juntos. Antes era line-height 1.5 (21px a 14px) sin
+         tracking. */
+      line-height: var(--cds-body-01-lh);
+      letter-spacing: var(--cds-body-01-ls);
       min-height: 100vh;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
@@ -409,9 +600,11 @@
        la marca vive en el sidebar. */
     .header-title h1 {
       font-family: var(--font-display);
-      font-size: var(--fs-2xl);
+      font-size: var(--fs-heading-03);
+      line-height: var(--cds-heading-03-lh);
       font-weight: 600;
-      letter-spacing: -0.01em;
+      /* Sin tracking negativo: heading-03 de Carbon va en 0. El -0.01em
+         venia de Geist/Sora, que a 20px se abrian mas que Plex. */
       color: var(--color-text-primary);
       display: flex;
       align-items: center;
@@ -470,7 +663,7 @@
       align-items: center;
       gap: 6px;
       margin-top: 16px;
-      font-size: var(--fs-sm);
+      font-size: var(--fs-label-01);
       color: var(--color-text-secondary);
       text-decoration: none;
     }
@@ -498,7 +691,7 @@
 
     .brand-subtitulo-public {
       margin: 0;
-      font-size: 13px;
+      font-size: var(--fs-body-01);
       color: var(--color-text-secondary);
     }
 
@@ -547,12 +740,18 @@
     .col-4  { grid-column: span 4; }
     .col-6  { grid-column: span 6; }
     .col-8  { grid-column: span 8; }
+    /* Agregado con el timeline unificado de Tickets (2026-09-04): la card
+       "Actividad y conversación" de TicketDetalleView.vue ocupa 9/12 junto
+       a "Datos del ticket" (col-3) — la misma pareja 3+9 que ya usaban
+       Conversación(6)+Historial(3), ahora una sola card. */
+    .col-9  { grid-column: span 9; }
 
     @media (max-width: 1200px) {
       .col-2 { grid-column: span 4; }
       .col-3 { grid-column: span 6; }
       .col-4 { grid-column: span 6; }
       .col-8 { grid-column: span 12; }
+      .col-9 { grid-column: span 12; }
     }
 
     @media (max-width: 768px) {
@@ -565,39 +764,41 @@
       background: var(--color-bg-elevated);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
       padding: 1rem 1.15rem;
       display: flex;
       align-items: center;
       gap: 12px;
-      transition: border-color 0.15s, background 0.15s;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
     }
 
     .stat-card:hover {
       border-color: var(--color-border-strong);
       background: var(--color-bg-subtle);
+      box-shadow: var(--shadow-md);
     }
 
     .stat-icon {
       width: 40px;
       height: 40px;
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-base);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
+      font-size: var(--icon-md);
       flex-shrink: 0;
     }
 
     .stat-info .stat-value {
-      font-size: var(--fs-stat);
+      font-size: var(--fs-heading-05);
+      line-height: var(--cds-heading-05-lh);
       font-weight: 700;
-      line-height: 1.1;
-      letter-spacing: -0.02em;
+      /* Sin tracking negativo, mismo motivo que el h1 de modulo. */
       color: var(--color-text-primary);
     }
 
     .stat-info .stat-label {
-      font-size: 12px;
+      font-size: var(--fs-label-01);
       color: var(--color-text-secondary);
       margin-top: 2px;
     }
@@ -607,6 +808,7 @@
       background: var(--color-bg-elevated);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
       overflow: hidden;
     }
 
@@ -633,12 +835,12 @@
       transition: box-shadow 0.15s, border-color 0.15s;
     }
     .card--clicable:hover {
-      box-shadow: var(--shadow-sm);
+      box-shadow: none;
       border-color: var(--color-border-default);
     }
     .card--clicable:focus-visible {
       outline: none;
-      box-shadow: var(--shadow-sm), 0 0 0 3px var(--mat-ring);
+      box-shadow: 0 0 0 2px var(--ring);
       border-color: var(--color-accent);
     }
 
@@ -675,13 +877,102 @@
 
     .toolbar-title {
       font-family: var(--font-display);
-      font-size: var(--fs-lg);
+      font-size: var(--fs-heading-02);
+      line-height: var(--cds-heading-02-lh);
       font-weight: 600;
       color: var(--color-text-primary);
       display: flex;
       align-items: center;
       gap: 8px;
     }
+
+    /* ============================================================
+       Vistas de detalle — el vocabulario de una ficha (Ticket, KB,
+       Problema, Empleado): título de sección, divisor entre sub-bloques,
+       línea de dato secundario y nota al pie.
+
+       Vivían redefinidas en el <style scoped> de CADA vista —
+       `.tk-nota` en 8 archivos, `.datos-title` en 6, `.tk-detalle` en 5,
+       `.tk-seccion` en 4—, idénticas byte a byte salvo dos ajustes
+       puntuales, así que parecían globales sin serlo: tocar "el estilo de
+       las fichas" implicaba encontrar y editar las 23 copias (ARQ-06, ver
+       docs/HISTORIAL-AUDITORIAS.md).
+
+       Las dos vistas con un ajuste propio (EmpleadoDetalleView y
+       ReporteSatisfaccionView) conservan SOLO su diferencia en su
+       <style scoped>, que gana por especificidad (0,2,0 vs 0,1,0) sin
+       depender del orden de carga.
+       ============================================================ */
+    .datos-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: var(--fs-heading-02);
+      font-weight: 600;
+      color: var(--color-text-primary);
+      margin-bottom: 10px;
+    }
+
+    /* Divisor entre sub-bloques DENTRO de una misma card. */
+    .tk-seccion {
+      margin-top: 16px;
+      border-top: 1px solid var(--color-border);
+      padding-top: 14px;
+    }
+
+    .tk-detalle {
+      font-size: var(--fs-label-01);
+      color: var(--color-text-secondary);
+      margin: 2px 0;
+    }
+
+    .tk-nota {
+      font-size: var(--fs-label-01);
+      color: var(--color-text-tertiary);
+      font-style: italic;
+      margin: 4px 0 0;
+    }
+
+    /* ============================================================
+       Icon-box — ícono en caja de color (rediseño Materen, Fase 1)
+       UNA implementación del patrón que hasta acá existía dos veces y
+       divergente: .feed-icon (Dashboard, 30px/--icon-sm) y
+       .soporte-accion-icono (Soporte, 38px/--icon-md). Prototipado en el
+       Style Lab (.sl-icon-box) y portado acá.
+       Regla de uso: la card que contiene un .icon-box NO cambia su propio
+       borde ni fondo por eso — sigue siendo .card normal. El color vive solo
+       en el ícono. No existe .card--alerta con borde de color: se evaluó en
+       el Style Lab y se descartó (alerta vía icon-box, no border-left).
+       Escalón 3 de la escala de peso visual (fondo tenue, sin borde) — ver
+       GUIA-UX-UI.md.
+       ============================================================ */
+    .icon-box {
+      width: var(--space-10);
+      height: var(--space-10);
+      border-radius: var(--radius-base);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* 20px dentro de un cuadro de 32px es la proporción de Carbon para un
+         ícono en contenedor. Antes eran 16px, que dejaban el glífo flotando
+         en medio del color en vez de llenarlo. */
+      font-size: var(--icon-md);
+      flex-shrink: 0;
+    }
+
+    /* --accent-subtle/-text y no --color-brand-* crudos: esos dos SÍ están
+       tematizados para oscuro. Con el token de marca crudo el ícono "brand"
+       quedaba como un cuadro casi blanco sobre fondo oscuro (bug real,
+       encontrado en la verificación del Style Lab). */
+    .icon-box--brand   { background: var(--color-accent-subtle); color: var(--color-accent-text); }
+    .icon-box--success { background: var(--color-success-bg);    color: var(--color-success-text); }
+    .icon-box--warning { background: var(--color-warning-bg);    color: var(--color-warning-text); }
+    .icon-box--danger  { background: var(--color-danger-bg);     color: var(--color-danger-text); }
+    .icon-box--info    { background: var(--color-info-bg);       color: var(--color-info-text); }
+    /* Neutro: "caja de ícono sin severidad" (acción de Soporte sin color
+       propio, ítem de feed sin urgencia real). Reusa el par --neutral que ya
+       usa .badge--neutral, no un sexto hex. */
+    .icon-box--neutral { background: var(--color-neutral-bg);    color: var(--color-neutral-text); }
 
     /* ============================================================
        Badges — sistema unificado (base + modificador). Las clases
@@ -694,8 +985,8 @@
       align-items: center;
       gap: 4px;
       padding: 2px 9px;
-      border-radius: var(--radius-pill);
-      font-size: var(--fs-xs);
+      border-radius: var(--radius-sm);
+      font-size: var(--fs-label-01);
       font-weight: 600;
       white-space: nowrap;
     }
@@ -727,6 +1018,22 @@
     /* Acento de marca: contadores y chips neutros de identidad (no es un estado) */
     .badge--accent, .badge-count {
       background: var(--color-accent-subtle); color: var(--color-accent-text);
+      border-radius: var(--radius-pill);
+    }
+
+    /* Badge/tag dentro de una linea de texto corrida (no en su propia celda
+       ni en una fila de badges). Separa del texto de la izquierda y lo
+       centra contra la altura de la linea.
+
+       Vivia DUPLICADA en 4 hojas scoped idénticas (CuentasPanel,
+       EmpleadoDetalleView, ImportarEquiposView, ProblemaDetalleView) y la
+       escriben 8 archivos — o sea que en los otros 4 (TicketComentarios,
+       TicketDetalleView, TicketsView y el propio BadgeEstado) era una clase
+       MUERTA: se aplicaba y no hacía nada. Se consolida acá, que es donde
+       vive el resto del sistema de badges. */
+    .badge-inline {
+      margin-left: 6px;
+      vertical-align: middle;
     }
 
     /* .status: mismo patrón + indicador de punto (para estados "vivos":
@@ -737,8 +1044,8 @@
       align-items: center;
       gap: 5px;
       padding: 3px 10px;
-      border-radius: var(--radius-pill);
-      font-size: var(--fs-xs);
+      border-radius: var(--radius-sm);
+      font-size: var(--fs-label-01);
       font-weight: 600;
     }
 
@@ -750,7 +1057,7 @@
       background: currentColor;
     }
 
-    /* ── Buttons (estilo shadcn: outline secondary, solid primary) ─ */
+    /* ── Buttons (Modern Clean Enterprise: outline secondary, solid primary) ─ */
     .btn {
       display: inline-flex;
       align-items: center;
@@ -762,11 +1069,12 @@
       border-radius: var(--radius-md);
       background: var(--color-bg-elevated);
       color: var(--color-text-primary);
+      box-shadow: var(--shadow-sm);
       cursor: pointer;
-      font-size: var(--fs-base);
-      font-weight: 600;
+      font-size: var(--fs-body-01);
+      font-weight: 500;
       font-family: var(--font-sans);
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
       white-space: nowrap;
       text-decoration: none; /* también se usa como <a> (RouterLink) */
     }
@@ -774,6 +1082,7 @@
     .btn:hover {
       background: var(--color-bg-subtle);
       border-color: var(--color-border-strong);
+      box-shadow: var(--shadow-sm);
     }
 
     /* Foco de botones: anillo externo (box-shadow), no outline ni cambio
@@ -782,18 +1091,20 @@
     .btn:focus-visible {
       outline: none;
       border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--mat-ring);
+      box-shadow: 0 0 0 2px var(--ring);
     }
 
     .btn-primary {
       background: var(--color-accent);
-      color: var(--color-text-inverse);
+      color: var(--color-text-on-color);
       border-color: var(--color-accent);
+      box-shadow: var(--shadow-sm);
     }
 
     .btn-primary:hover {
       background: var(--color-accent-hover);
       border-color: var(--color-accent-hover);
+      box-shadow: var(--shadow-md);
     }
 
     .btn-danger {
@@ -803,37 +1114,58 @@
     }
 
     .btn-danger:hover {
-      /* Invariante --mat-color-danger-hover, no --color-danger: en oscuro
+      /* Invariante --color-danger-hover, no --color-danger: en oscuro
          --color-danger es un salmón (#E88870) que falla AA con texto
          blanco (DS-01). */
-      background: var(--mat-color-danger-hover);
-      color: #fff;
-      border-color: var(--mat-color-danger-hover);
+      background: var(--color-danger-hover);
+      color: var(--color-text-on-color);
+      border-color: var(--color-danger-hover);
     }
 
     .btn-danger:focus-visible,
     .btn-danger-solid:focus-visible {
       border-color: var(--color-danger-border);
-      box-shadow: 0 0 0 3px var(--mat-ring-danger);
+      box-shadow: 0 0 0 2px var(--ring-danger);
     }
 
     /* Peligro sólido — confirmaciones destructivas irreversibles (distinto
        de .btn-danger: fondo sólido desde el estado default, no solo al
        pasar el cursor). */
     .btn-danger-solid {
-      /* Texto blanco fijo (no --color-text-inverse): --mat-color-danger-solid
-         es el mismo rojo en ambos temas, y en oscuro --color-text-inverse
-         resuelve a un gris casi negro que da 3.9:1 sobre este rojo (falla
-         AA). Blanco fijo mide 4.83:1 en ambos temas — mismo valor ya
-         verificado para --mat-color-danger-hover en docs/HISTORIAL-AUDITORIAS.md. */
-      background: var(--mat-color-danger-solid);
-      color: #fff;
-      border-color: var(--mat-color-danger-solid);
+      /* --color-text-on-color y no --color-text-inverse: este rojo es el
+         mismo en ambos temas, así que su texto también. Era un `#fff`
+         literal con esta misma explicación escrita al lado — el único sitio
+         donde el problema se había diagnosticado; ahora es un token y la
+         razón vive una sola vez, en :root. */
+      background: var(--color-danger-solid);
+      color: var(--color-text-on-color);
+      border-color: var(--color-danger-solid);
     }
 
     .btn-danger-solid:hover {
-      background: var(--mat-color-danger-hover);
-      border-color: var(--mat-color-danger-hover);
+      background: var(--color-danger-hover);
+      border-color: var(--color-danger-hover);
+    }
+
+    /* Ghost / terciario — cuarta variante junto a primary/secondary/danger
+       (rediseño Materen, Fase 1). Prototipada en el Style Lab
+       (.sl-btn-ghost) y portada acá. Es el escalón más bajo de la escala de
+       peso visual (sin fondo ni borde, ver "Peso visual proporcional al
+       significado" en GUIA-UX-UI.md): acción real pero de baja jerarquía
+       ("Limpiar selección", "Filtros") que no debe competir con la
+       secundaria ni, mucho menos, con la primaria de la vista.
+       Sin regla de foco propia: .btn:focus-visible ya aplica, porque
+       comparte la clase base .btn. */
+    .btn-ghost {
+      background: transparent;
+      border-color: transparent;
+      color: var(--color-text-secondary);
+    }
+
+    .btn-ghost:hover {
+      background: var(--color-bg-subtle);
+      border-color: transparent;
+      color: var(--color-text-primary);
     }
 
     /* ── Filters ── */
@@ -853,23 +1185,28 @@
       position: relative;
     }
 
+    /* left y padding-left van en pareja: el ícono mide --icon-sm (16px),
+       así que 14 + 16 + 8 de aire = 38px de padding izquierdo del input.
+       Antes eran 11/34 y el placeholder quedaba pegado al ícono (hallazgo
+       del Style Lab, --sl-input-icon-*). Mover uno sin el otro rompe la
+       separación. */
     .search-wrap i {
       position: absolute;
-      left: 11px;
+      left: 14px;
       top: 50%;
       transform: translateY(-50%);
       color: var(--color-text-tertiary);
-      font-size: 16px;
+      font-size: var(--icon-sm);
       pointer-events: none;
     }
 
     .search-wrap input {
       width: 100%;
       height: 36px;
-      padding: 0 10px 0 34px;
+      padding: 0 10px 0 38px;
       border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-md);
-      font-size: var(--fs-base);
+      border-radius: var(--radius-base);
+      font-size: var(--fs-body-01);
       background: var(--color-bg-elevated);
       color: var(--color-text-primary);
       font-family: var(--font-sans);
@@ -891,8 +1228,8 @@
       height: 36px;
       padding: 0 30px 0 12px;
       border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-md);
-      font-size: var(--fs-base);
+      border-radius: var(--radius-base);
+      font-size: var(--fs-body-01);
       background-color: var(--color-bg-elevated);
       color: var(--color-text-primary);
       font-family: var(--font-sans);
@@ -909,11 +1246,69 @@
     select:focus {
       outline: none;
       border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--mat-ring);
+      box-shadow: 0 0 0 2px var(--ring);
     }
 
     [data-theme="dark"] select {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    }
+
+    /* Base ÚNICA para TODO <input type="date"> del sistema — mismo criterio
+       que el <select> de arriba: antes cada consumidor resolvía esto por su
+       cuenta o no lo resolvía. `.form-group input`/`.rep-campo`
+       (ReporteTicketsModal) ya le daban borde/radio a los suyos; el filtro
+       de fecha de Tickets (FiltroFechaCreacion.vue, sin envoltura
+       `.form-group`) no tenía NINGUNO — un input nativo pelado, sin borde ni
+       radio, al lado de bandejas y botones con todo el tratamiento Materen.
+       Con esta base los 8 puntos del sistema quedan parejos, sin que cada
+       uno tenga que acordarse de darle borde/radio a mano; los que ya lo
+       tenían (redundante ahora, no roto) pueden simplificarse más adelante,
+       no es parte de este cambio.
+       El glifo de calendario nativo es del sistema operativo — inconsistente
+       entre Windows/Mac/Chrome/Firefox, la misma razón por la que el
+       <select> de arriba perdió su flecha nativa. Se reemplaza por un trazo
+       propio (mismo stroke/grosor que el chevron del select) SOLO en
+       Chromium/Edge (`::-webkit-calendar-picker-indicator`): Firefox no
+       expone un pseudo-elemento equivalente y sigue mostrando su ícono
+       nativo sin estilar — límite del navegador, no regresión del sistema. */
+    input[type="date"] {
+      height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-base);
+      font-size: var(--fs-body-01);
+      background-color: var(--color-bg-elevated);
+      color: var(--color-text-primary);
+      font-family: var(--font-sans);
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    input[type="date"]:focus-visible {
+      outline: none;
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 2px var(--ring);
+    }
+
+    input[type="date"]:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      margin-left: 6px;
+      cursor: pointer;
+      opacity: 1;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='5' width='16' height='16' rx='2'%3E%3C/rect%3E%3Cline x1='16' y1='3' x2='16' y2='7'%3E%3C/line%3E%3Cline x1='8' y1='3' x2='8' y2='7'%3E%3C/line%3E%3Cline x1='4' y1='11' x2='20' y2='11'%3E%3C/line%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-size: 16px;
+    }
+
+    [data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='5' width='16' height='16' rx='2'%3E%3C/rect%3E%3Cline x1='16' y1='3' x2='16' y2='7'%3E%3C/line%3E%3Cline x1='8' y1='3' x2='8' y2='7'%3E%3C/line%3E%3Cline x1='4' y1='11' x2='20' y2='11'%3E%3C/line%3E%3C/svg%3E");
     }
 
     /* Ancho: dentro de .filters/.form-group el <select> llena su columna;
@@ -935,7 +1330,7 @@
     }
 
     .filter-field label {
-      font-size: var(--fs-xs);
+      font-size: var(--fs-label-01);
       font-weight: 600;
       color: var(--color-text-secondary);
     }
@@ -944,7 +1339,7 @@
     .search-wrap input:focus {
       outline: none;
       border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--mat-ring);
+      box-shadow: 0 0 0 2px var(--ring);
     }
 
     /* ── Table ── */
@@ -956,8 +1351,8 @@
       background:
         linear-gradient(90deg, var(--color-bg-elevated) 40%, transparent) left / 28px 100%,
         linear-gradient(270deg, var(--color-bg-elevated) 40%, transparent) right / 28px 100%,
-        radial-gradient(farthest-side at 0 50%, var(--mat-scroll-shadow), transparent) left / 12px 100%,
-        radial-gradient(farthest-side at 100% 50%, var(--mat-scroll-shadow), transparent) right / 12px 100%;
+        radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), transparent) left / 12px 100%,
+        radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right / 12px 100%;
       background-repeat: no-repeat;
       background-attachment: local, local, scroll, scroll;
     }
@@ -968,26 +1363,43 @@
          se quedan atrás al scrollear; con separate viajan con la celda */
       border-collapse: separate;
       border-spacing: 0;
-      font-size: 13px;
+      font-size: var(--fs-body-01);
       /* dígitos de ancho fijo: DNI, fechas y conteos alinean en columna */
       font-variant-numeric: tabular-nums;
     }
 
     th {
       text-align: left;
-      padding: 10px 1.25rem;
-      background: var(--color-bg-subtle);
-      border-bottom: 1px solid var(--color-border);
+      /* 9px (antes 10px): la fila de encabezados acompaña la densidad nueva
+         de <td> — ver nota de densidad ahí abajo. */
+      padding: 9px 1.25rem;
+      /* Revisión "Filas con foco" (2026-09-03): el encabezado deja de llevar
+         relleno de layer-accent-01 y pasa a apoyarse solo en una línea
+         inferior más fuerte que la de las filas — el lenguaje de lista de
+         Linear/GitHub en vez de la cabecera-bandeja de Carbon estricto. La
+         lectura de la tabla la sigue sosteniendo el separador horizontal;
+         ya no hace falta además una capa de gris para marcar "esto rotula".
+         --color-bg-accent sigue viva (CarbonButton disabled, AppSearch,
+         NotificacionesCampana), esto no la deja huérfana. */
+      background: transparent;
+      border-bottom: 1px solid var(--color-border-strong);
       color: var(--color-text-secondary);
       font-weight: 600;
-      font-size: var(--fs-xs);
+      font-size: var(--fs-label-01);
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: var(--cds-label-01-ls);
       white-space: nowrap;
     }
 
     td {
-      padding: 12px 1.25rem;
+      /* Densidad (ago 2026, rediseño de tabla): 12px → 9px de padding
+         vertical. Una fila de texto pasa de ~38px a ~32px — ~1 fila y media
+         más visible por pantalla cada 8 filas, sin tocar el tamaño de letra
+         (13px) ni el interlineado. El gutter horizontal (1.25rem) NO cambia:
+         es el mismo que usa .filters/.card-toolbar y alinea la primera
+         columna con el buscador de arriba. Las filas con .icon-btn (29px de
+         alto propio) siguen mandando su altura, no se aplastan. */
+      padding: 9px 1.25rem;
       border-bottom: 1px solid var(--color-border-subtle);
       vertical-align: middle;
     }
@@ -1000,9 +1412,101 @@
       background: var(--color-bg-hover);
     }
 
+    /* Paridad de teclado con el hover: al tabular hasta un control de la
+       fila (el link del código, un .icon-btn, un select inline), la fila se
+       resalta igual que con el mouse. Sin esto, la fila enfocada por teclado
+       era la única sin realce en toda la tabla. */
+    tbody tr:focus-within td {
+      background: var(--color-bg-hover);
+    }
+
     tbody tr:last-child td {
       border-bottom: none;
     }
+
+    /* ── Acción que aparece al pasar el mouse (revisión "Filas con foco",
+       2026-09-03) ─────────────────────────────────────────────────────
+       Un botón de icono de fila (editar, menú de acciones) que solo se ve
+       en hover/foco: en una tabla larga, 20 filas × 3 iconos en reposo es
+       ruido que no aporta nada hasta que se necesita. Va en el propio
+       elemento de acción (`.icon-btn`, `CarbonButton` solo-icono), NO en
+       la celda que lo contiene.
+
+       Excepción de accesibilidad, las tres:
+         · foco de teclado (:focus-within) — quien tabula hasta el botón
+           tiene que verlo aparecer, no solo poder activarlo a ciegas.
+         · `@media (hover: none)` — un dispositivo táctil no tiene hover:
+           sin esto el botón no aparece NUNCA en una tablet/celular con
+           mouse ausente. Siempre visible ahí.
+         · `prefers-reduced-motion` — sin transición de opacidad, aparece
+           de golpe en vez de con un fundido. */
+    .fila-accion {
+      opacity: 0;
+      transition: opacity 0.12s;
+    }
+
+    tbody tr:hover .fila-accion,
+    tbody tr:focus-within .fila-accion {
+      opacity: 1;
+    }
+
+    @media (hover: none) {
+      .fila-accion { opacity: 1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .fila-accion { transition-duration: 0.01ms; }
+    }
+
+    /* ── Utilidades de columna (globales, cualquier módulo) ──────────────
+       Sin ellas el auto-layout de la tabla reparte el sobrante entre TODAS
+       las columnas: la columna que de verdad se lee (título, nombre,
+       asunto) queda del mismo ancho que "Categoría" o "Estado". */
+
+    /* La columna que absorbe todo el ancho sobrante. Una sola por tabla:
+       con dos, el navegador vuelve a repartir y no se gana nada. */
+    th.col-elastica { width: 100%; }
+
+    /* Columnas de cantidad/importe: alinean a la derecha para comparar
+       dígito a dígito (la tabla ya trae tabular-nums). Va en el <th> y en
+       el <td> de la misma columna. */
+    th.col-num, td.col-num { text-align: right; }
+
+    /* Celda de 2 líneas: identificador/metadato arriba en gris chico,
+       dato principal abajo. Es la forma de dar jerarquía SIN negrita
+       (regla de tipografía uniforme de tabla, ver GUIA-UX-UI.md): la
+       jerarquía la da el tamaño/color/posición, no el peso. */
+    .celda-apilada {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
+
+    .celda-apilada__meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      font-size: var(--fs-label-01);
+      color: var(--color-text-tertiary);
+    }
+
+    .celda-apilada__principal {
+      color: var(--color-text-primary);
+      overflow-wrap: anywhere;
+      /* Tope de 2 líneas: un título largo no puede estirar la fila sin
+         límite y romper la densidad del resto de la tabla. */
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Separador de metadatos dentro de una celda ("TCK-0142 · Hardware").
+       Decorativo: siempre con aria-hidden en el markup. */
+    .celda-sep { color: var(--color-text-disabled); }
 
     /* ── Skeleton de carga para tablas (ver SkeletonTabla.vue) ── */
     .skeleton-fila td {
@@ -1013,7 +1517,7 @@
       display: inline-block;
       height: 13px;
       width: 70%;
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-base);
       background: var(--color-bg-subtle);
       animation: skeleton-pulso 1.4s ease-in-out infinite;
     }
@@ -1035,7 +1539,7 @@
     /* Datos de tabla uniformes (decisión JEFE jul 2026): ningún dato en
        negrita; mismo peso, tamaño y color en todas las celdas. La
        jerarquía la dan los badges y el layout, no la tipografía. */
-    .user-name { font-weight: 400; font-size: 13px; }
+    .user-name { font-weight: 400; font-size: var(--fs-body-01); }
 
     .text-muted { color: var(--color-text-tertiary); }
 
@@ -1054,23 +1558,51 @@
       text-decoration: underline;
     }
 
-    /* ── Avatar ── */
+    /* ============================================================
+       Avatar de iniciales (rediseño Materen, Fase 1)
+       UNA familia visual para CUALQUIER persona del sistema: el usuario del
+       sidebar, el empleado de su ficha, el solicitante de un ticket y el
+       técnico asignado se ven igual. Hasta acá eran tres implementaciones
+       —.avatar (azul de acento + borde), .sb-user-avatar y .emp-avatar
+       (gradiente de marca)— y las dos con gradiente daban al usuario propio
+       y a la ficha un tratamiento "más importante" que al resto.
+       Se descartó a propósito distinguir "responsable" de "cualquiera" por
+       color (evaluado en el Style Lab): trataba el color como si comunicara
+       peso de acción, cuando acá es puramente identidad.
+       El tono sale de tonoAvatar(nombre) en core/avatar.js —
+       determinístico, la misma persona cae siempre en el mismo tono en toda
+       la app— y NO se elige a mano en la vista.
+       Sin borde: el fondo ya distingue el avatar de la superficie y un borde
+       encima es ruido. Sin gradiente.
+       ============================================================ */
     .avatar {
       width: 36px;
       height: 36px;
       border-radius: 50%;
-      background: var(--color-accent-subtle);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 600;
-      font-size: var(--fs-sm);
-      color: var(--color-accent-text);
+      font-size: var(--fs-label-01);
       flex-shrink: 0;
-      border: 1px solid var(--color-border);
+      /* Fallback neutro: una vista que olvide aplicar el tono se ve
+         discreta, no rota ni teñida de acento. */
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
     }
 
-    .avatar.sm { width: 32px; height: 32px; font-size: var(--fs-xs); }
+    .avatar.sm { width: var(--space-10); height: var(--space-10); font-size: var(--fs-label-01); }
+    .avatar.lg { width: 44px; height: 44px; font-size: var(--fs-body-01); }
+
+    /* 5 tonos categóricos + neutro (para la persona sin nombre: usuario
+       desconocido o eliminado). Los valores viven en tokens --color-avatar-*
+       porque el tema oscuro los redefine; ver la nota en :root. */
+    .avatar--azul    { background: var(--color-avatar-azul-bg);    color: var(--color-avatar-azul-text); }
+    .avatar--slate   { background: var(--color-avatar-slate-bg);   color: var(--color-avatar-slate-text); }
+    .avatar--teal    { background: var(--color-avatar-teal-bg);    color: var(--color-avatar-teal-text); }
+    .avatar--violeta { background: var(--color-avatar-violeta-bg); color: var(--color-avatar-violeta-text); }
+    .avatar--arena   { background: var(--color-avatar-arena-bg);   color: var(--color-avatar-arena-text); }
+    .avatar--neutro  { background: var(--color-bg-subtle);         color: var(--color-text-secondary); }
 
     /* ── Actions ── */
     .actions { display: flex; gap: 2px; }
@@ -1081,10 +1613,10 @@
       cursor: pointer;
       color: var(--color-text-secondary);
       padding: 6px;
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-base);
       display: flex;
       align-items: center;
-      font-size: 17px;
+      font-size: var(--icon-md);
       transition: background 0.12s, color 0.12s;
       text-decoration: none; /* también se usa como <a> (RouterLink) */
     }
@@ -1102,6 +1634,54 @@
     .icon-btn.danger:hover {
       color: var(--color-danger);
       background: var(--color-danger-bg);
+    }
+
+    /* .sb-logout se retiró en el rediseno a Carbon (2026-09-02). Era el
+       botón de ícono del sidebar anterior, compartido por AppLayout.vue y
+       AppSearch.vue (ARQ-16). Las acciones del shell son ahora cuadrados de
+       48px sobre Gray 100 y viven en el <style scoped> de cada componente
+       del shell, porque su color sale de los tokens --cds-shell-* y no de
+       los roles claro/oscuro que gobiernan esta hoja. Con ella se fueron
+       los últimos consumidores de --sb-text/--sb-text-strong, que dejaron
+       de existir al desaparecer el ámbito `.sidebar`. */
+
+    /* Chip de filtro/píldora removible — antes vivía solo en
+       ChipsFiltro.vue (selección múltiple de Prioridad/Nivel/Tipo en
+       Tickets, retirado en la cuarta pasada de ago 2026). Se mueve acá
+       porque el otro consumidor real, la fila de "chips de filtros
+       activos" de TicketsView.vue (Fecha de creación, removible con X),
+       sigue en pie — mismo par tenue/acento que el ítem activo del
+       sidebar (GUIA-UX-UI.md), un solo lenguaje para "esto está
+       seleccionado" en toda la app. */
+    .chips-filtro { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .chip-filtro {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 40px;
+      padding: 0 12px;
+      border: none;
+      border-radius: var(--radius-base);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+      font-size: var(--fs-body-01);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .chip-filtro:hover { background: var(--color-bg-hover); }
+
+    .chip-filtro:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--ring);
+    }
+
+    .chip-filtro--activo {
+      background: var(--color-accent-subtle);
+      color: var(--color-accent-text);
     }
 
     /* .btn/.icon-btn comparten nivel de atenuación (DS-02): unificado a
@@ -1142,7 +1722,7 @@
     }
 
     .pagination-info {
-      font-size: var(--fs-base);
+      font-size: var(--fs-body-01);
       color: var(--color-text-secondary);
     }
 
@@ -1153,7 +1733,7 @@
     }
 
     .pagination-pages {
-      font-size: var(--fs-base);
+      font-size: var(--fs-body-01);
       color: var(--color-text-secondary);
       padding: 0 4px;
       white-space: nowrap;
@@ -1168,13 +1748,23 @@
       color: var(--color-danger-text);
       background: var(--color-danger-bg);
       border: 1px solid var(--color-danger-border);
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-base);
       padding: 8px 12px;
-      font-size: var(--fs-base);
+      font-size: var(--fs-body-01);
       margin: 0;
     }
 
     .form-grid .form-error { grid-column: 1 / -1; }
+
+    /* Nota auxiliar bajo un campo (distinto de .form-error: no es un
+       problema, es información — ej. "no hay resultados con cupo" bajo un
+       BuscadorCombo). Primer consumidor: AsignarEquipoModal.vue /
+       AsignarLicenciaModal.vue, 2026-09-01. */
+    .form-hint {
+      color: var(--color-text-secondary);
+      font-size: var(--fs-label-01);
+      margin: 6px 0 0;
+    }
 
     /* ── Timeline — historial de asignaciones ─────────────────────
        "El corazón del sistema" (README): quién tuvo qué acceso y
@@ -1222,7 +1812,7 @@
     .timeline-dot--neutral { background: var(--color-neutral-text); }
     .timeline-dot--danger { background: var(--color-danger-text); }
 
-    .timeline-content { font-size: var(--fs-base); flex: 1; min-width: 0; }
+    .timeline-content { font-size: var(--fs-body-01); flex: 1; min-width: 0; }
 
     .timeline-title {
       font-weight: 600;
@@ -1230,13 +1820,13 @@
     }
 
     .timeline-meta {
-      font-size: var(--fs-sm);
+      font-size: var(--fs-label-01);
       color: var(--color-text-secondary);
       margin-top: 2px;
     }
 
     .timeline-notas {
-      font-size: var(--fs-sm);
+      font-size: var(--fs-label-01);
       color: var(--color-text-secondary);
       margin-top: 4px;
       font-style: italic;
@@ -1254,14 +1844,14 @@
 
     .capacity-bar {
       height: 6px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-base);
       background: var(--color-bg-subtle);
       overflow: hidden;
     }
 
     .capacity-fill {
       height: 100%;
-      border-radius: var(--radius-pill);
+      border-radius: var(--radius-base);
       transition: width 0.2s;
     }
 
@@ -1270,7 +1860,7 @@
     .capacity-fill--full    { background: var(--color-danger-text); }  /* =100% */
 
     .capacity-label {
-      font-size: var(--fs-xs);
+      font-size: var(--fs-label-01);
       color: var(--color-text-secondary);
     }
 
@@ -1286,29 +1876,31 @@
     }
 
     /* ── Confirmación destructiva ──────────────────────────────────
-       Tratamiento visual para modales de acciones irreversibles (dar
-       de baja, cerrar asignación reutilizable). Decisión de producto
-       (jul 2026): sin paso extra de fricción (sin checkbox ni escribir
-       el nombre) — un borde y un ícono de alerta ya distinguen la
-       acción; el detalle de qué va a pasar vive en el cuerpo del modal.
-       No aplica a "revelar contraseña": es de lectura y ya queda
-       auditada en Actividad, no necesita este tratamiento. */
-    .confirm-dialog--destructive .modal {
-      border-top: 2px solid var(--color-danger-text);
-    }
+       NO hay reglas acá, y es la decisión: un modal destructivo usa el
+       MISMO shell neutro que cualquier otro (mismo borde, misma sombra,
+       mismo overlay). Toda la señal de "esto es peligroso" vive en dos
+       componentes internos: el ícono (.icon-box--danger) y el botón de la
+       acción. Así lo resuelven Material Design, Apple HIG y GitHub —
+       ninguno tiñe el contenedor.
 
-    .confirm-dialog--destructive .modal-icon {
-      background: var(--color-danger-bg);
-      color: var(--color-danger-text);
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      flex-shrink: 0;
-    }
+       Qué había antes (rediseño Materen, Fase 1 — para no reabrirlo sin
+       contexto): .confirm-dialog--destructive pintaba un border-top de 2px
+       en rojo sobre .modal, y un .modal-icon propio de 40px circular. Se
+       evaluó subir ese borde a borde completo y se descartó: un borde de
+       color rodeando el modal entero se lee como "esto se rompió" —el
+       mismo lenguaje visual que un campo en error— y no como "prestá
+       atención a esta decisión". Además contradecía la regla que ya estaba
+       escrita para las cards: el contenedor nunca se tiñe por estado, el
+       color vive en un componente interno. Se probó como excepción, se vio
+       forzado, se revirtió el borde entero.
+       El .modal-icon de 40px se retiró junto con él: el ícono reusa ahora
+       .icon-box + .icon-box--danger, un componente de ícono menos que
+       mantener (misma consolidación que las cards de alerta).
+
+       Sigue vigente de la decisión de producto de jul 2026: sin paso extra
+       de fricción (sin checkbox ni escribir el nombre) — el detalle de qué
+       va a pasar vive en el cuerpo del modal. No aplica a "revelar
+       contraseña": es de lectura y ya queda auditada en Actividad. */
 
     .empty {
       text-align: center;
@@ -1325,18 +1917,18 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 28px;
+      font-size: var(--icon-lg);
       color: var(--color-text-tertiary);
     }
 
     .empty h3 {
-      font-size: 15px;
+      font-size: var(--fs-heading-02);
       font-weight: 600;
       color: var(--color-text-primary);
       margin-bottom: 6px;
     }
 
-    .empty p { font-size: 13px; margin-bottom: 1.25rem; }
+    .empty p { font-size: var(--fs-body-01); margin-bottom: 1.25rem; }
 
     .no-results {
       text-align: center;
@@ -1348,7 +1940,7 @@
     .modal-bg {
       position: fixed;
       inset: 0;
-      background: rgba(12, 15, 17, 0.55);
+      background: var(--color-overlay);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1358,9 +1950,9 @@
 
     .modal {
       background: var(--color-bg-elevated);
-      border-radius: var(--radius-lg);
+      border-radius: var(--radius-xl);
       border: 1px solid var(--color-border);
-      box-shadow: var(--shadow-modal);
+      box-shadow: var(--shadow-overlay);
       padding: 1.5rem;
       width: 100%;
       max-width: 540px;
@@ -1401,6 +1993,31 @@
     .modal.modal-detail { max-width: 620px; }
     .modal.modal-lg { max-width: 680px; }
 
+    /* ── Modal lateral (drawer) — Plan Maestro v2, Frente 4 ──
+       Mismo componente Modal.vue (`lateral`), misma escala de anchos de
+       arriba (`size` sigue controlando el ancho — `detail`/620px es el uso
+       típico): lo único que cambia es la posición y la dirección de
+       entrada, nunca el contrato de accesibilidad (foco, Escape, Teleport),
+       que ya resuelve Modal.vue igual para los dos modos. */
+    .modal-bg--lateral {
+      justify-content: flex-end;
+      align-items: stretch;
+      padding: 0;
+    }
+
+    .modal--lateral {
+      height: 100%;
+      max-height: 100%;
+      border-radius: 0;
+      border-top: none;
+      border-bottom: none;
+      border-right: none;
+    }
+
+    @media (max-width: 480px) {
+      .modal--lateral { max-width: 100%; }
+    }
+
     /* ── Animación compartida de modales (Fase 3) ──
        Un solo lugar para las 22 instancias: cada modal envuelve su v-if en
        <Transition name="modal-anim"> (o "modal-anim-rapida" para diálogos
@@ -1427,6 +2044,20 @@
     .modal-anim-rapida-enter-from .modal,
     .modal-anim-rapida-leave-to .modal { transform: scale(0.97); }
 
+    /* Variante lateral: el panel entra deslizando desde el borde derecho en
+       vez de crecer desde el centro — el fondo sigue fundiendo opacity
+       igual que las otras dos variantes. Un poco más lenta que la de
+       centro (220/160ms vs 190/130ms): recorre más distancia, así que se
+       sentiría brusca con la misma duración. */
+    .modal-anim-lateral-enter-active { transition: opacity 190ms ease-out; }
+    .modal-anim-lateral-leave-active { transition: opacity 130ms ease-in; }
+    .modal-anim-lateral-enter-active .modal { transition: transform 220ms cubic-bezier(0.2, 0, 0, 1); }
+    .modal-anim-lateral-leave-active .modal { transition: transform 160ms ease-in; }
+    .modal-anim-lateral-enter-from,
+    .modal-anim-lateral-leave-to { opacity: 0; }
+    .modal-anim-lateral-enter-from .modal,
+    .modal-anim-lateral-leave-to .modal { transform: translateX(100%); }
+
     /* Accesibilidad: con "reducir movimiento" activo, nada de escala y
        el fade queda casi instantáneo */
     @media (prefers-reduced-motion: reduce) {
@@ -1434,15 +2065,21 @@
       .modal-anim-leave-active,
       .modal-anim-rapida-enter-active,
       .modal-anim-rapida-leave-active,
+      .modal-anim-lateral-enter-active,
+      .modal-anim-lateral-leave-active,
       .modal-anim-enter-active .modal,
       .modal-anim-leave-active .modal,
       .modal-anim-rapida-enter-active .modal,
-      .modal-anim-rapida-leave-active .modal { transition-duration: 1ms; }
+      .modal-anim-rapida-leave-active .modal,
+      .modal-anim-lateral-enter-active .modal,
+      .modal-anim-lateral-leave-active .modal { transition-duration: 1ms; }
 
       .modal-anim-enter-from .modal,
       .modal-anim-leave-to .modal,
       .modal-anim-rapida-enter-from .modal,
-      .modal-anim-rapida-leave-to .modal { transform: none; }
+      .modal-anim-rapida-leave-to .modal,
+      .modal-anim-lateral-enter-from .modal,
+      .modal-anim-lateral-leave-to .modal { transform: none; }
 
       .skeleton-bar { animation: none; opacity: 0.6; }
 
@@ -1451,7 +2088,7 @@
 
     .modal-title {
       font-family: var(--font-display);
-      font-size: var(--fs-xl);
+      font-size: var(--fs-heading-02);
       font-weight: 600;
       color: var(--color-text-primary);
       margin-bottom: 1.25rem;
@@ -1476,7 +2113,7 @@
     .form-group.full { grid-column: 1 / -1; }
 
     label {
-      font-size: 12px;
+      font-size: var(--fs-label-01);
       color: var(--color-text-secondary);
       font-weight: 600;
     }
@@ -1486,8 +2123,8 @@
       height: 36px;
       padding: 0 12px;
       border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-md);
-      font-size: var(--fs-base);
+      border-radius: var(--radius-base);
+      font-size: var(--fs-body-01);
       background-color: var(--color-bg-elevated);
       color: var(--color-text-primary);
       font-family: var(--font-sans);
@@ -1503,8 +2140,8 @@
       min-height: 72px;
       padding: 8px 12px;
       border: 1px solid var(--color-border-default);
-      border-radius: var(--radius-md);
-      font-size: var(--fs-base);
+      border-radius: var(--radius-base);
+      font-size: var(--fs-body-01);
       background: var(--color-bg-elevated);
       color: var(--color-text-primary);
       font-family: var(--font-sans);
@@ -1517,7 +2154,16 @@
     .form-group textarea:focus {
       outline: none;
       border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px var(--mat-ring);
+      box-shadow: 0 0 0 2px var(--ring);
+    }
+
+    /* DS-03 (docs/GUIA-UX-UI.md, Opción A) — el campo inválido se distingue
+       por color, no solo por aria-invalid para lectores de pantalla. Mismo
+       token que .form-error, sin foco propio (Opción B, descartada). */
+    .form-group input[aria-invalid="true"],
+    .form-group select[aria-invalid="true"],
+    .form-group textarea[aria-invalid="true"] {
+      border-color: var(--color-danger-border);
     }
 
     /* El anillo de arriba está pensado para inputs de texto (con borde
@@ -1530,11 +2176,11 @@
     }
 
     .section-label {
-      font-size: var(--fs-xs);
+      font-size: var(--fs-label-01);
       font-weight: 600;
       color: var(--color-text-tertiary);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: var(--cds-label-01-ls);
       grid-column: 1 / -1;
       margin-top: 4px;
       padding-top: 12px;
@@ -1544,7 +2190,7 @@
       gap: 6px;
     }
 
-    .section-label i { font-size: 14px; }
+    .section-label i { font-size: var(--icon-sm); }
 
     .modal-actions {
       display: flex;
@@ -1564,10 +2210,10 @@
       background: var(--color-bg-elevated);
       color: var(--color-text-primary);
       padding: 10px 18px;
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-base);
       border: 1px solid var(--color-border-strong);
-      box-shadow: var(--shadow-md);
-      font-size: var(--fs-base);
+      box-shadow: var(--shadow-overlay);
+      font-size: var(--fs-body-01);
       font-weight: 500;
       z-index: var(--z-toast);
       display: flex;
@@ -1576,7 +2222,7 @@
       transition: opacity 0.3s, transform 0.3s;
     }
 
-    .toast i { font-size: 16px; color: currentColor; }
+    .toast i { font-size: var(--icon-sm); color: currentColor; }
 
     /* Variantes semánticas (design.pen "Variant set — Toast"): fondo +
        borde + texto/ícono del color de estado, no fondo neutro con solo
@@ -1630,18 +2276,18 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      font-size: var(--fs-sm);
+      font-size: var(--fs-label-01);
       color: var(--color-text-secondary);
     }
 
     .tarjeta-fila__principal {
-      font-size: var(--fs-base);
+      font-size: var(--fs-body-01);
       color: var(--color-text-primary);
       overflow-wrap: anywhere;
     }
 
     .tarjeta-fila__sec {
-      font-size: var(--fs-sm);
+      font-size: var(--fs-label-01);
       color: var(--color-text-secondary);
       display: flex;
       flex-wrap: wrap;
@@ -1697,12 +2343,14 @@
     /* Targets táctiles: solo dispositivos sin puntero fino */
     @media (pointer: coarse) {
       /* WCAG 2.5.5: target >= 44x44px. Icono .ti mide font-size exacto
-         (line-height:1 en el webfont de Tabler) = 17px de contenido;
-         17 + padding×2 = 44 exige padding: 13.5px, no un valor redondo.
-         10px (heredado) daba 37px reales, no los ~40px documentados. */
-      .icon-btn { padding: 13.5px; }
+         (line-height:1 en el webfont de Tabler), así que el contenido mide
+         lo que mide --icon-md (18px) y 18 + padding×2 = 44 cierra con
+         padding: 13px, un valor entero. Antes el ícono medía 17px y el
+         mismo cálculo exigía 13.5px — el medio píxel desapareció al
+         tokenizar la escala de íconos, no se "ajustó" a mano. */
+      .icon-btn { padding: 13px; }
     }
   
-.btn-whatsapp { background: var(--mat-color-whatsapp); color: var(--mat-color-whatsapp-text); border-color: var(--mat-color-whatsapp); }
-.btn-whatsapp:hover { background: var(--mat-color-whatsapp-hover); border-color: var(--mat-color-whatsapp-hover); }
-.btn-whatsapp:focus-visible { border-color: var(--mat-color-whatsapp); box-shadow: 0 0 0 3px var(--mat-ring-whatsapp); }
+.btn-whatsapp { background: var(--color-whatsapp); color: var(--color-whatsapp-text); border-color: var(--color-whatsapp); }
+.btn-whatsapp:hover { background: var(--color-whatsapp-hover); border-color: var(--color-whatsapp-hover); }
+.btn-whatsapp:focus-visible { border-color: var(--color-whatsapp); box-shadow: 0 0 0 2px var(--ring-whatsapp); }
