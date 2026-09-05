@@ -130,15 +130,15 @@ describe.skipIf(!listo)('autorización — RPC sensibles rechazan ejecución sin
     await esperarRpcRechazada('reporte_satisfaccion_consolidado', undefined);
   });
 
-  // HALLAZGO ya reportado en la matriz de autorización (2026-08-18):
-  // tiene_permiso_modulo(text) es la única función SECURITY DEFINER del
-  // sistema sin `revoke ... from public` — queda con EXECUTE abierto a
-  // PUBLIC/anon por defecto. Esta prueba EXPRESA el comportamiento seguro
-  // esperado (que debería rechazar), no el actual — se deja en rojo a
-  // propósito en vez de debilitarla, para que quede un test ejecutable
-  // del hallazgo hasta que se corrija con su propia migración (ver
-  // "correcciones recomendadas", no incluidas en este cambio).
-  it('tiene_permiso_modulo — debería rechazar ejecución anónima (hoy no lo hace, ver hallazgo)', async () => {
+  // Hallazgo P0-05, ya CERRADO: tiene_permiso_modulo(text) era la única
+  // función SECURITY DEFINER del sistema sin `revoke ... from public`, así
+  // que quedaba con EXECUTE abierto a PUBLIC/anon por defecto. La migración
+  // 073 aplicó el revoke/grant en producción (2026-08-18, verificado contra
+  // pg_proc.proacl) y esta prueba pasó de roja a verde.
+  // Se conserva como test de no-regresión: si vuelve a fallar, alguien
+  // recreó la función sin su REVOKE (el default de Postgres reabre EXECUTE
+  // a PUBLIC en cada CREATE OR REPLACE que la recree desde cero).
+  it('tiene_permiso_modulo — rechaza ejecución anónima (no-regresión de P0-05)', async () => {
     await esperarRpcRechazada('tiene_permiso_modulo', { p_modulo: 'tickets' });
   });
 });
