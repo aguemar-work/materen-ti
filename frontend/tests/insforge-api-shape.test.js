@@ -6,12 +6,12 @@ import { describe, it, expect } from 'vitest';
 import { insforgeApi } from '../src/api/insforge.js';
 
 const METODOS = [
-  'buscarGlobal',
+  'buscarGlobal', 'misTickets',
   // empleados
-  'listEmpleadosRecientes', 'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
+  'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
   'getEmpleado', 'createEmpleado', 'buscarPorDni',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
-  'conteosVinculos',
+  'conteosVinculos', 'altasIncompletas', 'tieneEntrega',
   // catálogos
   'listEmpresas', 'createEmpresa', 'updateEmpresa', 'softDeleteEmpresa',
   'listPlataformas', 'createPlataforma', 'updatePlataforma', 'softDeletePlataforma',
@@ -36,6 +36,7 @@ const METODOS = [
   'listEquipos', 'listEquiposPage', 'listEquiposFiltrados', 'asignacionActivaEquipo', 'moverEquipo', 'createEquipo', 'updateEquipo',
   'cambiarEstadoEquipo', 'softDeleteEquipo', 'asignarEquipo', 'devolverEquipo',
   'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado', 'ultimosMovimientos',
+  'conteosDisponibilidad',
   // bandeja de importación de equipos desde Excel (migración 057)
   'listImportacionPendiente', 'bulkCrearImportacion', 'updateImportacion',
   'eliminarImportacion', 'vaciarImportacion',
@@ -43,7 +44,7 @@ const METODOS = [
   'listCategoriasTicket', 'listSubcategoriasTicket', 'createCategoriaTicket',
   'updateCategoriaTicket', 'softDeleteCategoriaTicket', 'createSubcategoriaTicket',
   'updateSubcategoriaTicket', 'softDeleteSubcategoriaTicket',
-  'listTickets', 'listTicketsPage', 'listTicketsFiltrados',
+  'listTickets', 'listTicketsPage', 'listTicketsFiltrados', 'contarTickets',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
   'obtenerReporteTickets', 'obtenerResumenTickets', 'obtenerSatisfaccionConsolidado', 'listarTicketsDelPeriodo',
@@ -60,8 +61,6 @@ const METODOS = [
   'listTicketsVinculados', 'vincularTicket', 'desvincularTicket',
   'listAccionesCorrectivas', 'crearAccionCorrectiva', 'actualizarAccionCorrectiva', 'softDeleteAccionCorrectiva',
   'getProblemaAbiertoDeTicket', 'listCategoriasRecurrentes', 'listAccionesCorrectivasVencidas', 'pendientesProblemas',
-  // pre-registro de personal
-  'listPersonalRegistrosPage', 'listPersonalRegistrosFiltrados', 'marcarUsado', 'eliminarRegistro',
   // encuestas
   'listEncuestas', 'getEncuesta', 'createEncuesta', 'updateEncuesta', 'softDeleteEncuesta',
   'listRondas', 'crearRonda', 'cerrarRonda', 'listRespuestas',

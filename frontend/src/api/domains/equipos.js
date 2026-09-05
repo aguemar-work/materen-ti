@@ -1,11 +1,39 @@
 // Dominio equipos: inventario, asignaciones a personas/ubicaciones,
 // devoluciones, fotos y hoja de vida (eventos).
 import { getClient } from '../client.js';
+import { crearInvocador } from '../invocarFuncion.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { toTitleCase, trimText, fechaLocalISO } from '../../core/formatters.js';
 import { archivoABase64 } from '../../core/imagenes.js';
+
+// Fotos: única vía a la edge function "equipos-fotos", por crearInvocador
+// (api/invocarFuncion.js) igual que passwords.js/ticketsPublicos.js/
+// encuestaPublica.js — antes este archivo llamaba functions.invoke() a mano y
+// se quedaba sin el reintento tras el fallback de "sin conexión" y sin mapa
+// de códigos → mensaje. Lo propio del dominio es solo ese mapa.
+const invocarFotos = crearInvocador('equipos-fotos', mensajeErrorFotos);
+
+function mensajeErrorFotos(code) {
+  const mensajes = {
+    no_autenticado: 'Sesión expirada — vuelva a iniciar sesión',
+    no_es_staff: 'Sin permisos para esta acción',
+    no_autorizado: 'Sin permiso sobre el módulo Equipos',
+    archivo_requerido: 'Seleccione una imagen',
+    archivo_invalido: 'El archivo no es una imagen válida (JPG, PNG, GIF o WebP)',
+    // limite_fotos: el tope real lo aplica el servidor sobre las fotos YA
+    // guardadas del equipo. La segunda frase cubre el único caso en que el
+    // contador del formulario y el del servidor pueden discrepar: quitar
+    // fotos y agregar otras sin guardar en medio (ver el comentario de
+    // MAX_FOTOS_POR_EQUIPO en functions/equipos-fotos.ts).
+    limite_fotos: 'Máximo 4 fotos por equipo. Si acaba de quitar fotos, guarde los cambios antes de agregar otras.',
+    key_invalida: 'Referencia de foto inválida',
+    error_subiendo: 'No se pudo subir la foto',
+    error_eliminando: 'No se pudo eliminar la foto',
+  };
+  return mensajes[code] || `Error de fotos de equipo (${code || 'desconocido'})`;
+}
 
 // Columnas de "equipos" ordenables desde la tabla (excluye tipo/empresa,
 // que vienen de joins, y situación/asignado a, que son calculados).
@@ -102,6 +130,26 @@ async function queryEquipos({ q = '', tipoId = '', situacion = '', orden } = {},
 }
 
 export const equiposApi = {
+  // KPI de disponibilidad (Plan Maestro v2, Frente 4): cuántos equipos hay
+  // en cada situación AHORA MISMO, sobre todo el inventario — independiente
+  // de los filtros del toolbar (la pregunta es "¿qué tengo listo para
+  // entregar?", no "¿qué estoy viendo en esta página?"). Reusa la misma
+  // `queryEquipos()` y el mismo filtro por situación que ya arma el
+  // `<select>` del toolbar; `.range(0, 0)` pide 0 filas de datos y se queda
+  // solo con el `count` exacto de PostgREST.
+  async conteosDisponibilidad() {
+    const situaciones = ['disponible', 'asignado', 'en_reparacion'];
+    const resultados = await Promise.all(
+      situaciones.map(async (situacion) => {
+        const { qb } = await queryEquipos({ situacion }, { conteo: true });
+        const { count, error } = await qb.range(0, 0);
+        if (error) throw error;
+        return [situacion, count ?? 0];
+      }),
+    );
+    return Object.fromEntries(resultados);
+  },
+
   async listEquiposPage({ pagina = 1, tamPagina = 20, q = '', tipoId = '', situacion = '', orden } = {}) {
     const desde = (pagina - 1) * tamPagina;
     const { qb } = await queryEquipos({ q, tipoId, situacion, orden }, { conteo: true });
@@ -263,22 +311,20 @@ export const equiposApi = {
   // de subir. `comprimirImagen()` (core/imagenes.js) sigue siendo la
   // primera línea de defensa en cliente, no la única.
   // Guardar SIEMPRE {url, key}: la key hace posible eliminarlas después.
-  async subirFotoEquipo(file) {
+  //
+  // equipoId (solo en edición; en un equipo nuevo todavía no existe): lo usa
+  // el tope de cantidad server-side de la edge function (MAX_FOTOS_POR_EQUIPO,
+  // 2026-08-31) para contar las fotos ya guardadas en `equipos.fotos`. El
+  // `MAX_FOTOS` de EquipoForm.vue sigue siendo lo que oculta el botón; esto
+  // es lo que hace que el tope no sea solo de cliente.
+  async subirFotoEquipo(file, equipoId = null) {
     const contenidoBase64 = await archivoABase64(file);
-    const { data, error } = await getClient().functions.invoke('equipos-fotos', {
-      body: { action: 'subirFoto', contenidoBase64 },
-    });
-    if (error) throw error;
-    if (!data?.ok) throw new Error(`No se pudo subir la foto (${data?.code || 'error'})`);
+    const data = await invocarFotos({ action: 'subirFoto', contenidoBase64, equipoId });
     return { url: data.url, key: data.key };
   },
 
   async eliminarFotoEquipo(key) {
-    const { data, error } = await getClient().functions.invoke('equipos-fotos', {
-      body: { action: 'eliminarFoto', key },
-    });
-    if (error) throw error;
-    if (!data?.ok) throw new Error(`No se pudo eliminar la foto (${data?.code || 'error'})`);
+    await invocarFotos({ action: 'eliminarFoto', key });
   },
 
   async eventosEquipo(equipoId) {

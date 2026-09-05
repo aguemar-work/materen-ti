@@ -11,16 +11,20 @@ const props = defineProps({
   titulo: { type: String, default: '' },
   // '' | 'sm' | 'lg' | 'detail' — pasa a la clase .modal-<size> ya existente.
   size: { type: String, default: '' },
-  // Clase extra en el .modal-bg (ej. 'confirm-dialog--destructive').
-  overlayClass: { type: String, default: '' },
   cerrarEnBackdrop: { type: Boolean, default: true },
   mostrarCerrar: { type: Boolean, default: true },
   // 'modal-anim' (estándar) | 'modal-anim-rapida' (diálogos sobre otro modal)
+  // Ignorado si `lateral` es true: ese modo siempre usa 'modal-anim-lateral'.
   transicion: { type: String, default: 'modal-anim' },
   // Guard opcional para backdrop/Escape/X: si retorna `false`, el modal no se
   // cierra (el padre asume mostrar su propia confirmación, ej. "cambios sin
   // guardar") — el cierre por v-if del padre (tras confirmar) sigue directo.
   confirmarCierre: { type: Function, default: null },
+  // Drawer: el panel se acopla al borde derecho y ocupa el alto completo en
+  // vez de centrarse — mismo contrato de accesibilidad (foco, Escape,
+  // Teleport) que el modo centrado, solo cambia la presentación. `size`
+  // sigue controlando el ancho (`detail`/620px es el uso típico).
+  lateral: { type: Boolean, default: false },
 });
 const emit = defineEmits(['close']);
 
@@ -102,12 +106,12 @@ function onBackdrop() {
 
 <template>
   <Teleport to="body">
-    <Transition :name="transicion" appear @after-leave="emit('close')">
-    <div v-if="visible" class="modal-bg" :class="overlayClass" @click.self="onBackdrop">
+    <Transition :name="lateral ? 'modal-anim-lateral' : transicion" appear @after-leave="emit('close')">
+    <div v-if="visible" class="modal-bg" :class="{ 'modal-bg--lateral': lateral }" @click.self="onBackdrop">
       <div
         ref="panel"
         class="modal"
-        :class="size ? `modal-${size}` : ''"
+        :class="[size ? `modal-${size}` : '', { 'modal--lateral': lateral }]"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="tituloId"

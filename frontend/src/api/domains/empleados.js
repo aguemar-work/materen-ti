@@ -5,6 +5,8 @@ import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { toTitleCase, toLower, normalizarTelefono, onlyDigits, trimText } from '../../core/formatters.js';
 import { equiposApi } from './equipos.js';
+import { altaIncompleta, DIAS_VENTANA_ALTA } from '../../core/dominio-empleados.js';
+import { fechaLocalISO } from '../../core/formatters.js';
 
 // Columnas de "empleados" ordenables desde la tabla (excluye empresa/área,
 // que vienen de un join, y los conteos de vínculos, que son calculados).
@@ -57,17 +59,6 @@ export const empleadosApi = {
   // Dataset filtrado completo, sin página — para exportar CSV
   async listEmpleadosFiltrados({ q = '', estado = '', ubicacionId = '' } = {}) {
     const { data, error } = await queryEmpleados({ q, estado, ubicacionId });
-    if (error) throw error;
-    return (data || []).map(mapEmpleado);
-  },
-
-  async listEmpleadosRecientes(limit = 5) {
-    const { data, error } = await getClient().database
-      .from('empleados')
-      .select(SELECT_EMPLEADO)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(limit);
     if (error) throw error;
     return (data || []).map(mapEmpleado);
   },
@@ -233,6 +224,69 @@ export const empleadosApi = {
 
     const empleado = await empleadosApi.getEmpleado(empleadoId);
     return { empleado, resumen };
+  },
+
+  // Altas que quedaron a medias: gente que entró hace poco, sigue Activa y
+  // todavía no tiene una cuenta con la que trabajar. Alimenta el feed de
+  // pendientes del Dashboard; la regla de qué cuenta como "incompleta" vive
+  // en core/dominio-empleados.js, no acá.
+  //
+  // OJO — quien llame debe tener el módulo `correos`. `asignaciones_cuenta`
+  // está gateada por ese módulo en RLS (migración 068): un ASISTENTE sin él
+  // recibe el embed vacío y TODOS los empleados recientes parecerían sin
+  // cuenta. El Dashboard lo llama solo si `puedeVerModulo('correos')`, igual
+  // que ya hace con sus stat-cards. No se resuelve acá porque esta capa no
+  // conoce la sesión.
+  //
+  // Una sola consulta con embed en vez de reusar conteosVinculos(), que
+  // necesita los ids por adelantado y costaría dos viajes: acá la ventana de
+  // fecha ya acota las filas.
+  async altasIncompletas(hoyISO = fechaLocalISO()) {
+    const desde = fechaLocalISO(-DIAS_VENTANA_ALTA);
+    const { data, error } = await getClient().database
+      .from('empleados')
+      .select('id, nombres, apellidos, cargo, estado, fecha_alta, asignaciones_cuenta(fecha_fin, cuentas(deleted_at))')
+      .eq('estado', 'Activo')
+      .is('deleted_at', null)
+      .gte('fecha_alta', desde)
+      .order('fecha_alta', { ascending: true });
+    if (error) throw error;
+
+    return (data || [])
+      .map((e) => {
+        // Activas = sin fecha_fin y con la cuenta viva. Mismo criterio que
+        // conteosVinculos(): una cuenta con deleted_at no habilita a nadie.
+        const cuentas = (e.asignaciones_cuenta || []).filter(
+          (a) => !a.fecha_fin && a.cuentas && !a.cuentas.deleted_at,
+        ).length;
+        const falta = altaIncompleta(e, { cuentas }, hoyISO);
+        if (!falta) return null;
+        return {
+          empleado_id: e.id,
+          nombre: `${e.nombres} ${e.apellidos}`.trim(),
+          cargo: e.cargo || '',
+          fecha_alta: e.fecha_alta,
+          dias: falta.diasDesdeAlta,
+          faltan: falta.faltan,
+        };
+      })
+      .filter(Boolean);
+  },
+
+  // Alta guiada, paso "Entrega" (Plan Maestro v2, Frente 3): ¿ya se generó
+  // al menos un enlace de entrega para este empleado? No importa si ya
+  // expiró o se abrió — lo que marca el paso como hecho es que el staff ya
+  // le hizo llegar sus credenciales al menos una vez, no repetir el aviso en
+  // cada visita a la ficha. RLS de `entregas` (migración 010) permite el
+  // SELECT a cualquier staff activo.
+  async tieneEntrega(empleadoId) {
+    const { data, error } = await getClient().database
+      .from('entregas')
+      .select('id')
+      .eq('empleado_id', empleadoId)
+      .limit(1);
+    if (error) throw error;
+    return (data || []).length > 0;
   },
 
   async reactivarEmpleado(id) {

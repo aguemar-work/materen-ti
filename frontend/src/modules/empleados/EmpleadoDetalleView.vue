@@ -6,16 +6,26 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha, formatTelefono } from '../../core/formatters.js';
 import { estadoVencimientoLicencia, CLASE_VENCIMIENTO_LICENCIA } from '../../core/dominio-licencias.js';
-import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
+import {
+  nombreCompleto as nombreCompletoDe,
+  altaIncompleta,
+  pasosAlta as pasosAltaDe,
+  altaLista as altaListaDe,
+} from '../../core/dominio-empleados.js';
+import { formatFecha, formatTelefono, fechaLocalISO } from '../../core/formatters.js';
+import { tonoAvatar, inicialesDe } from '../../core/avatar.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AsignarEquipoModal from '../equipos/AsignarEquipoModal.vue';
+import AsignarLicenciaModal from '../licencias/AsignarLicenciaModal.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -26,39 +36,110 @@ const { volver } = useVolverContextual();
 const empleado = ref(null);
 const licencias = ref([]);
 const equipos = ref([]);
+const entregaEnviada = ref(false);
 const cargando = ref(true);
 const procesando = ref(false);
 const mostrarForm = ref(false);
 const mostrarBaja = ref(false);
+const mostrarAsignarEquipo = ref(false);
+const mostrarAsignarLicencia = ref(false);
 
-// Alta guiada: se llega con ?nuevo=1 desde "Nuevo empleado"
-const modoAlta = ref(route.query.nuevo === '1');
+// Alta guiada. Dos formas de entrar en ella, a propósito:
+//
+// 1. `?nuevo=1` — se acaba de crear la persona desde "Nuevo empleado". La
+//    guía aparece aunque todavía no falte nada, porque es el momento de
+//    hacerlo.
+// 2. El alta está REALMENTE incompleta — misma regla que alimenta el feed de
+//    pendientes del Dashboard (core/dominio-empleados.js). Esto es lo que
+//    hace que la guía sobreviva a salir de la página: antes vivía solo en el
+//    query param, así que cerrar la pestaña o entrar desde el buscador la
+//    perdía y nada volvía a avisar de que el alta quedó a medias.
+//
+// Ocultarla (la X) solo silencia el caso 1. Si el alta sigue incompleta de
+// verdad, el aviso vuelve — no se puede descartar un pendiente real haciendo
+// clic en una X, del mismo modo que ningún otro pendiente del sistema se
+// marca como visto.
+const ocultarGuia = ref(false);
+const llegaDeAlta = ref(route.query.nuevo === '1');
 const tieneAccesos = computed(() =>
   cuentasStore.empleadoActual === route.params.id && cuentasStore.lista.length > 0
 );
 
+const cuentasCargadas = computed(() => cuentasStore.empleadoActual === route.params.id);
+
+const faltaAlta = computed(() => {
+  // Hasta que las cuentas de ESTE empleado estén cargadas no se sabe nada:
+  // asumir cero acá haría parpadear el aviso en cada carga de ficha.
+  if (!empleado.value || !cuentasCargadas.value) return null;
+  return altaIncompleta(empleado.value, { cuentas: cuentasStore.lista.length }, fechaLocalISO());
+});
+
+const modoAlta = computed(() => {
+  if (ocultarGuia.value && !faltaAlta.value) return false;
+  return llegaDeAlta.value || !!faltaAlta.value;
+});
+
 function terminarAlta() {
-  modoAlta.value = false;
-  router.replace({ query: {} });
+  ocultarGuia.value = true;
+  llegaDeAlta.value = false;
+  if (route.query.nuevo) router.replace({ query: {} });
 }
+
+// Ref al panel de cuentas para que el paso "Cuenta" abra su formulario
+// directamente. Sin esto, la guía dice qué falta pero deja al usuario
+// buscando el botón correcto más abajo en la página — que es justo lo que
+// hacía que el alta se completara a medias.
+const cuentasPanel = ref(null);
+
+// Qué pasos hay y cuáles están hechos lo decide el dominio
+// (core/dominio-empleados.js): "qué hace falta para que alguien pueda empezar
+// a trabajar" es una regla de negocio, no de presentación. Acá solo se le
+// engancha a cada paso qué abre su botón, que sí es cosa de esta vista.
+const ACCIONES_PASO = {
+  cuenta: () => cuentasPanel.value?.abrirNueva(),
+  entrega: () => cuentasPanel.value?.enviarWhatsApp(),
+  equipo: () => { mostrarAsignarEquipo.value = true; },
+  licencia: () => { mostrarAsignarLicencia.value = true; },
+};
+
+const pasosAlta = computed(() =>
+  pasosAltaDe({
+    cuentas: tieneAccesos.value ? 1 : 0,
+    equipos: equipos.value.length,
+    licencias: licencias.value.length,
+    entregaEnviada: entregaEnviada.value,
+  }).map((p) => ({
+    // "Entrega" no ofrece su botón hasta que haya una cuenta que enviar —
+    // no tiene sentido abrir el WhatsApp de un empleado sin credenciales.
+    ...p,
+    ejecutar: (p.id === 'entrega' && !tieneAccesos.value) ? undefined : ACCIONES_PASO[p.id],
+  })),
+);
+
+const altaLista = computed(() => altaListaDe(pasosAlta.value));
 
 const nombreCompleto = computed(() => nombreCompletoDe(empleado.value));
 
-const iniciales = computed(() =>
-  empleado.value ? `${empleado.value.nombres[0] || ''}${empleado.value.apellidos[0] || ''}` : ''
-);
+// inicialesDe (core/avatar.js) en vez de armarlas acá: además de no
+// repetir la lógica, pone las mayúsculas en JS. La versión local no lo
+// hacía y dependía del text-transform: uppercase que traía el CSS de
+// .emp-avatar — al pasar a la familia .avatar, que no lo trae, las
+// iniciales se habrían renderizado en minúscula.
+const iniciales = computed(() => inicialesDe(nombreCompleto.value));
 
 async function cargar() {
   cargando.value = true;
   try {
-    const [emp, lics, eqs] = await Promise.all([
+    const [emp, lics, eqs, entregada] = await Promise.all([
       insforgeApi.getEmpleado(route.params.id),
       insforgeApi.licenciasPorEmpleado(route.params.id),
       insforgeApi.equiposPorEmpleado(route.params.id),
+      insforgeApi.tieneEntrega(route.params.id),
     ]);
     empleado.value = emp;
     licencias.value = lics;
     equipos.value = eqs;
+    entregaEnviada.value = entregada;
     if (!empleado.value) {
       showToast('Empleado no encontrado', 'error');
       router.replace('/empleados');
@@ -148,11 +229,11 @@ onMounted(cargar);
   <div class="detalle-page vista-modulo">
     <PageHeader>
       <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" @click="volver('/empleados')">
+        <button class="icon-btn btn-volver" type="button" title="Volver" aria-label="Volver" @click="volver('/empleados')">
           <i class="ti ti-arrow-left"></i>
         </button>
         <template v-if="empleado">
-          <div class="emp-avatar">{{ iniciales }}</div>
+          <div class="avatar lg" :class="tonoAvatar(nombreCompleto)">{{ iniciales }}</div>
           <div class="header-emp">
             <h1>
               {{ nombreCompleto }}
@@ -169,55 +250,80 @@ onMounted(cargar);
         </div>
       </template>
       <template v-if="empleado" #acciones>
-        <button class="btn" type="button" :disabled="procesando" @click="mostrarForm = true">
-          <i class="ti ti-pencil" aria-hidden="true"></i> Editar
-        </button>
-        <button
+        <CarbonButton variante="secondary" icono="ti-pencil" :deshabilitado="procesando" @click="mostrarForm = true">Editar</CarbonButton>
+        <CarbonButton
           v-if="empleado.estado !== 'Inactivo'"
-          class="btn btn-danger"
-          type="button"
-          :disabled="procesando"
+          variante="danger"
+          icono="ti-user-off"
+          :deshabilitado="procesando"
           @click="mostrarBaja = true"
-        >
-          <i class="ti ti-user-off" aria-hidden="true"></i> Dar de baja
-        </button>
-        <button
+        >Dar de baja</CarbonButton>
+        <CarbonButton
           v-else
-          class="btn btn-primary"
-          type="button"
-          :disabled="procesando"
+          variante="primary"
+          icono="ti-user-check"
+          :deshabilitado="procesando"
           @click="mostrarReactivar = true"
-        >
-          <i class="ti ti-user-check" aria-hidden="true"></i> Reactivar
-        </button>
+        >Reactivar</CarbonButton>
       </template>
     </PageHeader>
 
-    <main class="page page--padded detalle-body">
+    <main class="page page--padded">
       <div v-if="cargando" class="no-results">Cargando empleado...</div>
 
       <template v-else-if="empleado">
-        <!-- Banner de alta guiada -->
-        <div v-if="modoAlta" class="alta-banner">
-          <div class="alta-pasos">
-            <div class="alta-paso alta-paso--hecho">
-              <i class="ti ti-circle-check"></i>
-              <span><strong>1.</strong> Empleado registrado</span>
-            </div>
-            <i class="ti ti-chevron-right alta-sep"></i>
-            <div class="alta-paso" :class="{ 'alta-paso--hecho': tieneAccesos }">
-              <i :class="tieneAccesos ? 'ti ti-circle-check' : 'ti ti-circle-2'"></i>
-              <span><strong>2.</strong> Asignar sus accesos</span>
-            </div>
-            <i class="ti ti-chevron-right alta-sep"></i>
-            <div class="alta-paso">
-              <i class="ti ti-circle-3"></i>
-              <span><strong>3.</strong> Enviarlos por WhatsApp</span>
-            </div>
+        <!-- Guía de alta: cada paso pendiente ES su propia acción.
+             Hasta 2026-09-01 los 3 pasos eran texto informativo — decían qué
+             faltaba y dejaban al usuario buscando el botón correcto más abajo
+             en la página, que es justo por lo que las altas se completaban a
+             medias. Ahora el paso ejecuta. -->
+        <div v-if="modoAlta" class="alta-guia">
+          <div class="alta-guia-cab">
+            <span class="alta-guia-titulo">
+              <i class="ti ti-user-plus" aria-hidden="true"></i>
+              {{ altaLista ? 'Alta completa' : 'Alta en curso' }}
+            </span>
+            <span v-if="faltaAlta && faltaAlta.diasDesdeAlta > 0" class="alta-guia-dias">
+              entró hace {{ faltaAlta.diasDesdeAlta }} {{ faltaAlta.diasDesdeAlta === 1 ? 'día' : 'días' }}
+            </span>
+            <span v-else-if="!altaLista" class="alta-guia-dias">entró hoy</span>
+            <button
+              class="icon-btn alta-guia-cerrar"
+              type="button"
+              :title="altaLista ? 'Ocultar' : 'Ocultar la guía'"
+              :aria-label="altaLista ? 'Ocultar la guía de alta' : 'Ocultar la guía de alta'"
+              @click="terminarAlta"
+            >
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           </div>
-          <button class="icon-btn alta-cerrar" type="button" title="Ocultar guía" @click="terminarAlta">
-            <i class="ti ti-x"></i>
-          </button>
+
+          <ol class="alta-guia-pasos">
+            <li
+              v-for="paso in pasosAlta"
+              :key="paso.id"
+              class="alta-paso"
+              :class="{ 'alta-paso--hecho': paso.hecho }"
+            >
+              <i
+                :class="paso.hecho ? 'ti ti-circle-check' : 'ti ti-circle-dashed'"
+                aria-hidden="true"
+              ></i>
+              <span class="alta-paso-label">
+                {{ paso.label }}
+                <span v-if="!paso.requisito && !paso.hecho" class="alta-paso-opcional">opcional</span>
+              </span>
+              <CarbonButton
+                v-if="!paso.hecho && paso.ejecutar"
+                variante="secondary"
+                tam="sm"
+                class="alta-paso-btn"
+                @click="paso.ejecutar()"
+              >
+                {{ paso.accion }}
+              </CarbonButton>
+            </li>
+          </ol>
         </div>
 
         <div class="detalle-grid">
@@ -284,29 +390,28 @@ onMounted(cargar);
           <!-- Vínculos: Accesos + Equipos + Licencias -->
           <div class="col-vinculos">
             <CuentasPanel
+              ref="cuentasPanel"
               :key="empleado.id"
-              class="accesos-panel"
               :empleado-id="empleado.id"
               :empleado-nombre="nombreCompleto"
               :empleado-whatsapp="empleado.whatsapp || ''"
+              @entrega-enviada="entregaEnviada = true"
             />
 
             <div class="paneles-duo">
               <!-- Equipos que porta (entrega/devolución se registran en el módulo Equipos) -->
               <div class="card panel-card">
-                <div class="panel-toolbar">
-                  <div class="panel-title">
+                <div class="card-toolbar">
+                  <div class="toolbar-title">
                     <i class="ti ti-devices" aria-hidden="true"></i>
                     Equipos
                     <span class="badge-count">{{ equipos.length }}</span>
                   </div>
-                  <RouterLink class="btn" to="/equipos" title="La entrega se registra en el módulo Equipos">
-                    <i class="ti ti-plus" aria-hidden="true"></i> Asignar
-                  </RouterLink>
+                  <CarbonButton variante="secondary" tam="sm" icono="ti-plus" @click="mostrarAsignarEquipo = true">Asignar</CarbonButton>
                 </div>
 
                 <p v-if="equipos.length === 0" class="panel-vacio">
-                  Sin equipos asignados — la entrega se registra en el módulo Equipos.
+                  Sin equipos asignados.
                 </p>
                 <ul v-else class="panel-lista">
                   <li v-for="eq in equipos" :key="eq.asignacion_id" class="panel-item">
@@ -318,7 +423,6 @@ onMounted(cargar);
                           v-if="eq.estado && eq.estado !== 'operativo'"
                           tipo="situacion"
                           :valor="eq.situacion"
-                          inline
                           class="badge-inline"
                         />
                       </span>
@@ -340,15 +444,13 @@ onMounted(cargar);
 
               <!-- Licencias directas (las de login aparecen como cuentas en Accesos) -->
               <div class="card panel-card">
-                <div class="panel-toolbar">
-                  <div class="panel-title">
+                <div class="card-toolbar">
+                  <div class="toolbar-title">
                     <i class="ti ti-license" aria-hidden="true"></i>
                     Licencias
                     <span class="badge-count">{{ licencias.length }}</span>
                   </div>
-                  <RouterLink class="btn" to="/licencias" title="Los asientos se asignan en el módulo Licencias">
-                    <i class="ti ti-plus" aria-hidden="true"></i> Asignar
-                  </RouterLink>
+                  <CarbonButton variante="secondary" tam="sm" icono="ti-plus" @click="mostrarAsignarLicencia = true">Asignar</CarbonButton>
                 </div>
 
                 <p v-if="licencias.length === 0" class="panel-vacio">
@@ -359,11 +461,11 @@ onMounted(cargar);
                     <div class="panel-item-info">
                       <span class="panel-item-titulo">
                         {{ lic.software }}
-                        <span
+                        <CarbonTag
                           v-if="vencimientoLicencia(lic)"
-                          class="badge badge-inline"
-                          :class="vencimientoLicencia(lic).clase"
-                        >{{ vencimientoLicencia(lic).texto }}</span>
+                          class="badge-inline"
+                          :variante="vencimientoLicencia(lic).clase"
+                        >{{ vencimientoLicencia(lic).texto }}</CarbonTag>
                       </span>
                       <span class="panel-item-meta">
                         Desde {{ formatFecha(lic.fecha_inicio) }}
@@ -411,6 +513,27 @@ onMounted(cargar);
       @cerrar="onBajaCerrada"
     />
 
+    <!-- Plan Maestro, 2026-09-01 — "Ficha de Empleado": Equipos y Licencias
+         ganan la misma capacidad de asignar sin salir de la pantalla que ya
+         tenía Cuentas, reutilizando el mismo endpoint de negocio que sus
+         módulos de origen. Crear/editar un equipo o una licencia sigue
+         siendo exclusivo de esos módulos. -->
+    <AsignarEquipoModal
+      v-if="mostrarAsignarEquipo"
+      :empleado-id="empleado.id"
+      :empleado-nombre="nombreCompleto"
+      @close="mostrarAsignarEquipo = false"
+      @asignado="cargar"
+    />
+
+    <AsignarLicenciaModal
+      v-if="mostrarAsignarLicencia"
+      :empleado-id="empleado.id"
+      :empleado-nombre="nombreCompleto"
+      @close="mostrarAsignarLicencia = false"
+      @asignado="cargar"
+    />
+
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
       v-if="porLiberarLicencia"
@@ -445,27 +568,17 @@ onMounted(cargar);
   flex-shrink: 0;
 }
 
-.emp-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
-  color: var(--color-text-inverse);
-  font-size: var(--fs-base);
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  text-transform: uppercase;
-}
+/* El avatar de la ficha usa la familia .avatar de main.css (rediseño
+   Materen, Fase 1): antes era .emp-avatar, 40px con gradiente de marca, la
+   tercera implementación del patrón. Ver la nota del bloque .avatar en
+   main.css. */
 
 .header-emp {
   min-width: 0;
 }
 
 .header-emp h1 {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   margin: 0;
   display: flex;
@@ -475,39 +588,73 @@ onMounted(cargar);
 }
 
 .header-sub {
-  font-size: 12.5px;
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
 }
 
-.alta-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.alta-guia {
   background: var(--color-accent-subtle);
-  border: 1px solid color-mix(in srgb, var(--color-primary, var(--color-accent)) 25%, transparent);
-  border-radius: var(--radius-lg, 12px);
-  padding: 12px 16px;
-  margin-bottom: 16px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+  border-radius: var(--radius-base);
+  padding: var(--space-6) var(--space-7);
+  margin-bottom: var(--space-7);
 }
 
-.alta-pasos {
+.alta-guia-cab {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.alta-guia-titulo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-body-01);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.alta-guia-titulo i {
+  font-size: var(--icon-md);
+  color: var(--color-accent-text);
+}
+
+.alta-guia-dias {
+  font-size: var(--fs-label-01);
+  color: var(--color-text-secondary);
+}
+
+/* La X queda al extremo, separada de los pasos: cerrar la guía no es una
+   acción del alta, es salir de ella. */
+.alta-guia-cerrar {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Los pasos fluyen en fila y bajan de a uno en pantallas angostas, en vez de
+   comprimirse: un paso que no se lee entero no invita a completarlo. */
+.alta-guia-pasos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
   flex-wrap: wrap;
+  gap: var(--space-4) var(--space-7);
 }
 
 .alta-paso {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: var(--fs-base);
+  gap: var(--space-3);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
 }
 
 .alta-paso i {
-  font-size: var(--fs-xl);
+  font-size: var(--icon-md);
+  flex-shrink: 0;
 }
 
 .alta-paso--hecho {
@@ -518,14 +665,33 @@ onMounted(cargar);
   color: var(--color-success);
 }
 
-.alta-sep {
-  color: var(--color-text-secondary);
-  opacity: 0.5;
-  font-size: var(--fs-md);
+.alta-paso-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
 }
 
-.alta-cerrar {
-  flex-shrink: 0;
+.alta-paso-opcional {
+  font-size: var(--fs-label-01);
+  color: var(--color-text-tertiary);
+}
+
+/* El botón del paso es secundario a propósito: el acento primario de la
+   vista ya lo tiene el header (regla "un solo acento visible por vista"). */
+.alta-paso-btn {
+  padding: var(--space-1) var(--space-5);
+  font-size: var(--fs-label-01);
+}
+
+@media (max-width: 640px) {
+  .alta-guia-pasos {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .alta-paso-btn {
+    margin-left: auto;
+  }
 }
 
 .detalle-grid {
@@ -545,15 +711,9 @@ onMounted(cargar);
   padding: 16px 20px 20px;
 }
 
-.datos-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 14px;
-}
+/* Único ajuste sobre la .datos-title global (main.css): un poco más de
+   aire bajo el título en esta ficha. */
+.datos-title { margin-bottom: 14px; }
 
 .datos-lista {
   margin: 0;
@@ -563,7 +723,7 @@ onMounted(cargar);
 }
 
 .dato dt {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-label-01);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -573,7 +733,7 @@ onMounted(cargar);
 
 .dato dd {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-body-01);
   color: var(--color-text-primary);
 }
 
@@ -585,7 +745,7 @@ onMounted(cargar);
 
 .dato--notas dd {
   white-space: pre-wrap;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
 }
 
@@ -618,35 +778,21 @@ onMounted(cargar);
   align-items: start;
 }
 
-/* Misma estructura de toolbar que el panel de Accesos (CuentasPanel) */
 .panel-card {
   padding: 0 0 6px;
 }
 
-.panel-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--color-border);
-  flex-wrap: wrap;
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
+/* .panel-toolbar/.panel-title (pasada de diseño ago 2026): retirados —
+   duplicaban byte a byte .card-toolbar/.toolbar-title (main.css, la misma
+   toolbar que ya usa Tickets), incluida la misma duplicación en
+   CuentasPanel.vue. El template de acá usa esas clases globales
+   directamente ahora. */
 
 /* Vacío compacto: estos paneles son secundarios, no ameritan el EmptyState grande */
 .panel-vacio {
   margin: 0;
   padding: 18px 20px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-tertiary);
 }
 
@@ -662,7 +808,7 @@ onMounted(cargar);
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-base);
 }
 
 .panel-item:hover {
@@ -676,12 +822,12 @@ onMounted(cargar);
 }
 
 .panel-item-titulo {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-primary);
 }
 
 .panel-item-meta {
-  font-size: 11.5px;
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
@@ -690,8 +836,4 @@ onMounted(cargar);
   font-family: var(--font-mono, monospace);
 }
 
-.badge-inline {
-  margin-left: 6px;
-  vertical-align: middle;
-}
 </style>

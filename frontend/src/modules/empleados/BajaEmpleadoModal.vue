@@ -1,10 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
 import Modal from '../../components/shared/Modal.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   empleado: { type: Object, required: true },
@@ -21,7 +23,6 @@ const cuentas = ref([]);
 const licencias = ref([]);
 const equipos = ref([]);
 const cargando = ref(true);
-const procesando = ref(false);
 const error = ref('');
 
 const nombreCompleto = computed(() => nombreCompletoDe(props.empleado));
@@ -47,18 +48,73 @@ onMounted(async () => {
   }
 });
 
+// Checklist progresivo de confirmación (Plan Maestro v2, Frente 3): el RPC
+// `dar_baja_empleado()` sigue siendo una sola transacción atómica de
+// servidor — no hay progreso real por paso que reportar. Esta secuencia es
+// puramente de presentación (retardo fijo de 300ms por ítem) para que la
+// confirmación se sienta tan seria como la operación que dispara; el
+// checklist recién marca el ÚLTIMO paso como completo cuando el RPC real
+// también resolvió (`Promise.all` más abajo), así que nunca miente sobre si
+// la baja ya ocurrió en el servidor.
+const fase = ref('resumen'); // 'resumen' | 'confirmando'
+const pasoActivo = ref(-1);
+let temporizadores = [];
+
+function limpiarTemporizadores() {
+  temporizadores.forEach(clearTimeout);
+  temporizadores = [];
+}
+onUnmounted(limpiarTemporizadores);
+
+// Equipos no forma parte del RPC (la baja de empleado nunca cierra
+// asignaciones de equipos, ver docs/PANORAMA-SISTEMA.md §2) — se muestra
+// como último ítem "pendiente", no "hecho", porque el sistema no hizo nada
+// con ellos: sigue quedando una devolución física por registrar a mano.
+const pasosConfirmacion = computed(() => {
+  const pasos = [];
+  if (personales.value.length) {
+    pasos.push({ id: 'personales', label: `Dando de baja ${personales.value.length} cuenta(s) personal(es)`, estado: 'exito' });
+  }
+  if (reutilizables.value.length || compartidas.value.length) {
+    const n = reutilizables.value.length + compartidas.value.length;
+    pasos.push({ id: 'rotacion', label: `Liberando ${n} cuenta(s) — marcando rotación de contraseña pendiente`, estado: 'exito' });
+  }
+  if (licencias.value.length) {
+    pasos.push({ id: 'licencias', label: `Liberando ${licencias.value.length} asiento(s) de licencia`, estado: 'exito' });
+  }
+  pasos.push({ id: 'estado', label: 'Marcando al empleado como Inactivo', estado: 'exito' });
+  if (equipos.value.length) {
+    pasos.push({ id: 'equipos', label: `${equipos.value.length} equipo(s) quedan pendientes de devolución`, estado: 'pendiente' });
+  }
+  return pasos;
+});
+
 async function confirmarBaja() {
   error.value = '';
-  procesando.value = true;
+  fase.value = 'confirmando';
+  pasoActivo.value = -1;
+
+  const pasos = pasosConfirmacion.value;
+  const avance = new Promise((resolve) => {
+    let i = 0;
+    function siguiente() {
+      if (i >= pasos.length) { resolve(); return; }
+      pasoActivo.value = i;
+      temporizadores.push(setTimeout(() => { i += 1; siguiente(); }, 300));
+    }
+    siguiente();
+  });
+
   try {
-    await store.darDeBaja(props.empleado.id);
+    await Promise.all([store.darDeBaja(props.empleado.id), avance]);
+    pasoActivo.value = pasos.length;
     showToast(`${nombreCompleto.value} dado de baja`);
     resultado = true;
-    modal.value?.cerrar();
+    temporizadores.push(setTimeout(() => modal.value?.cerrar(), 450));
   } catch (e) {
+    limpiarTemporizadores();
     error.value = e?.message || 'Error al dar de baja';
-  } finally {
-    procesando.value = false;
+    fase.value = 'resumen';
   }
 }
 </script>
@@ -67,18 +123,49 @@ async function confirmarBaja() {
   <Modal
     ref="modal"
     size="sm"
-    overlay-class="confirm-dialog--destructive"
+    :mostrar-cerrar="fase !== 'confirmando'"
+    :cerrar-en-backdrop="fase !== 'confirmando'"
+    :confirmar-cierre="() => fase !== 'confirmando'"
     @close="emit('cerrar', resultado)"
   >
     <template #titulo>
       <span class="baja-title-con-icono">
-        <span class="modal-icon"><i class="ti ti-user-off" aria-hidden="true"></i></span>
+        <span class="icon-box icon-box--danger"><i class="ti ti-user-off" aria-hidden="true"></i></span>
         Dar de baja a {{ nombreCompleto }}
       </span>
     </template>
 
     <div class="baja-body">
       <div v-if="cargando" class="baja-cargando">Cargando resumen de accesos...</div>
+
+      <template v-else-if="fase === 'confirmando'">
+        <p class="baja-intro">Procesando la baja de {{ nombreCompleto }}:</p>
+        <ul class="baja-checklist">
+          <li
+            v-for="(paso, idx) in pasosConfirmacion"
+            :key="paso.id"
+            class="checklist-item"
+          >
+            <i
+              v-if="idx < pasoActivo && paso.estado === 'exito'"
+              class="ti ti-circle-check checklist-icono checklist-icono--exito"
+              aria-hidden="true"
+            ></i>
+            <i
+              v-else-if="idx < pasoActivo"
+              class="ti ti-clock checklist-icono checklist-icono--pendiente"
+              aria-hidden="true"
+            ></i>
+            <i
+              v-else-if="idx === pasoActivo"
+              class="ti ti-loader-2 checklist-icono checklist-icono--activo spinner-icon"
+              aria-hidden="true"
+            ></i>
+            <i v-else class="ti ti-circle-dashed checklist-icono checklist-icono--espera" aria-hidden="true"></i>
+            <span :class="{ 'checklist-texto--espera': idx > pasoActivo }">{{ paso.label }}</span>
+          </li>
+        </ul>
+      </template>
 
       <template v-else>
         <p class="baja-intro">
@@ -171,21 +258,20 @@ async function confirmarBaja() {
           </span>
         </div>
 
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
       </template>
     </div>
 
-    <template #acciones>
-      <button class="btn" type="button" :disabled="procesando" @click="modal?.cerrar()">Cancelar</button>
-      <button
-        class="btn btn-danger"
-        type="button"
-        :disabled="cargando || procesando"
+    <template v-if="fase !== 'confirmando'" #acciones>
+      <CarbonButton variante="secondary" @click="modal?.cerrar()">Cancelar</CarbonButton>
+      <CarbonButton
+        variante="danger"
+        icono="ti-user-off"
+        :deshabilitado="cargando"
         @click="confirmarBaja"
       >
-        <i :class="procesando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-user-off'" aria-hidden="true"></i>
-        {{ procesando ? 'Procesando...' : 'Confirmar baja' }}
-      </button>
+        Confirmar baja
+      </CarbonButton>
     </template>
   </Modal>
 </template>
@@ -207,12 +293,43 @@ async function confirmarBaja() {
   padding: 24px 0;
   text-align: center;
   color: var(--color-text-secondary);
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
+}
+
+.baja-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  font-size: var(--fs-body-01);
+}
+
+.checklist-icono {
+  flex-shrink: 0;
+  font-size: var(--icon-md);
+}
+
+.checklist-icono--exito { color: var(--color-success-text); }
+.checklist-icono--pendiente { color: var(--color-warning-text-strong); }
+.checklist-icono--activo { color: var(--color-accent); }
+.checklist-icono--espera { color: var(--color-text-secondary); }
+
+.checklist-texto--espera {
+  color: var(--color-text-secondary);
 }
 
 .baja-intro {
   margin: 0;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
 }
 
@@ -220,17 +337,17 @@ async function confirmarBaja() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
 }
 
 .baja-grupo {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   overflow: hidden;
 }
 
@@ -238,7 +355,7 @@ async function confirmarBaja() {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   font-weight: 600;
   padding: 8px 12px;
 }
@@ -260,12 +377,12 @@ async function confirmarBaja() {
   gap: 8px;
   padding: 8px 12px;
   border-top: 1px solid var(--color-border);
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
 }
 
 .cuenta-usuario {
   font-family: var(--font-mono, monospace);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -273,7 +390,7 @@ async function confirmarBaja() {
 }
 
 .cuenta-plataforma {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   white-space: nowrap;
 }
@@ -282,17 +399,19 @@ async function confirmarBaja() {
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   line-height: 1.45;
   color: var(--color-warning-text-strong);
   background: var(--color-warning-bg);
   border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
 }
 
 .baja-aviso-rotacion i {
-  font-size: var(--fs-md);
+  /* Token de ícono, no de texto (mismo valor, 14px, pero es la escala
+     correcta — misma distinción tokenizada en el barrido de Tickets). */
+  font-size: var(--icon-sm);
   flex-shrink: 0;
   margin-top: 1px;
 }
