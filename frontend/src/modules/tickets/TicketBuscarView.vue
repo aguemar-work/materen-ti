@@ -10,6 +10,9 @@ import { formatFecha } from '../../core/formatters.js';
 import { esDniValido } from '../../core/utils.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
 
 const dni = ref('');
 const dniTocado = ref(false);
@@ -26,13 +29,8 @@ const errorDni = computed(() =>
 );
 
 // inputmode/maxlength son solo pistas de teclado: el filtrado real es este.
-// Se reescribe también e.target.value porque si lo tipeado no cambia el
-// valor ya saneado (ej. una letra al final), Vue no re-renderiza y la
-// letra quedaría visible en el input.
-function onDniInput(e) {
-  const limpio = e.target.value.replace(/\D/g, '').slice(0, 8);
-  e.target.value = limpio;
-  dni.value = limpio;
+function onDniInput(valor) {
+  dni.value = valor.replace(/\D/g, '').slice(0, 8);
 }
 
 async function buscar() {
@@ -67,27 +65,21 @@ async function buscar() {
       </p>
 
       <form class="ticket-form" @submit.prevent="buscar">
-        <div class="form-group full">
-          <label for="tk-dni">DNI *</label>
-          <input
-            id="tk-dni"
-            :value="dni"
-            type="text"
-            inputmode="numeric"
-            maxlength="8"
-            placeholder="8 dígitos"
-            :disabled="buscando"
-            :aria-invalid="errorDni ? 'true' : undefined"
-            :aria-describedby="(errorDni || error) ? 'tk-dni-error' : undefined"
-            @input="onDniInput"
-            @blur="dniTocado = true"
-          >
-        </div>
-        <p v-if="errorDni || error" id="tk-dni-error" class="form-error" role="alert">{{ errorDni || error }}</p>
-        <button class="btn btn-primary ticket-submit" type="submit" :disabled="buscando || !dniValido">
-          <i v-if="buscando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+        <CarbonCampo
+          :model-value="dni"
+          etiqueta="DNI"
+          requerido
+          inputmode="numeric"
+          maxlength="8"
+          placeholder="8 dígitos"
+          :deshabilitado="buscando"
+          :error="errorDni || error"
+          @update:model-value="onDniInput"
+          @blur="dniTocado = true"
+        />
+        <CarbonButton variante="primary" ancho tipo="submit" class="ticket-submit" :cargando="buscando" :deshabilitado="!dniValido">
           {{ buscando ? 'Buscando...' : 'Buscar' }}
-        </button>
+        </CarbonButton>
       </form>
 
       <div v-if="resultados !== null" class="buscar-resultados">
@@ -104,9 +96,9 @@ async function buscar() {
           >
             <div class="buscar-item-head">
               <span class="segui-codigo">{{ t.codigo }}</span>
-              <span v-if="t.encuestaPendiente" class="badge badge--accent">
+              <CarbonTag v-if="t.encuestaPendiente" variante="accent">
                 <i class="ti ti-mood-smile" aria-hidden="true"></i> Encuesta pendiente
-              </span>
+              </CarbonTag>
               <BadgeEstado v-else tipo="ticket" :valor="t.estado" />
             </div>
             <div class="buscar-item-titulo">{{ t.titulo }}</div>
@@ -124,27 +116,27 @@ async function buscar() {
 
 <style scoped>
 .ticket-title {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0 0 4px;
 }
 
 .ticket-subtitulo {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   margin: 0 0 16px;
 }
 
 .ticket-texto {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 10px;
 }
 
 .ticket-nota {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   font-style: italic;
 }
 
@@ -155,9 +147,6 @@ async function buscar() {
 }
 
 .ticket-submit {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
   margin-top: 4px;
 }
 
@@ -176,7 +165,7 @@ async function buscar() {
 .buscar-item {
   display: block;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
   text-decoration: none;
   transition: background 0.15s;
@@ -196,18 +185,18 @@ async function buscar() {
 
 .segui-codigo {
   font-family: var(--font-mono, monospace);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
 .buscar-item-titulo {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 .buscar-item-fecha {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-tertiary);
   margin-top: 2px;
 }

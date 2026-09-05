@@ -4,8 +4,7 @@
 // paginación. A diferencia de ese reporte, este es SIEMPRE el histórico
 // completo (sin recorte de periodo) — mismo criterio que
 // ReporteSatisfaccionView.vue.
-import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { aISO } from './reportePeriodo.js';
+import { formatFecha, formatFechaHora, fechaISO as aISO } from '../../core/formatters.js';
 import { MIN_MUESTRA_PROMEDIO } from '../../api/domains/reportesTickets.js';
 import {
   ANCHO, GRIS_TEXTO, NEGRO, celdaVacia, abrirSeccion, nota, bloqueKpis, tabla, piePaginas, crearDocumentoPdf,

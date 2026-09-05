@@ -4,8 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizarAncla, limitarAncla, desplazarAncla, rangoDe, enCurso, puedeAvanzar,
-  etiquetaRango, etiquetaPeriodo, nombreArchivoReporte, anclaDeHoy, aniosDisponibles, aISO,
+  etiquetaRango, etiquetaPeriodo, nombreArchivoReporte, anclaDeHoy, aniosDisponibles,
 } from '../src/modules/tickets/reportePeriodo.js';
+import { fechaISO as aISO } from '../src/core/formatters.js';
 
 // Miércoles 05/08/2026 (semana: lunes 03 → domingo 09).
 const MIERCOLES = new Date(2026, 7, 5, 15, 30);

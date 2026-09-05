@@ -7,31 +7,20 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { crearTicket } from '../../api/ticketsPublicos.js';
 import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
+import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+// Migrado a Modal.vue (mismo patrón que EmpleadoForm.vue/AccesoSensibleForm.vue):
+// Teleport, bloqueo de scroll del body, atrapamiento de foco y Escape los
+// resuelve el componente compartido.
+let resultado = false;
 
 const cargandoCatalogo = ref(true);
 const guardando = ref(false);
@@ -54,14 +43,13 @@ const empleadoSelId = ref('');
 
 // Solo creación: el snapshot inicial es el form en blanco. El buscador de
 // empleado es transitorio; la selección (empleadoSelId) sí cuenta.
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
-  form: form.value,
-  esParaEmpleado: esParaEmpleado.value,
-  empleadoSelId: empleadoSelId.value,
-}));
+const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => ({
+    form: form.value,
+    esParaEmpleado: esParaEmpleado.value,
+    empleadoSelId: empleadoSelId.value,
+  }));
 tomarSnapshot();
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
 
 const subcategoriasFiltradas = computed(() =>
   subcategorias.value.filter((s) => s.categoria_id === form.value.categoriaId)
@@ -75,28 +63,6 @@ watch(() => form.value.subcategoriaId, (id) => {
   const sub = subcategorias.value.find((s) => s.id === id);
   form.value.tipo = sub?.tipo_sugerido || '';
 });
-
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
-// confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return;
-  }
-  cerrar(false);
-}
-
-function descartarCambios() {
-  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
-  // mientras el formulario inicia su propia salida en paralelo
-  dialogoDescarte.value?.cerrar();
-  cerrar(false);
-}
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
 
 async function guardar() {
   error.value = '';
@@ -116,7 +82,8 @@ async function guardar() {
       empleadoIdManual: esParaEmpleado.value ? empleadoSelId.value || null : null,
     });
     tomarSnapshot();
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
     error.value = e?.message || 'Error al crear el ticket';
   } finally {
@@ -143,18 +110,14 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal ticket-interno-form" role="dialog" aria-modal="true" aria-labelledby="ti-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="ti-title">Nuevo ticket interno</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
+  <Modal
+    ref="modal"
+    titulo="Nuevo ticket interno"
+    :confirmar-cierre="confirmarCierre"
+    :cerrar-en-backdrop="false"
+    @close="emit('cerrar', resultado)"
+  >
+    <form id="ti-form" class="form-grid" @submit.prevent="guardar">
         <div class="form-group full">
           <label class="check-inline">
             <input v-model="esParaEmpleado" type="checkbox" :disabled="guardando">
@@ -180,55 +143,41 @@ onMounted(async () => {
           </BuscadorCombo>
         </div>
 
-        <div class="form-group full">
-          <label for="ti-categoria">Tipo de solicitud *</label>
-          <select id="ti-categoria" v-model="form.categoriaId" required :disabled="guardando || cargandoCatalogo">
+        <CarbonCampo class="full" v-model="form.categoriaId" etiqueta="Tipo de solicitud" tipo="select" requerido :deshabilitado="guardando || cargandoCatalogo">
+          <template #opciones>
             <option value="" disabled>Seleccionar</option>
             <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
-        <div v-if="subcategoriasFiltradas.length" class="form-group full">
-          <label for="ti-subcategoria">Subcategoría</label>
-          <select id="ti-subcategoria" v-model="form.subcategoriaId" :disabled="guardando">
+        <CarbonCampo v-if="subcategoriasFiltradas.length" class="full" v-model="form.subcategoriaId" etiqueta="Subcategoría" tipo="select" :deshabilitado="guardando">
+          <template #opciones>
             <option value="">Seleccionar (opcional)</option>
             <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
-        <div class="form-group full">
-          <label for="ti-tipo">Tipo</label>
-          <select id="ti-tipo" v-model="form.tipo" :disabled="guardando">
+        <CarbonCampo class="full" v-model="form.tipo" etiqueta="Tipo" tipo="select" :deshabilitado="guardando">
+          <template #opciones>
             <option value="">Sin definir</option>
             <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
-        <div class="form-group full">
-          <label for="ti-titulo">Resumen breve *</label>
-          <input id="ti-titulo" v-model="form.titulo" required maxlength="200" :disabled="guardando">
-        </div>
+        <CarbonCampo class="full" v-model="form.titulo" etiqueta="Resumen breve" requerido maxlength="200" :deshabilitado="guardando" />
 
-        <div class="form-group full">
-          <label for="ti-descripcion">Detalle *</label>
-          <textarea id="ti-descripcion" v-model="form.descripcion" required rows="4" maxlength="5000" :disabled="guardando"></textarea>
-        </div>
+        <CarbonCampo class="full" v-model="form.descripcion" etiqueta="Detalle" tipo="textarea" :filas="4" requerido maxlength="5000" :deshabilitado="guardando" />
 
-        </div>
+        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+    </form>
 
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Creando...' : 'Crear ticket' }}
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-  </Transition>
+    <template #acciones>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="ti-form" :cargando="guardando">
+        {{ guardando ? 'Creando...' : 'Crear ticket' }}
+      </CarbonButton>
+    </template>
+  </Modal>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
@@ -246,14 +195,19 @@ onMounted(async () => {
 <style scoped>
 /* Ancho: .modal base (540px) de la escala centralizada (main.css) */
 
+/* CarbonCampo no puede envolverse en el viejo .form-group.full (le filtraría
+   el estilo de <input>/<select>/<textarea> anterior), así que repite solo el
+   grid-column (mismo criterio que EquipoForm.vue/EmpleadoForm.vue). */
+.full {
+  grid-column: 1 / -1;
+}
+
 .check-inline {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-primary);
   cursor: pointer;
 }
-
-.modal-actions.full { grid-column: 1 / -1; }
 </style>

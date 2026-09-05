@@ -128,6 +128,24 @@ export const ticketsApi = {
     return { items: (data || []).map(mapTicketResumen), total: count ?? 0 };
   },
 
+  // Solo el total de una combinación de filtros, sin traer las filas — para
+  // los contadores por Vista del nav de Tickets (rediseño ago 2026: antes el
+  // nav solo sabía el total de la vista ACTIVA, así que no podía responder
+  // "¿cuántos sin asignar hay?" sin cambiarse de vista, que es justamente
+  // para lo que existe ese nav).
+  //
+  // Reusa queryTickets() a propósito, con los MISMOS filtros secundarios
+  // activos (búsqueda, prioridad, sin vincular): el número tiene que ser el
+  // que se va a ver al hacer clic, no un total teórico. Selecciona solo `id`
+  // (no SELECT_RESUMEN con sus embeds) y pide una sola fila — el count exacto
+  // viene igual en la respuesta.
+  async contarTickets(filtros = {}) {
+    const { qb } = await queryTickets(filtros, { conteo: true, soloConteo: true });
+    const { count, error } = await qb.range(0, 0);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
   // Dataset filtrado completo, sin página — para exportar CSV
   async listTicketsFiltrados(filtros = {}) {
     const { qb } = await queryTickets(filtros);
@@ -214,7 +232,7 @@ export const ticketsApi = {
 };
 
 const SELECT_RESUMEN = `
-  id, codigo, titulo, estado, prioridad, tipo, vinculado, contacto_ingresado,
+  id, codigo, titulo, estado, prioridad, nivel_atencion, tipo, vinculado, contacto_ingresado,
   created_at, updated_at, asignado_a, empleado_id,
   empleados(nombres, apellidos),
   categorias_ticket(nombre), subcategorias_ticket(nombre)
@@ -225,11 +243,24 @@ const SELECT_RESUMEN = `
 // del embed: se preresuelven ids de empleados por nombre (cap 50 homónimos)
 // y entran al or() como empleado_id.in.(...) — los UUID no llevan comas.
 async function queryTickets(
-  { q = '', estado = '', prioridad = [], sinAsignar = false, sinVincular = false, asignadoA = '', orden } = {},
-  { conteo = false } = {},
+  {
+    q = '', estado = '', sinAsignar = false, sinVincular = false, asignadoA = '', orden,
+    // fechaDesde/fechaHasta: único filtro secundario que queda, eje
+    // INDEPENDIENTE de la Vista activa (ago 2026, cuarta pasada retiró
+    // Prioridad/Nivel/Tipo/Categoría como filtros de este listado — ver
+    // GUIA-UX-UI.md). Deliberadamente NO hay un filtro de "Estado" acá: eso
+    // fue justo el origen del bug de sincronización que el modelo de Vistas
+    // vino a cerrar en ago 2026 (2 fuentes de verdad para el mismo dato) —
+    // Estado sigue siendo SOLO lo que la Vista activa decide.
+    fechaDesde = '', fechaHasta = '',
+  } = {},
+  // soloConteo: para contarTickets() — misma cláusula WHERE, pero sin traer
+  // los embeds de empleados/categorías que la fila necesita y el número no.
+  { conteo = false, soloConteo = false } = {},
 ) {
   const db = getClient().database;
-  let query = db.from('tickets').select(SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined);
+  const seleccion = soloConteo ? 'id' : SELECT_RESUMEN;
+  let query = db.from('tickets').select(seleccion, conteo ? { count: 'exact' } : undefined);
   // 'resuelto' agrupa los 2 valores reales (resuelto+cerrado, fusionados
   // en la UI — ver dominio-tickets.js) — de ahí el .in() en vez de .eq().
   // "vigentes" excluye los mismos 3 valores que ya excluyen dashboard.js
@@ -239,13 +270,14 @@ async function queryTickets(
   if (estado === ESTADO_FILTRO_VIGENTES) query = query.not('estado', 'in', '("resuelto","cerrado","rechazado")');
   else if (estado === 'resuelto') query = query.in('estado', ['resuelto', 'cerrado']);
   else if (estado) query = query.eq('estado', estado);
-  // Selección múltiple libre (PASO 3) — no exclusiva como una Vista, un
-  // ticket puede filtrarse por más de una prioridad a la vez. Array vacío
-  // (ninguna marcada) = todas, mismo criterio que el '' anterior.
-  if (prioridad?.length) query = query.in('prioridad', prioridad);
+  // estado === '' (default): sin cláusula — "Todos" real, cualquier estado.
   if (sinAsignar) query = query.is('asignado_a', null);
   else if (asignadoA) query = query.eq('asignado_a', asignadoA);
   if (sinVincular) query = query.eq('vinculado', false);
+  if (fechaDesde) query = query.gte('created_at', fechaDesde);
+  // hasta 23:59:59.999 del día elegido — un <input type="date"> entrega
+  // solo la fecha (00:00:00), un .lte() literal excluiría todo ese día.
+  if (fechaHasta) query = query.lte('created_at', `${fechaHasta}T23:59:59.999`);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     let idsClause = '';
@@ -267,6 +299,11 @@ function mapTicketResumen(row) {
     titulo: row.titulo,
     estado: row.estado,
     prioridad: row.prioridad,
+    // Nivel de atención (N1/N2/N3) en el LISTADO, no solo en el detalle
+    // (ago 2026): la columna "Nivel" de la tabla lo necesita. Hasta acá
+    // nivel_atencion solo viajaba en getTicket(), así que la columna habría
+    // salido vacía sin este cambio — no era un problema de UI.
+    nivel_atencion: row.nivel_atencion,
     tipo: row.tipo,
     vinculado: row.vinculado,
     solicitante: empleado ? `${empleado.nombres} ${empleado.apellidos}`.trim() : (row.contacto_ingresado || ''),

@@ -6,6 +6,9 @@
 // el enlace de seguimiento ya lo tiene desde que creó el ticket).
 import { ref, computed, onMounted } from 'vue';
 import { responderEncuesta, encuestaYaRespondida } from '../../api/ticketsPublicos.js';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   token: { type: String, required: true },
@@ -104,23 +107,26 @@ async function enviar() {
         </button>
       </div>
 
-      <div class="form-group full">
-        <label for="ts-comentario">Comentarios (opcional)</label>
-        <textarea
-          id="ts-comentario"
-          v-model="comentario"
-          rows="3"
-          placeholder="Observaciones adicionales..."
-          :disabled="estado === 'enviando'"
-        ></textarea>
-      </div>
+      <CarbonCampo
+        v-model="comentario"
+        etiqueta="Comentarios (opcional)"
+        tipo="textarea"
+        :filas="3"
+        placeholder="Observaciones adicionales..."
+        :deshabilitado="estado === 'enviando'"
+      />
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
 
-      <button class="btn btn-primary ticket-submit" type="button" :disabled="estado === 'enviando'" @click="enviar">
-        <i v-if="estado === 'enviando'" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+      <CarbonButton
+        class="ticket-submit"
+        variante="primary"
+        ancho
+        :cargando="estado === 'enviando'"
+        @click="enviar"
+      >
         {{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}
-      </button>
+      </CarbonButton>
     </template>
 
     <template v-else-if="estado === 'gracias'">
@@ -139,14 +145,14 @@ async function enviar() {
 
 <style scoped>
 .ticket-title {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0 0 4px;
 }
 
 .ticket-texto {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 16px;
@@ -165,9 +171,13 @@ async function enviar() {
   align-items: center;
   justify-content: center;
   height: 48px;
+  /* Excepción declarada a la escala tipográfica: glifo de la escala de
+     satisfacción 1-5 en un target táctil de 48px. No es ni texto de UI ni un
+     ícono del sistema — es el contenido del control. Única en el sistema
+     junto a .ds-swatch span de DesignSystemView.vue. */
   font-size: 24px;
   border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   background: var(--color-bg-elevated);
   color: var(--color-text-tertiary);
   cursor: pointer;
@@ -181,7 +191,7 @@ async function enviar() {
 
 .nivel-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--mat-ring);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .nivel-btn--activo {
@@ -198,13 +208,13 @@ async function enviar() {
 }
 
 .ticket-ok-icon {
-  font-size: 40px;
+  font-size: var(--icon-lg);
   color: var(--color-success-text);
   margin-bottom: 8px;
 }
 
 .ticket-error-icon {
-  font-size: 40px;
+  font-size: var(--icon-lg);
   color: var(--color-text-secondary);
   margin-bottom: 8px;
 }

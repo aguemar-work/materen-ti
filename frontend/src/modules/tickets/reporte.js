@@ -10,8 +10,7 @@
 // (título de sección, nota, KPIs, pie de página) viven en core/pdfReporte.js
 // — compartidos con reporteSatisfaccion.js, que arma el PDF de
 // /tickets/satisfaccion con el mismo lenguaje visual.
-import { formatFecha, formatFechaHora, formatHoras as horas, formatDelta as delta } from '../../core/formatters.js';
-import { aISO } from './reportePeriodo.js';
+import { formatFecha, formatFechaHora, formatHoras as horas, formatDelta as delta, fechaISO as aISO } from '../../core/formatters.js';
 import {
   ANCHO, MARGEN, UTIL, GRIS_LINEA, GRIS_TEXTO, NEGRO, ESTILOS_TABLA,
   GRIS_GUIA, GROSOR_MAX, HUECO_MIN, barra, ejeTexto, graficoCategorias,

@@ -6,7 +6,7 @@
 // El ancla es una fecha 'YYYY-MM-DD' del calendario LOCAL. Para 'semanal' se
 // normaliza al lunes de su semana y para 'mensual' al día 1 de su mes, de modo
 // que avanzar/retroceder nunca parte una semana ni desborda (31/01 + 1 mes).
-import { formatFecha, fechaISO } from '../../core/formatters.js';
+import { formatFecha, fechaISO as aISO } from '../../core/formatters.js';
 
 export const PERIODOS = [
   { valor: 'diario', label: 'Diario' },
@@ -19,12 +19,13 @@ export const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-// Date local → 'YYYY-MM-DD'. No sirve toISOString(): convierte a UTC y en Perú
-// (UTC-5) devolvería el día anterior para cualquier hora antes de las 19:00.
-// Delega en core/formatters.js:fechaISO() — misma lógica, único punto de verdad.
-export function aISO(fecha) {
-  return fechaISO(fecha);
-}
+// `aISO` es `core/formatters.js:fechaISO` — Date local → 'YYYY-MM-DD'. No
+// sirve toISOString(): convierte a UTC y en Perú (UTC-5) devolvería el día
+// anterior para cualquier hora antes de las 19:00. Se importa con alias por
+// lo repetido que está en este archivo; hasta ago 2026 era un reexport
+// propio, y `modules/equipos/reporteEquipos.js` lo importaba DE ACÁ —
+// acoplando Equipos a Tickets por una función que en realidad es de `core/`
+// (ARQ-11, ver docs/HISTORIAL-AUDITORIAS.md).
 
 // 'YYYY-MM-DD' → Date local a medianoche (new Date('2026-08-05') sería UTC).
 function aFecha(iso) {

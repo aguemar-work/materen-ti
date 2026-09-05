@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
+import { gettersStaff } from './gettersStaff.js';
 
 // Detalle de un ticket: toda la data de TicketDetalleView pasa por acá.
 // Mismo patrón que stores/tickets.js: state plano, actions async que lanzan
@@ -18,16 +19,7 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
     error: null,
   }),
 
-  getters: {
-    // staffLista ya viene solo con staff activo (staff_nombres(), migración
-    // 061): staffActivo queda como alias por compatibilidad con la vista.
-    staffActivo: (state) => state.staffLista,
-    staffPorId() {
-      const mapa = {};
-      for (const s of this.staffActivo) mapa[s.user_id] = s.nombre;
-      return mapa;
-    },
-  },
+  getters: { ...gettersStaff },
 
   actions: {
     async cargar(id) {
