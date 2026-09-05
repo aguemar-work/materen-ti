@@ -43,8 +43,8 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// Rate-limit por IP (mismo criterio que personal-registro.ts): cuenta
-// "abrir" y "responder" juntos para que alternar acciones no lo evada.
+// Rate-limit por IP: cuenta "abrir" y "responder" juntos para que alternar
+// acciones no lo evada.
 const INTENTOS_MAX_IP = 20;
 const INTENTOS_VENTANA_MIN = 10;
 

@@ -19,7 +19,7 @@
 // eliminarFoto.
 //
 // Acciones (POST { action, ... }):
-//   subirFoto   staff { contenidoBase64 } → { url, key }
+//   subirFoto   staff { contenidoBase64, equipoId? } → { url, key }
 //   eliminarFoto staff { key }            → { ok }
 //   version     staff  {}                 → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 // ============================================================
@@ -56,6 +56,17 @@ function json(body: unknown, status = 200): Response {
 // imagenes.js deja ~150-250KB) — mismo tope que adjuntos de tickets, margen
 // amplio y consistente con el resto del sistema.
 const FOTO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+// Tope de CANTIDAD de fotos por equipo. Duplicado A PROPÓSITO del
+// `MAX_FOTOS` de frontend/src/modules/equipos/EquipoForm.vue: el proyecto no
+// comparte código entre el cliente y las edge functions (ver AGENTS.md), y
+// hasta 2026-08-31 este número vivía SOLO en el cliente — como esta función
+// sube con el cliente ADMIN (bypasea la RLS de `equipos`), el tope era
+// evitable con la sesión de cualquier staff con el módulo "equipos". Misma
+// clase de hallazgo que la validación de tipo/tamaño de 2026-08-17.
+// ⚠️ Los dos valores tienen que moverse JUNTOS: si acá dice 4 y el cliente
+// dice 6, el usuario ve el botón habilitado y la subida falla en el servidor.
+const MAX_FOTOS_POR_EQUIPO = 4;
 
 // Duplicado a propósito de functions/tickets.ts (sniffImagen/MIME_POR_EXT):
 // el proyecto no comparte código entre edge functions (ver AGENTS.md).
@@ -152,6 +163,49 @@ export default async function (req: Request): Promise<Response> {
 
     if (!(await tienePermisoModulo(staffRow.rol, user.id, 'equipos'))) {
       return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
+    // Tope de cantidad, server-side (2026-08-31). Dónde vive el estado real
+    // de las fotos de un equipo, verificado contra el esquema y no supuesto:
+    // NO hay tabla `equipos_fotos` ni prefijo por equipo en el bucket (las
+    // keys son planas, `equipos/<uuid>.<ext>`, generadas acá). Las fotos son
+    // la columna jsonb `equipos.fotos` — array de {url, key} (migración 015)
+    // — que es también lo único que `eliminarFoto` deja dangling cuando el
+    // formulario no se guarda. Por eso "fotos vigentes" = largo de ese array
+    // del equipo, excluyendo equipos con soft-delete (deleted_at).
+    //
+    // Límites conocidos y aceptados de este chequeo (no son un olvido):
+    //   1. En un equipo NUEVO todavía no hay fila que contar (el formulario
+    //      sube las fotos antes del primer INSERT), así que `equipoId` llega
+    //      vacío y no hay tope que aplicar en ese caso.
+    //   2. Quien omita `equipoId` a propósito esquiva el conteo. El chequeo
+    //      cierra el uso accidental y el bypass por DevTools del formulario,
+    //      no es una frontera dura: la única enforcement completa sería un
+    //      `check (jsonb_array_length(fotos) <= 4)` en `equipos` (migración
+    //      pendiente de decidir), porque el array lo escribe el cliente con
+    //      su propia sesión, no esta función.
+    // Solo SELECT a propósito: un UPDATE desde acá correría con el cliente
+    // admin y el trigger trg_equipos_by (migración 005) pisaría
+    // `updated_by` con NULL — auth.uid() no existe en este contexto.
+    const equipoId = body.equipoId ? String(body.equipoId) : '';
+    if (equipoId) {
+      const { data: equipo } = await admin.database
+        .from('equipos')
+        .select('fotos')
+        .eq('id', equipoId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      const vigentes = Array.isArray(equipo?.fotos) ? equipo.fotos.length : 0;
+      if (vigentes >= MAX_FOTOS_POR_EQUIPO) {
+        // Status 200 con { ok:false, code } a propósito, igual que
+        // archivo_invalido/key_invalida de esta misma función: el SDK
+        // devuelve data=null en toda respuesta no-2xx (solo `statusCode`),
+        // así que con un 409 el cliente perdería el `code` y con él el
+        // mensaje en español de api/domains/equipos.js. Los status
+        // explícitos de este archivo quedan para autenticación (401),
+        // autorización (403) y fallas del servidor (500).
+        return json({ ok: false, code: 'limite_fotos' });
+      }
     }
 
     let bytes: Uint8Array<ArrayBuffer>;

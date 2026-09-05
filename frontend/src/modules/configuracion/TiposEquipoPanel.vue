@@ -1,121 +1,70 @@
 <script setup>
 // Catálogo de tipos de equipo con sus plantillas: qué specs pide cada
 // tipo y qué accesorios sugiere al registrar/entregar un equipo.
-import { ref, computed, onMounted } from 'vue';
-import { storeToRefs } from 'pinia';
 import { useTiposEquipoStore } from '../../stores/catalogos.js';
 import { useEquiposStore } from '../../stores/equipos.js';
-import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
-import { usePaginacion } from '../../composables/usePaginacion.js';
-import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
+import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import Modal from '../../components/shared/Modal.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useTiposEquipoStore();
-const { lista, cargando } = storeToRefs(store);
 const equiposStore = useEquiposStore();
-
-const guardando = ref(false);
-
-const mostrarForm = ref(false);
-const editar = ref(null);
-const form = ref({ nombre: '', specs: '', accesorios: '' });
-const errorForm = ref('');
-
-// Cerrar vía Modal.cerrar() reproduce la animación de salida;
-// el @close del Modal es quien baja mostrarForm.
-const modalForm = ref(null);
-
-const esEdicion = computed(() => !!editar.value);
-
-const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
 
 function aLista(texto) {
   return texto.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function abrirNuevo() {
-  editar.value = null;
-  form.value = { nombre: '', specs: '', accesorios: '' };
-  errorForm.value = '';
-  mostrarForm.value = true;
+// Specs y accesorios se editan como texto separado por comas, pero se
+// guardan como arreglo.
+function aDatos(f) {
+  return {
+    nombre: f.nombre,
+    campos_spec: aLista(f.specs),
+    accesorios_sugeridos: aLista(f.accesorios),
+  };
 }
 
-function abrirEditar(t) {
-  editar.value = t;
-  form.value = {
+const {
+  lista, cargando, guardando, mostrarForm, editar, esEdicion, form, errorForm, modalForm,
+  porEliminar, eliminando, dialogoEliminar,
+  abrirNueva: abrirNuevo, abrirEditar, guardar, confirmarEliminar,
+  columna, direccion, ordenarPor, paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina,
+} = useCrudCatalogo(store, {
+  formVacio: () => ({ nombre: '', specs: '', accesorios: '' }),
+  aForm: (t) => ({
     nombre: t.nombre,
     specs: (t.campos_spec || []).join(', '),
     accesorios: (t.accesorios_sugeridos || []).join(', '),
-  };
-  errorForm.value = '';
-  mostrarForm.value = true;
-}
-
-async function guardar() {
-  errorForm.value = '';
-  guardando.value = true;
-  try {
-    const datos = {
-      nombre: form.value.nombre,
-      campos_spec: aLista(form.value.specs),
-      accesorios_sugeridos: aLista(form.value.accesorios),
-    };
-    if (esEdicion.value) {
-      await store.actualizar(editar.value.id, datos);
-      showToast('Tipo de equipo actualizado');
-    } else {
-      await store.crear({ ...datos, id: slugDe(form.value.nombre) });
-      showToast('Tipo de equipo creado');
-    }
-    // El formulario de equipos usa este catálogo: refrescar su copia
-    equiposStore.tipos = [...lista.value];
-    modalForm.value?.cerrar();
-  } catch (e) {
-    errorForm.value = e?.message?.includes('duplicate')
-      ? 'Ya existe un tipo con ese nombre'
-      : (e?.message || 'Error al guardar');
-  } finally {
-    guardando.value = false;
-  }
-}
-
-// Confirmación destructiva (ConfirmDialog compartido, tier base)
-const porEliminar = ref(null);
-const eliminando = ref(false);
-const dialogoEliminar = ref(null);
-
-async function confirmarEliminar() {
-  const t = porEliminar.value;
-  if (!t) return;
-  eliminando.value = true;
-  try {
-    await store.softDelete(t.id);
-    // El formulario de equipos usa este catálogo: refrescar su copia
-    equiposStore.tipos = [...lista.value];
-    showToast('Tipo eliminado');
-    dialogoEliminar.value?.cerrar();
-  } catch (e) {
-    showToast(e?.message || 'Error al eliminar', 'error');
-  } finally {
-    eliminando.value = false;
-  }
-}
-
-onMounted(async () => {
-  try {
-    await store.cargar();
-  } catch (e) {
-    showToast(e?.message || 'Error al cargar tipos de equipo', 'error');
-  }
+  }),
+  crear: (f) => store.crear({ ...aDatos(f), id: slugDe(f.nombre) }),
+  actualizar: (id, f) => store.actualizar(id, aDatos(f)),
+  // El formulario de equipos usa este catálogo: refrescar su copia
+  despuesDeGuardar: () => { equiposStore.tipos = [...lista.value]; },
+  despuesDeEliminar: () => { equiposStore.tipos = [...lista.value]; },
+  mensajeErrorGuardar: (e) => (e?.message?.includes('duplicate') ? 'Ya existe un tipo con ese nombre' : undefined),
+  textos: {
+    creado: 'Tipo de equipo creado',
+    actualizado: 'Tipo de equipo actualizado',
+    eliminado: 'Tipo eliminado',
+    errorCargar: 'Error al cargar tipos de equipo',
+  },
 });
+
+const columnas = [
+  { clave: 'nombre', label: 'Tipo', ordenable: true, elastica: true, movil: 'principal' },
+  { clave: 'campos_spec', label: 'Specs que pide', movil: 'sec' },
+  { clave: 'accesorios_sugeridos', label: 'Accesorios sugeridos', movil: 'sec' },
+  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
+];
 </script>
 
 <template>
@@ -126,66 +75,60 @@ onMounted(async () => {
           Tipos de equipo
           <span class="badge-count">{{ lista.length }}</span>
         </div>
-        <button class="btn btn-primary" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo tipo
-        </button>
+        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNuevo">Nuevo tipo</CarbonButton>
       </div>
 
-      <EmptyState
-        v-if="!cargando && lista.length === 0"
-        icono="ti ti-devices"
-        titulo="Sin tipos de equipo"
-        mensaje="Crea plantillas con los campos y accesorios que pide cada tipo."
+      <CarbonDataTable
+        :columnas="columnas"
+        :filas="listaPaginada"
+        :cargando="cargando"
+        :orden-por="columna"
+        :orden-dir="direccion"
+        etiqueta="Tipos de equipo"
+        vacio-icono="ti ti-devices"
+        vacio-titulo="Sin tipos de equipo"
+        vacio-mensaje="Crea plantillas con los campos y accesorios que pide cada tipo."
+        @ordenar="ordenarPor"
       >
-        <button class="btn" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus"></i> Nuevo tipo
-        </button>
-      </EmptyState>
+        <template #celda-nombre="{ fila }">
+          <span class="user-name">{{ fila.nombre }}</span>
+        </template>
+        <template #celda-campos_spec="{ fila }">
+          <div class="chips">
+            <CarbonTag v-for="c in fila.campos_spec" :key="c" variante="info">{{ c }}</CarbonTag>
+            <TextoVacio v-if="!fila.campos_spec?.length" />
+          </div>
+        </template>
+        <template #celda-accesorios_sugeridos="{ fila }">
+          <div class="chips">
+            <CarbonTag v-for="a in fila.accesorios_sugeridos" :key="a" variante="success">{{ a }}</CarbonTag>
+            <TextoVacio v-if="!fila.accesorios_sugeridos?.length" />
+          </div>
+        </template>
+        <template #celda-acciones="{ fila }">
+          <div class="actions">
+            <button class="icon-btn fila-accion" type="button" title="Editar plantilla" aria-label="Editar plantilla" @click="abrirEditar(fila)">
+              <i class="ti ti-pencil"></i>
+            </button>
+            <button class="icon-btn danger fila-accion" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = fila">
+              <i class="ti ti-trash"></i>
+            </button>
+          </div>
+        </template>
+        <template #vacio-accion>
+          <CarbonButton variante="secondary" icono="ti-plus" @click="abrirNuevo">Nuevo tipo</CarbonButton>
+        </template>
+      </CarbonDataTable>
 
-      <div v-else class="table-wrap">
-        <p v-if="cargando" class="sr-only" role="status">Cargando tipos de equipo…</p>
-        <table aria-label="Tipos de equipo">
-          <thead>
-            <tr>
-              <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Tipo</ThOrdenable>
-              <th scope="col">Specs que pide</th>
-              <th scope="col">Accesorios sugeridos</th>
-              <th scope="col"><span class="sr-only">Acciones</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <SkeletonTabla v-if="cargando" :columnas="4" />
-            <template v-else>
-            <tr v-for="t in listaPaginada" :key="t.id">
-              <td><span class="user-name">{{ t.nombre }}</span></td>
-              <td>
-                <div class="chips">
-                  <span v-for="c in t.campos_spec" :key="c" class="chip">{{ c }}</span>
-                  <TextoVacio v-if="!t.campos_spec?.length" />
-                </div>
-              </td>
-              <td>
-                <div class="chips">
-                  <span v-for="a in t.accesorios_sugeridos" :key="a" class="chip chip--acc">{{ a }}</span>
-                  <TextoVacio v-if="!t.accesorios_sugeridos?.length" />
-                </div>
-              </td>
-              <td>
-                <div class="actions">
-                  <button class="icon-btn" type="button" title="Editar plantilla" aria-label="Editar plantilla" @click="abrirEditar(t)">
-                    <i class="ti ti-pencil"></i>
-                  </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = t">
-                    <i class="ti ti-trash"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-            </template>
-          </tbody>
-        </table>
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-      </div>
+      <CarbonPagination
+        v-if="!cargando"
+        v-model="paginaActual"
+        :total-items="totalItems"
+        :tam-pagina="tamPagina"
+        :tamanos-pagina="TAMANOS_PAGINA"
+        unidad="tipos de equipo"
+        @update:tam-pagina="cambiarTamPagina"
+      />
     </div>
 
     <!-- Formulario (Modal accesible compartido) -->
@@ -197,27 +140,33 @@ onMounted(async () => {
       @close="mostrarForm = false"
     >
       <form id="te-form" class="te-form" @submit.prevent="guardar">
-        <div class="form-group">
-          <label for="te-nombre">Nombre *</label>
-          <input id="te-nombre" v-model="form.nombre" required placeholder="ej: Cámara de seguridad" :disabled="guardando">
-        </div>
-        <div class="form-group">
-          <label for="te-specs">Specs que pide (separadas por coma)</label>
-          <input id="te-specs" v-model="form.specs" placeholder="ej: Resolución, Alcance, Conectividad" :disabled="guardando">
-          <p class="field-hint">Estos campos aparecerán al registrar un equipo de este tipo.</p>
-        </div>
-        <div class="form-group">
-          <label for="te-acc">Accesorios sugeridos (separados por coma)</label>
-          <input id="te-acc" v-model="form.accesorios" placeholder="ej: Fuente de poder, Soporte" :disabled="guardando">
-        </div>
-        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+        <CarbonCampo
+          v-model="form.nombre"
+          etiqueta="Nombre"
+          requerido
+          placeholder="ej: Cámara de seguridad"
+          :deshabilitado="guardando"
+        />
+        <CarbonCampo
+          v-model="form.specs"
+          etiqueta="Specs que pide (separadas por coma)"
+          placeholder="ej: Resolución, Alcance, Conectividad"
+          ayuda="Estos campos aparecerán al registrar un equipo de este tipo."
+          :deshabilitado="guardando"
+        />
+        <CarbonCampo
+          v-model="form.accesorios"
+          etiqueta="Accesorios sugeridos (separados por coma)"
+          placeholder="ej: Fuente de poder, Soporte"
+          :deshabilitado="guardando"
+        />
+        <CarbonNotification v-if="errorForm" tipo="error">{{ errorForm }}</CarbonNotification>
       </form>
       <template #acciones>
-        <button class="btn" type="button" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
-        <button class="btn btn-primary" type="submit" form="te-form" :disabled="guardando">
-          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+        <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modalForm?.cerrar()">Cancelar</CarbonButton>
+        <CarbonButton variante="primary" tipo="submit" form="te-form" :deshabilitado="guardando" :cargando="guardando">
           {{ guardando ? 'Guardando...' : 'Guardar' }}
-        </button>
+        </CarbonButton>
       </template>
     </Modal>
 
@@ -240,20 +189,5 @@ onMounted(async () => {
 <style scoped>
 .chips { display: flex; flex-wrap: wrap; gap: 4px; max-width: 280px; }
 
-.chip {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 20px;
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-hover);
-  white-space: nowrap;
-}
-
-.chip--acc { background: var(--color-success-bg); color: var(--color-success-text); }
-
 .te-form { display: flex; flex-direction: column; gap: 12px; }
-
-.field-hint { margin: 4px 0 0; font-size: 12px; color: var(--color-text-secondary); }
-
 </style>

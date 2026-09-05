@@ -1,12 +1,14 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick, useTemplateRef } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { normalizarTelefono } from '../../core/formatters.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
+import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   empleado: {
@@ -17,23 +19,12 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+// Migrado a Modal.vue (pasada de diseño ago 2026, mismo patrón que
+// AccesoSensibleForm.vue): Teleport, bloqueo de scroll del body,
+// atrapamiento de foco y Escape los resuelve el componente compartido —
+// antes este archivo los reimplementaba a mano y le faltaban los dos
+// primeros (bug real, UX6-03 en docs/HISTORIAL-AUDITORIAS.md).
+let resultado = false;
 
 const store = useEmpleadosStore();
 
@@ -43,6 +34,18 @@ const ubicaciones = ref([]);
 const cargandoEmpresas = ref(false);
 const guardando = ref(false);
 const error = ref('');
+
+// Campo que falló el último guardado ('' | 'dni'), para resaltar el control
+// y llevarle el foco además del mensaje de CarbonNotification. Mismo patrón
+// que EquipoForm.vue.
+const campoInvalido = ref('');
+const refDni = useTemplateRef('refDni');
+
+async function enfocarCampoInvalido() {
+  await nextTick();
+  const refs = { dni: refDni };
+  refs[campoInvalido.value]?.value?.focus();
+}
 
 const esEdicion = computed(() => !!props.empleado?.id);
 
@@ -62,15 +65,10 @@ const form = ref({
   notas: '',
 });
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => form.value);
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
+const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => form.value);
 
 function resetForm() {
-  // Rama por `id`, no por truthiness: un prellenado de alta (ej. migración
-  // desde pre-registro de personal) llega como objeto truthy SIN id, y debe
-  // tratarse como alta (estado/empresa en blanco), no como edición de un
-  // empleado real que ya tendría esos campos.
   if (props.empleado?.id) {
     form.value = {
       nombres: props.empleado.nombres,
@@ -84,24 +82,6 @@ function resetForm() {
       area_obra_id: props.empleado.area_obra_id || '',
       ubicacion_id: props.empleado.ubicacion_id || '',
       estado: props.empleado.estado,
-      fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
-      notas: props.empleado.notas || '',
-    };
-  } else if (props.empleado) {
-    // Prellenado parcial para alta (sin id): mismos defaults del alta en
-    // blanco, con lo que sí trae el prellenado superpuesto.
-    form.value = {
-      nombres: props.empleado.nombres || '',
-      apellidos: props.empleado.apellidos || '',
-      dni: props.empleado.dni || '',
-      telefono: props.empleado.telefono || '',
-      whatsapp: props.empleado.whatsapp || '',
-      correo_personal: props.empleado.correo_personal || '',
-      cargo: props.empleado.cargo || '',
-      empresa_id: props.empleado.empresa_id || '',
-      area_obra_id: props.empleado.area_obra_id || '',
-      ubicacion_id: props.empleado.ubicacion_id || '',
-      estado: 'Activo',
       fecha_alta: props.empleado.fecha_alta || new Date().toISOString().slice(0, 10),
       notas: props.empleado.notas || '',
     };
@@ -154,30 +134,14 @@ function normalizarCampo(campo) {
   form.value[campo] = normalizarTelefono(form.value[campo]) || '';
 }
 
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
-// confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return;
-  }
-  cerrar(false);
-}
-
-function descartarCambios() {
-  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
-  // mientras el formulario inicia su propia salida en paralelo
-  dialogoDescarte.value?.cerrar();
-  cerrar(false);
-}
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
-
+// Guard de cierre del Modal compartido: Escape y la X (backdrop
+// deshabilitado, ver template — formulario de captura, un clic afuera no
+// debe perder lo escrito) pasan por acá igual que el botón "Cancelar" —
+// con cambios sin guardar se pide confirmación antes de descartar; limpio
+// cierra directo. Mismo cuerpo que AccesoSensibleForm.vue.
 async function guardar() {
   error.value = '';
+  campoInvalido.value = '';
   guardando.value = true;
   try {
     let guardado;
@@ -190,9 +154,16 @@ async function guardar() {
     // confirmación de cambios sin guardar
     tomarSnapshot();
     // Se emite el empleado guardado para que el alta pueda navegar a su ficha
-    cerrar(guardado);
+    resultado = guardado;
+    modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al guardar empleado';
+    if (e?.message?.includes('empleados_dni_key') || e?.message?.includes('empleados.dni')) {
+      error.value = 'Ya existe un empleado con ese DNI';
+      campoInvalido.value = 'dni';
+    } else {
+      error.value = e?.message || 'Error al guardar empleado';
+    }
+    if (campoInvalido.value) enfocarCampoInvalido();
   } finally {
     guardando.value = false;
   }
@@ -200,146 +171,117 @@ async function guardar() {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal modal-lg empleado-form" role="dialog" aria-modal="true" aria-labelledby="empleado-form-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="empleado-form-title">{{ esEdicion ? 'Editar empleado' : 'Nuevo empleado' }}</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
+  <Modal
+    ref="modal"
+    size="lg"
+    :titulo="esEdicion ? 'Editar empleado' : 'Nuevo empleado'"
+    :confirmar-cierre="confirmarCierre"
+    :cerrar-en-backdrop="false"
+    @close="emit('cerrar', resultado)"
+  >
+    <form id="empleado-form" class="empleado-form form-grid" @submit.prevent="guardar">
         <div class="form-group full">
           <span class="section-label"><i class="ti ti-user"></i> Datos personales</span>
         </div>
 
-        <div class="form-group">
-          <label for="nombres">Nombres *</label>
-          <input id="nombres" v-model="form.nombres" required :disabled="guardando">
-        </div>
+        <CarbonCampo v-model="form.nombres" etiqueta="Nombres" requerido :deshabilitado="guardando" />
 
-        <div class="form-group">
-          <label for="apellidos">Apellidos *</label>
-          <input id="apellidos" v-model="form.apellidos" required :disabled="guardando">
-        </div>
+        <CarbonCampo v-model="form.apellidos" etiqueta="Apellidos" requerido :deshabilitado="guardando" />
 
-        <div class="form-group">
-          <label for="dni">DNI *</label>
-          <input id="dni" v-model="form.dni" required :disabled="guardando">
-        </div>
+        <CarbonCampo
+          ref="refDni"
+          v-model="form.dni"
+          etiqueta="DNI"
+          requerido
+          inputmode="numeric"
+          :deshabilitado="guardando"
+          :error="campoInvalido === 'dni' ? 'Ya existe un empleado con ese DNI' : ''"
+          @update:model-value="campoInvalido === 'dni' && (campoInvalido = '')"
+        />
 
-        <div class="form-group">
-          <label for="correo">Correo personal</label>
-          <input id="correo" v-model="form.correo_personal" type="email" :disabled="guardando">
-        </div>
+        <CarbonCampo v-model="form.correo_personal" etiqueta="Correo personal" tipo="email" :deshabilitado="guardando" />
 
-        <div class="form-group">
-          <label for="telefono">Teléfono</label>
-          <input
-            id="telefono"
-            v-model="form.telefono"
+        <CarbonCampo
+          v-model="form.telefono"
+          etiqueta="Teléfono"
+          placeholder="987 654 321 (el +51 se agrega solo)"
+          :deshabilitado="guardando"
+          @blur="normalizarCampo('telefono')"
+        />
+
+        <div class="whatsapp-row">
+          <CarbonCampo
+            v-model="form.whatsapp"
+            etiqueta="WhatsApp"
             placeholder="987 654 321 (el +51 se agrega solo)"
-            :disabled="guardando"
-            @blur="normalizarCampo('telefono')"
-          >
-        </div>
-
-        <div class="form-group">
-          <label for="whatsapp">WhatsApp</label>
-          <div class="whatsapp-row">
-            <input
-              id="whatsapp"
-              v-model="form.whatsapp"
-              placeholder="987 654 321 (el +51 se agrega solo)"
-              :disabled="guardando"
-              @blur="normalizarCampo('whatsapp')"
-            >
-            <button class="btn" type="button" :disabled="guardando || !form.telefono" @click="copiarTelefono">
-              Copiar del teléfono
-            </button>
-          </div>
+            :deshabilitado="guardando"
+            @blur="normalizarCampo('whatsapp')"
+          />
+          <CarbonButton variante="secondary" tam="sm" :deshabilitado="guardando || !form.telefono" @click="copiarTelefono">
+            Copiar del teléfono
+          </CarbonButton>
         </div>
 
         <div class="form-group full">
           <span class="section-label"><i class="ti ti-briefcase"></i> Datos laborales</span>
         </div>
 
-        <div class="form-group">
-          <label for="empresa">Empresa *</label>
-          <select id="empresa" v-model="form.empresa_id" required :disabled="guardando || cargandoEmpresas">
+        <CarbonCampo v-model="form.empresa_id" etiqueta="Empresa" tipo="select" requerido :deshabilitado="guardando || cargandoEmpresas">
+          <template #opciones>
             <option value="" disabled>Seleccionar empresa</option>
             <option v-for="emp in empresas" :key="emp.id" :value="emp.id">
               {{ emp.nombre }}
             </option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
-        <div class="form-group">
-          <label for="area-obra">Área/Obra</label>
-          <select id="area-obra" v-model="form.area_obra_id" :disabled="guardando || cargandoEmpresas">
+        <CarbonCampo v-model="form.area_obra_id" etiqueta="Área/Obra" tipo="select" :deshabilitado="guardando || cargandoEmpresas">
+          <template #opciones>
             <option value="">Sin asignar</option>
             <option v-for="ao in areasObras" :key="ao.id" :value="ao.id">
               {{ ao.nombre }}
             </option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
         <!-- Independiente de Área/Obra (migración 059): el área es función,
              la ubicación es lugar físico — no se derivan entre sí. -->
-        <div class="form-group">
-          <label for="ubicacion">Ubicación</label>
-          <select id="ubicacion" v-model="form.ubicacion_id" :disabled="guardando || cargandoEmpresas">
+        <CarbonCampo v-model="form.ubicacion_id" etiqueta="Ubicación" tipo="select" :deshabilitado="guardando || cargandoEmpresas">
+          <template #opciones>
             <option value="">Sin asignar</option>
             <option v-for="u in ubicaciones" :key="u.id" :value="u.id">
               {{ u.nombre }}
             </option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
-        <div class="form-group">
-          <label for="cargo">Cargo</label>
-          <input id="cargo" v-model="form.cargo" :disabled="guardando">
-        </div>
+        <CarbonCampo v-model="form.cargo" etiqueta="Cargo" :deshabilitado="guardando" />
 
-        <div class="form-group">
-          <label for="fecha-alta">Fecha de alta *</label>
-          <input id="fecha-alta" v-model="form.fecha_alta" type="date" required :disabled="guardando">
-        </div>
+        <CarbonCampo v-model="form.fecha_alta" etiqueta="Fecha de alta" tipo="date" requerido :deshabilitado="guardando" />
 
         <!-- Sin campo Estado: el alta siempre es "Activo"; al editar se
              conserva el estado actual. Cambiarlo es un flujo aparte
              (Dar de baja / Reactivar en la ficha). -->
 
-        <div class="form-group full">
-          <label for="notas">Notas</label>
-          <textarea id="notas" v-model="form.notas" :disabled="guardando"></textarea>
-        </div>
+        <CarbonCampo v-model="form.notas" class="full" etiqueta="Notas" tipo="textarea" :deshabilitado="guardando" />
 
-        </div>
+        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+    </form>
 
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Guardando...' : 'Guardar' }}
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-  </Transition>
+    <template #acciones>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="empleado-form" :cargando="guardando">
+        {{ guardando ? 'Guardando...' : 'Guardar' }}
+      </CarbonButton>
+    </template>
+  </Modal>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
     @cancel="confirmarDescarte = false"
@@ -348,6 +290,13 @@ async function guardar() {
 </template>
 
 <style scoped>
+/* CarbonCampo de Notas no puede envolverse en el viejo .form-group.full (le
+   filtraría el estilo del <textarea> anterior), así que repite solo el
+   grid-column (mismo criterio que EquipoForm.vue/LicenciaForm.vue). */
+.full {
+  grid-column: 1 / -1;
+}
+
 .empleado-form .section-label {
   margin-top: 0;
   padding-top: 0;
@@ -356,22 +305,9 @@ async function guardar() {
 
 .whatsapp-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
 }
 
-.whatsapp-row input {
-  flex: 1;
-}
-
-.whatsapp-row .btn {
-  flex-shrink: 0;
-  height: 40px;
-  padding: 0 14px;
-  font-size: 13px;
-}
-
-.modal-actions.full {
-  grid-column: 1 / -1;
-}
+.whatsapp-row :deep(.cds-campo) { flex: 1; min-width: 0; }
 </style>

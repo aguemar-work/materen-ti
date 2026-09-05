@@ -82,16 +82,16 @@ const TABS = computed(() => {
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   color: var(--color-text-secondary);
   text-decoration: none;
-  font-size: 13.5px;
+  font-size: var(--fs-body-01);
   font-weight: 500;
   transition: background 0.15s, color 0.15s;
 }
 
 .config-sidebar-item i {
-  font-size: 17px;
+  font-size: var(--icon-md);
   flex-shrink: 0;
 }
 

@@ -3,6 +3,8 @@ import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { MODULOS_CONFIGURABLES } from '../../constants/modulos.js';
 import Modal from '../../components/shared/Modal.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   miembro: { type: Object, required: true }, // { user_id, nombre }
@@ -68,22 +70,21 @@ async function guardar() {
           Los módulos sin marcar desaparecen del menú de {{ miembro.nombre }} y no son accesibles por URL directa.
         </p>
       </template>
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="modal?.cerrar()">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="staff-modulos-form" :disabled="guardando || cargando">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modal?.cerrar()">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="staff-modulos-form" :cargando="guardando" :deshabilitado="cargando">
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </button>
+      </CarbonButton>
     </template>
   </Modal>
 </template>
 
 <style scoped>
 .loading-inline {
-  font-size: 13px;
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   padding: 8px 0;
 }
@@ -101,7 +102,7 @@ async function guardar() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-body-01);
   font-weight: 400;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -117,7 +118,7 @@ async function guardar() {
 
 .field-hint {
   margin: 10px 0 0;
-  font-size: 12px;
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 </style>

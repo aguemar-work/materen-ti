@@ -6,6 +6,7 @@ import { ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { abrirEntrega } from '../../api/passwords.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
 
 const route = useRoute();
 
@@ -53,9 +54,7 @@ async function copiar(texto, id) {
             captura de pantalla).
           </p>
         </div>
-        <button class="btn btn-primary entrega-btn" type="button" @click="revelar">
-          <i class="ti ti-lock-open" aria-hidden="true"></i> Ver accesos
-        </button>
+        <CarbonButton variante="primary" ancho icono="ti-lock-open" class="entrega-btn" @click="revelar">Ver accesos</CarbonButton>
       </template>
 
       <div v-else-if="estado === 'cargando'" class="entrega-cargando" role="status">
@@ -108,15 +107,14 @@ async function copiar(texto, id) {
             Si las credenciales no fueron guardadas o se requiere un nuevo enlace,
             cree un ticket de soporte. Si el caso ya fue reportado, puede consultarse por DNI.
           </p>
-          <RouterLink
-            class="btn btn-primary entrega-accion-primaria"
+          <CarbonButton
+            variante="primary"
+            ancho
+            icono="ti-ticket"
+            class="entrega-accion-primaria"
             :to="{ name: 'ticket-nuevo' }"
-          >
-            <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
-          </RouterLink>
-          <RouterLink class="entrega-accion-secundaria" :to="{ name: 'ticket-buscar' }">
-            <i class="ti ti-search" aria-hidden="true"></i> Buscar ticket por DNI
-          </RouterLink>
+          >Crear ticket de soporte</CarbonButton>
+          <CarbonButton variante="secondary" ancho icono="ti-search" :to="{ name: 'ticket-buscar' }">Buscar ticket por DNI</CarbonButton>
         </div>
       </template>
 
@@ -127,9 +125,7 @@ async function copiar(texto, id) {
           exclusivamente a través de ticket. No se atenderán consultas por WhatsApp
           ni por ningún otro canal.
         </p>
-        <RouterLink class="soporte-btn" :to="{ name: 'ticket-nuevo' }">
-          <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
-        </RouterLink>
+        <CarbonButton variante="secondary" ancho icono="ti-ticket" :to="{ name: 'ticket-nuevo' }">Crear ticket de soporte</CarbonButton>
       </div>
     </div>
   </div>
@@ -141,23 +137,20 @@ async function copiar(texto, id) {
 }
 
 .entrega-title {
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-heading-03);
   font-weight: 600;
   letter-spacing: -0.02em;
   margin: 0 0 8px;
 }
 
 .entrega-texto {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 12px;
 }
 
 .entrega-btn {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
   margin-top: 4px;
 }
 
@@ -165,7 +158,7 @@ async function copiar(texto, id) {
   text-align: center;
   padding: 24px 0;
   color: var(--color-text-secondary);
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
 }
 
 .entrega-aviso {
@@ -177,11 +170,11 @@ async function copiar(texto, id) {
   color: var(--color-warning-text-strong);
   background: var(--color-warning-bg);
   border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
 }
 
-.entrega-aviso i { font-size: 16px; flex-shrink: 0; }
+.entrega-aviso i { font-size: var(--icon-sm); flex-shrink: 0; }
 
 .cred-lista {
   display: flex;
@@ -192,12 +185,12 @@ async function copiar(texto, id) {
 
 .cred-item {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 14px;
 }
 
 .cred-plataforma {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -214,7 +207,7 @@ async function copiar(texto, id) {
 }
 
 .cred-label {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   width: 82px;
   flex-shrink: 0;
@@ -222,7 +215,7 @@ async function copiar(texto, id) {
 
 .cred-valor {
   font-family: var(--font-mono, monospace);
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-primary);
   overflow-wrap: anywhere;
   min-width: 0;
@@ -237,7 +230,7 @@ async function copiar(texto, id) {
 .cred-url:hover { text-decoration: underline; }
 
 .entrega-error-icon {
-  font-size: 40px;
+  font-size: var(--icon-lg);
   color: var(--color-text-secondary);
   text-align: center;
   margin-bottom: 8px;
@@ -253,31 +246,7 @@ async function copiar(texto, id) {
 }
 
 .entrega-accion-primaria {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
   margin-bottom: 8px;
-  text-decoration: none;
-}
-
-.entrega-accion-secundaria {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 9px 14px;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  color: var(--color-primary, var(--color-accent));
-  border: 1.5px solid var(--color-primary, var(--color-accent));
-  border-radius: var(--radius-md);
-  text-decoration: none;
-  transition: background 0.15s;
-}
-
-.entrega-accion-secundaria:hover {
-  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent);
 }
 
 .soporte-aviso {
@@ -287,34 +256,15 @@ async function copiar(texto, id) {
 }
 
 .soporte-texto {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   line-height: 1.5;
   text-align: center;
   color: var(--color-warning-text-strong);
   background: var(--color-warning-bg);
   border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
   margin: 0 0 10px;
 }
 
-.soporte-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 9px 14px;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  color: var(--color-primary, var(--color-accent));
-  border: 1.5px solid var(--color-primary, var(--color-accent));
-  border-radius: var(--radius-md);
-  text-decoration: none;
-  transition: background 0.15s;
-}
-
-.soporte-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent);
-}
 </style>

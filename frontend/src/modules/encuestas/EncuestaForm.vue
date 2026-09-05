@@ -7,9 +7,12 @@
 import { ref } from 'vue';
 import { useEncuestasStore } from '../../stores/encuestas.js';
 import { TIPOS_PREGUNTA, nuevaPregunta } from '../../core/dominio-encuestas.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   encuesta: { type: Object, default: null },
@@ -20,7 +23,6 @@ const store = useEncuestasStore();
 const esEdicion = !!props.encuesta?.id;
 const guardando = ref(false);
 const errorForm = ref('');
-const modal = ref(null);
 
 const form = ref({
   titulo: props.encuesta?.titulo || '',
@@ -28,10 +30,9 @@ const form = ref({
   preguntas: props.encuesta ? JSON.parse(JSON.stringify(props.encuesta.preguntas || [])) : [],
 });
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => form.value);
+const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, descartarCambios } =
+  useFormularioModal(() => form.value);
 tomarSnapshot();
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
 
 function agregarPregunta() {
   form.value.preguntas.push(nuevaPregunta());
@@ -57,21 +58,8 @@ function onOpcionesInput(pregunta, texto) {
   pregunta.opciones = texto.split('\n').map((o) => o.trim()).filter(Boolean);
 }
 
-function confirmarCierre() {
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return false;
-  }
-  return true;
-}
-
 function cerrar() {
   if (confirmarCierre()) modal.value?.cerrar();
-}
-
-function descartarCambios() {
-  dialogoDescarte.value?.cerrar();
-  modal.value?.cerrar();
 }
 
 async function guardar() {
@@ -114,20 +102,26 @@ async function guardar() {
 <template>
   <Modal ref="modal" :titulo="esEdicion ? 'Editar encuesta' : 'Nueva encuesta'" size="lg" :confirmar-cierre="confirmarCierre" @close="emit('cerrar')">
     <form id="enc-form" class="enc-form" @submit.prevent="guardar">
-      <div class="form-group">
-        <label for="enc-titulo">Título *</label>
-        <input id="enc-titulo" v-model="form.titulo" required placeholder="ej: Satisfacción general de TI" :disabled="guardando">
-      </div>
-      <div class="form-group">
-        <label for="enc-desc">Descripción</label>
-        <textarea id="enc-desc" v-model="form.descripcion" rows="2" placeholder="Se muestra a quien responde, antes de las preguntas" :disabled="guardando"></textarea>
-      </div>
+      <CarbonCampo
+        v-model="form.titulo"
+        etiqueta="Título"
+        requerido
+        placeholder="ej: Satisfacción general de TI"
+        :deshabilitado="guardando"
+      />
+
+      <CarbonCampo
+        v-model="form.descripcion"
+        etiqueta="Descripción"
+        tipo="textarea"
+        :filas="2"
+        placeholder="Se muestra a quien responde, antes de las preguntas"
+        :deshabilitado="guardando"
+      />
 
       <div class="preguntas-header">
         <label>Preguntas *</label>
-        <button class="btn" type="button" :disabled="guardando" @click="agregarPregunta">
-          <i class="ti ti-plus" aria-hidden="true"></i> Agregar pregunta
-        </button>
+        <CarbonButton variante="secondary" tam="sm" icono="ti-plus" :deshabilitado="guardando" @click="agregarPregunta">Agregar pregunta</CarbonButton>
       </div>
 
       <div v-for="(p, idx) in form.preguntas" :key="p.id" class="pregunta-card">
@@ -135,7 +129,7 @@ async function guardar() {
           <select v-model="p.tipo" aria-label="Tipo de pregunta" :disabled="guardando">
             <option v-for="(info, tipo) in TIPOS_PREGUNTA" :key="tipo" :value="tipo">{{ info.label }}</option>
           </select>
-          <input v-model="p.etiqueta" placeholder="Texto de la pregunta" :disabled="guardando" class="pregunta-etiqueta">
+          <input v-model="p.etiqueta" aria-label="Texto de la pregunta" placeholder="ej: ¿Cómo calificaría la atención recibida?" :disabled="guardando" class="pregunta-etiqueta">
           <label class="pregunta-requerido">
             <input type="checkbox" v-model="p.requerido" :disabled="guardando"> Requerida
           </label>
@@ -151,20 +145,25 @@ async function guardar() {
             </button>
           </div>
         </div>
-        <div v-if="p.tipo === 'opcion_unica'" class="form-group">
-          <label :for="`enc-opciones-${p.id}`">Opciones (una por línea) *</label>
-          <textarea :id="`enc-opciones-${p.id}`" :value="opcionesTexto(p)" rows="3" placeholder="Excelente&#10;Bueno&#10;Regular&#10;Malo" :disabled="guardando" @input="onOpcionesInput(p, $event.target.value)"></textarea>
-        </div>
+        <CarbonCampo
+          v-if="p.tipo === 'opcion_unica'"
+          :model-value="opcionesTexto(p)"
+          etiqueta="Opciones (una por línea)"
+          tipo="textarea"
+          requerido
+          placeholder="Excelente&#10;Bueno&#10;Regular&#10;Malo"
+          :deshabilitado="guardando"
+          @update:model-value="onOpcionesInput(p, $event)"
+        />
       </div>
 
-      <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+      <CarbonNotification v-if="errorForm" tipo="error">{{ errorForm }}</CarbonNotification>
     </form>
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="cerrar">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="enc-form" :disabled="guardando">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cerrar">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="enc-form" :cargando="guardando">
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </button>
+      </CarbonButton>
     </template>
   </Modal>
 
@@ -173,7 +172,7 @@ async function guardar() {
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
     @cancel="confirmarDescarte = false"
@@ -197,7 +196,7 @@ async function guardar() {
 
 .pregunta-card {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -217,7 +216,7 @@ async function guardar() {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   font-weight: 400;
   white-space: nowrap;
 }

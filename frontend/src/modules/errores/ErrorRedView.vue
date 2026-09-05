@@ -5,6 +5,7 @@
 // de la vista que quedó debajo (ej. un formulario ya completado).
 import { reintentarErrorRed } from '../../core/error-red.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
 </script>
 
 <template>
@@ -19,9 +20,9 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
         nuevamente.
       </p>
 
-      <button class="btn btn-primary error-red-btn" type="button" @click="reintentarErrorRed">
-        <i class="ti ti-refresh" aria-hidden="true"></i> Reintentar
-      </button>
+      <CarbonButton variante="primary" icono="ti-refresh" ancho @click="reintentarErrorRed">
+        Reintentar
+      </CarbonButton>
     </div>
   </div>
 </template>
@@ -34,28 +35,23 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
 }
 
 .error-red-icon {
-  font-size: 40px;
+  font-size: var(--icon-lg);
   color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
 
 .error-red-title {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0 0 4px;
 }
 
 .error-red-texto {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 16px;
 }
 
-.error-red-btn {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
-}
 </style>

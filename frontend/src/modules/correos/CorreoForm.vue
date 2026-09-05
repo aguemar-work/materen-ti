@@ -2,11 +2,13 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useCorreosStore } from '../../stores/correos.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { generarPassword } from '../../core/generarPassword.js';
+import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   correo: { type: Object, default: null },
@@ -14,23 +16,11 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+// Migrado a Modal.vue (pasada de diseño ago 2026, mismo patrón que
+// EmpleadoForm.vue/AccesoSensibleForm.vue): Teleport, bloqueo de scroll del
+// body, atrapamiento de foco y Escape los resuelve el componente
+// compartido.
+let resultado = false;
 
 const store = useCorreosStore();
 
@@ -51,9 +41,8 @@ const form = ref({
   tipo_cuenta: 'compartida',
 });
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => form.value);
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
+const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => form.value);
 
 function resetForm() {
   error.value = '';
@@ -88,28 +77,11 @@ onMounted(async () => {
   }
 });
 
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
-// confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return;
-  }
-  cerrar(false);
-}
-
-function descartarCambios() {
-  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
-  // mientras el formulario inicia su propia salida en paralelo
-  dialogoDescarte.value?.cerrar();
-  cerrar(false);
-}
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
-
+// Guard de cierre del Modal compartido: Escape y la X (backdrop
+// deshabilitado, ver template — formulario de captura, un clic afuera no
+// debe perder lo escrito) pasan por acá igual que el botón "Cancelar" —
+// con cambios sin guardar se pide confirmación antes de descartar; limpio
+// cierra directo.
 function generar() {
   form.value.password = generarPassword();
   passwordVisible.value = true;
@@ -130,7 +102,8 @@ async function guardar() {
       await store.crear(form.value);
     }
     tomarSnapshot();
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
     error.value = e?.message || 'Error al guardar';
   } finally {
@@ -140,18 +113,15 @@ async function guardar() {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal correo-form" role="dialog" aria-modal="true" aria-labelledby="correo-form-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="correo-form-title">{{ esEdicion ? 'Editar correo compartido' : 'Nuevo correo compartido' }}</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
+  <Modal
+    ref="modal"
+    :titulo="esEdicion ? 'Editar correo compartido' : 'Nuevo correo compartido'"
+    :confirmar-cierre="confirmarCierre"
+    :cerrar-en-backdrop="false"
+    @close="emit('cerrar', resultado)"
+  >
+      <form id="correo-form" @submit.prevent="guardar">
+        <div class="form-grid">
         <div class="form-group full">
           <label>Tipo de correo *</label>
           <div class="tipo-options">
@@ -174,82 +144,87 @@ async function guardar() {
           </div>
         </div>
 
-        <div class="form-group full">
-          <label for="cf-plataforma">Plataforma *</label>
-          <select
-            id="cf-plataforma"
-            v-model="form.plataforma_id"
-            required
-            :disabled="guardando || cargandoPlataformas"
-          >
+        <CarbonCampo
+          v-model="form.plataforma_id"
+          class="full"
+          etiqueta="Plataforma"
+          tipo="select"
+          requerido
+          :deshabilitado="guardando || cargandoPlataformas"
+        >
+          <template #opciones>
             <option value="" disabled>Seleccionar plataforma</option>
             <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
-        <div class="form-group full">
-          <label for="cf-usuario">Correo / usuario *</label>
-          <input id="cf-usuario" v-model="form.usuario" required :disabled="guardando" placeholder="marketing@empresa.com">
-        </div>
+        <CarbonCampo
+          v-model="form.usuario"
+          class="full"
+          etiqueta="Correo / usuario"
+          requerido
+          :deshabilitado="guardando"
+          placeholder="marketing@empresa.com"
+        />
 
-        <div class="form-group full">
-          <label for="cf-password">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
-          <div class="input-with-action">
-            <input
-              id="cf-password"
-              v-model="form.password"
-              :type="passwordVisible ? 'text' : 'password'"
-              autocomplete="new-password"
-              :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-              :disabled="guardando"
-            >
-            <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
-              <i class="ti ti-refresh" aria-hidden="true"></i>
-            </button>
-            <button
-              type="button"
-              class="icon-btn"
-              :title="passwordVisible ? 'Ocultar' : 'Mostrar'"
-              :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'"
-              @click="passwordVisible = !passwordVisible"
-            >
-              <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-            </button>
-          </div>
-        </div>
-
-        <div class="form-group full">
-          <label for="cf-url">URL</label>
-          <input id="cf-url" v-model="form.url" type="text" placeholder="https://..." :disabled="guardando">
-        </div>
-
-        <div class="form-group full">
-          <label for="cf-notas">Notas</label>
-          <textarea id="cf-notas" v-model="form.notas" :disabled="guardando"></textarea>
-        </div>
-
-        </div>
-
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Guardando...' : 'Guardar' }}
+        <div class="full input-with-action">
+          <CarbonCampo
+            v-model="form.password"
+            :etiqueta="esEdicion ? 'Nueva contraseña' : 'Contraseña'"
+            :tipo="passwordVisible ? 'text' : 'password'"
+            autocomplete="new-password"
+            :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+            :deshabilitado="guardando"
+          />
+          <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+            <i class="ti ti-refresh" aria-hidden="true"></i>
+          </button>
+          <button
+            type="button"
+            class="icon-btn"
+            :title="passwordVisible ? 'Ocultar' : 'Mostrar'"
+            :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+            @click="passwordVisible = !passwordVisible"
+          >
+            <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
           </button>
         </div>
+
+        <CarbonCampo
+          v-model="form.url"
+          class="full"
+          etiqueta="URL"
+          placeholder="https://..."
+          :deshabilitado="guardando"
+        />
+
+        <CarbonCampo
+          v-model="form.notas"
+          class="full"
+          etiqueta="Notas"
+          tipo="textarea"
+          :deshabilitado="guardando"
+        />
+
+        </div>
+
+        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
       </form>
-    </div>
-  </div>
-  </Transition>
+
+    <template #acciones>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="correo-form" :deshabilitado="guardando" :cargando="guardando">
+        {{ guardando ? 'Guardando...' : 'Guardar' }}
+      </CarbonButton>
+    </template>
+  </Modal>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
     @cancel="confirmarDescarte = false"
@@ -258,6 +233,16 @@ async function guardar() {
 </template>
 
 <style scoped>
+/* .form-group.full (main.css) exige la clase .form-group, que trae consigo
+   estilos de <input>/<select> viejos que pisarían los de CarbonCampo — acá
+   se repite solo el grid-column. Vue aplica el scope del padre también a la
+   raíz de un componente hijo (CarbonCampo incluido), así que esta regla
+   simple alcanza tanto a los <div class="full"> propios como a los
+   <CarbonCampo class="full">. */
+.full {
+  grid-column: 1 / -1;
+}
+
 .tipo-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -268,7 +253,7 @@ async function guardar() {
   display: flex;
   cursor: pointer;
   border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -292,7 +277,7 @@ async function guardar() {
 
 .tipo-option--active {
   border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  background: var(--color-accent-subtle);
 }
 
 .tipo-option-body {
@@ -302,19 +287,19 @@ async function guardar() {
 }
 
 .tipo-option-body > i {
-  font-size: 18px;
+  font-size: var(--icon-md);
   color: var(--color-primary);
   margin-bottom: 4px;
 }
 
 .tipo-option-label {
-  font-size: 13px;
+  font-size: var(--fs-body-01);
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 .tipo-option-desc {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   line-height: 1.3;
 }
@@ -322,15 +307,12 @@ async function guardar() {
 .input-with-action {
   display: flex;
   gap: 4px;
-  align-items: center;
+  align-items: flex-end;
 }
 
-.input-with-action input {
+.input-with-action :deep(.cds-campo) {
   flex: 1;
+  min-width: 0;
 }
 
-
-.modal-actions.full {
-  grid-column: 1 / -1;
-}
 </style>

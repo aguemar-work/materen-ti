@@ -6,14 +6,13 @@ import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import StaffModulosForm from './StaffModulosForm.vue';
 import StaffNombreForm from './StaffNombreForm.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useStaffStore();
 const authStore = useAuthStore();
@@ -22,10 +21,21 @@ const { lista, cargando, error } = storeToRefs(store);
 const ROLES = ['ASISTENTE', 'JEFE'];
 
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
 
-// Fila en curso (icon-btn/select deshabilitados mientras dura la petición,
-// mismo patrón que `migrandoId` en PersonalRegistrosView.vue)
+// Definición de columnas de CarbonDataTable: densidad `lg` (ver template) por
+// la cantidad de controles por fila (select de rol + 4 botones de acción).
+// "Nombre" es la elástica; "Rol" cae al pie de la tarjeta junto a las
+// acciones porque ahí es donde vivía el <select> del JEFE, y "Estado" sube a
+// la cabecera de la tarjeta (mismo lugar que ocupaba el badge de Rol/Estado).
+const columnas = [
+  { clave: 'nombre', label: 'Nombre', ordenable: true, elastica: true, movil: 'principal' },
+  { clave: 'rol', label: 'Rol', ordenable: true, movil: 'pie' },
+  { clave: 'activo', label: 'Estado', ordenable: true, movil: 'cab' },
+  { clave: 'acciones', label: 'Acciones', ancho: '176px', movil: 'pie' },
+];
+
+// Fila en curso (icon-btn/select deshabilitados mientras dura la petición)
 const procesandoId = ref(null);
 
 // Confirmación (ConfirmDialog compartido): solo desactivar es destructiva;
@@ -157,179 +167,104 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="cargando" class="no-results solo-movil">Cargando staff...</div>
-        <div v-else-if="error" class="no-results staff-error">{{ error }}</div>
+        <div v-if="error" class="no-results staff-error">{{ error }}</div>
 
-        <EmptyState
-          v-else-if="!cargando && lista.length === 0"
-          icono="ti ti-users"
-          titulo="Sin miembros"
-          mensaje="Los miembros del staff se crean desde el panel de InsForge Auth."
-        />
-
-        <template v-if="!error && (cargando || lista.length > 0)">
+        <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando staff…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Miembros del staff">
-            <thead>
-              <tr>
-                <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
-                <ThOrdenable clave="rol" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Rol</ThOrdenable>
-                <ThOrdenable clave="activo" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Estado</ThOrdenable>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="4" />
-              <template v-else>
-              <tr v-for="miembro in listaPaginada" :key="miembro.user_id">
-                <td>
-                  <div class="user-name">{{ miembro.nombre }}</div>
-                </td>
-                <td>
-                  <select
-                    v-if="authStore.esJefe"
-                    class="rol-select"
-                    :value="miembro.rol"
-                    :disabled="procesandoId === miembro.user_id"
-                    @change="cambiarRol(miembro, $event.target.value)"
-                  >
-                    <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
-                  </select>
-                  <span
-                    v-else
-                    class="badge badge-rol"
-                    :class="miembro.rol === 'JEFE' ? 'badge--purple' : 'badge--info'"
-                  >
-                    {{ miembro.rol }}
-                  </span>
-                </td>
-                <td>
-                  <BadgeEstado tipo="activo_staff" :valor="miembro.activo" status />
-                </td>
-                <td>
-                  <div class="actions">
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Editar nombre"
-                      :aria-label="`Editar nombre de ${miembro.nombre}`"
-                      @click="editarNombre(miembro)"
-                    >
-                      <i class="ti ti-pencil" aria-hidden="true"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :disabled="miembro.rol === 'JEFE'"
-                      :title="miembro.rol === 'JEFE' ? 'JEFE ve todos los módulos' : 'Módulos visibles'"
-                      :aria-label="`Módulos visibles de ${miembro.nombre}`"
-                      @click="gestionarModulos(miembro)"
-                    >
-                      <i class="ti ti-layout-grid" aria-hidden="true"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :disabled="miembro.rol === 'JEFE' || procesandoId === miembro.user_id"
-                      :title="miembro.rol === 'JEFE' ? 'JEFE siempre puede ver contraseñas' : (miembro.credenciales_ver ? 'Revocar acceso a ver contraseñas' : 'Otorgar acceso a ver contraseñas')"
-                      :aria-label="`Permiso de ver contraseñas de ${miembro.nombre}`"
-                      :aria-pressed="miembro.rol === 'JEFE' || miembro.credenciales_ver"
-                      @click="toggleCredencialesVer(miembro)"
-                    >
-                      <i :class="procesandoId === miembro.user_id ? 'ti ti-loader-2 spinner-icon' : (miembro.rol === 'JEFE' || miembro.credenciales_ver ? 'ti ti-key' : 'ti ti-key-off')" aria-hidden="true"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      :class="miembro.activo ? 'danger' : ''"
-                      type="button"
-                      :disabled="procesandoId === miembro.user_id"
-                      :title="miembro.activo ? 'Desactivar' : 'Activar'"
-                      :aria-label="miembro.activo ? 'Desactivar' : 'Activar'"
-                      @click="toggleActivo(miembro)"
-                    >
-                      <i :class="procesandoId === miembro.user_id ? 'ti ti-loader-2 spinner-icon' : (miembro.activo ? 'ti ti-user-off' : 'ti ti-user-check')"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
 
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Miembros del staff">
-          <li v-for="miembro in listaPaginada" :key="miembro.user_id" class="tarjeta-fila">
-            <div class="tarjeta-fila__principal user-name">{{ miembro.nombre }}</div>
-            <div class="tarjeta-fila__badges">
-              <span
-                v-if="!authStore.esJefe"
-                class="badge badge-rol"
-                :class="miembro.rol === 'JEFE' ? 'badge--purple' : 'badge--info'"
-              >
-                {{ miembro.rol }}
-              </span>
-              <BadgeEstado tipo="activo_staff" :valor="miembro.activo" status />
-            </div>
-            <div class="tarjeta-fila__pie">
-              <select
-                v-if="authStore.esJefe"
-                class="rol-select"
-                :value="miembro.rol"
-                :disabled="procesandoId === miembro.user_id"
-                @change="cambiarRol(miembro, $event.target.value)"
-              >
-                <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
-              </select>
+        <CarbonDataTable
+          :columnas="columnas"
+          :filas="listaPaginada"
+          :cargando="cargando"
+          densidad="lg"
+          :orden-por="columna"
+          :orden-dir="direccion"
+          etiqueta="Miembros del staff"
+          vacio-icono="ti ti-users"
+          vacio-titulo="Sin miembros"
+          vacio-mensaje="Los miembros del staff se crean desde el panel de InsForge Auth."
+          @ordenar="ordenarPor"
+        >
+          <template #celda-nombre="{ fila }">
+            <div class="user-name">{{ fila.nombre }}</div>
+          </template>
+          <template #celda-rol="{ fila }">
+            <select
+              v-if="authStore.esJefe"
+              class="rol-select"
+              :value="fila.rol"
+              :disabled="procesandoId === fila.user_id"
+              @change="cambiarRol(fila, $event.target.value)"
+            >
+              <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
+            </select>
+            <!-- Texto, no badge (pasada de diseño de tablas ago 2026): para
+                 quien no es JEFE, Rol y Estado competían como 2 píldoras de
+                 color en la misma fila. Rol es clasificación fija (solo 2
+                 valores), no un estado — mismo criterio que bajó
+                 Categoría/Tipo a texto en Tickets/Correos/Ubicaciones. -->
+            <span v-else class="rol-texto">{{ fila.rol }}</span>
+          </template>
+          <template #celda-activo="{ fila }">
+            <BadgeEstado tipo="activo_staff" :valor="fila.activo" status />
+          </template>
+          <template #celda-acciones="{ fila }">
+            <div class="actions">
               <button
-                class="icon-btn"
+                class="icon-btn fila-accion"
                 type="button"
                 title="Editar nombre"
-                :aria-label="`Editar nombre de ${miembro.nombre}`"
-                @click="editarNombre(miembro)"
+                :aria-label="`Editar nombre de ${fila.nombre}`"
+                @click="editarNombre(fila)"
               >
                 <i class="ti ti-pencil" aria-hidden="true"></i>
               </button>
               <button
-                class="icon-btn"
+                class="icon-btn fila-accion"
                 type="button"
-                :disabled="miembro.rol === 'JEFE'"
-                :title="miembro.rol === 'JEFE' ? 'JEFE ve todos los módulos' : 'Módulos visibles'"
-                :aria-label="`Módulos visibles de ${miembro.nombre}`"
-                @click="gestionarModulos(miembro)"
+                :disabled="fila.rol === 'JEFE'"
+                :title="fila.rol === 'JEFE' ? 'JEFE ve todos los módulos' : 'Módulos visibles'"
+                :aria-label="`Módulos visibles de ${fila.nombre}`"
+                @click="gestionarModulos(fila)"
               >
                 <i class="ti ti-layout-grid" aria-hidden="true"></i>
               </button>
               <button
-                class="icon-btn"
-                :class="{ activo: miembro.credenciales_ver }"
+                class="icon-btn fila-accion"
                 type="button"
-                :disabled="miembro.rol === 'JEFE' || procesandoId === miembro.user_id"
-                :title="miembro.rol === 'JEFE' ? 'JEFE siempre puede ver contraseñas' : (miembro.credenciales_ver ? 'Revocar acceso a ver contraseñas' : 'Otorgar acceso a ver contraseñas')"
-                :aria-label="`Permiso de ver contraseñas de ${miembro.nombre}`"
-                :aria-pressed="miembro.rol === 'JEFE' || miembro.credenciales_ver"
-                @click="toggleCredencialesVer(miembro)"
+                :disabled="fila.rol === 'JEFE' || procesandoId === fila.user_id"
+                :title="fila.rol === 'JEFE' ? 'JEFE siempre puede ver contraseñas' : (fila.credenciales_ver ? 'Revocar acceso a ver contraseñas' : 'Otorgar acceso a ver contraseñas')"
+                :aria-label="`Permiso de ver contraseñas de ${fila.nombre}`"
+                :aria-pressed="fila.rol === 'JEFE' || fila.credenciales_ver"
+                @click="toggleCredencialesVer(fila)"
               >
-                <i :class="procesandoId === miembro.user_id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-key'" aria-hidden="true"></i>
+                <i :class="procesandoId === fila.user_id ? 'ti ti-loader-2 spinner-icon' : (fila.rol === 'JEFE' || fila.credenciales_ver ? 'ti ti-key' : 'ti ti-key-off')" aria-hidden="true"></i>
               </button>
               <button
-                class="icon-btn"
-                :class="miembro.activo ? 'danger' : ''"
+                class="icon-btn fila-accion"
+                :class="fila.activo ? 'danger' : ''"
                 type="button"
-                :disabled="procesandoId === miembro.user_id"
-                :title="miembro.activo ? 'Desactivar' : 'Activar'"
-                :aria-label="miembro.activo ? 'Desactivar' : 'Activar'"
-                @click="toggleActivo(miembro)"
+                :disabled="procesandoId === fila.user_id"
+                :title="fila.activo ? 'Desactivar' : 'Activar'"
+                :aria-label="fila.activo ? 'Desactivar' : 'Activar'"
+                @click="toggleActivo(fila)"
               >
-                <i :class="procesandoId === miembro.user_id ? 'ti ti-loader-2 spinner-icon' : (miembro.activo ? 'ti ti-user-off' : 'ti ti-user-check')"></i>
+                <i :class="procesandoId === fila.user_id ? 'ti ti-loader-2 spinner-icon' : (fila.activo ? 'ti ti-user-off' : 'ti ti-user-check')"></i>
               </button>
             </div>
-          </li>
-        </ul>
-
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+          </template>
+        </CarbonDataTable>
         </template>
+
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="totalItems"
+          :tam-pagina="tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="staff"
+          @update:tam-pagina="cambiarTamPagina"
+        />
       </div>
     </main>
 
@@ -367,9 +302,12 @@ onMounted(async () => {
   color: var(--color-danger);
 }
 
-/* Estructura y color vienen del sistema de badges global (.badge + .badge--X);
-   aquí solo el tratamiento único de este chip: versalitas para el rol. */
-.badge-rol {
+/* Mismas versalitas para Rol en texto plano (JEFE viendo la fila de otro
+   ASISTENTE/JEFE, ver nota en el template) que antes en el <select>/badge:
+   es clasificación fija, no un estado. */
+.rol-texto {
+  color: var(--color-text-secondary);
+  font-size: var(--fs-body-01);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }

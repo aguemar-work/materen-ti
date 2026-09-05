@@ -9,11 +9,17 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
+import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { toTitleCase, trimText } from '../../core/formatters.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
-import Pagination from '../../components/shared/Pagination.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { TAMANOS_PAGINA, TAM_PAGINA_DEFECTO } from '../../constants/paginacion.js';
 import {
   CAMPOS_SISTEMA,
   detectarCampo,
@@ -26,6 +32,8 @@ import {
   sugerirAsignacion,
   consolidarNotas,
 } from './importarEquipos.js';
+
+const { volver } = useVolverContextual();
 
 // ── Paso actual: 'pegar' → 'mapeo' → 'grid' ──────────────────────
 const paso = ref('pegar');
@@ -270,7 +278,17 @@ function duplicadoSerie(fila) {
 const busquedaGrid = ref('');
 const filtroEstadoFila = ref('');
 const paginaGrid = ref(1);
-const TAM_PAGINA_GRID = 25;
+// Reactivo (antes una constante): la bandeja puede tener ~400 filas de un
+// Excel completo, así que el selector "Filas por página" (CarbonPagination)
+// paga acá — no es una lista efímera de 5 filas. Arranca en el mismo tamaño
+// que el resto de los listados (antes 25, que no era una de las opciones
+// ofrecidas y dejaba el selector mostrando otro número).
+const tamPaginaGrid = ref(TAM_PAGINA_DEFECTO);
+
+function cambiarTamPaginaGrid(nuevoTam) {
+  tamPaginaGrid.value = nuevoTam;
+  paginaGrid.value = 1;
+}
 
 const filasFiltradas = computed(() => {
   const q = busquedaGrid.value.trim().toLowerCase();
@@ -286,9 +304,37 @@ const filasFiltradas = computed(() => {
 watch([busquedaGrid, filtroEstadoFila], () => { paginaGrid.value = 1; });
 
 const filasPagina = computed(() => {
-  const desde = (paginaGrid.value - 1) * TAM_PAGINA_GRID;
-  return filasFiltradas.value.slice(desde, desde + TAM_PAGINA_GRID);
+  const desde = (paginaGrid.value - 1) * tamPaginaGrid.value;
+  return filasFiltradas.value.slice(desde, desde + tamPaginaGrid.value);
 });
+
+// Definición de columnas de CarbonDataTable. Son siempre las mismas 11 —a
+// diferencia de la primera impresión, el mapeo del Excel decide qué llena
+// cada celda, no qué columnas existen— así que no hay nada dinámico acá.
+// `:con-tarjetas="false"` porque esto es una grilla de EDICIÓN (input/select/
+// textarea por celda, varias BuscadorCombo), no un listado: no existe una
+// tarjeta móvil razonable para esto, ya vivía como tabla con scroll
+// horizontal (`min-width: 1400px`) y sigue así.
+const columnasImportar = [
+  { clave: 'excel', label: 'Excel' },
+  { clave: 'codigo', label: 'Código' },
+  { clave: 'tipo', label: 'Tipo' },
+  { clave: 'marca_modelo', label: 'Marca / Modelo' },
+  { clave: 'serie', label: 'Serie' },
+  { clave: 'costo', label: 'Costo' },
+  { clave: 'fecha_compra', label: 'F. compra' },
+  { clave: 'estado_fisico', label: 'Estado físico' },
+  { clave: 'asignacion', label: 'Asignación' },
+  { clave: 'notas', label: 'Notas', elastica: true },
+  { clave: 'migrar', label: 'Migrar' },
+];
+
+// Fila con error de migración resaltada (caso de uso real para `claseFila`):
+// el mensaje de error ya se ve en su celda, pero el tinte de fila entera
+// ayuda a ubicarla de un vistazo en una bandeja de ~400 filas.
+function claseFilaImportar(fila) {
+  return fila.estadoFila === 'error' ? 'fila-importar-error' : null;
+}
 
 // ── Progreso ───────────────────────────────────────────────────────
 const migradosSesion = ref(0);
@@ -400,8 +446,10 @@ onMounted(async () => {
 <template>
   <div class="importar-page vista-modulo">
     <PageHeader titulo="Importar equipos desde Excel" icono="ti ti-file-import">
-      <template #acciones>
-        <RouterLink class="btn" to="/equipos"><i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a Equipos</RouterLink>
+      <template #izquierda>
+        <button class="icon-btn btn-volver" type="button" title="Volver a Equipos" aria-label="Volver a Equipos" @click="volver('/equipos')">
+          <i class="ti ti-arrow-left"></i>
+        </button>
       </template>
     </PageHeader>
 
@@ -416,14 +464,17 @@ onMounted(async () => {
           En Excel, selecciona el rango con la fila de encabezados incluida, cópialo (Ctrl+C) y pégalo aquí abajo.
           Esto crea la bandeja de trabajo — desde ahí corriges cada equipo y lo migras a Equipos cuando esté listo.
         </p>
-        <div class="form-group">
-          <label for="importar-texto-pegado" class="sr-only">Datos pegados desde Excel</label>
-          <textarea id="importar-texto-pegado" v-model="textoPegado" rows="10" placeholder="Pega aquí las filas copiadas de Excel..."></textarea>
-        </div>
+        <CarbonCampo
+          v-model="textoPegado"
+          etiqueta="Datos pegados desde Excel"
+          tipo="textarea"
+          :filas="10"
+          placeholder="Pega aquí las filas copiadas de Excel..."
+        />
         <div class="modal-actions">
-          <button class="btn btn-primary" type="button" :disabled="!textoPegado.trim()" @click="continuarAMapeo">
-            Continuar <i class="ti ti-arrow-right" aria-hidden="true"></i>
-          </button>
+          <CarbonButton variante="primary" icono="ti-arrow-right" :deshabilitado="!textoPegado.trim()" @click="continuarAMapeo">
+            Continuar
+          </CarbonButton>
         </div>
       </div>
 
@@ -446,12 +497,15 @@ onMounted(async () => {
           </div>
         </div>
         <div class="modal-actions">
-          <button class="btn" type="button" :disabled="generandoGrilla" @click="paso = 'pegar'">Atrás</button>
-          <button class="btn btn-primary" type="button" :disabled="generandoGrilla" @click="continuarAGrilla">
-            <i v-if="generandoGrilla" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+          <CarbonButton variante="secondary" :deshabilitado="generandoGrilla" @click="paso = 'pegar'">Atrás</CarbonButton>
+          <CarbonButton
+            variante="primary"
+            icono="ti-arrow-right"
+            :cargando="generandoGrilla"
+            @click="continuarAGrilla"
+          >
             {{ generandoGrilla ? 'Guardando bandeja...' : 'Crear bandeja de corrección' }}
-            <i v-if="!generandoGrilla" class="ti ti-arrow-right" aria-hidden="true"></i>
-          </button>
+          </CarbonButton>
         </div>
       </div>
 
@@ -464,22 +518,21 @@ onMounted(async () => {
             <span v-if="conErrores" class="importar-resumen__errores"> · {{ conErrores }} con error</span>
           </div>
           <div class="importar-resumen__acciones">
-            <button class="btn btn-danger" type="button" :disabled="migrandoLote" @click="confirmarVaciar = true">Vaciar bandeja</button>
-            <button
-              class="btn btn-primary"
-              type="button"
-              :disabled="migrandoLote || !hayListasParaMigrar"
+            <CarbonButton variante="danger" :deshabilitado="migrandoLote" @click="confirmarVaciar = true">Vaciar bandeja</CarbonButton>
+            <CarbonButton
+              variante="primary"
+              :deshabilitado="migrandoLote || !hayListasParaMigrar"
+              :cargando="migrandoLote"
               @click="confirmarMigrarTodas = true"
             >
-              <i v-if="migrandoLote" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
               {{ migrandoLote ? `Migrando ${progresoLote.hecho}/${progresoLote.total}...` : 'Migrar todas las filas listas' }}
-            </button>
+            </CarbonButton>
           </div>
         </div>
 
         <div v-if="!filas.length" class="card no-results">
           Bandeja vacía — todo lo pegado ya se migró a Equipos.
-          <button class="btn" type="button" @click="paso = 'pegar'">Pegar otro lote</button>
+          <CarbonButton variante="secondary" @click="paso = 'pegar'">Pegar otro lote</CarbonButton>
         </div>
 
         <div v-else class="card card--fill">
@@ -499,113 +552,115 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="table-wrap importar-tabla-wrap">
-            <table aria-label="Grilla de corrección de equipos importados">
-              <thead>
-                <tr>
-                  <th scope="col">Excel</th>
-                  <th scope="col">Código</th>
-                  <th scope="col">Tipo</th>
-                  <th scope="col">Marca / Modelo</th>
-                  <th scope="col">Serie</th>
-                  <th scope="col">Costo</th>
-                  <th scope="col">F. compra</th>
-                  <th scope="col">Estado físico</th>
-                  <th scope="col">Asignación</th>
-                  <th scope="col">Notas</th>
-                  <th scope="col"><span class="sr-only">Migrar</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="fila in filasPagina" :key="fila.id">
-                  <td class="importar-crudo">
-                    <span>{{ fila.raw.categoria }}<template v-if="fila.raw.tipo"> / {{ fila.raw.tipo }}</template></span>
-                    <span v-if="fila.duplicadoKapo" class="badge badge--warning badge-inline" title="El Excel marca esta fila como duplicada (columna SUBIDO A KAPO)">
-                      <i class="ti ti-alert-triangle" aria-hidden="true"></i> Duplicado en Excel
-                    </span>
-                  </td>
-                  <td>
-                    <input v-model="fila.codigo" :aria-invalid="duplicadoCodigo(fila) ? 'true' : undefined" @input="marcarSucia(fila)">
-                    <span v-if="duplicadoCodigo(fila)" class="badge badge--danger badge-inline">Código duplicado</span>
-                  </td>
-                  <td>
-                    <select v-model="fila.tipo_id" @change="marcarSucia(fila)">
-                      <option v-for="t in tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
-                    </select>
-                  </td>
-                  <td class="importar-marca-modelo">
-                    <input v-model="fila.marca" placeholder="Marca" @input="marcarSucia(fila)">
-                    <input v-model="fila.modelo" placeholder="Modelo" @input="marcarSucia(fila)">
-                  </td>
-                  <td>
-                    <input v-model="fila.serie" :aria-invalid="duplicadoSerie(fila) ? 'true' : undefined" @input="marcarSucia(fila)">
-                    <span v-if="duplicadoSerie(fila)" class="badge badge--danger badge-inline">Serie duplicada</span>
-                  </td>
-                  <td>
-                    <input v-model.number="fila.costo" type="number" step="0.01" min="0" @input="marcarSucia(fila)">
-                  </td>
-                  <td>
-                    <input v-model="fila.fecha_compra" type="date" @change="marcarSucia(fila)">
-                  </td>
-                  <td>
-                    <select v-model="fila.estado" @change="marcarSucia(fila)">
-                      <option value="operativo">Operativo</option>
-                      <option value="en_reparacion">En reparación</option>
-                      <option value="de_baja">De baja</option>
-                      <option value="perdido">Perdido/robado</option>
-                    </select>
-                  </td>
-                  <td class="importar-asignacion">
-                    <select v-model="fila.modo" @change="onModoChange(fila)">
-                      <option value="disponible">Disponible</option>
-                      <option value="empleado">Asignado a empleado</option>
-                      <option value="ubicacion">En ubicación</option>
-                    </select>
-                    <BuscadorCombo
-                      v-if="fila.modo === 'empleado'"
-                      v-model="fila.empleado_id"
-                      :items="empleadosActivos"
-                      :campos-busqueda="['nombres', 'apellidos', 'dni']"
-                      :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
-                      placeholder="Buscar empleado..."
-                      @update:model-value="marcarSucia(fila)"
-                    >
-                      <template #resultado="{ item }">
-                        <span>{{ item.nombres }} {{ item.apellidos }}</span>
-                        <span class="combo-sec">{{ item.dni }}</span>
-                      </template>
-                    </BuscadorCombo>
-                    <div v-else-if="fila.modo === 'ubicacion'" class="importar-ubicacion">
-                      <select v-model="fila.ubicacion_id" @change="marcarSucia(fila)">
-                        <option value="" disabled>Seleccionar ubicación</option>
-                        <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-                      </select>
-                    </div>
-                    <span v-if="asignacionIncompatible(fila)" class="form-error importar-error-inline" role="alert">
-                      Un equipo no operativo no puede quedar asignado — pasa esta fila a "Disponible" o corrige el estado físico
-                    </span>
-                  </td>
-                  <td>
-                    <textarea v-model="fila.notas" rows="2" @input="marcarSucia(fila)"></textarea>
-                  </td>
-                  <td class="importar-guardar">
-                    <button
-                      class="btn"
-                      type="button"
-                      :disabled="!puedeMigrar(fila) || fila.estadoFila === 'guardando'"
-                      @click="migrarFila(fila)"
-                    >
-                      <i v-if="fila.estadoFila === 'guardando'" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-                      {{ fila.estadoFila === 'guardando' ? '...' : 'Migrar a Equipos' }}
-                    </button>
-                    <span v-if="fila.errorMsg" class="form-error importar-error-inline" role="alert">{{ fila.errorMsg }}</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="importar-tabla-wrap">
+          <CarbonDataTable
+            :columnas="columnasImportar"
+            :filas="filasPagina"
+            :con-tarjetas="false"
+            :clase-fila="claseFilaImportar"
+            etiqueta="Grilla de corrección de equipos importados"
+          >
+            <template #celda-excel="{ fila }">
+              <div class="importar-crudo">
+                <span>{{ fila.raw.categoria }}<template v-if="fila.raw.tipo"> / {{ fila.raw.tipo }}</template></span>
+                <CarbonTag v-if="fila.duplicadoKapo" variante="warning" class="badge-inline" title="El Excel marca esta fila como duplicada (columna SUBIDO A KAPO)">
+                  <i class="ti ti-alert-triangle" aria-hidden="true"></i> Duplicado en Excel
+                </CarbonTag>
+              </div>
+            </template>
+            <template #celda-codigo="{ fila }">
+              <input v-model="fila.codigo" :aria-invalid="duplicadoCodigo(fila) ? 'true' : undefined" @input="marcarSucia(fila)">
+              <CarbonTag v-if="duplicadoCodigo(fila)" variante="danger" class="badge-inline">Código duplicado</CarbonTag>
+            </template>
+            <template #celda-tipo="{ fila }">
+              <select v-model="fila.tipo_id" @change="marcarSucia(fila)">
+                <option v-for="t in tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
+              </select>
+            </template>
+            <template #celda-marca_modelo="{ fila }">
+              <div class="importar-marca-modelo">
+                <input v-model="fila.marca" placeholder="Marca" @input="marcarSucia(fila)">
+                <input v-model="fila.modelo" placeholder="Modelo" @input="marcarSucia(fila)">
+              </div>
+            </template>
+            <template #celda-serie="{ fila }">
+              <input v-model="fila.serie" :aria-invalid="duplicadoSerie(fila) ? 'true' : undefined" @input="marcarSucia(fila)">
+              <CarbonTag v-if="duplicadoSerie(fila)" variante="danger" class="badge-inline">Serie duplicada</CarbonTag>
+            </template>
+            <template #celda-costo="{ fila }">
+              <input v-model.number="fila.costo" type="number" step="0.01" min="0" @input="marcarSucia(fila)">
+            </template>
+            <template #celda-fecha_compra="{ fila }">
+              <input v-model="fila.fecha_compra" type="date" @change="marcarSucia(fila)">
+            </template>
+            <template #celda-estado_fisico="{ fila }">
+              <select v-model="fila.estado" @change="marcarSucia(fila)">
+                <option value="operativo">Operativo</option>
+                <option value="en_reparacion">En reparación</option>
+                <option value="de_baja">De baja</option>
+                <option value="perdido">Perdido/robado</option>
+              </select>
+            </template>
+            <template #celda-asignacion="{ fila }">
+              <div class="importar-asignacion">
+                <select v-model="fila.modo" @change="onModoChange(fila)">
+                  <option value="disponible">Disponible</option>
+                  <option value="empleado">Asignado a empleado</option>
+                  <option value="ubicacion">En ubicación</option>
+                </select>
+                <BuscadorCombo
+                  v-if="fila.modo === 'empleado'"
+                  v-model="fila.empleado_id"
+                  :items="empleadosActivos"
+                  :campos-busqueda="['nombres', 'apellidos', 'dni']"
+                  :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
+                  placeholder="Buscar empleado..."
+                  @update:model-value="marcarSucia(fila)"
+                >
+                  <template #resultado="{ item }">
+                    <span>{{ item.nombres }} {{ item.apellidos }}</span>
+                    <span class="combo-sec">{{ item.dni }}</span>
+                  </template>
+                </BuscadorCombo>
+                <div v-else-if="fila.modo === 'ubicacion'" class="importar-ubicacion">
+                  <select v-model="fila.ubicacion_id" @change="marcarSucia(fila)">
+                    <option value="" disabled>Seleccionar ubicación</option>
+                    <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+                  </select>
+                </div>
+                <span v-if="asignacionIncompatible(fila)" class="form-error importar-error-inline" role="alert">
+                  Un equipo no operativo no puede quedar asignado — pasa esta fila a "Disponible" o corrige el estado físico
+                </span>
+              </div>
+            </template>
+            <template #celda-notas="{ fila }">
+              <textarea v-model="fila.notas" rows="2" @input="marcarSucia(fila)"></textarea>
+            </template>
+            <template #celda-migrar="{ fila }">
+              <div class="importar-guardar">
+                <CarbonButton
+                  variante="tertiary"
+                  tam="sm"
+                  :deshabilitado="!puedeMigrar(fila) || fila.estadoFila === 'guardando'"
+                  :cargando="fila.estadoFila === 'guardando'"
+                  @click="migrarFila(fila)"
+                >
+                  {{ fila.estadoFila === 'guardando' ? '...' : 'Migrar a Equipos' }}
+                </CarbonButton>
+                <span v-if="fila.errorMsg" class="form-error importar-error-inline" role="alert">{{ fila.errorMsg }}</span>
+              </div>
+            </template>
+          </CarbonDataTable>
           </div>
 
-          <Pagination v-model="paginaGrid" :total-items="filasFiltradas.length" :page-size="TAM_PAGINA_GRID" />
+          <CarbonPagination
+            v-model="paginaGrid"
+            :total-items="filasFiltradas.length"
+            :tam-pagina="tamPaginaGrid"
+            :tamanos-pagina="TAMANOS_PAGINA"
+            unidad="equipos"
+            @update:tam-pagina="cambiarTamPaginaGrid"
+          />
         </div>
       </template>
       </template>
@@ -641,17 +696,17 @@ onMounted(async () => {
 }
 
 .importar-paso-title {
-  font-size: var(--fs-lg);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   color: var(--color-text-primary);
   margin: 0 0 10px;
 }
 
-.importar-page textarea { width: 100%; font-family: var(--font-mono, monospace); font-size: 12px; }
+.importar-page textarea { width: 100%; font-family: var(--font-mono, monospace); font-size: var(--fs-label-01); }
 
 .mapeo-lista {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   overflow: hidden;
   margin: 12px 0;
 }
@@ -666,7 +721,7 @@ onMounted(async () => {
 
 .mapeo-lista-head {
   background: var(--color-bg-subtle);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-label-01);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -682,7 +737,7 @@ onMounted(async () => {
 .mapeo-original {
   flex: 0 0 220px;
   font-family: var(--font-mono, monospace);
-  font-size: 13px;
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
 }
 
@@ -700,14 +755,20 @@ onMounted(async () => {
   padding: 16px 20px 20px;
 }
 
-.importar-resumen__conteo { font-size: var(--fs-base); }
+.importar-resumen__conteo { font-size: var(--fs-body-01); }
 .importar-resumen__errores { color: var(--color-danger-text); }
 .importar-resumen__acciones { display: flex; gap: 8px; }
 
-.importar-tabla-wrap table { min-width: 1400px; }
+/* :deep() porque <table>/<td>/<th> los renderiza CarbonDataTable en su
+   propio ámbito de scope; sin :deep esta regla no los alcanzaría. La
+   especificidad extra de `.cds-table` (dos clases) es a propósito: gana por
+   sobre la regla propia de CarbonDataTable que fija padding-top/bottom en 0
+   según la densidad — acá cada celda lleva controles de formulario reales
+   (inputs, selects, un textarea de 2 filas), no texto de una sola línea. */
+.importar-tabla-wrap :deep(.cds-table) { min-width: 1400px; }
 
-.importar-tabla-wrap td,
-.importar-tabla-wrap th {
+.importar-tabla-wrap :deep(.cds-table td),
+.importar-tabla-wrap :deep(.cds-table th) {
   vertical-align: top;
   padding: 8px;
 }
@@ -717,9 +778,9 @@ onMounted(async () => {
 .importar-tabla-wrap textarea {
   width: 100%;
   min-width: 90px;
-  font-size: 12.5px;
+  font-size: var(--fs-body-01);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-base);
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);
   padding: 4px 8px;
@@ -729,7 +790,7 @@ onMounted(async () => {
 .importar-tabla-wrap select:focus,
 .importar-tabla-wrap textarea:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--mat-ring);
+  box-shadow: 0 0 0 2px var(--ring);
   outline: none;
 }
 
@@ -747,7 +808,7 @@ onMounted(async () => {
   flex-direction: column;
   gap: 4px;
   min-width: 160px;
-  font-size: 12px;
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
@@ -759,18 +820,18 @@ onMounted(async () => {
   min-width: 100px;
 }
 
-.badge-inline {
-  margin-left: 6px;
-  vertical-align: middle;
-}
-
 /* Compactado para caber en una celda densa de la grilla; mismo color,
    fondo y borde que .form-error, solo con menos padding/tamaño. */
 .importar-error-inline.form-error {
-  font-size: 11px;
+  font-size: var(--fs-label-01);
   padding: 4px 8px;
   margin: 0;
 }
+
+/* Fila con error de migración (claseFila): :deep() porque el <tr> lo pinta
+   CarbonDataTable en su propio scope — mismo patrón que KbView.vue. Tinte
+   apenas, la propia celda "Migrar" ya lleva el mensaje de error en detalle. */
+:deep(.fila-importar-error) { background: var(--color-danger-bg); }
 
 .no-results {
   display: flex;
@@ -779,14 +840,4 @@ onMounted(async () => {
   gap: 10px;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-}
 </style>

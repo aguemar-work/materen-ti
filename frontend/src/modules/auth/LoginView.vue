@@ -3,6 +3,10 @@ import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/auth.js';
+import { NOMBRE_PRODUCTO } from '../../core/marca.js';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -121,26 +125,22 @@ async function onCambiarPassword() {
 <template>
   <div class="login-page">
     <div class="login-card card">
-      <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" class="login-logo">
+      <img src="/logo_materen_sisti.svg" :alt="NOMBRE_PRODUCTO" class="login-logo">
 
       <h2 class="login-title">{{ titulo }}</h2>
       <p v-if="subtitulo" class="login-subtitle">{{ subtitulo }}</p>
 
       <!-- Paso: login -->
       <form v-if="modo === 'login'" class="login-form" @submit.prevent="onSubmit">
-        <div class="form-group full">
-          <label for="email">Correo electrónico</label>
-          <input
-            id="email"
-            v-model="email"
-            type="email"
-            autocomplete="email"
-            placeholder="tu@empresa.com"
-            required
-            autofocus
-            :disabled="cargando"
-          >
-        </div>
+        <CarbonCampo
+          v-model="email"
+          etiqueta="Correo electrónico"
+          tipo="email"
+          placeholder="tu@empresa.com"
+          requerido
+          :deshabilitado="cargando"
+          autocomplete="username"
+        />
 
         <div class="form-group full">
           <label for="password">Contraseña</label>
@@ -167,14 +167,16 @@ async function onCambiarPassword() {
           </div>
         </div>
 
-        <button
-          class="btn btn-primary login-submit"
-          type="submit"
-          :disabled="cargando"
+        <CarbonButton
+          class="login-submit"
+          variante="primary"
+          tipo="submit"
+          ancho
+          :deshabilitado="cargando"
+          :cargando="cargando"
         >
-          <i v-if="cargando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
           {{ cargando ? 'Ingresando...' : 'Ingresar' }}
-        </button>
+        </CarbonButton>
 
         <button class="login-link" type="button" @click="irA('reset-email')">
           Olvidé la contraseña
@@ -186,23 +188,19 @@ async function onCambiarPassword() {
 
       <!-- Paso: pedir correo -->
       <form v-else-if="modo === 'reset-email'" class="login-form" @submit.prevent="onSolicitarCodigo">
-        <div class="form-group full">
-          <label for="reset-email">Correo electrónico</label>
-          <input
-            id="reset-email"
-            v-model="email"
-            type="email"
-            autocomplete="email"
-            placeholder="tu@empresa.com"
-            required
-            :disabled="procesando"
-          >
-        </div>
+        <CarbonCampo
+          v-model="email"
+          etiqueta="Correo electrónico"
+          tipo="email"
+          placeholder="tu@empresa.com"
+          requerido
+          :deshabilitado="procesando"
+          autocomplete="username"
+        />
 
-        <button class="btn btn-primary login-submit" type="submit" :disabled="procesando">
-          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+        <CarbonButton class="login-submit" variante="primary" tipo="submit" ancho :deshabilitado="procesando" :cargando="procesando">
           {{ procesando ? 'Enviando...' : 'Enviar código' }}
-        </button>
+        </CarbonButton>
 
         <button class="login-link" type="button" @click="volverAlLogin">
           Volver a iniciar sesión
@@ -213,26 +211,20 @@ async function onCambiarPassword() {
 
       <!-- Paso: código de verificación -->
       <form v-else-if="modo === 'reset-codigo'" class="login-form" @submit.prevent="onVerificarCodigo">
-        <div class="form-group full">
-          <label for="reset-codigo">Código de verificación</label>
-          <input
-            id="reset-codigo"
-            v-model="codigo"
-            class="input-codigo"
-            type="text"
-            inputmode="numeric"
-            autocomplete="one-time-code"
-            placeholder="123456"
-            maxlength="6"
-            required
-            :disabled="procesando"
-          >
-        </div>
+        <CarbonCampo
+          v-model="codigo"
+          class="input-codigo"
+          etiqueta="Código de verificación"
+          placeholder="123456"
+          requerido
+          :deshabilitado="procesando"
+          autocomplete="one-time-code"
+          inputmode="numeric"
+        />
 
-        <button class="btn btn-primary login-submit" type="submit" :disabled="procesando || codigo.trim().length < 6">
-          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+        <CarbonButton class="login-submit" variante="primary" tipo="submit" ancho :deshabilitado="procesando || codigo.trim().length < 6" :cargando="procesando">
           {{ procesando ? 'Verificando...' : 'Verificar código' }}
-        </button>
+        </CarbonButton>
 
         <button class="login-link" type="button" :disabled="procesando" @click="onSolicitarCodigo">
           Reenviar código
@@ -248,39 +240,30 @@ async function onCambiarPassword() {
 
       <!-- Paso: nueva contraseña -->
       <form v-else class="login-form" @submit.prevent="onCambiarPassword">
-        <div class="form-group full">
-          <label for="nueva-password">Nueva contraseña</label>
-          <input
-            id="nueva-password"
-            v-model="nuevaPassword"
-            type="password"
-            autocomplete="new-password"
-            placeholder="••••••••"
-            minlength="12"
-            required
-            :disabled="procesando"
-          >
-        </div>
+        <CarbonCampo
+          v-model="nuevaPassword"
+          etiqueta="Nueva contraseña"
+          tipo="password"
+          placeholder="••••••••"
+          requerido
+          :deshabilitado="procesando"
+          autocomplete="new-password"
+        />
 
-        <div class="form-group full">
-          <label for="confirmar-password">Confirmar contraseña</label>
-          <input
-            id="confirmar-password"
-            v-model="confirmarPassword"
-            type="password"
-            autocomplete="new-password"
-            placeholder="••••••••"
-            minlength="12"
-            required
-            :disabled="procesando"
-          >
-          <p v-if="errorConfirmar" class="form-error" role="alert">{{ errorConfirmar }}</p>
-        </div>
+        <CarbonCampo
+          v-model="confirmarPassword"
+          etiqueta="Confirmar contraseña"
+          tipo="password"
+          placeholder="••••••••"
+          requerido
+          :error="errorConfirmar"
+          :deshabilitado="procesando"
+          autocomplete="new-password"
+        />
 
-        <button class="btn btn-primary login-submit" type="submit" :disabled="procesando">
-          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+        <CarbonButton class="login-submit" variante="primary" tipo="submit" ancho :deshabilitado="procesando" :cargando="procesando">
           {{ procesando ? 'Guardando...' : 'Cambiar contraseña' }}
-        </button>
+        </CarbonButton>
 
         <button class="login-link" type="button" @click="volverAlLogin">
           Cancelar
@@ -314,14 +297,17 @@ async function onCambiarPassword() {
   margin-bottom: 1.75rem;
 }
 
-/* El logo es verde pino (#072E2A): en oscuro se pasa a blanco
-   para no perderse contra el fondo (antes lo resolvía un plate blanco). */
+/* El logo es azul de marca (#0064E0, ver frontend/public/logo_materen_sisti.svg):
+   en oscuro se pasa a blanco para no perderse contra el fondo (antes lo
+   resolvía un plate blanco). Corregido 2026-09-01: este comentario decía
+   "verde pino (#072E2A)", el color de la marca anterior — quedó describiendo
+   un logo que ya no existía desde la migración a azul. */
 [data-theme="dark"] .login-logo {
   filter: brightness(0) invert(1);
 }
 
 .login-title {
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-heading-03);
   font-weight: 600;
   letter-spacing: -0.02em;
   margin-bottom: 1.25rem;
@@ -333,7 +319,7 @@ async function onCambiarPassword() {
 }
 
 .login-subtitle {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   margin-bottom: 1.5rem;
 }
@@ -387,9 +373,9 @@ async function onCambiarPassword() {
   padding: 4px;
   display: flex;
   align-items: center;
-  font-size: 16px;
+  font-size: var(--icon-sm);
   color: var(--color-text-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius-base);
   transition: color 0.12s;
 }
 
@@ -397,11 +383,16 @@ async function onCambiarPassword() {
   color: var(--color-text-primary);
 }
 
+.password-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .login-link {
   background: none;
   border: none;
   padding: 0;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-primary);
   cursor: pointer;
   align-self: center;
@@ -416,9 +407,9 @@ async function onCambiarPassword() {
   cursor: not-allowed;
 }
 
-.input-codigo {
+.input-codigo :deep(.cds-campo__control) {
   text-align: center;
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   letter-spacing: 0.4em;
   font-variant-numeric: tabular-nums;
 }
@@ -427,19 +418,19 @@ async function onCambiarPassword() {
   color: var(--color-success-text);
   background: var(--color-success-bg);
   border: 1px solid var(--color-success-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 8px 12px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   margin: 0;
 }
 
 .login-error {
-  color: var(--color-danger);
+  color: var(--color-danger-text);
   background: var(--color-danger-bg);
   border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 8px 12px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   margin: 0;
 }
 </style>

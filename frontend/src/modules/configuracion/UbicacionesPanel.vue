@@ -3,24 +3,20 @@
 // usado por Equipos para asignar equipos y por Empleados para su ubicación
 // — independiente de areas_obras (función/asignación laboral, ver
 // AreasObrasPanel.vue), desde la migración 059.
-import { ref, onMounted } from 'vue';
-import { storeToRefs } from 'pinia';
 import { useUbicacionesStore } from '../../stores/catalogos.js';
-import { showToast } from '../../core/toast.js';
-import { usePaginacion } from '../../composables/usePaginacion.js';
-import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
+import { badgeInfo } from '../../core/badges.js';
+import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useUbicacionesStore();
-const { lista, cargando } = storeToRefs(store);
-const guardando = ref(false);
 
 // sede | almacen | obra | otro (migración 059) — check de BD, ver catálogo
 // espejo en core/badges.js (TIPOS_UBICACION) para el label/color del badge.
@@ -31,78 +27,28 @@ const TIPOS = [
   { valor: 'otro', label: 'Otro' },
 ];
 
-const porEliminar = ref(null);
-const eliminando = ref(false);
-// Al terminar la eliminación se cierra el diálogo con su animación de
-// salida (cerrar()); el @cancel que emite al final baja porEliminar.
-const dialogoEliminar = ref(null);
-
-const mostrarForm = ref(false);
-const editar = ref(null);
-const form = ref({ nombre: '', descripcion: '', tipo: 'sede' });
-const errorForm = ref('');
-// Cerrar vía Modal.cerrar() reproduce la animación de salida;
-// el @close del Modal es quien baja mostrarForm.
-const modalForm = ref(null);
-
-function abrirNueva() {
-  editar.value = null;
-  form.value = { nombre: '', descripcion: '', tipo: 'sede' };
-  errorForm.value = '';
-  mostrarForm.value = true;
-}
-
-function abrirEditar(u) {
-  editar.value = u;
-  form.value = { nombre: u.nombre, descripcion: u.descripcion || '', tipo: u.tipo };
-  errorForm.value = '';
-  mostrarForm.value = true;
-}
-
-async function guardar() {
-  errorForm.value = '';
-  guardando.value = true;
-  try {
-    if (editar.value) {
-      await store.actualizar(editar.value.id, form.value);
-      showToast('Ubicación actualizada');
-    } else {
-      await store.crear(form.value.nombre, form.value.descripcion, form.value.tipo);
-      showToast('Ubicación creada');
-    }
-    modalForm.value?.cerrar();
-  } catch (e) {
-    errorForm.value = e?.message || 'Error al guardar';
-  } finally {
-    guardando.value = false;
-  }
-}
-
-async function confirmarEliminar() {
-  const u = porEliminar.value;
-  if (!u) return;
-  eliminando.value = true;
-  try {
-    await store.softDelete(u.id);
-    showToast('Ubicación eliminada');
-    dialogoEliminar.value?.cerrar();
-  } catch (e) {
-    showToast(e?.message || 'Error al eliminar', 'error');
-  } finally {
-    eliminando.value = false;
-  }
-}
-
-onMounted(async () => {
-  try {
-    await store.cargar();
-  } catch (e) {
-    showToast(e?.message || 'Error al cargar ubicaciones', 'error');
-  }
+const {
+  lista, cargando, guardando, mostrarForm, editar, form, errorForm, modalForm,
+  porEliminar, eliminando, dialogoEliminar,
+  abrirNueva, abrirEditar, guardar, confirmarEliminar,
+  columna, direccion, ordenarPor, paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina,
+} = useCrudCatalogo(store, {
+  formVacio: () => ({ nombre: '', descripcion: '', tipo: 'sede' }),
+  aForm: (u) => ({ nombre: u.nombre, descripcion: u.descripcion || '', tipo: u.tipo }),
+  crear: (f) => store.crear(f.nombre, f.descripcion, f.tipo),
+  textos: {
+    creado: 'Ubicación creada',
+    actualizado: 'Ubicación actualizada',
+    eliminado: 'Ubicación eliminada',
+    errorCargar: 'Error al cargar ubicaciones',
+  },
 });
 
-const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const columnas = [
+  { clave: 'nombre', label: 'Nombre', ordenable: true, movil: 'principal' },
+  { clave: 'descripcion', label: 'Descripción', ordenable: true, elastica: true, movil: 'sec' },
+  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
+];
 </script>
 
 <template>
@@ -113,52 +59,54 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
           Ubicaciones
           <span class="badge-count">{{ lista.length }}</span>
         </div>
-        <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva ubicación
-        </button>
+        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNueva">Nueva ubicación</CarbonButton>
       </div>
 
-      <EmptyState
-        v-if="!cargando && lista.length === 0"
-        icono="ti ti-map-pin"
-        titulo="Sin ubicaciones"
-        mensaje="Crea almacenes, áreas u obras para asignarles equipos."
+      <CarbonDataTable
+        :columnas="columnas"
+        :filas="listaPaginada"
+        :cargando="cargando"
+        :orden-por="columna"
+        :orden-dir="direccion"
+        etiqueta="Ubicaciones"
+        vacio-icono="ti ti-map-pin"
+        vacio-titulo="Sin ubicaciones"
+        vacio-mensaje="Crea almacenes, áreas u obras para asignarles equipos."
+        @ordenar="ordenarPor"
+      >
+        <template #celda-nombre="{ fila }">
+          <!-- Tipo colapsa acá (mismo criterio que Tickets): es metadato
+               de clasificación fijo (sede/almacén/obra/otro), no un
+               estado — baja de badge a texto. -->
+          <div class="celda-apilada">
+            <span class="celda-apilada__meta">{{ badgeInfo('tipo_ubicacion', fila.tipo).label }}</span>
+            <span class="celda-apilada__principal"><i class="ti ti-map-pin ub-icon"></i> {{ fila.nombre }}</span>
+          </div>
+        </template>
+        <template #celda-descripcion="{ valor }">
+          <TextoVacio :valor="valor" />
+        </template>
+        <template #celda-acciones="{ fila }">
+          <div class="actions">
+            <button class="icon-btn fila-accion" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(fila)">
+              <i class="ti ti-pencil"></i>
+            </button>
+            <button class="icon-btn danger fila-accion" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = fila">
+              <i class="ti ti-trash"></i>
+            </button>
+          </div>
+        </template>
+      </CarbonDataTable>
+
+      <CarbonPagination
+        v-if="!cargando"
+        v-model="paginaActual"
+        :total-items="totalItems"
+        :tam-pagina="tamPagina"
+        :tamanos-pagina="TAMANOS_PAGINA"
+        unidad="ubicaciones"
+        @update:tam-pagina="cambiarTamPagina"
       />
-
-      <div v-else class="table-wrap">
-        <p v-if="cargando" class="sr-only" role="status">Cargando ubicaciones…</p>
-        <table aria-label="Ubicaciones">
-          <thead>
-            <tr>
-              <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
-              <th scope="col">Tipo</th>
-              <ThOrdenable clave="descripcion" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Descripción</ThOrdenable>
-              <th scope="col"><span class="sr-only">Acciones</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <SkeletonTabla v-if="cargando" :columnas="4" />
-            <template v-else>
-            <tr v-for="u in listaPaginada" :key="u.id">
-              <td><span class="user-name"><i class="ti ti-map-pin ub-icon"></i> {{ u.nombre }}</span></td>
-              <td><BadgeEstado tipo="tipo_ubicacion" :valor="u.tipo" /></td>
-              <td><TextoVacio :valor="u.descripcion" /></td>
-              <td>
-                <div class="actions">
-                  <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(u)">
-                    <i class="ti ti-pencil"></i>
-                  </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = u">
-                    <i class="ti ti-trash"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-            </template>
-          </tbody>
-        </table>
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-      </div>
     </div>
 
     <!-- Formulario (Modal accesible compartido) -->
@@ -170,28 +118,36 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
       @close="mostrarForm = false"
     >
       <form id="ub-form" class="ub-form" @submit.prevent="guardar">
-        <div class="form-group">
-          <label for="ub-nombre">Nombre *</label>
-          <input id="ub-nombre" v-model="form.nombre" required placeholder="ej: Almacén de TI, Recepción, Obra Norte" :disabled="guardando">
-        </div>
-        <div class="form-group">
-          <label for="ub-tipo">Tipo *</label>
-          <select id="ub-tipo" v-model="form.tipo" required :disabled="guardando">
+        <CarbonCampo
+          v-model="form.nombre"
+          etiqueta="Nombre"
+          requerido
+          placeholder="ej: Almacén de TI, Recepción, Obra Norte"
+          :deshabilitado="guardando"
+        />
+        <CarbonCampo
+          v-model="form.tipo"
+          etiqueta="Tipo"
+          tipo="select"
+          requerido
+          :deshabilitado="guardando"
+        >
+          <template #opciones>
             <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="ub-desc">Descripción</label>
-          <input id="ub-desc" v-model="form.descripcion" :disabled="guardando">
-        </div>
-        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+          </template>
+        </CarbonCampo>
+        <CarbonCampo
+          v-model="form.descripcion"
+          etiqueta="Descripción"
+          :deshabilitado="guardando"
+        />
+        <CarbonNotification v-if="errorForm" tipo="error">{{ errorForm }}</CarbonNotification>
       </form>
       <template #acciones>
-        <button class="btn" type="button" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
-        <button class="btn btn-primary" type="submit" form="ub-form" :disabled="guardando">
-          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+        <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modalForm?.cerrar()">Cancelar</CarbonButton>
+        <CarbonButton variante="primary" tipo="submit" form="ub-form" :deshabilitado="guardando" :cargando="guardando">
           {{ guardando ? 'Guardando...' : 'Guardar' }}
-        </button>
+        </CarbonButton>
       </template>
     </Modal>
 

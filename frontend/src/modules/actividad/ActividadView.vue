@@ -6,15 +6,16 @@ import { ref, computed, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
-import { formatFechaHora } from '../../core/formatters.js';
+import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const registros = ref([]);
 const cargando = ref(true);
@@ -36,7 +37,7 @@ const listaFiltrada = computed(() =>
 );
 
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
 
 function infoAccion(accion) {
   return ACCIONES[accion] || { label: accion, icon: 'ti ti-activity', clase: '' };
@@ -57,6 +58,19 @@ function exportar() {
   );
 }
 
+// "Cuenta" lleva un slot propio que apila Plataforma (metadato) sobre el
+// nombre de cuenta (mono); "Detalle" es la elástica (mismo criterio que
+// .col-elastica en la tabla vieja). Sin tarjeta móvil previa: agrupamos con
+// el mismo esquema que EmpresasView (acción como cabecera-tag, cuenta como
+// dato principal, quién/detalle de apoyo, fecha al pie).
+const columnas = [
+  { clave: 'user_email', label: 'Quién', ordenable: true, movil: 'sec' },
+  { clave: 'accion', label: 'Acción', ordenable: true, movil: 'cab' },
+  { clave: 'cuenta_usuario', label: 'Cuenta', ordenable: true, movil: 'principal' },
+  { clave: 'detalle', label: 'Detalle', elastica: true, movil: 'sec' },
+  { clave: 'created_at', label: 'Fecha', ordenable: true, num: true, movil: 'pie' },
+];
+
 onMounted(async () => {
   try {
     registros.value = await insforgeApi.listActividad(200);
@@ -72,9 +86,7 @@ onMounted(async () => {
   <div class="actividad-page vista-modulo">
     <PageHeader titulo="Actividad" icono="ti ti-activity" :conteo="listaFiltrada.length">
       <template #acciones>
-        <button class="btn" type="button" title="Exportar a Excel (CSV)" @click="exportar">
-          <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-        </button>
+        <CarbonButton variante="secondary" icono="ti-table-export" title="Exportar a Excel (CSV)" @click="exportar">Exportar</CarbonButton>
       </template>
     </PageHeader>
 
@@ -94,50 +106,54 @@ onMounted(async () => {
           </div>
         </div>
 
-        <EmptyState
-          v-if="!cargando && listaFiltrada.length === 0"
-          icono="ti ti-activity"
-          titulo="Sin actividad registrada"
-          mensaje="Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña."
+        <CarbonDataTable
+          densidad="sm"
+          :columnas="columnas"
+          :filas="listaPaginada"
+          :cargando="cargando"
+          :orden-por="columna"
+          :orden-dir="direccion"
+          etiqueta="Auditoría de accesos a contraseñas"
+          vacio-icono="ti ti-activity"
+          vacio-titulo="Sin actividad registrada"
+          vacio-mensaje="Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña."
+          @ordenar="ordenarPor"
+        >
+          <template #celda-user_email="{ fila }">
+            {{ fila.user_email || '(empleado, vía enlace)' }}
+          </template>
+          <template #celda-accion="{ fila }">
+            <CarbonTag :variante="infoAccion(fila.accion).clase">
+              <i :class="infoAccion(fila.accion).icon"></i>
+              {{ infoAccion(fila.accion).label }}
+            </CarbonTag>
+          </template>
+          <template #celda-cuenta_usuario="{ fila }">
+            <!-- Cuenta + Plataforma colapsan (mismo criterio que
+                 Tickets): Plataforma es el metadato que agrupa,
+                 Cuenta es el dato principal de la fila. -->
+            <div class="celda-apilada">
+              <span class="celda-apilada__meta"><TextoVacio :valor="fila.plataforma" /></span>
+              <span class="celda-apilada__principal cuenta-cell"><TextoVacio :valor="fila.cuenta_usuario" /></span>
+            </div>
+          </template>
+          <template #celda-detalle="{ fila }">
+            <span v-if="fila.detalle" class="detalle-cell" :title="fila.detalle">{{ fila.detalle }}</span>
+            <TextoVacio v-else />
+          </template>
+          <template #celda-created_at="{ fila }">
+            <span class="fecha-cell" :title="formatFechaHora(fila.created_at)">{{ formatAntiguedad(fila.created_at) }}</span>
+          </template>
+        </CarbonDataTable>
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="totalItems"
+          :tam-pagina="tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="movimientos"
+          @update:tam-pagina="cambiarTamPagina"
         />
-
-        <div v-else class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando actividad…</p>
-          <table aria-label="Auditoría de accesos a contraseñas">
-            <thead>
-              <tr>
-                <ThOrdenable clave="created_at" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Fecha</ThOrdenable>
-                <ThOrdenable clave="user_email" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Quién</ThOrdenable>
-                <ThOrdenable clave="accion" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Acción</ThOrdenable>
-                <ThOrdenable clave="cuenta_usuario" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Cuenta</ThOrdenable>
-                <ThOrdenable clave="plataforma" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Plataforma</ThOrdenable>
-                <th scope="col">Detalle</th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="6" />
-              <template v-else>
-              <tr v-for="r in listaPaginada" :key="r.id">
-                <td class="fecha-cell">{{ formatFechaHora(r.created_at) }}</td>
-                <td>{{ r.user_email || '(empleado, vía enlace)' }}</td>
-                <td>
-                  <span class="badge" :class="infoAccion(r.accion).clase">
-                    <i :class="infoAccion(r.accion).icon"></i>
-                    {{ infoAccion(r.accion).label }}
-                  </span>
-                </td>
-                <td class="cuenta-cell"><TextoVacio :valor="r.cuenta_usuario" /></td>
-                <td><TextoVacio :valor="r.plataforma" /></td>
-                <td class="detalle-cell">
-                  <span v-if="r.detalle" :title="r.detalle">{{ r.detalle }}</span>
-                  <TextoVacio v-else />
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-        </div>
       </div>
     </main>
   </div>
@@ -156,6 +172,4 @@ onMounted(async () => {
   white-space: normal;
   word-break: break-word;
 }
-
-/* Estructura y color: sistema de badges global (.badge + .badge--X) */
 </style>

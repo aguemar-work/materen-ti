@@ -8,7 +8,10 @@ import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -120,7 +123,7 @@ async function votar(util) {
   votando.value = true;
   try {
     articulo.value = await insforgeApi.votarKbArticulo(articulo.value.id, util);
-    showToast('Gracias por tu respuesta');
+    showToast('Gracias por la respuesta');
   } catch (e) {
     showToast(e?.message || 'No se pudo registrar el voto', 'error');
   } finally {
@@ -160,7 +163,7 @@ onMounted(async () => {
   <div class="kb-detalle-page vista-modulo">
     <PageHeader>
       <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" @click="volver('/base-conocimiento')">
+        <button class="icon-btn btn-volver" type="button" title="Volver" aria-label="Volver" @click="volver('/base-conocimiento')">
           <i class="ti ti-arrow-left"></i>
         </button>
         <div v-if="articulo" class="header-emp">
@@ -189,83 +192,82 @@ onMounted(async () => {
               <div class="datos-title">Solución</div>
               <p v-if="articulo.solucion" class="kb-texto kb-solucion">{{ articulo.solucion }}</p>
               <p v-else class="kb-solucion-pendiente">
-                <span class="badge badge--warning">Pendiente</span> Todavía sin completar.
+                <CarbonTag variante="warning">Pendiente</CarbonTag> Todavía sin completar.
               </p>
             </div>
 
             <div class="kb-acciones">
-              <button v-if="puedeEditar" class="btn" type="button" @click="abrirEdicion">
-                <i class="ti ti-pencil" aria-hidden="true"></i> Editar
-              </button>
-              <button
+              <CarbonButton v-if="puedeEditar" variante="secondary" icono="ti-pencil" @click="abrirEdicion">
+                Editar
+              </CarbonButton>
+              <CarbonButton
                 v-if="puedeEditar && articulo.estado === 'borrador'"
-                class="btn"
-                type="button"
-                :disabled="cambiandoEstado"
+                variante="secondary"
+                icono="ti-send"
+                :deshabilitado="cambiandoEstado"
                 @click="cambiarEstado('en_revision')"
               >
-                <i class="ti ti-send" aria-hidden="true"></i> Enviar a revisión
-              </button>
-              <button
+                Enviar a revisión
+              </CarbonButton>
+              <CarbonButton
                 v-if="auth.esJefe && ['borrador', 'en_revision'].includes(articulo.estado)"
-                class="btn btn-primary"
-                type="button"
-                :disabled="cambiandoEstado"
+                variante="primary"
+                icono="ti-circle-check"
+                :deshabilitado="cambiandoEstado"
                 @click="cambiarEstado('publicado')"
               >
-                <i class="ti ti-circle-check" aria-hidden="true"></i> Publicar
-              </button>
-              <button
+                Publicar
+              </CarbonButton>
+              <CarbonButton
                 v-if="auth.esJefe && articulo.estado === 'publicado'"
-                class="btn"
-                type="button"
-                :disabled="cambiandoEstado"
+                variante="secondary"
+                icono="ti-archive"
+                :deshabilitado="cambiandoEstado"
                 @click="cambiarEstado('obsoleto')"
               >
-                <i class="ti ti-archive" aria-hidden="true"></i> Marcar obsoleto
-              </button>
-              <button v-if="puedeEditar" class="btn btn-danger" type="button" @click="confirmarEliminar = true">
-                <i class="ti ti-trash" aria-hidden="true"></i> Eliminar
-              </button>
+                Marcar obsoleto
+              </CarbonButton>
+              <CarbonButton v-if="puedeEditar" variante="danger" icono="ti-trash" @click="confirmarEliminar = true">
+                Eliminar
+              </CarbonButton>
             </div>
 
             <div v-if="puedeVotar" class="kb-feedback-bloque">
               <span class="kb-feedback-label">¿Te sirvió este artículo?</span>
-              <button class="btn" type="button" :disabled="votando" @click="votar(true)">
-                <i class="ti ti-thumb-up" aria-hidden="true"></i> Sí ({{ articulo.util_si }})
-              </button>
-              <button class="btn" type="button" :disabled="votando" @click="votar(false)">
-                <i class="ti ti-thumb-down" aria-hidden="true"></i> No ({{ articulo.util_no }})
-              </button>
+              <CarbonButton variante="ghost" icono="ti-thumb-up" :deshabilitado="votando" @click="votar(true)">
+                Sí ({{ articulo.util_si }})
+              </CarbonButton>
+              <CarbonButton variante="ghost" icono="ti-thumb-down" :deshabilitado="votando" @click="votar(false)">
+                No ({{ articulo.util_no }})
+              </CarbonButton>
             </div>
           </template>
 
           <form v-else class="kb-form-edicion" @submit.prevent="guardarEdicion">
-            <div class="form-group">
-              <label for="kbe-titulo">Título</label>
-              <input id="kbe-titulo" v-model="formEdicion.titulo" required :disabled="guardandoEdicion">
-            </div>
-            <div class="form-group">
-              <label for="kbe-categoria">Categoría</label>
-              <select id="kbe-categoria" v-model="formEdicion.categoria_id" :disabled="guardandoEdicion">
+            <CarbonCampo v-model="formEdicion.titulo" etiqueta="Título" requerido :deshabilitado="guardandoEdicion" />
+
+            <CarbonCampo v-model="formEdicion.categoria_id" etiqueta="Categoría" tipo="select" :deshabilitado="guardandoEdicion">
+              <template #opciones>
                 <option value="">Sin categoría</option>
                 <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="kbe-sintoma">Síntoma</label>
-              <input id="kbe-sintoma" v-model="formEdicion.sintoma" :disabled="guardandoEdicion">
-            </div>
-            <div class="form-group">
-              <label for="kbe-solucion">Solución</label>
-              <textarea id="kbe-solucion" v-model="formEdicion.solucion" rows="8" placeholder="Pasos para resolverlos..." :disabled="guardandoEdicion"></textarea>
-            </div>
+              </template>
+            </CarbonCampo>
+
+            <CarbonCampo v-model="formEdicion.sintoma" etiqueta="Síntoma" :deshabilitado="guardandoEdicion" />
+
+            <CarbonCampo
+              v-model="formEdicion.solucion"
+              etiqueta="Solución"
+              tipo="textarea"
+              :filas="8"
+              placeholder="Pasos para resolverlos..."
+              :deshabilitado="guardandoEdicion"
+            />
             <div class="modal-actions">
-              <button class="btn" type="button" :disabled="guardandoEdicion" @click="editando = false">Cancelar</button>
-              <button class="btn btn-primary" type="submit" :disabled="guardandoEdicion">
-                <i v-if="guardandoEdicion" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+              <CarbonButton variante="secondary" :deshabilitado="guardandoEdicion" @click="editando = false">Cancelar</CarbonButton>
+              <CarbonButton variante="primary" tipo="submit" :cargando="guardandoEdicion">
                 {{ guardandoEdicion ? 'Guardando...' : 'Guardar' }}
-              </button>
+              </CarbonButton>
             </div>
           </form>
         </div>
@@ -315,13 +317,13 @@ onMounted(async () => {
 
 <style scoped>
 .header-emp h1 {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   margin: 0;
 }
 
 .header-sub {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
@@ -338,14 +340,14 @@ onMounted(async () => {
 }
 
 .kb-fecha {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-tertiary);
 }
 
 .kb-bloque { margin-bottom: 20px; }
 
 .kb-texto {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-primary);
   white-space: pre-wrap;
   margin: 6px 0 0;
@@ -353,7 +355,7 @@ onMounted(async () => {
 
 .kb-solucion {
   background: var(--color-bg-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
 }
 
@@ -363,7 +365,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-warning-text);
   margin: 6px 0 0;
 }
@@ -384,7 +386,7 @@ onMounted(async () => {
 }
 
 .kb-feedback-label {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
@@ -397,28 +399,9 @@ onMounted(async () => {
 /* Mismo patrón que TicketDetalleView (columna de datos): título de sección
    con ícono, bloques separados por borde superior sutil, texto secundario
    para el detalle y terciario/itálica para las notas vacías. */
-.datos-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 10px;
-}
-
-.tk-seccion {
-  margin-top: 16px;
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
-}
-
-.tk-detalle { font-size: var(--fs-sm); color: var(--color-text-secondary); margin: 2px 0; }
-.tk-nota { font-size: var(--fs-sm); color: var(--color-text-tertiary); font-style: italic; margin: 4px 0 0; }
-
 .tk-kb-relacionado {
   display: block;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-accent-text);
   text-decoration: none;
 }

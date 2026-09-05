@@ -1,8 +1,9 @@
 import { formatFecha, fechaLocalISO } from '../../core/formatters.js';
 
-// Aplana las 8 categorías de pendientes del Dashboard (cuentas, licencias,
-// equipos, tickets) en un solo feed ordenado por urgencia real, en vez de
-// mostrarlas como cajas separadas de igual peso visual.
+// Aplana las categorías de pendientes del Dashboard (cuentas, licencias,
+// equipos, tickets, problemas y altas de personal a medias) en un solo feed
+// ordenado por urgencia real, en vez de mostrarlas como cajas separadas de
+// igual peso visual.
 //
 // Reglas de tier/orden (decisión de producto, no derivar de nuevo):
 // - Tier 1 (crítico): sin contraseña, equipos sin devolver, licencias y
@@ -38,7 +39,7 @@ function contextoCuenta(item) {
   return 'Sin titular activo';
 }
 
-export function construirFeedPendientes(pendientes, pendientesTickets, pendientesProblemas = {}) {
+export function construirFeedPendientes(pendientes, pendientesTickets, pendientesProblemas = {}, altasIncompletas = []) {
   const items = [];
 
   for (const c of pendientes.sinPassword || []) {
@@ -88,7 +89,10 @@ export function construirFeedPendientes(pendientes, pendientesTickets, pendiente
       key: `garantia-${g.equipo_id}`,
       tier: g.vencida ? 1 : 2,
       icono: 'ti ti-shield-check',
-      colorFamilia: g.vencida ? 'danger' : 'teal',
+      // 'teal' colisionaba con la prioridad "Media" de Tickets (dominio-tickets.js) —
+      // se alinea con el mismo criterio que Licencia por vencer (info, no vencida)
+      // / vencida (danger), en vez de introducir un color sin relación (ago 2026).
+      colorFamilia: g.vencida ? 'danger' : 'info',
       categoriaLabel: 'Garantía',
       titulo: `${g.codigo} — ${g.equipo}`,
       contexto: `${g.vencida ? 'Venció el' : 'Vence el'} ${formatFecha(g.garantia_hasta)}`,
@@ -116,7 +120,10 @@ export function construirFeedPendientes(pendientes, pendientesTickets, pendiente
       key: `tk-sinasignar-${t.ticket_id}`,
       tier: 2,
       icono: 'ti ti-headset',
-      colorFamilia: 'purple',
+      // 'purple' colisionaba con Ubicaciones/rol JEFE y con la prioridad
+      // "Alta" de Tickets — 'warning' ya es el color de "atención" de este
+      // mismo feed (Rotar contraseña, Ticket abierto +3 días) (ago 2026).
+      colorFamilia: 'warning',
       categoriaLabel: 'Ticket sin asignar',
       titulo: t.codigo,
       contexto: t.titulo,
@@ -130,7 +137,10 @@ export function construirFeedPendientes(pendientes, pendientesTickets, pendiente
       key: `tk-sinvincular-${t.ticket_id}`,
       tier: 2,
       icono: 'ti ti-user-question',
-      colorFamilia: 'accent',
+      // 'accent' colisionaba con contadores/"copió contraseña" — es un dato
+      // incompleto, no una urgencia de acción, así que va en 'neutral'
+      // (mismo significado que "inactivo/de baja" en la tabla de badges).
+      colorFamilia: 'neutral',
       categoriaLabel: 'Ticket sin vincular',
       titulo: t.codigo,
       contexto: t.titulo,
@@ -150,6 +160,31 @@ export function construirFeedPendientes(pendientes, pendientesTickets, pendiente
       contexto: `${t.titulo} · desde ${formatFecha(t.desde)}`,
       destino: `/tickets/${t.ticket_id}`,
       diasUrgencia: diasDesde(t.desde),
+    });
+  }
+
+  // ── Altas a medias ──────────────────────────────────────────────────
+  // Alguien que entró hace poco y todavía no tiene con qué trabajar. La
+  // regla vive en core/dominio-empleados.js; el Dashboard solo la pide si
+  // el usuario tiene el módulo `correos` (ver empleadosApi.altasIncompletas).
+  //
+  // Sube a tier 1 pasados 3 días con el mismo criterio que "Ticket abierto
+  // +3 días" ya usa en este archivo: al principio es un alta en curso, no un
+  // olvido; después son días de una persona sin poder trabajar.
+  for (const a of altasIncompletas || []) {
+    const urgente = a.dias > 3;
+    items.push({
+      key: `alta-${a.empleado_id}`,
+      tier: urgente ? 1 : 2,
+      icono: 'ti ti-user-exclamation',
+      colorFamilia: urgente ? 'danger' : 'warning',
+      categoriaLabel: 'Alta sin completar',
+      titulo: a.nombre,
+      contexto: a.dias === 0
+        ? `Entró hoy${a.cargo ? ` · ${a.cargo}` : ''} · sin cuenta todavía`
+        : `Entró hace ${a.dias} ${a.dias === 1 ? 'día' : 'días'}${a.cargo ? ` · ${a.cargo}` : ''} · sigue sin cuenta`,
+      destino: `/empleados/${a.empleado_id}`,
+      diasUrgencia: a.dias,
     });
   }
 

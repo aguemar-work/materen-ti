@@ -3,16 +3,19 @@
 // respuestas son estado local de esta vista (no se comparten con otra
 // pantalla, no necesitan vivir en el store de Pinia).
 import { ref, computed, onMounted } from 'vue';
-import { useRoute, RouterLink } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { resumenPregunta } from '../../core/dominio-encuestas.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -134,6 +137,21 @@ function exportar() {
   );
 }
 
+// Definición de columnas de CarbonDataTable: sin orden ni paginación (la
+// lista de rondas de una encuesta es corta). "Abierta" es la más parecida a
+// un dato principal; ninguna columna es de texto largo, así que no hay
+// elástica.
+const columnas = [
+  { clave: 'estado', label: 'Estado', movil: 'pie' },
+  { clave: 'n_respuestas', label: 'Respuestas', num: true, movil: 'sec' },
+  { clave: 'abierta_en', label: 'Abierta', num: true, movil: 'principal' },
+  { clave: 'acciones', label: 'Acciones', ancho: '132px', movil: 'pie' },
+];
+
+function claseFilaRonda(ronda) {
+  return { 'fila-activa': rondaSeleccionada.value?.id === ronda.id };
+}
+
 onMounted(cargar);
 </script>
 
@@ -141,11 +159,10 @@ onMounted(cargar);
   <div class="encuesta-detalle-page vista-modulo">
     <PageHeader :titulo="encuesta?.titulo || 'Encuesta'" icono="ti ti-clipboard-list">
       <template #acciones>
-        <RouterLink class="btn" to="/encuestas"><i class="ti ti-arrow-left" aria-hidden="true"></i> Volver</RouterLink>
-        <button v-if="auth.esJefe" class="btn btn-primary" type="button" :disabled="creandoRonda" @click="nuevaRonda">
-          <i :class="creandoRonda ? 'ti ti-loader-2 spinner-icon' : 'ti ti-circle-plus'" aria-hidden="true"></i>
+        <CarbonButton variante="secondary" icono="ti-arrow-left" :to="'/encuestas'">Volver</CarbonButton>
+        <CarbonButton v-if="auth.esJefe" variante="primary" icono="ti-circle-plus" :cargando="creandoRonda" @click="nuevaRonda">
           {{ creandoRonda ? 'Abriendo...' : 'Nueva ronda' }}
-        </button>
+        </CarbonButton>
       </template>
     </PageHeader>
 
@@ -163,94 +180,49 @@ onMounted(cargar);
             :mensaje="auth.esJefe ? 'Abra una ronda para generar el link que va a compartir.' : 'Todavía no se abrió ninguna ronda de esta encuesta.'"
           />
 
-          <template v-else>
-          <div class="table-wrap solo-escritorio">
-            <table aria-label="Rondas de la encuesta">
-              <thead>
-                <tr>
-                  <th scope="col">Abierta</th>
-                  <th scope="col">Estado</th>
-                  <th scope="col">Respuestas</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="r in rondas" :key="r.id" :class="{ 'fila-activa': rondaSeleccionada?.id === r.id }">
-                  <td>{{ formatFecha(r.abierta_en) }}</td>
-                  <td>
-                    <span class="badge" :class="r.cerrada ? 'badge--neutral' : 'badge--success'">
-                      {{ r.cerrada ? 'Cerrada' : 'Abierta' }}
-                    </span>
-                  </td>
-                  <td>{{ r.n_respuestas }}</td>
-                  <td>
-                    <div class="actions">
-                      <button class="icon-btn" type="button" title="Copiar link" aria-label="Copiar link" :disabled="r.cerrada" @click="copiarLink(r)">
-                        <i class="ti ti-link"></i>
-                      </button>
-                      <button class="icon-btn" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(r)">
-                        <i class="ti ti-chart-bar"></i>
-                      </button>
-                      <button
-                        v-if="auth.esJefe && !r.cerrada"
-                        class="icon-btn"
-                        type="button"
-                        title="Cerrar ronda"
-                        aria-label="Cerrar ronda"
-                        :disabled="cerrandoId === r.id"
-                        @click="pedirCerrarRonda(r)"
-                      >
-                        <i class="ti ti-lock"></i>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Render móvil: misma lista, como tarjetas apiladas -->
-          <ul class="lista-tarjetas solo-movil" aria-label="Rondas de la encuesta">
-            <li v-for="r in rondas" :key="r.id" class="tarjeta-fila" :class="{ 'fila-activa': rondaSeleccionada?.id === r.id }">
-              <div class="tarjeta-fila__principal">{{ formatFecha(r.abierta_en) }}</div>
-              <div class="tarjeta-fila__sec">
-                <span>{{ r.n_respuestas }} respuestas</span>
+          <CarbonDataTable
+            v-else
+            :columnas="columnas"
+            :filas="rondas"
+            :clase-fila="claseFilaRonda"
+            etiqueta="Rondas de la encuesta"
+          >
+            <template #celda-estado="{ fila }">
+              <CarbonTag :variante="fila.cerrada ? 'neutral' : 'success'">
+                {{ fila.cerrada ? 'Cerrada' : 'Abierta' }}
+              </CarbonTag>
+            </template>
+            <template #celda-abierta_en="{ fila }">
+              <span :title="formatFechaHora(fila.abierta_en)">{{ formatAntiguedad(fila.abierta_en) }}</span>
+            </template>
+            <template #celda-acciones="{ fila }">
+              <div class="actions">
+                <button class="icon-btn fila-accion" type="button" title="Copiar link" aria-label="Copiar link" :disabled="fila.cerrada" @click="copiarLink(fila)">
+                  <i class="ti ti-link"></i>
+                </button>
+                <button class="icon-btn fila-accion" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(fila)">
+                  <i class="ti ti-chart-bar"></i>
+                </button>
+                <button
+                  v-if="auth.esJefe && !fila.cerrada"
+                  class="icon-btn fila-accion"
+                  type="button"
+                  title="Cerrar ronda"
+                  aria-label="Cerrar ronda"
+                  :disabled="cerrandoId === fila.id"
+                  @click="pedirCerrarRonda(fila)"
+                >
+                  <i class="ti ti-lock"></i>
+                </button>
               </div>
-              <div class="tarjeta-fila__pie">
-                <span class="badge" :class="r.cerrada ? 'badge--neutral' : 'badge--success'">
-                  {{ r.cerrada ? 'Cerrada' : 'Abierta' }}
-                </span>
-                <div class="actions">
-                  <button class="icon-btn" type="button" title="Copiar link" aria-label="Copiar link" :disabled="r.cerrada" @click="copiarLink(r)">
-                    <i class="ti ti-link"></i>
-                  </button>
-                  <button class="icon-btn" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(r)">
-                    <i class="ti ti-chart-bar"></i>
-                  </button>
-                  <button
-                    v-if="auth.esJefe && !r.cerrada"
-                    class="icon-btn"
-                    type="button"
-                    title="Cerrar ronda"
-                    aria-label="Cerrar ronda"
-                    :disabled="cerrandoId === r.id"
-                    @click="pedirCerrarRonda(r)"
-                  >
-                    <i class="ti ti-lock"></i>
-                  </button>
-                </div>
-              </div>
-            </li>
-          </ul>
-          </template>
+            </template>
+          </CarbonDataTable>
         </div>
 
         <div v-if="rondaSeleccionada" class="card card--fill resultados-card">
           <div class="card-toolbar">
             <div class="toolbar-title">Resultados — {{ formatFecha(rondaSeleccionada.abierta_en) }}</div>
-            <button class="btn" type="button" :disabled="cargandoRespuestas || !respuestas.length" @click="exportar">
-              <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-            </button>
+            <CarbonButton variante="secondary" tam="sm" icono="ti-table-export" :deshabilitado="cargandoRespuestas || !respuestas.length" @click="exportar">Exportar</CarbonButton>
           </div>
 
           <p v-if="cargandoRespuestas" class="sr-only" role="status">Cargando respuestas…</p>
@@ -316,7 +288,9 @@ onMounted(cargar);
   margin: -8px 0 16px;
 }
 
-.fila-activa { background: var(--color-bg-hover); }
+/* :deep porque la fila y la tarjeta activa las pinta CarbonDataTable en su
+   propio scope; sin :deep esta regla no llegaría al <tr>/<li> reales. */
+:deep(.fila-activa) { background: var(--color-bg-hover); }
 
 .resultados-card { margin-top: 16px; }
 
@@ -331,12 +305,12 @@ onMounted(cargar);
 .resumen-bloque:first-child { border-top: none; padding-top: 0; }
 
 .resumen-etiqueta { font-weight: 600; margin: 0 0 2px; }
-.resumen-total { font-size: var(--fs-sm); color: var(--color-text-tertiary); margin: 0 0 8px; }
+.resumen-total { font-size: var(--fs-label-01); color: var(--color-text-tertiary); margin: 0 0 8px; }
 
 .resumen-opciones { display: flex; flex-direction: column; gap: 4px; max-width: 320px; }
-.resumen-opcion { display: flex; justify-content: space-between; font-size: var(--fs-base); }
+.resumen-opcion { display: flex; justify-content: space-between; font-size: var(--fs-body-01); }
 .resumen-cant { font-weight: 600; }
-.resumen-promedio { margin: 0 0 6px; font-size: var(--fs-base); }
+.resumen-promedio { margin: 0 0 6px; font-size: var(--fs-body-01); }
 
-.resumen-textos { margin: 0; padding-left: 18px; font-size: var(--fs-base); display: flex; flex-direction: column; gap: 4px; }
+.resumen-textos { margin: 0; padding-left: 18px; font-size: var(--fs-body-01); display: flex; flex-direction: column; gap: 4px; }
 </style>

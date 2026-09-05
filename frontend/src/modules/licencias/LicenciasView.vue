@@ -12,18 +12,21 @@ import { showToast } from '../../core/toast.js';
 import { formatFecha, fechaISO, fechaLocalISO } from '../../core/formatters.js';
 import { estadoVencimientoLicencia, CLASE_VENCIMIENTO_LICENCIA } from '../../core/dominio-licencias.js';
 import LicenciaForm from './LicenciaForm.vue';
-import Pagination from '../../components/shared/Pagination.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
+import CarbonPasswordReveal from '../../components/carbon/CarbonPasswordReveal.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import Modal from '../../components/shared/Modal.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useLicenciasStore();
 const auth = useAuthStore();
@@ -32,6 +35,19 @@ const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
 useRealtimeRefresco('licencias:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+
+// Definición de columnas de CarbonDataTable. "Acciones" usa MenuAcciones
+// (menú ⋮), no icon-btn sueltos, así que no lleva `.fila-accion` — ese
+// disparador ya tiene su propio estilo.
+const columnasLicencias = [
+  { clave: 'software', label: 'Software', ordenable: true, elastica: true, movil: 'principal' },
+  { clave: 'empresa', label: 'Empresa', movil: 'sec' },
+  { clave: 'acceso', label: 'Acceso', movil: false },
+  { clave: 'asientos', label: 'Asientos', movil: 'sec' },
+  { clave: 'usuarios', label: 'Usuarios', movil: false },
+  { clave: 'fecha_vencimiento', label: 'Vencimiento', ordenable: true, movil: 'pie' },
+  { clave: 'acciones', label: 'Acciones', ancho: '56px', movil: 'pie' },
+];
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 
@@ -42,7 +58,6 @@ watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); }
 
 const mostrarForm = ref(false);
 const licenciaEditar = ref(null);
-const clavesVisibles = ref({});
 
 const paginaActual = computed({
   get: () => store.pagina,
@@ -83,16 +98,13 @@ const empleadoAsignarId = ref('');
 const cargandoEmpleados = ref(false);
 const asignando = ref(false);
 const errorAsignar = ref('');
+const modalAsignar = ref(null);
 
-// Modal de captura: clic fuera NO cierra (se perdería la selección);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => {
-  if (mostrarAsignar.value && !asignando.value) mostrarAsignar.value = false;
-});
-
-// Foco atrapado mientras el modal está abierto (Fase 4)
-const panelAsignar = ref(null);
-useFocoAtrapado(panelAsignar, mostrarAsignar);
+// Guard de cierre del Modal compartido (X, Escape, backdrop): no cierra
+// mientras se está asignando, mismo criterio que el botón Cancelar.
+function confirmarCierreAsignar() {
+  return !asignando.value;
+}
 
 // Barra de capacidad: comunica cercanía al tope de asientos antes de que
 // el trigger de BD (check_tope_licencia) bloquee la asignación.
@@ -194,27 +206,10 @@ async function revelarDeLicencia(licencia, motivo) {
   return '';
 }
 
-async function toggleClave(licencia) {
-  if (clavesVisibles.value[licencia.id]) {
-    clavesVisibles.value[licencia.id] = null;
-    return;
-  }
-  try {
-    clavesVisibles.value[licencia.id] = await revelarDeLicencia(licencia, 'ver');
-  } catch (e) {
-    showToast(e?.message || 'Error al revelar la clave', 'error');
-  }
-}
-
-async function copiarClave(licencia) {
-  try {
-    const clave = await revelarDeLicencia(licencia, 'copiar');
-    await navigator.clipboard.writeText(clave);
-    showToast('Contraseña copiada');
-  } catch (e) {
-    showToast(e?.message || 'No se pudo copiar', 'error');
-  }
-}
+// El revelado de una credencial (peticion a la edge function `credenciales`,
+// auditoria en accesos_log con el motivo, cuenta regresiva de 8 segundos y
+// ocultado automatico) vive en CarbonPasswordReveal.vue desde el
+// 2026-09-02. Esta vista solo declara QUE credencial se revela.
 
 async function abrirAsignar(licencia) {
   licenciaAsignar.value = licencia;
@@ -228,7 +223,7 @@ async function abrirAsignar(licencia) {
       empleadosActivos.value = todos.filter((e) => e.estado === 'Activo');
     } catch (e) {
       showToast(e?.message || 'Error al cargar empleados', 'error');
-      mostrarAsignar.value = false;
+      modalAsignar.value?.cerrar();
     } finally {
       cargandoEmpleados.value = false;
     }
@@ -241,7 +236,7 @@ async function confirmarAsignar() {
   asignando.value = true;
   try {
     await store.asignar(licenciaAsignar.value, empleadoAsignarId.value);
-    mostrarAsignar.value = false;
+    modalAsignar.value?.cerrar();
     showToast('Asiento asignado');
   } catch (e) {
     // Rechazo del trigger de tope de asientos (check_tope_licencia): se
@@ -324,12 +319,10 @@ onMounted(async () => {
   <div class="licencias-page vista-modulo">
     <PageHeader titulo="Licencias" icono="ti ti-license" :conteo="total">
       <template #acciones>
-        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </button>
-        <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva licencia
-        </button>
+        <CarbonButton variante="secondary" icono="ti-table-export" :cargando="exportando" title="Exportar a Excel (CSV)" @click="exportar">
+          {{ exportando ? 'Exportando...' : 'Exportar' }}
+        </CarbonButton>
+        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNueva">Nueva licencia</CarbonButton>
       </template>
     </PageHeader>
 
@@ -351,191 +344,117 @@ onMounted(async () => {
           titulo="Sin licencias"
           :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra la primera licencia para ordenar el software que pagan.'"
         >
-          <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
-            <i class="ti ti-plus"></i> Nueva licencia
-          </button>
+          <CarbonButton v-if="!busqueda" variante="secondary" icono="ti-plus" @click="abrirNueva">Nueva licencia</CarbonButton>
         </EmptyState>
 
         <template v-if="!error && (cargando || total > 0)">
         <p v-if="cargando" class="sr-only" role="status">Cargando licencias…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Licencias de software">
-            <thead>
-              <tr>
-                <ThOrdenable clave="software" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Software</ThOrdenable>
-                <th scope="col">Empresa</th>
-                <th scope="col">Acceso</th>
-                <th scope="col">Asientos</th>
-                <th scope="col">Usuarios</th>
-                <ThOrdenable clave="fecha_vencimiento" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Vencimiento</ThOrdenable>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="7" />
-              <template v-else>
-              <tr v-for="lic in lista" :key="lic.id">
-                <td>
-                  <div class="user-name">{{ lic.software }}</div>
-                  <span v-if="lic.proveedor" class="lic-proveedor">{{ lic.proveedor }}</span>
-                </td>
-                <td>{{ lic.empresa_nombre || 'Del grupo' }}</td>
-                <td>
-                  <div v-if="lic.cuenta_id" class="acceso-login">
-                    <span class="lic-acceso" :title="lic.cuenta_usuario">
-                      <i class="ti ti-mail"></i> {{ lic.cuenta_usuario }}
-                    </span>
-                    <div class="clave-cell">
-                      <span class="clave-text">{{ clavesVisibles[lic.id] || '••••••••' }}</span>
-                      <button
-                        class="icon-btn"
-                        type="button"
-                        :disabled="!auth.puedeVerCredenciales"
-                        :title="!auth.puedeVerCredenciales ? 'Sin permiso para ver contraseñas' : (clavesVisibles[lic.id] ? 'Ocultar' : (lic.tiene_clave ? 'Mostrar contraseña del software' : 'Mostrar contraseña del correo'))"
-                        :aria-label="clavesVisibles[lic.id] ? 'Ocultar' : (lic.tiene_clave ? 'Mostrar contraseña del software' : 'Mostrar contraseña del correo')"
-                        @click="toggleClave(lic)"
-                      >
-                        <i :class="clavesVisibles[lic.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-                      </button>
-                      <button
-                        class="icon-btn"
-                        type="button"
-                        :disabled="!auth.puedeVerCredenciales"
-                        :title="auth.puedeVerCredenciales ? 'Copiar contraseña' : 'Sin permiso para ver contraseñas'"
-                        aria-label="Copiar contraseña"
-                        @click="copiarClave(lic)"
-                      >
-                        <i class="ti ti-copy"></i>
-                      </button>
-                      <span class="clave-origen">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
-                    </div>
-                  </div>
-                  <div v-else-if="lic.tiene_clave" class="clave-cell">
-                    <span class="clave-text">{{ clavesVisibles[lic.id] || '••••••••' }}</span>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :disabled="!auth.puedeVerCredenciales"
-                      :title="!auth.puedeVerCredenciales ? 'Sin permiso para ver contraseñas' : (clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave')"
-                      :aria-label="clavesVisibles[lic.id] ? 'Ocultar' : 'Mostrar clave'"
-                      @click="toggleClave(lic)"
-                    >
-                      <i :class="clavesVisibles[lic.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :disabled="!auth.puedeVerCredenciales"
-                      :title="auth.puedeVerCredenciales ? 'Copiar clave' : 'Sin permiso para ver contraseñas'"
-                      aria-label="Copiar clave"
-                      @click="copiarClave(lic)"
-                    >
-                      <i class="ti ti-copy"></i>
-                    </button>
-                  </div>
-                  <TextoVacio v-else />
-                </td>
-                <td>
-                  <div class="capacity">
-                    <div class="capacity-bar">
-                      <div
-                        class="capacity-fill"
-                        :class="capacidadInfo(lic).clase"
-                        :style="{ width: capacidadInfo(lic).pct + '%' }"
-                      ></div>
-                    </div>
-                    <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
-                  </div>
-                </td>
-                <td>
-                  <div v-if="lic.usuarios.length" class="usuarios-cell">
-                    <span
-                      v-for="(u, i) in lic.usuarios"
-                      :key="i"
-                      class="usuario-chip"
-                    >
-                      <RouterLink v-if="u.empleado_id" class="empleado-link" :to="`/empleados/${u.empleado_id}`">{{ u.nombre }}</RouterLink>
-                      <template v-else>{{ u.nombre }}</template>
-                      <button
-                        v-if="u.asignacion_id"
-                        class="chip-x"
-                        type="button"
-                        title="Liberar asiento"
-                        aria-label="Liberar asiento"
-                        @click="pedirLiberar(lic, u)"
-                      >
-                        <i class="ti ti-x"></i>
-                      </button>
-                    </span>
-                  </div>
-                  <TextoVacio v-else placeholder="Sin usuarios" />
-                </td>
-                <td>
-                  <div class="venc-cell">
-                    <span class="badge" :class="estadoVencimiento(lic).clase">
-                      {{ estadoVencimiento(lic).texto }}
-                    </span>
-                    <span v-if="lic.tipo === 'suscripcion' && lic.renovacion_meses" class="venc-periodo">
-                      <i class="ti ti-refresh"></i> {{ periodoLabel(lic.renovacion_meses) }}
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <div class="actions">
-                    <button
-                      v-if="lic.tipo === 'suscripcion' && lic.renovacion_meses && lic.fecha_vencimiento"
-                      class="icon-btn"
-                      type="button"
-                      title="Renovar (corre el vencimiento un periodo)"
-                      aria-label="Renovar (corre el vencimiento un periodo)"
-                      @click="pedirRenovar(lic)"
-                    >
-                      <i class="ti ti-refresh"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Asignar asiento a un empleado"
-                      aria-label="Asignar asiento a un empleado"
-                      :disabled="lic.usados >= lic.cantidad"
-                      @click="abrirAsignar(lic)"
-                    >
-                      <i class="ti ti-user-plus"></i>
-                    </button>
-                    <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(lic)">
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="pedirEliminar(lic)">
-                      <i class="ti ti-trash"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Licencias de software">
-          <li v-for="lic in lista" :key="lic.id" class="tarjeta-fila">
-            <div class="tarjeta-fila__principal user-name">{{ lic.software }}</div>
-            <div class="tarjeta-fila__sec">
-              <span v-if="lic.proveedor">{{ lic.proveedor }}</span>
-              <span v-if="lic.proveedor" aria-hidden="true">·</span>
-              <span>{{ lic.empresa_nombre || 'Del grupo' }}</span>
+        <CarbonDataTable
+          :columnas="columnasLicencias"
+          :filas="lista"
+          :cargando="cargando"
+          :orden-por="ordenColumna"
+          :orden-dir="ordenDireccion"
+          etiqueta="Licencias de software"
+          @ordenar="store.ordenarPor"
+        >
+          <template #celda-software="{ fila: lic }">
+            <!-- Proveedor + Software colapsan (mismo criterio que Tickets):
+                 ya vivía apilado a mano (.user-name + .lic-proveedor, sin el
+                 gris de __meta) — se migra a las clases oficiales en vez de
+                 mantener la reimplementación incompleta. -->
+            <div class="celda-apilada">
+              <span v-if="lic.proveedor" class="celda-apilada__meta">{{ lic.proveedor }}</span>
+              <span class="celda-apilada__principal">{{ lic.software }}</span>
             </div>
-            <div class="tarjeta-fila__sec">
+          </template>
+          <template #celda-empresa="{ fila: lic }">{{ lic.empresa_nombre || 'Del grupo' }}</template>
+          <template #celda-acceso="{ fila: lic }">
+            <div v-if="lic.cuenta_id" class="acceso-login">
+              <span class="lic-acceso" :title="lic.cuenta_usuario">
+                <i class="ti ti-mail"></i> {{ lic.cuenta_usuario }}
+              </span>
+              <div class="clave-cell">
+                <CarbonPasswordReveal
+                  :revelar="(motivo) => revelarDeLicencia(lic, motivo)"
+                  :bloqueado="!auth.puedeVerCredenciales"
+                  :etiqueta="lic.tiene_clave ? 'contraseña del software' : 'contraseña del correo'"
+                  motivo-bloqueo="Sin permiso para ver contraseñas"
+                />
+                <span class="clave-origen">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
+              </div>
+            </div>
+            <div v-else-if="lic.tiene_clave" class="clave-cell">
+              <CarbonPasswordReveal
+                :revelar="(motivo) => revelarDeLicencia(lic, motivo)"
+                :bloqueado="!auth.puedeVerCredenciales"
+                etiqueta="clave"
+                motivo-bloqueo="Sin permiso para ver contraseñas"
+              />
+            </div>
+            <TextoVacio v-else />
+          </template>
+          <template #celda-asientos="{ fila: lic }">
+            <div class="capacity">
+              <div class="capacity-bar">
+                <div
+                  class="capacity-fill"
+                  :class="capacidadInfo(lic).clase"
+                  :style="{ width: capacidadInfo(lic).pct + '%' }"
+                ></div>
+              </div>
               <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
             </div>
-            <div class="tarjeta-fila__pie">
-              <span class="badge" :class="estadoVencimiento(lic).clase">{{ estadoVencimiento(lic).texto }}</span>
+          </template>
+          <template #celda-usuarios="{ fila: lic }">
+            <div v-if="lic.usuarios.length" class="usuarios-cell">
+              <span
+                v-for="(u, i) in lic.usuarios"
+                :key="i"
+                class="usuario-chip"
+              >
+                <RouterLink v-if="u.empleado_id" class="empleado-link" :to="`/empleados/${u.empleado_id}`">{{ u.nombre }}</RouterLink>
+                <template v-else>{{ u.nombre }}</template>
+                <button
+                  v-if="u.asignacion_id"
+                  class="chip-x"
+                  type="button"
+                  title="Liberar asiento"
+                  aria-label="Liberar asiento"
+                  @click="pedirLiberar(lic, u)"
+                >
+                  <i class="ti ti-x"></i>
+                </button>
+              </span>
+            </div>
+            <TextoVacio v-else placeholder="Sin usuarios" />
+          </template>
+          <template #celda-fecha_vencimiento="{ fila: lic }">
+            <div class="venc-cell">
+              <CarbonTag :variante="estadoVencimiento(lic).clase">
+                {{ estadoVencimiento(lic).texto }}
+              </CarbonTag>
+              <span v-if="lic.tipo === 'suscripcion' && lic.renovacion_meses" class="venc-periodo">
+                <i class="ti ti-refresh"></i> {{ periodoLabel(lic.renovacion_meses) }}
+              </span>
+            </div>
+          </template>
+          <template #celda-acciones="{ fila: lic }">
+            <div class="actions">
               <MenuAcciones :acciones="accionesDe(lic)" :label="`Acciones de ${lic.software}`" />
             </div>
-          </li>
-        </ul>
+          </template>
+        </CarbonDataTable>
 
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="total"
+          :tam-pagina="store.tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="licencias"
+          @update:tam-pagina="store.cambiarTamPagina"
+        />
         </template>
       </div>
     </main>
@@ -546,61 +465,57 @@ onMounted(async () => {
       @cerrar="onFormCerrado"
     />
 
-    <!-- Modal: asignar asiento -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarAsignar" class="modal-bg">
-      <div ref="panelAsignar" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="asignar-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="asignar-title"><i class="ti ti-user-plus" aria-hidden="true"></i> Asignar asiento</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="mostrarAsignar = false">
-            <i class="ti ti-x"></i>
-          </button>
+    <!-- Modal: asignar asiento (Modal accesible compartido) -->
+    <Modal
+      v-if="mostrarAsignar"
+      ref="modalAsignar"
+      size="sm"
+      :confirmar-cierre="confirmarCierreAsignar"
+      :cerrar-en-backdrop="false"
+      @close="mostrarAsignar = false"
+    >
+      <template #titulo><i class="ti ti-user-plus" aria-hidden="true"></i> Asignar asiento</template>
+      <p class="asignar-info">
+        <strong>{{ licenciaAsignar?.software }}</strong>
+      </p>
+      <div v-if="licenciaAsignar" class="capacity">
+        <div class="capacity-bar">
+          <div
+            class="capacity-fill"
+            :class="capacidadInfo(licenciaAsignar).clase"
+            :style="{ width: capacidadInfo(licenciaAsignar).pct + '%' }"
+          ></div>
         </div>
-        <div class="modal-body">
-          <p class="asignar-info">
-            <strong>{{ licenciaAsignar?.software }}</strong>
-          </p>
-          <div v-if="licenciaAsignar" class="capacity">
-            <div class="capacity-bar">
-              <div
-                class="capacity-fill"
-                :class="capacidadInfo(licenciaAsignar).clase"
-                :style="{ width: capacidadInfo(licenciaAsignar).pct + '%' }"
-              ></div>
-            </div>
-            <span class="capacity-label">{{ licenciaAsignar.usados }}/{{ licenciaAsignar.cantidad }} asientos usados</span>
-          </div>
-          <div v-if="cargandoEmpleados" class="no-results">Cargando empleados...</div>
-          <div v-else class="form-group">
-            <label for="as-empleado">Empleado *</label>
-            <BuscadorCombo
-              id="as-empleado"
-              v-model="empleadoAsignarId"
-              :items="empleadosActivos"
-              :campos-busqueda="['nombres', 'apellidos', 'dni']"
-              :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
-              placeholder="Buscar por nombre o DNI..."
-              :disabled="asignando"
-            >
-              <template #resultado="{ item }">
-                <span>{{ item.nombres }} {{ item.apellidos }}</span>
-                <span class="combo-sec">{{ item.dni }}</span>
-              </template>
-            </BuscadorCombo>
-          </div>
-        </div>
-
-        <p v-if="errorAsignar" class="form-error" role="alert">{{ errorAsignar }}</p>
-        <div class="modal-actions">
-          <button class="btn" type="button" :disabled="asignando" @click="mostrarAsignar = false">Cancelar</button>
-          <button class="btn btn-primary" type="button" :disabled="asignando || !empleadoAsignarId" @click="confirmarAsignar">
-            <i v-if="asignando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ asignando ? 'Asignando...' : 'Asignar' }}
-          </button>
-        </div>
+        <span class="capacity-label">{{ licenciaAsignar.usados }}/{{ licenciaAsignar.cantidad }} asientos usados</span>
       </div>
-    </div>
-    </Transition>
+      <div v-if="cargandoEmpleados" class="no-results">Cargando empleados...</div>
+      <div v-else class="form-group">
+        <label for="as-empleado">Empleado *</label>
+        <BuscadorCombo
+          id="as-empleado"
+          v-model="empleadoAsignarId"
+          :items="empleadosActivos"
+          :campos-busqueda="['nombres', 'apellidos', 'dni']"
+          :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
+          placeholder="Buscar por nombre o DNI..."
+          :disabled="asignando"
+        >
+          <template #resultado="{ item }">
+            <span>{{ item.nombres }} {{ item.apellidos }}</span>
+            <span class="combo-sec">{{ item.dni }}</span>
+          </template>
+        </BuscadorCombo>
+      </div>
+
+      <CarbonNotification v-if="errorAsignar" tipo="error">{{ errorAsignar }}</CarbonNotification>
+
+      <template #acciones>
+        <CarbonButton variante="secondary" :deshabilitado="asignando" @click="modalAsignar?.cerrar()">Cancelar</CarbonButton>
+        <CarbonButton variante="primary" :cargando="asignando" :deshabilitado="!empleadoAsignarId" @click="confirmarAsignar">
+          {{ asignando ? 'Asignando...' : 'Asignar' }}
+        </CarbonButton>
+      </template>
+    </Modal>
 
     <!-- Confirmación (ConfirmDialog compartido): eliminar/liberar son
          destructivas (btn-danger); renovar no (btn-primary). -->
@@ -622,16 +537,12 @@ onMounted(async () => {
 <style scoped>
 .lic-error { color: var(--color-danger); }
 
-.lic-proveedor {
-  display: block;
-}
-
 .lic-acceso {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-family: var(--font-mono, monospace);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -651,19 +562,12 @@ onMounted(async () => {
 }
 
 .clave-origen {
-  font-size: 10.5px;
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   background: var(--color-bg-subtle, var(--color-neutral-bg));
-  border-radius: 8px;
+  border-radius: var(--radius-base);
   padding: 1px 6px;
   white-space: nowrap;
-}
-
-.clave-text {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-sm);
-  letter-spacing: 0.05em;
-  min-width: 72px;
 }
 
 /* Ocupación de asientos: .capacity/.capacity-bar globales (main.css) */
@@ -679,10 +583,10 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 11.5px;
+  font-size: var(--fs-label-01);
   background: var(--color-bg-subtle, var(--color-neutral-bg));
   border: 1px solid var(--color-border);
-  border-radius: 20px;
+  border-radius: var(--radius-base);
   padding: 2px 8px;
   white-space: nowrap;
 }
@@ -700,7 +604,7 @@ onMounted(async () => {
   height: 24px;
   flex-shrink: 0;
   border-radius: 50%;
-  font-size: 12px;
+  font-size: var(--icon-sm);
 }
 
 .chip-x:hover { color: var(--color-danger, var(--color-danger)); }
@@ -716,7 +620,7 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
@@ -737,7 +641,7 @@ onMounted(async () => {
 
 .asignar-info {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
 }
 </style>

@@ -5,14 +5,15 @@ import { RouterLink } from 'vue-router';
 import { useEncuestasStore } from '../../stores/encuestas.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import Pagination from '../../components/shared/Pagination.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import EncuestaForm from './EncuestaForm.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useEncuestasStore();
 const auth = useAuthStore();
@@ -63,104 +64,83 @@ onMounted(async () => {
   }
 });
 
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lista);
+const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(lista);
+
+const columnas = [
+  { clave: 'titulo', label: 'Título', elastica: true, movil: 'principal' },
+  { clave: 'preguntas', label: 'Preguntas', num: true, movil: 'sec' },
+  { clave: 'created_at', label: 'Creada', num: true, movil: 'sec' },
+  { clave: 'acciones', label: 'Acciones', ancho: '128px', movil: 'pie' },
+];
 </script>
 
 <template>
   <div class="encuestas-page vista-modulo">
     <PageHeader titulo="Encuestas" icono="ti ti-clipboard-list" :conteo="lista.length">
       <template v-if="auth.esJefe" #acciones>
-        <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva encuesta
-        </button>
+        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNueva">Nueva encuesta</CarbonButton>
       </template>
     </PageHeader>
+
+    <p class="encuestas-nota-satisfaccion">
+      ¿Busca la satisfacción de un ticket puntual? Eso vive en
+      <RouterLink to="/tickets/satisfaccion">Tickets → Satisfacción</RouterLink>
+      — son dos sistemas distintos: esta pantalla es para encuestas propias
+      (clima, feedback puntual, rondas anónimas).
+    </p>
 
     <main class="page">
       <div class="card card--fill">
         <div v-if="error" class="no-results">{{ error }}</div>
 
-        <EmptyState
-          v-else-if="!cargando && lista.length === 0"
-          icono="ti ti-clipboard-list"
-          titulo="Sin encuestas"
-          :mensaje="auth.esJefe ? 'Cree una plantilla de encuesta para lanzar la primera ronda.' : 'Todavía no hay ninguna encuesta creada.'"
-        >
-          <button v-if="auth.esJefe" class="btn" type="button" @click="abrirNueva">
-            <i class="ti ti-plus"></i> Nueva encuesta
-          </button>
-        </EmptyState>
-
         <template v-else>
-        <p v-if="cargando" class="sr-only" role="status">Cargando encuestas…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Encuestas">
-            <thead>
-              <tr>
-                <th scope="col">Título</th>
-                <th scope="col">Preguntas</th>
-                <th scope="col">Creada</th>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="4" />
-              <template v-else>
-              <tr v-for="e in listaPaginada" :key="e.id">
-                <td>
-                  <RouterLink class="user-name empleado-link" :to="`/encuestas/${e.id}`">{{ e.titulo }}</RouterLink>
-                </td>
-                <td>{{ e.preguntas?.length || 0 }}</td>
-                <td>{{ formatFecha(e.created_at) }}</td>
-                <td>
-                  <div class="actions">
-                    <RouterLink class="icon-btn" :to="`/encuestas/${e.id}`" title="Ver rondas y resultados" aria-label="Ver rondas y resultados">
-                      <i class="ti ti-chart-bar"></i>
-                    </RouterLink>
-                    <template v-if="auth.esJefe">
-                      <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(e)">
-                        <i class="ti ti-pencil"></i>
-                      </button>
-                      <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = e">
-                        <i class="ti ti-trash"></i>
-                      </button>
-                    </template>
-                  </div>
-                </td>
-              </tr>
+        <CarbonDataTable
+          :columnas="columnas"
+          :filas="listaPaginada"
+          :cargando="cargando"
+          etiqueta="Encuestas"
+          vacio-icono="ti ti-clipboard-list"
+          vacio-titulo="Sin encuestas"
+          :vacio-mensaje="auth.esJefe ? 'Cree una plantilla de encuesta para lanzar la primera ronda.' : 'Todavía no hay ninguna encuesta creada.'"
+        >
+          <template #celda-titulo="{ fila }">
+            <RouterLink class="user-name empleado-link" :to="`/encuestas/${fila.id}`">{{ fila.titulo }}</RouterLink>
+          </template>
+          <template #celda-preguntas="{ fila }">
+            {{ fila.preguntas?.length || 0 }}
+          </template>
+          <template #celda-created_at="{ fila }">
+            <span :title="formatFechaHora(fila.created_at)">{{ formatAntiguedad(fila.created_at) }}</span>
+          </template>
+          <template #celda-acciones="{ fila }">
+            <div class="actions">
+              <RouterLink class="icon-btn fila-accion" :to="`/encuestas/${fila.id}`" title="Ver rondas y resultados" aria-label="Ver rondas y resultados">
+                <i class="ti ti-chart-bar"></i>
+              </RouterLink>
+              <template v-if="auth.esJefe">
+                <button class="icon-btn fila-accion" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(fila)">
+                  <i class="ti ti-pencil"></i>
+                </button>
+                <button class="icon-btn danger fila-accion" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = fila">
+                  <i class="ti ti-trash"></i>
+                </button>
               </template>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Encuestas">
-          <li v-for="e in listaPaginada" :key="e.id" class="tarjeta-fila">
-            <RouterLink class="tarjeta-fila__principal empleado-link" :to="`/encuestas/${e.id}`">{{ e.titulo }}</RouterLink>
-            <div class="tarjeta-fila__sec">
-              <span>{{ e.preguntas?.length || 0 }} preguntas</span>
-              <span aria-hidden="true">·</span>
-              <span>{{ formatFecha(e.created_at) }}</span>
             </div>
-            <div class="tarjeta-fila__pie">
-              <div class="actions">
-                <RouterLink class="icon-btn" :to="`/encuestas/${e.id}`" title="Ver rondas y resultados" aria-label="Ver rondas y resultados">
-                  <i class="ti ti-chart-bar"></i>
-                </RouterLink>
-                <template v-if="auth.esJefe">
-                  <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(e)">
-                    <i class="ti ti-pencil"></i>
-                  </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = e">
-                    <i class="ti ti-trash"></i>
-                  </button>
-                </template>
-              </div>
-            </div>
-          </li>
-        </ul>
+          </template>
+          <template #vacio-accion>
+            <CarbonButton v-if="auth.esJefe" variante="secondary" icono="ti-plus" @click="abrirNueva">Nueva encuesta</CarbonButton>
+          </template>
+        </CarbonDataTable>
 
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="totalItems"
+          :tam-pagina="tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="encuestas"
+          @update:tam-pagina="cambiarTamPagina"
+        />
         </template>
       </div>
     </main>
@@ -181,3 +161,15 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
     />
   </div>
 </template>
+
+<style scoped>
+/* Puente de descubrimiento entre "Encuestas" (propio módulo) y la encuesta
+   de satisfacción de tickets (ticket_satisfaccion) — dos sistemas separados
+   a propósito (modelos de datos incompatibles, ver docs/PANORAMA-SISTEMA.md
+   §6), pero sin ningún enlace entre ambos antes de esto. */
+.encuestas-nota-satisfaccion {
+  margin: 0 var(--space-9, 24px) var(--space-7, 16px);
+  font-size: var(--fs-label-01);
+  color: var(--color-text-secondary);
+}
+</style>

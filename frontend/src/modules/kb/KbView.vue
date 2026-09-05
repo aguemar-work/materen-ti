@@ -5,17 +5,16 @@ import { useRouter } from 'vue-router';
 import { useKbStore } from '../../stores/kb.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { OPCIONES_ESTADO_KB } from '../../core/dominio-kb.js';
-import { formatFechaHora } from '../../core/formatters.js';
+import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import KbArticuloForm from './KbArticuloForm.vue';
-import Pagination from '../../components/shared/Pagination.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const router = useRouter();
 const store = useKbStore();
@@ -43,6 +42,23 @@ function verArticulo(articulo) {
   router.push(`/base-conocimiento/${articulo.id}`);
 }
 
+// Toda la fila navega (clic-fila): el link de "Artículo" existe aparte solo
+// para que Ctrl/Cmd-clic y "abrir en pestaña nueva" sigan funcionando.
+function claseFilaKb() {
+  return 'fila-kb tarjeta-fila--clic';
+}
+
+// "¿Sirvió?" no es un campo propio del artículo: combina util_si/util_no en
+// una sola columna sintética (clave 'feedback', sin dato real detrás, solo
+// slot). Va al pie de la tarjeta móvil junto al estado, mismo layout
+// space-between que tenía a mano.
+const columnas = [
+  { clave: 'titulo', label: 'Artículo', ordenable: true, elastica: true, movil: 'principal' },
+  { clave: 'estado', label: 'Estado', ordenable: true, movil: 'pie' },
+  { clave: 'feedback', label: '¿Sirvió?', num: true, movil: 'pie' },
+  { clave: 'updated_at', label: 'Actualizado', ordenable: true, num: true, movil: 'sec' },
+];
+
 function onFormCerrado(creado) {
   mostrarForm.value = false;
   if (creado) {
@@ -66,9 +82,7 @@ onMounted(async () => {
   <div class="kb-page vista-modulo">
     <PageHeader titulo="Base de Conocimiento" icono="ti ti-books" :conteo="total">
       <template #acciones>
-        <button class="btn btn-primary" type="button" @click="mostrarForm = true">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo artículo
-        </button>
+        <CarbonButton variante="primary" icono="ti-plus" @click="mostrarForm = true">Nuevo artículo</CarbonButton>
       </template>
     </PageHeader>
 
@@ -97,76 +111,61 @@ onMounted(async () => {
 
         <div v-if="error" class="no-results kb-error">{{ error }}</div>
 
-        <EmptyState
-          v-else-if="!cargando && total === 0"
-          icono="ti ti-books"
-          titulo="Sin artículos"
-          :mensaje="busqueda || filtroCategoria || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Registra la primera solución reutilizable de la base de conocimiento.'"
+        <template v-else>
+        <CarbonDataTable
+          :columnas="columnas"
+          :filas="lista"
+          :cargando="cargando"
+          :orden-por="ordenColumna"
+          :orden-dir="ordenDireccion"
+          :clase-fila="claseFilaKb"
+          etiqueta="Artículos de la base de conocimiento"
+          vacio-icono="ti ti-books"
+          vacio-titulo="Sin artículos"
+          :vacio-mensaje="busqueda || filtroCategoria || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Registra la primera solución reutilizable de la base de conocimiento.'"
+          @ordenar="store.ordenarPor"
+          @clic-fila="verArticulo"
         >
-          <button v-if="!busqueda && !filtroCategoria && !filtroEstado" class="btn" type="button" @click="mostrarForm = true">
-            <i class="ti ti-plus"></i> Nuevo artículo
-          </button>
-        </EmptyState>
-
-        <template v-else-if="cargando || total > 0">
-        <p v-if="cargando" class="sr-only" role="status">Cargando artículos…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Artículos de la base de conocimiento">
-            <thead>
-              <tr>
-                <ThOrdenable clave="titulo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Título</ThOrdenable>
-                <th scope="col">Categoría</th>
-                <ThOrdenable clave="estado" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Estado</ThOrdenable>
-                <th scope="col">¿Sirvió?</th>
-                <ThOrdenable clave="updated_at" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Actualizado</ThOrdenable>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="5" />
-              <template v-else>
-              <tr v-for="a in lista" :key="a.id" class="fila-kb" @click="verArticulo(a)">
-                <td>
-                  <RouterLink class="kb-titulo-link" :to="`/base-conocimiento/${a.id}`" @click.stop>{{ a.titulo }}</RouterLink>
-                  <div v-if="a.sintoma" class="kb-sintoma">{{ a.sintoma }}</div>
-                </td>
-                <td>
-                  <span v-if="a.categoria_nombre" class="badge badge--accent">{{ a.categoria_nombre }}</span>
-                  <TextoVacio v-else />
-                </td>
-                <td><BadgeEstado tipo="kb_estado" :valor="a.estado" /></td>
-                <td class="kb-feedback">
-                  <span title="Le sirvió"><i class="ti ti-thumb-up" aria-hidden="true"></i> {{ a.util_si }}</span>
-                  <span title="No le sirvió"><i class="ti ti-thumb-down" aria-hidden="true"></i> {{ a.util_no }}</span>
-                </td>
-                <td class="fecha-cell">{{ formatFechaHora(a.updated_at) }}</td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Artículos de la base de conocimiento">
-          <li v-for="a in lista" :key="a.id" class="tarjeta-fila tarjeta-fila--clic" @click="verArticulo(a)">
-            <div class="tarjeta-fila__principal">{{ a.titulo }}</div>
-            <div v-if="a.sintoma" class="tarjeta-fila__sec kb-sintoma">{{ a.sintoma }}</div>
-            <div class="tarjeta-fila__sec">
-              <span v-if="a.categoria_nombre">{{ a.categoria_nombre }}</span>
-              <TextoVacio v-else placeholder="Sin categoría" />
-              <span aria-hidden="true">·</span>
-              <span>{{ formatFechaHora(a.updated_at) }}</span>
-            </div>
-            <div class="tarjeta-fila__badges">
-              <BadgeEstado tipo="kb_estado" :valor="a.estado" />
-              <span class="kb-feedback" title="Le sirvió / no le sirvió">
-                <i class="ti ti-thumb-up" aria-hidden="true"></i> {{ a.util_si }}
-                <i class="ti ti-thumb-down" aria-hidden="true"></i> {{ a.util_no }}
+          <template #celda-titulo="{ fila }">
+            <!-- Categoría + Síntoma colapsan como metadato arriba (mismo
+                 criterio que Tickets: Categoría baja de badge a texto, es
+                 clasificación fija, no estado), Título como dato principal
+                 abajo. -->
+            <div class="celda-apilada">
+              <span v-if="fila.categoria_nombre || fila.sintoma" class="celda-apilada__meta">
+                <template v-if="fila.categoria_nombre">{{ fila.categoria_nombre }}</template>
+                <span v-if="fila.categoria_nombre && fila.sintoma" class="celda-sep" aria-hidden="true">·</span>
+                <template v-if="fila.sintoma">{{ fila.sintoma }}</template>
               </span>
+              <RouterLink class="celda-apilada__principal kb-titulo-link" :to="`/base-conocimiento/${fila.id}`" @click.stop>{{ fila.titulo }}</RouterLink>
             </div>
-          </li>
-        </ul>
+          </template>
+          <template #celda-estado="{ fila }">
+            <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
+          </template>
+          <template #celda-feedback="{ fila }">
+            <span class="kb-feedback">
+              <span title="Le sirvió"><i class="ti ti-thumb-up" aria-hidden="true"></i> {{ fila.util_si }}</span>
+              <span title="No le sirvió"><i class="ti ti-thumb-down" aria-hidden="true"></i> {{ fila.util_no }}</span>
+            </span>
+          </template>
+          <template #celda-updated_at="{ fila }">
+            <span class="fecha-cell" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
+          </template>
+          <template #vacio-accion>
+            <CarbonButton v-if="!busqueda && !filtroCategoria && !filtroEstado" variante="secondary" icono="ti-plus" @click="mostrarForm = true">Nuevo artículo</CarbonButton>
+          </template>
+        </CarbonDataTable>
 
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="total"
+          :tam-pagina="store.tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="artículos"
+          @update:tam-pagina="store.cambiarTamPagina"
+        />
         </template>
       </div>
     </main>
@@ -178,29 +177,28 @@ onMounted(async () => {
 <style scoped>
 .kb-error { color: var(--color-danger); }
 
-.fila-kb { cursor: pointer; }
-.fila-kb:hover td { background: var(--color-bg-hover); }
+/* :deep() porque CarbonDataTable renderiza el <tr> en SU PROPIO ámbito de
+   scope (vía claseFila) — un selector scoped normal acá nunca lo alcanza
+   (bug real encontrado en la Tanda 2 del rediseño de tablas, 2026-09-03). */
+:deep(.fila-kb) { cursor: pointer; }
+:deep(.fila-kb:hover td) { background: var(--color-bg-hover); }
 
 .kb-titulo-link {
+  /* Peso 400, no 600 (pasada de diseño de tablas ago 2026): pisaba la
+     regla global "ningún dato de tabla en negrita" (main.css,
+     .user-name{font-weight:400}) — bug real, no una excepción a propósito. */
   color: var(--color-text-primary);
   text-decoration: none;
-  font-weight: 600;
 }
 .kb-titulo-link:hover,
 .kb-titulo-link:focus-visible {
   text-decoration: underline;
 }
 
-.kb-sintoma {
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  margin-top: 2px;
-}
-
 .kb-feedback {
   display: flex;
   gap: 12px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   white-space: nowrap;
 }

@@ -245,7 +245,7 @@ export const reportesTicketsApi = {
   async listarTicketsDelPeriodo({ desde, hasta }) {
     const { data, error } = await getClient().database
       .from('tickets')
-      .select('codigo, titulo, estado, prioridad, tipo, created_at, asignado_a, vinculado, contacto_ingresado, empleados(nombres, apellidos), categorias_ticket(nombre)')
+      .select('codigo, titulo, estado, prioridad, nivel_atencion, tipo, created_at, asignado_a, vinculado, contacto_ingresado, empleados(nombres, apellidos), categorias_ticket(nombre)')
       .gte('created_at', desde)
       .lte('created_at', hasta)
       .order('created_at', { ascending: false });
@@ -255,9 +255,14 @@ export const reportesTicketsApi = {
       titulo: t.titulo,
       estado: t.estado,
       prioridad: t.prioridad,
+      // Nivel: el CSV del periodo comparte cabecera con el de la bandeja
+      // (core/exportar-tickets.js). Sin esto la columna saldría "Sin nivel"
+      // en TODAS las filas del periodo, que es peor que no tenerla.
+      nivel_atencion: t.nivel_atencion,
       tipo: t.tipo,
       created_at: t.created_at,
       asignado_a: t.asignado_a,
+      vinculado: t.vinculado,
       categoria: t.categorias_ticket?.nombre || '',
       solicitante: nombreSolicitante(t),
     }));

@@ -3,6 +3,7 @@
 // Punto de entrada único y memorable (/soporte) hacia las acciones
 // públicas existentes; no consulta ningún dato, solo navega.
 import PublicBrand from '../../components/shared/PublicBrand.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
 </script>
 
 <template>
@@ -17,7 +18,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
 
       <nav class="soporte-acciones" aria-label="Acciones de soporte">
         <RouterLink class="soporte-accion" :to="{ name: 'ticket-nuevo' }">
-          <span class="soporte-accion-icono soporte-accion-icono--accent">
+          <span class="icon-box icon-box--brand">
             <i class="ti ti-tool" aria-hidden="true"></i>
           </span>
           <span class="soporte-accion-texto">
@@ -30,7 +31,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
         </RouterLink>
 
         <RouterLink class="soporte-accion" :to="{ name: 'ticket-buscar' }">
-          <span class="soporte-accion-icono">
+          <span class="icon-box icon-box--neutral">
             <i class="ti ti-search" aria-hidden="true"></i>
           </span>
           <span class="soporte-accion-texto">
@@ -42,13 +43,13 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
           <i class="ti ti-chevron-right soporte-accion-chevron" aria-hidden="true"></i>
         </RouterLink>
         <div class="soporte-accion soporte-accion--disabled" aria-disabled="true">
-          <span class="soporte-accion-icono">
+          <span class="icon-box icon-box--neutral">
             <i class="ti ti-devices" aria-hidden="true"></i>
           </span>
           <span class="soporte-accion-texto">
             <span class="soporte-accion-titulo">
               Equipos asignados
-              <span class="badge badge--neutral">Próximamente</span>
+              <CarbonTag variante="neutral">Próximamente</CarbonTag>
             </span>
             <span class="soporte-accion-desc">
               Consulta de equipos asignados.
@@ -62,14 +63,14 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
 
 <style scoped>
 .soporte-title {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0 0 4px;
 }
 
 .soporte-subtitulo {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   margin: 0 0 16px;
 }
@@ -85,7 +86,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
   align-items: center;
   gap: 12px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 14px 12px;
   text-decoration: none;
   transition: background 0.15s;
@@ -95,23 +96,12 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
   background: var(--color-bg-subtle);
 }
 
-.soporte-accion-icono {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  flex-shrink: 0;
-  border-radius: var(--radius-md);
-  background: var(--color-neutral-bg);
-  color: var(--color-text-secondary);
-  font-size: 19px;
-}
-
-.soporte-accion-icono--accent {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-}
+/* El ícono de cada acción usa .icon-box de main.css (rediseño Materen,
+   Fase 1): antes era .soporte-accion-icono, la otra mitad del patrón
+   duplicado junto a .feed-icon del Dashboard. La variante sin color propio
+   pasó de "neutral-bg + text-secondary" a .icon-box--neutral (neutral-bg +
+   neutral-text): mismo fondo, el texto baja medio tono al par que ya usan
+   .badge--neutral y el resto del sistema para "esto es neutro". */
 
 .soporte-accion-texto {
   display: flex;
@@ -121,13 +111,13 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
 }
 
 .soporte-accion-titulo {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 .soporte-accion-desc {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   line-height: 1.4;
 }
@@ -154,7 +144,7 @@ import PublicBrand from '../../components/shared/PublicBrand.vue';
   color: var(--color-text-secondary);
 }
 
-.soporte-accion--disabled .soporte-accion-icono,
+.soporte-accion--disabled .icon-box,
 .soporte-accion--disabled .soporte-accion-desc {
   color: var(--color-text-tertiary);
 }

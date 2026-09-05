@@ -7,6 +7,7 @@ import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -42,38 +43,32 @@ onMounted(async () => {
         Verifique el enlace e intente nuevamente.
       </p>
 
-      <RouterLink v-if="destino" class="btn btn-primary notfound-btn" :to="destino.to">
-        <i class="ti ti-arrow-left" aria-hidden="true"></i> {{ destino.label }}
-      </RouterLink>
+      <CarbonButton v-if="destino" variante="primary" icono="ti-arrow-left" ancho :to="destino.to">
+        {{ destino.label }}
+      </CarbonButton>
     </div>
   </div>
 </template>
 
 <style scoped>
 .notfound-icon {
-  font-size: 40px;
+  font-size: var(--icon-lg);
   color: var(--color-text-secondary);
   margin-bottom: 8px;
 }
 
 .notfound-title {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0 0 4px;
 }
 
 .notfound-texto {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 16px;
 }
 
-.notfound-btn {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
-  text-decoration: none;
-}
 </style>

@@ -12,6 +12,9 @@ import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import Modal from '../../components/shared/Modal.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 // Las categorías viven en el store de catálogos; las subcategorías son
 // un detalle de este panel y se quedan locales (insforgeApi directo).
@@ -171,12 +174,15 @@ onMounted(async () => {
           Categorías de tickets
           <span class="badge-count">{{ categorias.length }}</span>
         </div>
-        <button class="btn btn-primary" type="button" @click="abrirNuevaCategoria">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva categoría
-        </button>
+        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNuevaCategoria">Nueva categoría</CarbonButton>
       </div>
 
-      <div v-if="cargando" class="no-results">Cargando categorías...</div>
+      <div v-if="cargando" class="cat-lista" aria-hidden="true">
+        <p class="sr-only" role="status">Cargando categorías…</p>
+        <div v-for="i in 5" :key="i" class="cat-item cat-item--skeleton">
+          <span class="skeleton-bar"></span>
+        </div>
+      </div>
 
       <EmptyState
         v-else-if="categorias.length === 0"
@@ -184,9 +190,7 @@ onMounted(async () => {
         titulo="Sin categorías"
         mensaje="Crea la primera categoría para clasificar los tickets."
       >
-        <button class="btn" type="button" @click="abrirNuevaCategoria">
-          <i class="ti ti-plus"></i> Nueva categoría
-        </button>
+        <CarbonButton variante="secondary" icono="ti-plus" @click="abrirNuevaCategoria">Nueva categoría</CarbonButton>
       </EmptyState>
 
       <div v-else class="cat-lista">
@@ -220,17 +224,19 @@ onMounted(async () => {
               </button>
             </div>
             <div class="cat-sub-nueva">
-              <input
-                v-model="nuevaSubPorCategoria[cat.id]"
-                placeholder="Nueva subcategoría..."
-                aria-label="Nombre de la subcategoría"
-                @keydown.enter.prevent="agregarSubcategoria(cat.id)"
-              >
+              <div class="form-group">
+                <input
+                  v-model="nuevaSubPorCategoria[cat.id]"
+                  placeholder="Nueva subcategoría..."
+                  aria-label="Nombre de la subcategoría"
+                  @keydown.enter.prevent="agregarSubcategoria(cat.id)"
+                >
+              </div>
               <select v-model="nuevoTipoPorCategoria[cat.id]" aria-label="Tipo sugerido">
                 <option value="" disabled>Tipo</option>
                 <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
               </select>
-              <button class="btn" type="button" @click="agregarSubcategoria(cat.id)">Agregar</button>
+              <CarbonButton variante="secondary" tam="sm" @click="agregarSubcategoria(cat.id)">Agregar</CarbonButton>
             </div>
           </div>
         </div>
@@ -246,18 +252,20 @@ onMounted(async () => {
       @close="mostrarCatForm = false"
     >
       <form id="cat-form" @submit.prevent="guardarCategoria">
-        <div class="form-group">
-          <label for="cat-nombre">Nombre *</label>
-          <input id="cat-nombre" v-model="catForm.nombre" required placeholder="ej: Accesos y Cuentas" :disabled="guardando">
-        </div>
-        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+        <CarbonCampo
+          v-model="catForm.nombre"
+          etiqueta="Nombre"
+          requerido
+          placeholder="ej: Accesos y Cuentas"
+          :deshabilitado="guardando"
+        />
+        <CarbonNotification v-if="errorForm" tipo="error">{{ errorForm }}</CarbonNotification>
       </form>
       <template #acciones>
-        <button class="btn" type="button" :disabled="guardando" @click="modalCatForm?.cerrar()">Cancelar</button>
-        <button class="btn btn-primary" type="submit" form="cat-form" :disabled="guardando">
-          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+        <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modalCatForm?.cerrar()">Cancelar</CarbonButton>
+        <CarbonButton variante="primary" tipo="submit" form="cat-form" :deshabilitado="guardando" :cargando="guardando">
           {{ guardando ? 'Guardando...' : 'Guardar' }}
-        </button>
+        </CarbonButton>
       </template>
     </Modal>
 
@@ -321,10 +329,10 @@ onMounted(async () => {
   padding-right: 16px;
 }
 
-.cat-chevron { color: var(--color-text-secondary); font-size: 15px; }
+.cat-chevron { color: var(--color-text-secondary); font-size: var(--icon-sm); }
 
 .cat-count {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   margin-left: auto;
 }
@@ -341,15 +349,28 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   padding: 4px 0;
 }
 
 .cat-sub-nueva {
   display: flex;
+  align-items: center;
   gap: 6px;
   margin-top: 4px;
 }
 
-.cat-sub-nueva input { flex: 1; }
+.cat-sub-nueva .form-group { flex: 1; }
+
+.cat-item--skeleton {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+}
+
+.cat-item--skeleton:nth-child(1) .skeleton-bar { width: 70%; }
+.cat-item--skeleton:nth-child(2) .skeleton-bar { width: 45%; }
+.cat-item--skeleton:nth-child(3) .skeleton-bar { width: 60%; }
+.cat-item--skeleton:nth-child(4) .skeleton-bar { width: 35%; }
+.cat-item--skeleton:nth-child(5) .skeleton-bar { width: 55%; }
 </style>

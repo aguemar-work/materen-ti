@@ -5,14 +5,16 @@ import { usePlataformasStore } from '../../stores/plataformas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
-import EmptyState from '../../components/shared/EmptyState.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
+import Modal from '../../components/shared/Modal.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = usePlataformasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -23,9 +25,9 @@ const plataformaEditar = ref(null);
 const guardando = ref(false);
 const errorForm = ref('');
 
-// Foco atrapado mientras el modal está abierto (Fase 4)
-const panelForm = ref(null);
-useFocoAtrapado(panelForm, mostrarForm);
+// Cerrar vía Modal.cerrar() reproduce la animación de salida;
+// el @close del Modal es quien baja mostrarForm.
+const modalForm = ref(null);
 
 const form = ref({ id: '', nombre: '', icono: '' });
 
@@ -38,7 +40,17 @@ const listaFiltrada = computed(() => {
 });
 
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
+
+// Definición de columnas de CarbonDataTable: "Nombre" es la elástica; "Slug"
+// e "Ícono" van al renglón superior de la tarjeta móvil, igual que la
+// cabecera de la tarjeta vieja.
+const columnas = [
+  { clave: 'id', label: 'Slug', ordenable: true, movil: 'cab' },
+  { clave: 'nombre', label: 'Nombre', ordenable: true, elastica: true, movil: 'principal' },
+  { clave: 'icono', label: 'Ícono', movil: 'cab' },
+  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
+];
 
 const esEdicion = computed(() => !!plataformaEditar.value?.id);
 
@@ -120,9 +132,7 @@ onMounted(async () => {
             Plataformas registradas
             <span class="badge-count">{{ listaFiltrada.length }} plataformas</span>
           </div>
-          <button class="btn btn-primary" type="button" @click="abrirNueva">
-            <i class="ti ti-plus" aria-hidden="true"></i> Nueva plataforma
-          </button>
+          <CarbonButton variante="primary" icono="ti-plus" @click="abrirNueva">Nueva plataforma</CarbonButton>
         </div>
 
         <div class="filters">
@@ -138,138 +148,126 @@ onMounted(async () => {
 
         <div v-if="error" class="no-results plataformas-error">{{ error }}</div>
 
-        <EmptyState
-          v-else-if="!cargando && listaFiltrada.length === 0"
-          icono="ti ti-apps"
-          titulo="Sin plataformas"
-          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera plataforma.'"
-        >
-          <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
-            <i class="ti ti-plus"></i> Agregar plataforma
-          </button>
-        </EmptyState>
+        <template v-else>
+        <p v-if="cargando" class="sr-only" role="status">Cargando plataformas…</p>
 
-        <div v-else-if="cargando || listaFiltrada.length > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando plataformas…</p>
-          <table aria-label="Plataformas registradas">
-            <thead>
-              <tr>
-                <ThOrdenable clave="id" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Slug</ThOrdenable>
-                <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
-                <th scope="col">Ícono</th>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="4" />
-              <template v-else>
-              <tr v-for="plat in listaPaginada" :key="plat.id">
-                <td>
-                  <code class="slug">{{ plat.id }}</code>
-                </td>
-                <td>
-                  <div class="user-name">{{ plat.nombre }}</div>
-                </td>
-                <td>
-                  <span v-if="plat.icono" class="icono-preview">
-                    <i :class="plat.icono" aria-hidden="true"></i>
-                    <span>{{ plat.icono }}</span>
-                  </span>
-                  <TextoVacio v-else />
-                </td>
-                <td>
-                  <div class="actions">
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Editar"
-                      aria-label="Editar"
-                      @click="abrirEditar(plat)"
-                    >
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button
-                      class="icon-btn danger"
-                      type="button"
-                      title="Dar de baja"
-                      aria-label="Dar de baja"
-                      @click="porDarDeBaja = plat"
-                    >
-                      <i class="ti ti-trash"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-        </div>
+        <CarbonDataTable
+          :columnas="columnas"
+          :filas="listaPaginada"
+          :cargando="cargando"
+          :orden-por="columna"
+          :orden-dir="direccion"
+          etiqueta="Plataformas registradas"
+          vacio-icono="ti ti-apps"
+          vacio-titulo="Sin plataformas"
+          :vacio-mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera plataforma.'"
+          @ordenar="ordenarPor"
+        >
+          <template #celda-id="{ valor }">
+            <code class="slug">{{ valor }}</code>
+          </template>
+          <template #celda-nombre="{ valor }">
+            <div class="user-name">{{ valor }}</div>
+          </template>
+          <template #celda-icono="{ fila }">
+            <span v-if="fila.icono" class="icono-preview">
+              <i :class="fila.icono" aria-hidden="true"></i>
+              <span>{{ fila.icono }}</span>
+            </span>
+            <TextoVacio v-else />
+          </template>
+          <template #celda-acciones="{ fila }">
+            <div class="actions">
+              <button
+                class="icon-btn fila-accion"
+                type="button"
+                title="Editar"
+                aria-label="Editar"
+                @click="abrirEditar(fila)"
+              >
+                <i class="ti ti-pencil"></i>
+              </button>
+              <button
+                class="icon-btn danger fila-accion"
+                type="button"
+                title="Dar de baja"
+                aria-label="Dar de baja"
+                @click="porDarDeBaja = fila"
+              >
+                <i class="ti ti-trash"></i>
+              </button>
+            </div>
+          </template>
+          <template #vacio-accion>
+            <CarbonButton v-if="!busqueda" variante="secondary" icono="ti-plus" @click="abrirNueva">Agregar plataforma</CarbonButton>
+          </template>
+        </CarbonDataTable>
+        </template>
+
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="totalItems"
+          :tam-pagina="tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="plataformas"
+          @update:tam-pagina="cambiarTamPagina"
+        />
       </div>
     </main>
 
-    <!-- Modal plataforma -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarForm" class="modal-bg" @click.self="cerrarForm">
-      <div ref="panelForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="plat-form-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="plat-form-title">{{ esEdicion ? 'Editar plataforma' : 'Nueva plataforma' }}</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="cerrarForm">
-            <i class="ti ti-x" aria-hidden="true"></i>
-          </button>
+    <!-- Modal plataforma (Modal accesible compartido) -->
+    <Modal
+      v-if="mostrarForm"
+      ref="modalForm"
+      :titulo="esEdicion ? 'Editar plataforma' : 'Nueva plataforma'"
+      size="sm"
+      @close="cerrarForm"
+    >
+      <form id="plat-form" @submit.prevent="guardar">
+        <div class="form-grid">
+        <CarbonCampo
+          v-model="form.id"
+          etiqueta="Slug (ID)"
+          requerido
+          :deshabilitado="guardando || esEdicion"
+          placeholder="ej: google-workspace"
+          :ayuda="esEdicion ? 'No editable después de creado' : ''"
+          pattern="[a-z0-9\-]+"
+          title="Minúsculas, números y guiones"
+        />
+
+        <CarbonCampo
+          v-model="form.nombre"
+          etiqueta="Nombre"
+          requerido
+          :deshabilitado="guardando"
+        />
+
+        <div class="icono-field">
+          <CarbonCampo
+            v-model="form.icono"
+            etiqueta="Ícono"
+            ayuda="Clase CSS, ej: ti ti-brand-google"
+            :deshabilitado="guardando"
+            placeholder="ti ti-..."
+          />
+          <span v-if="form.icono" class="icono-preview-sm">
+            <i :class="form.icono"></i>
+          </span>
         </div>
 
-        <form @submit.prevent="guardar">
-          <div class="modal-body form-grid">
-          <div class="form-group full">
-            <label for="plat-id">
-              Slug (ID) *
-              <span v-if="esEdicion" class="label-hint">no editable</span>
-            </label>
-            <input
-              id="plat-id"
-              v-model="form.id"
-              required
-              :disabled="guardando || esEdicion"
-              placeholder="ej: google-workspace"
-              pattern="[a-z0-9\-]+"
-              title="Solo minúsculas, números y guiones"
-            >
-          </div>
+        </div>
 
-          <div class="form-group full">
-            <label for="plat-nombre">Nombre *</label>
-            <input id="plat-nombre" v-model="form.nombre" required :disabled="guardando">
-          </div>
-
-          <div class="form-group full">
-            <label for="plat-icono">
-              Ícono
-              <span class="label-hint">clase CSS, ej: ti ti-brand-google</span>
-            </label>
-            <div class="icono-row">
-              <input id="plat-icono" v-model="form.icono" :disabled="guardando" placeholder="ti ti-...">
-              <span v-if="form.icono" class="icono-preview-sm">
-                <i :class="form.icono"></i>
-              </span>
-            </div>
-          </div>
-
-          </div>
-
-          <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
-
-          <div class="modal-actions full">
-            <button class="btn" type="button" :disabled="guardando" @click="cerrarForm">Cancelar</button>
-            <button class="btn btn-primary" type="submit" :disabled="guardando">
-              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-              {{ guardando ? 'Guardando...' : 'Guardar' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-    </Transition>
+        <CarbonNotification v-if="errorForm" tipo="error">{{ errorForm }}</CarbonNotification>
+      </form>
+      <template #acciones>
+        <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modalForm?.cerrar()">Cancelar</CarbonButton>
+        <CarbonButton variante="primary" tipo="submit" form="plat-form" :cargando="guardando">
+          {{ guardando ? 'Guardando...' : 'Guardar' }}
+        </CarbonButton>
+      </template>
+    </Modal>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -296,42 +294,32 @@ onMounted(async () => {
 .slug {
   background: var(--color-surface-2, var(--color-bg-hover));
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-base);
 }
 
 .icono-preview {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 16px;
+  font-size: var(--icon-sm);
 }
 
 
-.icono-row {
+.icono-field {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
 }
 
-.icono-row input {
+.icono-field :deep(.cds-campo) {
   flex: 1;
+  min-width: 0;
 }
 
 .icono-preview-sm {
-  font-size: 20px;
+  font-size: var(--icon-md);
   line-height: 1;
   color: var(--color-text-primary);
-}
-
-.label-hint {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  font-weight: 400;
-  margin-left: 6px;
-}
-
-
-.modal-actions.full {
-  grid-column: 1 / -1;
+  padding-bottom: var(--space-6);
 }
 </style>

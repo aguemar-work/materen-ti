@@ -4,18 +4,18 @@ import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useProblemasStore } from '../../stores/problemas.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { OPCIONES_ESTADO_PROBLEMA, OPCIONES_SEVERIDAD_PROBLEMA } from '../../core/dominio-problemas.js';
-import { formatFechaHora } from '../../core/formatters.js';
+import { OPCIONES_ESTADO_PROBLEMA, OPCIONES_SEVERIDAD_PROBLEMA, severidadProblemaInfo } from '../../core/dominio-problemas.js';
+import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import ProblemaForm from './ProblemaForm.vue';
-import Pagination from '../../components/shared/Pagination.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const router = useRouter();
 const store = useProblemasStore();
@@ -45,6 +45,35 @@ function verProblema(problema) {
   router.push(`/problemas/${problema.id}`);
 }
 
+// Severidad como punto+texto, no badge (pasada de diseño de tablas ago
+// 2026) — mismo criterio que IndicadorPrioridad.vue en Tickets: Severidad
+// es un dato de triage, no un estado, y competía como 2ª píldora de color
+// junto a Estado en la misma fila. baja/media (el caso mayoritario, no
+// piden atención) quedan sin color; alta/crítica sí se pintan, cada una
+// con el MISMO color que ya tenía su badge (`SEVERIDADES_PROBLEMA`,
+// dominio-problemas.js: alta→purple, crítica→danger) — el vocabulario de
+// color no cambia, cambia el envase. No se generaliza IndicadorPrioridad.vue:
+// es específico de Tickets (`prioridadInfo`), esto usa su propia función.
+const SEVERIDAD_COLOREADA = new Set(['alta', 'critica']);
+function claseSeveridad(valor) {
+  return SEVERIDAD_COLOREADA.has(valor) ? `severidad-ind--${valor}` : '';
+}
+
+// Definición de columnas de CarbonDataTable: paginación y orden son de
+// servidor (store.ordenarPor), el @ordenar de la tabla se cablea directo a
+// eso. "Título" es la elástica.
+const columnas = [
+  { clave: 'severidad', label: 'Severidad', movil: 'pie' },
+  { clave: 'titulo', label: 'Título', ordenable: true, elastica: true, movil: 'principal' },
+  { clave: 'estado', label: 'Estado', ordenable: true, movil: 'pie' },
+  { clave: 'responsable', label: 'Responsable', movil: 'sec' },
+  { clave: 'updated_at', label: 'Actualizado', ordenable: true, num: true, movil: 'sec' },
+];
+
+function claseFilaProblema() {
+  return 'fila-problema tarjeta-fila--clic';
+}
+
 function onFormCerrado(creado) {
   mostrarForm.value = false;
   if (creado) {
@@ -68,9 +97,7 @@ onMounted(async () => {
   <div class="problemas-page vista-modulo">
     <PageHeader titulo="Problemas" icono="ti ti-alert-hexagon" :conteo="total">
       <template #acciones>
-        <button class="btn btn-primary" type="button" @click="mostrarForm = true">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo problema
-        </button>
+        <CarbonButton variante="primary" icono="ti-plus" @click="mostrarForm = true">Nuevo problema</CarbonButton>
       </template>
     </PageHeader>
 
@@ -97,71 +124,57 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="cargando" class="no-results solo-movil">Cargando problemas...</div>
-        <div v-else-if="error" class="no-results problemas-error">{{ error }}</div>
+        <div v-if="error" class="no-results problemas-error">{{ error }}</div>
 
-        <EmptyState
-          v-else-if="!cargando && total === 0"
-          icono="ti ti-alert-hexagon"
-          titulo="Sin problemas"
-          :mensaje="busqueda || filtroEstado || filtroSeveridad ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer problema con causa raíz y acciones correctivas.'"
-        >
-          <button v-if="!busqueda && !filtroEstado && !filtroSeveridad" class="btn" type="button" @click="mostrarForm = true">
-            <i class="ti ti-plus"></i> Nuevo problema
-          </button>
-        </EmptyState>
-
-        <template v-if="!error && (cargando || total > 0)">
+        <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando problemas…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Problemas">
-            <thead>
-              <tr>
-                <ThOrdenable clave="titulo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Título</ThOrdenable>
-                <ThOrdenable clave="severidad" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Severidad</ThOrdenable>
-                <ThOrdenable clave="estado" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Estado</ThOrdenable>
-                <th scope="col">Responsable</th>
-                <ThOrdenable clave="updated_at" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Actualizado</ThOrdenable>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="5" />
-              <template v-else>
-              <tr v-for="p in lista" :key="p.id" class="fila-problema" @click="verProblema(p)">
-                <td>
-                  <RouterLink class="problema-titulo-link" :to="`/problemas/${p.id}`" @click.stop>{{ p.titulo }}</RouterLink>
-                </td>
-                <td><BadgeEstado tipo="problema_severidad" :valor="p.severidad" /></td>
-                <td><BadgeEstado tipo="problema_estado" :valor="p.estado" /></td>
-                <td>
-                  <span v-if="p.responsable_id">{{ staffPorId[p.responsable_id] || 'Staff' }}</span>
-                  <TextoVacio v-else placeholder="Sin asignar" />
-                </td>
-                <td class="fecha-cell">{{ formatFechaHora(p.updated_at) }}</td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
 
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Problemas">
-          <li v-for="p in lista" :key="p.id" class="tarjeta-fila tarjeta-fila--clic" @click="verProblema(p)">
-            <div class="tarjeta-fila__principal">{{ p.titulo }}</div>
-            <div class="tarjeta-fila__sec">
-              <span v-if="p.responsable_id">{{ staffPorId[p.responsable_id] || 'Staff' }}</span>
-              <TextoVacio v-else placeholder="Sin asignar" />
-              <span aria-hidden="true">·</span>
-              <span>{{ formatFechaHora(p.updated_at) }}</span>
-            </div>
-            <div class="tarjeta-fila__badges">
-              <BadgeEstado tipo="problema_severidad" :valor="p.severidad" />
-              <BadgeEstado tipo="problema_estado" :valor="p.estado" />
-            </div>
-          </li>
-        </ul>
+        <CarbonDataTable
+          :columnas="columnas"
+          :filas="lista"
+          :cargando="cargando"
+          :orden-por="ordenColumna"
+          :orden-dir="ordenDireccion"
+          :clase-fila="claseFilaProblema"
+          etiqueta="Problemas"
+          vacio-icono="ti ti-alert-hexagon"
+          vacio-titulo="Sin problemas"
+          :vacio-mensaje="busqueda || filtroEstado || filtroSeveridad ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer problema con causa raíz y acciones correctivas.'"
+          @ordenar="store.ordenarPor"
+          @clic-fila="verProblema"
+        >
+          <template #celda-severidad="{ fila }">
+            <span class="severidad-ind" :class="claseSeveridad(fila.severidad)">
+              {{ severidadProblemaInfo(fila.severidad).label }}
+            </span>
+          </template>
+          <template #celda-titulo="{ fila }">
+            <RouterLink class="problema-titulo-link" :to="`/problemas/${fila.id}`" @click.stop>{{ fila.titulo }}</RouterLink>
+          </template>
+          <template #celda-estado="{ fila }">
+            <BadgeEstado tipo="problema_estado" :valor="fila.estado" />
+          </template>
+          <template #celda-responsable="{ fila }">
+            <span v-if="fila.responsable_id">{{ staffPorId[fila.responsable_id] || 'Staff' }}</span>
+            <TextoVacio v-else placeholder="Sin asignar" />
+          </template>
+          <template #celda-updated_at="{ fila }">
+            <span class="fecha-cell" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
+          </template>
+          <template #vacio-accion>
+            <CarbonButton v-if="!busqueda && !filtroEstado && !filtroSeveridad" variante="secondary" icono="ti-plus" @click="mostrarForm = true">Nuevo problema</CarbonButton>
+          </template>
+        </CarbonDataTable>
 
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="total"
+          :tam-pagina="store.tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="problemas"
+          @update:tam-pagina="store.cambiarTamPagina"
+        />
         </template>
       </div>
     </main>
@@ -173,13 +186,17 @@ onMounted(async () => {
 <style scoped>
 .problemas-error { color: var(--color-danger); }
 
-.fila-problema { cursor: pointer; }
-.fila-problema:hover td { background: var(--color-bg-hover); }
+/* :deep porque CarbonDataTable pinta el <tr>/<li> en su propio scope; el
+   hover en sí ya lo cubre main.css para toda tabla, esto solo agrega el
+   cursor de "fila clicable" que main.css no asume por defecto. */
+:deep(.fila-problema) { cursor: pointer; }
 
 .problema-titulo-link {
+  /* Peso 400, no 600 (pasada de diseño de tablas ago 2026): pisaba la
+     regla global "ningún dato de tabla en negrita" — bug real, no una
+     excepción a propósito. */
   color: var(--color-text-primary);
   text-decoration: none;
-  font-weight: 600;
 }
 .problema-titulo-link:hover,
 .problema-titulo-link:focus-visible {
@@ -187,4 +204,44 @@ onMounted(async () => {
 }
 
 .fecha-cell { white-space: nowrap; }
+
+/* Indicador de Severidad: punto + texto, mismo mecanismo visual que
+   IndicadorPrioridad.vue (componentes/shared, Tickets) pero LOCAL a este
+   archivo — Severidad es un dato de dominio propio de Problemas, no vale
+   generalizar el componente de Tickets para esto. El punto es decorativo
+   (::before, fuera del árbol de accesibilidad): el texto siempre está al
+   lado, el color nunca es el único portador del significado (WCAG 1.4.1). */
+.severidad-ind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: var(--fs-body-01);
+  color: var(--color-text-tertiary);
+}
+
+.severidad-ind::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+  flex-shrink: 0;
+}
+
+/* alta conserva el mismo púrpura que ya tenía el badge (SEVERIDADES_PROBLEMA);
+   crítica conserva el mismo rojo — el vocabulario de color no cambia. */
+.severidad-ind--alta {
+  color: var(--color-text-secondary);
+}
+.severidad-ind--alta::before {
+  background: var(--color-purple-text);
+}
+
+.severidad-ind--critica {
+  color: var(--color-danger-text);
+}
+.severidad-ind--critica::before {
+  background: var(--color-danger-text);
+}
 </style>

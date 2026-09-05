@@ -45,13 +45,6 @@ export default [
     meta: { public: true },
   },
   {
-    // Pre-registro público de personal (candidato/nuevo ingreso, sin sesión)
-    path: '/personal-registro',
-    name: 'personal-registro',
-    component: () => import('../../modules/personal/PersonalRegistroView.vue'),
-    meta: { public: true },
-  },
-  {
     // Responder una ronda de encuesta anónima (sin sesión, sin un solo uso)
     path: '/encuesta/:slug',
     name: 'encuesta-publica',

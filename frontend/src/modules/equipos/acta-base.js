@@ -9,6 +9,7 @@
 // queda en cada archivo es solo lo que difiere de verdad: sus secciones,
 // su cláusula y sus firmas.
 import { formatFecha } from '../../core/formatters.js';
+import { NOMBRE_PRODUCTO, NOMBRE_CORTO } from '../../core/marca.js';
 
 export function esc(v) {
   return String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -113,7 +114,7 @@ export function construirActa({ titulo, encabezado, fecha, equipo, secciones, cl
 </head>
 <body>
   <h1>${esc(encabezado)}</h1>
-  <p class="subtitulo">${esc(equipo.empresa_nombre || 'Sistema TI')} — ${esc(fecha)}</p>
+  <p class="subtitulo">${esc(equipo.empresa_nombre || NOMBRE_CORTO)} — ${esc(fecha)}</p>
 
   ${secciones.join('\n\n  ')}
 
@@ -125,7 +126,7 @@ export function construirActa({ titulo, encabezado, fecha, equipo, secciones, cl
     ${firmas.join('\n    ')}
   </div>
 
-  <p class="pie">Documento generado por Materen — Sistema TI el ${esc(hoy)} — equipo ${esc(equipo.codigo)}</p>
+  <p class="pie">Documento generado por ${esc(NOMBRE_PRODUCTO)} el ${esc(hoy)} — equipo ${esc(equipo.codigo)}</p>
 
   <script>window.onload = function () { window.print(); };</` + `script>
 </body>

@@ -5,25 +5,29 @@ import { useRouter, useRoute } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { altaIncompleta } from '../../core/dominio-empleados.js';
+import { fechaLocalISO } from '../../core/formatters.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto } from '../../core/dominio-empleados.js';
+import { tonoAvatar, inicialesDe } from '../../core/avatar.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
-import Pagination from '../../components/shared/Pagination.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -33,13 +37,38 @@ const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
+// Definición de columnas de CarbonDataTable, densidad `lg` (vista insignia,
+// ver template): mobile nunca pasa por acá (`:con-tarjetas="false"`) porque
+// ya tiene su propia grilla real de tarjetas (vista "Tarjetas" de arriba,
+// que también sirve de fallback móvil) — la tarjeta que arma CarbonDataTable
+// por columna hubiera sido una segunda tarjeta redundante.
+const columnasEmpleados = [
+  { clave: 'apellidos', label: 'Nombre', ordenable: true, elastica: true },
+  { clave: 'cargo', label: 'Cargo', ordenable: true },
+  { clave: 'empresa_nombre', label: 'Empresa' },
+  { clave: 'vinculos', label: 'Vínculos' },
+  { clave: 'estado', label: 'Estado', ordenable: true },
+  { clave: 'acciones', label: 'Acciones', ancho: '176px' },
+];
+
+// Fila entera clicable (va a la ficha) — mismo patrón que KbView.vue: la
+// clase se pinta en el scope de CarbonDataTable, así que el estilo abajo
+// necesita :deep().
+function claseFilaEmpleado() {
+  return 'fila-empleado';
+}
+
 // ── Selector Tabla/Tarjetas (FASE 4) ────────────────────────────────────
-// "Lista con avatar" queda pendiente (falta el mockup de proporciones) —
-// solo 2 opciones por ahora, se suma la 3ª en un commit aparte cuando
-// esté. Mobile siempre muestra tarjetas sin importar la preferencia (ya
-// era así antes de que este selector existiera) — ver el v-if de las
-// tarjetas y de la tabla más abajo, que se resuelven contra `esMovil`
-// además de contra `vista`.
+// "Lista con avatar" queda pendiente como 3ª opción (falta el mockup de
+// proporciones) — sigue siendo distinta de "Tarjetas": esa sería una lista
+// angosta de una columna (como la tarjeta angosta de Triage en Tickets),
+// "Tarjetas" es una grilla de tarjetas reales (ver más abajo, corregido en
+// esta pasada — antes reusaba el mismo `.tarjeta-fila` de fila compacta que
+// el fallback móvil, así que en escritorio se veía como una lista de filas
+// angosta, no como tarjetas). Mobile siempre muestra tarjetas sin importar
+// la preferencia (ya era así antes de que este selector existiera) — ver
+// el v-if de las tarjetas y de la tabla más abajo, que se resuelven contra
+// `esMovil` además de contra `vista`.
 const OPCIONES_VISTA_EMPLEADOS = [
   { valor: 'tabla', icono: 'ti-table', label: 'Tabla' },
   { valor: 'tarjetas', icono: 'ti-id', label: 'Tarjetas' },
@@ -56,6 +85,21 @@ const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltro
 const filtroEstado = ref(route.query.estado || 'Activo');
 const filtroUbicacion = ref('');
 const ubicaciones = ref([]);
+// El chip de cuentas de la fila ya distinguía "0 cuentas" con un tono
+// apagado, pero cero cuentas no significa lo mismo en todos lados: en alguien
+// que entró la semana pasada es un alta a medias, y en alguien de hace dos
+// años es sencillamente cómo trabaja. Misma regla que alimenta el feed de
+// pendientes del Dashboard (core/dominio-empleados.js) — el chip solo cambia
+// de significado, no se agrega ningún elemento nuevo a la fila.
+function altaPendiente(emp) {
+  return !!altaIncompleta(emp, { cuentas: emp.n_cuentas ?? 0 }, fechaLocalISO());
+}
+
+function tituloCuentas(emp) {
+  const base = `${emp.n_cuentas} cuenta(s) activa(s)`;
+  return altaPendiente(emp) ? `${base} — alta sin completar` : base;
+}
+
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
 
@@ -190,8 +234,14 @@ onMounted(async () => {
     // El filtro de ubicación queda vacío si falla — no rompe el listado.
   }
   try {
-    if (filtroEstado.value) {
-      // Llega con un filtro desde el link del Dashboard: no resetear.
+    // route.query.estado (no filtroEstado.value: ese ref siempre trae un
+    // valor por el fallback 'Activo' de la línea de arriba, así que nunca
+    // detectaría "no hay query entrante") — condición real de si llegó un
+    // deep link del Dashboard. Sin resetear en ese caso, `q` (búsqueda de
+    // texto) quedaba pegado en el store entre montajes: la caja se veía
+    // vacía (useBusqueda nace limpio) pero el filtro seguía aplicado al
+    // volver a Empleados desde otro módulo (bug reportado ago 2026).
+    if (route.query.estado) {
       await store.aplicarFiltros({ estado: filtroEstado.value });
     } else {
       store.resetearFiltros();
@@ -208,12 +258,10 @@ onMounted(async () => {
     <PageHeader titulo="Empleados" icono="ti ti-users" :conteo="total">
       <template #acciones>
         <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio" />
-        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </button>
-        <button class="btn btn-primary" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo empleado
-        </button>
+        <CarbonButton variante="secondary" icono="ti-table-export" :cargando="exportando" title="Exportar a Excel (CSV)" @click="exportar">
+          {{ exportando ? 'Exportando...' : 'Exportar' }}
+        </CarbonButton>
+        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNuevo">Nuevo empleado</CarbonButton>
       </template>
     </PageHeader>
 
@@ -255,115 +303,114 @@ onMounted(async () => {
           titulo="Sin empleados"
           :mensaje="busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agregue el primer empleado al inventario.'"
         >
-          <button v-if="!busqueda && !filtroEstado" class="btn" type="button" @click="abrirNuevo">
-            <i class="ti ti-plus"></i> Agregar empleado
-          </button>
+          <CarbonButton v-if="!busqueda && !filtroEstado" variante="secondary" icono="ti-plus" @click="abrirNuevo">Agregar empleado</CarbonButton>
         </EmptyState>
 
         <template v-if="!error && (cargando || total > 0)">
         <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
-        <div v-if="vista === 'tabla' && !esMovil" class="table-wrap">
-          <table aria-label="Inventario de empleados">
-            <thead>
-              <tr>
-                <ThOrdenable clave="dni" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">DNI</ThOrdenable>
-                <ThOrdenable clave="apellidos" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Nombre</ThOrdenable>
-                <ThOrdenable clave="cargo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Cargo</ThOrdenable>
-                <th scope="col">Empresa</th>
-                <th scope="col">Vínculos</th>
-                <ThOrdenable clave="estado" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Estado</ThOrdenable>
-                <th scope="col">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="7" />
-              <template v-else>
-              <tr v-for="emp in lista" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
-                <td>{{ emp.dni }}</td>
-                <td>
-                  <div class="user-name">{{ nombreCompleto(emp) }}</div>
-                </td>
-                <td><TextoVacio :valor="emp.cargo" /></td>
-                <td><TextoVacio :valor="emp.empresa_nombre" /></td>
-                <td>
-                  <div v-if="emp.n_cuentas != null" class="vinculos">
-                    <span
-                      class="vinculo"
-                      :class="{ 'vinculo--cero': !emp.n_cuentas }"
-                      :title="`${emp.n_cuentas} cuenta(s) activa(s)`"
-                      :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`"
-                    >
-                      <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
-                    </span>
-                    <span
-                      class="vinculo"
-                      :class="{ 'vinculo--cero': !emp.n_equipos }"
-                      :title="`${emp.n_equipos} equipo(s) asignado(s)`"
-                      :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"
-                    >
-                      <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
-                    </span>
-                    <span
-                      class="vinculo"
-                      :class="{ 'vinculo--cero': !emp.n_licencias }"
-                      :title="`${emp.n_licencias} licencia(s) directa(s)`"
-                      :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"
-                    >
-                      <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
-                    </span>
-                  </div>
-                  <TextoVacio v-else />
-                </td>
-                <td>
-                  <BadgeEstado tipo="empleado" :valor="emp.estado" status />
-                </td>
-                <td @click.stop>
-                  <div class="actions">
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Ver ficha"
-                      aria-label="Ver ficha"
-                      @click="verFicha(emp)"
-                    >
-                      <i class="ti ti-eye"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Editar"
-                      aria-label="Editar"
-                      @click="abrirEditar(emp)"
-                    >
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :title="auth.puedeVerCredenciales ? 'Enviar credenciales por WhatsApp' : 'Sin permiso para ver contraseñas'"
-                      aria-label="Enviar credenciales por WhatsApp"
-                      :disabled="enviandoCredsId === emp.id || !auth.puedeVerCredenciales"
-                      @click="enviarCredenciales(emp)"
-                    >
-                      <i :class="enviandoCredsId === emp.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'"></i>
-                    </button>
-                    <button
-                      v-if="emp.estado !== 'Inactivo'"
-                      class="icon-btn danger"
-                      type="button"
-                      title="Dar de baja"
-                      aria-label="Dar de baja"
-                      @click="darDeBaja(emp)"
-                    >
-                      <i class="ti ti-user-off"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
+        <CarbonDataTable
+          v-if="vista === 'tabla' && !esMovil"
+          :columnas="columnasEmpleados"
+          :filas="lista"
+          :cargando="cargando"
+          densidad="lg"
+          :orden-por="ordenColumna"
+          :orden-dir="ordenDireccion"
+          :con-tarjetas="false"
+          :clase-fila="claseFilaEmpleado"
+          etiqueta="Inventario de empleados"
+          @ordenar="store.ordenarPor"
+          @clic-fila="verFicha"
+        >
+          <template #celda-apellidos="{ fila }">
+            <!-- DNI + Nombre colapsan (mismo criterio que Tickets):
+                 identificador arriba en gris chico, dato principal abajo. -->
+            <div class="celda-apilada">
+              <span class="celda-apilada__meta">{{ fila.dni }}</span>
+              <span class="celda-apilada__principal">{{ nombreCompleto(fila) }}</span>
+            </div>
+          </template>
+          <template #celda-cargo="{ valor }">
+            <TextoVacio :valor="valor" />
+          </template>
+          <template #celda-empresa_nombre="{ valor }">
+            <TextoVacio :valor="valor" />
+          </template>
+          <template #celda-vinculos="{ fila }">
+            <div v-if="fila.n_cuentas != null" class="vinculos">
+              <span
+                class="vinculo"
+                :class="{ 'vinculo--cero': !fila.n_cuentas, 'vinculo--pendiente': altaPendiente(fila) }"
+                :title="tituloCuentas(fila)"
+                :aria-label="tituloCuentas(fila)"
+              >
+                <i class="ti ti-key" aria-hidden="true"></i>{{ fila.n_cuentas }}
+              </span>
+              <span
+                class="vinculo"
+                :class="{ 'vinculo--cero': !fila.n_equipos }"
+                :title="`${fila.n_equipos} equipo(s) asignado(s)`"
+                :aria-label="`${fila.n_equipos} equipo(s) asignado(s)`"
+              >
+                <i class="ti ti-devices" aria-hidden="true"></i>{{ fila.n_equipos }}
+              </span>
+              <span
+                class="vinculo"
+                :class="{ 'vinculo--cero': !fila.n_licencias }"
+                :title="`${fila.n_licencias} licencia(s) directa(s)`"
+                :aria-label="`${fila.n_licencias} licencia(s) directa(s)`"
+              >
+                <i class="ti ti-license" aria-hidden="true"></i>{{ fila.n_licencias }}
+              </span>
+            </div>
+            <TextoVacio v-else />
+          </template>
+          <template #celda-estado="{ fila }">
+            <BadgeEstado tipo="empleado" :valor="fila.estado" status />
+          </template>
+          <template #celda-acciones="{ fila }">
+            <div class="actions" @click.stop>
+              <button
+                class="icon-btn fila-accion"
+                type="button"
+                title="Ver ficha"
+                aria-label="Ver ficha"
+                @click="verFicha(fila)"
+              >
+                <i class="ti ti-eye"></i>
+              </button>
+              <button
+                class="icon-btn fila-accion"
+                type="button"
+                title="Editar"
+                aria-label="Editar"
+                @click="abrirEditar(fila)"
+              >
+                <i class="ti ti-pencil"></i>
+              </button>
+              <button
+                class="icon-btn fila-accion"
+                type="button"
+                :title="auth.puedeVerCredenciales ? 'Enviar credenciales por WhatsApp' : 'Sin permiso para ver contraseñas'"
+                aria-label="Enviar credenciales por WhatsApp"
+                :disabled="enviandoCredsId === fila.id || !auth.puedeVerCredenciales"
+                @click="enviarCredenciales(fila)"
+              >
+                <i :class="enviandoCredsId === fila.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'"></i>
+              </button>
+              <button
+                v-if="fila.estado !== 'Inactivo'"
+                class="icon-btn danger fila-accion"
+                type="button"
+                title="Dar de baja"
+                aria-label="Dar de baja"
+                @click="darDeBaja(fila)"
+              >
+                <i class="ti ti-user-off"></i>
+              </button>
+            </div>
+          </template>
+        </CarbonDataTable>
 
         <!-- Tarjetas no tiene un equivalente propio de SkeletonTabla (esa
              es la del modo Tabla) — mismo texto genérico que ya usa mobile
@@ -373,36 +420,63 @@ onMounted(async () => {
         <div v-if="cargando && vista === 'tarjetas' && !esMovil" class="no-results">Cargando empleados...</div>
 
         <!-- Tarjetas: vista de escritorio elegida por el usuario, o mobile
-             sin importar la preferencia (mobile nunca muestra tabla). -->
-        <ul v-if="!cargando && (vista === 'tarjetas' || esMovil)" class="lista-tarjetas" aria-label="Inventario de empleados">
-          <li v-for="emp in lista" :key="emp.id" class="tarjeta-fila tarjeta-fila--clic" @click="verFicha(emp)">
-            <div class="tarjeta-fila__principal user-name">{{ nombreCompleto(emp) }}</div>
-            <div class="tarjeta-fila__sec">
-              <span>{{ emp.dni }}</span>
-              <template v-if="emp.cargo"><span aria-hidden="true">·</span><span>{{ emp.cargo }}</span></template>
-              <template v-if="emp.empresa_nombre"><span aria-hidden="true">·</span><span>{{ emp.empresa_nombre }}</span></template>
-            </div>
-            <div class="tarjeta-fila__pie">
-              <div class="tarjeta-fila__badges">
-                <BadgeEstado tipo="empleado" :valor="emp.estado" status />
-                <div v-if="emp.n_cuentas != null" class="vinculos vinculos--tarjeta">
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_cuentas }" :title="`${emp.n_cuentas} cuenta(s) activa(s)`" :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`">
-                    <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
-                  </span>
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_equipos }" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`">
-                    <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
-                  </span>
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_licencias }" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`">
-                    <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
-                  </span>
-                </div>
+             sin importar la preferencia (mobile nunca muestra tabla).
+             Grilla real de tarjetas (pasada de diseño ago 2026) — antes
+             reusaba `.tarjeta-fila`, la fila compacta del fallback móvil de
+             OTROS módulos, así que en escritorio se leía como una lista de
+             filas angosta, no como tarjetas. `.lista-tarjetas` se mantiene
+             en el `<ul>` a propósito (no se retira): es lo que le da el
+             scroll-container correcto dentro de `.card--fill` (main.css);
+             `.emp-tarjetas` solo agrega el `display:grid` encima, sin pisar
+             esa regla compartida. La grilla responsive
+             (`repeat(auto-fill, minmax(260px,1fr))`) no necesita una
+             media query aparte para mobile: con un solo viewport angosto ya
+             entra 1 sola columna, mismo criterio que el resto del sistema
+             evita breakpoints redundantes cuando el layout ya resuelve
+             solo. -->
+        <ul v-if="!cargando && (vista === 'tarjetas' || esMovil)" class="lista-tarjetas emp-tarjetas" aria-label="Inventario de empleados">
+          <li v-for="emp in lista" :key="emp.id" class="card card--clicable emp-card" @click="verFicha(emp)">
+            <div class="emp-card__cab">
+              <span class="avatar sm" :class="tonoAvatar(nombreCompleto(emp))" aria-hidden="true">{{ inicialesDe(nombreCompleto(emp)) }}</span>
+              <div class="emp-card__id">
+                <span class="emp-card__nombre">{{ nombreCompleto(emp) }}</span>
+                <span class="emp-card__dni">{{ emp.dni }}</span>
               </div>
               <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
+            </div>
+
+            <div v-if="emp.cargo || emp.empresa_nombre" class="emp-card__sec">
+              <template v-if="emp.cargo">{{ emp.cargo }}</template>
+              <span v-if="emp.cargo && emp.empresa_nombre" aria-hidden="true"> · </span>
+              <template v-if="emp.empresa_nombre">{{ emp.empresa_nombre }}</template>
+            </div>
+
+            <div class="emp-card__pie">
+              <BadgeEstado tipo="empleado" :valor="emp.estado" status />
+              <div v-if="emp.n_cuentas != null" class="vinculos vinculos--tarjeta">
+                <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_cuentas, 'vinculo--pendiente': altaPendiente(emp) }" :title="tituloCuentas(emp)" :aria-label="tituloCuentas(emp)">
+                  <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
+                </span>
+                <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_equipos }" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`">
+                  <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
+                </span>
+                <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_licencias }" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`">
+                  <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
+                </span>
+              </div>
             </div>
           </li>
         </ul>
 
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="total"
+          :tam-pagina="store.tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="empleados"
+          @update:tam-pagina="store.cambiarTamPagina"
+        />
         </template>
       </div>
     </main>
@@ -424,8 +498,11 @@ onMounted(async () => {
 <style scoped>
 .empleados-error { color: var(--color-danger); }
 
-.fila-empleado { cursor: pointer; }
-.fila-empleado:hover td { background: var(--color-bg-hover, var(--color-bg-subtle)); }
+/* :deep() porque CarbonDataTable renderiza el <tr> en su propio ámbito de
+   scope (vía claseFila) — un selector scoped normal acá nunca lo alcanza.
+   Mismo patrón que KbView.vue. */
+:deep(.fila-empleado) { cursor: pointer; }
+:deep(.fila-empleado:hover td) { background: var(--color-bg-hover, var(--color-bg-subtle)); }
 
 /* Conteos de cuentas/equipos: dato secundario, no badge (no es estado) */
 .vinculos {
@@ -441,7 +518,94 @@ onMounted(async () => {
   color: var(--color-text-secondary);
 }
 
-.vinculo i { font-size: 14px; }
+.vinculo i { font-size: var(--icon-sm); }
 
 .vinculo--cero { color: var(--color-text-tertiary); }
+
+/* Cero cuentas EN ALGUIEN QUE ACABA DE ENTRAR: no es información neutra, es
+   trabajo pendiente. Gana el tono de atención sobre el apagado de --cero por
+   orden de aparición (misma especificidad), que es lo que se busca. */
+.vinculo--pendiente { color: var(--color-warning-text); }
+
+/* Grilla real de tarjetas (ver nota larga en el template). Responsive sin
+   media query: cada columna pide un mínimo de 260px, así que en una
+   pantalla angosta `auto-fill` ya cae solo a 1 columna. */
+.emp-tarjetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  align-content: start;
+  padding: 1rem 1.25rem;
+}
+
+.emp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.emp-card__cab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.emp-card__id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Sin esto, un nombre largo compite por espacio con el disparador de
+   MenuAcciones (ninguno de los dos tiene flex-shrink:0 por defecto) y el
+   ícono ⋮ puede terminar deformado — el nombre ya tiene su propio
+   ellipsis para ceder espacio primero. */
+.emp-card__cab :deep(.icon-btn) {
+  flex-shrink: 0;
+}
+
+.emp-card__nombre {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-card__dni {
+  font-size: var(--fs-label-01);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono, monospace);
+}
+
+.emp-card__sec {
+  font-size: var(--fs-label-01);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* margin-top:auto empuja el pie al fondo de la tarjeta: las tarjetas de una
+   misma fila del grid ya estiran parejo (comportamiento default de Grid,
+   align-items:stretch), así que una tarjeta con menos texto en el medio
+   (sin cargo/empresa) igual alinea su pie con las de al lado. */
+.emp-card__pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+/* Los 3 conteos pueden envolver en una tarjeta angosta sin romper layout
+   (a diferencia de la fila de tabla, con todo el ancho disponible). */
+.vinculos--tarjeta {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
 </style>

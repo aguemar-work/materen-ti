@@ -7,8 +7,7 @@
 // primitivas de jsPDF (rect/line/text, ver pdfReporte.js): el proyecto no
 // tiene ninguna librería de charts (chart.js, etc.) y no hacía falta sumar
 // una dependencia nueva solo para esto.
-import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { aISO } from '../tickets/reportePeriodo.js';
+import { formatFecha, formatFechaHora, fechaISO as aISO } from '../../core/formatters.js';
 import {
   ANCHO, MARGEN, UTIL, GRIS_LINEA, GRIS_TEXTO, NEGRO,
   celdaVacia, abrirSeccion, nota, bloqueKpis, tabla, graficoCategorias, piePaginas, crearDocumentoPdf,

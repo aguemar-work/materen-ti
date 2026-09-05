@@ -5,9 +5,12 @@ import { useAccesosSensiblesStore } from '../../stores/accesosSensibles.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { CATEGORIAS_ACCESO_SENSIBLE } from '../../core/dominio-accesos-sensibles.js';
 import { generarPassword } from '../../core/generarPassword.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   acceso: { type: Object, default: null },
@@ -18,7 +21,6 @@ const emit = defineEmits(['cerrar']);
 const auth = useAuthStore();
 const store = useAccesosSensiblesStore();
 
-const modal = ref(null);
 let resultado = false;
 
 const guardando = ref(false);
@@ -45,12 +47,11 @@ const form = ref({
 // para editar) y ningún otro camino en la UI se lo devolvería.
 const permisosSeleccionados = ref([]);
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
+const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => ({
   form: form.value,
   permisos: [...permisosSeleccionados.value].sort(),
 }));
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
 
 function resetForm() {
   error.value = '';
@@ -106,23 +107,6 @@ function togglePermiso(userId) {
 // Guard de cierre del Modal compartido: backdrop/Escape/X pasan por acá
 // igual que el botón "Cancelar" — con cambios sin guardar se pide
 // confirmación antes de descartar; limpio cierra directo.
-function confirmarCierre() {
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return false;
-  }
-  return true;
-}
-
-function cancelar() {
-  if (confirmarCierre()) modal.value?.cerrar();
-}
-
-function descartarCambios() {
-  dialogoDescarte.value?.cerrar();
-  modal.value?.cerrar();
-}
-
 function generar() {
   form.value.password = generarPassword();
   passwordVisible.value = true;
@@ -166,48 +150,35 @@ async function guardar() {
     @close="emit('cerrar', resultado)"
   >
     <form id="acceso-sensible-form" class="form-grid" @submit.prevent="guardar">
-      <div class="form-group full">
-        <label for="as-nombre">Nombre *</label>
-        <input id="as-nombre" v-model="form.nombre" required placeholder="ej: Router principal, Correo gerencia" :disabled="guardando">
-      </div>
+      <CarbonCampo class="full" v-model="form.nombre" etiqueta="Nombre" requerido placeholder="ej: Router principal, Correo gerencia" :deshabilitado="guardando" />
 
-      <div class="form-group">
-        <label for="as-categoria">Categoría *</label>
-        <select id="as-categoria" v-model="form.categoria" required :disabled="guardando">
+      <CarbonCampo v-model="form.categoria" etiqueta="Categoría" tipo="select" requerido :deshabilitado="guardando">
+        <template #opciones>
           <option value="" disabled>Seleccionar categoría</option>
           <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.label }}</option>
-        </select>
+        </template>
+      </CarbonCampo>
+
+      <CarbonCampo v-model="form.usuario" etiqueta="Usuario" requerido :deshabilitado="guardando" />
+
+      <div class="full input-with-action">
+        <CarbonCampo
+          v-model="form.password"
+          :etiqueta="esEdicion ? 'Nueva contraseña' : 'Contraseña'"
+          :tipo="passwordVisible ? 'text' : 'password'"
+          autocomplete="new-password"
+          :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+          :deshabilitado="guardando"
+        />
+        <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+          <i class="ti ti-refresh" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
+          <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+        </button>
       </div>
 
-      <div class="form-group">
-        <label for="as-usuario">Usuario *</label>
-        <input id="as-usuario" v-model="form.usuario" required :disabled="guardando">
-      </div>
-
-      <div class="form-group full">
-        <label for="as-password">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
-        <div class="input-with-action">
-          <input
-            id="as-password"
-            v-model="form.password"
-            :type="passwordVisible ? 'text' : 'password'"
-            autocomplete="new-password"
-            :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-            :disabled="guardando"
-          >
-          <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
-            <i class="ti ti-refresh" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
-            <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-          </button>
-        </div>
-      </div>
-
-      <div class="form-group full">
-        <label for="as-notas">Notas</label>
-        <textarea id="as-notas" v-model="form.notas" :disabled="guardando"></textarea>
-      </div>
+      <CarbonCampo v-model="form.notas" class="full" etiqueta="Notas" tipo="textarea" :deshabilitado="guardando" />
 
       <div class="form-group full section-label">
         <i class="ti ti-shield-lock" aria-hidden="true"></i> Quién puede revelar esta credencial
@@ -234,15 +205,20 @@ async function guardar() {
         </p>
       </div>
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="acceso-sensible-form" :disabled="guardando || cargandoJefes">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
+      <CarbonButton
+        variante="primary"
+        tipo="submit"
+        form="acceso-sensible-form"
+        :deshabilitado="guardando || cargandoJefes"
+        :cargando="guardando"
+      >
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </button>
+      </CarbonButton>
     </template>
   </Modal>
 
@@ -260,8 +236,15 @@ async function guardar() {
 </template>
 
 <style scoped>
+/* CarbonCampo no puede envolverse en el viejo .form-group.full (le filtraría
+   el estilo de <input>/<select>/<textarea> anterior), así que repite solo el
+   grid-column (mismo criterio que LicenciaForm.vue/EquipoForm.vue). */
+.full {
+  grid-column: 1 / -1;
+}
+
 .loading-inline {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   padding: 8px 0;
 }
@@ -269,12 +252,10 @@ async function guardar() {
 .input-with-action {
   display: flex;
   gap: 4px;
-  align-items: center;
+  align-items: flex-end;
 }
 
-.input-with-action input {
-  flex: 1;
-}
+.input-with-action :deep(.cds-campo) { flex: 1; min-width: 0; }
 
 .permisos-lista {
   list-style: none;
@@ -286,7 +267,7 @@ async function guardar() {
   max-height: 180px;
   overflow-y: auto;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
 }
 
@@ -294,7 +275,7 @@ async function guardar() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   font-weight: 400;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -302,12 +283,12 @@ async function guardar() {
 
 .permiso-yo {
   color: var(--color-text-tertiary);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
 }
 
 .field-hint {
   margin: 6px 0 0;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 </style>

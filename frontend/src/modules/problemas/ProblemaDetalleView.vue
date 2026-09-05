@@ -11,7 +11,10 @@ import { formatFecha, formatFechaHora, fechaLocalISO } from '../../core/formatte
 import { OPCIONES_SEVERIDAD_PROBLEMA, OPCIONES_ESTADO_ACCION } from '../../core/dominio-problemas.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -234,7 +237,7 @@ onUnmounted(() => store.limpiar());
   <div class="problema-detalle-page vista-modulo">
     <PageHeader>
       <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" @click="volver('/problemas')">
+        <button class="icon-btn btn-volver" type="button" title="Volver" aria-label="Volver" @click="volver('/problemas')">
           <i class="ti ti-arrow-left"></i>
         </button>
         <div v-if="problema" class="header-emp">
@@ -254,19 +257,14 @@ onUnmounted(() => store.limpiar());
             <BadgeEstado tipo="problema_severidad" :valor="problema.severidad" />
 
             <div v-if="!editando" class="problema-encabezado-acciones">
-              <button
+              <CarbonButton
                 v-if="problema.estado !== 'cerrado'"
-                class="btn btn-primary"
-                type="button"
-                :disabled="cambiandoEstado"
+                variante="primary"
+                icono="ti-arrow-right"
+                :cargando="cambiandoEstado"
                 @click="avanzarEstado"
-              >
-                <i :class="cambiandoEstado ? 'ti ti-loader-2 spinner-icon' : 'ti ti-arrow-right'" aria-hidden="true"></i>
-                {{ LABEL_TRANSICION[problema.estado] }}
-              </button>
-              <button v-else class="btn" type="button" :disabled="cambiandoEstado" @click="reabrirProblema">
-                <i :class="cambiandoEstado ? 'ti ti-loader-2 spinner-icon' : 'ti ti-refresh'" aria-hidden="true"></i> Reabrir
-              </button>
+              >{{ LABEL_TRANSICION[problema.estado] }}</CarbonButton>
+              <CarbonButton v-else variante="secondary" icono="ti-refresh" :cargando="cambiandoEstado" @click="reabrirProblema">Reabrir</CarbonButton>
             </div>
           </div>
 
@@ -282,34 +280,20 @@ onUnmounted(() => store.limpiar());
             </div>
 
             <div class="problema-acciones">
-              <button class="btn" type="button" @click="abrirEdicion">
-                <i class="ti ti-pencil" aria-hidden="true"></i> Editar
-              </button>
-              <button v-if="auth.esJefe" class="btn btn-danger" type="button" @click="confirmarEliminar = true">
-                <i class="ti ti-trash" aria-hidden="true"></i> Eliminar
-              </button>
+              <CarbonButton variante="secondary" icono="ti-pencil" @click="abrirEdicion">Editar</CarbonButton>
+              <CarbonButton v-if="auth.esJefe" variante="danger" icono="ti-trash" @click="confirmarEliminar = true">Eliminar</CarbonButton>
             </div>
           </template>
 
           <form v-else class="problema-form-edicion" @submit.prevent="guardarEdicion">
-            <div class="form-group">
-              <label for="pe-titulo">Título</label>
-              <input id="pe-titulo" v-model="formEdicion.titulo" required :disabled="guardandoEdicion">
-            </div>
-            <div class="form-group">
-              <label for="pe-descripcion">Descripción</label>
-              <textarea id="pe-descripcion" v-model="formEdicion.descripcion" rows="5" required :disabled="guardandoEdicion"></textarea>
-            </div>
-            <div class="form-group">
-              <label for="pe-causa">Causa raíz</label>
-              <textarea id="pe-causa" v-model="formEdicion.causa_raiz" rows="4" :disabled="guardandoEdicion" placeholder="Se completa durante el diagnóstico"></textarea>
-            </div>
+            <CarbonCampo v-model="formEdicion.titulo" etiqueta="Título" requerido :deshabilitado="guardandoEdicion" />
+            <CarbonCampo v-model="formEdicion.descripcion" etiqueta="Descripción" tipo="textarea" :filas="5" requerido :deshabilitado="guardandoEdicion" />
+            <CarbonCampo v-model="formEdicion.causa_raiz" etiqueta="Causa raíz" tipo="textarea" :filas="4" :deshabilitado="guardandoEdicion" placeholder="Se completa durante el diagnóstico" />
             <div class="modal-actions">
-              <button class="btn" type="button" :disabled="guardandoEdicion" @click="editando = false">Cancelar</button>
-              <button class="btn btn-primary" type="submit" :disabled="guardandoEdicion">
-                <i v-if="guardandoEdicion" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+              <CarbonButton variante="secondary" :deshabilitado="guardandoEdicion" @click="editando = false">Cancelar</CarbonButton>
+              <CarbonButton variante="primary" tipo="submit" :cargando="guardandoEdicion">
                 {{ guardandoEdicion ? 'Guardando...' : 'Guardar' }}
-              </button>
+              </CarbonButton>
             </div>
           </form>
 
@@ -323,13 +307,13 @@ onUnmounted(() => store.limpiar());
                   <p class="accion-meta">
                     <span v-if="a.responsable_id">{{ staffPorId[a.responsable_id] || 'Staff' }} · </span>
                     Vence {{ formatFecha(a.fecha_limite) }}
-                    <span v-if="accionVencida(a)" class="badge badge--danger badge-inline">Vencida</span>
+                    <CarbonTag v-if="accionVencida(a)" variante="danger" class="badge-inline">Vencida</CarbonTag>
                   </p>
                 </div>
                 <select :value="a.estado" @change="cambiarEstadoAccion(a.id, $event.target.value)">
                   <option v-for="e in OPCIONES_ESTADO_ACCION" :key="e.valor" :value="e.valor">{{ e.label }}</option>
                 </select>
-                <button class="icon-btn" type="button" title="Eliminar acción" @click="eliminarAccion(a.id)">
+                <button class="icon-btn" type="button" title="Eliminar acción" aria-label="Eliminar acción" @click="eliminarAccion(a.id)">
                   <i class="ti ti-trash" aria-hidden="true"></i>
                 </button>
               </div>
@@ -337,15 +321,13 @@ onUnmounted(() => store.limpiar());
             <p v-else class="tk-nota">Sin acciones correctivas todavía.</p>
 
             <form class="accion-form-nueva" @submit.prevent="crearAccion">
-              <input v-model="nuevaAccion.descripcion" placeholder="Nueva acción correctiva..." :disabled="creandoAccion">
-              <select v-model="nuevaAccion.responsable_id" :disabled="creandoAccion">
+              <input v-model="nuevaAccion.descripcion" aria-label="Nueva acción correctiva" placeholder="ej: Reemplazar switch del piso 3" :disabled="creandoAccion">
+              <select v-model="nuevaAccion.responsable_id" aria-label="Responsable de la acción correctiva" :disabled="creandoAccion">
                 <option value="">Sin asignar</option>
                 <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
               </select>
-              <input v-model="nuevaAccion.fecha_limite" type="date" :disabled="creandoAccion">
-              <button class="btn btn-primary" type="submit" :disabled="creandoAccion">
-                <i :class="creandoAccion ? 'ti ti-loader-2 spinner-icon' : 'ti ti-plus'" aria-hidden="true"></i>
-              </button>
+              <input v-model="nuevaAccion.fecha_limite" type="date" aria-label="Fecha límite de la acción correctiva" :disabled="creandoAccion">
+              <CarbonButton variante="secondary" icono="ti-plus" tipo="submit" :cargando="creandoAccion" title="Agregar acción correctiva" aria-label="Agregar acción correctiva" />
             </form>
           </div>
         </div>
@@ -353,19 +335,30 @@ onUnmounted(() => store.limpiar());
         <div class="card col-4 problema-meta">
           <div class="datos-title"><i class="ti ti-info-circle"></i> Detalle</div>
 
-          <div class="form-group">
-            <label for="pm-severidad">Severidad</label>
-            <select id="pm-severidad" :value="problema.severidad" :disabled="guardandoCampo" @change="cambiarSeveridad($event.target.value)">
+          <CarbonCampo
+            tipo="select"
+            etiqueta="Severidad"
+            :model-value="problema.severidad"
+            :deshabilitado="guardandoCampo"
+            @update:model-value="cambiarSeveridad"
+          >
+            <template #opciones>
               <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="pm-responsable">Responsable</label>
-            <select id="pm-responsable" :value="problema.responsable_id || ''" :disabled="guardandoCampo" @change="cambiarResponsable($event.target.value)">
+            </template>
+          </CarbonCampo>
+
+          <CarbonCampo
+            tipo="select"
+            etiqueta="Responsable"
+            :model-value="problema.responsable_id || ''"
+            :deshabilitado="guardandoCampo"
+            @update:model-value="cambiarResponsable"
+          >
+            <template #opciones>
               <option value="">Sin asignar</option>
               <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-            </select>
-          </div>
+            </template>
+          </CarbonCampo>
           <p class="tk-detalle">Creado {{ formatFechaHora(problema.created_at) }}</p>
 
           <div class="tk-seccion">
@@ -373,7 +366,7 @@ onUnmounted(() => store.limpiar());
             <div v-if="ticketsVinculados.length" class="tickets-vinculados-lista">
               <div v-for="t in ticketsVinculados" :key="t.vinculo_id" class="ticket-vinculado-item">
                 <RouterLink class="tk-kb-relacionado" :to="`/tickets/${t.ticket_id}`">{{ t.codigo }} — {{ t.titulo }}</RouterLink>
-                <button class="icon-btn" type="button" title="Desvincular" @click="desvincular(t.vinculo_id)">
+                <button class="icon-btn" type="button" title="Desvincular" aria-label="Desvincular" @click="desvincular(t.vinculo_id)">
                   <i class="ti ti-x" aria-hidden="true"></i>
                 </button>
               </div>
@@ -381,10 +374,8 @@ onUnmounted(() => store.limpiar());
             <p v-else class="tk-nota">Sin tickets vinculados todavía.</p>
 
             <form class="vincular-ticket-form" @submit.prevent="vincularTicketPorCodigo">
-              <input v-model="codigoNuevoTicket" placeholder="Código de ticket (TCK-0001)" :disabled="vinculandoTicket">
-              <button class="btn" type="button" :disabled="vinculandoTicket || !codigoNuevoTicket.trim()" @click="vincularTicketPorCodigo">
-                <i :class="vinculandoTicket ? 'ti ti-loader-2 spinner-icon' : 'ti ti-link'" aria-hidden="true"></i> Vincular
-              </button>
+              <input v-model="codigoNuevoTicket" aria-label="Código de ticket a vincular" placeholder="ej: TCK-0001" :disabled="vinculandoTicket">
+              <CarbonButton variante="secondary" icono="ti-link" :cargando="vinculandoTicket" :deshabilitado="!codigoNuevoTicket.trim()" @click="vincularTicketPorCodigo">Vincular</CarbonButton>
             </form>
           </div>
         </div>
@@ -408,13 +399,13 @@ onUnmounted(() => store.limpiar());
 
 <style scoped>
 .header-emp h1 {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   margin: 0;
 }
 
 .header-sub {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
@@ -435,7 +426,7 @@ onUnmounted(() => store.limpiar());
 .problema-bloque { margin-bottom: 20px; }
 
 .problema-texto {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-primary);
   white-space: pre-wrap;
   margin: 6px 0 0;
@@ -455,27 +446,8 @@ onUnmounted(() => store.limpiar());
   gap: 14px;
 }
 
-.datos-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 10px;
-}
-
-.tk-seccion {
-  margin-top: 16px;
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
-}
-
-.tk-detalle { font-size: var(--fs-sm); color: var(--color-text-secondary); margin: 2px 0; }
-.tk-nota { font-size: var(--fs-sm); color: var(--color-text-tertiary); font-style: italic; margin: 4px 0 0; }
-
 .tk-kb-relacionado {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-accent-text);
   text-decoration: none;
 }
@@ -489,20 +461,20 @@ onUnmounted(() => store.limpiar());
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   background: var(--color-bg-subtle);
 }
 
 .accion-info { flex: 1; min-width: 0; }
 
 .accion-descripcion {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-primary);
   margin: 0;
 }
 
 .accion-meta {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   margin: 2px 0 0;
 }
@@ -540,8 +512,4 @@ onUnmounted(() => store.limpiar());
 
 /* Estructura y color: sistema de badges global (.badge + .badge--X);
    aquí solo el ajuste de este contexto: separación del texto vecino. */
-.badge-inline {
-  margin-left: 6px;
-  vertical-align: middle;
-}
 </style>

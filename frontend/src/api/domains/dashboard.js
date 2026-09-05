@@ -3,6 +3,7 @@
 import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { fechaLocalISO } from '../../core/formatters.js';
+import { ordenarPorUrgencia } from '../../core/dominio-tickets.js';
 
 export const dashboardApi = {
   // Búsqueda global del panel: empleados, cuentas, equipos, tickets y
@@ -200,6 +201,40 @@ export const dashboardApi = {
       // false) original, un valor null no debe contar como "sin vincular".
       sinVincular: abiertos.filter((t) => t.vinculado === false).map(aItem),
       abiertosViejos: abiertos.filter((t) => t.created_at <= cortesViejos).map(aItem),
+    };
+  },
+
+  // Mis tickets: los vigentes asignados a mí. Es lo que un técnico abre la
+  // app para ver, y hasta 2026-09-02 no estaba en ninguna parte del
+  // Dashboard — el feed de pendientes solo cubre lo que NADIE tomó todavía
+  // (sin asignar, sin vincular) o lo que se está pasando de tiempo (+3 días).
+  // Un ticket asignado a mí, en curso y de ayer no aparecía en pantalla.
+  //
+  // El orden lo pone ordenarPorUrgencia() (core/dominio-tickets.js), no esta
+  // consulta: es la misma regla que usa la bandeja de Tickets y no debe
+  // existir dos veces.
+  //
+  // Trae TODOS los asignados vigentes y recorta en memoria, en vez de pedir
+  // .limit(5) al servidor: PostgREST no puede ordenar por la escala de
+  // prioridad (es text+check, no un enum ordenado), así que un limit del
+  // servidor recortaría por el orden equivocado. Con el volumen actual
+  // (decenas de tickets por técnico) el costo es despreciable; si algún día
+  // un técnico acumula cientos, la salida es un índice y un ORDER BY con
+  // CASE en un RPC, no ordenar acá.
+  async misTickets(userId, limite = 5) {
+    if (!userId) return { lista: [], total: 0 };
+    const { data, error, count } = await getClient().database
+      .from('tickets')
+      .select('id, codigo, titulo, prioridad, estado, created_at', { count: 'exact' })
+      .eq('asignado_a', userId)
+      .not('estado', 'in', '("resuelto","cerrado","rechazado")');
+    if (error) throw error;
+    const ordenados = ordenarPorUrgencia(data || []);
+    return {
+      lista: ordenados.slice(0, limite),
+      // El total es de TODOS los vigentes asignados, no de los mostrados:
+      // el enlace "ver todos" tiene que decir la verdad.
+      total: count ?? ordenados.length,
     };
   },
 

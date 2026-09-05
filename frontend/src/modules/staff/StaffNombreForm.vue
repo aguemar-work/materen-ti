@@ -6,6 +6,9 @@
 import { ref } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import Modal from '../../components/shared/Modal.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   miembro: { type: Object, required: true }, // { user_id, nombre }
@@ -40,28 +43,22 @@ async function guardar() {
 <template>
   <Modal ref="modal" titulo="Editar nombre" size="sm" @close="emit('cerrar')">
     <form id="staff-nombre-form" @submit.prevent="guardar">
-      <div class="form-group">
-        <label for="staff-nombre-input">Nombre para mostrar</label>
-        <input id="staff-nombre-input" v-model="nombre" required :disabled="guardando" placeholder="ej: Ana Guevara">
-        <p class="field-hint">Aparece en tickets, problemas y reportes en vez del usuario de acceso.</p>
-      </div>
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <CarbonCampo
+        v-model="nombre"
+        etiqueta="Nombre para mostrar"
+        requerido
+        :deshabilitado="guardando"
+        placeholder="ej: Ana Guevara"
+        ayuda="Aparece en tickets, problemas y reportes en vez del usuario de acceso."
+      />
+      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="modal?.cerrar()">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="staff-nombre-form" :disabled="guardando">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modal?.cerrar()">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="staff-nombre-form" :cargando="guardando">
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </button>
+      </CarbonButton>
     </template>
   </Modal>
 </template>
-
-<style scoped>
-.field-hint {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-</style>

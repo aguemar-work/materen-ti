@@ -35,6 +35,20 @@ async function cargarPermisos(userId) {
   }
 }
 
+// El SDK expone error.error (código, ej. "AUTH_INVALID_CREDENTIALS") y
+// error.message (texto del backend, en inglés) — mismo patrón de mapa que
+// api/passwords.js#mensajeError, para no dejar pasar el mensaje crudo del
+// SDK a la UI (regla del proyecto: todo mensaje en español, AGENTS.md).
+function mensajeErrorLogin(error) {
+  const mensajes = {
+    // Verificado contra la API real (2026-09-01): login con clave incorrecta
+    // devuelve {"error":"AUTH_UNAUTHORIZED","message":"Invalid credentials"} —
+    // no "AUTH_INVALID_CREDENTIALS" como sugeriría el nombre más obvio.
+    AUTH_UNAUTHORIZED: 'Correo o contraseña incorrectos',
+  };
+  return mensajes[error?.error] || `No se pudo iniciar sesión (${error?.error || 'error desconocido'})`;
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
@@ -66,7 +80,7 @@ export const useAuthStore = defineStore('auth', {
           email,
           password,
         });
-        if (error) throw error;
+        if (error) throw new Error(mensajeErrorLogin(error));
 
         // Autenticarse no basta: la fila de staff debe existir y estar
         // activa (el trigger de alta crea staff con activo = false hasta

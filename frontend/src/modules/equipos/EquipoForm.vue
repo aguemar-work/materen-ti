@@ -1,13 +1,15 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick, useTemplateRef } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { comprimirImagen } from '../../core/imagenes.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   equipo: { type: Object, default: null },
@@ -15,28 +17,29 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+// Migrado a Modal.vue (mismo patrón que EmpleadoForm.vue/AccesoSensibleForm.vue):
+// Teleport, bloqueo de scroll del body, atrapamiento de foco y Escape los
+// resuelve el componente compartido.
+let resultado = false;
 
 const store = useEquiposStore();
 
 const guardando = ref(false);
 const error = ref('');
+
+// Campo que falló el último guardado ('' | 'codigo' | 'codigo_almacen' |
+// 'serie'), para resaltar el control y llevarle el foco además del mensaje
+// de CarbonNotification.
+const campoInvalido = ref('');
+const refCodigo = useTemplateRef('refCodigo');
+const refCodigoAlmacen = useTemplateRef('refCodigoAlmacen');
+const refSerie = useTemplateRef('refSerie');
+
+async function enfocarCampoInvalido() {
+  await nextTick();
+  const refs = { codigo: refCodigo, codigo_almacen: refCodigoAlmacen, serie: refSerie };
+  refs[campoInvalido.value]?.value?.focus();
+}
 
 const esEdicion = computed(() => !!props.equipo?.id);
 
@@ -78,6 +81,10 @@ const { termino: busquedaAcc, cargando: buscandoAcc } = useBusqueda({
 const nuevaLinea = ref({ codigo: '', descripcion: '', cantidad: 1 });
 
 // ── Fotos: comprimir y subir al seleccionar ───────────────────
+// ⚠️ MAX_FOTOS está duplicado a propósito como MAX_FOTOS_POR_EQUIPO en
+// functions/equipos-fotos.ts (2026-08-31): acá oculta el botón y avisa antes
+// de subir, allá es el tope real (esta pantalla se puede saltear con
+// DevTools). Los dos valores tienen que moverse JUNTOS.
 const MAX_FOTOS = 4;
 const subiendoFoto = ref(false);
 const inputFotos = ref(null);
@@ -96,7 +103,9 @@ async function onFotosSeleccionadas(e) {
   try {
     for (const file of files.slice(0, disponibles)) {
       const comprimida = await comprimirImagen(file);
-      const foto = await insforgeApi.subirFotoEquipo(comprimida);
+      // props.equipo?.id: en alta todavía no hay equipo al que contarle
+      // fotos guardadas, el servidor lo sabe y no aplica el tope ahí.
+      const foto = await insforgeApi.subirFotoEquipo(comprimida, props.equipo?.id || null);
       form.value.fotos.push(foto);
     }
   } catch (err) {
@@ -132,12 +141,11 @@ function lineaVacia() {
 
 // El buscador del catálogo (busquedaAcc) es transitorio y no cuenta como
 // cambio; la línea manual a medio escribir (nuevaLinea) sí.
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
-  form: form.value,
-  nuevaLinea: nuevaLinea.value,
-}));
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
+const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => ({
+    form: form.value,
+    nuevaLinea: nuevaLinea.value,
+  }));
 
 function resetForm() {
   error.value = '';
@@ -263,30 +271,9 @@ function ocultarSugerencias() {
   setTimeout(() => { mostrarSugerencias.value = false; }, 180);
 }
 
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
-// confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return;
-  }
-  cerrar(false);
-}
-
-function descartarCambios() {
-  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
-  // mientras el formulario inicia su propia salida en paralelo
-  dialogoDescarte.value?.cerrar();
-  cerrar(false);
-}
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
-
 async function guardar() {
   error.value = '';
+  campoInvalido.value = '';
   guardando.value = true;
   try {
     const specs = {};
@@ -309,15 +296,22 @@ async function guardar() {
       await store.crear(datos);
     }
     tomarSnapshot();
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message?.includes('uq_equipos_serie')
-      ? 'Ya existe un equipo con ese número de serie'
-      : e?.message?.includes('uq_equipos_codigo_almacen')
-        ? 'Ya existe un equipo con ese código de almacén'
-        : e?.message?.includes('equipos_codigo') || e?.message?.includes('codigo')
-          ? 'Ya existe un equipo con ese código'
-          : (e?.message || 'Error al guardar equipo');
+    if (e?.message?.includes('uq_equipos_serie')) {
+      error.value = 'Ya existe un equipo con ese número de serie';
+      campoInvalido.value = 'serie';
+    } else if (e?.message?.includes('uq_equipos_codigo_almacen')) {
+      error.value = 'Ya existe un equipo con ese código de almacén';
+      campoInvalido.value = 'codigo_almacen';
+    } else if (e?.message?.includes('equipos_codigo') || e?.message?.includes('codigo')) {
+      error.value = 'Ya existe un equipo con ese código';
+      campoInvalido.value = 'codigo';
+    } else {
+      error.value = e?.message || 'Error al guardar equipo';
+    }
+    if (campoInvalido.value) enfocarCampoInvalido();
   } finally {
     guardando.value = false;
   }
@@ -325,85 +319,91 @@ async function guardar() {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal modal-lg equipo-form" role="dialog" aria-modal="true" aria-labelledby="eq-form-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="eq-form-title">{{ esEdicion ? 'Editar equipo' : 'Nuevo equipo' }}</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
-        <div class="form-group">
-          <label for="ef-codigo">Código de equipo *</label>
-          <input id="ef-codigo" v-model="form.codigo" required placeholder="EQ-0001" :disabled="guardando">
+  <Modal
+    ref="modal"
+    size="lg"
+    :titulo="esEdicion ? 'Editar equipo' : 'Nuevo equipo'"
+    :confirmar-cierre="confirmarCierre"
+    :cerrar-en-backdrop="false"
+    @close="emit('cerrar', resultado)"
+  >
+    <form id="eq-form" class="form-grid" @submit.prevent="guardar">
+        <div class="form-group full section-label">
+          <i class="ti ti-device-desktop"></i> Datos del equipo
         </div>
 
-        <div class="form-group">
-          <label for="ef-codigo-almacen">Código de almacén</label>
-          <input
-            id="ef-codigo-almacen"
-            v-model="form.codigo_almacen"
-            placeholder="Según sistema de almacén"
-            :disabled="guardando"
-          >
-        </div>
+        <CarbonCampo
+          ref="refCodigo"
+          v-model="form.codigo"
+          etiqueta="Código de equipo"
+          requerido
+          placeholder="EQ-0001"
+          :deshabilitado="guardando"
+          :error="campoInvalido === 'codigo' ? 'Ya existe un equipo con ese código' : ''"
+          @update:model-value="campoInvalido === 'codigo' && (campoInvalido = '')"
+        />
 
-        <div class="form-group">
-          <label for="ef-tipo">Tipo de equipo *</label>
-          <select id="ef-tipo" v-model="form.tipo_id" required :disabled="guardando">
+        <CarbonCampo
+          ref="refCodigoAlmacen"
+          v-model="form.codigo_almacen"
+          etiqueta="Código de almacén"
+          placeholder="Según sistema de almacén"
+          :deshabilitado="guardando"
+          :error="campoInvalido === 'codigo_almacen' ? 'Ya existe un equipo con ese código de almacén' : ''"
+          @update:model-value="campoInvalido === 'codigo_almacen' && (campoInvalido = '')"
+        />
+
+        <CarbonCampo v-model="form.tipo_id" etiqueta="Tipo de equipo" tipo="select" requerido :deshabilitado="guardando">
+          <template #opciones>
             <option value="" disabled>Seleccionar tipo</option>
             <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
+          </template>
+        </CarbonCampo>
+
+        <CarbonCampo v-model="form.marca" etiqueta="Marca" placeholder="HP, Lenovo, Epson..." :deshabilitado="guardando" />
+
+        <CarbonCampo v-model="form.modelo" etiqueta="Modelo" :deshabilitado="guardando" />
+
+        <CarbonCampo
+          ref="refSerie"
+          v-model="form.serie"
+          etiqueta="Número de serie"
+          :deshabilitado="guardando"
+          :error="campoInvalido === 'serie' ? 'Ya existe un equipo con ese número de serie' : ''"
+          @update:model-value="campoInvalido === 'serie' && (campoInvalido = '')"
+        />
+
+        <CarbonCampo v-model="form.fecha_compra" etiqueta="Fecha de compra" tipo="date" :deshabilitado="guardando" />
+
+        <CarbonCampo v-model="form.garantia_hasta" etiqueta="Garantía hasta" tipo="date" :deshabilitado="guardando" />
+
+        <div class="costo-inputs">
+          <CarbonCampo
+            v-model="form.costo"
+            etiqueta="Precio"
+            tipo="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            :deshabilitado="guardando"
+          />
+          <select v-model="form.moneda" :disabled="guardando" aria-label="Moneda" class="costo-moneda">
+            <option value="PEN">S/</option>
+            <option value="USD">US$</option>
           </select>
-        </div>
-
-        <div class="form-group">
-          <label for="ef-marca">Marca</label>
-          <input id="ef-marca" v-model="form.marca" placeholder="HP, Lenovo, Epson..." :disabled="guardando">
-        </div>
-
-        <div class="form-group">
-          <label for="ef-modelo">Modelo</label>
-          <input id="ef-modelo" v-model="form.modelo" :disabled="guardando">
-        </div>
-
-        <div class="form-group">
-          <label for="ef-serie">Número de serie</label>
-          <input id="ef-serie" v-model="form.serie" :disabled="guardando">
-        </div>
-
-        <div class="form-group">
-          <label for="ef-compra">Fecha de compra</label>
-          <input id="ef-compra" v-model="form.fecha_compra" type="date" :disabled="guardando">
-        </div>
-
-        <div class="form-group">
-          <label for="ef-garantia">Garantía hasta</label>
-          <input id="ef-garantia" v-model="form.garantia_hasta" type="date" :disabled="guardando">
-        </div>
-
-        <div class="form-group costo-group">
-          <label for="ef-costo">Precio</label>
-          <div class="costo-inputs">
-            <input id="ef-costo" v-model="form.costo" type="number" step="0.01" min="0" placeholder="0.00" :disabled="guardando">
-            <select v-model="form.moneda" :disabled="guardando" aria-label="Moneda">
-              <option value="PEN">S/</option>
-              <option value="USD">US$</option>
-            </select>
-          </div>
         </div>
 
         <template v-if="camposSpec.length">
           <div class="form-group full section-label">
             <i class="ti ti-list-details"></i> Especificaciones ({{ tipoActual?.nombre }})
           </div>
-          <div v-for="campo in camposSpec" :key="campo" class="form-group">
-            <label :for="`spec-${campo}`">{{ campo }}</label>
-            <input :id="`spec-${campo}`" v-model="form.specs[campo]" :disabled="guardando">
-          </div>
+          <CarbonCampo
+            v-for="campo in camposSpec"
+            :key="campo"
+            v-model="form.specs[campo]"
+            :etiqueta="campo"
+            :deshabilitado="guardando"
+          />
         </template>
 
         <!-- Kit de accesorios: lista editable con código de almacén -->
@@ -506,14 +506,12 @@ async function guardar() {
                 aria-label="Cantidad"
                 :disabled="guardando"
               >
-              <button
-                class="btn"
-                type="button"
-                :disabled="guardando || !nuevaLinea.descripcion.trim()"
+              <CarbonButton
+                variante="secondary"
+                tam="sm"
+                :deshabilitado="guardando || !nuevaLinea.descripcion.trim()"
                 @click="agregarLineaManual"
-              >
-                Agregar
-              </button>
+              >Agregar</CarbonButton>
             </div>
             <p class="field-hint">Los ítems nuevos se guardan en el catálogo de almacén para reutilizarlos.</p>
           </div>
@@ -554,33 +552,25 @@ async function guardar() {
           <p class="field-hint">Se comprimen automáticamente (~200 KB c/u) para no llenar el almacenamiento.</p>
         </div>
 
-        <div class="form-group full">
-          <label for="ef-notas">Notas</label>
-          <textarea id="ef-notas" v-model="form.notas" :disabled="guardando"></textarea>
-        </div>
+        <CarbonCampo v-model="form.notas" class="full" etiqueta="Notas" tipo="textarea" :deshabilitado="guardando" />
 
-        </div>
+        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+    </form>
 
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Guardando...' : 'Guardar' }}
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-  </Transition>
+    <template #acciones>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="eq-form" :cargando="guardando">
+        {{ guardando ? 'Guardando...' : 'Guardar' }}
+      </CarbonButton>
+    </template>
+  </Modal>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
     @cancel="confirmarDescarte = false"
@@ -591,13 +581,51 @@ async function guardar() {
 <style scoped>
 /* Ancho: .modal-lg de la escala centralizada (main.css) */
 
+/* .form-group.full (main.css) exige la clase .form-group, que trae consigo
+   estilos de <input>/<select>/<textarea> viejos que pisarían los de
+   CarbonCampo — acá se repite solo el grid-column (mismo criterio que
+   LicenciaForm.vue). */
+.full {
+  grid-column: 1 / -1;
+}
+
 .costo-inputs {
   display: flex;
+  align-items: flex-end;
   gap: 6px;
 }
 
-.costo-inputs input { flex: 1; }
-.costo-inputs select { width: 76px; }
+.costo-inputs :deep(.cds-campo) { flex: 1; min-width: 0; }
+
+/* La moneda ya no vive dentro de .form-group (para no filtrarle su estilo
+   viejo de <select> al <input> de CarbonCampo de al lado), así que reproduce
+   a mano la misma caja outlined que usa CarbonCampo (mismo criterio que
+   LicenciaForm.vue). */
+.costo-moneda {
+  width: 76px;
+  height: var(--space-11);
+  padding: 0 var(--space-6);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-01);
+  cursor: pointer;
+}
+
+.costo-moneda:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.costo-moneda:disabled {
+  cursor: not-allowed;
+  color: var(--color-text-disabled);
+  background: var(--color-bg-subtle);
+}
 
 .sr-only {
   position: absolute;
@@ -628,8 +656,8 @@ async function guardar() {
   list-style: none;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-base);
+  box-shadow: none;
   max-height: 220px;
   overflow-y: auto;
 }
@@ -640,7 +668,7 @@ async function guardar() {
   align-items: baseline;
   padding: 8px 12px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--fs-body-01);
 }
 
 .acc-sugerencias li:hover {
@@ -651,14 +679,14 @@ async function guardar() {
   flex: 0 0 88px;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--fs-label-01);
 }
 
 .acc-sug-desc { flex: 1; min-width: 0; }
 
 .acc-lista {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   overflow: hidden;
   margin-bottom: 10px;
 }
@@ -674,7 +702,7 @@ async function guardar() {
 
 .acc-lista-head {
   background: var(--color-bg-subtle);
-  font-size: 11px;
+  font-size: var(--fs-label-01);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -717,7 +745,7 @@ async function guardar() {
   position: relative;
   width: 92px;
   height: 92px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   overflow: hidden;
   border: 1px solid var(--color-border);
 }
@@ -743,16 +771,16 @@ async function guardar() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--icon-sm);
 }
 
-.foto-x:hover { background: var(--mat-color-danger-hover); }
+.foto-x:hover { background: var(--color-danger-hover); }
 
 .foto-agregar {
   width: 92px;
   height: 92px;
   border: 1.5px dashed var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   background: none;
   cursor: pointer;
   display: flex;
@@ -761,7 +789,7 @@ async function guardar() {
   justify-content: center;
   gap: 4px;
   color: var(--color-text-secondary);
-  font-size: 11.5px;
+  font-size: var(--fs-label-01);
 }
 
 .foto-agregar:hover:not(:disabled) {
@@ -769,16 +797,12 @@ async function guardar() {
   color: var(--color-primary);
 }
 
-.foto-agregar i { font-size: 20px; }
+.foto-agregar i { font-size: var(--icon-md); }
 
 .field-hint {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
-}
-
-.modal-actions.full {
-  grid-column: 1 / -1;
 }
 
 @media (max-width: 768px) {

@@ -8,6 +8,8 @@ import { abrirEncuesta, responderEncuesta, MENSAJES_ERROR_ENCUESTA } from '../..
 import { respuestaValida } from '../../core/dominio-encuestas.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 import PreguntaCampo from './PreguntaCampo.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const route = useRoute();
 const slug = String(route.params.slug || '');
@@ -105,12 +107,11 @@ onMounted(async () => {
             @update:model-value="(v) => (respuestas[p.id] = v)"
           />
 
-          <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+          <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
 
-          <button class="btn btn-primary ticket-submit" type="submit" :disabled="estado === 'enviando'">
-            <i v-if="estado === 'enviando'" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+          <CarbonButton variante="primary" tipo="submit" ancho class="ticket-submit" :cargando="estado === 'enviando'">
             {{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}
-          </button>
+          </CarbonButton>
         </form>
       </template>
     </div>
@@ -119,21 +120,21 @@ onMounted(async () => {
 
 <style scoped>
 .ticket-title {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-heading-02);
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0 0 16px;
 }
 
 .ticket-texto {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 10px;
 }
 
 .encuesta-progreso {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   margin: 0 0 14px;
 }
@@ -152,13 +153,13 @@ onMounted(async () => {
 }
 
 .ticket-ok-icon {
-  font-size: 40px;
+  font-size: var(--icon-lg);
   color: var(--color-success-text);
   margin-bottom: 8px;
 }
 
 .ticket-error-icon {
-  font-size: 40px;
+  font-size: var(--icon-lg);
   color: var(--color-text-secondary);
   margin-bottom: 8px;
 }

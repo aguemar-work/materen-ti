@@ -19,7 +19,6 @@ import { staffModulosApi } from './domains/staffModulos.js';
 import { staffPermisosApi } from './domains/staffPermisos.js';
 import { kbApi } from './domains/kb.js';
 import { problemasApi } from './domains/problemas.js';
-import { personalRegistrosApi } from './domains/personalRegistros.js';
 import { encuestasApi } from './domains/encuestas.js';
 import { notificacionesApi } from './domains/notificaciones.js';
 
@@ -41,7 +40,6 @@ export const insforgeApi = {
   ...staffPermisosApi,
   ...kbApi,
   ...problemasApi,
-  ...personalRegistrosApi,
   ...encuestasApi,
   ...notificacionesApi,
 };

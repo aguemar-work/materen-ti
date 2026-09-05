@@ -4,14 +4,17 @@ import { storeToRefs } from 'pinia';
 import { useEmpresasStore } from '../../stores/empresas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
-import EmptyState from '../../components/shared/EmptyState.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import Modal from '../../components/shared/Modal.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const store = useEmpresasStore();
@@ -22,10 +25,7 @@ const mostrarForm = ref(false);
 const empresaEditar = ref(null);
 const guardando = ref(false);
 const errorForm = ref('');
-
-// Foco atrapado mientras el modal está abierto (Fase 4)
-const panelForm = ref(null);
-useFocoAtrapado(panelForm, mostrarForm);
+const modalForm = ref(null);
 
 const form = ref({ nombre: '', ruc: '' });
 
@@ -38,7 +38,17 @@ const listaFiltrada = computed(() => {
 });
 
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
+
+// Definición de columnas de CarbonDataTable: una sola vez, la tabla de
+// escritorio y la tarjeta móvil salen de acá (ver la cabecera del
+// componente). "Nombre" es la elástica porque es la única columna de largo
+// variable; "Acciones" no es ordenable ni tiene sentido de orden.
+const columnas = [
+  { clave: 'nombre', label: 'Nombre', ordenable: true, elastica: true, movil: 'principal' },
+  { clave: 'ruc', label: 'RUC', ordenable: true, movil: 'sec' },
+  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
+];
 
 const esEdicion = computed(() => !!empresaEditar.value?.id);
 
@@ -73,7 +83,7 @@ async function guardar() {
       await store.crear(form.value);
       showToast('Empresa creada');
     }
-    cerrarForm();
+    modalForm.value?.cerrar();
   } catch (e) {
     errorForm.value = e?.message || 'Error al guardar empresa';
   } finally {
@@ -118,11 +128,9 @@ onMounted(async () => {
         <div class="card-toolbar">
           <div class="toolbar-title">
             Empresas registradas
-            <span class="badge-count">{{ listaFiltrada.length }} empresas</span>
+            <CarbonTag variante="accent">{{ listaFiltrada.length }} empresas</CarbonTag>
           </div>
-          <button class="btn btn-primary" type="button" @click="abrirNueva">
-            <i class="ti ti-plus" aria-hidden="true"></i> Nueva empresa
-          </button>
+          <CarbonButton icono="ti-plus" @click="abrirNueva">Nueva empresa</CarbonButton>
         </div>
 
         <div class="filters">
@@ -136,106 +144,103 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="error" class="no-results empresas-error">{{ error }}</div>
+        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
 
-        <EmptyState
-          v-else-if="!cargando && listaFiltrada.length === 0"
-          icono="ti ti-building"
-          titulo="Sin empresas"
-          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera empresa.'"
-        >
-          <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
-            <i class="ti ti-plus"></i> Agregar empresa
-          </button>
-        </EmptyState>
-
-        <div v-else-if="cargando || listaFiltrada.length > 0" class="table-wrap">
+        <template v-else>
           <p v-if="cargando" class="sr-only" role="status">Cargando empresas…</p>
-          <table aria-label="Empresas registradas">
-            <thead>
-              <tr>
-                <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
-                <ThOrdenable clave="ruc" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">RUC</ThOrdenable>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="3" />
-              <template v-else>
-              <tr v-for="emp in listaPaginada" :key="emp.id">
-                <td>
-                  <div class="user-name">{{ emp.nombre }}</div>
-                </td>
-                <td><TextoVacio :valor="emp.ruc" /></td>
-                <td>
-                  <div class="actions">
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Editar"
-                      aria-label="Editar"
-                      @click="abrirEditar(emp)"
-                    >
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button
-                      class="icon-btn danger"
-                      type="button"
-                      title="Dar de baja"
-                      aria-label="Dar de baja"
-                      @click="porDarDeBaja = emp"
-                    >
-                      <i class="ti ti-building-off"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-        </div>
+
+          <CarbonDataTable
+            :columnas="columnas"
+            :filas="listaPaginada"
+            :cargando="cargando"
+            :orden-por="columna"
+            :orden-dir="direccion"
+            etiqueta="Empresas registradas"
+            vacio-icono="ti ti-building"
+            vacio-titulo="Sin empresas"
+            :vacio-mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera empresa.'"
+            @ordenar="ordenarPor"
+          >
+            <template #celda-nombre="{ fila }">
+              <div class="user-name">{{ fila.nombre }}</div>
+            </template>
+            <template #celda-ruc="{ valor }">
+              <TextoVacio :valor="valor" placeholder="Sin RUC" />
+            </template>
+            <template #celda-acciones="{ fila }">
+              <div class="actions">
+                <button
+                  class="icon-btn fila-accion"
+                  type="button"
+                  title="Editar"
+                  aria-label="Editar"
+                  @click="abrirEditar(fila)"
+                >
+                  <i class="ti ti-pencil"></i>
+                </button>
+                <button
+                  class="icon-btn danger fila-accion"
+                  type="button"
+                  title="Dar de baja"
+                  aria-label="Dar de baja"
+                  @click="porDarDeBaja = fila"
+                >
+                  <i class="ti ti-building-off"></i>
+                </button>
+              </div>
+            </template>
+            <template #vacio-accion>
+              <CarbonButton v-if="!busqueda" variante="secondary" icono="ti-plus" @click="abrirNueva">
+                Agregar empresa
+              </CarbonButton>
+            </template>
+          </CarbonDataTable>
+
+          <CarbonPagination
+            v-if="!cargando"
+            v-model="paginaActual"
+            :total-items="totalItems"
+            :tam-pagina="tamPagina"
+            :tamanos-pagina="TAMANOS_PAGINA"
+            unidad="empresas"
+            @update:tam-pagina="cambiarTamPagina"
+          />
+        </template>
       </div>
     </main>
 
-    <!-- Modal empresa -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarForm" class="modal-bg" @click.self="cerrarForm">
-      <div ref="panelForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="empresa-form-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="empresa-form-title">{{ esEdicion ? 'Editar empresa' : 'Nueva empresa' }}</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="cerrarForm">
-            <i class="ti ti-x" aria-hidden="true"></i>
-          </button>
-        </div>
+    <!-- Modal empresa (Modal accesible compartido) -->
+    <Modal
+      v-if="mostrarForm"
+      ref="modalForm"
+      :titulo="esEdicion ? 'Editar empresa' : 'Nueva empresa'"
+      size="sm"
+      @close="cerrarForm"
+    >
+      <form id="empresa-form" class="form-grid" @submit.prevent="guardar">
+        <CarbonCampo
+          v-model="form.nombre"
+          etiqueta="Nombre"
+          requerido
+          :deshabilitado="guardando"
+        />
+        <CarbonCampo
+          v-model="form.ruc"
+          etiqueta="RUC"
+          :deshabilitado="guardando"
+        />
 
-        <form @submit.prevent="guardar">
-          <div class="modal-body form-grid">
-          <div class="form-group full">
-            <label for="emp-nombre">Nombre *</label>
-            <input id="emp-nombre" v-model="form.nombre" required :disabled="guardando">
-          </div>
-
-          <div class="form-group full">
-            <label for="emp-ruc">RUC</label>
-            <input id="emp-ruc" v-model="form.ruc" :disabled="guardando">
-          </div>
-
-          </div>
-
-          <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
-
-          <div class="modal-actions full">
-            <button class="btn" type="button" :disabled="guardando" @click="cerrarForm">Cancelar</button>
-            <button class="btn btn-primary" type="submit" :disabled="guardando">
-              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-              {{ guardando ? 'Guardando...' : 'Guardar' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-    </Transition>
+        <CarbonNotification v-if="errorForm" tipo="error">{{ errorForm }}</CarbonNotification>
+      </form>
+      <template #acciones>
+        <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modalForm?.cerrar()">
+          Cancelar
+        </CarbonButton>
+        <CarbonButton tipo="submit" form="empresa-form" :cargando="guardando">
+          {{ guardando ? 'Guardando...' : 'Guardar' }}
+        </CarbonButton>
+      </template>
+    </Modal>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -254,12 +259,11 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.empresas-error {
-  color: var(--color-danger);
-}
-
-
-.modal-actions.full {
-  grid-column: 1 / -1;
+/* Esta ficha solo tiene dos campos, los dos a ancho completo: no necesita
+   la grilla de 2 columnas que .form-grid ofrece por defecto (mismo
+   criterio que el ajuste propio de EmpleadoDetalleView/
+   ReporteSatisfaccionView sobre .datos-title — ver GUIA-UX-UI.md). */
+.form-grid {
+  grid-template-columns: 1fr;
 }
 </style>

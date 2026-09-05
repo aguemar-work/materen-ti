@@ -2,13 +2,15 @@
 import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useKbStore } from '../../stores/kb.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const emit = defineEmits(['cerrar']);
 
-const modal = ref(null);
 let resultado = false;
 
 const store = useKbStore();
@@ -20,27 +22,9 @@ const categorias = ref([]);
 
 const form = ref({ titulo: '', categoria_id: '', sintoma: '', solucion: '' });
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => form.value);
+const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => form.value);
 tomarSnapshot();
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
-
-function confirmarCierre() {
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return false;
-  }
-  return true;
-}
-
-function cancelar() {
-  if (confirmarCierre()) modal.value?.cerrar();
-}
-
-function descartarCambios() {
-  dialogoDescarte.value?.cerrar();
-  modal.value?.cerrar();
-}
 
 async function guardar() {
   error.value = '';
@@ -80,38 +64,48 @@ onMounted(async () => {
 <template>
   <Modal ref="modal" titulo="Nuevo artículo" :confirmar-cierre="confirmarCierre" @close="emit('cerrar', resultado)">
     <form id="kb-form" class="form-grid" @submit.prevent="guardar">
-      <div class="form-group full">
-        <label for="kb-titulo">Título *</label>
-        <input id="kb-titulo" v-model="form.titulo" required :disabled="guardando" placeholder="Ej.: No conecta a la VPN institucional">
-      </div>
+      <CarbonCampo
+        v-model="form.titulo"
+        class="full"
+        etiqueta="Título"
+        requerido
+        :deshabilitado="guardando"
+        placeholder="Ej.: No conecta a la VPN institucional"
+      />
 
-      <div class="form-group full">
-        <label for="kb-categoria">Categoría</label>
-        <select id="kb-categoria" v-model="form.categoria_id" :disabled="guardando || cargandoCategorias">
+      <CarbonCampo v-model="form.categoria_id" class="full" etiqueta="Categoría" tipo="select" :deshabilitado="guardando || cargandoCategorias">
+        <template #opciones>
           <option value="">Sin categoría</option>
           <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-        </select>
-      </div>
+        </template>
+      </CarbonCampo>
 
-      <div class="form-group full">
-        <label for="kb-sintoma">Síntoma</label>
-        <input id="kb-sintoma" v-model="form.sintoma" :disabled="guardando" placeholder="Cómo lo describe quien reporta">
-      </div>
+      <CarbonCampo
+        v-model="form.sintoma"
+        class="full"
+        etiqueta="Síntoma"
+        :deshabilitado="guardando"
+        placeholder="Cómo lo describe quien reporta"
+      />
 
-      <div class="form-group full">
-        <label for="kb-solucion">Solución</label>
-        <textarea id="kb-solucion" v-model="form.solucion" rows="6" :disabled="guardando" placeholder="Pasos para resolverlo (texto plano)"></textarea>
-      </div>
+      <CarbonCampo
+        v-model="form.solucion"
+        class="full"
+        etiqueta="Solución"
+        tipo="textarea"
+        :filas="6"
+        :deshabilitado="guardando"
+        placeholder="Pasos para resolverlo (texto plano)"
+      />
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="kb-form" :disabled="guardando">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="kb-form" :cargando="guardando">
         {{ guardando ? 'Creando...' : 'Crear artículo' }}
-      </button>
+      </CarbonButton>
     </template>
   </Modal>
 
@@ -120,10 +114,21 @@ onMounted(async () => {
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
     @cancel="confirmarDescarte = false"
     @confirm="descartarCambios"
   />
 </template>
+
+<style scoped>
+/* .form-group.full (main.css) exige la clase .form-group, que trae consigo
+   estilos de <input>/<select> viejos que pisarían los de CarbonCampo — acá
+   se repite solo el grid-column. Vue aplica el scope del padre también a la
+   raíz de un componente hijo (CarbonCampo incluido), así que esta regla
+   simple alcanza a los <CarbonCampo class="full">. */
+.full {
+  grid-column: 1 / -1;
+}
+</style>

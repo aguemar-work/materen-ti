@@ -8,17 +8,18 @@ import { revelarPassword } from '../../api/passwords.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
+import { badgeInfo } from '../../core/badges.js';
 import CorreoForm from './CorreoForm.vue';
-import Pagination from '../../components/shared/Pagination.vue';
+import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
+import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
-import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import CarbonPasswordReveal from '../../components/carbon/CarbonPasswordReveal.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useCorreosStore();
 const authStore = useAuthStore();
@@ -38,7 +39,6 @@ watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); }
 const filtroTipo = ref('');
 const mostrarForm = ref(false);
 const correoEditar = ref(null);
-const passwordVisibles = ref({});
 
 watch(filtroTipo, (tipo) => store.aplicarFiltros({ tipo }));
 
@@ -71,29 +71,13 @@ async function exportar() {
   }
 }
 
-// passwordVisibles[id] guarda el texto revelado; null = oculto.
-// Cada revelado pasa por la edge function y queda auditado.
-async function togglePassword(correo) {
-  if (passwordVisibles.value[correo.id]) {
-    passwordVisibles.value[correo.id] = null;
-    return;
-  }
-  try {
-    passwordVisibles.value[correo.id] = await revelarPassword(correo.id, 'ver');
-  } catch (e) {
-    showToast(e?.message || 'Error al revelar contraseña', 'error');
-  }
-}
-
-async function copiarPassword(correo) {
-  try {
-    const password = await revelarPassword(correo.id, 'copiar');
-    await navigator.clipboard.writeText(password);
-    showToast('Contraseña copiada');
-  } catch (e) {
-    showToast(e?.message || 'No se pudo copiar', 'error');
-  }
-}
+// El revelado de una credencial (peticion a la edge function `credenciales`,
+// auditoria en accesos_log con el motivo, cuenta regresiva de 8 segundos y
+// ocultado automatico) vive en CarbonPasswordReveal.vue. Esta vista solo
+// declara QUE se revela. Hasta el 2026-09-02 tenia su propio
+// `passwordVisibles` mas sus propios togglePassword/copiarPassword: una de
+// las cuatro copias del mismo patron en el arbol, y ninguna de las cuatro
+// ocultaba la credencial sola.
 
 function abrirNuevo() {
   correoEditar.value = null;
@@ -105,12 +89,17 @@ function abrirEditar(correo) {
   mostrarForm.value = true;
 }
 
-function accionesDe(correo) {
-  return [
-    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(correo) },
-    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = correo; } },
-  ];
-}
+// Definición de columnas de CarbonDataTable: paginación y orden son de
+// servidor (store.ordenarPor). "Cuenta" es la elástica; URL y Notas no
+// tienen sentido en la tarjeta móvil angosta (no se mostraban ahí antes).
+const columnas = [
+  { clave: 'usuario', label: 'Cuenta', ordenable: true, elastica: true, movil: 'principal' },
+  { clave: 'asignado', label: 'Asignado a', movil: 'sec' },
+  { clave: 'contrasena', label: 'Contraseña', movil: 'sec' },
+  { clave: 'url', label: 'URL', ordenable: true, movil: false },
+  { clave: 'notas', label: 'Notas', ordenable: true, movil: false },
+  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
+];
 
 function onFormCerrado(guardado) {
   const fueEdicion = !!correoEditar.value;
@@ -157,12 +146,10 @@ onMounted(async () => {
   <div class="correos-page vista-modulo">
     <PageHeader titulo="Correos" icono="ti ti-mail-share" :conteo="total">
       <template #acciones>
-        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </button>
-        <button class="btn btn-primary" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo correo
-        </button>
+        <CarbonButton variante="secondary" icono="ti-table-export" title="Exportar a Excel (CSV)" :deshabilitado="exportando" :cargando="exportando" @click="exportar">
+          {{ exportando ? 'Exportando...' : 'Exportar' }}
+        </CarbonButton>
+        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNuevo">Nuevo correo</CarbonButton>
       </template>
     </PageHeader>
 
@@ -187,202 +174,119 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="cargando" class="no-results solo-movil">Cargando correos...</div>
-        <div v-else-if="error" class="no-results correos-error">{{ error }}</div>
+        <div v-if="error" class="no-results correos-error">{{ error }}</div>
 
-        <EmptyState
-          v-else-if="!cargando && total === 0"
-          icono="ti ti-mail-share"
-          titulo="Sin correos compartidos"
-          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.'"
-        >
-          <button v-if="!busqueda" class="btn" type="button" @click="abrirNuevo">
-            <i class="ti ti-plus"></i> Nuevo correo compartido
-          </button>
-        </EmptyState>
-
-        <template v-if="!error && (cargando || total > 0)">
+        <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando correos compartidos…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Correos compartidos y reutilizables">
-            <thead>
-              <tr>
-                <th scope="col">Plataforma</th>
-                <ThOrdenable clave="tipo_cuenta" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Tipo</ThOrdenable>
-                <ThOrdenable clave="usuario" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Correo / Usuario</ThOrdenable>
-                <th scope="col">Asignado a</th>
-                <th scope="col">Contraseña</th>
-                <ThOrdenable clave="url" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">URL</ThOrdenable>
-                <ThOrdenable clave="notas" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Notas</ThOrdenable>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="8" />
-              <template v-else>
-              <tr v-for="correo in lista" :key="correo.id">
-                <td>
-                  <div class="user-name"><TextoVacio :valor="correo.plataforma_nombre" /></div>
-                </td>
-                <td>
-                  <BadgeEstado tipo="tipo_cuenta" :valor="correo.tipo_cuenta" />
-                </td>
-                <td class="correo-usuario">{{ correo.usuario }}</td>
-                <td>
-                  <div class="asignado-cell">
-                    <template v-if="correo.tipo_cuenta === 'reutilizable'">
-                      <RouterLink
-                        v-if="correo.asignados?.length"
-                        class="asignado-nombre empleado-link"
-                        :to="`/empleados/${correo.asignados[0].id}`"
-                        :title="correo.asignados.map((a) => a.nombre).join(', ')"
-                      >
-                        {{ correo.asignados[0].nombre }}
-                      </RouterLink>
-                      <span v-else class="badge badge--success">
-                        <i class="ti ti-circle-check"></i> Libre
-                      </span>
-                    </template>
-                    <template v-else>
-                      <span
-                        v-if="correo.asignados?.length"
-                        class="asignado-nombre"
-                        :title="correo.asignados.map((a) => a.nombre).join(', ')"
-                      >
-                        {{ correo.asignados.length }} usuario{{ correo.asignados.length === 1 ? '' : 's' }}
-                      </span>
-                      <TextoVacio v-else placeholder="Sin usuarios" />
-                    </template>
-                    <span v-if="correo.requiere_rotacion" class="badge badge--warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
-                      <i class="ti ti-alert-triangle"></i> Rotar contraseña
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <div class="password-cell">
-                    <span class="password-text">
-                      {{ passwordVisibles[correo.id] || '••••••••' }}
-                    </span>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :disabled="!authStore.puedeVerCredenciales"
-                      :title="authStore.puedeVerCredenciales ? (passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar') : 'Sin permiso para ver contraseñas'"
-                      :aria-label="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
-                      @click="togglePassword(correo)"
-                    >
-                      <i :class="passwordVisibles[correo.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :disabled="!authStore.puedeVerCredenciales"
-                      :title="authStore.puedeVerCredenciales ? 'Copiar contraseña' : 'Sin permiso para ver contraseñas'"
-                      aria-label="Copiar contraseña"
-                      @click="copiarPassword(correo)"
-                    >
-                      <i class="ti ti-copy"></i>
-                    </button>
-                  </div>
-                </td>
-                <td>
-                  <a
-                    v-if="correo.url"
-                    :href="correo.url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="url-link"
-                    :title="correo.url"
-                    aria-label="Abrir URL de la plataforma"
-                  >
-                    <i class="ti ti-external-link"></i>
-                  </a>
-                  <TextoVacio v-else />
-                </td>
-                <td class="notas-cell">
-                  <span v-if="correo.notas" :title="correo.notas">{{ correo.notas }}</span>
-                  <TextoVacio v-else />
-                </td>
-                <td>
-                  <div class="actions">
-                    <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(correo)">
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = correo">
-                      <i class="ti ti-trash"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
 
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Correos compartidos y reutilizables">
-          <li v-for="correo in lista" :key="correo.id" class="tarjeta-fila">
-            <div class="tarjeta-fila__principal user-name"><TextoVacio :valor="correo.plataforma_nombre" /></div>
-            <div class="tarjeta-fila__sec">
-              <span class="correo-usuario">{{ correo.usuario }}</span>
+        <CarbonDataTable
+          :columnas="columnas"
+          :filas="lista"
+          :cargando="cargando"
+          :orden-por="ordenColumna"
+          :orden-dir="ordenDireccion"
+          etiqueta="Correos compartidos y reutilizables"
+          vacio-icono="ti ti-mail-share"
+          vacio-titulo="Sin correos compartidos"
+          :vacio-mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.'"
+          @ordenar="store.ordenarPor"
+        >
+          <template #celda-usuario="{ fila }">
+            <!-- Plataforma + Tipo colapsan en la celda "Cuenta" (mismo
+                 criterio que Tickets: identificador+categoría arriba en gris
+                 chico, dato principal abajo). Tipo deja de ser badge — es
+                 metadato de clasificación fijo (compartida/reutilizable/
+                 personal), no un estado — mismo argumento que bajó Categoría
+                 a texto en Tickets. -->
+            <div class="celda-apilada">
+              <span class="celda-apilada__meta">
+                <TextoVacio :valor="fila.plataforma_nombre" />
+                <span class="celda-sep" aria-hidden="true">·</span>
+                <span>{{ badgeInfo('tipo_cuenta', fila.tipo_cuenta).label }}</span>
+              </span>
+              <span class="celda-apilada__principal correo-usuario">{{ fila.usuario }}</span>
             </div>
-            <div class="tarjeta-fila__sec">
-              <template v-if="correo.tipo_cuenta === 'reutilizable'">
+          </template>
+          <template #celda-asignado="{ fila }">
+            <div class="asignado-cell">
+              <template v-if="fila.tipo_cuenta === 'reutilizable'">
                 <RouterLink
-                  v-if="correo.asignados?.length"
-                  class="empleado-link"
-                  :to="`/empleados/${correo.asignados[0].id}`"
+                  v-if="fila.asignados?.length"
+                  class="asignado-nombre empleado-link"
+                  :to="`/empleados/${fila.asignados[0].id}`"
+                  :title="fila.asignados.map((a) => a.nombre).join(', ')"
                 >
-                  {{ correo.asignados[0].nombre }}
+                  {{ fila.asignados[0].nombre }}
                 </RouterLink>
-                <span v-else class="badge badge--success">
+                <CarbonTag v-else variante="success">
                   <i class="ti ti-circle-check"></i> Libre
-                </span>
+                </CarbonTag>
               </template>
               <template v-else>
-                <span v-if="correo.asignados?.length">
-                  {{ correo.asignados.length }} usuario{{ correo.asignados.length === 1 ? '' : 's' }}
+                <span
+                  v-if="fila.asignados?.length"
+                  class="asignado-nombre"
+                  :title="fila.asignados.map((a) => a.nombre).join(', ')"
+                >
+                  {{ fila.asignados.length }} usuario{{ fila.asignados.length === 1 ? '' : 's' }}
                 </span>
                 <TextoVacio v-else placeholder="Sin usuarios" />
               </template>
+              <CarbonTag v-if="fila.requiere_rotacion" variante="warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
+                <i class="ti ti-alert-triangle"></i> Rotar contraseña
+              </CarbonTag>
             </div>
-            <div class="tarjeta-fila__sec password-cell">
-              <span class="password-text">{{ passwordVisibles[correo.id] || '••••••••' }}</span>
-              <button
-                class="icon-btn"
-                type="button"
-                :disabled="!authStore.puedeVerCredenciales"
-                :title="authStore.puedeVerCredenciales ? (passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar') : 'Sin permiso para ver contraseñas'"
-                :aria-label="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
-                @click.stop="togglePassword(correo)"
-              >
-                <i :class="passwordVisibles[correo.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+          </template>
+          <template #celda-contrasena="{ fila }">
+            <CarbonPasswordReveal
+              :revelar="(motivo) => revelarPassword(fila.id, motivo)"
+              :bloqueado="!authStore.puedeVerCredenciales"
+              motivo-bloqueo="Sin permiso para ver contraseñas"
+            />
+          </template>
+          <template #celda-url="{ fila }">
+            <a
+              v-if="fila.url"
+              :href="fila.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="url-link"
+              :title="fila.url"
+              aria-label="Abrir URL de la plataforma"
+            >
+              <i class="ti ti-external-link"></i>
+            </a>
+            <TextoVacio v-else />
+          </template>
+          <template #celda-notas="{ fila }">
+            <span v-if="fila.notas" class="notas-cell" :title="fila.notas">{{ fila.notas }}</span>
+            <TextoVacio v-else />
+          </template>
+          <template #celda-acciones="{ fila }">
+            <div class="actions">
+              <button class="icon-btn fila-accion" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(fila)">
+                <i class="ti ti-pencil"></i>
               </button>
-              <button
-                class="icon-btn"
-                type="button"
-                :disabled="!authStore.puedeVerCredenciales"
-                :title="authStore.puedeVerCredenciales ? 'Copiar contraseña' : 'Sin permiso para ver contraseñas'"
-                aria-label="Copiar contraseña"
-                @click.stop="copiarPassword(correo)"
-              >
-                <i class="ti ti-copy"></i>
+              <button class="icon-btn danger fila-accion" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = fila">
+                <i class="ti ti-trash"></i>
               </button>
             </div>
-            <div class="tarjeta-fila__pie">
-              <div class="tarjeta-fila__badges">
-                <BadgeEstado tipo="tipo_cuenta" :valor="correo.tipo_cuenta" />
-                <span v-if="correo.requiere_rotacion" class="badge badge--warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
-                  <i class="ti ti-alert-triangle"></i> Rotar
-                </span>
-              </div>
-              <MenuAcciones :acciones="accionesDe(correo)" :label="`Acciones de ${correo.usuario}`" />
-            </div>
-          </li>
-        </ul>
-
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
+          </template>
+          <template #vacio-accion>
+            <CarbonButton v-if="!busqueda" variante="secondary" icono="ti-plus" @click="abrirNuevo">Nuevo correo compartido</CarbonButton>
+          </template>
+        </CarbonDataTable>
         </template>
+
+        <CarbonPagination
+          v-if="!cargando"
+          v-model="paginaActual"
+          :total-items="total"
+          :tam-pagina="store.tamPagina"
+          :tamanos-pagina="TAMANOS_PAGINA"
+          unidad="correos"
+          @update:tam-pagina="store.cambiarTamPagina"
+        />
       </div>
     </main>
 
@@ -413,7 +317,14 @@ onMounted(async () => {
 
 .correo-usuario {
   font-family: var(--font-mono, monospace);
-  font-size: 13px;
+  font-size: var(--fs-body-01);
+}
+
+/* Celda "Cuenta" de la tabla de escritorio: el dato principal es un correo/
+   usuario de login, se lee mejor en mono (mismo criterio que .correo-usuario
+   de la tarjeta móvil, sin tocar esa clase — sigue usándose ahí). */
+.table-wrap .celda-apilada__principal {
+  font-family: var(--font-mono, monospace);
 }
 
 .asignado-cell {
@@ -424,7 +335,7 @@ onMounted(async () => {
 }
 
 .asignado-nombre {
-  font-size: 13px;
+  font-size: var(--fs-body-01);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

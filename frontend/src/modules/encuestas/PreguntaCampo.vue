@@ -1,5 +1,6 @@
 <script setup>
 import { TIPOS_PREGUNTA } from '../../core/dominio-encuestas.js';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
 
 defineProps({
   pregunta: { type: Object, required: true },
@@ -14,31 +15,29 @@ function actualizar(valor) {
 </script>
 
 <template>
-  <div class="form-group full">
+  <div class="full">
     <template v-if="pregunta.tipo === 'texto_corto' || pregunta.tipo === 'texto_largo'">
-      <label :for="`pc-${pregunta.id}`">{{ pregunta.etiqueta }}<span v-if="pregunta.requerido"> *</span></label>
-
-      <input
+      <CarbonCampo
         v-if="pregunta.tipo === 'texto_corto'"
-        :id="`pc-${pregunta.id}`"
-        :value="modelValue || ''"
-        type="text"
+        :model-value="modelValue || ''"
+        :etiqueta="pregunta.etiqueta"
+        :requerido="pregunta.requerido"
+        :deshabilitado="disabled"
         :maxlength="TIPOS_PREGUNTA.texto_corto.maxLen"
-        :required="pregunta.requerido"
-        :disabled="disabled"
-        @input="actualizar($event.target.value)"
-      >
+        @update:model-value="actualizar"
+      />
 
-      <textarea
+      <CarbonCampo
         v-else
-        :id="`pc-${pregunta.id}`"
-        :value="modelValue || ''"
-        rows="4"
+        :model-value="modelValue || ''"
+        :etiqueta="pregunta.etiqueta"
+        tipo="textarea"
+        :filas="4"
+        :requerido="pregunta.requerido"
+        :deshabilitado="disabled"
         :maxlength="TIPOS_PREGUNTA.texto_largo.maxLen"
-        :required="pregunta.requerido"
-        :disabled="disabled"
-        @input="actualizar($event.target.value)"
-      ></textarea>
+        @update:model-value="actualizar"
+      />
     </template>
 
     <!-- opcion_unica / escala_1_5 / si_no: grupo de opciones sin un único
@@ -114,7 +113,7 @@ function actualizar(valor) {
 }
 
 .pc-fieldset legend {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   font-weight: 600;
   padding: 0;
@@ -151,7 +150,7 @@ function actualizar(valor) {
 }
 
 .pc-escala-hint {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
@@ -163,7 +162,7 @@ function actualizar(valor) {
 .pc-escala-btn {
   width: 44px;
   height: 44px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   border: 1.5px solid var(--color-border);
   background: none;
   font-weight: 600;

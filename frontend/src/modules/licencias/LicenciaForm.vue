@@ -1,13 +1,15 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useLicenciasStore } from '../../stores/licencias.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { generarPassword } from '../../core/generarPassword.js';
+import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
+import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   licencia: { type: Object, default: null },
@@ -15,23 +17,10 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+// Migrado a Modal.vue (mismo patrón que EmpleadoForm.vue/AccesoSensibleForm.vue):
+// Teleport, bloqueo de scroll del body, atrapamiento de foco y Escape los
+// resuelve el componente compartido.
+let resultado = false;
 
 const store = useLicenciasStore();
 
@@ -42,6 +31,21 @@ const cargandoCatalogos = ref(false);
 const guardando = ref(false);
 const error = ref('');
 const claveVisible = ref(false);
+
+// Campo que falló la última validación ('' | 'correo' | 'plataforma'), para
+// resaltar el control y llevarle el foco además del mensaje de CarbonNotification.
+const campoInvalido = ref('');
+const refGrupoCorreo = ref(null);
+const refPlataforma = ref(null);
+
+async function enfocarCampoInvalido() {
+  await nextTick();
+  if (campoInvalido.value === 'correo') {
+    refGrupoCorreo.value?.querySelector('input')?.focus();
+  } else if (campoInvalido.value === 'plataforma') {
+    refPlataforma.value?.focus();
+  }
+}
 
 const esEdicion = computed(() => !!props.licencia?.id);
 
@@ -95,6 +99,7 @@ const correoYaRegistrado = computed(() => {
 // cancela el modo "registrar correo nuevo" en curso.
 function onSeleccionCorreo() {
   registrandoCorreo.value = false;
+  campoInvalido.value = '';
 }
 
 function elegirRegistrarCorreo() {
@@ -104,15 +109,14 @@ function elegirRegistrarCorreo() {
 
 // Además del form entran el modo de acceso, el correo buscado/escrito y los
 // datos del correo nuevo en línea — todo es captura del usuario.
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
-  form: form.value,
-  modoAcceso: modoAcceso.value,
-  busquedaCorreo: busquedaCorreo.value,
-  registrandoCorreo: registrandoCorreo.value,
-  nuevoCorreo: nuevoCorreo.value,
-}));
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
+const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => ({
+    form: form.value,
+    modoAcceso: modoAcceso.value,
+    busquedaCorreo: busquedaCorreo.value,
+    registrandoCorreo: registrandoCorreo.value,
+    nuevoCorreo: nuevoCorreo.value,
+  }));
 
 function resetForm() {
   error.value = '';
@@ -153,6 +157,15 @@ function resetForm() {
 
 watch(() => props.licencia, resetForm, { immediate: true });
 
+// Al corregir el campo señalado, se apaga el resaltado sin esperar a un
+// nuevo intento de guardar.
+watch(() => nuevoCorreo.value.plataforma_id, (v) => {
+  if (v && campoInvalido.value === 'plataforma') campoInvalido.value = '';
+});
+watch(busquedaCorreo, () => {
+  if (campoInvalido.value === 'correo') campoInvalido.value = '';
+});
+
 onMounted(async () => {
   cargandoCatalogos.value = true;
   try {
@@ -171,28 +184,6 @@ onMounted(async () => {
   }
 });
 
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
-// confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return;
-  }
-  cerrar(false);
-}
-
-function descartarCambios() {
-  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
-  // mientras el formulario inicia su propia salida en paralelo
-  dialogoDescarte.value?.cerrar();
-  cerrar(false);
-}
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
-
 function generarPasswordCorreo() {
   nuevoCorreo.value.password = generarPassword();
   passwordCorreoVisible.value = true;
@@ -200,17 +191,24 @@ function generarPasswordCorreo() {
 
 async function guardar() {
   error.value = '';
+  campoInvalido.value = '';
   if (modoAcceso.value === 'login' && !form.value.cuenta_id && !registrandoCorreo.value) {
     error.value = 'Selecciona el correo que da acceso a la licencia';
+    campoInvalido.value = 'correo';
+    enfocarCampoInvalido();
     return;
   }
   if (modoAcceso.value === 'login' && registrandoCorreo.value) {
     if (!correoEscritoValido.value) {
       error.value = 'Escribe un correo válido para registrarlo';
+      campoInvalido.value = 'correo';
+      enfocarCampoInvalido();
       return;
     }
     if (!nuevoCorreo.value.plataforma_id) {
       error.value = 'Selecciona la plataforma del correo nuevo';
+      campoInvalido.value = 'plataforma';
+      enfocarCampoInvalido();
       return;
     }
   }
@@ -244,7 +242,8 @@ async function guardar() {
       await store.crear(datos);
     }
     tomarSnapshot();
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
     error.value = e?.message || 'Error al guardar licencia';
   } finally {
@@ -254,72 +253,78 @@ async function guardar() {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal modal-lg licencia-form" role="dialog" aria-modal="true" aria-labelledby="lic-form-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="lic-form-title">{{ esEdicion ? 'Editar licencia' : 'Nueva licencia' }}</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
+  <Modal
+    ref="modal"
+    size="lg"
+    :titulo="esEdicion ? 'Editar licencia' : 'Nueva licencia'"
+    :confirmar-cierre="confirmarCierre"
+    :cerrar-en-backdrop="false"
+    @close="emit('cerrar', resultado)"
+  >
+    <form id="lic-form" class="form-grid" @submit.prevent="guardar">
+        <CarbonCampo
+          v-model="form.software"
+          class="full"
+          etiqueta="Software"
+          requerido
+          placeholder="ej: Microsoft 365 Business"
+          :deshabilitado="guardando"
+        />
 
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
-        <div class="form-group full">
-          <label for="lf-software">Software *</label>
-          <input id="lf-software" v-model="form.software" required placeholder="ej: Microsoft 365 Business" :disabled="guardando">
-        </div>
-
-        <div class="form-group">
-          <label for="lf-tipo">Tipo *</label>
-          <select id="lf-tipo" v-model="form.tipo" :disabled="guardando">
+        <CarbonCampo v-model="form.tipo" etiqueta="Tipo" tipo="select" requerido :deshabilitado="guardando">
+          <template #opciones>
             <option value="suscripcion">Suscripción (se renueva)</option>
             <option value="perpetua">Perpetua (no vence)</option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
-        <div class="form-group">
-          <label for="lf-cantidad">Asientos (usuarios máx.) *</label>
-          <input id="lf-cantidad" v-model.number="form.cantidad" type="number" min="1" required :disabled="guardando">
-        </div>
+        <CarbonCampo
+          v-model.number="form.cantidad"
+          etiqueta="Asientos (usuarios máx.)"
+          tipo="number"
+          min="1"
+          requerido
+          :deshabilitado="guardando"
+        />
 
-        <div class="form-group">
-          <label for="lf-empresa">Empresa</label>
-          <select id="lf-empresa" v-model="form.empresa_id" :disabled="guardando || cargandoCatalogos">
+        <CarbonCampo v-model="form.empresa_id" etiqueta="Empresa" tipo="select" :deshabilitado="guardando || cargandoCatalogos">
+          <template #opciones>
             <option value="">Del grupo (sin empresa)</option>
             <option v-for="e in empresas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
-          </select>
-        </div>
+          </template>
+        </CarbonCampo>
 
         <template v-if="form.tipo === 'suscripcion'">
-          <div class="form-group">
-            <label for="lf-vence">Próximo vencimiento</label>
-            <input id="lf-vence" v-model="form.fecha_vencimiento" type="date" :disabled="guardando">
-          </div>
+          <CarbonCampo
+            v-model="form.fecha_vencimiento"
+            etiqueta="Próximo vencimiento"
+            tipo="date"
+            :deshabilitado="guardando"
+          />
 
-          <div class="form-group">
-            <label for="lf-renovacion">Renovación</label>
-            <select id="lf-renovacion" v-model="form.renovacion_meses" :disabled="guardando">
+          <CarbonCampo v-model="form.renovacion_meses" etiqueta="Renovación" tipo="select" :deshabilitado="guardando">
+            <template #opciones>
               <option v-for="p in PERIODOS" :key="p.value" :value="p.value">{{ p.label }}</option>
-            </select>
-          </div>
+            </template>
+          </CarbonCampo>
         </template>
 
-        <div class="form-group">
-          <label for="lf-proveedor">Proveedor</label>
-          <input id="lf-proveedor" v-model="form.proveedor" :disabled="guardando">
-        </div>
+        <CarbonCampo v-model="form.proveedor" etiqueta="Proveedor" :deshabilitado="guardando" />
 
-        <div class="form-group costo-group">
-          <label for="lf-costo">Costo</label>
-          <div class="costo-inputs">
-            <input id="lf-costo" v-model="form.costo" type="number" step="0.01" min="0" placeholder="0.00" :disabled="guardando">
-            <select v-model="form.moneda" :disabled="guardando" aria-label="Moneda">
-              <option value="PEN">S/</option>
-              <option value="USD">US$</option>
-            </select>
-          </div>
+        <div class="costo-inputs">
+          <CarbonCampo
+            v-model="form.costo"
+            etiqueta="Costo"
+            tipo="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            :deshabilitado="guardando"
+          />
+          <select v-model="form.moneda" :disabled="guardando" aria-label="Moneda" class="costo-moneda">
+            <option value="PEN">S/</option>
+            <option value="USD">US$</option>
+          </select>
         </div>
 
         <!-- Modo de acceso -->
@@ -354,7 +359,7 @@ async function guardar() {
         </div>
 
         <template v-if="modoAcceso === 'login'">
-          <div class="form-group full combo-correo">
+          <div ref="refGrupoCorreo" class="form-group full combo-correo" :class="{ 'campo-invalido': campoInvalido === 'correo' }">
             <label for="lf-cuenta">Correo que da acceso *</label>
             <BuscadorCombo
               id="lf-cuenta"
@@ -400,114 +405,102 @@ async function guardar() {
           </div>
 
           <!-- Datos mínimos del correo que se registrará en Correos -->
-          <div v-if="registrandoCorreo" class="form-group full nuevo-correo-panel">
+          <div v-if="registrandoCorreo" class="full nuevo-correo-panel">
             <p class="nuevo-correo-titulo">
               <i class="ti ti-mail-plus" aria-hidden="true"></i>
               Este correo no existe todavía: se registrará en el módulo Correos al guardar.
             </p>
             <div class="nuevo-correo-campos">
-              <div class="form-group">
-                <label for="lf-nc-plataforma">Plataforma *</label>
-                <select id="lf-nc-plataforma" v-model="nuevoCorreo.plataforma_id" required :disabled="guardando">
+              <CarbonCampo
+                ref="refPlataforma"
+                v-model="nuevoCorreo.plataforma_id"
+                etiqueta="Plataforma"
+                tipo="select"
+                requerido
+                :deshabilitado="guardando"
+                :error="campoInvalido === 'plataforma' ? 'Selecciona la plataforma del correo nuevo' : ''"
+              >
+                <template #opciones>
                   <option value="" disabled>Seleccionar plataforma</option>
                   <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="lf-nc-tipo">Tipo de correo</label>
-                <select id="lf-nc-tipo" v-model="nuevoCorreo.tipo_cuenta" :disabled="guardando">
+                </template>
+              </CarbonCampo>
+
+              <CarbonCampo v-model="nuevoCorreo.tipo_cuenta" etiqueta="Tipo de correo" tipo="select" :deshabilitado="guardando">
+                <template #opciones>
                   <option value="compartida">Compartido (varios a la vez)</option>
                   <option value="reutilizable">Reutilizable (uno a la vez)</option>
-                </select>
-              </div>
-              <div class="form-group full">
-                <label for="lf-nc-password">Contraseña del correo</label>
-                <div class="input-with-action">
-                  <input
-                    id="lf-nc-password"
-                    v-model="nuevoCorreo.password"
-                    :type="passwordCorreoVisible ? 'text' : 'password'"
-                    autocomplete="new-password"
-                    placeholder="Opcional, se puede completar después en Correos"
-                    :disabled="guardando"
-                  >
-                  <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generarPasswordCorreo">
-                    <i class="ti ti-refresh" aria-hidden="true"></i>
-                  </button>
-                  <button type="button" class="icon-btn" :title="passwordCorreoVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordCorreoVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordCorreoVisible = !passwordCorreoVisible">
-                    <i :class="passwordCorreoVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-                  </button>
-                </div>
+                </template>
+              </CarbonCampo>
+
+              <div class="full input-with-action">
+                <CarbonCampo
+                  v-model="nuevoCorreo.password"
+                  etiqueta="Contraseña del correo"
+                  :tipo="passwordCorreoVisible ? 'text' : 'password'"
+                  autocomplete="new-password"
+                  placeholder="Opcional, se puede completar después en Correos"
+                  :deshabilitado="guardando"
+                />
+                <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generarPasswordCorreo">
+                  <i class="ti ti-refresh" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="icon-btn" :title="passwordCorreoVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordCorreoVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordCorreoVisible = !passwordCorreoVisible">
+                  <i :class="passwordCorreoVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+                </button>
               </div>
             </div>
           </div>
 
-          <div class="form-group full">
-            <label for="lf-clave-sw">{{ esEdicion && licencia?.tiene_clave ? 'Nueva contraseña del software' : 'Contraseña del software' }}</label>
-            <div class="input-with-action">
-              <input
-                id="lf-clave-sw"
-                v-model="form.clave"
-                :type="claveVisible ? 'text' : 'password'"
-                autocomplete="off"
-                :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'Dejar vacío si es la misma del correo'"
-                :disabled="guardando"
-              >
-              <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
-                <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-              </button>
-            </div>
-            <p class="field-hint">
-              Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su
-              propia contraseña. Si se entra con la contraseña del correo, déjalo vacío.
-            </p>
-          </div>
-        </template>
-
-        <div v-if="modoAcceso === 'clave'" class="form-group full">
-          <label for="lf-clave">{{ esEdicion && licencia?.tiene_clave ? 'Nueva clave/serial' : 'Clave / serial' }}</label>
-          <div class="input-with-action">
-            <input
-              id="lf-clave"
+          <div class="full input-with-action">
+            <CarbonCampo
               v-model="form.clave"
-              :type="claveVisible ? 'text' : 'password'"
+              :etiqueta="esEdicion && licencia?.tiene_clave ? 'Nueva contraseña del software' : 'Contraseña del software'"
+              :tipo="claveVisible ? 'text' : 'password'"
               autocomplete="off"
-              :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'XXXXX-XXXXX-XXXXX'"
-              :disabled="guardando"
-            >
+              :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'Dejar vacío si es la misma del correo'"
+              :deshabilitado="guardando"
+              ayuda="Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su propia contraseña. Si se entra con la contraseña del correo, déjalo vacío."
+            />
             <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
               <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
             </button>
           </div>
-        </div>
+        </template>
 
-        <div class="form-group full">
-          <label for="lf-notas">Notas</label>
-          <textarea id="lf-notas" v-model="form.notas" :disabled="guardando"></textarea>
-        </div>
-
-        </div>
-
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Guardando...' : 'Guardar' }}
+        <div v-if="modoAcceso === 'clave'" class="full input-with-action">
+          <CarbonCampo
+            v-model="form.clave"
+            :etiqueta="esEdicion && licencia?.tiene_clave ? 'Nueva clave/serial' : 'Clave / serial'"
+            :tipo="claveVisible ? 'text' : 'password'"
+            autocomplete="off"
+            :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'XXXXX-XXXXX-XXXXX'"
+            :deshabilitado="guardando"
+          />
+          <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
+            <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
           </button>
         </div>
-      </form>
-    </div>
-  </div>
-  </Transition>
+
+        <CarbonCampo v-model="form.notas" class="full" etiqueta="Notas" tipo="textarea" :deshabilitado="guardando" />
+
+        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+    </form>
+
+    <template #acciones>
+      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
+      <CarbonButton variante="primary" tipo="submit" form="lic-form" :cargando="guardando">
+        {{ guardando ? 'Guardando...' : 'Guardar' }}
+      </CarbonButton>
+    </template>
+  </Modal>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
     @cancel="confirmarDescarte = false"
@@ -518,13 +511,52 @@ async function guardar() {
 <style scoped>
 /* Ancho: .modal-lg de la escala centralizada (main.css) */
 
+/* .form-group.full (main.css) exige la clase .form-group, que trae consigo
+   estilos de <input>/<select> viejos que pisarían los de CarbonCampo — acá
+   se repite solo el grid-column. Vue aplica el scope del padre también a la
+   raíz de un componente hijo (CarbonCampo incluido), así que esta regla
+   simple alcanza tanto a los <div class="full"> propios como a los
+   <CarbonCampo class="full">. */
+.full {
+  grid-column: 1 / -1;
+}
+
 .costo-inputs {
   display: flex;
+  align-items: flex-end;
   gap: 6px;
 }
 
-.costo-inputs input { flex: 1; }
-.costo-inputs select { width: 76px; }
+.costo-inputs :deep(.cds-campo) { flex: 1; min-width: 0; }
+
+/* La moneda ya no vive dentro de .form-group (para no filtrarle su estilo
+   viejo de <select> al <input> de CarbonCampo de al lado), así que reproduce
+   a mano la misma caja outlined que usa CarbonCampo. */
+.costo-moneda {
+  width: 76px;
+  height: var(--space-11);
+  padding: 0 var(--space-6);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-01);
+  cursor: pointer;
+}
+
+.costo-moneda:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.costo-moneda:disabled {
+  cursor: not-allowed;
+  color: var(--color-text-disabled);
+  background: var(--color-bg-subtle);
+}
 
 .acceso-options {
   display: grid;
@@ -536,7 +568,7 @@ async function guardar() {
   display: flex;
   cursor: pointer;
   border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   padding: 10px 12px;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -550,6 +582,7 @@ async function guardar() {
 
 .acceso-option:hover {
   border-color: var(--color-primary);
+  background: var(--color-accent-subtle);
 }
 
 .acceso-option:focus-within {
@@ -569,26 +602,26 @@ async function guardar() {
 }
 
 .acceso-body > i {
-  font-size: 17px;
+  font-size: var(--icon-md);
   color: var(--color-primary);
   margin-bottom: 3px;
 }
 
 .acceso-label {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
 .acceso-desc {
-  font-size: 11px;
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   line-height: 1.3;
 }
 
 .nuevo-correo-panel {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   background: var(--color-bg-subtle, var(--color-bg));
   padding: 12px;
 }
@@ -598,12 +631,12 @@ async function guardar() {
   align-items: center;
   gap: 6px;
   margin: 0 0 10px;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
 }
 
 .nuevo-correo-titulo i {
-  font-size: 15px;
+  font-size: var(--icon-sm);
   color: var(--color-primary);
   flex-shrink: 0;
 }
@@ -621,20 +654,23 @@ async function guardar() {
 .input-with-action {
   display: flex;
   gap: 4px;
-  align-items: center;
+  align-items: flex-end;
 }
 
-.input-with-action input { flex: 1; }
+.input-with-action :deep(.cds-campo) { flex: 1; min-width: 0; }
 
 .field-hint {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   line-height: 1.4;
 }
 
-
-.modal-actions.full {
-  grid-column: 1 / -1;
+/* Resalta el campo que falló la última validación (ver campoInvalido en el
+   script) — respaldo visual del mensaje de CarbonNotification, no un reemplazo.
+   El select de plataforma ahora usa el estado inválido propio de CarbonCampo
+   (prop :error); esta regla solo cubre el combo de correo, que no es CarbonCampo. */
+.combo-correo.campo-invalido :deep(input) {
+  border-color: var(--color-danger-border);
 }
 </style>
