@@ -137,7 +137,15 @@ global `Deno`.
   (40 más recientes) + una sección aparte de "Respuestas con baja
   satisfacción" ordenada peor-primero (`reporteSatisfaccion.js`, mismas
   primitivas de layout que el PDF del "Reporte" de Tickets, extraídas a
-  `core/pdfReporte.js`).
+  `core/pdfReporte.js`). **Workspace de 3 columnas** (`/tickets`, modo
+  Triage — por defecto desde el Plan Maestro v2, Frente 2, 2026-09-04; el
+  modo Tabla sigue disponible para selección múltiple/reasignación en
+  lote): Bandejas + lista angosta + `TicketDetallePanel.vue`, que a su vez
+  gana una 3ra columna de **contexto** (equipos asignados al solicitante,
+  artículos de KB relacionados, problema vinculado — colapsable, con botón
+  propio en el header del panel) y una sección de **Acciones rápidas** con
+  2 macros para copiar al portapapeles: "Pedir más información" (nueva) y
+  "Resuelto + encuesta" (la misma de arriba, ahora también disponible acá).
 
 - **Equipo**: activo físico con código de inventario único (etiqueta), tipo
   (catálogo `tipos_equipo` con plantilla de specs y accesorios por tipo),
@@ -151,7 +159,13 @@ global `Deno`.
   Un equipo se asigna a una **persona o a una ubicación** (catálogo
   `ubicaciones`: almacenes, áreas, sedes — exactamente uno de los dos por
   asignación). Mover entre ubicaciones es libre; si lo tiene una persona,
-  se exige registrar la devolución primero.
+  se exige registrar la devolución primero. En `/equipos`, 3 tarjetas KPI
+  (Libres para entregar / Ocupados / En reparación, sobre todo el
+  inventario, no solo la página filtrada) resumen la disponibilidad de un
+  vistazo y filtran la lista al hacer clic. La "Hoja de vida" (histórico de
+  eventos + fotos + especificaciones técnicas + accesorios) se abre en un
+  panel lateral (drawer), no en un modal centrado — mismo componente
+  `Modal.vue` compartido, con su prop `lateral`.
 
 - **Notificación**: aviso persistente para todo el staff sobre 4 eventos
   concretos (`ticket_creado`, `cuenta_creada`, `empleado_alta`,
@@ -177,12 +191,21 @@ global `Deno`.
 ## Flujos principales
 
 1. **Alta guiada**: Empleados → "Nuevo empleado" → guarda → aterriza en la
-   ficha (`/empleados/:id?nuevo=1`) con guía de 3 pasos: registrado → asignar
-   accesos → enviar por WhatsApp (genera la entrega de un solo uso).
+   ficha (`/empleados/:id?nuevo=1`) con guía de 5 pasos: registrado → cuenta de
+   correo → **credenciales entregadas** (enviar por WhatsApp — requisito, no
+   opcional: tener la cuenta creada no es lo mismo que el empleado ya la
+   conozca) → equipo y licencia (ofrecidos, no exigidos). Cada paso pendiente
+   trae su propio botón, que abre directo el formulario/acción que corresponde
+   (`core/dominio-empleados.js`, `pasosAlta()`).
 2. **Baja**: botón "Dar de baja" → modal con resumen de qué pasará con cada
    cuenta (personales se dan de baja, reutilizables quedan libres, compartidas
-   pierden a ese usuario) → confirmar. Las cuentas heredables quedan marcadas
-   "Rotar contraseña".
+   pierden a ese usuario) → confirmar. Al confirmar, un checklist animado
+   (retardo fijo de 300ms por ítem) muestra cada escritura del RPC atómico
+   `dar_baja_empleado()` marcándose una por una — el último ítem solo se marca
+   listo cuando el RPC real también resolvió, nunca antes. Las cuentas
+   heredables quedan marcadas "Rotar contraseña"; los equipos, aparte, quedan
+   como último ítem "pendiente" (no "hecho": la baja nunca los toca, ver
+   Modelo de seguridad).
 3. **Auditoría**: cada vez que alguien **ve, copia o envía** una contraseña
    queda registrado en `accesos_log`. El JEFE lo consulta en `/actividad`.
 4. **Soporte por ticket**: el empleado reporta un problema en `/soporte/nuevo`
@@ -255,7 +278,12 @@ global `Deno`.
 │       ├── api/
 │       │   ├── insforge.js    # capa de datos (PostgREST vía SDK)
 │       │   └── passwords.js   # todo lo que toca contraseñas → edge function
-│       ├── components/shared/AppLayout.vue
+│       ├── styles/
+│       │   ├── carbon-theme.css # capa vendor: valores de IBM Carbon v11 (--cds-*)
+│       │   └── main.css        # capa de roles del producto, mapeada sobre la anterior
+│       ├── components/
+│       │   ├── shared/         # AppLayout (shell de Carbon), PageHeader, Modal, ...
+│       │   └── carbon/         # primitivas: CarbonTag, CarbonDataTable, CarbonPasswordReveal
 │       ├── core/              # formatters, toast, utils
 │       ├── modules/           # una carpeta por módulo de UI
 │       │   ├── actividad/     # auditoría (solo JEFE)
@@ -285,7 +313,9 @@ global `Deno`.
 │   └── equipos-fotos.ts    # edge function: subirFoto / eliminarFoto / version (staff, valida magic bytes)
 ├── migrations/             # 001..084 — esquema completo, en orden, comentado
 ├── docs/
-│   ├── GUIA-UX-UI.md          # design system: referencia del estado actual (sin historial)
+│   ├── PLAN-MAESTRO-MATEREN.md # blueprint de producto: diagnóstico, decisiones, fases
+│   ├── GOBERNANZA-DISENO.md   # quién manda, dónde se implementa y qué lo verifica (matriz + guardrails)
+│   ├── GUIA-UX-UI.md          # design system (IBM Carbon v11): referencia del estado actual
 │   ├── PANORAMA-SISTEMA.md    # arquitectura, modelo de datos y decisiones verificadas
 │   ├── HISTORIAL-AUDITORIAS.md # hallazgos de auditoría con estado + inventario de archivos + revisiones de design.pen
 │   ├── GOTCHAS-CLI.md         # gotchas del CLI de InsForge: leer antes de aplicar una migración

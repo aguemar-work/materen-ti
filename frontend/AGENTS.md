@@ -1,11 +1,8 @@
 # AGENTS.md
 
 > **Materen — Sistema TI**: panel interno de inventario de empleados, accesos,
-> tickets, correos, licencias y equipos. El estándar de UI/UX es **IBM Carbon
-> Design System v11** (desde el 2026-09-02): valores en
-> `frontend/src/styles/carbon-theme.css` (`--cds-*`), roles del producto en
-> `frontend/src/styles/main.css` (`--color-*`, `--fs-*`…), y el criterio
-> completo en [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
+> tickets, correos, licencias y equipos. UI en
+> `frontend/src/styles/main.css` (`--mat-*`) y [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
 
 **Estado del repo — a propósito no se anota a mano acá.** Este encabezado
 llevaba una fecha y una lista de migraciones escritas a mano, y quedó 14 días y
@@ -24,8 +21,8 @@ podrirse). Para saber el estado real, mirar la fuente — nunca este archivo:
 de numerar una nueva, comparar contra `origin/main`, no contra el working tree.
 
 **Precedencia documental**: ante conflicto, `README.md` y `GUIA-UX-UI.md` describen
-intención; **ganan** los valores literales en `carbon-theme.css`/`main.css` y el
-esquema real en `migrations/*.sql`.
+intención; **ganan** los valores literales en `main.css` y el esquema real en
+`migrations/*.sql`.
 
 Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
 modelo de seguridad y estructura del repo), `docs/PANORAMA-SISTEMA.md`
@@ -247,27 +244,10 @@ cuándo y si la contraseña se rotó después.
       foco), para popovers teletransportados a `<body>` (`MenuAcciones`,
       `NotificacionesCampana`). No confundir con `useCerrarConEscape`/
       `useFocoAtrapado`, que son para modales hand-rolled.
-- **UI/UX — IBM Carbon v11**: colores, tipografías y clases reutilizables en
- `docs/GUIA-UX-UI.md`. **Dos capas de CSS, y la frontera importa**:
- `styles/carbon-theme.css` tiene los VALORES de Carbon (`--cds-*`: escalas,
- type set, geometría, métricas del shell) y `styles/main.css` los ROLES del
- producto mapeados sobre ellos. Un `<style>` de componente consume el rol
- (`var(--color-danger-text)`), **nunca** el valor de la escala
- (`var(--cds-red-70)`); la única excepción son los `--cds-shell-*`, que
- consumen los cuatro componentes del shell porque el shell es oscuro en los
- dos temas. Sin Tailwind ni librería de componentes (tampoco `@carbon/styles`
- — se adopta la especificación, no el paquete: ver la GUIA, "Qué se adopta y
- qué no"). Tres reglas que no se negocian sin leer el motivo: **radio 0**
- (`--radius-base`), **elevación plana** (sombra solo en capas
- teletransportadas, `--shadow-overlay`) y la **escala tipográfica de 5 pasos**
- del type set productivo (`--fs-label-01`, `--fs-body-01`,
- `--fs-heading-02/03/05`). Nombre del producto en UI: **Materen — Sistema TI**.
-- **Primitivas de Carbon** en `frontend/src/components/carbon/`:
- `CarbonTag` (tag rectangular), `CarbonDataTable` (tabla de alta densidad
- declarativa) y `CarbonPasswordReveal` (revelado auditado con cuenta
- regresiva de 8s). Se separan de `components/shared/` porque el criterio
- para tocarlos es distinto: `shared/` resuelve "este producto necesita
- esto", `carbon/` resuelve "Carbon define esto así".
+- **UI/UX**: colores, tipografías y clases reutilizables en
+ `docs/GUIA-UX-UI.md` y `frontend/src/styles/main.css` (tokens `--mat-*`,
+ sin Tailwind ni librería de componentes). Nombre del producto en UI:
+ **Materen — Sistema TI**.
 - **Gotcha del padding de tabla (ago 2026)**: el alto de fila vive en **dos**
  lugares que tienen que moverse juntos — `th`/`td` en `main.css` (hoy `9px`
  de padding vertical) y `.th-ordenable-btn` en
@@ -428,13 +408,8 @@ cuándo y si la contraseña se rotó después.
  red — verifica que exigen un rechazo específico y que sus mensajes de
  fallo nunca imprimen un payload). Corren en CI en cada push
  (`.github/workflows/ci.yml`, job `build-y-tests`), junto con
- los **5 guardrails de diseño** — `node scripts/contraste.mjs` (contraste
- WCAG), `node scripts/tokens-vs-guia.mjs` (nombres de token + referencias
- `var()` rotas), `node scripts/literales-vs-tokens.mjs` (valores a mano que
- deberían ser token), `node scripts/patrones-ui.mjs` (estructura del
- marcado) y `node scripts/clases-muertas.mjs` (clases huérfanas) — y
- `npm audit --omit=dev --audit-level=high` (vulnerabilidades de
- dependencias). Mapa completo en `docs/GOBERNANZA-DISENO.md`.
+ `node scripts/contraste.mjs` (contraste WCAG de los tokens) y
+ `npm audit --omit=dev --audit-level=high` (vulnerabilidades de dependencias).
  **CI estuvo en rojo sin que nadie lo notara** desde el commit `030cc89`
  (2026-08-15, "Pruebas" — 30+ archivos sin relación bajo un solo mensaje) hasta
  que se cerró esto: ese commit cambió la forma de `porTecnico`, retiró
@@ -492,46 +467,6 @@ cuándo y si la contraseña se rotó después.
  suite lo salta completo**: necesita las cuentas de staff de P0-04, que no
  existen.
 - Contraste WCAG de los tokens: `node scripts/contraste.mjs`.
-- Deriva de tokens vs. guía de UX/UI: `node scripts/tokens-vs-guia.mjs`.
- Falla si la guía nombra un token que no existe (FANTASMA), si `main.css`
- define uno sin ningún consumidor (MUERTO), si un `var()` sin fallback
- apunta a un token inexistente (REFERENCIA ROTA — bug visual que ni el build
- ni los tests ven) o si vuelve a aparecer una CAPA DUPLICADA (dos nombres de
- rol para el mismo rol). Un token sin consumidor que se quiere conservar va
- en `DEUDA_DECLARADA` **con su motivo escrito**, dentro del propio script.
- Lee las dos capas de CSS: la vendor (`--cds-*`) queda fuera de MUERTO y de
- CAPA DUPLICADA a propósito — una escala de color es completa por
- definición, y un rol que apunta a un valor de escala es la indirección para
- la que sirve un design system, no su duplicación. Sus pasos sin mapear se
- reportan aparte, como inventario (PALETA VENDOR).
-- Literales que deberían ser tokens: `node scripts/literales-vs-tokens.mjs`
- (`--detalle` para el desglose por archivo). Color/radio/sombra/tipografía se
- exigen en **0**; el espaciado va por **trinquete** con línea base en
- `scripts/literales-base.json` — falla solo si SUBE. Tras migrar espaciado,
- consolidar con `--fijar-base` (solo baja). **No subir la base a mano.**
-- Invariantes de marcado: `node scripts/patrones-ui.mjs` (modal hecho a mano
- en vez del `<Modal>` compartido, `<img>` sin `alt`, botón solo-ícono sin
- nombre accesible).
-- Clases CSS: `node scripts/clases-muertas.mjs` (`--detalle` para ver en qué
- archivo está cada una). **Falla solo ante una HUÉRFANA** — una clase
- aplicada en el marcado que ninguna hoja define: no hace nada, y "no hace
- nada" es indistinguible de "así se diseñó" (le pasó a `.badge-inline`
- durante meses, en 4 de sus 8 consumidores). Las **MUERTAS** — definidas y
- sin aplicar — se reportan como inventario y NO fallan, a propósito:
- durante la convergencia a Carbon suben, porque cada módulo que adopta
- `components/carbon/` deja atrás su familia vieja de `main.css` hasta que se
- borre. Son la lista de trabajo de esa limpieza, no una deuda a atajar.
-- **Tests de render** (`frontend/tests/componentes/`): montan componentes de
- verdad con `@vue/test-utils` sobre `happy-dom`. El entorno se pide **por
- archivo** con el docblock `// @vitest-environment happy-dom` — NO cambiar
- `environment: 'node'` en `vitest.config.js`, los tests de lógica pura no
- deben pagar el costo de un DOM. Un asset de `public/` referenciado con ruta
- absoluta (`<img src="/logo.svg">`) se resuelve por alias a
- `tests/stubs/asset-publico.js`. Verifican estructura y comportamiento, **no
- apariencia**: `happy-dom` no calcula estilos.
-- **Antes de corregir un hallazgo de diseño, preguntar por qué el sistema lo
- permitió.** Si nada lo impedía, el arreglo no está completo hasta que algo
- lo impida. Ver `docs/GOBERNANZA-DISENO.md` §7.
 - Probar la función sin sesión:
  `npx @insforge/cli functions invoke credenciales --data '{"action":"entregaAbrir","token":"x"}'`
  debe responder `{"ok":false,"code":"no_existe"}`.

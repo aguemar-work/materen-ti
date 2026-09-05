@@ -1,8 +1,10 @@
 # Guía UX/UI — Materen · Sistema TI
 
-> Documentación visual del panel **Materen — Sistema TI**. Los tokens canónicos
-> viven en [`main.css`](../frontend/src/styles/main.css) (`--mat-*` y alias
-> `--color-*`); este archivo describe cómo usarlos en las vistas.
+> Documentación visual del panel **Materen — Sistema TI**. Los tokens viven en
+> [`main.css`](../frontend/src/styles/main.css) — **un nombre por concepto**,
+> sin capa de alias: `--color-*`, `--fs-*`, `--icon-*`, `--space-*`,
+> `--radius-*`, `--shadow-*`, `--z-*`. Este archivo describe cómo usarlos en
+> las vistas.
 
 **Vigencia**: este documento describe el **estado actual** del design
 system — sin historia mezclada. El historial completo de cómo se llegó
@@ -30,17 +32,66 @@ o del estado vacío:
 | `TextoVacio` | Celda vacía con placeholder `—` y clase `.text-muted` automática |
 | `Pagination` | Paginación client/server (ya documentada abajo) |
 | `PublicBrand` | Cabecera de páginas públicas (empleados sin sesión) |
-| `NotificacionesCampana` | Campana de notificaciones (migración 045) en el footer del sidebar/topbar móvil; lista los 4 eventos con estado leído/no-leído, marca lectura por usuario vía `stores/notificaciones.js` |
-| `SelectorVista` | Grupo segmentado **solo-ícono** para alternar la vista de un módulo (Tabla/Triage en Tickets — hasta la octava pasada, "Isla" — Tabla/Tarjetas en Empleados y Equipos) |
+| `NotificacionesCampana` | Campana de notificaciones (migración 045) en las **acciones globales del header** del shell (hasta el 2026-09-02 vivía en el pie del sidebar); lista los 4 eventos con estado leído/no-leído, marca lectura por usuario vía `stores/notificaciones.js` |
+| `SelectorVista` | Grupo segmentado **solo-ícono** para alternar la vista de un módulo (Tabla/Triage en Tickets — hasta ago 2026 se llamaba "Isla"; ver el changelog pasada, "Isla" — Tabla/Tarjetas en Empleados y Equipos) |
 | `ListaVistas` | Lista de vistas/bandejas mutuamente excluyentes con contador opcional. Prop `variante`: `nav` (columna de riel, default) o `segmento` (grupo segmentado horizontal **con texto**). Ver "Variantes de `ListaVistas`" abajo |
 
 Los mapas de color por dominio siguen en `core/dominio-*.js`; `core/badges.js`
 solo despacha hacia ellos.
 
+## Primitivas de Carbon (`frontend/src/components/carbon/`)
+
+Componentes que implementan un patrón del design system, no un caso de
+dominio. Se separan de `shared/` porque el criterio para tocarlos es
+distinto: `shared/` resuelve "este producto necesita esto", `carbon/`
+resuelve "Carbon define esto así".
+
+| Componente | Qué hace | Qué reemplaza |
+|---|---|---|
+| `CarbonButton` | 5 variantes × 3 tamaños (32/40/48). Etiqueta a la izquierda, **ícono a la derecha** | `.btn` y sus 4 variantes, que tenían un solo alto (36px, que no es un paso de Carbon) y ningún orden entre sí |
+| `CarbonCampo` | Campo **outlined** — borde perimetral de 1px + radio + sombra sutil, foco en halo. `tipo` cubre texto, select y textarea; trae **error por campo** con `aria-describedby`. Reenvía atributos nativos al control real y expone `focus()` — ver "Migración de formularios a `CarbonCampo`" más abajo | `.form-group`, ya adoptado en 30 archivos de `modules/`. Lo que queda en `.form-group` es deliberado, no deuda: envuelve un `BuscadorCombo` (`AsignarLicenciaModal`, `LicenciasView`), un checklist/checkbox-group o radio-group, o una fila densa sin label visible (barras de filtro, grillas de `ImportarEquiposView`); las únicas excepciones sin criterio de densidad son las vitrinas `DesignSystemView`/`StyleLabView`. `.form-error` sigue para el error de la operación completa, que es otra cosa |
+| `CarbonNotification` | Aviso `inline` (en el flujo, no se va) y `toast` (flota y se va). `role="alert"` solo para error | Las **tres** formas que convivían: `.toast` (abajo-derecha), `.aviso-card` (arriba-derecha) y `.form-error` como único aviso inline |
+| `CarbonContentSwitcher` | Grupo segmentado. El seleccionado es un **relleno de gris invertido**, no un tinte de acento | `.selector-vista__btn--activo` y `.tnav-item--activo`, dos de los tres lenguajes de "seleccionado" |
+| `CarbonTabs` | Pestañas con línea inferior de 2px. Con `to` renderiza **enlaces** (ctrl+clic, copiar, lector de pantalla); sin `to`, botones con contrato `tablist` | `.config-sidebar-item--activa`, el tercer lenguaje — que además usa `<button>` para navegar entre URLs |
+| `CarbonPagination` | Agrega **filas por página** y **salto directo de página**. Superconjunto de props del anterior. Las opciones del selector se pasan desde `constants/paginacion.js` (`TAMANOS_PAGINA` = 10/15/20/50/100, con `TAM_PAGINA_DEFECTO` = 20 **incluido** en la lista), y **volver a la página 1 al cambiar el tamaño es del padre**, no del componente | `Pagination.vue`, que con 40 páginas obliga a 36 clics para llegar a la 37 |
+| `CarbonTag` | Tag rectangular con las 9 variantes semánticas del sistema. Props: `variante` (acepta tanto `success` como `badge--success`, o sea lo que devuelve `badgeInfo(...).clase`), `codigo` (IBM Plex Mono + tabular-nums, para códigos/DNI/seriales) y `punto` (indicador sólido en el color `support-*` de Carbon) | Migrado el 2026-09-03 (ver "Migración de badges/tags"): 13 archivos de `modules/` usan `BadgeEstado` (`grep -rl "BadgeEstado" modules`) y el resto de los tags semánticos escriben `CarbonTag` directo. `.badge`/`.badge--X` (main.css) sigue existiendo solo como vitrina histórica en `DesignSystemView`/`StyleLabView`; en el resto del sistema lo que queda con nombre `.badge-*` (`.badge-count`, `.badge-inline`, `.badge-sin-devolver`) es una clase de layout, no de color — decora el tag, no lo reemplaza |
+| `CarbonDataTable` | Tabla de alta densidad declarativa: columnas definidas una vez, y de ahí salen el `colspan` del estado vacío, el skeleton, qué columna ordena, cuál alinea a la derecha y cuál absorbe el ancho — **y la tarjeta móvil**. Props: `columnas`, `filas`, `densidad` (`sm` 32px / `md` 40px, **default** / `lg` 48px), `cargando`, `ordenPor`/`ordenDir`, `claseFila`, `filaAtributos` (atributos ARIA por fila, ej. `aria-current`, para lo que `claseFila` no cubre), `etiqueta`, `conTarjetas`. Slots `#celda-<clave>` (sirven a las **dos** representaciones), `#encabezado-<clave>` (encabezado propio en una columna no ordenable, ej. checkbox "seleccionar todos") y `#vacio` | Los 35 `<table>` a mano de 22 vistas **y las 609 líneas de tarjeta móvil duplicada** — migradas en la Fase C de la convergencia a Carbon (piloto `EmpresasView` el 2026-09-03, resto en la revisión "Filas con foco" el mismo día). Cada columna declara `movil` (`cab`/`principal`/`sec`/`pie`/`false`) para decir dónde cae en la tarjeta; sin declararlo, cae en `sec`. Quedan **fuera a propósito**: `DesignSystemView`/`StyleLabView` (vitrinas de diseño, muestran el `<table>` viejo como ejemplo histórico) y 3 de las 7 tablas de `ReporteTicketsModal` (matrices fijas de 2 columnas — Categoría/Prioridad/Tipo — que no ganan nada con la migración, ver el comentario en ese archivo) |
+| `CarbonPasswordReveal` | Revelado de una credencial cifrada: pide a la edge function `credenciales`, la auditoría queda en `accesos_log` con su motivo, **cuenta regresiva visible de 8 segundos** y ocultado automático. Props: `revelar` (`async (motivo) => string`), `bloqueado`, `motivoBloqueo`, `etiqueta`, `segundos` | El patrón `•••••••• [ojo] [copiar]` copiado en cuatro sitios (`CuentasPanel` en tabla y tarjeta, `CorreosView`, `LicenciasView`, `AccesosSensiblesView`), cada uno con su propio `passwordVisibles` — y **ninguno de los cuatro ocultaba la credencial solo** |
+
+Tres decisiones de estos componentes que conviene no revertir sin leer el
+motivo:
+
+- **`CarbonTag` habla de ROLES, no de colores.** `variante` recibe
+  `success`/`danger`/`sky`, no `green`/`red`/`cyan`. Todo el dominio ya habla
+  ese idioma (`core/badges.js` y los `core/dominio-*.js` son la fuente de
+  verdad de qué significa cada color); con una API de colores, cada sitio
+  tendría que traducir y dos tags del mismo significado podrían terminar de
+  colores distintos según quién tradujo.
+- **`CarbonPasswordReveal` recibe una FUNCIÓN, no un `tipo`.** Hay tres
+  acciones distintas en la edge function (`revelar`,
+  `revelarClaveLicencia`, `revelarAccesoSensible`), cada una con su clave de
+  cifrado y su control de acceso — la de accesos sensibles usa
+  `CRED_KEY_SENSIBLE` y permiso por fila. Con un prop `tipo`, el componente
+  tendría que conocer los tres dominios y crecer con el cuarto.
+- **Copiar pide su PROPIO revelado con motivo `'copiar'`**, no reusa el valor
+  ya visible. Cuesta una llamada más y es el punto de todo el módulo: la
+  auditoría tiene que poder distinguir quién solo miró una credencial de
+  quién se la llevó al portapapeles.
+
+**Pendiente declarado de la biblioteca**: el *footer de modal al ras* (los
+botones a ancho completo, sin gap, que es como los dispone Carbon) **no se
+aplicó**. Hacerlo con los botones actuales dejaría un footer de Carbon con
+`.btn` de 36px estirados adentro — medio migrado, que se ve peor que sin
+migrar. Va junto con el cambio a `CarbonButton` en cada modal.
+
+Todos, más el filtrado de permisos de `AppNav`, están verificados en
+[`frontend/tests/componentes/carbon.render.test.js`](../frontend/tests/componentes/carbon.render.test.js)
+(62 casos).
+
 ### Librería visual (`design.pen`)
 
 `design.pen` (raíz del repo, se abre con Pencil) contiene el espejo visual de
-este documento: los tokens `--mat-*` como variables con tema claro/oscuro, y
+este documento: los tokens `--*` como variables con tema claro/oscuro, y
 cada componente compartido y primitiva de `main.css` como componente
 reutilizable e instanciable (46 componentes). Incluye tres tableros de nivel
 raíz:
@@ -72,10 +123,12 @@ El frontend **no usa Tailwind ni librería de componentes**. Todo el diseño viv
 
 | Archivo | Rol |
 |---------|-----|
-| [`frontend/src/styles/main.css`](../frontend/src/styles/main.css) | Design system completo: tokens, layout, botones, tablas, modales, badges, timeline, capacity, confirm-dialog, etc. |
-| [`frontend/src/core/tema.js`](../frontend/src/core/tema.js) | Alternancia claro/oscuro (`data-theme` en `<html>`) |
-| [`frontend/src/components/shared/AppLayout.vue`](../frontend/src/components/shared/AppLayout.vue) | Shell raíz: drawer/colapso, socket realtime, tema, logout. Compone `AppSearch.vue` (buscador), `AppNav.vue` (navegación) y `AppNotifications.vue` (toasts) — divididos del propio `AppLayout` en 2026-08-12 (era un god-component de 1161 líneas, A-06) |
-| [`frontend/index.html`](../frontend/index.html) | Geist + Geist Mono (Google Fonts) + Tabler Icons |
+| [`frontend/src/styles/carbon-theme.css`](../frontend/src/styles/carbon-theme.css) | **Capa vendor**: los valores de IBM Carbon v11 (`--cds-*`) — escalas de color, type set, geometría, métricas del shell. Ni un selector |
+| [`frontend/src/styles/main.css`](../frontend/src/styles/main.css) | **Capa de roles**: qué significa cada cosa en Sistema TI, mapeado sobre `--cds-*`. Además del layout, botones, tablas, modales, badges, timeline, capacity, confirm-dialog, etc. |
+| [`frontend/src/components/carbon/`](../frontend/src/components/carbon/) | Primitivas de Carbon: `CarbonTag`, `CarbonDataTable`, `CarbonPasswordReveal` (ver "Primitivas de Carbon") |
+| [`frontend/src/core/tema.js`](../frontend/src/core/tema.js) | Alternancia claro/oscuro (`data-theme` en `<html>`). Gobierna el **workspace**, no el shell |
+| [`frontend/src/components/shared/AppLayout.vue`](../frontend/src/components/shared/AppLayout.vue) | Shell raíz (UI Shell de Carbon): header de 48px, SideNav, socket realtime, tema, logout. Compone `AppSearch.vue` (búsqueda del header), `AppNav.vue` (SideNav), `NotificacionesCampana.vue` (campana del header) y `AppNotifications.vue` (toasts) — divididos del propio `AppLayout` en 2026-08-12 (era un god-component de 1161 líneas, A-06) |
+| [`frontend/index.html`](../frontend/index.html) | IBM Plex Sans + IBM Plex Mono (Google Fonts) + Tabler Icons |
 
 **Patrón de uso:** las vistas Vue aplican clases globales (`.card`, `.btn-primary`, `.filters`…) directamente en el template; usan `<style scoped>` solo para badges/chips de dominio. El shell (`AppLayout` + `AppSearch`/`AppNav`/`AppNotifications`) es la excepción con layout propio. Nota de implementación: `.sidebar--colapsado` vive en `AppLayout` pero varias reglas de `AppSearch`/`AppNav` dependen de esa clase ancestro — `:global()` dentro de `<style scoped>` pierde el selector descendiente al compilar en este proyecto (verificado), así que esas reglas van en un segundo `<style>` sin scope en cada componente hijo.
 
@@ -109,352 +162,670 @@ flowchart TB
 
 ---
 
-## Identidad de marca
+## IBM Carbon v11 como estándar de UI/UX
 
-> **Actualizado 2026-08-27 — corrección de una discrepancia documental
-> heredada, no solo cambio de paleta**: esta sección decía que producción
-> ya estaba en navy/mint (`#00203F`/`#36ECDE`) desde una reconciliación del
-> 2026-08-22, contra la paleta teal-green (`#157955`/`#34D399`) de una
-> pasada de julio. **Esa reconciliación estaba mal**: verificado al portar
-> la dirección azul (G1, 2026-08-27), `main.css` seguía en teal-green real
-> — el "navy/mint" nunca existió en el código, solo en el texto de esta
-> guía. La cadena real de producción es **teal-green → azul**, directo, sin
-> pasar nunca por navy/mint. Queda anotado acá porque es el mismo patrón de
-> fondo que ya rompió CI una vez sin que nadie lo notara (Q-01,
-> `docs/HISTORIAL-AUDITORIAS.md`) — documentación afirmando un estado que
-> el código no tenía.
+> **Vigente desde el 2026-09-02.** El estándar oficial de UI/UX de Materen ·
+> Sistema TI es el **IBM Carbon Design System, versión 11**. Toda pantalla,
+> componente, token y decisión visual nueva se resuelve contra la
+> especificación de Carbon; lo que Carbon no cubre se resuelve por analogía
+> con lo que sí cubre, y queda documentado acá con su motivo.
 
-> **Principio (jul 2026, decisión del JEFE, sigue vigente): la marca no es la
-> paleta del sistema.** El logo es identidad; las superficies, bordes y texto
-> de la UI son **grises neutros** en ambos temas. La marca se conecta a la
-> interfaz únicamente a través del **acento** (botón primario, nav activo,
-> focus ring) y del propio logo — el logo en sí (`logo_materen_sisti.svg`,
-> `icon_sisti.svg`) es arte vectorial con color fijo dentro del archivo, no
-> un token CSS: cambiar la paleta de la UI no le cambia un solo píxel. Si el
-> rebranding requiere un logo nuevo en azul, es un entregable de diseño
-> aparte, fuera de alcance de la migración de tokens.
+### Por qué Carbon, y por qué ahora
 
-### Estado actual en producción (azul — desde 2026-08-27, Fases G0-G5)
+El sistema nació como un panel de credenciales, creció a ITSM (tickets,
+problemas, base de conocimiento, encuestas) y la dirección de producto es
+que siga creciendo hacia un ERP (ver `docs/PANORAMA-SISTEMA.md` §6,
+"alcance de crecimiento"). Ese destino es el argumento: hasta acá el
+sistema visual era propio —una estética tipo shadcn, con un acento
+muestreado del logo, radios de 6-16px, sombras de elevación y una escala
+tipográfica de 8 pasos— y funcionaba, pero cada pantalla nueva volvía a
+plantear las mismas preguntas (qué radio, cuánta sombra, qué paso de
+tamaño) y la respuesta salía del criterio de quien la escribía.
 
-| Token | Claro | Oscuro | Rol en Sistema TI |
-|-------|-------|--------|-------------------|
-| `--mat-color-brand-500` | `#0082FB` | `#0082FB` (invariante) | Foco, focus ring, indicadores no textuales — **nunca texto ni fondo con texto blanco** (3.76:1, bajo AA) |
-| `--mat-color-brand-600` | `#0064E0` | `#0064E0` (invariante) | Botón primario, links, nav activo, estados interactivos sólidos |
-| `--mat-color-brand-700` | `#0052B8` | `#0052B8` (invariante) | Hover/pressed del acento |
-| `--mat-color-accent` | `#0064E0` (=brand-600) | `#0064E0` | Ya no salta de hue entre temas, a diferencia de la paleta anterior |
-| `--mat-color-accent-hover` | `#0052B8` (=brand-700) | `#0052B8` | — |
-| `--mat-color-accent-alt` / `-soft` | `#0082FB` (=brand-500) | `#0082FB` | Alias de brand-500, no color propio |
-| `--mat-color-accent-2` | `#0052B8` (=brand-700) | `#0052B8` | Gradiente de avatar (`AppLayout.vue`, `DashboardView.vue`, `EmpleadoDetalleView.vue`) |
-| `--mat-color-accent-subtle` | `#E5F2FF` | `rgba(0,130,251,0.16)` | — |
-| `--mat-color-accent-text` | `#0064E0` (=brand-600) | `#3D9CFF` | **Distinto del botón en oscuro** — brand-600 como texto sobre superficie oscura mide 3.06:1, bajo AA |
-| `--color-primary` (alias legacy) | = `--mat-color-accent-text` | = `--mat-color-accent-text` | **Ya no es alias directo de `--mat-color-accent`** — sigue al valor de texto (`#3D9CFF` en oscuro), no al del botón |
+Carbon es el design system de IBM para **software empresarial denso**, que
+es exactamente lo que este producto es: tablas largas, formularios,
+auditoría, permisos por rol. Trae decidido lo que acá se decidía caso por
+caso, y trae además tres cosas que un sistema propio no puede darse solo:
 
-`success`/`warning`/`danger`/`info` **sin cambios** — la migración de marca nunca tocó los semánticos (confirmado también en `StyleLabView.vue`, ver changelog abajo).
+1. **Pares de color verificados de origen.** Los `tag-*` de Carbon vienen
+   con su contraste medido. El sistema anterior tenía pares que pasaban AA
+   por márgenes de 4.6-5.3:1, algunos ajustados a mano durante la propia
+   migración porque el planeado fallaba; los de Carbon caen en 5.8-7.8:1.
+2. **Una respuesta a "cuánta jerarquía".** Carbon trae un shell, una escala
+   tipográfica y bordes con umbral de contraste ya decididos, para no volver
+   a discutir esas preguntas en cada pantalla nueva. (La geometría y la
+   elevación puntuales sí se revisaron después, el 2026-09-03 — ver
+   "Geometría y elevación" más abajo — pero el resto de la respuesta de
+   Carbon a "cuánta jerarquía" se mantiene.)
+3. **Un shell.** El header de 48px + SideNav de 256px no es una propuesta:
+   es una especificación con medidas, estados y comportamiento responsive.
 
-`--mat-color-brand` (`#072E2A`), `--mat-color-brand-elevated` (`#0A2E28`) y
-`--mat-color-brand-ink` (`#072E2A` claro / `#34D399` oscuro — sin consumidores
-reales hoy, verificado por grep) son el verde petróleo original del logo,
-reservados a piezas de marca y **no tocados por G1** (confirmado con
-`git show cd21c9a -- frontend/src/styles/main.css`).
+### Qué se adopta y qué no
 
-### Fondos y texto (ambos temas, actualizado con la migración de marca)
+**Se adopta la ESPECIFICACIÓN, no el paquete.** No se instala
+`@carbon/styles` ni `@carbon/web-components`, y la razón es concreta:
+Carbon publica sus tokens como Sass, este frontend no usa Sass ni librería
+de componentes (ver "Arquitectura general"), y `@carbon/web-components`
+reimplementaría en Web Components lo que ya existe en Vue. Traerlo
+significaría un preprocesador y ~200 kB de CSS del que se usaría el 10%.
+Los valores están transcritos en
+[`frontend/src/styles/carbon-theme.css`](../frontend/src/styles/carbon-theme.css)
+y re-verificados en CI por `scripts/contraste.mjs`.
 
-| Token | Claro | Oscuro | Nota |
-|-------|-------|--------|------|
-| `--mat-color-bg` | `#F1F5F8` | `#0F1720` | — |
-| `--mat-color-bg-elevated` | `#FFFFFF` (sin cambio) | `#16202B` (antes `#16181B`) | — |
-| `--mat-color-text-primary` | `#1C2B33` | `#EDF2F5` | — |
-| `--mat-color-text-secondary` | `#52636D` | `#9FB0BA` | — |
-| `--mat-color-text-tertiary` | `#697281` (4.86:1 vs. bg-elevated) | `#818A96` (4.71:1 vs. bg-elevated nuevo) | **El valor de oscuro se recalculó en vivo**: el planeado (`#747C8B`) medía 4.23:1 contra el `bg-elevated` nuevo (más claro que el viejo) y fallaba AA — se ajustó a `#818A96` durante la propia migración (G2), no quedó como se había planeado originalmente. Cierra U-01 (`docs/HISTORIAL-AUDITORIAS.md`) de forma definitiva. |
-| `--mat-color-text-disabled` / `-inverse` | sin cambio | sin cambio | No tocados por esta migración |
+Tres desviaciones deliberadas del spec, con su motivo:
 
-### Bordes — jerarquía de 3 niveles (ya portada, no "pendiente")
+| Desviación | Carbon dice | Acá | Por qué |
+|---|---|---|---|
+| Radio del Tag | 12px (píldora) | `--radius-sm` (4px) | Un tag en píldora entre botones/inputs de 6-8px se lee inconsistente. Hasta el 2026-09-02 la desviación era binaria (0 vs. redondeado); desde la revisión "Modern Clean Enterprise" del 2026-09-03 es de escala (4px vs. 12px) — ver "Geometría y elevación". |
+| Barra del ítem de nav activo | 3px | 2px | Regla de la casa anterior a este rediseño: ningún borde de componente supera 2px. A esta escala la diferencia no se lee. Es el único número donde el spec y la casa discrepan. |
+| Íconos | `@carbon/icons` | Tabler (`ti ti-*`) | ~230 usos en 85 vistas, cada uno con un mapeo de nombre distinto y ninguno verificable salvo mirando la pantalla. Es una migración propia, no un efecto colateral de esta. Tabler comparte grilla de 16px y peso de trazo, así que a estos tamaños conviven sin que se note el origen distinto. |
 
-| Nivel | Token | Claro | Oscuro | Uso |
-|---|---|---|---|---|
-| Sutil | `--mat-color-border` / `-subtle` | `#D9E2E8` | `#1F2A35` | Decorativo — card/tabla/modal, sin umbral WCAG exigible |
-| Default | `--mat-color-border-default` | `#7E96A3` (3.10:1) | `#5A6E7E` (3.11:1) | Input, select, textarea, botón secundario en reposo |
-| Fuerte | `--mat-color-border-strong` | `#526A7B` (5.67:1) | `#7B93A3` (5.13:1) | Hover de controles, seleccionado no enfocado, toast |
+Y un valor del spec del pedido que **no** era de Carbon: se pidió Yellow 30
+como `#8a6d3b`/`#fcf8e3`. Esos dos son los del `.alert-warning` de
+Bootstrap 3; Carbon v11 Yellow 30 es `#f1c21b`. Se usa el de Carbon.
 
-### Sombras y radios (ya portadas)
+### Las dos capas de tokens
 
-```css
---radius-lg: 12px;   /* antes 14px */
---radius-xl: 16px;   /* antes 14px — deja de ser idéntico a radius-lg */
---shadow-sm: 0 1px 2px rgba(28,43,51,.06);
---shadow-md: 0 4px 12px rgba(28,43,51,.08);
---shadow-lg: 0 16px 40px rgba(28,43,51,.16);
---shadow-modal: var(--shadow-lg);   /* alias, no valor propio */
-```
-
-Política de elevación por componente, ya aplicada:
-
-| Componente | Token | Estado |
+| Archivo | Capa | Qué dice |
 |---|---|---|
-| `.card`, `.stat-card`, tabla, paneles normales | ninguno | ✅ sin cambio, sigue así |
-| `.card--clicable` (nueva variante, solo hover/focus) | `--shadow-sm` + borde `--color-border-default` en hover; `--shadow-sm` + `--mat-ring` + borde acento en focus | ✅ nueva clase creada en G4 |
-| Popovers (`MenuAcciones`, `BuscadorCombo`, `AppSearch`, `NotificacionesCampana`, `AppNotifications`) | `--shadow-md` | ✅ bajado de `--shadow-lg` (3 de 5 lo tenían mal, nivel modal) |
-| Toast | `--shadow-md` | ✅ antes no tenía ninguna |
-| Modal | `--shadow-lg` (=`--shadow-modal`) | ✅ antes no tenía ninguna |
+| [`styles/carbon-theme.css`](../frontend/src/styles/carbon-theme.css) | **vendor** (`--cds-*`) | Qué hex es Blue 60. Escalas de color, type set, geometría, métricas del shell. Ni un selector. |
+| [`styles/main.css`](../frontend/src/styles/main.css) | **roles** (`--color-*`, `--fs-*`, `--radius-*`…) | Qué significa cada cosa en Sistema TI. Ni un hex en su bloque de tokens. |
 
-**Nota de la propia migración**: al activar `--shadow-sm` con valor real
-(antes era `none`), `.panel-lista` y `.stat-card` del Dashboard quedaron con
-sombra no deseada en contenedores estáticos — se corrigieron quitándoles la
-regla en el mismo pase (G4), junto con el mismo hallazgo en `.aviso-card`
-de `AppNotifications.vue` (bajado de `--shadow-lg` a `--shadow-md`, mismo
-patrón que los popovers). Si aparece otra sombra "fantasma" en algún
-componente que antes de esta migración tenía `box-shadow: var(--shadow-sm)`
-de forma inerte, es la misma causa — revisar contra la lista de "Repaso de
-consistencia" más abajo en este documento.
+La frontera, en una línea: **cambiar de opinión sobre qué color es un
+peligro se hace en `main.css`; una versión nueva de la paleta de Carbon se
+hace en `carbon-theme.css`.**
 
-### Anillo de foco
+**Regla de consumo**: ningún componente ni vista lee `--cds-*`. Solo
+`main.css` los lee, para definir los roles. Un `<style>` de componente usa
+el rol (`--color-danger-text`), nunca el valor de la escala — igual que en
+Carbon, donde el código usa `$layer-01` y no `$gray-10`. La **única
+excepción declarada** son los tokens `--cds-shell-*`, que consumen
+`AppLayout.vue`, `AppNav.vue`, `AppSearch.vue` y
+`NotificacionesCampana.vue`: el shell de Carbon es oscuro en los cuatro
+temas, así que no puede expresarse con roles que cambian con el tema.
 
-```css
---mat-ring: rgba(0, 130, 251, 0.28);   /* claro */
---mat-ring: rgba(0, 130, 251, 0.35);   /* oscuro */
-```
+Esto **no** es la capa de alias que se borró el 2026-09-01. Aquella eran
+dos nombres de ROL para el mismo rol — el mismo nombre con y sin un prefijo
+de espacio de nombres (el `--mat-` que se retiró), los dos diciendo "el
+acento" —, 190 tokens para 104 conceptos.
+Esta es un rol apuntando a un VALOR de escala: `--color-accent` puede
+dejar de ser Blue 60 sin que Blue 60 deje de ser `#0f62fe`.
+`scripts/tokens-vs-guia.mjs` distingue los dos casos — exime la
+indirección hacia `--cds-*` y sigue fallando ante dos nombres de rol para
+el mismo rol.
 
-Derivado de brand-500 (indicador no textual, umbral 3:1), no de brand-600.
+<!-- tokens-retirados:inicio — scripts/tokens-vs-guia.mjs ignora esta
+     región: nombra tokens que YA NO EXISTEN a propósito, para dejar
+     registro de qué se retiró y por qué. No agregar acá tokens vivos. -->
 
-### Sigue pendiente, sin relación con esta migración
+### Tokens retirados el 2026-09-02
 
-- **Selección múltiple en tablas ITSM (`TK1`/`TK2`)**: sigue bloqueada por la
-  tensión sin resolver del principio "sin bordes de costado" (ver
-  "Ambigüedad documental encontrada", más abajo en "Un solo acento visible
-  por vista") — no depende del color, sigue esperando decisión del JEFE.
-- **Propuesta de paleta dot-notation de `design.pen`** (tercera pasada,
-  verde/teal, ver changelog "propuesta de rediseño de paleta"): queda
-  formalmente **descontinuada** — no se portó nunca a producción y la
-  dirección real terminó siendo la azul del Style Lab. El bloque
-  correspondiente de este documento queda como archivado, no se borra
-  (valor histórico).
+**Escala de marca → acento.** `--color-brand-500` (`#0082FB`),
+`--color-brand-600` (`#0064E0`) y `--color-brand-700` (`#0052B8`) eran el
+acento derivado del logo. Se retiran: con Carbon el acento es Blue 60, un
+valor del design system, no de la identidad. Eso desacopla dos cosas que
+nunca debieron ir juntas — que el logo cambie de azul no debería mover el
+color de los botones. `--color-brand` (`#0082FB`, el azul del logotipo) **se
+conserva**, reservado a piezas de marca, sin consumidores reales (el logo es
+un SVG estático, no lee esta variable).
+
+También se retiran `--color-accent-alt`, `--color-accent-subtle-bg` y
+`--color-accent-subtle-text`: eran alias internos del acento sin ningún
+consumidor propio, ya anotados como deuda declarada.
+
+**Escala tipográfica.** `--fs-xs` (11px), `--fs-sm` (12px), `--fs-base`
+(13px), `--fs-md` (14px), `--fs-lg` (15px), `--fs-xl` (17px), `--fs-2xl`
+(20px) y `--fs-stat` (26px) → los 5 pasos del type set productivo. Ver
+"Tipografía".
+
+**Escala de íconos.** `--icon-xs` (13px), `--icon-md` (16px), `--icon-lg`
+(18px), `--icon-xl` (20px), `--icon-2xl` (28px) y `--icon-hero` (40px) → los
+3 pasos de Carbon con consumidor. Ver "Escala de íconos".
+
+**Radios.** `--radius-sm` (6px), `--radius-md` (8px), `--radius-lg` (12px),
+`--radius-xl` (16px) y `--radius-pill` (999px) → `--radius-base`, que vale
+`0`. Carbon no tiene escala de radios: tiene la decisión de no tener
+esquinas.
+
+**Sombras.** `--shadow-sm`, `--shadow-md`, `--shadow-lg` y su alias
+`--shadow-modal` → `--shadow-overlay`, una sola. Tres de los cuatro pasos se
+aplicaban a superficies que ahora son planas.
+
+> **Nota del 2026-09-03 — no confundir con un revert idéntico.** La
+> revisión "Modern Clean Enterprise" (ver "Geometría y elevación" más
+> abajo) reintrodujo una escala de radios (`--radius-sm/md/lg/xl/pill`) y de
+> sombras (`--shadow-sm/md/lg/overlay`) con nombres iguales a los de acá,
+> pero **no** son los mismos valores: los radios retirados el 2026-09-02
+> eran 6/8/12/16px, los reintroducidos son 4/6/8/12px. Esta región documenta
+> lo que pasó el 2026-09-02 y sigue siendo históricamente correcta tal cual
+> está escrita arriba; los tokens vivos hoy están documentados en
+> "Geometría y elevación".
+
+**Z-index.** `--z-header-mobile` (60) → `--z-shell-header` (110). La topbar
+móvil que lo consumía la reemplazó el header del shell, que existe en todos
+los anchos, no solo en móvil, y necesita quedar por encima del SideNav.
+
+<!-- tokens-retirados:fin -->
 
 ---
 
 ## Paleta de colores (tokens CSS)
 
-Los valores canónicos viven en `--mat-color-*`; la tabla usa los alias `--color-*`
-que apuntan a ellos.
+Tema **Gray 10** en claro y **Gray 100** en oscuro: el par que Carbon
+documenta como *high contrast pairing*. En Gray 10 el workspace es gris
+(`#f4f4f4`) y las tarjetas/tablas son blancas —al revés que el tema White— y
+es el que Carbon recomienda para paneles con mucha tabla, porque la fila
+blanca se despega del lienzo sin necesitar sombra.
 
-### Fondos y texto — tema claro (`:root`)
+### Superficies y texto
 
-Grises neutros, valores reales de `main.css` (ver nota de reconciliación en
-"Identidad de marca" — esta tabla listaba antes los valores de la pasada
-teal-green, ya reemplazados por navy/mint en el código sin actualizar acá):
+| Token | Rol de Carbon | Claro | Oscuro |
+|---|---|---|---|
+| `--color-bg` | background | `#f4f4f4` (Gray 10) | `#161616` (Gray 100) |
+| `--color-bg-elevated` | layer-01 | `#ffffff` | `#262626` (Gray 90) |
+| `--color-bg-subtle` | field-01 / layer-02 | `#f4f4f4` | `#393939` (Gray 80) |
+| `--color-bg-accent` | layer-accent-01 | `#e0e0e0` (Gray 20) | `#393939` |
+| `--color-bg-hover` | layer-hover-01 | `#e8e8e8` | `#333333` |
+| `--color-text-primary` | text-primary | `#161616` | `#f4f4f4` |
+| `--color-text-secondary` | text-secondary | `#525252` (Gray 70) | `#c6c6c6` (Gray 30) |
+| `--color-text-tertiary` | text-helper | `#6f6f6f` (5.02:1) | `#a8a8a8` (6.36:1) |
+| `--color-text-disabled` | text-disabled | `#c6c6c6` | `#6f6f6f` |
+| `--color-text-on-color` | text-on-color | `#ffffff` | `#ffffff` (invariante) |
+| `--color-text-inverse` | text-inverse | `#ffffff` | `#161616` |
+| `--color-overlay` | overlay | `rgba(22,22,22,.5)` | igual (invariante) |
+
+> **`--color-text-on-color` vs `--color-text-inverse`: dos roles, no
+> sinónimos.** Carbon los separa (`$text-on-color` / `$text-inverse`) y este
+> sistema los tenía confundidos en uno hasta el 2026-09-02.
+>
+> - **on-color** — texto sobre un **relleno de color sólido**: botón primario,
+>   botón destructivo, contador sobre el acento. Esos fondos son
+>   **invariantes** entre temas (Blue 60 es Blue 60 en los cuatro), así que su
+>   texto también: **blanco, siempre**.
+> - **inverse** — texto sobre una superficie de **gris invertido**: el segmento
+>   seleccionado de un ContentSwitcher, un tooltip. Ese fondo sí se invierte
+>   con el tema, y el texto lo acompaña.
+>
+> Confundirlos era un bug vivo: el botón primario usaba `inverse` sobre Blue
+> 60, así que **en tema oscuro renderizaba #161616 sobre azul — 3.41:1, por
+> debajo de AA**. Igual el contador del SideNav y el de la campana.
+> `scripts/contraste.mjs` no lo veía porque esos pares vivían en la tabla del
+> tema claro afirmando el blanco que se *asumía*; ahora tienen tabla propia
+> (`TEXTO SOBRE RELLENO SÓLIDO`), que es la corrección estructural: dice que
+> el par no depende del tema. Ver Ciclo 19 (CB-10) en
+> `HISTORIAL-AUDITORIAS.md`.
+
+`--color-bg-accent` es nuevo del rediseño. Hasta el 2026-09-02 era el fondo
+del encabezado de tabla (`th`); la revisión "Filas con foco" del 2026-09-03
+se lo retiró (ver "Revisión Filas con foco (tablas)" más abajo) y hoy vive
+en `CarbonButton` (estado disabled), `AppSearch` y `NotificacionesCampana` —
+un gris que pesa un escalón más que un campo, para superficies que rotulan
+o están inactivas, no para contener datos.
+
+En oscuro `--color-text-tertiary` es Gray 40 y no Gray 50: sobre layer-01 los
+dos pasan (6.36:1 vs 4.56:1), pero el texto terciario también cae sobre
+`--color-bg-subtle` (Gray 80) y ahí Gray 50 baja a 3.48:1.
+
+### Bordes — tres niveles de jerarquía
+
+El borde es un recurso central de jerarquía junto a la capa de gris y, desde
+la revisión "Modern Clean Enterprise" del 2026-09-03 (ver "Geometría y
+elevación" más abajo), la micro-sombra. De ahí que haya tres niveles y no
+uno:
+
+| Nivel | Token | Claro | Oscuro | Uso |
+|---|---|---|---|---|
+| Sutil | `--color-border-subtle` (y su alias `--color-border`) | `#e0e0e0` | `#393939` | Separador y borde de contenedor. Decorativo: WCAG 1.4.11 no le exige umbral (no identifica el componente por sí solo). |
+| Default | `--color-border-default` | `#8d8d8d` (3.32:1) | `#8d8d8d` (4.56:1) | Borde de CONTROL en reposo (input, select, textarea, botón secundario). Sí debe distinguirse del fondo por sí solo → 3:1. |
+| Fuerte | `--color-border-strong` | `#6f6f6f` (5.02:1) | `#a8a8a8` (6.36:1) | Hover de control, seleccionado sin foco, toast. |
+
+Los `-subtle` **no** están en `scripts/contraste.mjs` y es deliberado: son
+decorativos, y exigirles 3:1 los volvería líneas duras que compiten con el
+contenido.
+
+### Acento e interactivo — Blue 60
+
+| Token | Claro | Oscuro | Rol |
+|---|---|---|---|
+| `--color-accent` | `#0f62fe` | igual (invariante) | `interactive` de Carbon: botón primario, borde activo, foco |
+| `--color-accent-hover` | `#0353e9` | igual | Token de interacción propio de Carbon, no un paso de la escala |
+| `--color-accent-soft` | `#4589ff` (Blue 50) | igual | Ícono decorativo. **No portador de texto** |
+| `--color-accent-subtle` | `#d0e2ff` (Blue 20) | `#002d9c` (Blue 80) | `highlight`: fila/ítem seleccionado |
+| `--color-accent-text` | `#0043ce` (Blue 70) | `#78a9ff` (Blue 40) | Enlace, texto de acento |
+| `--color-primary` | = `--color-accent-text` | ídem | Alias semántico |
+
+`accent`, `accent-hover` y `accent-soft` **no se redefinen en oscuro**: el
+botón primario de Carbon es Blue 60 en los cuatro temas. Solo se redefine lo
+que depende del fondo.
+
+Blue 60 como texto sobre blanco da 5.00:1 —pasa AA— pero el rol de
+texto/enlace es Blue 70 (7.79:1), y este sistema lo respeta. Por eso
+`--color-primary` sigue siendo alias de `accent-text` y no de `accent`: el
+token de texto tiene que seguir al valor que SÍ cambia por tema.
+
+#### Botones: la jerarquía de Carbon necesita un gris
+
+| Token | Claro | Oscuro | Rol |
+|---|---|---|---|
+| `--color-btn-secondary` | `--color-bg-elevated` (blanco) | `#6f6f6f` (Gray 60) | Superficie del botón **secundario** |
+| `--color-btn-secondary-hover` | `--color-bg-subtle` | `#606060` | Su hover |
+
+Carbon v11 estricto define el secundario como un **gris sólido**
+(`#393939`/`#6f6f6f`), sin contorno. La revisión "Modern Clean Enterprise"
+del 2026-09-03 lo cambió en tema claro a superficie limpia + borde sutil
+(`--color-border-default`), porque el bloque gris sólido pesaba más que el
+primario en vez de leerse como la alternativa — ver "Geometría y elevación"
+más abajo para el porqué completo. El tema oscuro conserva el relleno gris
+(Gray 60/50 se explica en el token, "el gris del botón secundario tiene que
+despegarse del fondo, no fundirse"). El secundario sigue distinguido del
+tertiary (azul con borde): la jerarquía completa es **primary** (azul
+sólido) > **secondary** (superficie + borde) > **tertiary** (azul con
+borde) > **ghost** (solo texto) > **danger** (rojo sólido). Los pares de
+texto siguen en `contraste.mjs`, tabla `TEXTO SOBRE RELLENO SÓLIDO`.
+
+#### Gris invertido
+
+| Token | Claro | Oscuro | Rol |
+|---|---|---|---|
+| `--color-bg-inverse` | `#161616` | `#f4f4f4` | Superficie que da vuelta el tema |
+| `--color-text-inverse` | `#ffffff` | `#161616` | Su texto |
+
+Van juntos y son el par de `--color-bg-inverse`. Lo usa el segmento
+seleccionado del ContentSwitcher, y le corresponderá al tooltip cuando
+exista. **No confundir con `--color-bg-accent`** (Gray 20), que es un
+escalón más de la MISMA dirección; este invierte. Ni con
+`--color-text-on-color`, que es blanco siempre — ver la nota de arriba.
+
+### Foco
+
+```css
+--ring: var(--cds-blue-60);   /* claro: #0f62fe */
+--ring: var(--cds-white);     /* oscuro: #ffffff */
+```
+
+Carbon dibuja el foco como una **línea sólida de 2px**, no como un halo
+difuso. El sistema anterior usaba `box-shadow: 0 0 0 3px rgba(0,130,251,.28)`
+— un anillo semitransparente de 3px, que es el idioma de shadcn/Tailwind. El
+mecanismo (box-shadow) no cambió, para no reordenar las reglas que combinan
+foco con `outline: none`; lo que cambió es que el valor es **opaco** y el
+grosor **2px**.
+
+En oscuro el foco es **blanco**, no el azul: Blue 60 sobre layer-01 da 2.0:1
+y no se ve; el blanco da 15.1:1. Es la misma decisión que el tema oscuro ya
+toma para el texto de enlace, aplicada al indicador no textual. En el shell
+(`--cds-shell-focus`) es blanco en los dos temas, por el mismo motivo.
+
+`--ring-danger` (Red 60) y `--ring-whatsapp` acompañan a su variante de botón.
+
+### Colores semánticos
+
+Los pares `-bg`/`-text` son los **`tag-*` de Carbon v11**: paso 20 de fondo
+y 70 de texto en claro, 70/20 en oscuro. Vienen verificados de origen
+(5.8-5.9:1 los siete) y `scripts/contraste.mjs` los re-verifica en CI.
+
+| Familia | Tag de Carbon | Significado en el panel |
+|---|---|---|
+| **success** | green | Operativo, resuelto, activo, disponible |
+| **warning** | (yellow, ver abajo) | Requiere rotación, por vencer, suspendido, en reparación |
+| **danger** | red | P1, sin devolver, vencido, perdido/robado |
+| **info** | blue | Abierto, asignado, entregas |
+| **neutral** | gray | Sin estado, cerrado, baja, inactivo genérico |
+| **purple** | purple | Prioridad alta, ubicaciones |
+| **sky** | cyan | Tipos de cuenta |
+| **teal** | teal | Prioridad media, correos, garantías |
+
+`purple`, `sky` y `teal` no comparten hue con `success`/`warning`/`danger`/
+`info` a propósito: es lo que evita que "Media" se lea como "resuelto" o
+"Alta" como "abierto" cuando caen en la misma fila.
+
+**Advertencia = Yellow, y es el único par armado acá.** Carbon no publica un
+`tag-yellow`, así que el par de texto se armó con Yellow 10 (`#fcf4d6`) +
+Yellow 70 (`#684e00`), 7.11:1. Es el único de los ocho que no viene
+verificado de origen, y por eso el que más importa vigilar.
+`--color-warning` es Yellow 30 (`#f1c21b`), el `support-warning` de Carbon:
+mismo valor en los dos temas, y **no sirve como portador de texto en ninguno**
+— es el color del punto/ícono, no del texto.
+
+Los tokens **sin sufijo** (`--color-success`, `--color-warning`,
+`--color-danger`) son el color sólido del `support-*` de Carbon: punto de
+estado, ícono, borde izquierdo de aviso. No llevan texto encima.
+`--color-danger-hover` y `--color-danger-solid` son invariantes entre temas
+(el rojo del botón destructivo no se aclara en oscuro).
+
+`warning` y `teal` además tienen variantes de énfasis
+(`--color-warning-text-strong`, `-bg-strong`, `--color-teal-bg-subtle`) para
+casos donde el par base no da suficiente jerarquía.
+
+#### Inventario por familia
+
+Cada familia expone el mismo juego de tokens, y el valor de los tres sale del
+mismo paso de Carbon. Está listado entero a propósito: es lo que
+`scripts/tokens-vs-guia.mjs` compara contra `main.css` en cada corrida de CI,
+así que un token que exista y no esté acá sale en su lista de deriva.
+
+| Familia | `-bg` | `-text` | `-border` | Sólido (`support-*`) |
+|---|---|---|---|---|
+| success | `--color-success-bg` | `--color-success-text` | `--color-success-border` | `--color-success` |
+| warning | `--color-warning-bg` | `--color-warning-text` | `--color-warning-border` | `--color-warning` |
+| danger | `--color-danger-bg` | `--color-danger-text` | `--color-danger-border` | `--color-danger` |
+| info | `--color-info-bg` | `--color-info-text` | `--color-info-border` | — |
+| neutral | `--color-neutral-bg` | `--color-neutral-text` | `--color-neutral-border` | — |
+| purple | `--color-purple-bg` | `--color-purple-text` | `--color-purple-border` | — |
+| sky | `--color-sky-bg` | `--color-sky-text` | `--color-sky-border` | — |
+| teal | `--color-teal-bg` | `--color-teal-text` | `--color-teal-border` | — |
+
+Énfasis de `warning` (`--color-warning-bg-strong`,
+`--color-warning-text-strong`) y de `teal` (`--color-teal-bg-subtle`): un
+escalón más de contraste para cuando el par base no da jerarquía suficiente.
+
+Los `-border` de `info`, `neutral`, `purple`, `sky` y `teal`, y el
+`--color-teal-bg-subtle`, siguen **sin consumidor** (DP-05): la familia usa
+`-bg`/`-text` y nunca el borde. Están declarados como deuda en
+`scripts/tokens-vs-guia.mjs`, no borrados — retirarlos es una decisión de
+producto, porque cierra la puerta a la variante con borde.
+
+#### Tonos de avatar — decorativos, no semánticos
+
+5 pares `--color-avatar-<tono>-bg`/`-text` (azul, slate, teal, violeta,
+arena) que **identifican a una persona, no comunican un estado**.
+
+| Regla | Por qué |
+|---|---|
+| Usan los pasos **10/70** de Carbon (claro) y **80/30** (oscuro) | Un escalón por fuera de los pares 20/70 de los tags semánticos: así un avatar violeta no se confunde con un tag de prioridad Alta aunque compartan hue |
+| Ninguno reutiliza `success`/`warning`/`danger`/`info` | Un avatar teñido de "danger" leería como una alerta sobre esa persona |
+| El tono lo elige `tonoAvatar(nombre)` (`core/avatar.js`), nunca la vista | Determinístico: la misma persona cae en el mismo tono en toda la app |
+| Sin nombre → `.avatar--neutro` (`--color-bg-subtle`/`--color-text-secondary`) | No hay un sexto hex: "no sabemos quién es" reusa el gris que el sistema ya tiene para eso |
+
+| Tono | Familia de Carbon | Tokens |
+|---|---|---|
+| azul | Blue | `--color-avatar-azul-bg` / `--color-avatar-azul-text` |
+| slate | Cool Gray | `--color-avatar-slate-bg` / `--color-avatar-slate-text` |
+| teal | Teal | `--color-avatar-teal-bg` / `--color-avatar-teal-text` |
+| violeta | Purple | `--color-avatar-violeta-bg` / `--color-avatar-violeta-text` |
+| arena | Orange | `--color-avatar-arena-bg` / `--color-avatar-arena-text` |
+
+Cada nombre sigue siendo honesto respecto de la familia que lo viste. Contraste verificado en
+`scripts/contraste.mjs` (`avatar*`): **7.02-7.22:1 en claro, 6.64-6.89:1 en
+oscuro** — más parejo que los 5 tonos anteriores, que iban de 5.2 a 7.3.
+
+El fondo del círculo mide ~1.1:1 contra la superficie de la fila y el avatar
+**no lleva borde**: es deliberado, el círculo es decorativo y el nombre de la
+persona está siempre al lado o en el `title`.
+
+### Marcas externas (fuera de Carbon)
+
+- `--color-brand` (`#0082FB`): el azul del logotipo de Materen. Identidad,
+  no color de sistema. Sin consumidores (el logo es un SVG estático).
+- `--color-whatsapp`, `--color-whatsapp-hover` y `--color-whatsapp-text`:
+  verde de marca de un tercero. Lo
+  consume solo `.btn-whatsapp`, cuyo sentido es "este botón abre WhatsApp" —
+  teñirlo de Green 60 lo volvería un botón de éxito genérico. El texto es un
+  verde oscuro propio (`#072E2A`) porque sobre `#25d366` el blanco da 2.4:1;
+  este par da 7.39:1.
+
+---
+
+## Geometría y elevación
+
+> **Revisado el 2026-09-03.** Esta sección describía el Carbon v11 estricto
+> adoptado el 2026-09-02: radio 0 sin excepciones y elevación 100% plana. Un
+> día después se revisó — ver "Revisión Modern Clean Enterprise
+> (2026-09-03)" más abajo para el motivo. Lo que sigue es el estado actual.
+
+### Escala de radios
+
+```css
+--radius-sm:   4px;      /* tags, badges, chips pequeños */
+--radius-md:   6px;      /* botones, inputs, selects — es --radius-base */
+--radius-lg:   8px;      /* tarjetas, contenedores, tablas */
+--radius-xl:   12px;     /* modales, popovers flotantes */
+--radius-pill: 9999px;   /* cápsulas y avatares */
+--radius-base: var(--radius-md);   /* radio por defecto, 6px */
+```
 
 | Token | Valor | Uso |
-|-------|-------|-----|
-| `--mat-color-bg` | `#F4F6F7` | Fondo de página |
-| `--mat-color-bg-elevated` | `#FFFFFF` | Tarjetas, header |
-| `--mat-color-bg-subtle` | `#E6E9EC` | Filtros, cabeceras de tabla |
-| `--mat-color-bg-hover` | `#D9DDE1` | Hover en filas/elementos |
-| `--mat-color-text-primary` | `#2F2F2F` | Texto de cuerpo |
-| `--mat-color-text-secondary` | `#6B7280` | Subtítulos, labels |
-| `--mat-color-text-tertiary` | `#9CA3AF` | Placeholders |
-| `--mat-color-border` | `#DADFE3` | Bordes estándar |
-
-En oscuro el lienzo también es gris neutro (`#0F1113` página, `#16181B`
-tarjetas, bordes `#282D33`). El acento sube a `#36ECDE` (mint) — ver nota de
-"cambio de comportamiento" en Identidad de marca: la dirección aprobada
-pendiente de portar deja de saltar de hue entre temas.
-
-**Dirección aprobada, pendiente de portar** — valores **específicos por
-tema**, no un único valor compartido (corrección 2026-08-22: una versión
-anterior de este párrafo podía leerse como que claro y oscuro comparten
-fondo/texto; no es así):
-
-| Token | Claro | Oscuro |
 |---|---|---|
-| `--mat-color-bg` (app) | `#F1F5F8` | `#0F1720` |
-| `--mat-color-bg-elevated` (superficie) | `#FFFFFF` | `#16202B` |
-| `--mat-color-text-primary` | `#1C2B33` | `#EDF2F5` |
-| `--mat-color-text-secondary` | `#52636D` | `#9FB0BA` |
+| `--radius-sm` | 4px | `CarbonTag`, badges, chips pequeños |
+| `--radius-md` (= `--radius-base`) | 6px | Botones (`CarbonButton`), campos (`CarbonCampo`), selects, menús/popovers de bajo perfil (`MenuAcciones`, `BuscadorCombo`) |
+| `--radius-lg` | 8px | `.card`, `.stat-card`, tablas |
+| `--radius-xl` | 12px | `.modal`, popovers grandes |
+| `--radius-pill` | 9999px | Avatares, cápsulas |
 
-Valores de oscuro tomados de `.sl-lab.sl-oscuro` en
-`frontend/src/modules/styleLab/StyleLabView.vue`. Detalle completo, incluida
-la tabla de bordes por tema, en "Identidad de marca".
+El único radio fuera de esta escala es el `50%` de los círculos puros
+(avatar de iniciales, punto de no-leído, radio button): no es un paso de
+escala, es geometría — un círculo con otro radio deja de ser un círculo — y
+el guardrail de literales lo excluye de su check.
 
-### Acento / identidad
+### Escala de sombras
 
-| Token | Claro | Oscuro |
-|-------|-------|--------|
-| `--mat-color-accent` | `#00203F` | `#36ECDE` |
-| `--mat-color-accent-hover` | `#0B3A61` | `#21C9BC` |
-| `--mat-color-accent-subtle` | `#E1FBF8` | `rgba(54,236,222,0.14)` |
-| `--mat-color-accent-text` | `#00203F` | `#7DF3E9` |
-| `--color-primary` (alias legacy, ~20 consumidores de texto/borde) | `#00203F` | `#36ECDE` |
-
-Títulos (toolbar, modal) y valores de stats usan `--color-text-primary`, igual
-que el cuerpo — la jerarquía se logra con tamaño/peso, no con el color de
-marca. `--mat-color-brand` queda reservado al área del logo.
-
-**Dirección aprobada, pendiente de portar** (commit `G1` del plan de
-migración): `--mat-color-accent` → `#0064E0` en **ambos** temas (no salta a
-otro hue en oscuro); `--mat-color-accent-hover` → `#0052B8`;
-`--mat-color-accent-subtle` → `#E5F2FF` (claro) / `rgba(0,130,251,0.16)`
-(oscuro — tinte de baja opacidad sobre la superficie oscura, no un hex
-sólido, tomado de `.sl-lab.sl-oscuro` en `StyleLabView.vue`);
-`--mat-color-accent-text` → `#0064E0` (claro) / `#3D9CFF` (oscuro, ver por
-qué en "Identidad de marca"); **`--color-primary` deja de ser un alias
-directo de `--mat-color-accent` y pasa a apuntar a
-`--mat-color-accent-text`** — mismo commit, sin ventana intermedia donde uno
-esté migrado y el otro no (hallazgo de la planificación: `--color-primary`
-usado como color de *texto* en `.empleado-link:hover`, `BuscadorCombo.vue`,
-`ThOrdenable.vue`, `CorreoForm.vue`, `CuentaForm.vue`, `LicenciaForm.vue`,
-`EquipoForm.vue`, `EquiposView.vue`, `EmpleadoDetalleView.vue`,
-`EntregaView.vue`, `PersonalRegistrosView.vue`, `PreguntaCampo.vue`,
-`LoginView.vue`, `CorreosView.vue`, `CuentasPanel.vue` — con el alias viejo,
-brand-600 como texto sobre la superficie oscura mide 3.06:1, bajo AA).
-
-### Colores semánticos (convención de dominio)
-
-> **Sin cambios en la migración de paleta azul** (ago 2026): `success`,
-> `warning`, `danger`, `info` conservan su semántica y valores propios,
-> independientes del acento de marca. Nota aparte, no bloqueante: la fórmula
-> HSL de abajo es una descripción de diseño, no necesariamente el valor hex
-> exacto que tiene hoy cada token en `main.css` (no verificado en esta
-> pasada — quedaría para una auditoría de documentación aparte, sin relación
-> con el rebranding).
-
-Cada familia comparte **una sola fórmula** de saturación/luminosidad; solo
-cambia el hue (H). Esto garantiza que las 8 familias se lean como *un mismo
-sistema* y no como paletas sueltas:
-
-- **Claro**: `bg` → H, S 35-55%, L 90-93% · `text` → H, S 45-60%, L 28-35% · `border` → H, S 30-45%, L 75-80%
-- **Oscuro**: `bg` → H, S 25-30%, L 20-22% · `text` → H, S 45-60%, L 75-80% · `border` → H, S 25-30%, L 35-38%
-
-Todas las variantes `-bg`/`-text` (16 pares, 8 familias × 2 temas) están
-verificadas ≥5.3:1 de contraste (WCAG AA es 4.5:1; la mayoría cae en rango
-AAA). Ver [`scripts/contraste.mjs`](../scripts/contraste.mjs) — correr
-`node scripts/contraste.mjs` tras tocar estos tokens.
-
-| Familia | Hue | Significado en el panel |
-|---------|-----|--------------------------|
-| **danger** (rojo) | 9° | Errores, crítico, equipos perdidos/robados |
-| **success** (verde) | 100° | OK, disponible, activo |
-| **warning** (ámbar) | 36° | Rotar contraseña, por vencer, suspendido, en reparación |
-| **info** (azul) | 205° | Asignado, entregas |
-| **purple** (morado) | 265° | Ubicaciones |
-| **sky** (celeste) | 190° | Tipos de cuenta |
-| **teal** | 170° | Correos, garantías |
-| **neutral** (gris) | 100° (S baja) | Baja, inactivo genérico |
-
-Cada familia expone `-bg`, `-text`, `-border`; `warning` y `teal` además
-tienen variantes de énfasis (`-text-strong`, `-bg-strong`, `-bg-subtle`)
-para casos donde el par base no da suficiente jerarquía visual — estas
-variantes también están verificadas en el script.
-
-`--color-danger` y `--color-success` (sin sufijo) son versiones **vivas**
-de alta saturación para iconos/botones sólidos — no se usan para texto
-sobre su propio `-bg` (para eso están `-text`).
-
-> Corrección de accesibilidad (jul 2026): `--color-neutral-text` pasó de
-> `#68716b` (4.2:1 sobre `--color-neutral-bg`, fallaba AA) a `#474d40`
-> (~7.2:1, AAA).
-
-### Sidebar (minimalista, sigue el tema)
-
-Definido en `AppLayout.vue`. Regla de diseño (decisión del JEFE):
-**el sidebar no debe sentirse como un bloque aparte** —
-
-- Fondo: `var(--color-bg)` — el mismo de la página (gris claro / gris-noche
-  oscuro). **Sin borde derecho, sin sombra, sin líneas divisorias** internas
-  (logo y footer sin `border-bottom/top`).
-- Hover de ítems: fondo muy tenue `var(--color-bg-hover)`, **nunca bordes**.
-- Ítem activo: tinte suave `var(--color-accent-subtle)` + texto
-  `var(--color-accent-text)`, **sin border-left ni indicadores**.
-- Foco de ítems (`:focus-visible`, DS-04 resuelto ago 2026): `outline: 2px
-  solid var(--color-accent); outline-offset: -2px` — `outline`, no el anillo
-  `box-shadow` que usan botones/inputs, porque el `gap` de 2px entre ítems
-  recortaría el `box-shadow`. Mismo criterio en `.th-ordenable-btn`
-  (encabezado ordenable de tablas). `.sb-nav-titulo` (título de grupo) ya no
-  es focoable desde el rediseño de sidebar (ago 2026, ver más abajo): es un
-  `<div>` estático, no un control.
-- Búsqueda: input sin borde visible (fondo tenue); al enfocar sube a
-  `--color-bg-elevated` con borde suave.
-- **Nav agrupada semánticamente**, definida en `AppNav.vue` (`navGrupos`), en
-  este orden: "Día a día" (Dashboard, Tickets, Empleados) →
-  "Activos y credenciales" (Correos,
-  Licencias, Equipos) → "Conocimiento y mejora" (Base de Conocimiento,
-  Problemas, Encuestas) → "Administración" (Actividad y Accesos sensibles,
-  ambos solo JEFE — **Configuración ya no vive acá**, ver el apéndice de
-  `docs/CHANGELOG.md`, "sidebar reagrupado a producción"). Un grupo sin
-  ítems visibles para el rol actual (ej.
-  "Administración" completo para ASISTENTE, una vez retirada Configuración)
-  no se renderiza — un encabezado sin filas debajo se leería como una
-  sección rota. Labels de sección en uppercase 11px `--color-text-secondary`;
-  la separación entre grupos es solo espaciado (`gap`), **nunca líneas
-  divisorias**. Colapsado (rail): los labels se ocultan y queda el
-  espaciado.
-- **Sin acordeón por grupo** (retirado en el rediseño de sidebar, ago 2026):
-  los títulos de grupo son ahora `<div>` estáticos, siempre expandidos —
-  ver el apéndice de `docs/CHANGELOG.md`, "acordeón por grupo en el
-  sidebar" (octava pasada), para el porqué y el detalle.
-- Ancho: `240px` expandido, `64px` colapsado (rail de solo iconos). En móvil
-  (off-canvas) sí lleva sombra al abrirse.
-- **Colapso (jul 2026)**: toggle en la fila del logo
-  (`ti-layout-sidebar-left-collapse/expand`); preferencia persistida en
-  `localStorage` clave `sistema-ti-sidebar` (mismo patrón que el tema).
-  Colapsado: labels ocultos con `title` como tooltip, búsqueda reducida a un
-  botón que expande y enfoca el input, footer apilado con solo avatar +
-  iconos. Solo aplica en desktop (>768px); el drawer móvil siempre va
-  completo y oculta el toggle. **Default inteligente (ago 2026, ver
-  changelog "compactación del sidebar" más abajo)**: sin preferencia
-  guardada, arranca colapsado en ventanas `≤1200px` (breakpoint ya usado en
-  `main.css`/`DashboardView.vue`) y expandido en monitores más anchos; una
-  vez que el usuario toca el toggle, su elección manda sobre el tamaño de
-  ventana en cualquier sesión futura.
-- **Footer de usuario condensado (ago 2026)**: a 240px de ancho, avatar +
-  nombre + 3 botones de ícono (campana, tema, logout) dejaban al nombre
-  ~66px de ancho antes de truncarse (ej. "a.gueva…"). Tema y "Cerrar
-  sesión" se movieron a un menú `⋮` (reusa `MenuAcciones.vue`, el mismo
-  componente de los menús de fila de tabla — sin componente nuevo); la
-  campana de notificaciones queda visible fuera del menú por ser
-  información urgente/frecuente, no una acción de cuenta. Resultado: el
-  nombre gana ~40px (ej. "a.guevaramart…"). **Configuración se suma a ese
-  mismo menú (ago 2026, rediseño de sidebar)** como primer ítem, antes de
-  tema/logout — no es una sección de uso diario, así que sale de la nav
-  principal. `label` del trigger pasa de "Más acciones de la cuenta" a
-  "Configuración y cuenta" para reflejarlo.
-
-### Sombras y radios
-
-Estado actual (valores reales de `main.css`):
-
-```
---radius-sm: 6px      --shadow-sm: none
---radius-md: 8px      --shadow-md: none
---radius-lg: 14px     --shadow-lg: none
---radius-xl: 14px     (idéntico a --radius-lg — no diferenciados hoy)
---radius-pill: 999px  (badges, capacity-bar, timeline-dot)
+```css
+--shadow-sm:      0 1px 2px 0 rgba(0, 0, 0, 0.05);
+--shadow-md:      0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+--shadow-lg:      0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+--shadow-overlay: var(--shadow-lg);
 ```
 
-Los 3 `--shadow-*` valen literalmente `none` — decisión de producto "sin
-sombras en contenedores" (DS v0.3 §3.4). Ningún componente (`.card`,
-`.stat-card`, `.modal`, popovers) tiene sombra visible hoy en producción.
+| Token | Uso |
+|---|---|
+| `--shadow-sm` | `.card`, `.stat-card`, campos (`CarbonCampo`), botones en reposo |
+| `--shadow-md` | Botón primario en hover, tarjeta en hover |
+| `--shadow-lg` | Base de `--shadow-overlay` |
+| `--shadow-overlay` | `.modal`, menú (`MenuAcciones`), popover (`BuscadorCombo`), panel de búsqueda, panel de la campana, toast — todo lo que **flota de verdad**, lo que se teletransporta a `<body>` y necesita despegarse del contenido |
+| Panel deslizante del SideNav en móvil | sombra direccional propia (única excepción declarada en `literales-vs-tokens.mjs`) |
 
-**Dirección aprobada, pendiente de portar** (commit `G4` del plan de
-migración — token + consumidor en el mismo commit, para no dejar una ventana
-donde el valor ya es real pero algún componente sigue mal alineado):
+`--scroll-shadow` no es elevación: es el degradado que avisa "esta tabla
+sigue a la derecha" en `.table-wrap`.
 
-```
---radius-lg: 12px     --shadow-sm: 0 1px 2px rgba(28,43,51,.06)   md
---radius-xl: 16px     --shadow-md: 0 4px 12px rgba(28,43,51,.08)  lg
-                      --shadow-lg: 0 16px 40px rgba(28,43,51,.16) --shadow-modal alias de --shadow-lg
-```
+### Revisión Modern Clean Enterprise (2026-09-03)
 
-Elevación por componente (política cerrada, no una sombra genérica "para
-separar secciones"):
+**Qué cambió.** Un día después de adoptar Carbon v11 estricto se revisó
+**solo** la geometría y la elevación: radio 0 en todo, campo *filled*
+(fondo gris + línea inferior) y botón secundario en bloque gris sólido se
+leían como industrial-brutalista para una V2 del producto — más cerca de un
+formulario de trámite que del software empresarial denso y moderno que
+Carbon habilita (Linear, GitHub y Supabase resuelven la misma densidad sin
+esa dureza). Se reintrodujo:
 
-| Componente | Token | Estado hoy |
+- La escala de radios de arriba (`--radius-sm/md/lg/xl/pill`).
+- La escala de sombras de arriba (`--shadow-sm/md/lg/overlay`), micro-sombras
+  sutiles en vez de superficies 100% planas.
+- El campo **outlined** (borde perimetral + radio + sombra sutil + halo de
+  foco) en vez de *filled* — ver `CarbonCampo.vue`.
+- El botón **secondary** con superficie clara + borde sutil en vez de
+  bloque gris sólido — ver "Botones: la jerarquía de Carbon necesita un
+  gris" más arriba.
+
+**Qué NO cambió.** La paleta de color de Carbon, el type set IBM Plex Sans
++ Mono, el shell de 48px/256px, el contraste WCAG re-verificado por
+`scripts/contraste.mjs`, y la arquitectura de dos capas de tokens
+(`carbon-theme.css` vendor → `main.css` roles). Tampoco cambió la regla de
+"ningún borde de componente supera 2px" ni la migración de íconos a Tabler.
+
+Los valores de radio/sombra no son un regreso literal al sistema anterior
+al Carbon (retirado el 2026-09-02, ver "Tokens retirados" arriba): esa
+escala tenía otros pasos (6/8/12/16px). La de acá es una calibración nueva
+(4/6/8/12px), pensada para convivir con la paleta y el type set de Carbon,
+no una reversión.
+
+---
+
+## Anatomía del shell
+
+Definido en [`AppLayout.vue`](../frontend/src/components/shared/AppLayout.vue)
++ [`AppNav.vue`](../frontend/src/components/shared/AppNav.vue). Es el UI Shell
+de Carbon v11, con sus tres regiones:
+
+| Región | Medida | Color | Contenido |
+|---|---|---|---|
+| **Header** | 48px de alto | Gray 100 `#161616` | Botón de menú · HeaderName (marca) · acciones globales: búsqueda, campana, tema, usuario |
+| **SideNav** | 256px / 48px en riel | Gray 90 `#262626` | Solo navegación de módulo |
+| **Workspace** | resto | Gray 10 `#f4f4f4` | La vista del módulo |
+
+Dentro del workspace, cada vista trae además su propio header de **página**
+(`.site-header`: el `h1` del módulo y sus acciones), de alto `--header-h`
+(64px = spacing-10 de Carbon). **No confundirlo con el header del shell**: son
+dos barras distintas, una encima de la otra, y el `--header-h` no es el
+`--cds-shell-header-h`. El de página es `position: sticky` dentro del
+contenedor de scroll del workspace, así que se pega justo debajo del otro.
+
+**El shell es oscuro en los dos temas.** No es "el header del tema oscuro":
+en Carbon el shell es Gray 100/90 siempre, y el tema claro/oscuro solo
+gobierna el workspace. De ahí los tokens `--cds-shell-*`.
+
+### Los tres cambios de fondo respecto del shell anterior
+
+No son estéticos, así que quedan escritos:
+
+1. **Aparece un header en desktop.** Antes solo existía en móvil. Todo lo
+   que no es navegación de módulo salió del sidebar y subió: búsqueda
+   global, campana e identidad del usuario. El SideNav queda **solo** para
+   navegar — una responsabilidad por región, que es lo que Carbon espera.
+   El pie del sidebar apilaba avatar + nombre + rol + 3 botones de ícono en
+   240px y el nombre truncaba (por eso tema y logout se habían condensado
+   en un menú `⋮`); ese apretujamiento ya no existe.
+2. **Hay separación real entre navegación y contenido.** Antes el sidebar
+   usaba `--color-bg` —el mismo fondo del contenido— y se apoyaba en un
+   borde de 1px. Ahora la distinción es la capa de gris, que es como Carbon
+   resuelve jerarquía sin sombras.
+3. **Configuración vuelve a tener ítem de nav propio.** Lo había perdido en
+   ago 2026 cuando se movió al menú `⋮`, con el argumento de que no es de
+   uso diario y no gasta una fila. Ahora que la navegación no comparte
+   espacio con búsqueda, campana ni usuario, ese argumento no aplica. Sigue
+   además en el menú de usuario, para quien ya aprendió ese camino.
+
+### Flex, no `position: fixed`
+
+La implementación de Carbon fija header y SideNav y compensa el contenido con
+`margin-left`/`padding-top`. Acá el shell es un flex de dos filas y el
+resultado visual es el mismo, con una ventaja concreta: el contenido es su
+**propio contenedor de scroll**, así que el `position: sticky; top: 0` del
+`.site-header` de cada vista se pega justo debajo del header del shell sin
+necesitar saber que el shell mide 48px. Con `fixed` había que escribir
+`top: 48px` en una regla global aparte — que es exactamente lo que hacía el
+bloque `<style>` sin scoped al final del `AppLayout.vue` anterior.
+
+### Header — acciones globales
+
+Cada acción es un cuadrado de **48×48**, sin radio ni borde. El hover es una
+capa de gris (`--cds-shell-hover`, `#353535`), **nunca un tinte de acento**:
+en Carbon el color de acento está reservado a una acción primaria o a un
+estado seleccionado, y una acción de header no es ninguna de las dos.
+
+El **HeaderName** es prefijo + nombre (`Materen` · **Sistema TI**, de
+`core/marca.js`). La jerarquía es de peso, no de color: los dos textos son
+`--cds-shell-text` y lo que distingue el producto del prefijo es el 600.
+Teñir "Materen" de gris secundario lo dejaría legible pero convertiría la
+marca en metadato. En móvil el prefijo se esconde: a 360px compite con las
+cuatro acciones y el producto es el dato que importa.
+
+La **búsqueda global** es un HeaderSearch: colapsada es un botón de lupa
+como cualquier otra acción; expandida es un campo que crece a la izquierda,
+sobre Gray 80, con una X para cerrar. No hay estado intermedio — en un
+header de 48px un campo permanente se come el nombre del producto en cuanto
+la ventana se angosta. El atajo `Ctrl`/`Cmd`+`K` la expande y enfoca.
+
+La **campana** muestra el conteo de no-leídas en Blue 60 sólido con texto
+blanco (5.00:1) y abre su panel hacia abajo, alineado al borde derecho. El
+conteo es reactivo por definición: sale de `store.noLeidas`, un getter sobre
+la lista que alimentan las dos suscripciones realtime de
+`AppNotifications.vue` (`notificaciones:nuevas` broadcast +
+`notificaciones:usuario:<id>` personal, migración 048).
+
+**El conteo no es rojo, y es una regla**: en este sistema Red 60 significa
+P1 o falta de devolución. Una notificación sin leer no es ninguna de las dos.
+Un color, un significado.
+
+### SideNav — ítems y estados
+
+| Estado | Fondo | Texto |
 |---|---|---|
-| `.card`, `.stat-card`, tabla, paneles normales | ninguno — solo borde sutil | ✅ ya así |
-| Card clicable, en hover/focus únicamente | `--shadow-sm` | pendiente (no existe hoy la variante "clicable") |
-| Dropdown / popover / menú contextual (`BuscadorCombo`, `NotificacionesCampana`, `AppSearch`, `MenuAcciones`) | `--shadow-md` | pendiente — 3 de los 4 hoy apuntan a `--shadow-lg` (el nivel de modal) y 1 no tiene ninguna |
-| Toast | `--shadow-md` | pendiente — hoy no tiene ninguna |
-| Modal | `--shadow-lg` (= `--shadow-modal`) | pendiente — hoy no tiene ninguna |
+| Reposo | — | `--cds-shell-text-secondary` (Gray 30) |
+| Hover | `--cds-shell-hover` (`#353535`) | `--cds-shell-text` (Gray 10) |
+| Activo | `--cds-shell-selected` (Gray 80) | `--cds-shell-text`, peso 600, + barra de acento de 2px a la izquierda |
+| Foco | — | `outline: 2px solid` blanco, `outline-offset: -2px` |
 
-Escala en `main.css` (`--radius-*`, `--shadow-*`).
+El texto del ítem activo **no se tiñe de azul**: sobre Gray 80 el Blue 60 da
+2.4:1. La jerarquía la dan la capa, el peso y la barra.
+
+- **32px de alto mínimo** y **16px de gutter**: las dos medidas del
+  SideNavLink de Carbon. Con 12 ítems y cuatro rótulos, el nav completo entra
+  sin scroll en una pantalla de 768px de alto.
+- **Rótulos de grupo** estáticos (no interactivos, sin cursor ni foco), 12px
+  en mayúsculas con 0.32px de tracking — el del paso `label-01`, no un ajuste
+  a ojo: a 12px en mayúsculas el texto se cierra sin él. Color
+  `--cds-shell-text-muted` (Gray 40, 6.36:1). La separación entre grupos es
+  espaciado, **nunca líneas divisorias**.
+- **Nav agrupada por intención de uso** (Plan Maestro v2, 2026-09-04; antes
+  agrupaba por dominio de datos) en este orden: Dashboard suelto, sin rótulo
+  de grupo (pantalla de entrada) → "Mesa de Ayuda" (Tickets, Base de
+  Conocimiento, Problemas, Encuestas) → "Gestión de Personal" (Empleados) →
+  "Inventario Global" (Correos, Licencias, Equipos) → "Administración"
+  (Actividad y Accesos sensibles, **solo JEFE** por `meta.roles`;
+  Configuración, para cualquier staff). El reagrupamiento es solo de
+  presentación: `item.modulo` sigue apuntando al mismo id de
+  `MODULOS_CONFIGURABLES` de siempre, así que el guard de ruta y el permiso
+  por módulo no cambiaron.
+- Un grupo **sin ítems visibles no se renderiza** — un encabezado sin filas
+  debajo se leería como una sección rota.
+- **Sin acordeón por grupo** (retirado ago 2026): con ~12 ítems el plegado
+  agregaba más reglas de comportamiento que valor.
+- **Áreas**: nivel por encima de los grupos, preparado para una segunda área
+  fuera de TI (`docs/PANORAMA-SISTEMA.md` §6). Con una sola área el
+  encabezado no se renderiza y el nav se ve idéntico.
+
+### Riel (48px) y panel deslizante (móvil)
+
+- **Riel** (solo desktop): el ítem pasa a ser un cuadrado de 48px con el
+  ícono centrado — mismo lado que el header, así la columna de íconos queda
+  alineada con el botón de menú. Los labels se ocultan (quedan como `title`),
+  los rótulos de grupo también, y el badge de conteo pasa a punto sobre el
+  ícono. Al pie aparece un botón de expandir: es la única salida del riel sin
+  subir al header, para quien no reconoce un ícono.
+- **Preferencia persistida** en `localStorage`, clave `sistema-ti-sidebar`
+  (el nombre **no cambió** a propósito: quien tenía el sidebar colapsado
+  antes del rediseño abre con el riel puesto en vez de perder su elección).
+  Sin preferencia guardada, arranca en riel por debajo de **1056px** — el
+  breakpoint `lg` de la grilla de Carbon y el punto donde su propio shell
+  empieza a esconder el SideNav. Una vez que el usuario toca el toggle, su
+  elección manda sobre el tamaño de ventana.
+- **Móvil (≤768px)**: el nav pasa a panel deslizante sobre el contenido, con
+  velo detrás. Sale de **debajo** del header, así que el header sigue
+  accesible con el panel abierto — incluido el botón que lo cierra.
+
+El botón de menú del header hace dos cosas según el ancho, y es la misma
+cosa desde el punto de vista del usuario ("mostrame/escondeme la
+navegación"): en móvil abre el panel, en desktop alterna el riel.
+
+### Permisos → ítems visibles
+
+El nav **nunca es la barrera**: es el reflejo de ella. Las barreras reales
+son el guard de [`router/guards.js`](../frontend/src/router/guards.js)
+(`meta.roles` y `meta.modulo`) y RLS en la base.
+
+| Rol | Ve |
+|---|---|
+| **JEFE** | Dashboard + los 8 módulos configurables + Actividad + Accesos sensibles + Configuración |
+| **ASISTENTE** | Dashboard + los módulos habilitados en `staff_modulos_permisos` (migración 056) + Configuración |
+
+Dos precisiones que importan porque hacerlas mal rompe permisos, no estética:
+
+- **Configuración SÍ se le muestra al ASISTENTE.** De sus 7 pestañas, 6
+  (Empresas, Áreas/Obras, Plataformas, Tipos de equipo, Ubicaciones,
+  Categorías de ticket) están abiertas a cualquier staff activo; la única
+  restringida es Staff, que declara su propio `meta: { roles: ['jefe'] }` y
+  redirige a Empresas (`config.routes.js`). Esconder la entrada entera le
+  quitaría 6 secciones que sí puede usar.
+- **`empleados` se filtra como cualquier otro módulo.** Está habilitado por
+  defecto para todo staff nuevo (la migración 056 siembra los 8), así que en
+  la práctica está abierto — pero mostrarlo *incondicionalmente* sería
+  pasarle por encima a `staff_modulos_permisos`: el ítem aparecería para un
+  ASISTENTE al que el JEFE le desmarcó el módulo, y cada clic rebotaría al
+  dashboard con un aviso y escribiría una fila de acceso denegado en
+  `accesos_log`.
+
+Verificado en `tests/componentes/carbon.render.test.js` (bloque
+`AppNav.vue — permisos a ítems visibles`) y, contra el backend real, en
+`tests/integration/autorizacion-roles.smoke.test.js`.
 
 ### Escala de z-index
 
@@ -462,9 +833,11 @@ Especificación en `main.css` (`--z-*`).
 
 ```
 --z-header: 50           site-header sticky de cada vista
---z-header-mobile: 60    topbar-mobile (encima del header normal)
---z-nav: 100             sidebar en modo drawer (≤768px) + su overlay (z-nav - 1)
---z-popover: 300         .sb-resultados (búsqueda global)
+--z-nav: 100             SideNav como panel deslizante (≤768px) + su velo (z-nav - 1)
+--z-shell-header: 110    header del shell — por ENCIMA del nav: la sombra del
+                         panel deslizante proyecta en todas las direcciones,
+                         incluida hacia arriba
+--z-popover: 300         panel de búsqueda global, panel de la campana
 --z-modal: 400           .modal-bg
 --z-modal-stacked: 410   reservado para un modal sobre otro (sin uso aún)
 --z-popover-modal: 420   .combo-lista (BuscadorCombo) — popover teleportado
@@ -472,142 +845,132 @@ Especificación en `main.css` (`--z-*`).
 --z-toast: 500           .toast — siempre visible, incluso sobre un modal
 ```
 
-Antes de este ajuste, `.modal-bg` estaba en `z-index: 100` y el drawer móvil
-en `200` — un modal podía quedar **debajo** del sidebar en móvil. Corregido
-al fijar la escala completa en `main.css`.
-
 Un popover que se teletransporta a `<body>` deja de competir dentro del
 stacking context de su modal y pasa a competir contra toda la escala: por eso
 `.combo-lista` necesita un nivel propio por encima de `--z-modal`. Un popover
 que sigue dentro del árbol del modal (posicionado con `absolute`) no participa
 de la escala y le basta un `z-index` local.
 
-### Bordes — jerarquía de 3 niveles (dirección aprobada, pendiente de portar)
-
-Hoy `main.css` usa un solo nivel "genérico" (`--color-border`) para
-cards, tabla, modal, inputs, selects, textareas y botones por igual. La
-dirección aprobada separa 3 niveles, verificados a los umbrales reales de
-WCAG 1.4.11 (3:1 para el borde de un componente interactivo; un borde
-puramente decorativo, como el de una card, no está sujeto a ese umbral):
-
-| Nivel | Token | Claro | Oscuro | Uso | Contraste vs. superficie |
-|---|---|---|---|---|---|
-| Sutil | `--color-border` / `--color-border-subtle` | `#D9E2E8` | `#1F2A35` | Separadores, borde de card/tabla/modal — decorativo | no exigible |
-| Default | `--color-border-default` (nuevo) | `#7E96A3` | `#5A6E7E` | Input, select, textarea, botón secundario en reposo | 3.10:1 (claro) / 3.11:1 (oscuro) |
-| Fuerte | `--color-border-strong` | `#526A7B` | `#7B93A3` | Hover de controles, seleccionado no enfocado, toast | 5.67:1 (claro) / 5.13:1 (oscuro) |
-
-Nota de proceso: el primer valor propuesto para "default" (`#A9BBC6`) medía
-1.98:1 — bajo el umbral. Se ajustó manteniendo el matiz. El valor de
-"fuerte" también se re-ajustó una vez corregido "default", porque ambos
-quedaban casi idénticos entre sí sobre blanco (no hay margen en esta franja
-gris-azulada para dos tonos que pasen 3:1 y además se distingan). El foco
-**nunca** se resuelve solo con un cambio de borde — siempre borde de acento
-+ anillo (`--color-focus`/`--color-focus-ring`), ver más abajo.
-
-### Excepciones hardcodeadas
-
-- Botón WhatsApp: `#25d366` (sin cambios — no forma parte del rebranding, es
-  color de marca de un tercero)
-- Overlay de modal (`.modal-bg`): `rgba(12,15,17,0.55)`, sin `blur` — mismo
-  valor en ambos temas
-- Focus ring en inputs/botones (`--mat-ring`): `rgba(0,32,63,0.28)` (claro,
-  derivado del navy actual) / `rgba(54,236,222,0.28)` (oscuro, derivado del
-  mint actual)
-
-**Dirección aprobada, pendiente de portar** (commit `G3`): el anillo de foco
-pasa a `rgba(0,130,251,0.28)` (claro) / `rgba(0,130,251,0.35)` (oscuro) —
-derivado de brand-500, no de brand-600, porque un anillo es un indicador no
-textual (umbral 3:1) y brand-500 ya cumple ahí sin necesidad del ajuste que
-sí hace falta para texto.
-
 ---
 
-## Tipografía — Geist (ago 2026)
+## Tipografía — IBM Plex (Carbon v11)
 
-**Una sola familia** para cuerpo y títulos (decisión del JEFE, cierra la
-nota "Axiforma pendiente" que quedaba abierta desde la versión anterior de
-esta sección) — reemplaza el par Inter/Sora: Inter se sentía genérico,
-Sora se había elegido para acompañar el logotipo viejo (verde), motivo que
-dejó de aplicar con el rebranding a azul. La jerarquía entre cuerpo y
-títulos la sigue dando el peso (600–700 en títulos) y el tamaño, no una
-segunda tipografía — mismo criterio que "ningún dato en negrita en celdas
-de tabla" (jerarquía por peso/tamaño/posición, no por ornamento).
+**IBM Plex Sans** para todo el texto e **IBM Plex Mono** para códigos,
+cargadas en [`index.html`](../frontend/index.html) desde Google Fonts.
+Reemplazan a Geist/Geist Mono (ago 2026). Plex no es un gusto: es la
+tipografía de Carbon, y sus métricas son las que el type set asume.
 
-| Rol | Fuente | Pesos |
-|-----|--------|-------|
-| Cuerpo / UI / Encabezados | **Geist** | 400–700 |
-| Mono | **Geist Mono** | 400–700 |
-| Iconos | **Tabler Icons** | CDN |
+### Escala tipográfica — el type set productivo
 
-`--mat-font-display` es alias de `--mat-font-sans` (mismo valor) — el token
-se conserva porque lo consumen varios componentes vía `--font-display`, no
-porque siga aportando una tipografía distinta. Mono deja de depender de la
-pila del sistema operativo (Cascadia en Windows, SF Mono en Mac — variaba
-entre usuarios) y pasa a ser Geist Mono, cargada igual que el resto.
+Carbon publica dos juegos: **productive** (UI densa de software de gestión)
+y **expressive** (marketing). Manda el productivo, que es exactamente lo que
+este panel es.
 
-Variables canónicas: `--mat-fs-*` (alias legacy `--fs-*`). El `body` usa
-`--mat-fs-md` (14px). Títulos de marca/toolbar/modal usan `--font-display`.
+| Token | Paso de Carbon | Tamaño / interlineado | Uso |
+|---|---|---|---|
+| `--fs-label-01` | label-01 | 12px / 16px, tracking 0.32px | Label, helper text, badge, encabezado de tabla, rótulo de grupo |
+| `--fs-body-01` | body-compact-01 | 14px / 18px, tracking 0.16px | **Default del cuerpo**, celda de tabla, ítem de nav |
+| `--fs-heading-02` | heading-02 | 16px / 22px | Título de sección |
+| `--fs-heading-03` | heading-03 | 20px / 28px | `h1` de módulo |
+| `--fs-heading-05` | heading-05 | 32px / 40px | Cifra de KPI |
 
-### Escala tipográfica (tokenizada)
+**Por qué la escala se comprimió de 8 pasos a 5.** Los tamaños discretos del
+juego productivo en rango de UI son 12 · 14 · 16 · 20 · 32. El sistema
+anterior tenía 11/12/13/14/15/17/20/26 — ocho pasos donde Carbon tiene cinco.
+Mantener los ocho habría dejado **tres pares de tokens con el mismo valor**,
+o sea tres veces el problema que se cerró el 2026-09-01. Se comprimió, y los
+nombres pasaron a ser los de Carbon para que el paso y su rol sean la misma
+cosa:
 
-Tokens en `main.css` — **usar en pantallas nuevas** en lugar de px sueltos:
-
-| Token | Valor | Uso típico |
-|-------|-------|------------|
-| `--mat-fs-xs` | 11px | Badges, headers de tabla (uppercase) |
-| `--mat-fs-sm` | 12px | Labels secundarios, metadatos |
-| `--mat-fs-base` | 13px | Botones, inputs, celdas de tabla, nav |
-| `--mat-fs-md` | 14px | `body` base |
-| `--mat-fs-lg` | 15px | Títulos de toolbar/sección |
-| `--mat-fs-xl` | 17px | Títulos de modal |
-| `--mat-fs-2xl` | 20px | Títulos de página/login |
-| `--mat-fs-stat` | 26px | Valores en stat cards |
-
-Pesos: **600** botones/nav/labels/badges, **700** solo stats y
-marca. Uppercase con letter-spacing `0.04–0.06em`.
-
-### Escala de íconos (tokenizada, 2026-08-28)
-
-Los íconos se dimensionan con `font-size` (son un webfont, Tabler) pero **no
-pertenecen a la escala tipográfica**: mezclarlos obliga a elegir entre "el
-tamaño de letra correcto" y "el tamaño de ícono correcto" con un solo juego de
-nombres. Tienen escala propia, `--mat-icon-*` (alias `--icon-*`).
-
-| Token | Valor | Uso |
-|-------|-------|-----|
-| `--mat-icon-xs` | 13px | Dentro de un chip o badge, junto a `--fs-sm` |
-| `--mat-icon-sm` | 14px | Inline en una línea de texto de UI |
-| `--mat-icon-md` | 16px | Default: campo, toast, ítem de menú |
-| `--mat-icon-lg` | 18px | Botón de ícono, topbar, acción de fila |
-| `--mat-icon-xl` | 20px | Ícono dentro de un contenedor (stat, aviso) |
-| `--mat-icon-2xl` | 28px | Ilustrativo en contenedor circular (`.empty-icon`) |
-| `--mat-icon-hero` | 40px | Ilustración de página completa (404, vistas públicas) |
-
-**Antes de tokenizar** convivían **11 tamaños crudos** de ícono
-(13/14/16/17/18/19/20/22/24/28/40px) repartidos en 20+ archivos, sin ningún
-criterio que dijera cuál usar. Junto con el texto eran **131 declaraciones
-`font-size` en px sueltos**, incluidos medios píxeles que no existen en
-ninguna escala (`10.5`, `11.5`, `12.5`, `13.5px`). Hoy quedan **cero**: todo
-apunta a `--fs-*` o `--icon-*`.
-
-`.ti` tiene `line-height: 1` en el webfont, así que el valor de `font-size`
-**es** el lado del cuadro del ícono. Por eso el cálculo de target táctil se
-hace directo sobre estos números, sin factor de corrección:
-
-```css
-@media (pointer: coarse) {          /* WCAG 2.5.5: target >= 44x44 */
-  .icon-btn { padding: 13px; }      /* --icon-lg (18) + 13x2 = 44 exactos */
-}
+```
+--fs-xs   (11px) ┐
+--fs-sm   (12px) ┴→ --fs-label-01     12px
+--fs-base (13px) ┐
+--fs-md   (14px) ┴→ --fs-body-01      14px
+--fs-lg   (15px) ┐
+--fs-xl   (17px) ┴→ --fs-heading-02   16px
+--fs-2xl  (20px) ─→ --fs-heading-03   20px
+--fs-stat (26px) ─→ --fs-heading-05   32px
 ```
 
-Ese `padding` era `13.5px` cuando `.icon-btn` medía 17px — el medio píxel
-desapareció al tokenizar, no se "ajustó" a mano.
+Los interlineados y el letter-spacing de cada paso viven en la capa vendor
+(`--cds-*-lh` / `--cds-*-ls`) y se consumen desde las reglas de `main.css`.
+No se tokenizan como rol propio: no hay ninguna decisión de producto que
+tomar sobre ellos, son parte indivisible del paso tipográfico.
 
-**Dos excepciones declaradas** a las escalas, ambas anotadas en su archivo:
-`.ds-swatch span` (9px, micro-etiqueta con el hex dentro del swatch de
-`DesignSystemView.vue`) y `.nivel-btn` (24px, glifo de la escala de
-satisfacción 1-5 en `EncuestaSatisfaccionForm.vue` — es el contenido del
-control, ni texto de UI ni ícono del sistema). Cualquier otro px suelto que
+La jerarquía entre cuerpo y títulos la da el **peso** (600 en títulos y
+labels) y el tamaño, no una segunda familia — mismo criterio que "ningún dato
+en negrita en celdas de tabla".
+
+`--font-sans` es IBM Plex Sans y lo consume `body`; `--font-display` es un
+**alias de `--font-sans`**, no una segunda tipografía — se conserva porque lo
+consumen media docena de componentes de título y renombrarlos no aportaría
+nada, pero ya no trae una familia distinta (desde que el sistema pasó a una
+sola familia, ago 2026).
+
+`--font-mono` (IBM Plex Mono) es para lo que se transcribe carácter por
+carácter: código de ticket, DNI, usuario de cuenta, serial, credencial
+revelada. Con `font-variant-numeric: tabular-nums`, la diferencia entre
+`l`/`1`/`I` y `O`/`0` en una proporcional es exactamente el error que se paga
+después.
+
+### Escala de íconos
+
+Los íconos son un sistema aparte (webfont Tabler, `.ti`), **no** texto: se
+dimensionan con `font-size` pero no pertenecen a la escala tipográfica. `.ti`
+trae `line-height: 1`, así que el valor de `font-size` **es** el lado del
+cuadro del ícono.
+
+| Token | Tamaño | Uso |
+|---|---|---|
+| `--icon-sm` | 16px | Default: campo, toast, ítem de menú, celda |
+| `--icon-md` | 20px | Botón de ícono, shell, acción de fila, `.icon-box` |
+| `--icon-lg` | 32px | Ilustrativo: empty-state, 404, vistas públicas |
+
+Carbon publica cuatro tamaños (16 · 20 · 24 · 32); el anterior tenía siete
+(13/14/16/18/20/28/40), así que la escala se comprimió igual que la
+tipográfica:
+
+```
+--icon-xs/-sm/-md (13/14/16) → --icon-sm   16px
+--icon-lg/-xl     (18/20)    → --icon-md   20px
+--icon-2xl/-hero  (28/40)    → --icon-lg   32px
+```
+
+El cuarto tamaño de Carbon (24px) **no se declara**: es el que Carbon usa
+para un ícono prominente dentro de un contenedor grande, y acá el contenedor
+más grande es `.icon-box` (32px), donde el que corresponde es 20px. Un token
+sin consumidor en una escala que se acaba de escribir no es deuda declarada,
+es peso muerto.
+
+### Espaciado
+
+La escala `--space-1..12` (2·4·6·8·10·12·16·20·24·32·40·48) **no se re-basó**
+a la de Carbon (2·4·8·12·16·24·32·40·48·64·80·96), y la razón es concreta:
+nueve de los doce pasos ya coinciden, pero mapear los doce nombres a la
+escala de Carbon desplazaría cada paso un lugar (`--space-10` pasaría de 32px
+a 64px) y estos tokens **no se consumen solo como separación**: `.avatar.sm`
+usa `var(--space-10)` como *ancho*. Re-basar no habría movido márgenes,
+habría duplicado el tamaño de los avatares.
+
+Pasos y su valor: `--space-1` 2px, `--space-2` 4px, `--space-3` 6px,
+`--space-4` 8px, `--space-5` 10px, `--space-6` 12px, `--space-7` 16px,
+`--space-8` 20px, `--space-9` 24px, `--space-10` 32px, `--space-11` 40px,
+`--space-12` 48px. Invariantes entre temas.
+
+Los tres pasos fuera de la grilla de 8 de Carbon —`--space-3` (6px),
+`--space-5` (10px), `--space-8` (20px)— quedan como **deuda declarada**: el
+código nuevo usa solo los pasos que sí están en la grilla. El trinquete de
+`scripts/literales-vs-tokens.mjs` gobierna la adopción de la escala en sí
+(hay ~457 literales de espaciado y el check falla solo si el número sube).
+
+### Excepción tipográfica declarada
+
+`.nivel-btn` (24px, glifo de la escala de satisfacción 1-5 en
+`EncuestaSatisfaccionForm.vue`) dimensiona un **objetivo táctil**, no texto:
+la escala `--fs-*` gobierna texto, y atar el tamaño de un control a la
+escala tipográfica ataría dos cosas que cambian por motivos distintos. Está
+declarada en `scripts/literales-vs-tokens.mjs`. Cualquier otro px suelto que
 aparezca es deuda, no criterio.
 
 ---
@@ -689,6 +1052,32 @@ entrega, tickets públicos), donde no hay sidebar que muestre la marca.
 3. `.filters` (búsqueda + selects)
 4. `.table-wrap` > `table` o `.empty`
 
+### Dashboard: lo mío al lado de lo de todos (2026-09-02)
+
+Dos columnas en la misma fila, y la división entre ellas es **de quién es el
+trabajo**, no de qué tipo es:
+
+| Columna | Qué contiene | Por qué ahí |
+|---|---|---|
+| **Mi trabajo** (angosta, `col-2`) | Mis tickets vigentes asignados, por urgencia, tope 5 + "ver mis N" | Es lo que un técnico abre la app para ver. El feed de al lado **no** lo cubre: solo tiene lo que nadie tomó (sin asignar, sin vincular) o lo que se pasa de tiempo (+3 días) — un ticket asignado a mí, en curso y de ayer no estaba en pantalla |
+| **Pendientes** (ancha) | El feed único del equipo, ordenado por urgencia real | Sin cambios: fusiona todas las categorías en una sola cola en vez de cajas de igual peso |
+
+Reglas que fija esta pasada:
+
+- **Una cifra que no habilita una decisión no va en el Dashboard.** Se
+  retiraron "Contraseñas por rotar" y "Licencias por vencer" del Resumen:
+  duplicaban filas del feed de arriba con menos información — el feed dice
+  cuáles, desde cuándo y lleva a cada una; la tarjeta decía un número. La de
+  rotación era el caso extremo: su única acción era hacer scroll hacia el feed
+  que tenía justo encima.
+- **El Resumen que queda es inventario, no pendientes**: responde "cuánto
+  hay" y sirve de entrada al módulo. Si una cifra pide acción, su lugar es el
+  feed.
+- **Un enlace "ver todos" dice el total real**, no el de los mostrados.
+- **Vacío no es alarma**: "Sin tickets asignados" usa el tratamiento discreto
+  de `.todo-ok`, no un `EmptyState` con ilustración — no hay nada que ir a
+  crear.
+
 ### Página multi-card (dashboard, detalle de empleado/ticket)
 
 El contenido no es un solo card: el `main` lleva `page--padded`
@@ -728,9 +1117,11 @@ se reviertan sin contexto:
   de antes del split-view. La ruta de página completa **sigue existiendo**
   en ambos breakpoints — la usan los enlaces externos (Empleados, Dashboard,
   notificaciones) y es la única forma de llegar al detalle en mobile.
-- **Fondo "island".** Los tres paneles flotan sobre `--color-bg` (el mismo
-  gris-azulado del body, no un valor nuevo) con `gap: 16px` entre ellos, cada
-  uno con su propio borde + `--radius-lg` + fondo `--color-bg-elevated`. Es
+- **Fondo "island".** Los tres paneles flotan sobre `--color-bg` (el
+  workspace en Gray 10, no un valor nuevo) con `gap: 16px` entre ellos, cada
+  uno con su propio borde + fondo `--color-bg-elevated`. **Sin radio desde
+  el rediseño a Carbon** (2026-09-02): lo que separa un panel del lienzo es
+  su borde y su capa de gris, no su esquina. Es
   lo opuesto al patrón "página tipo listado" (arriba), donde `.card--fill` es
   a propósito full-bleed, sin borde ni radio, pegado a los bordes del área de
   contenido — **cada pantalla usa el patrón que le corresponde según su
@@ -849,11 +1240,11 @@ fila de `<tr>`/`<td>`.
 
 `TicketsView.vue` tenía dos superficies de filtro separadas manteniendo el
 **mismo estado**: Tabla (dropdown de Estado + chips sueltos "Mis
-tickets"/"Sin asignar"/"Sin vincular") e Isla (nav-list de Estado + los
+tickets"/"Sin asignar"/"Sin vincular") y Triage (nav-list de Estado + los
 mismos 3 toggles, repetidos). Esa duplicación produjo 2 bugs de
 sincronización consecutivos entre ambas superficies (el más reciente:
-cambiar de Tabla a Isla con "Sin asignar" activo lo descartaba en
-silencio). Reemplazado por un solo modelo, compartido entre Tabla e Isla:
+cambiar de Tabla a Triage con "Sin asignar" activo lo descartaba en
+silencio). Reemplazado por un solo modelo, compartido entre Tabla y Triage:
 
 - **`VISTAS_TICKETS`** (definido en `TicketsView.vue`) es la fuente de
   verdad — un array de 6 vistas, cada una un combo **cerrado** de
@@ -864,18 +1255,18 @@ silencio). Reemplazado por un solo modelo, compartido entre Tabla e Isla:
   hardcodea el id en el array.
 - **`vistaActiva`** es un solo ref, con un solo `watch(vistaActiva,
   aplicarVista, { immediate: true })` — reemplaza el watcher de doble
-  rama tabla/isla que causaba los bugs de sincronización. Arranca
+  rama tabla/triage que causaba los bugs de sincronización. Arranca
   **siempre en `'sin_asignar'`, cada sesión, sin `localStorage`** — a
   diferencia de `useVistaModulo` (tema claro/oscuro, colapso del sidebar,
-  y el propio selector Tabla/Isla de esta misma vista): "Mis tickets"
+  y el propio selector Tabla/Triage de esta misma vista): "Mis tickets"
   nunca debe recordarse de una sesión a otra, sería fácil perder de vista
   tickets sin asignar de otro turno.
 - **`ListaVistas.vue`** (`components/shared/`) es el componente que
   renderiza `VISTAS_TICKETS` — reutilizado tal cual, mismos datos, en la
-  fila horizontal de Tabla y en la columna del nav de Isla. No impone
+  fila horizontal de Tabla y en la columna del nav de Triage. No impone
   ningún `display`/`flex-direction` propio: cada consumidor pasa su
   propia clase de layout (`.tickets-vistas-fila` en Tabla,
-  `.tickets-nav-vistas` en Isla) — evita apostar a la especificidad CSS
+  `.tickets-nav-vistas` en Triage) — evita apostar a la especificidad CSS
   entre 2 componentes con scope distinto para resolver un conflicto de
   layout. Reusa `.tnav-item`/`.tnav-label`/`.tnav-contador` (movidas acá
   desde el scoped de `TicketsView.vue`, ahora en un `<style>` **sin**
@@ -885,14 +1276,14 @@ silencio). Reemplazado por un solo modelo, compartido entre Tabla e Isla:
   **`ChipsFiltro.vue`** (`components/shared/`), selección **múltiple
   libre** (a diferencia de `ListaVistas`, que es exclusiva) — un ticket
   puede filtrarse por más de una prioridad a la vez. Ninguna marcada al
-  entrar = todas. **Dónde vive (actualizado ago 2026)**: en Isla sigue
+  entrar = todas. **Dónde vive (actualizado ago 2026)**: en Triage sigue
   visible en el nav; en Tabla pasó **adentro del popover de `MasFiltros`**,
   junto a "Sin vincular" — la barra de filtros de Tabla bajó de tres filas a
   una y Prioridad ya se lee columna por columna en la tabla, así que no
   justifica 40px de alto permanentes. Es el mismo componente con los mismos
   datos en los dos modos, solo cambia el layout. Ojo con el `activo` del
   trigger: en Tabla es `soloSinVincular || prioridadSeleccionada.length > 0`
-  (las dos cosas están adentro), en Isla es solo `soloSinVincular`. `filtros.prioridad` pasó de `string` a `array` en
+  (las dos cosas están adentro), en Triage es solo `soloSinVincular`. `filtros.prioridad` pasó de `string` a `array` en
   `stores/tickets.js`/`api/domains/tickets.js` (`.in('prioridad', [...])`
   en vez de `.eq('prioridad', valor)`).
 - **"Sin vincular"** dejó de ser un chip/toggle suelto en la fila
@@ -906,7 +1297,7 @@ silencio). Reemplazado por un solo modelo, compartido entre Tabla e Isla:
   secundarios después sin sobre-construir hoy.
 
 Los 3 componentes (`ListaVistas`, `ChipsFiltro`, `MasFiltros`) se
-reutilizan **con los mismos datos** en Tabla e Isla — layout distinto
+reutilizan **con los mismos datos** en Tabla y Triage — layout distinto
 según el contexto (fila vs. columna) es aceptable, pero nunca una segunda
 implementación del mismo filtro.
 
@@ -1088,13 +1479,34 @@ Detalles de comportamiento, todos en el componente:
 
 Todo en `main.css` — no hay átomos Vue separados:
 
-**Botones:** `.btn`, `.btn-primary`, `.btn-whatsapp`, `.btn-danger` (+ `.toolbar-actions` para agrupar varios en un toolbar)
+**Botones:** `.btn`, `.btn-primary`, `.btn-whatsapp`, `.btn-danger`, `.btn-danger-solid`, `.btn-ghost` (+ `.toolbar-actions` para agrupar varios en un toolbar). `.btn-ghost` (rediseño Materen, Fase 1) es la cuarta variante de jerarquía: sin fondo ni borde, para acciones reales pero de baja jerarquía ("Limpiar selección", "Filtros") que no deben competir con la secundaria. Comparte `.btn`, así que hereda el anillo de foco sin regla propia.
 
-**Contenedores:** `.card`, `.card-toolbar`, `.stat-card`, `.password-cell`/`.password-text` (credenciales en `CuentasPanel.vue`)
+**Contenedores:** `.card`, `.card-toolbar`, `.stat-card`, `.icon-box`/`.icon-box--*`. (`.password-cell`/`.password-text` se retiraron el 2026-09-02: el revelado de credenciales es ahora `components/carbon/CarbonPasswordReveal.vue`, con su propio marcado — ver "Primitivas de Carbon".) `.icon-box` (rediseño Materen, Fase 1) es el ícono en caja de color de cabecera de card: 32px (`--space-10`), `--icon-md`, con seis modificadores (`.icon-box--brand`, `.icon-box--success`, `.icon-box--warning`, `.icon-box--danger`, `.icon-box--info`, `.icon-box--neutral`). Reemplazó a `.feed-icon` (Dashboard, 30px) y `.soporte-accion-icono` (Soporte, 38px), dos implementaciones divergentes del mismo patrón — **las dos ya migradas, no quedan copias locales**. Al agregar un ícono en caja a una vista nueva, usar esta clase; no redeclarar una propia. **La card que contiene un `.icon-box` no cambia su propio borde ni fondo por eso**: el color vive solo en el ícono, no hay `.card--alerta` con borde de color (evaluada y descartada en el Style Lab).
 
-**Formularios:** `.form-grid`, `.form-group`, `.section-label`. Accesorios de equipo: lista editable (código / descripción / cantidad) en `EquipoForm.vue` (`.acc-lista`, `.acc-fila`); ya no se usan chips.
+**Formularios:** `.form-grid`, `.form-group`, `.section-label`. El campo en sí es hoy `CarbonCampo` (ver "Primitivas de Carbon" arriba) — `.form-group` sigue viva como envoltorio para lo que no es un campo de texto/select/textarea (un `BuscadorCombo`, un checklist, un radio-group) y `.form-grid`/`.section-label` siguen ordenando el layout alrededor. Accesorios de equipo: lista editable (código / descripción / cantidad) en `EquipoForm.vue` (`.acc-lista`, `.acc-fila`); ya no se usan chips.
 
-**Datos:** `.table-wrap`, `table/th/td`, `.user-name`, `.avatar`, `.lista-tarjetas`/`.tarjeta-fila` (render móvil de tablas, ver patrón arriba)
+**Datos:** `.table-wrap`, `table/th/td`, `.user-name`, `.avatar`/`.avatar.sm`/`.avatar.lg` + `.avatar--*`, `.lista-tarjetas`/`.tarjeta-fila` (render móvil de tablas, ver patrón arriba)
+
+**Avatar de iniciales** (rediseño Materen, Fase 1) — **una** familia visual
+para cualquier persona del sistema: el usuario del sidebar, el empleado de su
+ficha, el solicitante de un ticket y el técnico asignado se ven igual. Tres
+tamaños (`sm` 32px · base 36px · `lg` 44px) y seis tonos; **el tamaño es el
+único eje que elige la vista, el tono nunca**:
+
+```vue
+import { tonoAvatar, inicialesDe } from '@/core/avatar.js';
+
+<span class="avatar sm" :class="tonoAvatar(nombre)">{{ inicialesDe(nombre) }}</span>
+```
+
+Reglas: sin borde, sin gradiente, sin color elegido a mano. Se descartó
+distinguir "responsable" de "cualquiera" por color (evaluado en el Style Lab):
+trataba el color como si comunicara peso de acción, cuando acá es identidad.
+Hasta esta fase convivían tres implementaciones — `.avatar` (azul de acento +
+borde), `.sb-user-avatar` y `.emp-avatar` (las dos con gradiente de marca, que
+le daban al usuario propio y a la ficha un tratamiento "más importante" que al
+resto) — y cuatro funciones de iniciales, dos idénticas carácter por carácter.
+Todas retiradas.
 
 **Estado:** `.status`, `.badge`/`.badge--*` (ver sistema unificado abajo), `.badge-count`
 
@@ -1181,6 +1593,23 @@ radius/font-size. Ejemplos: `.badge-inline` (cuentas), `.badge-rol`
 
 ---
 
+### Guía de alta de empleado (`EmpleadoDetalleView.vue`, 2026-09-01)
+
+Patrón a reusar si aparece otro proceso de varios pasos: **un paso pendiente
+es su propia acción**, no un texto que describe lo que falta.
+
+- Los pasos y su estado los decide el dominio (`pasosAlta()` en
+  `core/dominio-empleados.js`); la vista solo engancha qué abre cada botón.
+- Un paso hecho muestra su check y **no** ofrece acción. Un paso pendiente
+  trae un `.btn` secundario — nunca `.btn-primary`: el acento primario de la
+  vista ya lo tiene el header (regla "un solo acento visible por vista").
+- Lo opcional se marca como tal y **no bloquea** dar el proceso por terminado.
+- La guía **deriva del estado real**, no de un query param. Ocultarla silencia
+  el caso "recién creado" pero no un pendiente de verdad: ningún pendiente del
+  sistema se marca como visto con un clic.
+- En una pantalla angosta los pasos bajan de a uno en vez de comprimirse — un
+  paso que no se lee entero no invita a completarlo.
+
 ## Componentes de dominio (jul 2026)
 
 Cuatro patrones que no existían como componente reutilizable — vivían como
@@ -1244,28 +1673,63 @@ siendo la fuente del filtro "Situación" del toolbar y de las condiciones
 
 ### Confirmación destructiva
 
+**El contenedor NO se tiñe.** Un modal destructivo usa el mismo shell neutro
+que cualquier otro: mismo borde, misma sombra, mismo overlay, mismo ancho.
+Toda la señal de "esto es peligroso" vive en dos componentes internos —el
+ícono y el botón de la acción— y en ningún otro lado:
+
 ```html
-<div class="modal-bg confirm-dialog--destructive">
-  <div class="modal">
+<div class="modal-bg">
+  <div class="modal modal-sm">
     <div class="modal-title">
-      <span style="display:flex;align-items:center;gap:10px">
-        <span class="modal-icon"><i class="ti ti-user-off"></i></span>
+      <span class="confirm-titulo">
+        <span class="icon-box icon-box--danger"><i class="ti ti-user-off"></i></span>
         Dar de baja a Juan Pérez
       </span>
+      <button class="icon-btn" aria-label="Cerrar"><i class="ti ti-x"></i></button>
     </div>
     ...
+    <div class="modal-actions">
+      <button class="btn">Cancelar</button>
+      <button class="btn btn-danger">Confirmar baja</button>
+    </div>
   </div>
 </div>
 ```
 
-Borde superior rojo (`border-top: 3px solid`) + ícono circular de alerta.
-**Decisión de producto (jul 2026)**: sin paso extra de fricción — no se pide
-escribir el nombre ni marcar un checkbox; el detalle de "qué va a pasar"
-vive en el cuerpo del modal (ver `BajaEmpleadoModal.vue`, que ya lo hace
-mostrando el resumen de accesos antes de confirmar). No aplica a "revelar
-contraseña" (es de lectura, ya auditada en Actividad) ni se implementó aún
-para "cerrar asignación reutilizable" (usa `confirm()` nativo del navegador,
-que no admite estilos — requeriría un modal propio; pendiente).
+> **Por qué no hay borde de color, para no reabrirlo sin contexto**
+> (rediseño Materen, Fase 1, sep 2026). Hasta acá
+> `.confirm-dialog--destructive` pintaba un `border-top: 2px` rojo sobre
+> `.modal`. Se evaluó subirlo a borde completo y se descartó: un borde de
+> color rodeando el modal entero se lee como **"esto se rompió"** —el mismo
+> lenguaje visual que un campo de formulario en error— y no como "prestá
+> atención a esta decisión". Además contradecía la regla que esta guía ya
+> tenía escrita para las cards: el contenedor nunca se tiñe por estado, el
+> color vive en un componente interno. Se probó como excepción, se vio
+> forzado, y se revirtió el borde entero, no solo la excepción. Así lo
+> resuelven también Material Design, Apple HIG y GitHub: ninguno tiñe el
+> contenedor. La clase `.confirm-dialog--destructive` ya no existe, y con
+> ella se retiró el prop `overlayClass` de `Modal.vue` — era el gancho para
+> teñir el contenedor y no le quedaba otro consumidor.
+>
+> El `.modal-icon` propio (círculo de 40px) se retiró en la misma pasada:
+> el ícono reusa `.icon-box` + `.icon-box--danger` (32px, esquinas
+> redondeadas), un componente de ícono menos que mantener.
+
+**La X arriba y "Cancelar" abajo conviven a propósito** — no es redundancia.
+La X es el escape por hábito; "Cancelar" le da a la opción *no hacerlo* el
+mismo peso visual que a la opción destructiva, en el punto exacto de la
+decisión. Revisado y confirmado tal cual en la Fase 1: no tocar sin releer
+esto.
+
+**Decisión de producto (jul 2026), sigue vigente**: sin paso extra de
+fricción — no se pide escribir el nombre ni marcar un checkbox; el detalle de
+"qué va a pasar" vive en el cuerpo del modal (ver `BajaEmpleadoModal.vue`,
+que muestra el resumen de accesos antes de confirmar). No aplica a "revelar
+contraseña": es de lectura y ya queda auditada en Actividad. "Cerrar
+asignación reutilizable" **sí** está implementado desde entonces
+(`CuentasPanel.vue`, `ConfirmDialog` con `destructivo`); ya no queda ningún
+`confirm()` nativo en el código.
 
 ### Paginación (`Pagination.vue`)
 
@@ -1289,7 +1753,11 @@ const listaPaginada = computed(() => {
 <tbody>
   <tr v-for="item in listaPaginada" :key="item.id">...</tr>
 </tbody>
-<!-- fuera de <table>, dentro de .table-wrap -->
+</table>
+</div> <!-- cierra .table-wrap -->
+<!-- Pagination va FUERA de .table-wrap (que tiene overflow-y:auto) y como
+     hermana del fallback de tarjetas móvil si la vista tiene uno — así
+     queda fija y siempre visible, en vez de scrollear con las filas. -->
 <Pagination v-model="paginaActual" :total-items="listaFiltrada.length" :page-size="TAM_PAGINA" />
 ```
 
@@ -1299,28 +1767,42 @@ El componente muestra "Mostrando X–Y de Z" y controles anterior/siguiente
 rango al reducirse la lista filtrada. El conteo del badge del toolbar y el
 estado vacío siguen usando la lista filtrada completa, nunca la página.
 
-En uso en las 10 vistas con tabla (Tickets, Empleados, Equipos, Licencias,
-Plataformas, Empresas, Correos, Actividad, Staff, y los paneles de
-Ubicaciones/Tipos de equipo en Configuración). Se descartó a propósito en
-`CuentasPanel.vue`: es una lista de cuentas de un solo empleado (unas
-pocas filas, sin buscador), no un listado global.
+En uso en las 17 vistas con tabla: Tickets, Reporte de satisfacción,
+Empleados, Equipos (+ Importar equipos), Licencias, Plataformas, Empresas,
+Correos, Actividad, KB, Encuestas, Problemas, Staff, y los paneles de
+Ubicaciones/Tipos de equipo/Áreas y obras en Configuración. Se descartó a
+propósito en `CuentasPanel.vue`: es una lista de cuentas de un solo
+empleado (unas pocas filas, sin buscador), no un listado global.
+
+Auditoría de ago 2026: 7 de estas 17 vistas tenían `<Pagination>` DENTRO de
+`.table-wrap`, scrolleando con las filas en vez de quedar fija — quedó así
+porque el patrón correcto (afuera, como hermana) nació cuando cada vista
+sumó su fallback de tarjetas móvil y nunca se retrofiteó a las que no
+pasaron por ese cambio. Las 17 ya siguen el patrón de arriba.
 
 ### Rediseño de tabla (ago 2026) — capa global
+
+> **Densidad y encabezado revisados el 2026-09-03** — ver "Revisión Filas
+> con foco (tablas)" más abajo. Esta sección describe el estado de ago 2026
+> (una sola densidad fija de ~32px, encabezado con fondo de
+> `--color-bg-accent`); lo que sigue vigente son `th.col-elastica`,
+> `th.col-num`/`td.col-num`, `.celda-apilada` y `.celda-sep`, que no
+> cambiaron.
 
 Rediseño tomando Tickets como modelo y bajando a `main.css` todo lo que no
 era específico de ese módulo. **Lo global aplica solo a las ~20 tablas del
 sistema, sin tocar ninguna vista**; lo específico de Tickets está más abajo,
 en "Tabla de Tickets".
 
-- **Densidad**: `td`/`th` pasan de `12px`/`10px` a **`9px`** de padding
-  vertical. Una fila de texto va de ~38px a ~32px — una fila y media más
-  visible por pantalla cada ocho. El gutter horizontal (`1.25rem`) **no
-  cambia**: es el mismo de `.filters`/`.card-toolbar` y alinea la primera
-  columna con el buscador de arriba. Las filas con `.icon-btn` (29px propios)
-  siguen mandando su altura, no se aplastan. `ThOrdenable.vue` espeja el
-  valor en su `.th-ordenable-btn` — **si se vuelve a tocar el padding de
-  `th`, hay que tocarlo ahí también** (el `<th>` va a `padding: 0` y el alto
-  lo pone el botón de adentro).
+- **Densidad** (superada, ver nota arriba): `td`/`th` pasaron de `12px`/`10px`
+  a **`9px`** de padding vertical. Una fila de texto iba de ~38px a ~32px —
+  una fila y media más visible por pantalla cada ocho. El gutter horizontal
+  (`1.25rem`) **no cambia**: es el mismo de `.filters`/`.card-toolbar` y
+  alinea la primera columna con el buscador de arriba. Las filas con
+  `.icon-btn` (29px propios) siguen mandando su altura, no se aplastan.
+  `ThOrdenable.vue` espeja el valor en su `.th-ordenable-btn` — **si se
+  vuelve a tocar el padding de `th`, hay que tocarlo ahí también** (el `<th>`
+  va a `padding: 0` y el alto lo pone el botón de adentro).
 - **`tbody tr:focus-within`**: la fila enfocada por teclado se resalta igual
   que con `:hover`. Antes era la única fila de toda la tabla sin realce.
 - **`th.col-elastica`** (`width: 100%`): marca la columna que absorbe el
@@ -1343,541 +1825,254 @@ en "Tabla de Tickets".
 - **`.celda-sep`**: el separador "·" entre metadatos de una misma celda.
   Decorativo — siempre con `aria-hidden` en el markup.
 
-### Bandejas y filtros de Tickets — tercera pasada (ago 2026)
+### Revisión "Filas con foco" (tablas, 2026-09-03)
 
-Contra un checklist de revisión externa sobre la segunda pasada. Cada punto
-se verificó contra el código antes de aplicarlo — el checklist daba por
-bug o por faltante varias cosas que ya estaban resueltas, y pedía dos
-cambios que **contradicen decisiones de producto ya tomadas** (se listan
-más abajo, no se aplicaron).
+**Qué cambió.** Con las 22 vistas restantes migradas a `CarbonDataTable` en
+la misma pasada (más el piloto `EmpresasView` del día anterior, ya no queda
+ningún `<table>` a mano operativo), se revisó la tabla igual que "Modern
+Clean Enterprise" había revisado botones y campos un día antes: llevarla del
+Carbon estricto hacia el mismo lenguaje de lista denso de Linear/GitHub.
 
-- **"Sin vincular" pasó de filtro a Bandeja**, última del orden de flujo de
-  trabajo (`sin_asignar → mis_tickets → todos → en_progreso → resuelto →
-  rechazado → sin_vincular`). Combo: `estado: vigentes, sinVincular: true`
-  — mismos vigentes que "Todos", filtrados a los no identificados. Antes
-  vivía como checkbox suelto en `MasFiltros`: es el mismo tipo de recorte
-  ("qué tickets revisar") que ya resuelven las otras 6, no un filtro libre
-  como Prioridad.
-- **4 filtros nuevos, todos ejes independientes de la Vista activa**:
-  Nivel de atención (chips, `NIVELES_ATENCION`), Tipo (chips,
-  `OPCIONES_TIPO`), Categoría (`<select>`, `ticketsApi.listCategoriasTicket()`)
-  y Fecha de creación (rango, 2 `<input type="date">`). Viven agrupados con
-  título dentro del popover de `MasFiltros` (Prioridad se queda afuera,
-  visible como chips en el nav — sus 4 valores entran cómodos en 200px de
-  ancho; Nivel/Categoría no, etiquetas más largas). `queryTickets()` y
-  `contarTickets()` (`api/domains/tickets.js`) suman `nivelAtencion`/
-  `tipo`/`categoriaId`/`fechaDesde`/`fechaHasta` a la firma.
-  **Deliberadamente NO hay un filtro de "Estado"** aparte del que ya trae la
-  Vista activa — el checklist lo pedía asumiendo que ya existía junto a
-  Prioridad y Nivel. Sumarlo reintroduciría la MISMA duplicación de 2
-  fuentes de verdad para el mismo dato (Estado) que el modelo de Vistas se
-  creó para cerrar en la segunda pasada — un control de Estado libre y las
-  6 Vistas (que también fijan Estado) terminarían desincronizándose exactamente
-  como el dropdown+chips de antes de agosto.
-- **Chips de filtros activos, removibles**, sobre la tabla (Tabla) y sobre
-  la lista angosta junto al conteo de resultados (Isla) — un chip por
-  VALOR activo (2 prioridades marcadas = 2 chips), cada uno con su propia
-  X. Botón "Limpiar filtros" (quita los 6 ejes secundarios de una — Vista y
-  búsqueda no se tocan, son ejes aparte) tanto al pie del popover como en la
-  fila de chips.
-- **Contador de filtros activos** en el badge de `MasFiltros.vue` (prop
-  `contador` nueva, número — 0 no muestra nada) — mismo componente en Tabla
-  y en el popover mobile.
-- **Indicador "sin vincular" en la tarjeta angosta de Isla**: faltaba —
-  la tarjeta móvil ya lo mostraba como badge con texto; acá va solo el
-  ícono (sin espacio para un badge en ~240px), con `title`/`aria-label`
-  como único texto accesible.
+- **Encabezado sin relleno**: el `th` deja el fondo de `--color-bg-accent`
+  (la cabecera-bandeja de Carbon estricto) y pasa a transparente, apoyado
+  solo en una línea inferior más fuerte que la de las filas
+  (`--color-border-strong`). La lectura de la tabla la sigue sosteniendo el
+  separador horizontal; ya no hace falta además una capa de gris para marcar
+  "esto rotula". `--color-bg-accent` no queda huérfano: sigue en
+  `CarbonButton` (disabled), `AppSearch` y `NotificacionesCampana`.
+- **Tres densidades, no una fija**: `CarbonDataTable` reemplaza el padding
+  único de `9px` (ago 2026) por un prop `densidad` de tres pasos —
+  `sm` (32px, consulta densa: Actividad, los reportes de Satisfacción y de
+  `ReporteTicketsModal`), `md` (40px, **default**, el punto de partida
+  general) y `lg` (48px, vistas insignia con más controles por fila:
+  Empleados, Tickets, Equipos, Staff). Es un prop del componente, no una
+  clase de `main.css` — cada vista declara la suya, no hay que tocar CSS
+  global para cambiarla.
+- **`filaAtributos`**: prop nueva de `CarbonDataTable`, complementa a
+  `claseFila`. Devuelve atributos ARIA por fila (`(fila) => ({
+  'aria-current': 'true' })`) para lo que una clase no cubre — un estado que
+  un lector de pantalla tiene que anunciar, no solo ver (ej. "este es el
+  ticket abierto actualmente" en `TicketsView`, que antes tenía ese
+  `aria-current` a mano en su `<tr>` y no había forma de preservarlo solo
+  con `claseFila`).
+- **`.fila-accion`** (`main.css`): botón de icono de fila visible solo en
+  hover o foco de teclado — patrón nuevo para acciones que no necesitan estar
+  siempre a la vista en una fila ya espaciosa. Reglas de accesibilidad, las
+  tres obligatorias:
+  - **foco de teclado** (`tbody tr:focus-within .fila-accion`): quien tabula
+    hasta el botón tiene que verlo aparecer, no solo poder activarlo a
+    ciegas.
+  - **`@media (hover: none)`**: siempre visible en dispositivos táctiles —
+    sin esto el botón no aparece nunca en una tablet o un celular, que no
+    tiene hover.
+  - **`prefers-reduced-motion`**: sin transición de opacidad, aparece de
+    golpe en vez de con un fundido.
 
-#### Persistencia de filtros al navegar al detalle y volver
+  Quien declara una columna de acciones le agrega la clase al botón, no a la
+  celda.
 
-Bug real, no cosmético: en modo Tabla, abrir un ticket navega a
-`/tickets/:id`, que **desmonta `TicketsView.vue` por completo** (rutas
-separadas). Vista/Prioridad/Nivel/Tipo/Categoría/Fecha vivían en refs
-locales del componente — al volver, se perdían y el nav volvía siempre a
-"Sin asignar".
+**Por qué.** La base ya la puso "Modern Clean Enterprise" (radios, sombras,
+campo outlined, botón secundario con borde): esto extiende el mismo criterio
+a la pieza que faltaba, la tabla, que hasta acá conservaba la cabecera-bandeja
+de Carbon estricto.
 
-- **`vistaActiva` se movió al store** (`stores/tickets.js`, ya no un
-  `ref()` local) — sobrevive al desmontaje porque el store Pinia persiste
-  mientras dura la sesión de SPA (se recrea recién en una recarga
-  completa). Sigue arrancando en `'sin_asignar'` porque ESE es el default
-  de `state()`, aplicado de verdad solo en una sesión nueva — "Mis
-  tickets" sigue sin recordarse de una sesión a otra, la regla original no
-  cambió, solo se corrigió CUÁNDO se considera "sesión nueva" (una recarga
-  de página, no un clic a un ticket y volver).
-- **Los 6 filtros secundarios pasaron de `ref()` + `watch()` a
-  `computed({ get, set })` atado directo a `store.filtros`** — ya no hay
-  refs locales que resetear: el control siempre MUESTRA lo que está
-  realmente aplicado, en cualquier montaje.
-- **`resetearFiltros()` ya NO se llama en cada montaje.** En su lugar,
-  `resetearBusqueda()` (nueva, más angosta: solo `filtros.q`). Motivo para
-  no eliminar el reset por completo: el buscador es la ÚNICA pieza que
-  sigue siendo un `ref()` local fresco en cada montaje (`useBusqueda.js`);
-  sin resetear `filtros.q` a la par, la caja se vería vacía mientras el
-  filtro de texto anterior seguiría aplicado en el servidor — el mismo
-  mismatch que `resetearFiltros()` ya prevenía acá, y que sigue
-  documentado (sin tocar) en `stores/empleados.js` desde que se reportó en
-  jul 2026. Los otros 19 módulos con el patrón "resetear filtros en cada
-  montaje" **no se tocaron** — es un cambio específico de Tickets, no una
-  regla nueva del sistema.
+**Qué NO cambió.** La arquitectura de columnas declarativas de
+`CarbonDataTable` (una columna, un lugar; de ahí salen `colspan`, skeleton,
+orden y tarjeta móvil) y el criterio "sin zebra, sin bordes verticales": el
+hover de fila en `layer-hover-01` y el separador horizontal de 1px siguen
+siendo lo que sostiene la lectura, igual que antes de esta revisión.
 
-#### No aplicado — contradice una decisión de producto ya tomada
+### Migración de formularios a `CarbonCampo` (2026-09-03)
 
-- **"Todos (vigentes)" sin filtro de estado** (el checklist decía "debería
-  mostrar el total del sistema, no un subconjunto"): "vigentes" es a
-  propósito el mismo recorte que ya comparten `dashboard.js` y el RPC de
-  reportes (053) — excluye resuelto/cerrado/rechazado. Repurposearlo para
-  mostrar TODO cambiaría su significado en 3 lugares del sistema a la vez,
-  no es una corrección de un bug de Tickets.
-- **Bandeja "Cerrados" separada de "Resuelto"**: desharía la fusión
-  resuelto+cerrado decidida el 2026-08-21 (`ESTADOS_TICKET` en
-  `dominio-tickets.js`) — `cerrar_ticket()` (migración 051) encadena ambos
-  estados en un solo clic a propósito, nadie ve nunca un ticket parado en
-  'resuelto' sin cerrar, y separarlos en el nav reintroduce la pregunta
-  "¿en qué se diferencian?" que la fusión vino a cerrar.
+**Qué cambió.** Los formularios del sistema terminaron de migrar de
+`.form-group` a `CarbonCampo` en cuatro tandas — 30 archivos de `modules/`
+usan hoy el componente (contado con `grep -rl "CarbonCampo" modules`). Lo
+que quedó en `.form-group` no es deuda pendiente sino la decisión correcta
+de no forzar el patrón "etiqueta arriba + caja outlined" donde rompe un
+layout compacto: envoltorio de un `BuscadorCombo` (`AsignarLicenciaModal`,
+`LicenciasView`, y varios más que combinan ambos), un checklist o
+radio-group (`StaffModulosForm`), o una fila densa sin label visible
+(barras de filtro, la grilla de edición de `ImportarEquiposView`, altas
+rápidas inline). Las únicas dos excepciones sin un criterio de densidad
+detrás son `DesignSystemView` y `StyleLabView`, y es intencional: son
+vitrinas que muestran el `.form-group` viejo como referencia histórica, no
+pantallas de trabajo.
 
-#### No aplicado — falta una operación de backend
+La migración de los 30 archivos, sin embargo, expuso dos huecos reales en
+`CarbonCampo` que no existían cuando se documentó el componente
+originalmente:
 
-- **Vincular/desvincular un ticket a un empleado desde el detalle**: no
-  existe esa operación hoy. El único "vincular" que hay en el dominio
-  Tickets es **ticket↔problema** (`api/domains/problemas.js`,
-  `vincularTicket`/`desvincularTicket`/`listTicketsVinculados`,
-  consumido por `ProblemaDetalleView.vue`) — un concepto completamente
-  distinto de `ticket.vinculado` (si el ticket se identificó automáticamente
-  con un empleado por DNI/contacto). Sumar esto exige una RPC nueva
-  (asignar `empleado_id` a un ticket que llegó sin vincular), no es un
-  cableado de UI sobre algo que ya existe.
+- **Atributos nativos perdidos.** `CarbonCampo` no declaraba `autocomplete`,
+  `pattern`, `inputmode`, `min`/`max`/`step` ni `maxlength` como props, y sin
+  `inheritAttrs: false` Vue los aplicaba al `<div>` raíz del componente en
+  vez de al control real — un atributo que "no hacía nada" y no avisaba por
+  qué. Se encontró primero en `LoginView`, que perdía
+  `autocomplete="current-password"` (rompe el ofrecimiento de credenciales
+  guardadas del gestor de contraseñas del navegador), y en `PlataformasView`,
+  que perdía el `pattern` de validación del slug. La solución es
+  `defineOptions({ inheritAttrs: false })` en el componente más
+  `v-bind="$attrs"` en el `<input>`/`<select>`/`<textarea>` interno: ahora
+  cualquier atributo nativo que el que llama declare llega al control real.
+- **Foco tras error, inalcanzable.** Un template ref sobre `<CarbonCampo
+  ref="x">` entregaba la instancia del componente, no el control DOM —
+  `x.focus()` no existía. `LicenciaForm` necesitaba llevar el foco al primer
+  campo que falló la última validación (y luego `EquipoForm` y
+  `EmpleadoForm` adoptaron el mismo patrón), algo que con `.form-group` a
+  mano era un `document.getElementById(...).focus()` directo. Se resolvió
+  con `useTemplateRef('control')` sobre el control interno y
+  `defineExpose({ focus: () => control.value?.focus() })`: quien tiene la
+  ref del componente puede llamar `.focus()` y el foco llega adonde
+  corresponde.
 
-#### Verificado, no tocado (ya estaba bien)
+**Qué NO cambió.** La arquitectura del componente en sí — un solo archivo
+con prop `tipo` en vez de tres componentes separados, el campo outlined de
+"Modern Clean Enterprise", el error por campo con `aria-describedby` — sigue
+siendo la que describe la fila de `CarbonCampo` en "Primitivas de Carbon" y
+su propio comentario de cabecera. Esto fue extender el componente para que
+cubriera casos que ya usaba (atributos nativos, foco programático), no
+rediseñarlo.
 
-Sin cambios en el código, solo constancia de que se revisó: las 3 bandejas
-por estado (En progreso/Resuelto/Rechazados) ya mostraban tickets de
-**todos** los técnicos, no solo el usuario actual; el resaltado de fila/
-tarjeta seleccionada (segunda pasada); `.table-wrap` ya scrollea en
-horizontal; Prioridad+Asignado ya estaban en la tarjeta angosta de Isla; el
-badge "Sin vincular" ya estaba en el panel de detalle; la conversación ya
-diferencia nota interna de visible; las 4 acciones guiadas por estado
-(Iniciar atención exige prioridad+nivel+asignado+tipo antes de guardar,
-Rechazar y Reabrir piden motivo vía `ConfirmDialog`, Marcar resuelto pide
-confirmación, Reabrir ya está gateado a `auth.esJefe` + estado terminal);
-el contraste de la fila activa; Nivel ya iba en texto plano, no badge; el
-listado ya pagina en servidor (`listTicketsPage`), no carga todo.
+### Migración de badges/tags a `BadgeEstado`/`CarbonTag` (2026-09-03)
 
-#### Pendiente, fuera de esta pasada
+**Qué cambió.** Última pieza del rediseño del día: las vistas que todavía
+escribían `<span class="badge badge--X">` a mano migraron a `BadgeEstado` (si
+el valor es un tipo de dominio ya resuelto en `core/badges.js`) o a
+`CarbonTag` directo (si es decorativo o local a una vista). Hoy 13 archivos
+de `modules/` usan `BadgeEstado` (`grep -rl "BadgeEstado" modules`) y el
+resto de los tags semánticos —contadores, marcas de "duplicado", "vencida",
+"sin devolver", el filtro de comentarios internos— usan `CarbonTag`
+directo con una `variante` fija en el propio archivo. `.badge`/`.badge--X`
+de `main.css` no se retiró: sigue existiendo, pero como vitrina histórica
+en `DesignSystemView` y `StyleLabView`, las dos pantallas que a propósito
+muestran el sistema de clases viejo como referencia (mismo criterio que ya
+aplicaba a `.form-group` en la migración de formularios y al `<table>` a
+mano en la de tablas). Lo que queda con nombre `.badge-*` en el resto del
+código (`.badge-count`, `.badge-inline`, `.badge-sin-devolver`) no es deuda
+pendiente: son utilidades de layout — separación, tamaño de contador,
+márgenes contra el texto vecino — que se aplican junto a un `CarbonTag` o
+`BadgeEstado`, no una clase de color alternativa a ellos.
 
-Filtro por "Asignado a" (staff): el campo `asignadoA` ya lo escribe la
-Vista "Mis tickets" (`__yo__` resuelto a `auth.user.id`) — un filtro libre
-sobre el MISMO campo, aplicado independiente de la Vista, necesita decidir
-qué gana cuando ambos lo tocan (¿un filtro "Asignado a: Julio" mientras la
-Vista activa es "Mis tickets"?) antes de sumarse; no es una extensión
-mecánica del patrón de Prioridad. Columna de Acciones por fila, drawer
-<1200px, filtros en la URL (compartibles) y contadores de Bandejas en
-tiempo real quedan fuera por alcance — cada uno es un pedazo de trabajo
-propio, no una corrección puntual.
+**El criterio de decisión** es el mismo que ya separaba dominio de
+presentación en el resto de la capa de diseño:
 
-### Bandejas y filtros de Tickets — cuarta pasada (2026-08-28)
+- **`BadgeEstado`** cuando el valor es un tipo de dominio que
+  `core/badges.js` ya resuelve o al que vale la pena darle nombre ahí
+  (`empleado`, `ticket`, `prioridad`, `situacion`, `tipo_cuenta`, etc.) —
+  el color sale de una función de dominio, no de una `variante` escrita a
+  mano en la vista.
+- **`CarbonTag` directo** para lo decorativo o local a una sola vista —
+  un contador, "Código duplicado" en `ImportarEquiposView`, "Vencida" en
+  `ProblemaDetalleView`, "Sin devolver" en `EquiposView`, el interno/externo
+  de `TicketComentarios`. Ninguno de estos es un estado que otra pantalla
+  necesite reconocer con el mismo color, así que no se le inventó un `tipo`
+  nuevo en `core/badges.js` solo para poder pasar por `BadgeEstado` — hacerlo
+  hubiera inflado el mapa de dominio con entradas de un solo uso.
 
-Dos observaciones de flujo de trabajo sobre la tercera pasada, verificadas
-contra el código antes de aplicarse.
+**Qué NO cambió.** La arquitectura dominio/presentación que ya describían
+`BadgeEstado.vue` y `CarbonTag.vue` desde el 2026-09-02 (`BadgeEstado`
+resuelve QUÉ color le toca a un valor vía `core/badges.js`, `CarbonTag`
+resuelve CÓMO se ve ese color): esto fue terminar de adoptar esa
+arquitectura en las vistas que todavía no la usaban, no rediseñarla.
 
-- **"Mis tickets" dejó de ser una 7ma Vista plana.** En la tercera pasada
-  combinaba `estado: vigentes` + `asignadoA: yo` como combo cerrado, así que
-  no había forma de ver "mis tickets en progreso" o "mis tickets
-  rechazados" sin salir de esa Vista — dos preguntas de triage reales que
-  esa Vista no podía responder. Ahora es un **toggle independiente**
-  (`store.misTicketsActivo`, checkbox "Mis tickets" en el nav), que se
-  combina con cualquiera de las 4 Vistas de estado (`todos`/`en_progreso`/
-  `resuelto`/`rechazado` — `VISTAS_CON_MIS_TICKETS` en `TicketsView.vue`):
-  con el toggle activo, esa Vista se acota a `asignadoA: auth.user.id`; sin
-  él, se ve global (todos los técnicos), exactamente el mismo comportamiento
-  de antes. El toggle queda **deshabilitado** en `sin_asignar`/`sin_vincular`
-  — "mis tickets sin asignar" no tiene sentido (un ticket sin asignar no es
-  de nadie), tampoco "mis tickets sin vincular" (ese filtro no depende del
-  técnico). `VISTAS_TICKETS` vuelve a 6 ítems planos (ya no incluye
-  `mis_tickets`); `misTicketsActivo` vive en el store junto a `vistaActiva`,
-  misma razón (sobrevive a navegar a `/tickets/:id` y volver), mismo
-  arranque en `false` cada sesión, sin `localStorage`. Los contadores por
-  Vista (`cargarConteos`) ahora recalculan también con `misTicketsActivo`
-  como fuente — igual que ya hacían con búsqueda/prioridad/nivel/etc.
-- **`MasFiltros.vue` se retiró del sistema** (componente eliminado, ya no
-  tiene consumidores) **y sus filtros pasaron a estar siempre visibles.**
-  El popover escondía Nivel/Tipo/Categoría/Fecha (y, en mobile, también
-  Prioridad) detrás de un ícono — con Tickets señalado como la plantilla de
-  diseño para el resto de los módulos, no conviene que el patrón por
-  defecto sea "oculto hasta que alguien lo busque". Ahora Prioridad, Nivel
-  de atención, Tipo, Categoría y Fecha de creación son un solo bloque
-  (`.tk-filtros-secundarios`, con grupos `.tk-filtro-grupo`/
-  `.tk-filtro-titulo`) siempre visible: en el nav de escritorio, apilado
-  bajo las Bandejas (compartido por Tabla e Isla, igual que antes); en
-  mobile, su propia fila bajo la barra de búsqueda. El contador de filtros
-  activos y el botón "Limpiar filtros" siguen igual (mismo
-  `cantidadFiltrosActivos`, mismos 5 ejes secundarios), solo cambia dónde
-  viven — ya no hay un trigger que "abrir". El atajo `f` de
-  `useAtajosLista.js` se retiró de Tickets por la misma razón: no hay nada
-  que abrir/cerrar (el composable sigue existiendo, genérico, para otro
-  módulo que sí use un popover de filtros).
+### Rediseño Modern Clean Enterprise — cierre (2026-09-03)
 
-### Bandejas y filtros de Tickets — quinta pasada (2026-08-28)
+Con esta migración de badges/tags, el rediseño completo del sistema
+("Modern Clean Enterprise" + componentización) queda cerrado. Fue un solo
+esfuerzo coordinado en seis piezas, todas fechadas el mismo día y en este
+orden:
 
-Corrección sobre la cuarta pasada, tras revisarla en uso real. Dos cambios
-de fondo, no de superficie.
+1. **Botones** (`CarbonButton`) — ver "Revisión Modern Clean Enterprise".
+2. **Avisos/toasts** (`CarbonNotification`) — ver "Revisión Modern Clean
+   Enterprise".
+3. **Paginación** (`CarbonPagination`) — fila de `CarbonPagination` en
+   "Primitivas de Carbon".
+4. **Tablas** (`CarbonDataTable`) — ver "Revisión 'Filas con foco'".
+5. **Formularios** (`CarbonCampo`) — ver "Migración de formularios a
+   `CarbonCampo`".
+6. **Badges/tags** (`BadgeEstado`/`CarbonTag`) — esta sección.
 
-- **"Todos" tenía el mismo bug de nombre que "Mis tickets" tenía de
-  estructura**: `{ id: 'todos', label: 'Todos (vigentes)', filtro: {
-  estado: ESTADO_FILTRO_VIGENTES } }` prometía "todos" y entregaba
-  "vigentes" (excluye resuelto/cerrado/rechazado) — detectado en uso, no
-  solo un matiz de copy. `ESTADOS_MIS_TICKETS` ahora define `{ id: 'todos',
-  estado: '' }`: `queryTickets()` (`api/domains/tickets.js`) ya trataba
-  `estado: ''` como "sin cláusula", así que el arreglo fue borrar el mapeo,
-  no sumar código nuevo. `ESTADO_FILTRO_VIGENTES` no se eliminó — sigue
-  siendo el estado de `sin_asignar`/`sin_vincular` (ahí sí tiene sentido: no
-  querés ver, en esas bandejas, un ticket ya resuelto/rechazado que nadie
-  tomó).
-- **"Mis tickets" pasó de toggle opcional a bandeja-requisito.** La cuarta
-  pasada lo dejaba como modificador: los 4 sub-estados
-  (`todos`/`en_progreso`/`resuelto`/`rechazado`) eran navegables GLOBAL
-  (todos los técnicos) sin necesidad de activarlo, y el toggle solo sumaba
-  `asignadoA: yo` encima. En uso, esto no calzaba con el flujo real: si
-  "Sin asignar" deshabilita todo lo demás al elegirla, "Mis tickets"
-  debía habilitar sus propios sub-filtros al elegirse a ELLA, no ser un
-  interruptor aparte flotando sobre bandejas ya usables sin él. Ahora
-  `vistaActiva` tiene 3 valores exclusivos (`sin_asignar` | `sin_vincular` |
-  `mis_tickets`, `stores/tickets.js`) y los 4 sub-estados (`ListaVistas`
-  con `v-model="store.estadoMisTickets"`) se deshabilitan enteros
-  (`:disabled="!misTicketsActivo"`, prop nueva en `ListaVistas.vue`) salvo
-  que `vistaActiva === 'mis_tickets'` — ya no hay forma de ver "En
-  progreso" sin acotar a un técnico, a propósito. **Contrapartida
-  aceptada**: se pierde la vista global de un estado por todos los
-  técnicos a la vez (ej. "todo lo Resuelto del equipo"); no había ese pedido
-  en esta pasada, y si aparece más adelante es una bandeja nueva, no
-  reabrir esta decisión.
-- **"Sin vincular" se agrupó con "Sin asignar"** en la misma sección del
-  nav (`BANDEJAS_TICKETS`, primer `ListaVistas` del bloque) — mismo tipo de
-  pregunta ("qué necesita revisión/limpieza"), visualmente separadas de
-  "Mis tickets" por un `.tnav-separador`. Siguen siendo excluyentes entre
-  sí (mismo `vistaActiva`), la agrupación es solo de layout.
-- **Prioridad, Nivel de atención, Tipo y Categoría se eliminaron como
-  filtros del listado** (no solo se reubicaron, como en la cuarta pasada):
-  cuatro ejes sin demanda real de uso, cada uno permanente en un nav de
-  200px. El dato sigue viéndose en la tabla/detalle/tarjetas — se quitó
-  únicamente la capacidad de FILTRAR el listado por ellos.
-  `queryTickets()`/`contarTickets()` (`api/domains/tickets.js`) ya no
-  reciben `prioridad`/`nivelAtencion`/`tipo`/`categoriaId` en la firma;
-  `store.filtros` los sacó del state. `ChipsFiltro.vue` quedó sin
-  consumidores y se eliminó — sus clases globales (`.chip-filtro`,
-  `.chips-filtro`) se trasladaron a `main.css` porque la fila de "chips de
-  filtros activos" de `TicketsView.vue` (ahora solo Fecha, removible con X)
-  seguía necesitándolas.
-- **Fecha de creación, único filtro secundario que queda, se rediseñó**:
-  Desde/Hasta pasaron de lado a lado sin etiqueta visible (solo
-  `aria-label`, apretados en un ancho pensado para 5 filtros) a apilados
-  verticalmente, cada uno con su propia mini-etiqueta (`.tk-filtro-fecha-campo`)
-  — un campo por línea se lee mejor en los 200px del nav ahora que es el
-  único filtro secundario.
+Quien lea esta guía más adelante y encuentre las seis secciones fechadas
+2026-09-03: no son seis cambios sueltos que coincidieron en la fecha, son
+las seis piezas de un mismo plan de convergencia a componentes de Carbon,
+ejecutadas en orden dentro del mismo día.
 
-### Bandejas y filtros de Tickets — sexta pasada (2026-08-28)
+### Tickets — bandejas, filtros y shell (estado vigente)
 
-Hueco detectado tras usar la quinta pasada: con "Mis tickets" como
-requisito, dejó de existir CUALQUIER vista sin restricción de técnico —
-"¿cómo veo todos los tickets de todos los técnicos?" no tenía respuesta
-(`Sin asignar`/`Sin vincular` no sirven para eso, y `Mis tickets` acota
-siempre a uno mismo).
+> **De dónde sale esta sección.** Hasta el 2026-09-01 este mismo contenido
+> ocupaba ~535 líneas repartidas en ocho apartados consecutivos ("tercera
+> pasada", "cuarta pasada"… hasta "Shell único"), cada uno narrando **cómo se
+> llegó** al estado siguiente. Para responder "¿cómo funcionan hoy los filtros
+> de Tickets?" había que leer los ocho y deducir el resultado, y varios se
+> contradecían entre sí porque el posterior superaba al anterior sin decirlo.
+> La narración completa de las diez pasadas ya vivía —y sigue viviendo— en
+> `docs/CHANGELOG.md`, que es su lugar. Acá queda solo el estado actual,
+> verificado contra `TicketsView.vue`, no contra los relatos.
 
-- **Nueva bandeja "Equipo", hermana de "Mis tickets"** — mismos 4
-  sub-estados (`ESTADOS_SUBFILTRO`: Todos/En progreso/Resuelto/Rechazados),
-  misma mecánica de requisito (sub-estados deshabilitados salvo que
-  `vistaActiva === 'equipo'` — **superado por la séptima pasada**, que
-  reemplazó las dos listas fijas por una sola contextual y eliminó el estado
-  deshabilitado; el resto de esta sección sigue vigente), pero con
-  `asignadoA: ''` en vez de
-  `auth.user.id` — sin acotar a nadie. `vistaActiva` pasa a 4 valores
-  exclusivos: `'sin_asignar' | 'sin_vincular' | 'mis_tickets' | 'equipo'`.
-- **Cada bandeja tiene su PROPIO campo de sub-estado** en el store
-  (`estadoMisTickets` / `estadoEquipo`, `stores/tickets.js`) — no
-  comparten uno solo: cambiar de "Mis tickets" a "Equipo" no debe pisar en
-  qué sub-estado estabas mirando la otra. Antes de esto se evaluó (y se
-  descartó) compartir un único campo con ids con prefijo
-  (`mis_todos`/`equipo_todos`) para evitar la colisión de conteos —
-  2 campos simples en el store es más legible que ids compuestos.
-- **`conteosVistas` gana estructura anidada**: `{ sin_asignar, sin_vincular,
-  misTickets: { todos, en_progreso, resuelto, rechazado }, equipo: { ... } }`
-  — 2 sub-mapas en vez de uno plano, porque "Mis tickets" y "Equipo"
-  comparten los mismos `id` de sub-estado (`todos`, `en_progreso`, ...) y un
-  solo objeto plano habría hecho que ambos `ListaVistas` de sub-estados
-  leyeran el mismo número. Cada `ListaVistas` recibe su propio sub-mapa
-  (`:conteos="conteosVistas?.misTickets"` / `?.equipo`). `cargarConteos()`
-  pasa de 6 queries de conteo a 10 (2 bandejas planas + 4 sub-estados × 2
-  alcances), todas en paralelo con `Promise.all`.
-- **Ícono `ti-users` para "Equipo"** (vs. `ti-user` de "Mis tickets") —
-  mismo par visual singular/plural que ya distingue el resto del sistema.
-- **Contrapartida de la quinta pasada, ya cerrada**: la nota "se pierde la
-  vista global de un estado por todos los técnicos a la vez" en el
-  changelog de la quinta pasada quedó resuelta por esta bandeja — no es un
-  pendiente abierto.
+**Dos modos de vista**, mismo esqueleto (`.tickets-shell`):
 
-### Bandejas y filtros de Tickets — séptima pasada (2026-08-28)
-
-Las seis pasadas anteriores fueron sumando ejes al riel de 200px sin volver a
-mirarlo entero. El resultado: **12 ítems, de los cuales 8 eran los mismos 4
-sub-estados repetidos dos veces** (una copia bajo "Mis tickets", otra bajo
-"Equipo") **y 4 estaban permanentemente deshabilitados** — los de la bandeja
-que no fuera la activa. Un riel donde un tercio está siempre gris y las
-etiquetas se repiten palabra por palabra a 12px de distancia no se escanea:
-obliga a desambiguar por posición relativa a un encabezado. Encima, las 2
-bandejas más miradas ("Mis tickets", "Equipo") eran justo las únicas 2 **sin
-contador**.
-
-- **Sub-estado: una instancia contextual, no una por bandeja.** El riel pasa
-  a 4 bandejas al mismo nivel + **una** lista de sub-estados, la de la
-  bandeja activa (`subestadoActivo`, un `computed` con get/set que lee y
-  escribe el campo que corresponda). En `sin_asignar`/`sin_vincular` no se
-  renderiza. **El modelo de datos no cambió**: siguen siendo dos campos
-  separados en el store (`estadoMisTickets`/`estadoEquipo`), por la misma
-  razón de la sexta pasada — lo que se unificó es el *control*, no el estado.
-- **Cero controles deshabilitados en pantalla.** Desaparece el único uso de la
-  prop `disabled` de `ListaVistas.vue` en esta vista. Un control que en este
-  contexto nunca puede usarse no debería ocupar espacio e invitar al clic.
-- **Las 4 bandejas llevan contador** (`conteosBandejas`). Las de trabajo usan
-  el conteo de su sub-estado `todos`, que es el total real de la bandeja sin
-  recorte de estado (`estado: ''`), no una suma de los otros tres.
-- **Nivel de atención pierde su columna** en la tabla (7 → 6) y se suma a la
-  línea de metadatos de la celda "Ticket", junto a código y categoría: es la
-  misma familia (clasificación, no estado) y el valor es un código de 2
-  caracteres que además suele venir vacío — la columna era casi entera "—".
-  `.tk-nivel` pasa a `color: inherit` para no leerse como el dato más
-  importante de esa línea y para heredar solo el ajuste de contraste de la
-  fila activa.
-- **Header: de 5 controles a 4.** "Satisfacción" y "Enlace soporte" bajan al
-  menú "Más", que ahora existe también en escritorio; "Reporte" se queda como
-  botón visible. Eran dos botones de texto de baja frecuencia compitiendo de
-  igual a igual con el único `.btn-primary` de la vista.
-- **"Exportar" se muda al menú "Más", y eso cierra un hueco real**: vivía en
-  `.tickets-filtros`, que solo se renderiza en modo Tabla — **desde Isla no
-  había forma de exportar la bandeja**. En el header sirve a las dos vistas.
-- **Continuidad de selección entre Tabla e Isla.** `ticketSeleccionado`
-  arranca en `store.ultimoAbierto` en vez de `null`. Las dos vistas ya
-  marcaban el ticket en curso pero con dos estados distintos: abrir un ticket
-  en Tabla y pasar a Isla mostraba el panel vacío aunque el sistema sabía
-  cuál era — y `verTicket()` ya escribía `ultimoAbierto` en ambos modos, así
-  que el dato estaba ahí sin usarse. Sigue habiendo estado vacío en una
-  sesión de SPA nueva, donde `ultimoAbierto` es `null` de verdad.
-- **`FiltroFechaCreacion.vue`** — el bloque de Desde/Hasta estaba duplicado
-  palabra por palabra (nav de escritorio + barra móvil), salvo los `id`, que
-  deben diferir para que cada `<label for>` apunte a su propio input. Sus
-  estilos se mudaron **con** el markup, no por prolijidad: el `<style scoped>`
-  de un padre alcanza el elemento raíz de un hijo pero no su interior.
-- **Estado vacío del panel de Isla** usa `EmptyState` en vez de un ícono +
-  2 `<p>` hechos a mano con su propio tamaño de ícono suelto.
-
-### Variantes de `ListaVistas`
-
-| Variante | Layout | Dónde |
+| Modo | Cuándo | Qué ocupa el shell |
 |---|---|---|
-| `nav` (default) | Columna, label elástico para que los contadores alineen | Riel de bandejas y sub-estados (escritorio) |
-| `segmento` | Grupo horizontal contenido, cada botón mide su contenido | Barra de filtros móvil |
+| `tabla` | Default; **único** modo en móvil (`vistaEfectiva` lo fuerza) | Nav de bandejas + tabla |
+| `triage` | Escritorio, elección del usuario | Nav de bandejas + lista angosta + panel de detalle |
 
-La variante `segmento` **copia deliberadamente** el tratamiento de
-`SelectorVista.vue` (contenedor `--color-bg-subtle` + borde + radio, activo en
-`--color-bg-elevated` + acento + `--shadow-sm`) en vez de inventar un tercer
-lenguaje de "seleccionado". En el sistema hay exactamente dos: el fondo de
-acento tenue (nav/sidebar, sobre superficie elevada) y este (grupo segmentado,
-sobre superficie hundida). El activo no puede usar `accent-subtle` acá porque
-el contenedor ya es `bg-subtle` y los dos tonos se pisan.
+El modo se persiste con `useVistaModulo('tickets', ['tabla', 'triage'])`. Un
+valor desconocido en `localStorage` cae solo al default: el composable valida
+contra la lista y descarta lo que no reconoce, así que un renombre de modo no
+necesita migración de datos.
 
-> **Par de contraste nuevo, verificado**: `SelectorVista` usa el mismo
-> contenedor pero sus botones son **solo-ícono** (umbral 3:1, indicador no
-> textual); los segmentos de `ListaVistas` llevan **etiqueta**, así que el
-> mismo fondo pasa a exigir 4.5:1. Al medirlo apareció un fallo real:
-> `.tnav-contador` usa `--color-text-tertiary`, calibrado contra
-> `--color-bg-elevated` (4.86:1), y sobre `--color-bg-subtle` cae a **4.33:1**.
-> Se sube a `--color-text-secondary` (5.56:1) **solo en esta variante** —
-> mismo remedio local que ya usa `.fila-ticket--activa`, sin tocar el token
-> global. Los tres pares (`segmentoReposo`, `segmentoContador`,
-> `segmentoActivo`) quedaron en `scripts/contraste.mjs`.
+**Nav y contenido son la MISMA tarjeta en los dos modos.** Lo que cambia entre
+ellos es la densidad interna, nunca el marco. `.tickets-shell` lleva
+`gap`/`padding` incondicionales, y el override de borde+radio alcanza a las dos
+vistas (`.tickets-shell .card--fill`). Cualquier override así **necesita su
+reset dentro de `@media (max-width: 768px)` y colocado DESPUÉS** de la regla de
+escritorio en el archivo: con la misma especificidad, el empate lo resuelve el
+orden de aparición, no el estar dentro de una media query.
 
-Por qué el sub-estado es vertical en el riel y segmento en móvil: el riel mide
-200px y "Todos · En progreso · Resuelto · Rechazados" con sus contadores no
-entra en una fila de ese ancho. En móvil hay ancho de sobra, y ahí el segmento
-**sí** paga: sueltos en la barra, sus 4 ítems se leerían igual que las 4
-bandejas de la fila de arriba, que son otro eje.
+**Cuatro bandejas, en dos grupos:**
 
-### Bandejas y filtros de Tickets — octava pasada, "Isla" se renombra a Triage (2026-08-28)
+| Grupo | Bandeja | Alcance |
+|---|---|---|
+| Revisión | `sin_asignar`, `sin_vincular` | Trabajo que nadie tomó todavía |
+| Trabajo | `mis_tickets`, `equipo` | Trabajo en curso, por responsable |
 
-Feedback directo de uso, no un hallazgo de auditoría: alternar entre Tabla y
-"Isla" se sentía **mal hecho** — el nav saltaba de riel pegado al borde
-(Tabla) a tarjeta con radio (Triage) y toda la pantalla se recomponía en el
-cambio, en vez de leerse como dos vistas del mismo sistema. El nombre "Isla"
-también quedó en duda: nombraba el LOOK (tarjetas flotando como islas), no la
-FUNCIÓN (una consola de triage: lista angosta para escanear + detalle al
-lado, sin navegar). Dos cambios, uno de fondo y uno de nombre:
+- Cada bandeja lleva contador (`conteosBandejas`).
+- **Solo las dos de trabajo tienen sub-estado** (`Todos` / `En progreso` /
+  `Resuelto` / `Rechazados`). En las de revisión el control **no se
+  renderiza** — antes se mostraba deshabilitado, que es peor: ocupa el mismo
+  espacio, invita al clic y no responde.
+- `Todos` no lleva ninguna restricción de estado. Es literal: cualquier estado,
+  sin recorte. La versión anterior lo llamaba "Todos (vigentes)" y excluía los
+  terminales — prometía todo y entregaba un subconjunto.
+- El **control** de sub-estado es uno solo y contextual, pero el **estado** vive
+  separado por bandeja (`estadoMisTickets` / `estadoEquipo`): pasar de "Mis
+  tickets" a "Equipo" no pisa en qué sub-estado estabas mirando la otra.
 
-- **El tratamiento de tarjeta flotante pasa a ser el shell base, no una
-  particularidad de un modo.** `.tickets-shell` gana `gap: 16px; padding:
-  16px;` incondicional (antes solo `.tickets-shell--isla` los tenía); se
-  retira la regla que despojaba al nav de Tabla a "riel" (borde solo a la
-  derecha, sin radio); el override que le devolvía borde+radio+
-  `overflow:hidden` a la tarjeta de contenido pasa de `.tickets-lista
-  .card--fill` (solo alcanzaba a Triage) a `.tickets-shell .card--fill`
-  (alcanza a las dos). El resultado: nav y contenido son la MISMA tarjeta en
-  los dos modos — lo que cambia entre ellos es la densidad interna (la tabla
-  sigue tan compacta como siempre), no el marco que la contiene. La sección
-  "Shell único de Tickets" de más abajo documentaba el paradigma dividido
-  como decisión **a propósito** — quedó superada por esta pasada, no se
-  reescribe (valor histórico), se anota ahí mismo.
-  > **Bug real atrapado sin poder ver el render** (no había navegador
-  > disponible en la sesión que hizo este cambio): el override ampliado
-  > (`.tickets-shell .card--fill`) no tenía guarda de mobile, así que en un
-  > viewport ≤768px —donde `.tickets-shell` vuelve a `padding: 0`— la
-  > tarjeta de Tabla (que SÍ se monta en mobile, a diferencia de Triage)
-  > habría quedado con borde+radio+`overflow:hidden` pegada a los 4 bordes
-  > de la pantalla, con el radio cortado contra el viewport. Se agregó un
-  > reset dentro de `@media (max-width: 768px)`, y tuvo que colocarse
-  > DESPUÉS de la regla de escritorio en el archivo: misma especificidad en
-  > los dos selectores, y un empate de especificidad lo resuelve el orden de
-  > aparición en el código fuente, no si un lado está dentro de `@media`. Se
-  > verificó leyendo el CSS ya compilado (`dist/assets/TicketsView-*.css`)
-  > para confirmar que la regla de mobile aparece después de la de
-  > escritorio en el bundle final, no solo en el `<style>` fuente.
-- **Renombre: "Isla" → "Triage".** No es cosmético — el vocabulario del
-  propio proyecto ya usaba "triage" orgánicamente en 6+ comentarios y en
-  `GUIA-UX-UI.md` para describir exactamente esta interacción (lista angosta
-  para escanear y priorizar). "Panel" se descartó a propósito: colisiona con
-  el vocabulario YA existente para la columna de detalle
-  (`TicketDetallePanel.vue`, "panel de detalle", `.tickets-panel`, 16+
-  referencias) — llamar "Panel" al modo entero Y a una de sus tres columnas
-  habría sido confuso ("en modo Panel, el panel de detalle muestra...").
-  Cambia el valor persistido (`useVistaModulo('tickets', ['tabla',
-  'triage'])`, antes `'isla'`), el label del selector, y las clases
-  `.tickets-shell--triage` / `.tk-chips-activos--triage` (antes `--isla`).
-  Una preferencia guardada en `localStorage` con el valor viejo `'isla'` cae
-  sola al default `'tabla'` (`useVistaModulo.js` ya valida contra la lista de
-  valores permitidos e ignora lo que no reconoce) — no hace falta migración
-  de datos.
-- **Compatibilidad con Kanban a futuro (mencionado por el JEFE, no
-  implementado en esta pasada)**: el shell quedó pensado para que un tercer
-  modo (tablero por estado) entre en el mismo hueco — nav de Bandejas
-  siempre en la primera columna, `grid-template-columns` propio por modo, y
-  ninguno necesita su propio tratamiento de tarjeta. Cuando se agregue,
-  `OPCIONES_VISTA_TICKETS` solo suma una entrada más
-  (`{ valor: 'kanban', icono: 'ti-layout-kanban', label: 'Kanban' }`); no
-  hay trabajo de shell pendiente para ese día.
+**Un solo filtro secundario: fecha de creación.** Prioridad, nivel de atención,
+tipo y categoría se retiraron como filtros —la información sigue en la tabla,
+pero filtrar por ella no tenía uso real— y `MasFiltros.vue` se eliminó del
+sistema con ellos. El filtro que queda vive siempre visible
+(`FiltroFechaCreacion.vue`, reusado en el nav de escritorio y en la barra
+móvil), nunca detrás de un desplegable.
 
-### `TicketDetallePanel.vue`: una tarjeta, no una tarjeta llena de tarjetas — novena pasada (2026-08-28)
+**Chips de filtros activos**, removibles, sobre el contenido en los dos modos.
+Es la única señal de "hay un recorte aplicado" ahora que no existe un badge de
+contador escondido.
 
-Feedback directo de uso, en la misma sesión que la octava pasada: "en la vista
-Triage, en el detalle de tickets hay una isla y dentro de esa isla hay 5
-islas — debe ser una única isla, no debe haber islas dentro de una isla".
-Diagnóstico exacto: el panel de detalle (tercera columna del shell en modo
-Triage, ya una tarjeta flotante desde la octava pasada) tenía **5 `.card`
-propias flotando adentro** — header, banda de solicitante, datos del ticket,
-historial y conversación, cada una con su propio fondo blanco + borde + radio
-sobre el telón gris (`--color-bg`) del panel. Mismo principio que ya se había
-corregido un nivel más arriba (`.tickets-shell`, octava pasada) violado un
-nivel más abajo, sin que nadie lo hubiera notado hasta verlo en uso.
+**Cero controles deshabilitados en pantalla.** Regla del sistema, no solo de
+este módulo: un control que en su contexto nunca puede usarse no debería ocupar
+espacio ni invitar al clic. Se oculta.
 
-- **El panel completo pasa a ser LA tarjeta** — clase `.card` en
-  `<aside class="ticket-detalle-panel card">`, en vez de redeclarar
-  fondo/borde/radio en la regla scoped: reusa la clase global exactamente
-  como cualquier otra card del sistema, no una copia local con los mismos
-  valores. `.ticket-detalle-panel` (scoped) queda solo con las propiedades de
-  layout que sí son propias (`container-type`, `flex`, `height`).
-- **Las 5 secciones dejan de ser `.card`.** Se separan con las herramientas
-  MÍNIMAS que `TicketDetalleView.vue` (la página de detalle a pantalla
-  completa, con el mismo contenido en 3 cards lado a lado) ya usa para
-  separar sub-bloques *dentro* de una card: título en negrita
-  (`.datos-title`, sin cambios) + un divisor horizontal, `.tk-seccion`. Esa
-  clase ya existía en este archivo desde que se copiaron "las mismas reglas
-  que `TicketDetalleView.vue`" pero **nunca había tenido un consumidor
-  real acá** — código muerto de una copia parcial. Esta pasada la usa de
-  verdad (`.tdp-grid`, `.tdp-historial`) en vez de escribir un divisor nuevo
-  para lo mismo que ya resolvía.
-- **Header**: de "propia `.card` con `margin`" a franja cosida al borde
-  superior con `border-bottom`, mismo lenguaje que `.card-toolbar` (main.css)
-  usa en cualquier otro header dentro de una card del sistema.
-- **Divisor vertical nuevo**: con Datos+Historial y Conversación dejando de
-  ser 2 cards con borde propio lado a lado, el límite entre "la columna
-  angosta" y "la ancha" desaparecía del todo — el `gap: 16px` del grid, solo,
-  se lee igual que cualquier otro espaciado interno. `.tdp-col-izq` gana un
-  `border-right` decorativo (mismo nivel que `.tnav-separador`, sin umbral
-  WCAG exigible); se invierte a `border-bottom` en el `@container tdp
-  (max-width: 800px)` ya existente, cuando las columnas se apilan.
-- **`overflow: hidden` explícito en `.tdp-conversacion`.** Hasta esta pasada
-  lo heredaba gratis de `.card` (que ya no lleva); la contención de scroll
-  que el propio diseño de la ronda anterior daba por sentada (scroll interno
-  en `.tdp-conversacion-scroll`, no en el panel entero) dependía de esa
-  propiedad — quedó sin declarar en ningún lado hasta que se hizo explícita
-  acá. Es el tipo de dependencia implícita que una revisión visual detecta
-  al toque y una lectura de código puede pasar por alto; se encontró
-  releyendo con cuidado extra porque no había navegador disponible en la
-  sesión que hizo este cambio (ver nota de verificación en la pasada
-  anterior).
+**El estado de vista y filtros vive en el store** (`stores/tickets.js`), no en
+refs locales del componente: al volver de un detalle, el nav no se reinicia.
+`resetearFiltros()` no se llama en cada montaje.
 
-### Header de Tickets: "Reporte" se consolida en "Más" — décima pasada (2026-08-29)
+**Continuidad de selección entre modos**: `ticketSeleccionado` arranca en
+`store.ultimoAbierto`, así que alternar Tabla ↔ Triage conserva en cuál se
+estaba trabajando.
 
-Feedback directo de uso: "me gustó el menú de Más [...] así debemos incluir
-Reporte también, el orden sería Enlace + Reporte + Satisfacción + Exportar
-datos". El header pasa de 4 controles a 3: selector de vista, "Más", y el
-único `.btn-primary` ("+ Ticket interno").
-
-- **"Reporte" ya no es un botón suelto del header** (lo era desde la séptima
-  pasada, considerado de uso más frecuente que Satisfacción/Enlace
-  soporte/Exportar). El mismo criterio que bajó a esas tres acciones a "Más"
-  aplica también a Reporte: ninguna de las cuatro se usa varias veces por
-  turno, a diferencia de crear un ticket — ninguna necesitaba quedar
-  compitiendo con el único acento de la vista.
-- **Orden fijo dentro de "Más"**: Enlace soporte → Reporte → Satisfacción →
-  Exportar datos (antes: Exportar → Reporte solo-móvil → Satisfacción →
-  Enlace soporte, sin un criterio de orden explícito). "Exportar" pasa a
-  llamarse **"Exportar datos"** en el menú, más descriptivo que el "Exportar"
-  a secas que tenía como botón de toolbar.
-- **`accionesMas` deja de tener un ítem condicional.** El `visible:
-  esMovil.value` de Reporte (que lo ocultaba en escritorio, donde antes
-  vivía como botón propio) se retira — las cuatro acciones son idénticas en
-  escritorio y móvil, sin excepciones por breakpoint.
-
-### Shell único de Tickets: Bandejas laterales en las dos vistas (ago 2026)
-
-Segunda pasada del rediseño, aplicando una guía externa de diseño. **Tabla e
-Isla comparten ahora el mismo esqueleto** (`.tickets-shell`): el nav de
-Bandejas es la primera columna en las dos, y lo único que cambia entre modos
-es qué ocupa el resto.
-
-```
-Tabla   ┌────────┬──────────────────────────────┐
-        │ nav    │  toolbar + tabla full-bleed  │   200px 1fr
-        └────────┴──────────────────────────────┘
-Isla    ┌────────┬──────────────┬───────────────┐
-        │ nav    │ lista angosta│  detalle      │   200px minmax(240px,25%) 1fr
-        └────────┴──────────────┴───────────────┘
-```
-
-Antes el nav existía **solo en Isla** y en Tabla las Vistas eran una fila
-horizontal dentro de la barra de filtros: alternar Tabla/Isla movía las
-bandejas de arriba a la izquierda. Es el tipo de salto que hace dudar de si
-cambió algo más que el layout.
-
-- **Tabla e Isla no comparten paradigma de superficie, y eso sigue siendo a
-  propósito**: en Isla los tres paneles flotan sobre `--color-bg` con
-  `gap: 16px` y borde+radio cada uno; en Tabla no hay gap ni padding y el nav
-  es un **riel** con borde solo a la derecha
-  (`.tickets-shell--tabla .tickets-nav`), pegado a una tabla que sigue
-  full-bleed. Misma regla de siempre: una tabla densa se sirve mejor sin
-  marco que compita con las filas.
-
-  > **Superado por la octava pasada (2026-08-28)**: en uso real, alternar
-  > entre los dos paradigmas se sentía como un layout mal hecho, no como dos
-  > vistas del mismo sistema — ver "Bandejas y filtros de Tickets — octava
-  > pasada" más arriba. Hoy el nav y el contenido usan SIEMPRE el mismo
-  > tratamiento de tarjeta flotante en los dos modos; lo que sigue siendo
-  > distinto es la densidad interna (la tabla sigue full-bleed *dentro* de su
-  > propia tarjeta). Esta sección queda como registro de la decisión
-  > original y su razonamiento — no se reescribe.
-- **En móvil el nav no se monta** (`v-if="!esMovil"`, sin cambios) y el grid
-  colapsa a una columna. Ahí las Vistas vuelven a la barra de filtros como
-  fila horizontal, y los filtros secundarios (Prioridad incluida — ver
-  "cuarta pasada" más abajo) van en su propia fila visible debajo, mismo
-  bloque que en el nav de escritorio.
-- **La toolbar de Tabla queda con buscador + Exportar** (Vistas y Prioridad
-  ya viven en el riel), y sigue siendo de una sola fila.
+**Un tercer modo (Kanban) entra sin trabajo de shell**: el nav de bandejas
+ocupa siempre la primera columna y cada modo aporta su propio
+`grid-template-columns`. Sumar una entrada a `OPCIONES_VISTA_TICKETS` alcanza.
 
 ### Contención de las tres islas: nada sobresale de su contenedor (ago 2026)
 
@@ -1905,7 +2100,7 @@ cualquier layout multi-panel futuro:
   lo que no entra se recorta; nunca se scrollea de costado.
 - **`overflow: hidden` en `.tickets-lista .card--fill`.** `main.css` deja
   `.card--fill` en `overflow: auto` — correcto para el modo Tabla, dañino en
-  Isla, donde a la card se le devolvieron borde y radio: scrolleaba la card
+  Triage, donde a la card se le devolvieron borde y radio: scrolleaba la card
   entera (el buscador y la fila de chips se iban de vista al bajar por la
   lista, siendo justo el cromo que debe quedar fijo) y el contenido pasaba
   por encima de las esquinas redondeadas. El scroll vuelve a
@@ -1952,25 +2147,35 @@ anclado al panel y no a la ventana.
 ### Selección visible de fila y tarjeta (ago 2026)
 
 `.fila-ticket--activa` (tabla) y `.tarjeta-fila--activa` (lista angosta de
-Isla). En Isla marca el ticket abierto en el panel; en Tabla marca el último
+Triage). En Triage marca el ticket abierto en el panel; en Tabla marca el último
 ticket abierto desde el listado — `ultimoAbierto` vive en `stores/tickets.js`
 y no en la vista porque navegar a `/tickets/:id` desmonta `TicketsView.vue`,
 y un ref local se perdería justo cuando hace falta, que es al volver.
 
 - **Solo fondo tenue (`--color-accent-subtle`), sin indicador lateral.** La
   dirección validada en el Style Lab suma un inset de 2px en el borde
-  izquierdo, pero esta misma guía dejó esa parte **pendiente de confirmación
-  del JEFE** (choca con el principio "sin bordes de acento en los costados",
-  ver la nota en "Selección múltiple en tablas ITSM"). El fondo solo ya
-  cumple "la selección es visible" y es lo que pide el principio vigente:
-  hover/activo sin bordes, solo fondos muy tenues. **No se resolvió esa
-  tensión acá**, se evitó.
+  izquierdo. **Esa tensión está resuelta desde el 2026-09-01** (decisión de
+  producto, `PANORAMA` §6): el borde izquierdo de acento de hasta 2px es
+  válido tanto para severidad como para selección, y el principio "sin
+  bordes de acento en los costados" se reescribió en consecuencia — ver
+  "Principios de diseño", más abajo, que ya lo dice así.
+
+  > Esta viñeta decía "pendiente de confirmación del JEFE" y "no se
+  > resolvió esa tensión acá" hasta el 2026-09-02, contradiciendo a la
+  > sección de principios del mismo documento. Es el mismo modo de fallo que
+  > la nota del "Resumen": se actualiza la sección canonica y la copia
+  > queda. Corregido, no borrado, para que quede el rastro.
 - **Trampa de contraste, medida**: sobre `--color-accent-subtle`,
   `--color-text-tertiary` cae a **4.27:1 en claro y 3.87:1 en oscuro** — por
   debajo del 4.5:1 de texto normal. La fila activa sube esos tonos un escalón
-  a `--color-text-secondary` (5.49:1 / 6.05:1), con `:not(.prio--urgente)`
-  para no pisar el rojo de prioridad urgente (6.17:1, no necesita ayuda).
-  Verificado permanentemente en `scripts/contraste.mjs` (`filaActivaTexto`).
+  a `--color-text-secondary` (5.49:1 / 6.05:1). Verificado permanentemente en
+  `scripts/contraste.mjs` (`filaActivaTexto`). **`.prio` ya no entra en esa
+  regla** (rediseño Materen, Fase 1): los 4 niveles tienen color propio y
+  ninguno depende del gris terciario — `baja`/`media` pasan solos sobre el
+  fondo de acento (5.34:1 y 6.26:1 en claro, ver `prioridadBajaFilaActiva`/
+  `prioridadMediaFilaActiva`) y `alta`/`urgente` son badges con fondo propio
+  que tapa esa superficie. El `:not(.prio--urgente)` que la regla llevaba
+  antes se retiró: hoy tendría que excluir los cuatro, o sea todo.
   **Cualquier otra superficie de acento con texto gris encima tiene la misma
   trampa** — medir antes, no asumir que el token terciario sirve en todos
   lados.
@@ -1981,7 +2186,7 @@ y un ref local se perdería justo cuando hace falta, que es al volver.
 filtros — si el módulo consumidor tiene uno. Escrito como composable, no
 dentro de `TicketsView.vue`: cualquier módulo con buscador (y, si le hace
 falta, un popover) lo suma con una línea. Tickets ya **no** pasa `onFiltros`
-(cuarta pasada, ver más arriba): sus filtros secundarios son siempre
+(ver "Tickets — bandejas, filtros y shell"): sus filtros secundarios son siempre
 visibles desde que se retiró `MasFiltros.vue`, no hay nada que abrir/cerrar.
 
 - **No se dispara mientras se escribe**: ignora `input`/`textarea`/`select` y
@@ -2016,19 +2221,52 @@ Lo que sí es específico de `TicketsView.vue`. **De 8 columnas a 6, y de hasta
   píldora de Estado + píldora de Prioridad + píldora de Categoría (+ "Sin
   vincular"), por 20 filas. Eso contradice de frente dos principios del
   sistema ("minimalista: no sobresaturar la vista" y "un solo acento visible
-  por vista"). Ahora **Estado es la única píldora de color de la fila**.
-- **Prioridad → `IndicadorPrioridad.vue`** (`components/shared/`), punto +
-  texto en vez de badge, y se muda a la **primera** columna: es el primer
-  criterio de triage y así se escanea en vertical. Reparto de color
-  deliberado: `baja`/`media` **no llevan color** (punto gris + texto
-  terciario) porque son el caso mayoritario y no piden atención; solo `alta`
-  y `urgente` se pintan, con los **mismos** colores que ya tenía la píldora
-  (`purple`/`danger`, ver `PRIORIDADES_TICKET`) — el vocabulario de color del
-  dominio no cambió, cambió el envase. El punto es `::before` decorativo: el
-  texto siempre está al lado, el color nunca es el único portador del
-  significado (WCAG 1.4.1). Par nuevo verificado en `scripts/contraste.mjs`
-  (`prioridadUrgente`): `danger-text` sobre `bg-elevated` es un par que antes
-  no existía — hasta acá ese token solo se usaba dentro de `danger-bg`.
+  por vista"). Ahora Estado es la píldora **de estado** de la fila y Categoría
+  bajó a texto. **Matiz vigente desde sep 2026** (rediseño Materen, Fase 1):
+  Prioridad `alta` y `urgente` vuelven a tener forma de píldora, así que una
+  fila urgente lleva dos. Es deliberado y acotado: solo los 2 niveles de
+  arriba de 4, nunca junto a un tercer badge (Categoría sigue siendo texto), y
+  `baja`/`media` —el caso mayoritario— siguen siendo punto + texto. El
+  principio que aplica no es "una sola píldora" sino "peso visual proporcional
+  al significado": un ticket urgente **sí** merece dos señales.
+- **Prioridad → `IndicadorPrioridad.vue`** (`components/shared/`), y se muda
+  a la **primera** columna: es el primer criterio de triage y así se escanea
+  en vertical. **Escala de 4 niveles con color propio cada uno** (rediseño
+  Materen, Fase 1, sep 2026):
+
+  | Nivel | Tratamiento | Tokens |
+  |---|---|---|
+  | `baja` | punto + texto | `--color-sky-text` |
+  | `media` | punto + texto | `--color-teal-text` |
+  | `alta` | badge (fondo tenue + texto, sin punto) | `--color-purple-bg`/`-text` |
+  | `urgente` | badge (fondo tenue + texto, sin punto) | `--color-danger-bg`/`-text` |
+
+  El teal de `media` es el mismo que usa "Media" en la severidad de
+  Problemas: refuerza una asociación que el sistema ya tenía. `alta` y
+  `urgente` suben a badge completo para que el salto de "informativo" a
+  "accionable" se lea de un vistazo, con el mismo `padding`/`border-radius`
+  que `.badge`; ya **no llevan punto** — el fondo tenue es la señal y un punto
+  encima sería redundante. El punto de `baja`/`media` es `::before`
+  decorativo: el texto siempre está al lado, el color nunca es el único
+  portador del significado (WCAG 1.4.1). El vocabulario de color del dominio
+  sigue siendo el de `PRIORIDADES_TICKET` (`sky`/`teal`/`purple`/`danger`),
+  que además sigue sirviendo la vía de `<Badge>` (`core/badges.js`) sin
+  cambios.
+
+  > **Por qué se corrigió**: en la pasada de ago 2026 `baja` y `media` se
+  > dejaron sin color (punto gris + texto terciario), con el argumento de que
+  > "el caso mayoritario no pide atención". El efecto real fue que quedaron
+  > **indistinguibles entre sí**: dos de los cuatro niveles de la escala no se
+  > leían. El argumento sigue valiendo para no volver a pintar Categoría; no
+  > vale para colapsar dos niveles de una escala en el mismo gris.
+
+  Pares nuevos verificados en `scripts/contraste.mjs`
+  (`prioridadBaja`/`prioridadMedia` y sus variantes `...FilaActiva`):
+  `sky-text`/`teal-text` como texto suelto sobre `bg-elevated` y sobre
+  `accent-subtle` son pares que antes no existían — hasta acá esos tokens
+  solo se usaban dentro de su propio `-bg`. Reemplazan al par
+  `prioridadUrgente`, que dejó de existir cuando "Urgente" volvió a tener
+  fondo propio.
 - **Código + Categoría + Título colapsan en una celda "Ticket"**
   (`.celda-apilada`, la columna `col-elastica`): código y categoría arriba en
   gris chico, título abajo. Categoría deja de ser `.badge--neutral` y pasa a
@@ -2041,7 +2279,7 @@ Lo que sí es específico de `TicketsView.vue`. **De 8 columnas a 6, y de hasta
 - **Sin avatar en la columna "Asignado a"**, a propósito: `.avatar.sm` mide
   32px y llevaría la fila de ~32px a ~50px, anulando la densidad nueva — y
   suma un círculo de acento por fila, justo el ruido que este rediseño quita.
-  El avatar se queda en la tarjeta angosta de Isla, que no tiene ancho para
+  El avatar se queda en la tarjeta angosta de Triage, que no tiene ancho para
   el nombre completo.
 - **Ordenar por `titulo` se retiró** junto con la columna: ordenar una cola de
   tickets por título alfabético no responde ninguna pregunta operativa. Las
@@ -2053,22 +2291,27 @@ Lo que sí es específico de `TicketsView.vue`. **De 8 columnas a 6, y de hasta
   Bandejas y el único filtro secundario que queda (Fecha de creación —
   Prioridad/Nivel/Tipo/Categoría se eliminaron del listado en la quinta
   pasada) viven en el nav lateral, siempre visibles, y la toolbar de Tabla
-  queda solo con buscador + Exportar. En Isla es el mismo nav compartido —
+  queda solo con buscador + Exportar. En Triage es el mismo nav compartido —
   mismo componente y mismos datos, distinto layout según el
   contexto, que es lo que esta guía ya permitía.
 - **La tarjeta móvil sigue el mismo criterio** (Estado píldora, Prioridad
-  punto, Categoría texto): no hay dos vocabularios visuales según el ancho de
-  pantalla.
+  punto en `baja`/`media` y badge en `alta`/`urgente`, Categoría texto): no
+  hay dos vocabularios visuales según el ancho de pantalla. `.prio` es global
+  a propósito (sin `scoped`) justamente por eso — la usan la tabla, la tarjeta
+  angosta de Triage y la tarjeta móvil.
 
 ### Reglas de tabla (jul 2026, tras auditoría de accesibilidad)
 
 - **Semántica**: todo `<th>` lleva `scope="col"`; toda `<table>` lleva
   `aria-label` descriptivo; la columna de acciones nunca queda con un `<th>`
   vacío. **Texto visible (ago 2026, repaso de consistencia)**: el header de
-  esa columna es `<th scope="col">Acciones</th>`, con el texto a la vista —
-  reemplaza al `<span class="sr-only">Acciones</span>` que tenían Empleados,
-  Equipos, Correos, Licencias, Encuestas (ambas tablas) y Accesos sensibles
-  antes de esa ronda. Se prefiere visible porque el resto de headers de la
+  esa columna es `<th scope="col">Acciones</th>`, con el texto a la vista.
+  **Aplicado de verdad el 2026-09-01**: la ronda de ago 2026 dejó esta regla
+  escrita y solo llegó a Empleados — al medirlo había **7 tablas con el header
+  oculto y 7 con él visible**, la misma columna escrita de dos formas según el
+  módulo. Se corrigieron las 7 (Equipos, Correos, Licencias, Encuestas ×2,
+  Accesos sensibles, Staff) más una que ningún repaso había mirado
+  (`ImportarEquiposView`, columna "Migrar"). Lo vigila `patrones-ui.mjs`. Se prefiere visible porque el resto de headers de la
   fila ya muestran su texto — un solo header oculto entre columnas con texto
   rompía la lectura visual de la fila de encabezados, no aportaba nada a
   cambio (el `sr-only` no es necesario para el lector de pantalla: cada botón
@@ -2160,10 +2403,9 @@ Lo que sí es específico de `TicketsView.vue`. **De 8 columnas a 6, y de hasta
   `StaffView.vue` (sin filtro de estado) todavía no siguen este criterio —
   aplicarlo ahí si se reporta la misma confusión.
 
-### Selección múltiple en tablas ITSM (dirección aprobada, pendiente de portar)
+### Selección múltiple en tablas ITSM (portada a `TicketsView.vue`, 2026-09-01)
 
-Validado en el Style Lab para el patrón de tabla de Tickets — **todavía no
-portado a `TicketsView.vue`** (bloqueado a propósito, ver más abajo).
+Validada primero en el Style Lab y **ya en producción** en `TicketsView.vue`.
 
 - Checkbox por fila + "seleccionar todos" en el header, con estado
   `indeterminate` real (propiedad DOM, no simulado) cuando hay selección
@@ -2180,24 +2422,13 @@ portado a `TicketsView.vue`** (bloqueado a propósito, ver más abajo).
   checkbox marcado, indicador de fila, foco — nunca estructura ni
   decoración repetida por fila.
 
-> **Nota de conflicto con el principio existente "sin bordes de acento en
-> los costados"** (ver "Principios de diseño" al final de este documento):
-> el indicador de 2px de arriba **es** un borde de costado, aunque
-> capado a 2px según la regla vigente hoy en el proyecto (ver
-> `docs/HISTORIAL-AUDITORIAS.md`, `.accion-item--vencida` en
-> `ProblemaDetalleView.vue`, ya es una excepción de este tipo en
-> producción). Este documento no resuelve la tensión entre "nunca un borde
-> de costado" (texto original del principio) y "borde de costado permitido
-> hasta 2px" (práctica real ya vigente) — queda señalado para que el JEFE lo
-> confirme antes de portar esta tabla, no decidido unilateralmente acá.
-
-**Checkbox/selección múltiple bloqueado a propósito** hasta resolver, sin
-relación con CSS: operaciones reales en lote (¿existen RPCs de
-asignar/cambiar prioridad/cerrar en lote, o habría que llamar la operación
-individual N veces?), permisos (un usuario puede no tener permiso sobre
-todos los tickets seleccionados), auditoría (¿registro por ticket o por
-lote?), confirmación de la acción destructiva en lote, y manejo de fallos
-parciales (¿qué pasa si la operación tiene éxito en 8 de 10 tickets?).
+> **Tensión resuelta (2026-09-01)**: el indicador de 2px de arriba es un borde
+> de costado, y este documento lo señalaba como un conflicto con el principio
+> "sin bordes de acento en los costados", pendiente de que el JEFE lo
+> confirmara antes de portar la tabla. La decisión de producto de esa fecha lo
+> confirmó: la regla vigente es **"ningún acento estructural supera 2px"**, no
+> un veto a los bordes de costado. El principio quedó reescrito en ese sentido
+> (ver "Principios de diseño" al final) y el patrón, portado.
 
 ### Errores de formulario/acción (`.form-error`)
 
@@ -2212,6 +2443,24 @@ Licencias y Equipos, además de los formularios de creación/edición.
 ```
 
 `.form-grid .form-error` obtiene automáticamente `grid-column: 1 / -1`.
+
+### Label vs. placeholder (ago 2026)
+
+Todo campo de formulario lleva `<label for>` visible; el `placeholder` es
+solo un ejemplo de formato dentro del campo (ej. "ej: TCK-0001"), nunca un
+sustituto del label — desaparece al escribir y no tiene equivalente para
+lectores de pantalla. Es el estándar en 95%+ del código ya sin excepciones
+reales entre los ~27 formularios del sistema.
+
+**Excepción**: un widget de alta rápida embebido inline en una fila de
+tabla o de detalle (un `<input>` + botón de acción adyacente, sin
+`form-group` propio) no necesita label visible — ahí alcanza un
+`aria-label` explícito en el input, nunca placeholder solo. Ejemplos ya
+resueltos con este criterio: el alta rápida de subcategoría en
+`CategoriasTicketPanel.vue`, el campo "Nueva acción correctiva" y "Código
+de ticket a vincular" en `ProblemaDetalleView.vue`, el campo de texto de
+pregunta en `EncuestaForm.vue`, y "Nombre de la ubicación nueva" en
+`EquiposView.vue`.
 
 ## Repaso de consistencia — módulo por módulo (ago 2026)
 
@@ -2239,7 +2488,7 @@ vuelva a auditar estos módulos desde cero pensando que quedaron sin mirar.
 |---|---|
 | Base de Conocimiento | Sin columna Acciones en la lista — toda la gestión vive en el detalle como botones `.btn` con label, ya consistente |
 | Actividad | Log de auditoría de solo lectura, sin acciones por fila — confirmado explícitamente que la ausencia de tarjetas móviles es intencional (ver "Patrón tabla → tarjetas") |
-| Dashboard | Ya alineado — sin header sr-only, sin iconos sueltos que consolidar, sin colores fuera de los tokens existentes. Único hallazgo: `box-shadow: var(--shadow-sm)` en `.stat-card`/`.panel-lista`, inerte porque `--shadow-sm` está en `none` a nivel token (ver "Sombras y radios") — no exclusivo del Dashboard, aparece en 7 archivos más del sistema; limpieza pendiente de alcance mayor, no parte de este repaso |
+| Dashboard | Ya alineado — sin header sr-only, sin iconos sueltos que consolidar, sin colores fuera de los tokens existentes. **Actualizado 2026-09-02**: la discusión que ocupaba esta celda (una sombra "inerte" en `.stat-card`/`.panel-lista` y una supuesta limpieza pendiente en 7 archivos) quedó sin objeto con Carbon: la escala de elevación de tres pasos se retiró y las tarjetas son planas, así que no hay sombra en reposo que discutir. Queda una sola sombra en el sistema (`--shadow-overlay`) y solo la llevan las capas teletransportadas |
 
 ## Animaciones y micro-interacciones
 
@@ -2250,10 +2499,49 @@ vuelva a auditar estos módulos desde cero pensando que quedaron sin mirar.
 
 ---
 
+## Cómo se verifica esta guía
+
+**Cuatro** scripts en CI (`.github/workflows/ci.yml`, job `build-y-tests`)
+impiden que este documento y el código se separen sin que nadie lo note. El
+mapa completo de qué manda, dónde se implementa y qué lo verifica está en
+**`docs/GOBERNANZA-DISENO.md`**.
+
+- `node scripts/contraste.mjs` — los pares bg/text cumplen WCAG.
+- `node scripts/tokens-vs-guia.mjs` — los tokens que `main.css` define, los
+  que el código consume y los que esta guía documenta son el mismo conjunto.
+  Falla si esta guía nombra un token inexistente (**FANTASMA**), si `main.css`
+  define uno sin consumidor (**MUERTO**), o si un `var()` sin fallback apunta a
+  un token que no existe (**REFERENCIA ROTA**); avisa, sin fallar, de los
+  tokens vivos que esta guía todavía no menciona (**NO DOCUMENTADO**).
+- `node scripts/literales-vs-tokens.mjs` — valores escritos a mano en los
+  `<style>` de los componentes que deberían ser token. Color, radio, sombra y
+  tipografía se exigen en **0**; el espaciado va por **trinquete** (falla solo
+  si sube respecto de `scripts/literales-base.json`).
+- `node scripts/patrones-ui.mjs` — invariantes de marcado: modal hecho a mano
+  en vez del `<Modal>` compartido, `<img>` sin `alt`, cabecera de columna sin
+  texto visible, botón solo-ícono sin nombre accesible.
+
+**Al escribir estilos nuevos**: nada de color, radio, sombra ni tamaño de
+fuente en literal — el check los rechaza. El espaciado usa
+`var(--space-N)`; escribirlo en px no rompe el build hoy, pero sube el
+trinquete si se agrega uno nuevo.
+
+Por qué existe el segundo: hasta el 2026-09-01 esta guía llegó a tener dos
+secciones con el mismo título afirmando lo contrario entre sí, a describir el
+anillo de foco con un valor que el código no tenía desde hacía semanas, y a
+nombrar tres tokens borrados ese mismo día. Ver `docs/PLAN-MAESTRO-MATEREN.md`
+§1 y §6.1.
+
+**Al retirar un token**, moverlo a la región `<!-- tokens-retirados -->` de
+"Identidad de marca": el verificador la ignora a propósito, para que dejar
+registro de un retiro no cuente como deriva.
+
+---
+
 ## Cómo modificar la identidad visual
 
-1. **Cambiar marca:** editar `--mat-color-accent*` en `:root` y `[data-theme="dark"]` en [`main.css`](../frontend/src/styles/main.css)
-2. **Cambiar tipografía:** actualizar `--mat-font-*` y el `<link>` en [`index.html`](../frontend/index.html)
+1. **Cambiar marca:** editar `--color-accent*` en `:root` y `[data-theme="dark"]` en [`main.css`](../frontend/src/styles/main.css)
+2. **Cambiar tipografía:** actualizar `--font-*` y el `<link>` en [`index.html`](../frontend/index.html)
 3. **Nuevo componente visual:** preferir añadir clase global en `main.css` antes que estilos inline o duplicados por vista
 4. **Nuevo estado/badge de dominio:** clase scoped en la vista usando `var(--color-*-bg)` y `var(--color-*-text)` existentes
 
@@ -2261,58 +2549,65 @@ vuelva a auditar estos módulos desde cero pensando que quedaron sin mirar.
 
 ## Resumen
 
-Panel con **CSS custom estilo shadcn** (sin Tailwind ni librería), tokens
-**neutros grises + acento de marca** (`#0064E0`/`#0082FB` azul, en producción
-desde el 2026-08-27 — ver "Identidad de marca"), **Geist** (una sola familia
-para cuerpo y títulos, ver "Tipografía") con escalas
-tokenizadas de texto (`--fs-*`) y de íconos (`--icon-*`), iconos **Tabler**,
-separación por **bordes** con sombra discreta solo en card
-clicable/dropdown/modal (ver "Sombras y radios"), y clases globales en
-`main.css`.
+Panel de software empresarial denso sobre **IBM Carbon Design System v11**
+(estándar oficial desde el 2026-09-02, ver la sección de arriba). Sin
+Tailwind, sin librería de componentes y sin `@carbon/styles`: se adopta la
+especificación, no el paquete.
 
-> **Corregido 2026-08-28**: este párrafo decía que producción estaba en
-> navy/mint (`#00203F`/`#36ECDE`) con el azul "pendiente de portar", y que no
-> había sombras en ningún contenedor. Las dos cosas eran falsas desde las
-> fases G1–G4 del 2026-08-27 — la sección "Identidad de marca" ya lo
-> documentaba bien y este resumen se quedó atrás. Es el mismo patrón de
-> documentación afirmando un estado que el código no tiene que ya está
-> anotado como Q-01 en `docs/HISTORIAL-AUDITORIAS.md`. **Sigue pendiente** el
-> mismo problema en "Bordes — jerarquía de 3 niveles (dirección aprobada,
-> pendiente de portar)" y en "Excepciones hardcodeadas" (anillo de foco
-> descrito como derivado del navy): son secciones duplicadas de otras que sí
-> están al día, y borrarlas o fusionarlas es decisión del JEFE, no de un
-> barrido de tokens.
+| Pieza | Estado |
+|---|---|
+| **Tokens** | Dos capas: valores de Carbon (`--cds-*`, `carbon-theme.css`) y roles del producto (`--color-*`, `--fs-*`…, `main.css`). Ningún componente lee `--cds-*` salvo los cuatro del shell |
+| **Temas** | Gray 10 (claro) y Gray 100 (oscuro), el par de alto contraste que Carbon documenta. El **shell es oscuro en los dos** |
+| **Color** | Los `tag-*` de Carbon para lo semántico (5.8-5.9:1 de origen), Blue 60 para lo interactivo. Un color, un significado |
+| **Tipografía** | IBM Plex Sans + Mono; los 5 pasos del type set productivo (12/14/16/20/32), con su interlineado y tracking |
+| **Geometría** | Escala de radios `--radius-sm/md/lg/xl/pill` (4/6/8/12px + píldora), `--radius-base` = `--radius-md`. Revisada el 2026-09-03, "Modern Clean Enterprise" |
+| **Elevación** | Micro-sombras `--shadow-sm/md/lg` en tarjetas y campos; `--shadow-overlay` para lo que se teletransporta al body (modal, menú, popover, toast). Revisada el 2026-09-03 |
+| **Jerarquía** | La dan los **bordes** (3 niveles), las **capas de gris** y, desde el 2026-09-03, la **micro-sombra** — no un radio uniforme ni una elevación 100% plana |
+| **Íconos** | Tabler (`ti ti-*`), 3 pasos (16/20/32). Desviación declarada: Carbon tiene su propia librería, migrarla es un trabajo aparte |
+| **Shell** | Header 48px Gray 100 + SideNav 256/48px Gray 90 + workspace Gray 10 |
+| **Primitivas** | `components/carbon/` (`CarbonTag`, `CarbonDataTable`, `CarbonPasswordReveal`) + las clases globales de `main.css`, que se retiran a medida que los módulos adoptan las primeras |
+
+> **Por qué esta sección lleva una advertencia.** Es la tercera vez que este
+> resumen se queda atrás del sistema que describe: decía navy/mint cuando
+> producción ya estaba en teal-green (corregido 2026-08-28), y describía el
+> sistema shadcn/Geist/con-sombras un día después de que el rediseño a Carbon
+> lo retirara (corregido 2026-09-02). El patrón es siempre el mismo: se
+> reescriben las secciones de detalle y el resumen no, porque no lo nombra
+> ningún guardrail — `tokens-vs-guia.mjs` compara NOMBRES de token, y este
+> resumen habla en prosa. **Al tocar cualquier decisión de sistema, esta
+> tabla se actualiza en el mismo cambio.**
 
 ### Principios de diseño (definidos por el JEFE)
 
 - **Minimalista**: no sobresaturar la vista ni agobiar con información.
 - Estados hover/activo **sin bordes** — solo fondos muy tenues.
 - Preferir fusión de superficies sobre paneles/bloques delimitados.
-- **Sin bordes de acento en los costados de un componente**: para marcar
-  severidad/estado en una fila o tarjeta, usar **color de ícono + badge**,
-  nunca un borde lateral (izquierdo/derecho) de color. Es el mismo principio
-  que ya rige hover/activo ("sin bordes, solo fondos tenues") aplicado
-  también a indicadores de severidad — ningún otro componente del sistema
-  usa un borde de costado, así que introducir uno rompe la consistencia
-  aunque el color sea correcto. Ver `.feed-item` (Dashboard): la severidad
-  se lee por el color del ícono y el texto del badge, sin borde. Los bordes
-  que sí existen (contenedores `.card`/`.stat-card`, `1px solid
-  --color-border`) delimitan la superficie completa, no un costado; no
-  confundir ese patrón con un acento de estado.
+- **Ningún acento estructural supera 2px** (regla vigente desde el
+  2026-09-01). Para marcar severidad o selección en una fila o tarjeta se
+  puede usar un borde **izquierdo** de acento de hasta 2px, además del color
+  de ícono + badge. Más de 2px, o un borde de acento en cualquier otro
+  costado (derecho, superior, inferior), no. Los bordes que delimitan una
+  superficie completa (`.card`/`.stat-card`, `1px solid --color-border`) son
+  otra cosa y no cuentan acá — no confundir un contenedor con un acento de
+  estado.
 
-  > **Ambigüedad documental encontrada (2026-08-22), sin resolver acá**:
-  > este principio, tal como está escrito, ya no describe la práctica real.
-  > `.accion-item--vencida` (`ProblemaDetalleView.vue`) usa un borde de
-  > costado de 2px como acento de severidad, aceptado como excepción (ver
-  > `docs/HISTORIAL-AUDITORIAS.md`, hallazgo UX4-04) — la regla operativa
-  > que se viene citando en la práctica es "ningún borde/acento estructural
-  > supera 2px", no un veto total a bordes de costado. La dirección de
-  > tablas ITSM aprobada (fila seleccionada con indicador izquierdo *inset*
-  > de 2px, card de alerta con `border-left`) sigue ese tope de 2px, no el
-  > veto total. **No reescribí este principio para que diga otra cosa** —
-  > señalo la contradicción entre el texto y la práctica para que el JEFE
-  > confirme cuál de las dos es la regla vigente antes de portar la tabla
-  > de Tickets (commit `TK1`/`TK2` del plan de migración).
+  Consumidores reales de la excepción: `.accion-item--vencida`
+  (`ProblemaDetalleView.vue`, severidad) y la fila/tarjeta seleccionada de
+  `TicketsView.vue` (selección múltiple). Cuando el acento **no** es
+  estructural sino informativo, sigue prefiriéndose ícono + badge sin borde
+  — ver `.feed-item` (Dashboard), que lee su severidad solo por color de
+  ícono y texto.
+
+  > **Historia de esta regla, para no reabrirla**: hasta el 2026-09-01 este
+  > principio estaba escrito como un veto total ("sin bordes de acento en los
+  > costados"), y una nota dentro de él admitía que el veto ya no describía la
+  > práctica — `.accion-item--vencida` usaba 2px como excepción aceptada
+  > (hallazgo UX4-04) y la dirección aprobada de tablas ITSM también. La nota
+  > pedía que el JEFE confirmara cuál de las dos era la regla vigente, y ese
+  > pedido bloqueó la selección múltiple de Tickets durante toda la migración
+  > `TK1`/`TK2`. La decisión de producto del 2026-09-01 confirmó el tope de
+  > 2px; el texto de arriba es esa decisión, ya no una tensión abierta.
+
 - **Un solo acento visible por vista** — el botón `.btn-primary`
   del header/toolbar de cada módulo (ej. "Nueva licencia") es el acento fijo
   de esa vista. **Corrección (jul 2026)**: en 7 vistas (Empleados, Correos,
@@ -2325,3 +2620,23 @@ clicable/dropdown/modal (ver "Sombras y radios"), y clases globales en
   modal SÍ puede ser `.btn-primary` aunque el header de la página detrás
   también lo sea — el modal es la superficie de foco activa, el fondo queda
   inerte tras el backdrop. No se considera doble acento.
+
+- **Peso visual proporcional al significado** (rediseño Materen, Fase 1,
+  sep 2026). Toda superficie se ubica en uno de 5 escalones, de más discreta a
+  más protagonista:
+
+  | # | Escalón | Para qué | Ejemplos vigentes |
+  |---|---|---|---|
+  | 1 | Sin fondo ni borde | Acción de baja jerarquía | `.btn-ghost` |
+  | 2 | Solo borde | Contenedor o control. **Nunca lleva color de estado.** | `.card`, `.btn` secundario, input en reposo |
+  | 3 | Fondo tenue, sin borde | Estado o categoría pasiva, no clickeable | `.badge--*`, ítem activo del sidebar, `.icon-box`, `.prio--alta`, `.prio--urgente` |
+  | 4 | Fondo tenue + borde | La combinación más fuerte después del sólido. **Reservada, no un default.** | Fila seleccionada; alerta que necesita más presencia que un badge pero no puede competir con un botón |
+  | 5 | Fondo sólido | **Una sola por vista**: la acción principal | `.btn-primary` |
+
+  El escalón 5 es el mismo criterio que "un solo acento visible por vista",
+  aplicado a superficies en general y no solo a botones. El escalón 4 solo se
+  justifica en dos casos: distinguir un elemento entre varios similares, o una
+  alerta intermedia — si no es ninguno de los dos, el elemento pertenece al 3.
+
+  **Ante la duda entre dos escalones, ir siempre por el más bajo**: subir de
+  peso después es más fácil que bajarlo una vez que el ojo se acostumbró.
