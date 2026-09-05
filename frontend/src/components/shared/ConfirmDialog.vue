@@ -5,8 +5,10 @@
 //   - Tier auditable (requiereMotivo): motivo obligatorio (>= motivoMin),
 //     formaliza el patrón de "rechazar ticket".
 // Construido sobre <Modal>, así hereda foco atrapado / Escape / aria-modal.
-import { ref, useId } from 'vue';
+import { ref } from 'vue';
 import Modal from './Modal.vue';
+import CarbonButton from '../carbon/CarbonButton.vue';
+import CarbonCampo from '../carbon/CarbonCampo.vue';
 
 const props = defineProps({
   titulo: { type: String, required: true },
@@ -22,8 +24,6 @@ const props = defineProps({
 });
 const emit = defineEmits(['confirm', 'cancel']);
 
-const motivoId = useId();
-const motivoErrorId = useId();
 const motivo = ref('');
 const error = ref('');
 
@@ -56,12 +56,11 @@ function confirmar() {
     :titulo="titulo"
     size="sm"
     transicion="modal-anim-rapida"
-    :overlay-class="destructivo ? 'confirm-dialog--destructive' : ''"
     @close="emit('cancel')"
   >
     <template v-if="destructivo" #titulo>
       <span class="confirm-titulo">
-        <span class="modal-icon"><i :class="`ti ${icono}`" aria-hidden="true"></i></span>
+        <span class="icon-box icon-box--danger"><i :class="`ti ${icono}`" aria-hidden="true"></i></span>
         {{ titulo }}
       </span>
     </template>
@@ -69,42 +68,38 @@ function confirmar() {
     <p v-if="mensaje" class="confirm-mensaje">{{ mensaje }}</p>
     <slot />
 
-    <div v-if="requiereMotivo" class="form-group full">
-      <label :for="motivoId">{{ motivoLabel }}</label>
-      <textarea
-        :id="motivoId"
-        v-model="motivo"
-        rows="3"
-        :disabled="cargando"
-        :aria-describedby="error ? motivoErrorId : undefined"
-        :aria-invalid="error ? 'true' : undefined"
-      ></textarea>
-    </div>
-    <p v-if="error" :id="motivoErrorId" class="form-error" role="alert">{{ error }}</p>
+    <CarbonCampo
+      v-if="requiereMotivo"
+      v-model="motivo"
+      :etiqueta="motivoLabel"
+      tipo="textarea"
+      :filas="3"
+      :error="error"
+      :deshabilitado="cargando"
+    />
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="cargando" @click="modalRef?.cerrar()">
+      <CarbonButton variante="secondary" :deshabilitado="cargando" @click="modalRef?.cerrar()">
         {{ cancelarLabel }}
-      </button>
-      <button
-        :class="destructivo ? 'btn btn-danger' : 'btn btn-primary'"
-        type="button"
-        :disabled="cargando"
+      </CarbonButton>
+      <CarbonButton
+        :variante="destructivo ? 'danger' : 'primary'"
+        :deshabilitado="cargando"
+        :cargando="cargando"
         @click="confirmar"
       >
-        <i v-if="cargando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
         {{ cargando ? 'Procesando...' : confirmarLabel }}
-      </button>
+      </CarbonButton>
     </template>
   </Modal>
 </template>
 
 <style scoped>
-.confirm-titulo { display: flex; align-items: center; gap: 10px; }
+.confirm-titulo { display: flex; align-items: center; gap: var(--space-5); }
 .confirm-mensaje {
-  font-size: var(--fs-base);
+  font-size: var(--fs-body-01);
   color: var(--color-text-secondary);
   line-height: 1.5;
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-2);
 }
 </style>

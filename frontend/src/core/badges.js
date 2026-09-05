@@ -1,6 +1,6 @@
 // Punto único para resolver label + clase de badge según el dominio.
 // Los mapas viven en dominio-*.js; este módulo solo despacha.
-import { claseEstado } from './dominio-empleados.js';
+import { estadoEmpleadoInfo } from './dominio-empleados.js';
 import { estadoInfo, prioridadInfo } from './dominio-tickets.js';
 import { situacionInfo } from './dominio-equipos.js';
 import { categoriaAccesoSensibleInfo } from './dominio-accesos-sensibles.js';
@@ -26,7 +26,7 @@ const TIPOS_UBICACION = {
 export function badgeInfo(tipo, valor) {
   switch (tipo) {
     case 'empleado':
-      return { label: valor, clase: claseEstado(valor) };
+      return estadoEmpleadoInfo(valor);
     case 'ticket':
       return estadoInfo(valor);
     case 'prioridad':

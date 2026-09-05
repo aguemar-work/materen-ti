@@ -34,9 +34,9 @@ function icono() {
 .th-ordenable-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-2);
   width: 100%;
-  padding: 10px 1.25rem;
+  padding: 9px 1.25rem; /* espeja el <th> global (densidad ago 2026) */
   background: none;
   border: none;
   font: inherit;
@@ -48,7 +48,7 @@ function icono() {
 }
 
 .th-ordenable-icono {
-  font-size: 13px;
+  font-size: var(--icon-sm);
   opacity: 0.5;
 }
 

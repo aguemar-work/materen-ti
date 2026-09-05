@@ -1,6 +1,6 @@
 <script setup>
 // Selector de vista (Tabla/Lista/Tarjetas en Empleados y Equipos; Tabla/
-// Isla en Tickets) — mismo componente reutilizado en los tres lugares,
+// Triage en Tickets) — mismo componente reutilizado en los tres lugares,
 // solo cambia el arreglo de `opciones` que recibe. Cada botón reusa la
 // clase global `.icon-btn` (tamaño, foco, target táctil en pointer:coarse
 // ya corregido a 44px) en vez de reinventar esas reglas acá — el único
@@ -35,10 +35,10 @@ const emit = defineEmits(['update:modelValue']);
 .selector-vista {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px;
+  gap: var(--space-1);
+  padding: var(--space-1);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-base);
   background: var(--color-bg-subtle);
 }
 
@@ -50,7 +50,7 @@ const emit = defineEmits(['update:modelValue']);
 .selector-vista__btn--activo {
   background: var(--color-bg-elevated);
   color: var(--color-accent-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 .selector-vista__btn--activo:hover { background: var(--color-bg-elevated); }
 </style>

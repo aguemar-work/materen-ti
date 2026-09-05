@@ -7,6 +7,8 @@
 //
 // jsPDF y autoTable se importan de forma DIFERIDA: solo se descargan cuando
 // alguien pide un reporte, no en la carga del panel.
+import { NOMBRE_PRODUCTO } from './marca.js';
+
 export const ANCHO = 210;                    // A4 vertical, en mm
 export const ALTO = 297;
 export const MARGEN = 14;
@@ -176,7 +178,7 @@ export function piePaginas(doc, hoy) {
   for (let p = 1; p <= total; p += 1) {
     doc.setPage(p);
     doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...GRIS_TEXTO);
-    doc.text(`Materen — Sistema TI · Generado el ${hoy}`, MARGEN, ALTO - 8);
+    doc.text(`${NOMBRE_PRODUCTO} · Generado el ${hoy}`, MARGEN, ALTO - 8);
     doc.text(`Página ${p} de ${total}`, ANCHO - MARGEN, ALTO - 8, { align: 'right' });
   }
 }

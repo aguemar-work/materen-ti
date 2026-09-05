@@ -1,6 +1,7 @@
 // Dirty-tracking para formularios en modal (Fase 2 de la protección contra
-// pérdida de datos; complementa useCerrarConEscape). Compara el estado actual
-// del formulario contra un snapshot serializado del estado inicial.
+// pérdida de datos; complementa el guard `confirmarCierre` de Modal.vue).
+// Compara el estado actual del formulario contra un snapshot serializado
+// del estado inicial.
 //
 // `obtenerEstado` debe devolver un objeto serializable con TODO lo que el
 // usuario puede editar (form, toggles de modo, selecciones), excluyendo texto

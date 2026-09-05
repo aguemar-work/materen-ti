@@ -1,11 +1,57 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+// ── Shell raíz: UI Shell de IBM Carbon v11 ────────────────────────────
+//
+// ANATOMÍA (docs/GUIA-UX-UI.md, "Anatomía del shell")
+//   Header  48px, Gray 100 (#161616) — marca + acciones globales
+//   SideNav 256px expandido / 48px en riel, Gray 90 (#262626) — navegación
+//   Content Gray 10 (#f4f4f4) — el workspace, donde vive cada módulo
+//
+// Reemplaza al shell anterior (sidebar de 240px que se FUNDÍA con el fondo
+// del contenido, sin header en desktop). Los tres cambios de fondo, con su
+// motivo, porque no son estéticos:
+//
+//   1. Aparece un header en desktop. Antes solo existía en móvil. Todo lo
+//      que no es navegación de módulo salió del sidebar y subió acá:
+//      búsqueda global, campana e identidad del usuario. El SideNav queda
+//      SOLO para navegar, que es lo que Carbon llama un shell "de una
+//      responsabilidad por región" — antes el pie del sidebar apilaba
+//      avatar + nombre + rol + 3 botones de ícono en 240px de ancho y el
+//      nombre truncaba (por eso tema y logout se habían condensado en un
+//      menú "⋮"; ese apretujamiento ya no existe).
+//   2. El shell es OSCURO en los dos temas. No es "el header del tema
+//      oscuro": en Carbon el shell es Gray 100/90 siempre, y el tema
+//      claro/oscuro solo gobierna el workspace. Por eso consume tokens
+//      `--cds-shell-*` y no roles `--color-*` (ver la cabecera de
+//      styles/carbon-theme.css, sección 6).
+//   3. Hay separación real entre navegación y contenido. Antes el sidebar
+//      usaba `--color-bg` (el mismo fondo del contenido) y se apoyaba en
+//      un borde de 1px para distinguirse; ahora la distinción es la capa
+//      de gris, que es como Carbon resuelve jerarquía sin sombras.
+//
+// POR QUÉ FLEX Y NO `position: fixed`
+// La implementación de Carbon fija el header y el SideNav y compensa el
+// contenido con `margin-left`/`padding-top`. Acá el shell es un flex de
+// dos filas (header, luego nav + contenido) y el resultado visual es el
+// mismo, con una ventaja concreta: el contenido es su PROPIO contenedor de
+// scroll, así que el `position: sticky; top: 0` del `.site-header` de cada
+// vista (el h1 del módulo) se pega justo debajo del header del shell sin
+// necesidad de saber que el shell mide 48px. Con `fixed` había que
+// escribir `top: 48px` en una regla global aparte — que es exactamente lo
+// que hacía el bloque `<style>` sin scoped al final de la versión
+// anterior de este archivo, y que acá desaparece.
+import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { getClient } from '../../api/client.js';
 import { temaActual, alternarTema } from '../../core/tema.js';
+// El HeaderName de Carbon es prefijo + nombre, y marca.js ya tenia las dos
+// piezas por separado desde antes de este rediseno (NOMBRE_MARCA sobrevive
+// al crecimiento fuera de TI, NOMBRE_CORTO no). Se consumen las tres: las
+// dos piezas para el titulo visible y el nombre completo para el alt.
+import { NOMBRE_PRODUCTO, NOMBRE_MARCA, NOMBRE_CORTO } from '../../core/marca.js';
+import { tonoAvatar, inicialesDe } from '../../core/avatar.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco, crearRefrescoDebounced, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import NotificacionesCampana from './NotificacionesCampana.vue';
@@ -13,7 +59,16 @@ import AppSearch from './AppSearch.vue';
 import AppNav from './AppNav.vue';
 import AppNotifications from './AppNotifications.vue';
 import MenuAcciones from './MenuAcciones.vue';
-import StaffNombreForm from '../../modules/staff/StaffNombreForm.vue';
+// Única dependencia del shell hacia un módulo de dominio, y es a propósito:
+// "editar mi nombre para mostrar" se dispara desde el menú de usuario del
+// header, pero el formulario es el MISMO que usa StaffView.vue cuando el
+// JEFE edita el de otro (`updateStaff`). Se evaluó moverlo a
+// `components/shared/`: sería meter un formulario de dominio (tabla
+// `staff`) entre los componentes genéricos, cambiar un problema por otro.
+// Queda acá como excepción documentada (ARQ-10, ver
+// docs/HISTORIAL-AUDITORIAS.md), pero en carga diferida: es un modal que
+// casi nunca se abre y así no viaja en el chunk principal junto al shell.
+const StaffNombreForm = defineAsyncComponent(() => import('../../modules/staff/StaffNombreForm.vue'));
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -40,7 +95,7 @@ onUnmounted(() => {
 // ahorra el viaje del mouse en el flujo más repetido del día (buscar un
 // ticket/empleado/cuenta). No se activa con un modal abierto y atrapando
 // foco (Modal.vue/ConfirmDialog.vue usan role="dialog") — saltar al
-// buscador del sidebar detrás del overlay sería confuso.
+// buscador del header detrás del overlay sería confuso.
 const appSearchRef = ref(null);
 
 function onAtajoBusqueda(e) {
@@ -61,7 +116,7 @@ onUnmounted(() => window.removeEventListener('keydown', onAtajoBusqueda));
 // AppNotifications) porque también alimenta el badge de AppNav.
 const ticketsStore = useTicketsStore();
 
-// Cola viva de tickets sin asignar para el badge del sidebar: baja cuando
+// Cola viva de tickets sin asignar para el badge del SideNav: baja cuando
 // alguien asigna el ticket, no cuando alguien "lo ve" (no es un contador de
 // no-leídos). Se reusa pendientesTickets() del Dashboard, no se agrega
 // query nueva.
@@ -88,54 +143,79 @@ useRealtimeRefresco('tickets:list', (payload) => {
   refrescarTickets();
 });
 
-const sidebarAbierto = ref(false);
+// ── Estado del SideNav ────────────────────────────────────────
+// Dos mecanismos distintos, no uno con dos nombres:
+//   navAbierto   solo móvil (≤768px): el nav es un panel deslizante sobre
+//                el contenido, con velo detrás. Se abre desde el botón de
+//                menú del header y se cierra al navegar o al tocar el velo.
+//   navEnRiel    solo desktop: el nav se contrae a 48px y deja solo los
+//                íconos (el "rail" de Carbon). Es una preferencia, y se
+//                recuerda.
+const navAbierto = ref(false);
 
-// ── Colapso del sidebar (solo desktop; en móvil manda el drawer) ──
-const CLAVE_SIDEBAR = 'sistema-ti-sidebar';
-// Sin preferencia guardada: rail por defecto en pantallas medianas (mismo
-// breakpoint que ya usa main.css/DashboardView.vue para reflow de grillas),
-// para que el ancho no le compita al contenido en laptops sin que el usuario
-// tenga que descubrir el toggle. Quien ya eligió una vez, siempre gana esa
-// elección sobre el tamaño de ventana.
-const preferenciaSidebarGuardada = localStorage.getItem(CLAVE_SIDEBAR);
-const sidebarColapsado = ref(
-  preferenciaSidebarGuardada
-    ? preferenciaSidebarGuardada === 'colapsado'
-    : window.innerWidth <= 1200
+const CLAVE_NAV = 'sistema-ti-sidebar';
+// Sin preferencia guardada: riel por defecto por debajo de 1056px, que es
+// el breakpoint `lg` de la grilla de Carbon y el punto donde su propio
+// shell empieza a esconder el SideNav. Así el nav no le compite el ancho al
+// contenido en una laptop sin que el usuario tenga que descubrir el toggle.
+// Quien ya eligió una vez, siempre gana esa elección sobre el tamaño de
+// ventana. La clave de localStorage NO cambia de nombre a propósito: quien
+// tenía el sidebar colapsado antes del rediseño abre con el riel puesto, en
+// vez de perder su preferencia.
+const preferenciaNavGuardada = localStorage.getItem(CLAVE_NAV);
+const navEnRiel = ref(
+  preferenciaNavGuardada
+    ? preferenciaNavGuardada === 'colapsado'
+    : window.innerWidth <= 1056
 );
 
-function toggleColapso() {
-  sidebarColapsado.value = !sidebarColapsado.value;
-  localStorage.setItem(CLAVE_SIDEBAR, sidebarColapsado.value ? 'colapsado' : 'expandido');
+// El botón de menú del header hace dos cosas distintas según el ancho, y es
+// la misma cosa desde el punto de vista del usuario ("mostrame/escondeme la
+// navegación"): en móvil abre el panel, en desktop alterna el riel.
+function alternarNav() {
+  if (window.innerWidth <= 768) {
+    navAbierto.value = !navAbierto.value;
+    return;
+  }
+  navEnRiel.value = !navEnRiel.value;
+  localStorage.setItem(CLAVE_NAV, navEnRiel.value ? 'colapsado' : 'expandido');
 }
 
-function expandirSidebar() {
-  sidebarColapsado.value = false;
-  localStorage.setItem(CLAVE_SIDEBAR, 'expandido');
+function expandirNav() {
+  navEnRiel.value = false;
+  localStorage.setItem(CLAVE_NAV, 'expandido');
+}
+
+function cerrarNav() {
+  navAbierto.value = false;
 }
 
 // ── Tema claro/oscuro ─────────────────────────────────────────
+// Gobierna el WORKSPACE, no el shell: el header y el nav son Gray 100/90
+// en los dos temas (ver la nota 2 de la cabecera).
 const tema = ref(temaActual());
 
 function toggleTema() {
   tema.value = alternarTema();
 }
 
-const userInitial = computed(() => (auth.nombre?.[0] ?? auth.user?.email?.[0] ?? '?').toUpperCase());
+const nombreUsuario = computed(() => auth.nombre || auth.user?.email || '');
+// inicialesDe() y no `nombre[0]`: es la misma función que usa cualquier otro
+// avatar del sistema, así el del header muestra dos letras como el de la
+// ficha del empleado en vez de una sola. Con solo un correo cae a una letra,
+// que es lo que la función devuelve para un string de una palabra.
+const inicialesUsuario = computed(() => inicialesDe(nombreUsuario.value) || '?');
 
-// Footer del sidebar apiñado (avatar + nombre truncaba contra 3 botones de
-// ícono a 240px de ancho): tema y logout se condensan en un solo menú ⋮,
-// reusando MenuAcciones.vue en vez de un componente nuevo. La campana queda
-// afuera porque es información urgente/frecuente, no una acción de cuenta.
-// Configuración se suma aquí (rediseño de sidebar, ago 2026): no es una
-// sección de uso diario, así que sale de la nav principal y se agrupa con
-// las otras acciones de "administrar mi sesión/el sistema".
 const mostrarEditarNombre = ref(false);
 
 function onNombreGuardado(actualizado) {
   auth.actualizarNombre(actualizado.nombre);
 }
 
+// Menú de usuario del header (HeaderGlobalAction con avatar en Carbon).
+// Configuración sigue acá y además tiene ítem propio en el SideNav: es la
+// entrada de "administrar el sistema", y llegar solo por un menú "⋮" era
+// un hallazgo abierto (un usuario nuevo no asocia "⋮" con "catálogos").
 const accionesUsuario = computed(() => [
   { icono: 'ti-pencil', label: 'Editar mi nombre', onClick: () => { mostrarEditarNombre.value = true; } },
   { icono: 'ti-settings', label: 'Configuración', onClick: () => router.push('/configuracion') },
@@ -149,10 +229,6 @@ const accionesUsuario = computed(() => [
   { icono: 'ti-logout', label: 'Cerrar sesión', onClick: cerrarSesion },
 ]);
 
-function cerrar() {
-  sidebarAbierto.value = false;
-}
-
 async function cerrarSesion() {
   await auth.logout();
   router.push('/login');
@@ -160,82 +236,84 @@ async function cerrarSesion() {
 </script>
 
 <template>
-  <div class="app-layout">
-    <!-- Backdrop móvil -->
-    <transition name="sb-fade">
-      <div
-        v-if="sidebarAbierto"
-        class="sb-overlay"
-        aria-hidden="true"
-        @click="cerrar"
-      />
-    </transition>
+  <div class="cds-shell">
+    <!-- ══ Header (48px, Gray 100) ══════════════════════════════ -->
+    <header class="cds-header" role="banner">
+      <button
+        class="cds-header__action cds-header__menu"
+        type="button"
+        :title="navEnRiel ? 'Expandir navegación' : 'Contraer navegación'"
+        :aria-label="navEnRiel ? 'Expandir navegación' : 'Contraer navegación'"
+        :aria-expanded="!navEnRiel"
+        @click="alternarNav"
+      >
+        <i class="ti ti-menu-2" aria-hidden="true"></i>
+      </button>
 
-    <!-- Sidebar -->
-    <aside
-      class="sidebar"
-      :class="{ 'sidebar--open': sidebarAbierto, 'sidebar--colapsado': sidebarColapsado }"
-      aria-label="Menú principal"
-    >
-      <div class="sb-logo">
-        <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" class="sb-logo-full">
-        <img src="/icon_sisti.svg" alt="Materen — Sistema TI" class="sb-logo-icono">
-        <button
-          class="sb-logout sb-collapse"
-          type="button"
-          :title="sidebarColapsado ? 'Expandir menú' : 'Colapsar menú'"
-          :aria-expanded="!sidebarColapsado"
-          @click="toggleColapso"
-        >
-          <i
-            :class="sidebarColapsado ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse'"
-            aria-hidden="true"
-          ></i>
-        </button>
-      </div>
+      <!-- HeaderName de Carbon: prefijo en peso normal + nombre en 600.
+           Enlaza al Dashboard, que es la pantalla de entrada. -->
+      <RouterLink to="/dashboard" class="cds-header__name" @click="cerrarNav">
+        <img :src="'/icon_sisti.svg'" :alt="NOMBRE_PRODUCTO" class="cds-header__logo">
+        <span class="cds-header__name-texto">
+          <span class="cds-header__prefijo">{{ NOMBRE_MARCA }}</span>
+          <span class="cds-header__producto">{{ NOMBRE_CORTO }}</span>
+        </span>
+      </RouterLink>
 
-      <AppSearch ref="appSearchRef" @expandir-sidebar="expandirSidebar" @navegado="cerrar" />
-
-      <AppNav
-        :sidebar-colapsado="sidebarColapsado"
-        :tickets-sin-asignar="ticketsSinAsignar"
-        @cerrar-drawer="cerrar"
-      />
-
-      <div class="sb-footer">
-        <div class="sb-user" :title="sidebarColapsado ? (auth.nombre || auth.user?.email) : null">
-          <div class="sb-user-avatar" aria-hidden="true">{{ userInitial }}</div>
-          <div class="sb-user-info">
-            <span class="sb-user-email" :title="auth.user?.email">{{ auth.nombre || auth.user?.email }}</span>
-            <span class="sb-user-rol">{{ auth.rol ?? 'Staff' }}</span>
-          </div>
-        </div>
-        <div class="sb-footer-acciones">
+      <!-- HeaderGlobalBar: acciones globales, alineadas a la derecha -->
+      <div class="cds-header__global">
+        <AppSearch ref="appSearchRef" @navegado="cerrarNav" />
         <NotificacionesCampana />
-        <MenuAcciones :acciones="accionesUsuario" label="Configuración y cuenta" />
-        </div>
-      </div>
-    </aside>
-
-    <!-- Contenido -->
-    <div class="layout-main">
-      <!-- Barra superior móvil -->
-      <div class="topbar-mobile">
         <button
-          class="topbar-toggle"
+          class="cds-header__action"
           type="button"
-          aria-label="Abrir menú"
-          @click="sidebarAbierto = !sidebarAbierto"
+          :title="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
+          :aria-label="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
+          @click="toggleTema"
         >
-          <i class="ti ti-menu-2" aria-hidden="true"></i>
+          <i :class="tema === 'dark' ? 'ti ti-sun' : 'ti ti-moon'" aria-hidden="true"></i>
         </button>
-        <span class="topbar-title">Materen — Sistema TI</span>
-        <div class="topbar-campana">
-          <NotificacionesCampana />
-        </div>
+        <MenuAcciones
+          class="cds-header__action cds-header__usuario"
+          :acciones="accionesUsuario"
+          :label="`Cuenta de ${nombreUsuario}`"
+          icono=" "
+        >
+          <template #trigger>
+            <span class="avatar sm" :class="tonoAvatar(nombreUsuario)" aria-hidden="true">{{ inicialesUsuario }}</span>
+          </template>
+        </MenuAcciones>
       </div>
+    </header>
 
-      <slot />
+    <!-- ══ Fila inferior: SideNav + workspace ═══════════════════ -->
+    <div class="cds-shell__cuerpo">
+      <!-- Velo del panel deslizante (solo móvil) -->
+      <transition name="cds-fade">
+        <div
+          v-if="navAbierto"
+          class="cds-shell__velo"
+          aria-hidden="true"
+          @click="cerrarNav"
+        />
+      </transition>
+
+      <nav
+        class="cds-side-nav"
+        :class="{ 'cds-side-nav--abierto': navAbierto, 'cds-side-nav--riel': navEnRiel }"
+        aria-label="Navegación principal"
+      >
+        <AppNav
+          :nav-en-riel="navEnRiel"
+          :tickets-sin-asignar="ticketsSinAsignar"
+          @cerrar-nav="cerrarNav"
+          @expandir-nav="expandirNav"
+        />
+      </nav>
+
+      <main class="cds-shell__contenido">
+        <slot />
+      </main>
     </div>
 
     <AppNotifications />
@@ -250,323 +328,238 @@ async function cerrarSesion() {
 </template>
 
 <style scoped>
-/* ── Variables del sidebar ───────────────────────────────────────
-   Minimalista: el sidebar se funde con el fondo de la página
-   (sin panel oscuro, sin bordes). Hover/activo = tinte muy tenue,
-   nunca bordes ni indicadores. Sigue el tema claro/oscuro. */
-.sidebar {
-  --sb-w: 240px;
-  --sb-bg: var(--color-bg);
-  --sb-text: var(--color-text-secondary);
-  --sb-text-strong: var(--color-text-primary);
-  --sb-hover: var(--color-bg-hover);
-  --sb-active-bg: var(--color-accent-subtle);
-  --sb-active-text: var(--color-accent-text);
-}
-
-/* ── Layout raíz ─────────────────────────────────────────────── */
-.app-layout {
+/* ── Raíz ─────────────────────────────────────────────────────
+   Alto de viewport fijo y sin scroll propio: el único scroll vertical
+   está en .cds-shell__contenido. Así el header no se va nunca y el
+   `position: sticky` de los headers de página funciona relativo al
+   contenido, no al documento. */
+.cds-shell {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────── */
-.sidebar {
-  width: var(--sb-w);
-  flex-shrink: 0;
-  height: 100vh;
-  background: var(--sb-bg);
-  border-right: 1px solid var(--color-border-subtle);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  z-index: var(--z-nav); /* solo aplica cuando es fixed (móvil, ≤768px) */
-  transition: width 0.2s ease;
-}
-
-/* ── Colapsado (solo desktop; en móvil manda el drawer) ─────────── */
-.sb-collapse {
-  margin-left: auto;
-}
-
-@media (min-width: 769px) {
-  .sidebar--colapsado {
-    --sb-w: 64px;
-  }
-
-  .sidebar--colapsado .sb-logo {
-    flex-direction: column;
-    gap: 8px;
-    padding: 16px 0 10px;
-  }
-
-  .sidebar--colapsado .sb-logo-full {
-    display: none;
-  }
-
-  .sidebar--colapsado .sb-logo-icono {
-    display: block;
-  }
-
-  .sidebar--colapsado .sb-collapse {
-    margin-left: 0;
-  }
-
-  .sidebar--colapsado .sb-footer {
-    flex-direction: column;
-    gap: 6px;
-    padding: 10px 0;
-  }
-
-  .sidebar--colapsado .sb-user {
-    flex: none;
-    justify-content: center;
-  }
-
-  .sidebar--colapsado .sb-user-info {
-    display: none;
-  }
-
-  .sidebar--colapsado .sb-footer-acciones {
-    flex-direction: column;
-    padding-left: 0;
-    padding-top: 8px;
-    border-left: none;
-    border-top: 1px solid var(--color-border-subtle);
-  }
-}
-
-/* ── Logo ────────────────────────────────────────────────────── */
-.sb-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 16px 12px;
-  flex-shrink: 0;
-}
-
-/* Lockup "materen · sistema ti" expandido; icono cuadrado colapsado.
-   El logo es verde pino: en oscuro se pasa a blanco (mismo tratamiento
-   que en el login). */
-.sb-logo-full {
-  display: block;
-  height: 26px;
-  width: auto;
-}
-
-.sb-logo-icono {
-  display: none;
-  width: 28px;
-  height: 28px;
-}
-
-[data-theme="dark"] .sb-logo-full,
-[data-theme="dark"] .sb-logo-icono {
-  filter: brightness(0) invert(1);
-}
-
-/* ── Footer de usuario ───────────────────────────────────────── */
-.sb-footer {
-  flex-shrink: 0;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Agrupa campana + menú ⋮ (tema, cerrar sesión) aparte de la identidad,
-   con un separador sutil (mismo tono que la línea sidebar/contenido) para
-   que se lean como dos bloques distintos. Tema y logout se condensaron en
-   el menú porque a 240px de ancho 3 botones de ícono truncaban el nombre
-   del usuario (ago 2026). */
-.sb-footer-acciones {
+/* ── Header ───────────────────────────────────────────────────
+   48px es la medida del spec del shell de Carbon, no una elección:
+   condiciona el ancho del riel (48px, para que el cuadro del botón de
+   menú sea cuadrado) y el lado de cada acción global. */
+.cds-header {
+  /* relative: en móvil el campo de búsqueda expandido se posiciona sobre
+     el header entero (`inset: 0` en AppSearch.vue), y necesita este
+     contenedor como referencia. */
+  position: relative;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding-left: 8px;
-  border-left: 1px solid var(--color-border-subtle);
+  height: var(--cds-shell-header-h);
+  background: var(--cds-shell-header-bg);
+  border-bottom: 1px solid var(--cds-shell-border);
+  /* Por encima del nav: el panel deslizante de móvil entra por debajo del
+     header, no lo tapa (ni con su sombra). */
+  z-index: var(--z-shell-header);
 }
 
-.sb-user {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-}
-
-.sb-user-avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
-  color: var(--color-text-inverse);
-  font-size: 12px;
-  font-weight: 700;
+/* Acción global del header: cuadrado de 48×48, sin radio, sin borde.
+   El hover es una capa de gris (no un tinte de acento) — en Carbon el
+   color de acento está reservado a lo que es una acción primaria o un
+   estado seleccionado, y una acción de header no es ninguna de las dos. */
+.cds-header__action {
+  width: var(--cds-shell-header-h);
+  height: var(--cds-shell-header-h);
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-base);
+  color: var(--cds-shell-text);
+  cursor: pointer;
+  font-size: var(--icon-md);
+  transition: background 0.11s;
 }
 
-.sb-user-info {
+.cds-header__action:hover {
+  background: var(--cds-shell-hover);
+}
+
+/* Foco del shell: línea sólida BLANCA de 2px por dentro. En Carbon el
+   indicador de foco sobre superficie oscura es blanco, no el azul — Blue 60
+   sobre Gray 100 da 2.0:1 y no se ve. Es la misma decisión que el tema
+   oscuro toma para --ring. */
+.cds-header__action:focus-visible,
+.cds-header__name:focus-visible {
+  outline: 2px solid var(--cds-shell-focus);
+  outline-offset: -2px;
+}
+
+/* ── HeaderName ───────────────────────────────────────────────
+   La jerarquía es de peso, no de color: los dos textos son
+   --cds-shell-text (16.45:1 sobre el header) y lo que distingue el
+   producto del prefijo es el 600. Teñir "Materen" de gris secundario lo
+   habría dejado en 10.6:1, legible, pero convierte la marca en metadato. */
+.cds-header__name {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  height: 100%;
+  padding: 0 var(--space-9) 0 var(--space-3);
+  color: var(--cds-shell-text);
+  text-decoration: none;
+  font-size: var(--fs-body-01);
+  letter-spacing: 0.1px;
+  white-space: nowrap;
   min-width: 0;
 }
 
-.sb-user-email {
-  font-size: 12px;
-  color: var(--sb-text-strong);
-  font-weight: 500;
-  white-space: nowrap;
+.cds-header__logo {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex-shrink: 0;
+  /* El logotipo es azul de marca sobre fondo claro; sobre el header en
+     Gray 100 se pasa a blanco, mismo tratamiento que ya tenía en el tema
+     oscuro y en el login. */
+  filter: brightness(0) invert(1);
+}
+
+.cds-header__name-texto {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cds-header__prefijo {
+  font-weight: 400;
+}
+
+.cds-header__producto {
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.sb-user-rol {
-  font-size: 11px;
-  color: var(--sb-text);
-}
-
-.sb-logout {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--sb-text);
-  padding: 8px;
-  border-radius: 6px;
+/* ── HeaderGlobalBar ──────────────────────────────────────────
+   `margin-left: auto` y no `justify-content: space-between` en el header:
+   el HeaderName tiene que poder truncar sin empujar las acciones. */
+.cds-header__global {
+  margin-left: auto;
   display: flex;
   align-items: center;
-  font-size: 18px;
-  transition: background 0.12s, color 0.12s;
+  height: 100%;
+}
+
+/* El trigger del menú de usuario lleva un avatar en vez de un glifo, así
+   que el ícono heredado de .cds-header__action no aplica; se centra el
+   avatar y se le quita el tamaño de fuente de ícono. */
+.cds-header__usuario {
+  font-size: var(--fs-label-01);
+}
+
+/* ── Cuerpo: nav + workspace ──────────────────────────────── */
+.cds-shell__cuerpo {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+}
+
+/* ── SideNav (Gray 90) ────────────────────────────────────────
+   256px expandido / 48px en riel, las dos medidas del spec de Carbon.
+   El borde derecho separa el nav del workspace claro; en el tema oscuro
+   los dos son grises cercanos y el borde es lo que evita que se fundan. */
+.cds-side-nav {
+  width: var(--cds-shell-nav-w);
   flex-shrink: 0;
+  background: var(--cds-shell-nav-bg);
+  border-right: 1px solid var(--cds-shell-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: var(--z-nav); /* solo aplica cuando es panel deslizante (≤768px) */
+  transition: width 0.11s;
 }
 
-.sb-logout:hover {
-  background: var(--color-bg-hover);
-  color: var(--sb-text-strong);
+@media (min-width: 769px) {
+  .cds-side-nav--riel {
+    width: var(--cds-shell-nav-rail-w);
+  }
 }
 
-/* ── Contenido principal ─────────────────────────────────────── */
-.layout-main {
+/* ── Workspace (Gray 10) ──────────────────────────────────────
+   El único contenedor con scroll vertical de toda la app. */
+.cds-shell__contenido {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  background: var(--color-bg);
   display: flex;
   flex-direction: column;
 }
 
-/* ── Barra móvil ─────────────────────────────────────────────── */
-.topbar-mobile {
+/* ── Velo ─────────────────────────────────────────────────── */
+.cds-shell__velo {
   display: none;
 }
 
-/* ── Overlay móvil ───────────────────────────────────────────── */
-.sb-overlay {
-  display: none;
+.cds-fade-enter-active,
+.cds-fade-leave-active {
+  transition: opacity 0.15s;
 }
-
-/* ── Transición fade ─────────────────────────────────────────── */
-.sb-fade-enter-active,
-.sb-fade-leave-active {
-  transition: opacity 0.2s;
-}
-.sb-fade-enter-from,
-.sb-fade-leave-to {
+.cds-fade-enter-from,
+.cds-fade-leave-to {
   opacity: 0;
 }
 
-/* ── Responsive ──────────────────────────────────────────────── */
+/* ── Móvil (≤768px) ───────────────────────────────────────────
+   El nav pasa a panel deslizante SOBRE el contenido. Sale de debajo del
+   header (top: 0 dentro de .cds-shell__cuerpo, que ya empieza a 48px), así
+   que el header sigue accesible con el panel abierto — incluido el botón
+   que lo cierra. */
 @media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    height: 100vh;
+  .cds-side-nav {
+    position: absolute;
+    inset: 0 auto 0 0;
     transform: translateX(-100%);
-    transition: transform 0.25s ease;
+    transition: transform 0.2s ease;
   }
 
-  /* El drawer móvil siempre va completo: sin toggle de colapso */
-  .sb-collapse {
+  .cds-side-nav--abierto {
+    transform: translateX(0);
+    /* Única sombra direccional del sistema: despega el panel del contenido
+       hacia la derecha. --shadow-overlay es vertical y no expresa
+       dirección; está declarada como excepción en
+       scripts/literales-vs-tokens.mjs. */
+    box-shadow: 4px 0 16px rgba(22, 22, 22, 0.4);
+  }
+
+  .cds-shell__velo {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: var(--color-overlay);
+    z-index: calc(var(--z-nav) - 1); /* justo debajo del panel que cubre */
+  }
+
+  /* El HeaderName pierde el prefijo: a 360px de ancho compite con las
+     cuatro acciones globales y el producto es el dato que importa. */
+  .cds-header__prefijo {
     display: none;
   }
 
-  .sidebar--open {
-    transform: translateX(0);
-    box-shadow: 4px 0 24px rgba(12, 15, 17, 0.4);
-  }
-
-  .sb-overlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(12, 15, 17, 0.55);
-    z-index: calc(var(--z-nav) - 1); /* justo debajo del drawer que cubre */
-  }
-
-  .topbar-mobile {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 48px;
-    padding: 0 16px;
-    background: var(--color-bg-elevated);
-    border-bottom: 1px solid var(--color-border);
-    box-shadow: var(--shadow-sm);
-    position: sticky;
-    top: 0;
-    z-index: var(--z-header-mobile);
-    flex-shrink: 0;
-  }
-
-  .topbar-toggle {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--color-text-primary);
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    font-size: 22px;
-    border-radius: 6px;
-    transition: background 0.12s;
-  }
-
-  .topbar-toggle:hover {
-    background: var(--color-bg-hover);
-  }
-
-  .topbar-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--color-text-primary);
-    letter-spacing: -0.01em;
-  }
-
-  .topbar-campana {
-    margin-left: auto;
+  .cds-header__name {
+    padding-right: var(--space-4);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar,
-  .sb-fade-enter-active,
-  .sb-fade-leave-active {
+  .cds-side-nav,
+  .cds-header__action,
+  .cds-fade-enter-active,
+  .cds-fade-leave-active {
     transition-duration: 0.01ms !important;
-  }
-}
-</style>
-
-<!-- Ajuste global: el site-header de cada vista queda bajo la topbar móvil -->
-<style>
-@media (max-width: 768px) {
-  .layout-main .site-header {
-    top: 48px;
   }
 }
 </style>

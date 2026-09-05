@@ -35,6 +35,30 @@ export const PRIORIDADES_TICKET = {
 export const OPCIONES_PRIORIDAD = Object.entries(PRIORIDADES_TICKET)
   .map(([valor, v]) => ({ valor, label: v.label }));
 
+// El orden de PRIORIDADES_TICKET (de menor a mayor) ES el ranking: derivarlo
+// del mapa en vez de escribir una segunda lista evita que las dos se
+// separen — el mismo tipo de deriva que ya costó varios ciclos de auditoría.
+const RANGO_PRIORIDAD = Object.fromEntries(
+  Object.keys(PRIORIDADES_TICKET).map((p, i) => [p, i]),
+);
+
+/**
+ * Ordena tickets por urgencia real: primero la prioridad más alta y, dentro
+ * de la misma prioridad, el más antiguo — el que lleva más tiempo esperando.
+ *
+ * Mismo criterio que el feed de pendientes del Dashboard (tier, luego días de
+ * atraso). No muta el arreglo recibido.
+ */
+export function ordenarPorUrgencia(tickets) {
+  return [...(tickets || [])].sort((a, b) => {
+    // Una prioridad desconocida no debe colarse arriba: va al final.
+    const ra = RANGO_PRIORIDAD[a.prioridad] ?? -1;
+    const rb = RANGO_PRIORIDAD[b.prioridad] ?? -1;
+    if (ra !== rb) return rb - ra;
+    return String(a.created_at || '').localeCompare(String(b.created_at || ''));
+  });
+}
+
 // Incidente/solicitud (migración 035). Sin color propio todavía: no se
 // pinta como badge en ningún lado hasta que haga falta mostrarlo (bandeja,
 // reporte) — acá solo el vocabulario para los selects de triage.

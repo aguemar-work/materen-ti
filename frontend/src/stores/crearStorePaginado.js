@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { TAM_PAGINA_DEFECTO } from '../constants/paginacion.js';
 
 // Los 7 listados con paginación server-side (tickets, empleados, correos,
 // equipos, licencias, kb, problemas) comparten exactamente el mismo ciclo:
@@ -34,7 +35,7 @@ export function crearStorePaginado(id, {
   // y cada store debe recibir un objeto nuevo, no uno compartido.
   filtrosIniciales,
   mensajeError = 'Error al cargar',
-  tamPagina = 20,
+  tamPagina = TAM_PAGINA_DEFECTO,
   // Datos extra de la página ya cargada (ej. conteos por fila). Si falla,
   // la página se muestra igual sin ellos — nunca tumba el listado.
   enriquecer = null,
@@ -101,6 +102,18 @@ export function crearStorePaginado(id, {
 
       async irAPagina(pagina) {
         this.pagina = pagina;
+        await this.cargar();
+      },
+
+      // Selector "Filas por página" de CarbonPagination. Igual que
+      // irAPagina, pero además vuelve a la 1: quedarse en la página 7 con
+      // 100 filas por página, cuando antes eran 20, deja al usuario viendo
+      // un listado vacío sin explicar por qué. Ese reset es obligatorio y no
+      // redundante: CarbonPagination ya no emite el suyo, justamente para no
+      // gastar una segunda consulta.
+      async cambiarTamPagina(nuevoTam) {
+        this.tamPagina = nuevoTam;
+        this.pagina = 1;
         await this.cargar();
       },
 

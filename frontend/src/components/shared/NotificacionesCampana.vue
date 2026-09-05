@@ -1,10 +1,19 @@
 <script setup>
-// Campana genérica del footer del sidebar (no hay topbar en desktop, ver
-// AppLayout.vue). Alimentada por el store de notificaciones: la carga
-// inicial y la suscripción realtime viven en AppLayout, este componente
-// solo lee el store y dispara las acciones de marcar leída.
-import { ref, nextTick, onBeforeUnmount } from 'vue';
+// Campana del header del shell (HeaderGlobalAction + panel flotante de
+// Carbon v11). Alimentada por el store de notificaciones: la carga inicial
+// y las dos suscripciones realtime viven en AppNotifications.vue
+// (`notificaciones:nuevas` broadcast + `notificaciones:usuario:<id>`
+// personal, migración 048), este componente solo lee el store y dispara las
+// acciones de marcar leída. El conteo de no-leídas es reactivo por
+// definición: `store.noLeidas` es un getter sobre la lista que esas
+// suscripciones alimentan, así que baja y sube sin recargar la página.
+//
+// Cambió de sitio con el rediseño del 2026-09-02: vivía en el pie del
+// SideNav y el panel abría hacia ARRIBA (no había header en desktop). Ahora
+// es una acción global del header y el panel cae hacia abajo, alineado a su
+// borde derecho, como el NotificationPanel de Carbon.
 import { useRouter } from 'vue-router';
+import { usePopoverFlotante } from '../../composables/usePopoverFlotante.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useNotificacionesStore } from '../../stores/notificaciones.js';
 import { formatAntiguedad } from '../../core/formatters.js';
@@ -14,57 +23,18 @@ const router = useRouter();
 const auth = useAuthStore();
 const store = useNotificacionesStore();
 
-const abierto = ref(false);
-const trigger = ref(null);
-const panel = ref(null);
-const coords = ref({ top: 0, left: 0 });
-
-// Mismo mecanismo de posicionamiento/cierre que MenuAcciones.vue: Teleport
-// a <body> (el sidebar no recorta overflow, pero el panel sí debe quedar
-// por encima de todo) + pointerdown fuera para cerrar.
-function posicionar() {
-  if (!trigger.value || !panel.value) return;
-  const r = trigger.value.getBoundingClientRect();
-  const m = panel.value.getBoundingClientRect();
-  const left = Math.max(8, Math.min(r.left, window.innerWidth - m.width - 8));
-  let top = r.top - m.height - 8;
-  if (top < 8) top = r.bottom + 8;
-  coords.value = { top, left };
-}
-
-function onDocPointer(e) {
-  if (trigger.value?.contains(e.target) || panel.value?.contains(e.target)) return;
-  cerrar();
-}
-
-function onKeydown(e) {
-  if (e.key !== 'Escape') return;
-  e.stopPropagation();
-  cerrar();
-  trigger.value?.focus();
-}
-
-async function abrir() {
-  abierto.value = true;
-  await nextTick();
-  posicionar();
-  document.addEventListener('pointerdown', onDocPointer, true);
-  document.addEventListener('keydown', onKeydown, true);
-  window.addEventListener('resize', cerrar);
-}
-
-function cerrar() {
-  if (!abierto.value) return;
-  abierto.value = false;
-  document.removeEventListener('pointerdown', onDocPointer, true);
-  document.removeEventListener('keydown', onKeydown, true);
-  window.removeEventListener('resize', cerrar);
-}
-
-function alternar() {
-  if (abierto.value) cerrar();
-  else abrir();
-}
+// Mismo mecanismo que MenuAcciones.vue y AppSearch.vue: Teleport a <body>
+// (el panel debe quedar por encima del workspace y del SideNav, y el header
+// es su propio contexto de apilamiento) + pointerdown fuera para cerrar.
+// Lo propio de acá es solo el anclaje: alineado al borde DERECHO del
+// trigger y abriendo hacia abajo, porque el trigger vive en la barra de
+// acciones globales, arriba a la derecha.
+const { abierto, trigger, panel, coords, cerrar, alternar } = usePopoverFlotante({
+  alinear(r, m) {
+    const left = Math.max(8, Math.min(r.right - m.width, window.innerWidth - m.width - 8));
+    return { top: r.bottom, left };
+  },
+});
 
 async function abrirNotificacion(n) {
   cerrar();
@@ -83,180 +53,251 @@ async function marcarTodas() {
     // El store ya revirtió el estado optimista.
   }
 }
-
-onBeforeUnmount(cerrar);
 </script>
 
 <template>
   <button
     ref="trigger"
-    class="icon-btn campana-trigger"
+    class="cds-campana"
     type="button"
     :title="store.noLeidas.length ? `Notificaciones (${store.noLeidas.length} sin leer)` : 'Notificaciones'"
+    :aria-label="store.noLeidas.length ? `Notificaciones (${store.noLeidas.length} sin leer)` : 'Notificaciones'"
     aria-haspopup="menu"
     :aria-expanded="abierto"
     @click.stop="alternar"
   >
     <i class="ti ti-bell" aria-hidden="true"></i>
-    <span v-if="store.noLeidas.length" class="badge-count campana-badge">{{ store.noLeidas.length }}</span>
+    <span v-if="store.noLeidas.length" class="cds-campana__conteo">{{ store.noLeidas.length }}</span>
   </button>
 
   <Teleport to="body">
     <div
       v-if="abierto"
       ref="panel"
-      class="campana-panel"
+      class="cds-panel"
       role="menu"
       aria-label="Notificaciones"
       :style="{ top: coords.top + 'px', left: coords.left + 'px' }"
     >
-      <div class="campana-panel__header">
-        <span>Notificaciones</span>
+      <div class="cds-panel__header">
+        <span class="cds-panel__titulo">Notificaciones</span>
         <button
           v-if="store.noLeidas.length"
           type="button"
-          class="campana-panel__marcar-todas"
+          class="cds-panel__accion"
           @click="marcarTodas"
         >
           Marcar todas como leídas
         </button>
       </div>
 
-      <div v-if="!store.lista.length" class="campana-panel__vacio">Sin notificaciones</div>
+      <div v-if="!store.lista.length" class="cds-panel__vacio">Sin notificaciones</div>
 
       <button
         v-for="n in store.lista"
         :key="n.id"
         type="button"
-        class="campana-panel__item"
+        class="cds-panel__item"
+        :class="{ 'cds-panel__item--no-leida': !store.leidasIds.has(n.id) }"
         role="menuitem"
         @click="abrirNotificacion(n)"
       >
         <i class="ti" :class="icono(n.tipo)" aria-hidden="true"></i>
-        <span class="campana-panel__item-texto">
-          <span class="campana-panel__item-titulo">{{ n.titulo }}</span>
-          <span class="campana-panel__item-fecha">{{ formatAntiguedad(n.creado_en) }}</span>
+        <span class="cds-panel__item-texto">
+          <span class="cds-panel__item-titulo">{{ n.titulo }}</span>
+          <span class="cds-panel__item-fecha">{{ formatAntiguedad(n.creado_en) }}</span>
         </span>
-        <span v-if="!store.leidasIds.has(n.id)" class="campana-panel__punto" aria-hidden="true"></span>
       </button>
     </div>
   </Teleport>
 </template>
 
 <style scoped>
-.campana-trigger {
+/* ── Trigger: acción global del header ────────────────────────
+   Cuadrado de 48×48 sobre Gray 100, igual que el resto de la barra de
+   acciones. Los valores repiten los de .cds-header__action por la misma
+   razón que en AppSearch.vue: esa clase es scoped a AppLayout.vue. */
+.cds-campana {
   position: relative;
+  width: var(--cds-shell-header-h);
+  height: var(--cds-shell-header-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-base);
+  color: var(--cds-shell-text);
+  cursor: pointer;
+  font-size: var(--icon-md);
+  transition: background 0.11s;
 }
 
-.campana-badge {
+.cds-campana:hover {
+  background: var(--cds-shell-hover);
+}
+
+.cds-campana:focus-visible {
+  outline: 2px solid var(--cds-shell-focus);
+  outline-offset: -2px;
+}
+
+/* Conteo de no-leídas: Blue 60 sólido con texto blanco (5.00:1), el mismo
+   par que el badge de "sin asignar" del SideNav. NO rojo: en este sistema
+   Red 60 significa P1 o falta de devolución, y una notificación sin leer no
+   es ninguna de las dos. Un color, un significado. */
+.cds-campana__conteo {
   position: absolute;
-  top: 0;
-  right: 0;
-  font-size: 10px;
-  line-height: 1;
-  padding: 1px 5px;
+  top: var(--space-5);
+  right: var(--space-5);
+  min-width: var(--space-7);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-base);
+  background: var(--color-accent);
+  color: var(--color-text-on-color);
+  font-size: var(--fs-label-01);
+  font-weight: 600;
+  line-height: var(--space-7);
+  text-align: center;
 }
 
-.campana-panel {
+/* ── Panel ────────────────────────────────────────────────────
+   Vive sobre el workspace, así que usa los roles claro/oscuro normales.
+   Separadores de 1px entre ítems y encabezado en layer-accent: la jerarquía
+   de una lista de Carbon se lee por líneas y capas, sin tarjetas
+   anidadas ni radios. */
+.cds-panel {
   position: fixed;
   z-index: var(--z-popover);
-  width: min(340px, calc(100vw - 16px));
-  max-height: min(420px, calc(100vh - 16px));
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 96px));
   overflow-y: auto;
   background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  padding: 4px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-base);
+  box-shadow: var(--shadow-overlay);
 }
 
-.campana-panel__header {
+.cds-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--color-text-primary);
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-7);
+  background: var(--color-bg-accent);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
-.campana-panel__marcar-todas {
+.cds-panel__titulo {
+  color: var(--color-text-primary);
+  font-size: var(--fs-label-01);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--cds-label-01-ls);
+}
+
+.cds-panel__accion {
   background: none;
   border: none;
+  border-radius: var(--radius-base);
   cursor: pointer;
   color: var(--color-accent-text);
-  font-size: 11.5px;
-  font-weight: 500;
-  padding: 2px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-label-01);
+  padding: var(--space-1) var(--space-2);
 }
 
-.campana-panel__marcar-todas:hover {
+.cds-panel__accion:hover {
   text-decoration: underline;
 }
 
-.campana-panel__vacio {
-  padding: 20px 10px;
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--color-text-secondary);
+.cds-panel__accion:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
-.campana-panel__item {
+.cds-panel__vacio {
+  padding: var(--space-9) var(--space-7);
+  color: var(--color-text-secondary);
+  font-size: var(--fs-body-01);
+  text-align: center;
+}
+
+.cds-panel__item {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--space-5);
   width: 100%;
-  padding: 9px 10px;
+  padding: var(--space-5) var(--space-7);
   border: none;
-  border-radius: var(--radius-sm);
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-base);
   background: transparent;
   cursor: pointer;
   text-align: left;
+  font-family: var(--font-sans);
 }
 
-.campana-panel__item:hover,
-.campana-panel__item:focus-visible {
+.cds-panel__item:hover {
   background: var(--color-bg-hover);
 }
 
-.campana-panel__item i {
-  font-size: 16px;
-  color: var(--color-accent-soft);
-  flex-shrink: 0;
-  margin-top: 1px;
+.cds-panel__item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
-.campana-panel__item-texto {
+.cds-panel__item:last-child {
+  border-bottom: none;
+}
+
+/* No-leída: barra de acento a la izquierda en vez del punto azul que había
+   antes. El punto competía con el ícono de tipo al otro extremo de la fila
+   (dos marcas en la misma fila para dos cosas distintas); la barra
+   pertenece al borde de la fila, no a su contenido, y es el mismo recurso
+   con el que el SideNav marca el ítem activo. */
+.cds-panel__item--no-leida::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--color-accent);
+}
+
+.cds-panel__item--no-leida .cds-panel__item-titulo {
+  font-weight: 600;
+}
+
+.cds-panel__item i {
+  flex-shrink: 0;
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--icon-sm);
+}
+
+.cds-panel__item-texto {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
   min-width: 0;
   flex: 1;
 }
 
-.campana-panel__item-titulo {
-  font-size: 12.5px;
-  font-weight: 500;
+.cds-panel__item-titulo {
   color: var(--color-text-primary);
+  font-size: var(--fs-body-01);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
-.campana-panel__item-fecha {
-  font-size: 11px;
+.cds-panel__item-fecha {
   color: var(--color-text-secondary);
-}
-
-.campana-panel__punto {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-accent);
-  flex-shrink: 0;
-  margin-top: 5px;
+  font-size: var(--fs-label-01);
 }
 </style>

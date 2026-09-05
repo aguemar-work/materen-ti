@@ -11,6 +11,8 @@ import { useNotificacionesStore } from '../../stores/notificaciones.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { iconoNotificacion } from '../../core/notificacionIconos.js';
+import { toasts, descartarToast } from '../../core/toast.js';
+import CarbonNotification from '../carbon/CarbonNotification.vue';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -97,29 +99,48 @@ async function irAAviso(aviso) {
       </button>
     </div>
   </transition-group>
+
+  <!-- Confirmaciones de acciones propias (showToast, core/toast.js): abajo a
+       la derecha, se van solas. Distinto del stack de arriba (avisos
+       realtime, arriba a la derecha, los descarta el usuario o expiran a los
+       6s) — mismo componente (CarbonNotification variante "toast"), dos
+       colas independientes porque su origen y su posición en pantalla son
+       distintos (ver CarbonNotification.vue, cabecera). -->
+  <transition-group name="toast-fade" tag="div" class="toast-stack">
+    <CarbonNotification
+      v-for="t in toasts"
+      :key="t.id"
+      :tipo="t.tipo"
+      variante="toast"
+      descartable
+      @cerrar="descartarToast(t.id)"
+    >{{ t.msg }}</CarbonNotification>
+  </transition-group>
 </template>
 
 <style scoped>
 .aviso-stack {
   position: fixed;
-  top: 16px;
-  right: 16px;
+  /* Debajo del header del shell (48px), no pegado al borde del viewport:
+     ahi los avisos tapaban las acciones globales. */
+  top: calc(var(--cds-shell-header-h) + var(--space-7));
+  right: var(--space-7);
   z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-4);
   width: min(320px, calc(100vw - 32px));
 }
 
 .aviso-card {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--space-5);
   padding: 12px 12px 12px 14px;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-base);
+  box-shadow: var(--shadow-overlay);
   cursor: pointer;
 }
 
@@ -129,7 +150,7 @@ async function irAAviso(aviso) {
 
 .aviso-card > i {
   color: var(--color-accent-soft);
-  font-size: 18px;
+  font-size: var(--icon-md);
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -137,13 +158,13 @@ async function irAAviso(aviso) {
 .aviso-card-texto {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
   min-width: 0;
   flex: 1;
 }
 
 .aviso-card-titulo {
-  font-size: 13px;
+  font-size: var(--fs-body-01);
   font-weight: 600;
   color: var(--color-text-primary);
   overflow: hidden;
@@ -158,11 +179,11 @@ async function irAAviso(aviso) {
   border: none;
   cursor: pointer;
   color: var(--color-text-secondary);
-  padding: 2px;
-  border-radius: 6px;
+  padding: var(--space-1);
+  border-radius: var(--radius-base);
   display: flex;
   flex-shrink: 0;
-  font-size: 14px;
+  font-size: var(--icon-sm);
 }
 
 .aviso-card-cerrar:hover {
@@ -191,6 +212,46 @@ async function irAAviso(aviso) {
 @media (prefers-reduced-motion: reduce) {
   .aviso-fade-enter-active,
   .aviso-fade-leave-active {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Misma posición que el `#toast` que reemplaza (bottom:24px/right:24px,
+   max-width 400px, apilado 16px en mobile) — la migración cambia el
+   mecanismo de render, no dónde aparece. */
+.toast-stack {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: min(400px, calc(100vw - 32px));
+}
+
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (max-width: 768px) {
+  .toast-stack {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-fade-enter-active,
+  .toast-fade-leave-active {
     transition-duration: 0.01ms !important;
   }
 }

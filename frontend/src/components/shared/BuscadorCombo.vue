@@ -353,15 +353,15 @@ onBeforeUnmount(() => {
 
 .combo-icon {
   position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--color-text-secondary); font-size: 15px; pointer-events: none;
+  color: var(--color-text-secondary); font-size: var(--icon-sm); pointer-events: none;
 }
 
-.combo-wrap input { width: 100%; padding-left: 32px; padding-right: 32px; }
+.combo-wrap input { width: 100%; padding-left: var(--space-10); padding-right: var(--space-10); }
 .combo-wrap input.combo-ok { border-color: var(--color-success); }
 
 .combo-check {
   position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--color-success); font-size: 16px; pointer-events: none;
+  color: var(--color-success); font-size: var(--icon-sm); pointer-events: none;
 }
 
 :deep(.combo-check--nuevo) { color: var(--color-primary); }
@@ -371,11 +371,11 @@ onBeforeUnmount(() => {
    ya no compite dentro del stacking context del modal. */
 .combo-lista {
   position: fixed; z-index: var(--z-popover-modal);
-  margin: 0; padding: 4px; list-style: none;
+  margin: 0; padding: var(--space-2); list-style: none;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-base);
+  box-shadow: var(--shadow-overlay);
   overflow-y: auto;
   overscroll-behavior: contain; /* al llegar al final no arrastra el modal */
 }
@@ -385,18 +385,18 @@ onBeforeUnmount(() => {
    `.combo-lista` cada regla de fila especial gana por especificidad a la
    regla base, sin necesidad de !important. */
 .combo-lista :deep(li) {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: var(--fs-base);
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-4);
+  padding: var(--space-4) var(--space-5); border-radius: var(--radius-base); cursor: pointer; font-size: var(--fs-body-01);
 }
 
 .combo-lista :deep(li:hover) { background: var(--color-accent-subtle); }
 .combo-lista :deep(li.is-activo) {
   background: var(--color-accent-subtle);
-  box-shadow: 0 0 0 3px var(--mat-ring);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .combo-lista :deep(.combo-vacio) {
-  color: var(--color-text-secondary); cursor: default; font-size: var(--fs-sm);
+  color: var(--color-text-secondary); cursor: default; font-size: var(--fs-label-01);
 }
 .combo-lista :deep(.combo-vacio:hover) { background: none; }
 
@@ -404,21 +404,21 @@ onBeforeUnmount(() => {
 .combo-lista :deep(.combo-mas) {
   position: sticky; bottom: -4px;
   justify-content: center;
-  margin: 4px -4px -4px; padding: 6px 10px;
+  margin: var(--space-2) -var(--space-2) -var(--space-2); padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--color-border-subtle);
-  border-radius: 0;
+  border-radius: var(--radius-base);
   background: var(--color-bg-subtle);
   color: var(--color-text-tertiary);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-label-01);
   cursor: default;
 }
 .combo-lista :deep(.combo-mas:hover) { background: var(--color-bg-subtle); }
 
-.combo-lista :deep(.combo-sec) { font-size: var(--fs-sm); color: var(--color-text-secondary); }
+.combo-lista :deep(.combo-sec) { font-size: var(--fs-label-01); color: var(--color-text-secondary); }
 
 .combo-lista :deep(.combo-usuario) {
   font-family: var(--font-mono, monospace);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   min-width: 0; /* sin esto el flex item no baja de su contenido y no recorta */
   overflow: hidden;
   text-overflow: ellipsis;
@@ -426,7 +426,7 @@ onBeforeUnmount(() => {
 }
 
 .combo-lista :deep(.combo-plataforma) {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
   color: var(--color-text-secondary);
   white-space: nowrap;
 }
@@ -434,8 +434,8 @@ onBeforeUnmount(() => {
 .combo-lista :deep(.combo-registrar) {
   justify-content: flex-start;
   color: var(--color-primary);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-label-01);
 }
-.combo-lista :deep(.combo-registrar i) { font-size: 15px; flex-shrink: 0; }
+.combo-lista :deep(.combo-registrar i) { font-size: var(--icon-sm); flex-shrink: 0; }
 .combo-lista :deep(.combo-registrar strong) { font-family: var(--font-mono, monospace); font-weight: 600; }
 </style>

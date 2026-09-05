@@ -5,8 +5,14 @@ import App from './App.vue';
 import router from './router/index.js';
 import { setupGuards } from './router/guards.js';
 import { useAuthStore } from './stores/auth.js';
+// Capa vendor de Carbon (valores `--cds-*`) antes que la capa de roles que la
+// consume. El orden NO es un requisito tecnico (la sustitucion de var() ocurre
+// despues de la cascada, asi que main.css resolveria igual si fuera primero) pero
+// si lo es de lectura: refleja la direccion de la dependencia y deja claro cual de
+// los dos archivos gana si algun dia declaran la MISMA propiedad (gana main.css,
+// el de abajo). Ver la cabecera de styles/carbon-theme.css.
+import './styles/carbon-theme.css';
 import './styles/main.css';
-import { initToast } from './core/toast.js';
 import { initTema } from './core/tema.js';
 
 initTema();
@@ -46,7 +52,6 @@ async function boot() {
   await router.isReady();
 
   app.mount('#app');
-  initToast();
 }
 
 boot();

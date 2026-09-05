@@ -1,4 +1,4 @@
-import { ref, computed, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../core/toast.js';
 import { estadoInfo, prioridadInfo, destinoDeCambio, ESTADOS_EN_CURSO, HITO_LABELS, EVENTO_LABELS, NIVELES_ATENCION } from '../core/dominio-tickets.js';
@@ -25,17 +25,8 @@ export function useTicketDetalleLogica() {
   const comentarioInterno = ref(true);
   const enviandoComentario = ref(false);
 
-  // Auto-crece con el texto hasta un tope (igual que un chat); pasado ese
-  // tope, scrollea adentro en vez de seguir empujando el layout de la página.
-  const comentarioTextarea = ref(null);
-  const ALTURA_MAX_TEXTAREA = 160;
-
-  function autoCrecerTextarea() {
-    const el = comentarioTextarea.value;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, ALTURA_MAX_TEXTAREA)}px`;
-  }
+  // El auto-crecimiento del textarea vive en TicketComposer.vue: es
+  // comportamiento del control, no lógica de negocio del ticket.
 
   function autorDe(autorId) {
     return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
@@ -86,6 +77,22 @@ export function useTicketDetalleLogica() {
       }
     }
     return hitos;
+  });
+
+  // Timeline unificado (revisión "Filas con foco", 2026-09-04): un solo feed
+  // cronológico que intercala hitos del sistema y comentarios, para no
+  // obligar a mirar Historial y Conversación en dos áreas de scroll
+  // separadas al reconstruir "qué pasó y qué se dijo". Merge puro de
+  // frontend — ambas fuentes ya traen timestamp comparable, no hace falta
+  // tocar el backend. `historialEsencial` y `comentarios` se siguen
+  // exportando tal cual (no romper otros consumidores), esto es una vista
+  // adicional sobre los mismos datos.
+  const timelineUnificado = computed(() => {
+    const filas = [
+      ...historialEsencial.value.map((h) => ({ tipo: 'evento', fecha: h.fecha, ...h })),
+      ...comentarios.value.map((c) => ({ tipo: 'comentario', fecha: c.created_at, ...c })),
+    ];
+    return filas.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
   });
 
   // ── Iniciar atención (abierto -> en_progreso): los campos (prioridad,
@@ -400,15 +407,45 @@ export function useTicketDetalleLogica() {
     }
   }
 
+  // Enlace de seguimiento del ticket (la misma página pública donde el
+  // empleado ya puede ver comentarios no internos) — no confundir con
+  // linkSatisfaccion(), que apunta a la encuesta, un paso más adelante.
+  function linkSeguimiento() {
+    return `${window.location.origin}/soporte/${ticket.value.token}`;
+  }
+
+  // Segunda macro de WhatsApp (Plan Maestro v2, Frente 2): pedir más datos
+  // al solicitante. Mismo patrón exacto que copiarMensajeSatisfaccion —
+  // clipboard + toast, sin wa.me — el staff sigue decidiendo por qué canal
+  // reenviarlo. Sirve tanto para tickets vinculados (empleado_nombre) como
+  // sin vincular (contacto_ingresado); si no hay ninguno de los dos, el
+  // saludo queda genérico en vez de forzar un nombre inexistente.
+  async function copiarMensajeSolicitarInfo() {
+    const link = linkSeguimiento();
+    const nombre = ticket.value.empleado_nombre || ticket.value.contacto_ingresado || '';
+    const texto =
+      `Hola${nombre ? `, ${nombre}` : ''}.\n` +
+      `Sobre su ticket ${ticket.value.codigo} (${ticket.value.titulo}), necesitamos más información para continuar.\n` +
+      `Puede responder por este medio o agregar detalles en su seguimiento:\n` +
+      `${link}\n\n` +
+      `Gracias.`;
+    try {
+      await navigator.clipboard.writeText(texto);
+      showToast('Mensaje copiado');
+    } catch {
+      showToast('No se pudo copiar. Copia manualmente: ' + link, 'error');
+    }
+  }
+
   async function enviarComentario() {
     const mensaje = nuevoComentario.value.trim();
     if (!mensaje) return;
     enviandoComentario.value = true;
     try {
       await store.comentar(mensaje, comentarioInterno.value);
+      // TicketComposer.vue devuelve el textarea a su alto mínimo al ver
+      // que el mensaje quedó vacío.
       nuevoComentario.value = '';
-      await nextTick();
-      autoCrecerTextarea();
     } catch (e) {
       showToast(e?.message || 'Error al comentar', 'error');
     } finally {
@@ -425,8 +462,8 @@ export function useTicketDetalleLogica() {
     auth,
     ticket, comentarios, eventos, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId,
     guardandoCampo,
-    nuevoComentario, comentarioInterno, enviandoComentario, comentarioTextarea, autoCrecerTextarea,
-    autorDe, colorDeEstado, historialEsencial,
+    nuevoComentario, comentarioInterno, enviandoComentario,
+    autorDe, colorDeEstado, historialEsencial, timelineUnificado,
     atencionForm, iniciando, tipoAmbiguoSinClasificar,
     cargar, confirmarIniciar,
     mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
@@ -438,6 +475,7 @@ export function useTicketDetalleLogica() {
     mostrarProblemaForm, onProblemaFormCerrado,
     copiarMensajeSatisfaccion,
     copiarLinkSatisfaccion,
+    copiarMensajeSolicitarInfo,
     enviarComentario,
   };
 }

@@ -5,7 +5,7 @@
 export const ESTADOS_PROBLEMA = {
   abierto:     { label: 'Abierto',      clase: 'badge--info' },
   diagnostico: { label: 'Diagnóstico',  clase: 'badge--warning' },
-  acciones:    { label: 'Acciones',     clase: 'badge--teal' },
+  acciones:    { label: 'Acciones',     clase: 'badge--sky' },
   cerrado:     { label: 'Cerrado',      clase: 'badge--neutral' },
 };
 
