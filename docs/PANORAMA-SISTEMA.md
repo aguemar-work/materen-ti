@@ -72,7 +72,7 @@ Leyenda de la columna RLS: `staff` = `es_staff()`, `jefe` = `es_jefe()`. Cuando 
 |---|---|---|---|
 | `tipos_equipo` | nombre, campos_spec (jsonb), accesorios_sugeridos (jsonb) | — | staff+módulo `equipos`⁴ / staff+módulo `equipos`⁴ / staff+módulo `equipos`⁴ / jefe |
 | `catalogo_almacen` | codigo, descripcion | — | staff+módulo `equipos`⁴ / staff+módulo `equipos`⁴ / staff+módulo `equipos`⁴ / jefe |
-| `equipos` | codigo, marca, modelo, serie, `estado` (operativo/en_reparacion/de_baja/perdido), specs (jsonb), accesorios (jsonb), fotos (jsonb), codigo_almacen | `tipo_id→tipos_equipo`, `empresa_id→empresas` | staff+módulo `equipos`⁴ / staff+módulo `equipos`⁴ / staff+módulo `equipos`⁴ / jefe |
+| `equipos` | codigo, marca, modelo, serie, `estado` (operativo/en_reparacion/de_baja/perdido), specs (jsonb), accesorios (jsonb), fotos (jsonb), codigo_almacen, `tiene_asignacion_activa` (migración 085, ver nota) | `tipo_id→tipos_equipo`, `empresa_id→empresas` | staff+módulo `equipos`⁴ / staff+módulo `equipos`⁴ / staff+módulo `equipos`⁴ / jefe |
 | `equipo_accesorios` | codigo, descripcion, cantidad (1–999), orden | `equipo_id→equipos`, `catalogo_id→catalogo_almacen` | staff+módulo `equipos`⁴ (ver/crear/editar/**borrar** — nota: acá el borrado también quedó gateado por módulo desde la migración 079, no solo jefe, único caso así en todo el esquema) |
 | `asignaciones_equipo` | fecha_inicio, fecha_fin, condicion_entrega/devolucion, motivo_cierre; CHECK: exactamente uno de `empleado_id`/`ubicacion_id` | `equipo_id→equipos`, `empleado_id→empleados`, `ubicacion_id→ubicaciones` | staff+módulo `equipos`⁴ (ver/crear/cerrar) / jefe elimina |
 | `eventos_equipo` | evento (registrado/asignado/devuelto/estado_cambiado), detalle, user_email | `equipo_id→equipos` | **solo staff+módulo `equipos`⁴ ve**; insert exclusivamente por triggers vía `log_evento_equipo()` `SECURITY DEFINER` |
@@ -182,6 +182,7 @@ Agrupado por tabla. Todos corren `SECURITY DEFINER` salvo donde se indica.
 - `set_created_updated_by()`, `set_updated_at()`, `notify_list_changed('equipos:list')`.
 - `evento_equipo_registrado()` (AFTER INSERT) — loguea `registrado` en `eventos_equipo`.
 - `evento_equipo_estado()` (AFTER UPDATE) — loguea `estado_cambiado` cuando cambia `estado`.
+- `set_equipo_tiene_asignacion_activa()` (BEFORE INSERT/UPDATE, migración 085) — recalcula `tiene_asignacion_activa` desde `asignaciones_equipo` en cada escritura, sobreescribiendo lo que mande el cliente (mismo patrón que `set_created_updated_by`, no un permiso que bloquea). `asignaciones_equipo` gana el trigger espejo `sync_equipo_tiene_asignacion_activa()` (AFTER INSERT/UPDATE/DELETE) que empuja el recálculo al alta/cierre/edición de una asignación. Sigue siendo derivado, no un estado que decida el cliente — ver la nota en el propio archivo de la migración sobre por qué esto no contradice el principio original de 013 ("Disponible/Asignado no se guarda"): antes se recalculaba en cada consulta con una lista de IDs armada en el cliente (rompía con HTTP 414 pasado cierto inventario — medido: 197 equipos ocupados); ahora el mismo cálculo lo guarda un trigger, nunca el cliente, para que PostgREST filtre por una columna real (`equiposApi.queryEquipos()`, situación `disponible`).
 
 **`equipo_accesorios`**
 - Sin trigger de negocio propio más allá del `CHECK (cantidad between 1 and 999)`.

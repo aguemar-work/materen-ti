@@ -49,18 +49,6 @@ const SELECT_EQUIPO = `
   asignaciones_equipo(id, fecha_fin, fecha_inicio, empleado_id, ubicacion_id, condicion_entrega, empleados(nombres, apellidos, estado), ubicaciones(nombre))
 `;
 
-async function idsEquiposConAsignacionActiva(filtro = {}) {
-  let q = getClient().database
-    .from('asignaciones_equipo')
-    .select('equipo_id')
-    .is('fecha_fin', null);
-  if (filtro.empleado_id) q = q.not('empleado_id', 'is', null);
-  if (filtro.ubicacion_id) q = q.not('ubicacion_id', 'is', null);
-  const { data, error } = await q;
-  if (error) throw error;
-  return [...new Set((data || []).map((a) => a.equipo_id))];
-}
-
 function aplicarFiltroSituacion(query, situacion) {
   if (!situacion) return query;
   if (['en_reparacion', 'de_baja', 'perdido'].includes(situacion)) {
@@ -91,9 +79,15 @@ async function queryEquipos({ q = '', tipoId = '', situacion = '', orden } = {},
   if (filtrado !== null) {
     query = filtrado;
   } else if (situacion === 'disponible') {
-    const ocupados = await idsEquiposConAsignacionActiva();
-    query = query.eq('estado', 'operativo');
-    if (ocupados.length) query = query.not('id', 'in', `(${ocupados.join(',')})`);
+    // Antes: traer a JS el equipo_id de TODA asignación activa y armar un
+    // filtro `not.in.(uuid,uuid,...)` — con inventario suficiente (medido:
+    // 197 equipos ocupados en producción) la URL supera el límite de
+    // PostgREST y responde 414 URI Too Long. equipos.tiene_asignacion_activa
+    // (migración 085) es la relación directa con asignaciones_equipo ya
+    // resuelta en el servidor por trigger — nunca por el cliente, sigue
+    // siendo derivada, no un estado que este archivo decida — así que el
+    // filtro es una sola columna real, sin lista de IDs en la URL.
+    query = query.eq('estado', 'operativo').eq('tiene_asignacion_activa', false);
   }
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {

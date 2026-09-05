@@ -27,6 +27,31 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-05** (**Fix HTTP 414 en el filtro "disponible" de Equipos**) —
+  `equiposApi.queryEquipos()` resolvía la situación "disponible" trayendo a
+  JS el `equipo_id` de TODA asignación activa del inventario y armando un
+  filtro `not.in.(uuid,uuid,...)` — verificado en producción: 197 equipos
+  con asignación activa, URL al borde/por encima del límite de PostgREST
+  (HTTP 414 URI Too Long). Migración 085
+  (`migrations/085_equipos_disponibilidad_derivada.sql`, aplicada):
+  `equipos.tiene_asignacion_activa` (boolean), mantenida SOLO por trigger
+  (`set_equipo_tiene_asignacion_activa()` en `equipos`,
+  `sync_equipo_tiene_asignacion_activa()` en `asignaciones_equipo`) —
+  nunca por el cliente, mismo patrón que `set_created_updated_by`. Backfill
+  verificado contra un conteo independiente (197 = 197) antes de tocar el
+  frontend. **No contradice** el principio de la migración 013
+  ("Disponible/Asignado no se guarda: se deriva de la asignación activa"):
+  ver la nota extensa al inicio del archivo de la migración sobre la
+  diferencia entre "no guardado, recalculado en cada consulta con una
+  lista de IDs" (lo que rompía) y "guardado por un trigger, nunca por el
+  cliente" (lo que reemplaza). `equipos.js` (frontend) pasa de la lista de
+  IDs a `.eq('estado', 'operativo').eq('tiene_asignacion_activa', false)`;
+  se retira `idsEquiposConAsignacionActiva()` (helper que quedó sin uso).
+  Sin cambios en `aplicarFiltroSituacion()` (asignado/en_ubicación no
+  tenían este problema). Suite completa 380/380 en verde, guardrails de
+  diseño en 0 fallas (cambio de solo backend/API, sin CSS ni markup).
+  `docs/PANORAMA-SISTEMA.md` actualizado (fila de `equipos` y sus
+  triggers).
 - **2026-09-04** (**Plan Maestro v2 — Frente 2: Helpdesk 3 columnas**) —
   último de los 4 frentes. Auditoría previa (Paso 1): el working tree tenía
   177 archivos modificados (la gran mayoría preexistente, no de esta
