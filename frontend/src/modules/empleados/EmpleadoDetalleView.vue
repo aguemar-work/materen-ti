@@ -14,11 +14,10 @@ import {
   altaLista as altaListaDe,
 } from '../../core/dominio-empleados.js';
 import { formatFecha, formatTelefono, fechaLocalISO } from '../../core/formatters.js';
-import { tonoAvatar, inicialesDe } from '../../core/avatar.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import { rolDeTag } from '../../core/tagRol.js';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppAvatar from '../../components/ui/AppAvatar.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
@@ -119,12 +118,21 @@ const altaLista = computed(() => altaListaDe(pasosAlta.value));
 
 const nombreCompleto = computed(() => nombreCompletoDe(empleado.value));
 
-// inicialesDe (core/avatar.js) en vez de armarlas acá: además de no
-// repetir la lógica, pone las mayúsculas en JS. La versión local no lo
-// hacía y dependía del text-transform: uppercase que traía el CSS de
-// .emp-avatar — al pasar a la familia .avatar, que no lo trae, las
-// iniciales se habrían renderizado en minúscula.
-const iniciales = computed(() => inicialesDe(nombreCompleto.value));
+// Pasos ya cumplidos de la guía de alta (barra de progreso).
+const pasosHechos = computed(() => pasosAlta.value.filter((p) => p.hecho).length);
+
+// Columna lateral "Organización" de la ficha (rediseño 2026-09-22).
+const datosOrganizacion = computed(() => {
+  const e = empleado.value;
+  if (!e) return [];
+  return [
+    { label: 'Empresa', valor: e.empresa_nombre },
+    { label: 'Cargo', valor: e.cargo },
+    { label: 'Área/Obra', valor: e.area_obra_nombre },
+    { label: 'Ubicación', valor: e.ubicacion_nombre },
+    { label: 'Fecha de alta', valor: e.fecha_alta ? formatFecha(e.fecha_alta) : '' },
+  ];
+});
 
 async function cargar() {
   cargando.value = true;
@@ -225,294 +233,276 @@ onMounted(cargar);
 </script>
 
 <template>
-  <div class="detalle-page vista-modulo">
-    <PageHeader>
-      <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" aria-label="Volver" @click="volver('/empleados')">
-          <i class="ti ti-arrow-left"></i>
-        </button>
-        <template v-if="empleado">
-          <div class="avatar lg" :class="tonoAvatar(nombreCompleto)">{{ iniciales }}</div>
-          <div class="header-emp">
-            <h1>
-              {{ nombreCompleto }}
-              <BadgeEstado tipo="empleado" :valor="empleado.estado" status />
-            </h1>
-            <span class="header-sub">
-              <TextoVacio :valor="empleado.cargo" placeholder="Sin cargo" />
-              <template v-if="empleado.empresa_nombre"> · {{ empleado.empresa_nombre }}</template>
-            </span>
+  <div class="mx-auto w-full max-w-7xl px-4 pb-10 pt-5 sm:px-6">
+    <button
+      type="button"
+      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+      @click="volver('/empleados')"
+    >
+      <i class="ti ti-arrow-left" aria-hidden="true"></i>
+      Empleados
+    </button>
+
+    <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando empleado...</p>
+
+    <p v-else-if="!empleado" class="py-16 text-center text-sm text-gray-500">No se encontró el empleado.</p>
+
+    <template v-else>
+      <!-- ══ Perfil ═══════════════════════════════════════════════ -->
+      <header class="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
+        <AppAvatar :nombre="nombreCompleto" tamano="xl" />
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ nombreCompleto }}</h1>
+            <BadgeEstado tipo="empleado" :valor="empleado.estado" status />
           </div>
-        </template>
-        <div v-else class="header-emp">
-          <h1>Empleado</h1>
+          <p class="mt-1 text-sm text-gray-600">
+            {{ empleado.cargo || 'Sin cargo' }}<template v-if="empleado.empresa_nombre"> · {{ empleado.empresa_nombre }}</template>
+          </p>
+          <ul class="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-gray-500">
+            <li class="inline-flex items-center gap-1.5 tabular-nums"><i class="ti ti-id" aria-hidden="true"></i>DNI {{ empleado.dni }}</li>
+            <li v-if="empleado.ubicacion_nombre" class="inline-flex items-center gap-1.5"><i class="ti ti-map-pin" aria-hidden="true"></i>{{ empleado.ubicacion_nombre }}</li>
+            <li v-if="empleado.area_obra_nombre" class="inline-flex items-center gap-1.5"><i class="ti ti-building" aria-hidden="true"></i>{{ empleado.area_obra_nombre }}</li>
+            <li v-if="empleado.fecha_alta" class="inline-flex items-center gap-1.5"><i class="ti ti-calendar" aria-hidden="true"></i>Alta {{ formatFecha(empleado.fecha_alta) }}</li>
+          </ul>
         </div>
-      </template>
-      <template v-if="empleado" #acciones>
-        <button type="button" class="btn btn--secondary btn--md" :disabled="procesando" @click="mostrarForm = true">
-          Editar
-          <i class="ti ti-pencil" aria-hidden="true"></i>
-        </button>
-        <button
-          v-if="empleado.estado !== 'Inactivo'"
-          type="button"
-          class="btn btn--danger btn--md"
-          :disabled="procesando"
-          @click="mostrarBaja = true"
-        >
-          Dar de baja
-          <i class="ti ti-user-off" aria-hidden="true"></i>
-        </button>
-        <button
-          v-else
-          type="button"
-          class="btn btn--primary btn--md"
-          :disabled="procesando"
-          @click="mostrarReactivar = true"
-        >
-          Reactivar
-          <i class="ti ti-user-check" aria-hidden="true"></i>
-        </button>
-      </template>
-    </PageHeader>
+        <div class="flex shrink-0 flex-wrap gap-2">
+          <AppButton variant="outline" severity="secondary" icon="ti ti-pencil" label="Editar" :disabled="procesando" @click="mostrarForm = true" />
+          <AppButton
+            v-if="empleado.estado !== 'Inactivo'"
+            variant="outline"
+            severity="danger"
+            icon="ti ti-user-off"
+            label="Dar de baja"
+            :disabled="procesando"
+            @click="mostrarBaja = true"
+          />
+          <AppButton
+            v-else
+            icon="ti ti-user-check"
+            label="Reactivar"
+            :disabled="procesando"
+            @click="mostrarReactivar = true"
+          />
+        </div>
+      </header>
 
-    <main class="page page--padded">
-      <div v-if="cargando" class="no-results">Cargando empleado...</div>
-
-      <template v-else-if="empleado">
-        <!-- Guía de alta: cada paso pendiente ES su propia acción.
-             Hasta 2026-09-01 los 3 pasos eran texto informativo — decían qué
-             faltaba y dejaban al usuario buscando el botón correcto más abajo
-             en la página, que es justo por lo que las altas se completaban a
-             medias. Ahora el paso ejecuta. -->
-        <div v-if="modoAlta" class="alta-guia">
-          <div class="alta-guia-cab">
-            <span class="alta-guia-titulo">
-              <i class="ti ti-user-plus" aria-hidden="true"></i>
-              {{ altaLista ? 'Alta completa' : 'Alta en curso' }}
-            </span>
-            <span v-if="faltaAlta && faltaAlta.diasDesdeAlta > 0" class="alta-guia-dias">
-              entró hace {{ faltaAlta.diasDesdeAlta }} {{ faltaAlta.diasDesdeAlta === 1 ? 'día' : 'días' }}
-            </span>
-            <span v-else-if="!altaLista" class="alta-guia-dias">entró hoy</span>
-            <button
-              class="icon-btn alta-guia-cerrar"
-              type="button"
-              :title="altaLista ? 'Ocultar' : 'Ocultar la guía'"
-              :aria-label="altaLista ? 'Ocultar la guía de alta' : 'Ocultar la guía de alta'"
-              @click="terminarAlta"
-            >
-              <i class="ti ti-x" aria-hidden="true"></i>
-            </button>
+      <!-- ══ Guía de alta: cada paso pendiente ES su propia acción ═══ -->
+      <section
+        v-if="modoAlta"
+        class="mt-6 rounded-lg border border-gray-200 bg-white p-4"
+        aria-labelledby="alta-titulo"
+      >
+        <div class="flex flex-wrap items-center gap-3">
+          <span
+            class="flex h-8 w-8 items-center justify-center rounded-full text-base"
+            :class="altaLista ? 'bg-green-50 text-green-600' : 'bg-primary-50 text-primary-600'"
+          >
+            <i :class="altaLista ? 'ti ti-check' : 'ti ti-user-plus'" aria-hidden="true"></i>
+          </span>
+          <div class="min-w-0 flex-1">
+            <h2 id="alta-titulo" class="text-sm font-semibold text-gray-900">{{ altaLista ? 'Alta completa' : 'Alta en curso' }}</h2>
+            <p class="text-xs text-gray-500">
+              {{ pasosHechos }} de {{ pasosAlta.length }} pasos
+              <template v-if="faltaAlta && faltaAlta.diasDesdeAlta > 0"> · entró hace {{ faltaAlta.diasDesdeAlta }} {{ faltaAlta.diasDesdeAlta === 1 ? 'día' : 'días' }}</template>
+              <template v-else-if="!altaLista"> · entró hoy</template>
+            </p>
           </div>
-
-          <ol class="alta-guia-pasos">
-            <li
-              v-for="paso in pasosAlta"
-              :key="paso.id"
-              class="alta-paso"
-              :class="{ 'alta-paso--hecho': paso.hecho }"
-            >
-              <i
-                :class="paso.hecho ? 'ti ti-circle-check' : 'ti ti-circle-dashed'"
-                aria-hidden="true"
-              ></i>
-              <span class="alta-paso-label">
-                {{ paso.label }}
-                <span v-if="!paso.requisito && !paso.hecho" class="alta-paso-opcional">opcional</span>
-              </span>
-              <button
-                v-if="!paso.hecho && paso.ejecutar"
-                type="button"
-                class="btn btn--secondary btn--sm alta-paso-btn"
-                @click="paso.ejecutar()"
-              >
-                {{ paso.accion }}
-              </button>
-            </li>
-          </ol>
+          <button
+            class="icon-btn"
+            type="button"
+            :title="altaLista ? 'Ocultar' : 'Ocultar la guía'"
+            aria-label="Ocultar la guía de alta"
+            @click="terminarAlta"
+          >
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
         </div>
+        <div class="mt-3 h-1 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+          <div
+            class="h-full rounded-full transition-all duration-300"
+            :class="altaLista ? 'bg-green-500' : 'bg-primary-500'"
+            :style="{ width: `${pasosAlta.length ? (pasosHechos / pasosAlta.length) * 100 : 0}%` }"
+          ></div>
+        </div>
+        <ol class="mt-4 grid gap-2 md:grid-cols-3">
+          <li
+            v-for="paso in pasosAlta"
+            :key="paso.id"
+            class="flex items-center gap-2.5 rounded-md px-3 py-2.5"
+            :class="paso.hecho ? 'bg-gray-50 text-gray-500' : 'bg-white ring-1 ring-gray-200'"
+          >
+            <i
+              class="text-base"
+              :class="paso.hecho ? 'ti ti-circle-check text-green-600' : 'ti ti-circle-dashed text-gray-400'"
+              aria-hidden="true"
+            ></i>
+            <span class="min-w-0 flex-1 text-sm" :class="paso.hecho ? 'line-through decoration-gray-300' : 'text-gray-900'">
+              {{ paso.label }}
+              <span v-if="!paso.requisito && !paso.hecho" class="ml-1 text-xs text-gray-400">opcional</span>
+            </span>
+            <AppButton
+              v-if="!paso.hecho && paso.ejecutar"
+              size="sm"
+              variant="text"
+              :label="paso.accion"
+              @click="paso.ejecutar()"
+            />
+          </li>
+        </ol>
+      </section>
 
-        <div class="detalle-grid">
-          <!-- Datos personales -->
-          <div class="card datos-card">
-            <div class="datos-title">
-              <i class="ti ti-id-badge-2" aria-hidden="true"></i> Datos personales
+      <!-- ══ Cuerpo: vínculos (principal) + datos (lateral) ══════════ -->
+      <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div class="min-w-0 space-y-6">
+          <CuentasPanel
+            ref="cuentasPanel"
+            :key="empleado.id"
+            :empleado-id="empleado.id"
+            :empleado-nombre="nombreCompleto"
+            :empleado-whatsapp="empleado.whatsapp || ''"
+            @entrega-enviada="entregaEnviada = true"
+          />
+
+          <!-- Equipos que porta (entrega/devolución se registran en Equipos) -->
+          <section class="rounded-lg border border-gray-200 bg-white" aria-labelledby="sec-equipos">
+            <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+              <h2 id="sec-equipos" class="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                Equipos
+                <span class="rounded-full bg-gray-100 px-2 text-xs font-medium leading-5 text-gray-600 tabular-nums">{{ equipos.length }}</span>
+              </h2>
+              <AppButton size="sm" variant="text" icon="ti ti-plus" label="Asignar" @click="mostrarAsignarEquipo = true" />
             </div>
-            <dl class="datos-lista">
-              <div class="dato">
-                <dt>DNI</dt>
-                <dd>{{ empleado.dni }}</dd>
+            <p v-if="equipos.length === 0" class="px-4 py-6 text-center text-sm text-gray-500">Sin equipos asignados.</p>
+            <ul v-else class="divide-y divide-gray-100">
+              <li v-for="eq in equipos" :key="eq.asignacion_id" class="group flex items-center gap-3 px-4 py-3">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                  <i class="ti ti-device-laptop" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2 text-sm text-gray-900">
+                    <span class="font-medium tabular-nums">{{ eq.codigo }}</span>
+                    <span class="truncate text-gray-600">{{ [eq.tipo, eq.marca, eq.modelo].filter(Boolean).join(' ') }}</span>
+                    <BadgeEstado v-if="eq.estado && eq.estado !== 'operativo'" tipo="situacion" :valor="eq.situacion" />
+                  </div>
+                  <div class="text-xs text-gray-500">Desde {{ formatFecha(eq.fecha_inicio) }}</div>
+                </div>
+                <RouterLink
+                  class="icon-btn"
+                  :to="{ path: '/equipos', query: { q: eq.codigo } }"
+                  title="Gestionar en el módulo Equipos"
+                  aria-label="Gestionar en el módulo Equipos"
+                >
+                  <i class="ti ti-arrow-up-right" aria-hidden="true"></i>
+                </RouterLink>
+              </li>
+            </ul>
+          </section>
+
+          <!-- Licencias directas (las de login aparecen como cuentas en Accesos) -->
+          <section class="rounded-lg border border-gray-200 bg-white" aria-labelledby="sec-licencias">
+            <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+              <h2 id="sec-licencias" class="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                Licencias
+                <span class="rounded-full bg-gray-100 px-2 text-xs font-medium leading-5 text-gray-600 tabular-nums">{{ licencias.length }}</span>
+              </h2>
+              <AppButton size="sm" variant="text" icon="ti ti-plus" label="Asignar" @click="mostrarAsignarLicencia = true" />
+            </div>
+            <p v-if="licencias.length === 0" class="px-4 py-6 text-center text-sm text-gray-500">
+              Sin licencias directas — las de login aparecen como cuentas en Accesos.
+            </p>
+            <ul v-else class="divide-y divide-gray-100">
+              <li v-for="lic in licencias" :key="lic.asignacion_id" class="group flex items-center gap-3 px-4 py-3">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                  <i class="ti ti-license" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-2 text-sm">
+                    <span class="font-medium text-gray-900">{{ lic.software }}</span>
+                    <span
+                      v-if="vencimientoLicencia(lic)"
+                      class="tag"
+                      :class="`tag--${rolDeTag(vencimientoLicencia(lic).clase)}`"
+                    >{{ vencimientoLicencia(lic).texto }}</span>
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    Desde {{ formatFecha(lic.fecha_inicio) }}
+                    <template v-if="lic.tipo === 'perpetua'"> · perpetua</template>
+                    <template v-else-if="lic.fecha_vencimiento"> · vence {{ formatFecha(lic.fecha_vencimiento) }}</template>
+                  </div>
+                </div>
+                <div class="flex items-center gap-0.5">
+                  <RouterLink
+                    class="icon-btn"
+                    :to="{ path: '/licencias', query: { q: lic.software } }"
+                    title="Ver en el módulo Licencias"
+                    aria-label="Ver en el módulo Licencias"
+                  >
+                    <i class="ti ti-arrow-up-right" aria-hidden="true"></i>
+                  </RouterLink>
+                  <button
+                    class="icon-btn danger"
+                    type="button"
+                    title="Liberar asiento"
+                    aria-label="Liberar asiento"
+                    @click="porLiberarLicencia = lic"
+                  >
+                    <i class="ti ti-user-minus" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </section>
+        </div>
+
+        <!-- ── Lateral: datos personales y de contacto ── -->
+        <aside class="space-y-6 lg:sticky lg:top-6">
+          <section class="rounded-lg border border-gray-200 bg-white p-4" aria-labelledby="sec-contacto">
+            <h2 id="sec-contacto" class="text-sm font-semibold text-gray-900">Contacto</h2>
+            <dl class="mt-3 space-y-3 text-sm">
+              <div>
+                <dt class="text-xs text-gray-500">Teléfono</dt>
+                <dd class="mt-0.5 tabular-nums" :class="empleado.telefono ? 'text-gray-900' : 'text-gray-400'">{{ empleado.telefono ? formatTelefono(empleado.telefono) : 'Sin registrar' }}</dd>
               </div>
-              <div class="dato">
-                <dt>Empresa</dt>
-                <dd><TextoVacio :valor="empleado.empresa_nombre" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Cargo</dt>
-                <dd><TextoVacio :valor="empleado.cargo" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Área/Obra</dt>
-                <dd><TextoVacio :valor="empleado.area_obra_nombre" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Ubicación</dt>
-                <dd><TextoVacio :valor="empleado.ubicacion_nombre" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Fecha de alta</dt>
-                <dd><TextoVacio :valor="formatFecha(empleado.fecha_alta)" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Teléfono</dt>
-                <dd><TextoVacio :valor="formatTelefono(empleado.telefono)" /></dd>
-              </div>
-              <div class="dato">
-                <dt>WhatsApp</dt>
-                <dd>
+              <div>
+                <dt class="text-xs text-gray-500">WhatsApp</dt>
+                <dd class="mt-0.5">
                   <a
                     v-if="empleado.whatsapp"
-                    class="dato-link"
+                    class="inline-flex items-center gap-1.5 text-green-700 hover:text-green-800 hover:underline tabular-nums"
                     :href="`https://wa.me/${empleado.whatsapp.replace(/\D/g, '')}`"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <i class="ti ti-brand-whatsapp"></i> {{ formatTelefono(empleado.whatsapp) }}
+                    <i class="ti ti-brand-whatsapp" aria-hidden="true"></i>{{ formatTelefono(empleado.whatsapp) }}
                   </a>
-                  <TextoVacio v-else />
+                  <span v-else class="text-gray-400">Sin registrar</span>
                 </dd>
               </div>
-              <div class="dato">
-                <dt>Correo personal</dt>
-                <dd class="dato-truncar" :title="empleado.correo_personal"><TextoVacio :valor="empleado.correo_personal" /></dd>
-              </div>
-              <div v-if="empleado.notas" class="dato dato--notas">
-                <dt>Notas</dt>
-                <dd>{{ empleado.notas }}</dd>
+              <div>
+                <dt class="text-xs text-gray-500">Correo personal</dt>
+                <dd class="mt-0.5 truncate" :class="empleado.correo_personal ? 'text-gray-900' : 'text-gray-400'" :title="empleado.correo_personal">{{ empleado.correo_personal || 'Sin registrar' }}</dd>
               </div>
             </dl>
-          </div>
+          </section>
 
-          <!-- Vínculos: Accesos + Equipos + Licencias -->
-          <div class="col-vinculos">
-            <CuentasPanel
-              ref="cuentasPanel"
-              :key="empleado.id"
-              :empleado-id="empleado.id"
-              :empleado-nombre="nombreCompleto"
-              :empleado-whatsapp="empleado.whatsapp || ''"
-              @entrega-enviada="entregaEnviada = true"
-            />
-
-            <div class="paneles-duo">
-              <!-- Equipos que porta (entrega/devolución se registran en el módulo Equipos) -->
-              <div class="card panel-card">
-                <div class="card-toolbar">
-                  <div class="toolbar-title">
-                    <i class="ti ti-devices" aria-hidden="true"></i>
-                    Equipos
-                    <span class="badge-count">{{ equipos.length }}</span>
-                  </div>
-                  <button type="button" class="btn btn--secondary btn--sm" @click="mostrarAsignarEquipo = true">
-                    Asignar
-                    <i class="ti ti-plus" aria-hidden="true"></i>
-                  </button>
-                </div>
-
-                <p v-if="equipos.length === 0" class="panel-vacio">
-                  Sin equipos asignados.
-                </p>
-                <ul v-else class="panel-lista">
-                  <li v-for="eq in equipos" :key="eq.asignacion_id" class="panel-item">
-                    <div class="panel-item-info">
-                      <span class="panel-item-titulo">
-                        <span class="mono">{{ eq.codigo }}</span>
-                        · {{ [eq.tipo, eq.marca, eq.modelo].filter(Boolean).join(' ') }}
-                        <BadgeEstado
-                          v-if="eq.estado && eq.estado !== 'operativo'"
-                          tipo="situacion"
-                          :valor="eq.situacion"
-                          class="badge-inline"
-                        />
-                      </span>
-                      <span class="panel-item-meta">Desde {{ formatFecha(eq.fecha_inicio) }}</span>
-                    </div>
-                    <div class="actions">
-                      <RouterLink
-                        class="icon-btn"
-                        :to="{ path: '/equipos', query: { q: eq.codigo } }"
-                        title="Gestionar en el módulo Equipos"
-                        aria-label="Gestionar en el módulo Equipos"
-                      >
-                        <i class="ti ti-external-link"></i>
-                      </RouterLink>
-                    </div>
-                  </li>
-                </ul>
+          <section class="rounded-lg border border-gray-200 bg-white p-4" aria-labelledby="sec-organizacion">
+            <h2 id="sec-organizacion" class="text-sm font-semibold text-gray-900">Organización</h2>
+            <dl class="mt-3 space-y-3 text-sm">
+              <div v-for="dato in datosOrganizacion" :key="dato.label">
+                <dt class="text-xs text-gray-500">{{ dato.label }}</dt>
+                <dd class="mt-0.5" :class="dato.valor ? 'text-gray-900' : 'text-gray-400'">{{ dato.valor || 'Sin registrar' }}</dd>
               </div>
+            </dl>
+          </section>
 
-              <!-- Licencias directas (las de login aparecen como cuentas en Accesos) -->
-              <div class="card panel-card">
-                <div class="card-toolbar">
-                  <div class="toolbar-title">
-                    <i class="ti ti-license" aria-hidden="true"></i>
-                    Licencias
-                    <span class="badge-count">{{ licencias.length }}</span>
-                  </div>
-                  <button type="button" class="btn btn--secondary btn--sm" @click="mostrarAsignarLicencia = true">
-                    Asignar
-                    <i class="ti ti-plus" aria-hidden="true"></i>
-                  </button>
-                </div>
-
-                <p v-if="licencias.length === 0" class="panel-vacio">
-                  Sin licencias directas — las de login aparecen como cuentas en Accesos.
-                </p>
-                <ul v-else class="panel-lista">
-                  <li v-for="lic in licencias" :key="lic.asignacion_id" class="panel-item">
-                    <div class="panel-item-info">
-                      <span class="panel-item-titulo">
-                        {{ lic.software }}
-                        <span
-                          v-if="vencimientoLicencia(lic)"
-                          class="tag badge-inline"
-                          :class="`tag--${rolDeTag(vencimientoLicencia(lic).clase)}`"
-                        >{{ vencimientoLicencia(lic).texto }}</span>
-                      </span>
-                      <span class="panel-item-meta">
-                        Desde {{ formatFecha(lic.fecha_inicio) }}
-                        <template v-if="lic.tipo === 'perpetua'"> · perpetua</template>
-                        <template v-else-if="lic.fecha_vencimiento"> · vence {{ formatFecha(lic.fecha_vencimiento) }}</template>
-                      </span>
-                    </div>
-                    <div class="actions">
-                      <RouterLink
-                        class="icon-btn"
-                        :to="{ path: '/licencias', query: { q: lic.software } }"
-                        title="Ver en el módulo Licencias"
-                        aria-label="Ver en el módulo Licencias"
-                      >
-                        <i class="ti ti-external-link"></i>
-                      </RouterLink>
-                      <button
-                        class="icon-btn danger"
-                        type="button"
-                        title="Liberar asiento"
-                        aria-label="Liberar asiento"
-                        @click="porLiberarLicencia = lic"
-                      >
-                        <i class="ti ti-user-minus"></i>
-                      </button>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </template>
-    </main>
+          <section v-if="empleado.notas" class="rounded-lg border border-gray-200 bg-white p-4" aria-labelledby="sec-notas">
+            <h2 id="sec-notas" class="text-sm font-semibold text-gray-900">Notas</h2>
+            <p class="mt-2 whitespace-pre-line text-sm text-gray-700">{{ empleado.notas }}</p>
+          </section>
+        </aside>
+      </div>
+    </template>
 
     <EmpleadoForm
       v-if="mostrarForm"
@@ -526,11 +516,6 @@ onMounted(cargar);
       @cerrar="onBajaCerrada"
     />
 
-    <!-- Plan Maestro, 2026-09-01 — "Ficha de Empleado": Equipos y Licencias
-         ganan la misma capacidad de asignar sin salir de la pantalla que ya
-         tenía Cuentas, reutilizando el mismo endpoint de negocio que sus
-         módulos de origen. Crear/editar un equipo o una licencia sigue
-         siendo exclusivo de esos módulos. -->
     <AsignarEquipoModal
       v-if="mostrarAsignarEquipo"
       :empleado-id="empleado.id"
@@ -547,7 +532,6 @@ onMounted(cargar);
       @asignado="cargar"
     />
 
-    <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
       v-if="porLiberarLicencia"
       ref="dialogoLiberarLicencia"
@@ -561,7 +545,6 @@ onMounted(cargar);
       @confirm="confirmarLiberarLicencia"
     />
 
-    <!-- Confirmación no destructiva (ConfirmDialog compartido) -->
     <ConfirmDialog
       v-if="mostrarReactivar"
       ref="dialogoReactivar"
@@ -574,5 +557,3 @@ onMounted(cargar);
     />
   </div>
 </template>
-
-

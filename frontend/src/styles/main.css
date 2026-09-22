@@ -6,6 +6,9 @@
    con @theme. */
 
 @import "tailwindcss";
+/* Vocabulario de clases compartido por las vistas (ver su cabecera) y
+   estilos propios de cada módulo. */
+@import "./componentes.css";
 
 @theme {
   /*

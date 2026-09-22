@@ -12,22 +12,19 @@ import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto } from '../../core/dominio-empleados.js';
-import { tonoAvatar, inicialesDe } from '../../core/avatar.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppAvatar from '../../components/ui/AppAvatar.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
-import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
 import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 
 const router = useRouter();
@@ -36,23 +33,24 @@ const store = useEmpleadosStore();
 const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
-const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-// Definición de columnas de la tabla nativa, densidad `lg` (vista insignia,
-// ver template): mobile nunca pasa por esta tabla porque ya tiene su propia
-// grilla real de tarjetas (vista "Tarjetas" de arriba, que también sirve de
-// fallback móvil) — una tarjeta por columna hubiera sido una segunda
-// tarjeta redundante.
-const columnasEmpleados = [
-  { clave: 'apellidos', label: 'Nombre', ordenable: true, elastica: true },
-  { clave: 'cargo', label: 'Cargo', ordenable: true },
-  { clave: 'empresa_nombre', label: 'Empresa' },
-  { clave: 'vinculos', label: 'Vínculos' },
-  { clave: 'estado', label: 'Estado', ordenable: true },
-  { clave: 'acciones', label: 'Acciones', ancho: '176px' },
+// Orden en la forma que espera AppTable (1 asc | -1 desc | null), derivada
+// de la `orden` del store — mismo puente que LicenciasView/EquiposView.
+const sortFieldTabla = computed(() => ordenColumna.value || null);
+const sortOrderTabla = computed(() => {
+  if (!orden.value) return null;
+  return orden.value.direccion === 'desc' ? -1 : 1;
+});
+
+// Filtro de estado como segmentado (rediseño 2026-09-22): con 3 estados y
+// uno de ellos por defecto, verlos todos a la vista ahorra abrir un select.
+// '' = todos, mismo valor que tenía la opción "Todos los estados".
+const ESTADOS_SEGMENTO = [
+  { valor: 'Activo', label: 'Activos' },
+  { valor: 'Inactivo', label: 'Inactivos' },
+  { valor: 'Suspendido', label: 'Suspendidos' },
+  { valor: '', label: 'Todos' },
 ];
-const columnasVisiblesLista = computed(() => columnasVisibles(columnasEmpleados));
-const totalColumnas = computed(() => columnasVisiblesLista.value.length);
 
 // ── Selector Tabla/Tarjetas (FASE 4) ────────────────────────────────────
 // "Lista con avatar" queda pendiente como 3ª opción (falta el mockup de
@@ -98,8 +96,6 @@ function tituloCuentas(emp) {
 
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
-
-const estados = ['Activo', 'Inactivo', 'Suspendido'];
 
 // Búsqueda y filtros viajan al servidor (paginación server-side):
 // la búsqueda con debounce, los selects al instante.
@@ -210,8 +206,8 @@ function onBajaCerrada() {
   empleadoBaja.value = null;
 }
 
-// Acciones por fila para el menú ⋮ de las tarjetas móviles — mismas
-// condiciones que los icon-btn de la tabla de escritorio.
+// Acciones por fila: menú ⋮ de la tabla y de las tarjetas (rediseño
+// 2026-09-22 — antes la tabla tenía 4 íconos que aparecían al pasar el mouse).
 function accionesDe(emp) {
   return [
     { icono: 'ti-eye', label: 'Ver ficha', onClick: () => verFicha(emp) },
@@ -259,285 +255,273 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="empleados-page vista-modulo">
-    <PageHeader titulo="Empleados" icono="ti ti-users" :conteo="total">
-      <template #acciones>
-        <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio" />
-        <button
-          type="button"
-          class="btn btn--secondary"
-          title="Exportar a Excel (CSV)"
+  <div class="flex h-full min-h-0 flex-col">
+    <!-- ══ Encabezado ══════════════════════════════════════════════ -->
+    <header class="flex flex-wrap items-end justify-between gap-4 px-4 pb-4 pt-6 sm:px-6">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Empleados</h1>
+        <p class="mt-1 text-sm text-gray-500">
+          <span class="tabular-nums">{{ total }}</span>
+          {{ total === 1 ? 'persona' : 'personas' }}{{ filtroEstado ? ` en estado ${filtroEstado.toLowerCase()}` : '' }}
+          · accesos, equipos y licencias asignados
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <AppButton
+          variant="text"
+          severity="secondary"
+          :icon="exportando ? 'ti ti-loader-2' : 'ti ti-table-export'"
+          :loading="exportando"
           :disabled="exportando"
+          :label="exportando ? 'Exportando...' : 'Exportar'"
+          title="Exportar a Excel (CSV)"
           @click="exportar"
+        />
+        <AppButton icon="ti ti-plus" label="Nuevo empleado" @click="abrirNuevo" />
+      </div>
+    </header>
+
+    <!-- ══ Barra de filtros (fuera de la tabla: filtra, no es parte del dato) -->
+    <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+      <label class="relative min-w-60 flex-1 sm:max-w-sm">
+        <span class="sr-only">Buscar empleados</span>
+        <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+        <input
+          v-model="busqueda"
+          type="search"
+          placeholder="Buscar por nombre o DNI"
+          class="h-9 w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         >
-          <span class="btn__label">{{ exportando ? 'Exportando...' : 'Exportar' }}</span>
-          <i v-if="exportando" class="ti ti-loader-2 btn__icono--girando" aria-hidden="true"></i>
-          <i v-else class="ti ti-table-export" aria-hidden="true"></i>
-        </button>
-        <button type="button" class="btn btn--primary" @click="abrirNuevo">
-          Nuevo empleado
-          <i class="ti ti-plus" aria-hidden="true"></i>
-        </button>
-      </template>
-    </PageHeader>
+      </label>
 
-    <main class="page">
-      <div class="card card--fill">
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input
-              v-model="busqueda"
-              type="text"
-              placeholder="Buscar por nombre o DNI..."
-              aria-label="Buscar empleados"
-            >
-          </div>
-          <div class="filter-field">
-            <label for="filtro-estado">Estado</label>
-            <select id="filtro-estado" v-model="filtroEstado">
-              <option value="">Todos los estados</option>
-              <option v-for="est in estados" :key="est" :value="est">{{ est }}</option>
-            </select>
-          </div>
-          <div class="filter-field">
-            <label for="filtro-ubicacion">Ubicación</label>
-            <select id="filtro-ubicacion" v-model="filtroUbicacion">
-              <option value="">Todas las ubicaciones</option>
-              <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-            </select>
-          </div>
-        </div>
+      <div class="inline-flex rounded-md bg-gray-100 p-0.5" role="group" aria-label="Filtrar por estado">
+        <button
+          v-for="op in ESTADOS_SEGMENTO"
+          :key="op.valor"
+          type="button"
+          class="h-8 rounded px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          :class="filtroEstado === op.valor ? 'bg-white text-gray-900 ring-1 ring-gray-200' : 'text-gray-600 hover:text-gray-900'"
+          :aria-pressed="filtroEstado === op.valor"
+          @click="filtroEstado = op.valor"
+        >{{ op.label }}</button>
+      </div>
 
-        <div v-if="cargando" class="no-results solo-movil">Cargando empleados...</div>
+      <label class="flex items-center gap-2">
+        <span class="sr-only">Ubicación</span>
+        <select v-model="filtroUbicacion" aria-label="Filtrar por ubicación" class="h-9! border-gray-200! text-sm">
+          <option value="">Todas las ubicaciones</option>
+          <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+        </select>
+      </label>
 
-        <div v-else-if="error" class="no-results empleados-error">{{ error }}</div>
+      <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio ml-auto" />
+    </div>
 
-        <EmptyState
-          v-else-if="total === 0"
-          icono="ti ti-users"
-          titulo="Sin empleados"
-          :mensaje="busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agregue el primer empleado al inventario.'"
-        >
-          <button v-if="!busqueda && !filtroEstado" type="button" class="btn btn--secondary" @click="abrirNuevo">
-            Agregar empleado
-            <i class="ti ti-plus" aria-hidden="true"></i>
-          </button>
-        </EmptyState>
+    <!-- ══ Contenido ═══════════════════════════════════════════════ -->
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <div v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
+      </div>
 
-        <template v-if="!error && (cargando || total > 0)">
+      <div
+        v-else-if="!cargando && total === 0"
+        class="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white px-6 py-16 text-center"
+      >
+        <span class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400">
+          <i class="ti ti-users" aria-hidden="true"></i>
+        </span>
+        <h2 class="text-base font-semibold text-gray-900">
+          {{ busqueda || filtroEstado ? 'Sin resultados' : 'Sin empleados todavía' }}
+        </h2>
+        <p class="mt-1 max-w-sm text-sm text-gray-500">
+          {{ busqueda || filtroEstado ? 'No hay empleados con los filtros aplicados.' : 'Agregue el primer empleado al inventario para asignarle accesos y equipos.' }}
+        </p>
+        <AppButton
+          v-if="!busqueda && !filtroEstado"
+          class="mt-5"
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-plus"
+          label="Agregar empleado"
+          @click="abrirNuevo"
+        />
+      </div>
+
+      <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
-        <div v-if="vista === 'tabla' && !esMovil" class="tabla-envoltorio">
-          <table class="tabla tabla--lg" aria-label="Inventario de empleados">
-            <thead>
-              <tr>
-                <template v-for="col in columnasVisiblesLista" :key="col.clave">
-                  <ThOrdenable
-                    v-if="col.ordenable"
-                    :clave="col.clave"
-                    :columna="ordenColumna"
-                    :direccion="ordenDireccion"
-                    :class="{ 'col-num': col.num }"
-                    :style="estiloColumna(col)"
-                    @ordenar="store.ordenarPor(col.clave)"
-                  >{{ col.label }}</ThOrdenable>
-                  <th v-else scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
+
+        <!-- ── Tabla (escritorio) ── -->
+        <div
+          v-if="vista === 'tabla' && !esMovil"
+          class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white"
+        >
+          <div class="min-h-0 flex-1 overflow-auto">
+            <AppTable
+              :value="lista"
+              :loading="cargando"
+              :total-records="total"
+              :rows="store.tamPagina"
+              :sort-field="sortFieldTabla"
+              :sort-order="sortOrderTabla"
+              :row-class="() => 'cursor-pointer'"
+              aria-label="Inventario de empleados"
+              @ordenar="store.ordenarPor"
+              @row-click="({ data }) => verFicha(data)"
+            >
+              <AppColumn field="apellidos" header="Empleado" sortable>
+                <template #body="{ data: emp }">
+                  <div class="flex min-w-0 items-center gap-3">
+                    <AppAvatar :nombre="nombreCompleto(emp)" />
+                    <div class="min-w-0">
+                      <div class="truncate font-medium text-gray-900">{{ nombreCompleto(emp) }}</div>
+                      <div class="text-xs text-gray-500 tabular-nums">DNI {{ emp.dni }}</div>
+                    </div>
+                  </div>
                 </template>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
-              <tr v-else-if="!lista.length">
-                <td :colspan="totalColumnas" class="tabla__vacio">
-                  <EmptyState icono="ti ti-inbox" titulo="Sin resultados" />
-                </td>
-              </tr>
-              <template v-else>
-                <tr v-for="fila in lista" :key="fila.id" class="fila-empleado" @click="verFicha(fila)">
-                  <td>
-                    <!-- DNI + Nombre colapsan (mismo criterio que Tickets):
-                         identificador arriba en gris chico, dato principal abajo. -->
-                    <div class="celda-apilada">
-                      <span class="celda-apilada__meta">{{ fila.dni }}</span>
-                      <span class="celda-apilada__principal">{{ nombreCompleto(fila) }}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <TextoVacio :valor="fila.cargo" />
-                  </td>
-                  <td>
-                    <TextoVacio :valor="fila.empresa_nombre" />
-                  </td>
-                  <td>
-                    <div v-if="fila.n_cuentas != null" class="vinculos">
-                      <span
-                        class="vinculo"
-                        :class="{ 'vinculo--cero': !fila.n_cuentas, 'vinculo--pendiente': altaPendiente(fila) }"
-                        :title="tituloCuentas(fila)"
-                        :aria-label="tituloCuentas(fila)"
-                      >
-                        <i class="ti ti-key" aria-hidden="true"></i>{{ fila.n_cuentas }}
-                      </span>
-                      <span
-                        class="vinculo"
-                        :class="{ 'vinculo--cero': !fila.n_equipos }"
-                        :title="`${fila.n_equipos} equipo(s) asignado(s)`"
-                        :aria-label="`${fila.n_equipos} equipo(s) asignado(s)`"
-                      >
-                        <i class="ti ti-devices" aria-hidden="true"></i>{{ fila.n_equipos }}
-                      </span>
-                      <span
-                        class="vinculo"
-                        :class="{ 'vinculo--cero': !fila.n_licencias }"
-                        :title="`${fila.n_licencias} licencia(s) directa(s)`"
-                        :aria-label="`${fila.n_licencias} licencia(s) directa(s)`"
-                      >
-                        <i class="ti ti-license" aria-hidden="true"></i>{{ fila.n_licencias }}
-                      </span>
-                    </div>
-                    <TextoVacio v-else />
-                  </td>
-                  <td>
-                    <BadgeEstado tipo="empleado" :valor="fila.estado" status />
-                  </td>
-                  <td>
-                    <div class="actions" @click.stop>
-                      <button
-                        class="icon-btn fila-accion"
-                        type="button"
-                        title="Ver ficha"
-                        aria-label="Ver ficha"
-                        @click="verFicha(fila)"
-                      >
-                        <i class="ti ti-eye"></i>
-                      </button>
-                      <button
-                        class="icon-btn fila-accion"
-                        type="button"
-                        title="Editar"
-                        aria-label="Editar"
-                        @click="abrirEditar(fila)"
-                      >
-                        <i class="ti ti-pencil"></i>
-                      </button>
-                      <button
-                        class="icon-btn fila-accion"
-                        type="button"
-                        :title="auth.puedeVerCredenciales ? 'Enviar credenciales por WhatsApp' : 'Sin permiso para ver contraseñas'"
-                        aria-label="Enviar credenciales por WhatsApp"
-                        :disabled="enviandoCredsId === fila.id || !auth.puedeVerCredenciales"
-                        @click="enviarCredenciales(fila)"
-                      >
-                        <i :class="enviandoCredsId === fila.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'"></i>
-                      </button>
-                      <button
-                        v-if="fila.estado !== 'Inactivo'"
-                        class="icon-btn danger fila-accion"
-                        type="button"
-                        title="Dar de baja"
-                        aria-label="Dar de baja"
-                        @click="darDeBaja(fila)"
-                      >
-                        <i class="ti ti-user-off"></i>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
+              </AppColumn>
 
-        <!-- Tarjetas no tiene un equivalente propio de SkeletonTabla (esa
-             es la del modo Tabla) — mismo texto genérico que ya usa mobile
-             mientras carga, mostrado acá también cuando la vista elegida
-             en escritorio es Tarjetas (mobile ya lo cubre el div de
-             arriba, .solo-movil). -->
-        <div v-if="cargando && vista === 'tarjetas' && !esMovil" class="no-results">Cargando empleados...</div>
+              <AppColumn field="cargo" header="Cargo" sortable>
+                <template #body="{ data: emp }">
+                  <div class="min-w-0">
+                    <div class="truncate" :class="emp.cargo ? 'text-gray-900' : 'text-gray-400'">{{ emp.cargo || 'Sin cargo' }}</div>
+                    <div v-if="emp.empresa_nombre" class="truncate text-xs text-gray-500">{{ emp.empresa_nombre }}</div>
+                  </div>
+                </template>
+              </AppColumn>
 
-        <!-- Tarjetas: vista de escritorio elegida por el usuario, o mobile
-             sin importar la preferencia (mobile nunca muestra tabla).
-             Grilla real de tarjetas (pasada de diseño ago 2026) — antes
-             reusaba `.tarjeta-fila`, la fila compacta del fallback móvil de
-             OTROS módulos, así que en escritorio se leía como una lista de
-             filas angosta, no como tarjetas. `.lista-tarjetas` se mantiene
-             en el `<ul>` a propósito (no se retira): es lo que le da el
-             scroll-container correcto dentro de `.card--fill` (main.css);
-             `.emp-tarjetas` solo agrega el `display:grid` encima, sin pisar
-             esa regla compartida. La grilla responsive
-             (`repeat(auto-fill, minmax(260px,1fr))`) no necesita una
-             media query aparte para mobile: con un solo viewport angosto ya
-             entra 1 sola columna, mismo criterio que el resto del sistema
-             evita breakpoints redundantes cuando el layout ya resuelve
-             solo. -->
-        <ul v-if="!cargando && (vista === 'tarjetas' || esMovil)" class="lista-tarjetas emp-tarjetas" aria-label="Inventario de empleados">
-          <li v-for="emp in lista" :key="emp.id" class="card card--clicable emp-card" @click="verFicha(emp)">
-            <div class="emp-card__cab">
-              <span class="avatar sm" :class="tonoAvatar(nombreCompleto(emp))" aria-hidden="true">{{ inicialesDe(nombreCompleto(emp)) }}</span>
-              <div class="emp-card__id">
-                <span class="emp-card__nombre">{{ nombreCompleto(emp) }}</span>
-                <span class="emp-card__dni">{{ emp.dni }}</span>
-              </div>
-              <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
-            </div>
+              <AppColumn field="vinculos" header="Asignado">
+                <template #body="{ data: emp }">
+                  <div v-if="emp.n_cuentas != null" class="flex items-center gap-4 text-sm tabular-nums">
+                    <span
+                      class="inline-flex items-center gap-1"
+                      :class="altaPendiente(emp) ? 'text-amber-700' : emp.n_cuentas ? 'text-gray-700' : 'text-gray-300'"
+                      :title="tituloCuentas(emp)"
+                      :aria-label="tituloCuentas(emp)"
+                    ><i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}</span>
+                    <span
+                      class="inline-flex items-center gap-1"
+                      :class="emp.n_equipos ? 'text-gray-700' : 'text-gray-300'"
+                      :title="`${emp.n_equipos} equipo(s) asignado(s)`"
+                      :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"
+                    ><i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}</span>
+                    <span
+                      class="inline-flex items-center gap-1"
+                      :class="emp.n_licencias ? 'text-gray-700' : 'text-gray-300'"
+                      :title="`${emp.n_licencias} licencia(s) directa(s)`"
+                      :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"
+                    ><i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}</span>
+                  </div>
+                  <span v-else class="text-gray-300">—</span>
+                </template>
+              </AppColumn>
 
-            <div v-if="emp.cargo || emp.empresa_nombre" class="emp-card__sec">
-              <template v-if="emp.cargo">{{ emp.cargo }}</template>
-              <span v-if="emp.cargo && emp.empresa_nombre" aria-hidden="true"> · </span>
-              <template v-if="emp.empresa_nombre">{{ emp.empresa_nombre }}</template>
-            </div>
+              <AppColumn field="estado" header="Estado" sortable>
+                <template #body="{ data: emp }">
+                  <BadgeEstado tipo="empleado" :valor="emp.estado" status />
+                </template>
+              </AppColumn>
 
-            <div class="emp-card__pie">
-              <BadgeEstado tipo="empleado" :valor="emp.estado" status />
-              <div v-if="emp.n_cuentas != null" class="vinculos vinculos--tarjeta">
-                <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_cuentas, 'vinculo--pendiente': altaPendiente(emp) }" :title="tituloCuentas(emp)" :aria-label="tituloCuentas(emp)">
-                  <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
-                </span>
-                <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_equipos }" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`">
-                  <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
-                </span>
-                <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_licencias }" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`">
-                  <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
-                </span>
-              </div>
-            </div>
-          </li>
-        </ul>
-
-        <nav v-if="!cargando && total > 0" class="paginacion" aria-label="Paginación">
-          <div class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span>Filas por página:</span>
-              <select
-                class="paginacion__select"
-                :value="store.tamPagina"
-                @change="store.cambiarTamPagina(Number($event.target.value))"
-              >
-                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </label>
-            <span class="paginacion__rango">{{ desde }}–{{ hasta }} de {{ total }} empleados</span>
+              <AppColumn field="acciones" header="Acciones">
+                <template #body="{ data: emp }">
+                  <div class="flex justify-end" @click.stop>
+                    <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
+                  </div>
+                </template>
+              </AppColumn>
+            </AppTable>
           </div>
 
-          <div v-if="totalPaginas > 1" class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span class="sr-only">Ir a la página</span>
-              <select class="paginacion__select" :value="paginaActual" @change="irA(Number($event.target.value))">
-                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
-              </select>
-              <span>de {{ totalPaginas }}</span>
-            </label>
+          <!-- Paginación -->
+          <nav
+            v-if="!cargando && total > 0"
+            class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 text-sm text-gray-500"
+            aria-label="Paginación"
+          >
+            <div class="flex items-center gap-3">
+              <label class="inline-flex items-center gap-1.5 font-normal text-gray-500">
+                <span>Filas</span>
+                <select
+                  class="paginacion__select"
+                  :value="store.tamPagina"
+                  @change="store.cambiarTamPagina(Number($event.target.value))"
+                >
+                  <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </label>
+              <span class="tabular-nums">{{ desde }}–{{ hasta }} de {{ total }}</span>
+            </div>
+            <div v-if="totalPaginas > 1" class="flex items-center gap-1">
+              <label class="inline-flex items-center gap-1.5 font-normal text-gray-500">
+                <span class="sr-only">Ir a la página</span>
+                <select class="paginacion__select" :value="paginaActual" @change="irA(Number($event.target.value))">
+                  <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
+                </select>
+                <span>de {{ totalPaginas }}</span>
+              </label>
+              <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
+                <i class="ti ti-chevron-left" aria-hidden="true"></i>
+              </button>
+              <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
+                <i class="ti ti-chevron-right" aria-hidden="true"></i>
+              </button>
+            </div>
+          </nav>
+        </div>
+
+        <!-- ── Tarjetas (vista elegida en escritorio, o siempre en móvil) ── -->
+        <div v-else class="min-h-0 flex-1 overflow-y-auto">
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando empleados...</p>
+          <ul
+            v-else
+            class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+            aria-label="Inventario de empleados"
+          >
+            <li
+              v-for="emp in lista"
+              :key="emp.id"
+              class="group flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300"
+              @click="verFicha(emp)"
+            >
+              <div class="flex items-start gap-3">
+                <AppAvatar :nombre="nombreCompleto(emp)" tamano="md" />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-medium text-gray-900">{{ nombreCompleto(emp) }}</div>
+                  <div class="text-xs text-gray-500 tabular-nums">DNI {{ emp.dni }}</div>
+                </div>
+                <div class="-mr-1 -mt-1" @click.stop>
+                  <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
+                </div>
+              </div>
+              <p class="mt-3 line-clamp-2 min-h-10 text-sm text-gray-600">
+                {{ [emp.cargo, emp.empresa_nombre].filter(Boolean).join(' · ') || 'Sin cargo' }}
+              </p>
+              <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+                <BadgeEstado tipo="empleado" :valor="emp.estado" status />
+                <div v-if="emp.n_cuentas != null" class="flex items-center gap-3 text-xs tabular-nums">
+                  <span :class="altaPendiente(emp) ? 'text-amber-700' : emp.n_cuentas ? 'text-gray-600' : 'text-gray-300'" :title="tituloCuentas(emp)" :aria-label="tituloCuentas(emp)"><i class="ti ti-key" aria-hidden="true"></i> {{ emp.n_cuentas }}</span>
+                  <span :class="emp.n_equipos ? 'text-gray-600' : 'text-gray-300'" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"><i class="ti ti-devices" aria-hidden="true"></i> {{ emp.n_equipos }}</span>
+                  <span :class="emp.n_licencias ? 'text-gray-600' : 'text-gray-300'" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"><i class="ti ti-license" aria-hidden="true"></i> {{ emp.n_licencias }}</span>
+                </div>
+              </div>
+            </li>
+          </ul>
+          <nav
+            v-if="!cargando && totalPaginas > 1"
+            class="mt-4 flex items-center justify-center gap-2 text-sm text-gray-500"
+            aria-label="Paginación"
+          >
             <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
               <i class="ti ti-chevron-left" aria-hidden="true"></i>
             </button>
+            <span class="tabular-nums">Página {{ paginaActual }} de {{ totalPaginas }}</span>
             <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
               <i class="ti ti-chevron-right" aria-hidden="true"></i>
             </button>
-          </div>
-        </nav>
-        </template>
-      </div>
-    </main>
+          </nav>
+        </div>
+      </template>
+    </div>
 
     <EmpleadoForm
       v-if="mostrarForm"
@@ -552,5 +536,3 @@ onMounted(async () => {
     />
   </div>
 </template>
-
-

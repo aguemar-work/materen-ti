@@ -27,6 +27,20 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-22** (**Rediseño de Empleados + modo maqueta + capa provisional**)
+  — con carta blanca del usuario para reimaginar el sistema (no replicar el
+  diseño anterior): Empleados (listado + ficha) y el panel de Accesos
+  (`CuentasPanel.vue`) se reestructuran con Tailwind + `components/ui/*`:
+  filtros fuera de la tabla, estado como segmentado, acciones de fila en menú
+  ⋮, ficha con perfil arriba, vínculos como secciones de lista y columna
+  lateral de contacto/organización. `AppAvatar.vue` nuevo. Revelado de
+  contraseñas, permisos y lógica sin cambios. `npm run dev:maqueta`
+  (`src/maqueta/`, plugin de `vite.config.js` solo en ese modo): la app con
+  datos inventados y un JEFE ficticio, sin backend — herramienta de revisión
+  de diseño; verificado que no entra al bundle de producción.
+  `styles/componentes.css`: capa PROVISIONAL para que las vistas todavía no
+  rediseñadas no se vean sin estilos; se retira a medida que cada módulo pasa
+  al sistema nuevo.
 - **2026-09-22** (**Shell migrado a la base PrimeVue/Tailwind + tipografía e
   íconos**) — a pedido explícito: shell claro y fundido, Inter Variable y
   Tabler Icons servidos desde el bundle (`@fontsource-variable/inter`,
