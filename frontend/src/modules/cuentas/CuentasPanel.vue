@@ -11,6 +11,8 @@ import { formatFecha } from '../../core/formatters.js';
 import { badgeInfo } from '../../core/badges.js';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import AppButton from '../../components/ui/AppButton.vue';
+import AppSeccion from '../../components/ui/AppSeccion.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
 import CuentaForm from './CuentaForm.vue';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -283,13 +285,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="rounded-lg border border-gray-200 bg-white" aria-labelledby="sec-accesos">
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
-      <h2 id="sec-accesos" class="flex items-center gap-2 text-sm font-semibold text-gray-900">
-        Accesos
-        <span class="rounded-full bg-gray-100 px-2 text-xs font-medium leading-5 text-gray-600 tabular-nums">{{ lista.length }}</span>
-      </h2>
-      <div class="flex items-center gap-1">
+  <AppSeccion titulo="Accesos" :conteo="lista.length" sin-padding>
+    <template #acciones>
         <!-- Secundario, no acento: la acción fuerte de la ficha es la del
              perfil (Reactivar) — ver EmpleadoDetalleView.vue. -->
         <AppButton
@@ -305,17 +302,13 @@ onMounted(async () => {
           @click="enviarWhatsApp"
         />
         <AppButton size="sm" variant="text" icon="ti ti-plus" label="Agregar cuenta" @click="abrirNueva" />
-      </div>
-    </div>
+    </template>
 
     <div v-if="error" class="px-4 py-6 text-center text-sm text-red-700">{{ error }}</div>
 
     <p v-else-if="cargando" class="px-4 py-6 text-center text-sm text-gray-500" role="status">Cargando accesos...</p>
 
-    <div v-else-if="!lista.length" class="px-4 py-8 text-center">
-      <p class="text-sm font-medium text-gray-900">Sin cuentas registradas</p>
-      <p class="mt-1 text-sm text-gray-500">Agregue la primera cuenta de acceso para este empleado.</p>
-    </div>
+    <AppVacio v-else-if="!lista.length" variante="seccion" titulo="Sin cuentas registradas" mensaje="Agregue la primera cuenta de acceso para este empleado." />
 
     <ul v-else class="divide-y divide-gray-100" aria-label="Cuentas del empleado">
       <li
@@ -397,7 +390,7 @@ onMounted(async () => {
         </div>
       </li>
     </ul>
-  </section>
+  </AppSeccion>
 
   <CuentaForm
     v-if="mostrarForm"

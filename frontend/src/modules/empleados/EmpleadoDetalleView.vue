@@ -18,6 +18,9 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import { rolDeTag } from '../../core/tagRol.js';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
+import AppSeccion from '../../components/ui/AppSeccion.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppListaDatos from '../../components/ui/AppListaDatos.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
@@ -121,7 +124,18 @@ const nombreCompleto = computed(() => nombreCompletoDe(empleado.value));
 // Pasos ya cumplidos de la guía de alta (barra de progreso).
 const pasosHechos = computed(() => pasosAlta.value.filter((p) => p.hecho).length);
 
-// Columna lateral "Organización" de la ficha (rediseño 2026-09-22).
+// Columna lateral de la ficha (rediseño 2026-09-22). El índice 1 de
+// datosContacto (WhatsApp) se pinta como enlace vía el slot de AppListaDatos.
+const datosContacto = computed(() => {
+  const e = empleado.value;
+  if (!e) return [];
+  return [
+    { label: 'Teléfono', valor: e.telefono ? formatTelefono(e.telefono) : '', mono: true },
+    { label: 'WhatsApp', valor: e.whatsapp ? formatTelefono(e.whatsapp) : '', mono: true },
+    { label: 'Correo personal', valor: e.correo_personal },
+  ];
+});
+
 const datosOrganizacion = computed(() => {
   const e = empleado.value;
   if (!e) return [];
@@ -365,15 +379,11 @@ onMounted(cargar);
           />
 
           <!-- Equipos que porta (entrega/devolución se registran en Equipos) -->
-          <section class="rounded-lg border border-gray-200 bg-white" aria-labelledby="sec-equipos">
-            <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
-              <h2 id="sec-equipos" class="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                Equipos
-                <span class="rounded-full bg-gray-100 px-2 text-xs font-medium leading-5 text-gray-600 tabular-nums">{{ equipos.length }}</span>
-              </h2>
+          <AppSeccion titulo="Equipos" :conteo="equipos.length" sin-padding>
+            <template #acciones>
               <AppButton size="sm" variant="text" icon="ti ti-plus" label="Asignar" @click="mostrarAsignarEquipo = true" />
-            </div>
-            <p v-if="equipos.length === 0" class="px-4 py-6 text-center text-sm text-gray-500">Sin equipos asignados.</p>
+            </template>
+            <AppVacio v-if="equipos.length === 0" variante="seccion" titulo="Sin equipos asignados" />
             <ul v-else class="divide-y divide-gray-100">
               <li v-for="eq in equipos" :key="eq.asignacion_id" class="group flex items-center gap-3 px-4 py-3">
                 <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
@@ -397,20 +407,19 @@ onMounted(cargar);
                 </RouterLink>
               </li>
             </ul>
-          </section>
+          </AppSeccion>
 
           <!-- Licencias directas (las de login aparecen como cuentas en Accesos) -->
-          <section class="rounded-lg border border-gray-200 bg-white" aria-labelledby="sec-licencias">
-            <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
-              <h2 id="sec-licencias" class="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                Licencias
-                <span class="rounded-full bg-gray-100 px-2 text-xs font-medium leading-5 text-gray-600 tabular-nums">{{ licencias.length }}</span>
-              </h2>
+          <AppSeccion titulo="Licencias" :conteo="licencias.length" sin-padding>
+            <template #acciones>
               <AppButton size="sm" variant="text" icon="ti ti-plus" label="Asignar" @click="mostrarAsignarLicencia = true" />
-            </div>
-            <p v-if="licencias.length === 0" class="px-4 py-6 text-center text-sm text-gray-500">
-              Sin licencias directas — las de login aparecen como cuentas en Accesos.
-            </p>
+            </template>
+            <AppVacio
+              v-if="licencias.length === 0"
+              variante="seccion"
+              titulo="Sin licencias directas"
+              mensaje="Las licencias de login aparecen como cuentas en Accesos."
+            />
             <ul v-else class="divide-y divide-gray-100">
               <li v-for="lic in licencias" :key="lic.asignacion_id" class="group flex items-center gap-3 px-4 py-3">
                 <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
@@ -452,54 +461,33 @@ onMounted(cargar);
                 </div>
               </li>
             </ul>
-          </section>
+          </AppSeccion>
         </div>
 
         <!-- ── Lateral: datos personales y de contacto ── -->
         <aside class="space-y-6 lg:sticky lg:top-6">
-          <section class="rounded-lg border border-gray-200 bg-white p-4" aria-labelledby="sec-contacto">
-            <h2 id="sec-contacto" class="text-sm font-semibold text-gray-900">Contacto</h2>
-            <dl class="mt-3 space-y-3 text-sm">
-              <div>
-                <dt class="text-xs text-gray-500">Teléfono</dt>
-                <dd class="mt-0.5 tabular-nums" :class="empleado.telefono ? 'text-gray-900' : 'text-gray-400'">{{ empleado.telefono ? formatTelefono(empleado.telefono) : 'Sin registrar' }}</dd>
-              </div>
-              <div>
-                <dt class="text-xs text-gray-500">WhatsApp</dt>
-                <dd class="mt-0.5">
-                  <a
-                    v-if="empleado.whatsapp"
-                    class="inline-flex items-center gap-1.5 text-green-700 hover:text-green-800 hover:underline tabular-nums"
-                    :href="`https://wa.me/${empleado.whatsapp.replace(/\D/g, '')}`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <i class="ti ti-brand-whatsapp" aria-hidden="true"></i>{{ formatTelefono(empleado.whatsapp) }}
-                  </a>
-                  <span v-else class="text-gray-400">Sin registrar</span>
-                </dd>
-              </div>
-              <div>
-                <dt class="text-xs text-gray-500">Correo personal</dt>
-                <dd class="mt-0.5 truncate" :class="empleado.correo_personal ? 'text-gray-900' : 'text-gray-400'" :title="empleado.correo_personal">{{ empleado.correo_personal || 'Sin registrar' }}</dd>
-              </div>
-            </dl>
-          </section>
+          <AppSeccion titulo="Contacto">
+            <AppListaDatos :datos="datosContacto">
+              <template v-if="empleado.whatsapp" #valor-1>
+                <a
+                  class="inline-flex items-center gap-1.5 text-green-700 tabular-nums hover:text-green-800 hover:underline"
+                  :href="`https://wa.me/${empleado.whatsapp.replace(/\D/g, '')}`"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <i class="ti ti-brand-whatsapp" aria-hidden="true"></i>{{ formatTelefono(empleado.whatsapp) }}
+                </a>
+              </template>
+            </AppListaDatos>
+          </AppSeccion>
 
-          <section class="rounded-lg border border-gray-200 bg-white p-4" aria-labelledby="sec-organizacion">
-            <h2 id="sec-organizacion" class="text-sm font-semibold text-gray-900">Organización</h2>
-            <dl class="mt-3 space-y-3 text-sm">
-              <div v-for="dato in datosOrganizacion" :key="dato.label">
-                <dt class="text-xs text-gray-500">{{ dato.label }}</dt>
-                <dd class="mt-0.5" :class="dato.valor ? 'text-gray-900' : 'text-gray-400'">{{ dato.valor || 'Sin registrar' }}</dd>
-              </div>
-            </dl>
-          </section>
+          <AppSeccion titulo="Organización">
+            <AppListaDatos :datos="datosOrganizacion" />
+          </AppSeccion>
 
-          <section v-if="empleado.notas" class="rounded-lg border border-gray-200 bg-white p-4" aria-labelledby="sec-notas">
-            <h2 id="sec-notas" class="text-sm font-semibold text-gray-900">Notas</h2>
-            <p class="mt-2 whitespace-pre-line text-sm text-gray-700">{{ empleado.notas }}</p>
-          </section>
+          <AppSeccion v-if="empleado.notas" titulo="Notas">
+            <p class="whitespace-pre-line text-sm text-gray-700">{{ empleado.notas }}</p>
+          </AppSeccion>
         </aside>
       </div>
     </template>

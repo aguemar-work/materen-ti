@@ -32,7 +32,7 @@
   label { @apply text-sm font-medium text-gray-700; }
 
   /* select nativo: los de `campo` y paginación tienen su propia caja. */
-  select:not(.campo__control):not(.paginacion__select),
+  select:not(.campo__control):not(.paginacion__select):not([data-ui]),
   input[type="date"]:not(.campo__control),
   input[type="time"]:not(.campo__control),
   input[type="datetime-local"]:not(.campo__control) {
@@ -41,7 +41,7 @@
       focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500
       disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400;
   }
-  select:not(.campo__control):not(.paginacion__select) {
+  select:not(.campo__control):not(.paginacion__select):not([data-ui]) {
     @apply cursor-pointer appearance-none pr-9;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;

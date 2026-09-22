@@ -21,11 +21,15 @@ import AppButton from '../../components/ui/AppButton.vue';
 import AppTable from '../../components/ui/AppTable.vue';
 import AppColumn from '../../components/ui/AppColumn.js';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppSelect from '../../components/ui/AppSelect.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
-import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
-import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -102,19 +106,6 @@ const empleadoEditar = ref(null);
 watch(filtroEstado, (estado) => store.aplicarFiltros({ estado }));
 watch(filtroUbicacion, (ubicacionId) => store.aplicarFiltros({ ubicacionId }));
 
-const paginaActual = computed({
-  get: () => store.pagina,
-  set: (p) => store.irAPagina(p),
-});
-
-const totalPaginas = computed(() => totalPaginasDe(total.value, store.tamPagina));
-const paginas = computed(() => paginasDe(totalPaginas.value));
-const desde = computed(() => rangoDe(paginaActual.value, store.tamPagina, total.value).desde);
-const hasta = computed(() => rangoDe(paginaActual.value, store.tamPagina, total.value).hasta);
-function irA(pagina) {
-  const destino = clampPagina(pagina, totalPaginas.value);
-  if (destino !== store.pagina) store.irAPagina(destino);
-}
 
 // Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
 const exportando = ref(false);
@@ -256,17 +247,11 @@ onMounted(async () => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <!-- ══ Encabezado ══════════════════════════════════════════════ -->
-    <header class="flex flex-wrap items-end justify-between gap-4 px-4 pb-4 pt-6 sm:px-6">
-      <div class="min-w-0">
-        <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Empleados</h1>
-        <p class="mt-1 text-sm text-gray-500">
-          <span class="tabular-nums">{{ total }}</span>
-          {{ total === 1 ? 'persona' : 'personas' }}{{ filtroEstado ? ` en estado ${filtroEstado.toLowerCase()}` : '' }}
-          · accesos, equipos y licencias asignados
-        </p>
-      </div>
-      <div class="flex items-center gap-2">
+    <AppEncabezado
+      titulo="Empleados"
+      :subtitulo="`${total} ${total === 1 ? 'persona' : 'personas'}${filtroEstado ? ` en estado ${filtroEstado.toLowerCase()}` : ''} · accesos, equipos y licencias asignados`"
+    >
+      <template #acciones>
         <AppButton
           variant="text"
           severity="secondary"
@@ -278,42 +263,17 @@ onMounted(async () => {
           @click="exportar"
         />
         <AppButton icon="ti ti-plus" label="Nuevo empleado" @click="abrirNuevo" />
-      </div>
-    </header>
+      </template>
+    </AppEncabezado>
 
     <!-- ══ Barra de filtros (fuera de la tabla: filtra, no es parte del dato) -->
     <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
-      <label class="relative min-w-60 flex-1 sm:max-w-sm">
-        <span class="sr-only">Buscar empleados</span>
-        <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
-        <input
-          v-model="busqueda"
-          type="search"
-          placeholder="Buscar por nombre o DNI"
-          class="h-9 w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-        >
-      </label>
-
-      <div class="inline-flex rounded-md bg-gray-100 p-0.5" role="group" aria-label="Filtrar por estado">
-        <button
-          v-for="op in ESTADOS_SEGMENTO"
-          :key="op.valor"
-          type="button"
-          class="h-8 rounded px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-          :class="filtroEstado === op.valor ? 'bg-white text-gray-900 ring-1 ring-gray-200' : 'text-gray-600 hover:text-gray-900'"
-          :aria-pressed="filtroEstado === op.valor"
-          @click="filtroEstado = op.valor"
-        >{{ op.label }}</button>
-      </div>
-
-      <label class="flex items-center gap-2">
-        <span class="sr-only">Ubicación</span>
-        <select v-model="filtroUbicacion" aria-label="Filtrar por ubicación" class="h-9! border-gray-200! text-sm">
-          <option value="">Todas las ubicaciones</option>
-          <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-        </select>
-      </label>
-
+      <AppBuscador v-model="busqueda" label="Buscar empleados" placeholder="Buscar por nombre o DNI" />
+      <AppSegmentado v-model="filtroEstado" :opciones="ESTADOS_SEGMENTO" label="Filtrar por estado" />
+      <AppSelect v-model="filtroUbicacion" label="Filtrar por ubicación">
+        <option value="">Todas las ubicaciones</option>
+        <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+      </AppSelect>
       <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio ml-auto" />
     </div>
 
@@ -324,29 +284,21 @@ onMounted(async () => {
         <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
       </div>
 
-      <div
+      <AppVacio
         v-else-if="!cargando && total === 0"
-        class="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white px-6 py-16 text-center"
+        icono="ti ti-users"
+        :titulo="busqueda || filtroEstado ? 'Sin resultados' : 'Sin empleados todavía'"
+        :mensaje="busqueda || filtroEstado ? 'No hay empleados con los filtros aplicados.' : 'Agregue el primer empleado al inventario para asignarle accesos y equipos.'"
       >
-        <span class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400">
-          <i class="ti ti-users" aria-hidden="true"></i>
-        </span>
-        <h2 class="text-base font-semibold text-gray-900">
-          {{ busqueda || filtroEstado ? 'Sin resultados' : 'Sin empleados todavía' }}
-        </h2>
-        <p class="mt-1 max-w-sm text-sm text-gray-500">
-          {{ busqueda || filtroEstado ? 'No hay empleados con los filtros aplicados.' : 'Agregue el primer empleado al inventario para asignarle accesos y equipos.' }}
-        </p>
         <AppButton
           v-if="!busqueda && !filtroEstado"
-          class="mt-5"
           variant="outline"
           severity="secondary"
           icon="ti ti-plus"
           label="Agregar empleado"
           @click="abrirNuevo"
         />
-      </div>
+      </AppVacio>
 
       <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
@@ -432,41 +384,14 @@ onMounted(async () => {
             </AppTable>
           </div>
 
-          <!-- Paginación -->
-          <nav
+          <AppPaginacion
             v-if="!cargando && total > 0"
-            class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-2 text-sm text-gray-500"
-            aria-label="Paginación"
-          >
-            <div class="flex items-center gap-3">
-              <label class="inline-flex items-center gap-1.5 font-normal text-gray-500">
-                <span>Filas</span>
-                <select
-                  class="paginacion__select"
-                  :value="store.tamPagina"
-                  @change="store.cambiarTamPagina(Number($event.target.value))"
-                >
-                  <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-                </select>
-              </label>
-              <span class="tabular-nums">{{ desde }}–{{ hasta }} de {{ total }}</span>
-            </div>
-            <div v-if="totalPaginas > 1" class="flex items-center gap-1">
-              <label class="inline-flex items-center gap-1.5 font-normal text-gray-500">
-                <span class="sr-only">Ir a la página</span>
-                <select class="paginacion__select" :value="paginaActual" @change="irA(Number($event.target.value))">
-                  <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
-                </select>
-                <span>de {{ totalPaginas }}</span>
-              </label>
-              <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
-                <i class="ti ti-chevron-left" aria-hidden="true"></i>
-              </button>
-              <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
-                <i class="ti ti-chevron-right" aria-hidden="true"></i>
-              </button>
-            </div>
-          </nav>
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+            @update:tam-pagina="store.cambiarTamPagina"
+          />
         </div>
 
         <!-- ── Tarjetas (vista elegida en escritorio, o siempre en móvil) ── -->
@@ -506,19 +431,14 @@ onMounted(async () => {
               </div>
             </li>
           </ul>
-          <nav
-            v-if="!cargando && totalPaginas > 1"
-            class="mt-4 flex items-center justify-center gap-2 text-sm text-gray-500"
-            aria-label="Paginación"
-          >
-            <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
-              <i class="ti ti-chevron-left" aria-hidden="true"></i>
-            </button>
-            <span class="tabular-nums">Página {{ paginaActual }} de {{ totalPaginas }}</span>
-            <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
-              <i class="ti ti-chevron-right" aria-hidden="true"></i>
-            </button>
-          </nav>
+          <AppPaginacion
+            v-if="!cargando"
+            variante="compacta"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+          />
         </div>
       </template>
     </div>
