@@ -18,16 +18,16 @@ import { exportarCSV } from '../../core/exportar.js';
 import { CABECERA_CSV_TICKETS, filaCsvTicket } from '../../core/exportar-tickets.js';
 import Modal from '../../components/shared/Modal.vue';
 import { showToast } from '../../core/toast.js';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import TextoVacio from '../../components/shared/TextoVacio.vue';
 import { generarReporteTickets } from './reporte.js';
 import {
   PERIODOS, MESES, anclaDeHoy, normalizarAncla, limitarAncla, desplazarAncla,
   rangoDe, enCurso, puedeAvanzar, etiquetaRango, etiquetaPeriodo, etiquetaCompacta,
   nombreArchivoReporte, aniosDisponibles,
 } from './reportePeriodo.js';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
 
 // Las exportaciones (CSV del periodo, CSV de la bandeja) y el PDF cumplen la
 // misma finalidad —sacar información de tickets para compartir o analizar— así
@@ -60,6 +60,7 @@ const ancla = ref(anclaDeHoy('semanal'));
 const cargando = ref(true);
 const error = ref('');
 const datos = ref(null);
+const infoError = infoNotificacion('error');
 
 const rangoLabel = computed(() => etiquetaRango(periodo.value, ancla.value));
 const periodoLabel = computed(() => etiquetaPeriodo(periodo.value, ancla.value));
@@ -165,6 +166,8 @@ const columnasTiempoPrioridad = [
   { clave: 'promedio', label: 'Tiempo medio', num: true },
   { clave: 'mediana', label: 'Mediana', num: true },
 ];
+const columnasTiempoPrioridadVisibles = computed(() => columnasVisibles(columnasTiempoPrioridad));
+const totalColumnasTiempoPrioridad = computed(() => columnasTiempoPrioridadVisibles.value.length);
 
 // Rótulo de la 3ª columna cambia con el periodo (Hoy/Esta semana/Este mes) —
 // por eso este arreglo es un computed y no una constante como las demás.
@@ -176,6 +179,8 @@ const columnasTecnico = computed(() => [
   { clave: 'promedio', label: 'Tiempo medio', num: true },
   { clave: 'mediana', label: 'Mediana', num: true },
 ]);
+const columnasTecnicoVisibles = computed(() => columnasVisibles(columnasTecnico.value));
+const totalColumnasTecnico = computed(() => columnasTecnicoVisibles.value.length);
 
 const columnasArrastrados = [
   { clave: 'codigo', label: 'Código' },
@@ -184,6 +189,8 @@ const columnasArrastrados = [
   { clave: 'creadoEn', label: 'Creado el' },
   { clave: 'diasAbierto', label: 'Días abierto', num: true },
 ];
+const columnasArrastradosVisibles = computed(() => columnasVisibles(columnasArrastrados));
+const totalColumnasArrastrados = computed(() => columnasArrastradosVisibles.value.length);
 
 // "Histórico" perdió el title="Total histórico..." que tenía como <th> plano
 // (CarbonDataTable no expone un atributo por columna para eso) — la nota
@@ -198,6 +205,8 @@ const columnasSolicitante = [
   { clave: 'encuestasContestadas', label: 'Enc. contestadas', num: true },
   { clave: 'encuestasPendientes', label: 'Enc. pendientes', num: true },
 ];
+const columnasSolicitanteVisibles = computed(() => columnasVisibles(columnasSolicitante));
+const totalColumnasSolicitante = computed(() => columnasSolicitanteVisibles.value.length);
 
 // Comparativa contra el periodo anterior equivalente (mes contra mes, semana
 // contra semana). Es un resumen liviano aparte: no hace falta traer todas las
@@ -448,7 +457,7 @@ onMounted(cargar);
                 @click="mover(1)"
               ><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
 
-              <CarbonButton variante="secondary" :deshabilitado="cargando || esPeriodoActual" @click="irAlActual">Actual</CarbonButton>
+              <button type="button" class="btn btn--secondary" :disabled="cargando || esPeriodoActual" @click="irAlActual">Actual</button>
             </div>
 
             <span class="rep-rango">
@@ -471,7 +480,12 @@ onMounted(cargar);
           </div>
 
           <div v-if="cargando" class="no-results">Calculando reporte...</div>
-          <CarbonNotification v-else-if="error" tipo="error">{{ error }}</CarbonNotification>
+          <div v-else-if="error" class="notif notif--inline" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
+            <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+            <div class="notif__texto">
+              <p class="notif__detalle">{{ error }}</p>
+            </div>
+          </div>
 
           <template v-else-if="datos">
             <label class="rep-toggle-tasa">
@@ -546,18 +560,37 @@ onMounted(cargar);
                   <span class="rep-kpi-label">Tasa de reapertura</span>
                 </div>
               </div>
-              <CarbonDataTable
-                :columnas="columnasTiempoPrioridad"
-                :filas="tiempoPorPrioridadLabel"
-                :con-tarjetas="false"
-                densidad="sm"
-                etiqueta="Tiempo de atención por prioridad"
-                vacio-titulo="Sin datos"
-                vacio-mensaje="Sin tickets resueltos en el periodo"
-              >
-                <template #celda-promedio="{ fila }">{{ formatHoras(fila.promedio) }}</template>
-                <template #celda-mediana="{ fila }">{{ formatHoras(fila.mediana) }}</template>
-              </CarbonDataTable>
+              <div class="table-wrap solo-escritorio">
+                <table class="cds-table cds-table--sm" aria-label="Tiempo de atención por prioridad">
+                  <thead>
+                    <tr>
+                      <th
+                        v-for="col in columnasTiempoPrioridadVisibles"
+                        :key="col.clave"
+                        scope="col"
+                        :class="{ 'col-num': col.num }"
+                        :style="estiloColumna(col)"
+                      >{{ col.label }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!tiempoPorPrioridadLabel.length">
+                      <td :colspan="totalColumnasTiempoPrioridad" class="cds-table__vacio">
+                        <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Sin tickets resueltos en el periodo" />
+                      </td>
+                    </tr>
+                    <template v-else>
+                      <tr v-for="fila in tiempoPorPrioridadLabel" :key="fila.clave">
+                        <td v-for="col in columnasTiempoPrioridadVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
+                          <template v-if="col.clave === 'promedio'">{{ formatHoras(fila.promedio) }}</template>
+                          <template v-else-if="col.clave === 'mediana'">{{ formatHoras(fila.mediana) }}</template>
+                          <template v-else>{{ fila[col.clave] }}</template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
               <p class="tk-nota">
                 {{ datos.reaperturas }} reapertura(s) sobre {{ datos.totalResueltos }} ticket(s) resueltos en el periodo.
               </p>
@@ -565,36 +598,72 @@ onMounted(cargar);
 
             <div class="rep-seccion">
               <div class="datos-title">Desempeño por técnico</div>
-              <CarbonDataTable
-                :columnas="columnasTecnico"
-                :filas="porTecnicoNombres"
-                clave="nombre"
-                :con-tarjetas="false"
-                densidad="sm"
-                etiqueta="Desempeño por técnico"
-                vacio-titulo="Sin datos"
-                vacio-mensaje="Sin tickets resueltos en el periodo"
-              >
-                <template #celda-promedio="{ fila }">{{ formatHoras(fila.promedio) }}</template>
-                <template #celda-mediana="{ fila }">{{ formatHoras(fila.mediana) }}</template>
-              </CarbonDataTable>
+              <div class="table-wrap solo-escritorio">
+                <table class="cds-table cds-table--sm" aria-label="Desempeño por técnico">
+                  <thead>
+                    <tr>
+                      <th
+                        v-for="col in columnasTecnicoVisibles"
+                        :key="col.clave"
+                        scope="col"
+                        :class="{ 'col-num': col.num }"
+                        :style="estiloColumna(col)"
+                      >{{ col.label }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!porTecnicoNombres.length">
+                      <td :colspan="totalColumnasTecnico" class="cds-table__vacio">
+                        <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Sin tickets resueltos en el periodo" />
+                      </td>
+                    </tr>
+                    <template v-else>
+                      <tr v-for="fila in porTecnicoNombres" :key="fila.nombre">
+                        <td v-for="col in columnasTecnicoVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
+                          <template v-if="col.clave === 'promedio'">{{ formatHoras(fila.promedio) }}</template>
+                          <template v-else-if="col.clave === 'mediana'">{{ formatHoras(fila.mediana) }}</template>
+                          <template v-else>{{ fila[col.clave] }}</template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div class="rep-seccion">
               <div class="datos-title">Tickets anteriores resueltos en el periodo</div>
-              <CarbonDataTable
-                :columnas="columnasArrastrados"
-                :filas="arrastradosNombres"
-                clave="codigo"
-                :con-tarjetas="false"
-                densidad="sm"
-                etiqueta="Tickets anteriores resueltos en el periodo"
-                vacio-titulo="Sin datos"
-                vacio-mensaje="Sin tickets arrastrados resueltos en el periodo"
-              >
-                <template #celda-codigo="{ valor }"><span class="rep-codigo">{{ valor }}</span></template>
-                <template #celda-creadoEn="{ valor }">{{ formatFecha(valor) }}</template>
-              </CarbonDataTable>
+              <div class="table-wrap solo-escritorio">
+                <table class="cds-table cds-table--sm" aria-label="Tickets anteriores resueltos en el periodo">
+                  <thead>
+                    <tr>
+                      <th
+                        v-for="col in columnasArrastradosVisibles"
+                        :key="col.clave"
+                        scope="col"
+                        :class="{ 'col-num': col.num }"
+                        :style="estiloColumna(col)"
+                      >{{ col.label }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!arrastradosNombres.length">
+                      <td :colspan="totalColumnasArrastrados" class="cds-table__vacio">
+                        <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Sin tickets arrastrados resueltos en el periodo" />
+                      </td>
+                    </tr>
+                    <template v-else>
+                      <tr v-for="fila in arrastradosNombres" :key="fila.codigo">
+                        <td v-for="col in columnasArrastradosVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
+                          <span v-if="col.clave === 'codigo'" class="rep-codigo">{{ fila.codigo }}</span>
+                          <template v-else-if="col.clave === 'creadoEn'">{{ formatFecha(fila.creadoEn) }}</template>
+                          <template v-else>{{ fila[col.clave] }}</template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div class="rep-seccion">
@@ -605,18 +674,36 @@ onMounted(cargar);
               <!-- 7 columnas: en pantallas angostas la tabla scrollea sola en
                    vez de desbordar el modal (.table-wrap, dentro de
                    CarbonDataTable). -->
-              <CarbonDataTable
-                :columnas="columnasSolicitante"
-                :filas="datos.porSolicitante"
-                clave="solicitante"
-                :con-tarjetas="false"
-                densidad="sm"
-                etiqueta="Tickets del periodo por solicitante"
-                vacio-titulo="Sin datos"
-                vacio-mensaje="Sin tickets creados en el periodo"
-              >
-                <template #celda-solicitante="{ valor }"><TextoVacio :valor="valor" /></template>
-              </CarbonDataTable>
+              <div class="table-wrap solo-escritorio">
+                <table class="cds-table cds-table--sm" aria-label="Tickets del periodo por solicitante">
+                  <thead>
+                    <tr>
+                      <th
+                        v-for="col in columnasSolicitanteVisibles"
+                        :key="col.clave"
+                        scope="col"
+                        :class="{ 'col-num': col.num }"
+                        :style="estiloColumna(col)"
+                      >{{ col.label }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!datos.porSolicitante.length">
+                      <td :colspan="totalColumnasSolicitante" class="cds-table__vacio">
+                        <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Sin tickets creados en el periodo" />
+                      </td>
+                    </tr>
+                    <template v-else>
+                      <tr v-for="fila in datos.porSolicitante" :key="fila.solicitante">
+                        <td v-for="col in columnasSolicitanteVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
+                          <TextoVacio v-if="col.clave === 'solicitante'" :valor="fila.solicitante" />
+                          <template v-else>{{ fila[col.clave] }}</template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div class="rep-seccion">
@@ -634,114 +721,41 @@ onMounted(cargar);
         </div>
 
     <template #acciones>
-      <CarbonButton variante="secondary" @click="modal?.cerrar()">Cerrar</CarbonButton>
-      <CarbonButton
-        variante="secondary"
-        icono="ti-table-export"
-        :cargando="exportandoPeriodo"
-        :deshabilitado="cargando"
+      <button type="button" class="btn btn--secondary" @click="modal?.cerrar()">Cerrar</button>
+      <button
+        type="button"
+        class="btn btn--secondary"
+        :disabled="exportandoPeriodo || cargando"
         title="Exporta los tickets del periodo del reporte"
         @click="exportarCsvPeriodo"
-      >{{ exportandoPeriodo ? 'Exportando...' : 'CSV del periodo' }}</CarbonButton>
-      <CarbonButton
-        variante="secondary"
-        icono="ti-table-export"
-        :cargando="exportando"
+      >
+        {{ exportandoPeriodo ? 'Exportando...' : 'CSV del periodo' }}
+        <i v-if="exportandoPeriodo" class="ti ti-loader-2" aria-hidden="true"></i>
+        <i v-else class="ti ti-table-export" aria-hidden="true"></i>
+      </button>
+      <button
+        type="button"
+        class="btn btn--secondary"
+        :disabled="exportando"
         title="Exporta la bandeja con los filtros aplicados, no el periodo del reporte"
         @click="exportarCsv"
-      >{{ exportando ? 'Exportando...' : 'CSV de la bandeja' }}</CarbonButton>
-      <CarbonButton variante="primary" icono="ti-download" :cargando="descargando" :deshabilitado="cargando || !datos" @click="descargar">
+      >
+        {{ exportando ? 'Exportando...' : 'CSV de la bandeja' }}
+        <i v-if="exportando" class="ti ti-loader-2" aria-hidden="true"></i>
+        <i v-else class="ti ti-table-export" aria-hidden="true"></i>
+      </button>
+      <button
+        type="button"
+        class="btn btn--primary"
+        :disabled="descargando || cargando || !datos"
+        @click="descargar"
+      >
         {{ descargando ? 'Generando PDF...' : 'Descargar PDF' }}
-      </CarbonButton>
+        <i v-if="descargando" class="ti ti-loader-2" aria-hidden="true"></i>
+        <i v-else class="ti ti-download" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 </template>
 
-<style scoped>
-.rep-body { display: flex; flex-direction: column; gap: 16px; }
 
-.rep-periodos { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.rep-granularidad, .rep-nav, .rep-alcance { display: flex; align-items: center; gap: 6px; }
-.rep-nav { padding-left: 8px; border-left: 1px solid var(--color-border-subtle); }
-.rep-alcance { margin: -6px 0 2px; }
-
-/* Selector segmentado (no es la acción principal del modal, es un estado de
-   selección) — mismo par tenue-acento que .chip-filtro--activo en vez de
-   .btn-primary, para no competir con "Descargar PDF". */
-.rep-granularidad .btn.is-activo,
-.rep-alcance .btn.is-activo {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-  border-color: var(--color-accent-subtle);
-}
-
-.rep-campo {
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  font-size: var(--fs-body-01);
-  font-family: var(--font-sans);
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.rep-campo:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--ring); }
-.rep-campo:disabled { opacity: 0.6; cursor: not-allowed; }
-select.rep-campo { cursor: pointer; }
-.rep-campo-anio { min-width: 84px; }
-
-.rep-rango { font-size: var(--fs-label-01); color: var(--color-text-secondary); margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
-.rep-encurso {
-  font-size: var(--fs-label-01);
-  padding: 1px 6px;
-  border-radius: var(--radius-base);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-tertiary);
-}
-
-.rep-toggle-tasa {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  cursor: pointer;
-  margin-bottom: 4px;
-}
-
-.rep-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.rep-kpis-3, .rep-kpis-3col { grid-template-columns: repeat(3, 1fr); }
-.rep-kpis-3 { margin-bottom: 10px; }
-.rep-kpi { border: 1px solid var(--color-border); border-radius: var(--radius-base); padding: 10px; text-align: center; }
-.rep-kpi-valor { display: block; font-size: var(--fs-heading-02); font-weight: 600; }
-.rep-kpi-label { font-size: var(--fs-label-01); color: var(--color-text-secondary); }
-/* La variación no se pinta de verde/rojo: "más creados" no es bueno ni malo por
-   sí mismo y el color le pondría un juicio que el dato no tiene. */
-.rep-kpi-delta { display: block; margin-top: 2px; font-size: var(--fs-label-01); color: var(--color-text-tertiary); }
-.rep-kpi-desglose { display: block; margin-top: 2px; font-size: var(--fs-label-01); color: var(--color-text-tertiary); }
-.rep-comparativa { margin: -8px 0 0; font-size: var(--fs-label-01); color: var(--color-text-tertiary); text-align: right; }
-
-.rep-seccion { border-top: 1px solid var(--color-border); padding-top: 12px; }
-/* Tres conteos (categoría, prioridad, tipo): caben en una sola fila dentro de
-   los 680px de .modal-lg sin partir los encabezados. */
-.rep-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-
-.rep-tabla { width: 100%; border-collapse: collapse; font-size: var(--fs-label-01); }
-.rep-tabla th, .rep-tabla td { padding: 5px 8px; border-bottom: 1px solid var(--color-border); text-align: left; }
-.rep-tabla .num { text-align: right; }
-.rep-vacio { color: var(--color-text-tertiary); font-style: italic; text-align: center; }
-.rep-codigo { font-family: var(--font-mono, monospace); white-space: nowrap; }
-
-.rep-comentarios { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.rep-comentarios li { font-size: var(--fs-body-01); border-bottom: 1px solid var(--color-border); padding-bottom: 6px; }
-.rep-fecha { color: var(--color-text-tertiary); font-size: var(--fs-label-01); }
-
-@media (max-width: 768px) {
-  .rep-cols { grid-template-columns: 1fr; }
-  .rep-kpis, .rep-kpis-3, .rep-kpis-3col { grid-template-columns: repeat(2, 1fr); }
-  .rep-comparativa { text-align: left; }
-  .rep-nav { padding-left: 0; border-left: none; }
-  .rep-rango { margin-left: 0; }
-}
-</style>

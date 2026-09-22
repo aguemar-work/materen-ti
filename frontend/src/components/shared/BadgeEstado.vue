@@ -20,7 +20,7 @@
 //     único que no se veía como un estado.
 import { computed } from 'vue';
 import { badgeInfo } from '../../core/badges.js';
-import CarbonTag from '../carbon/CarbonTag.vue';
+import { rolDeTag } from '../../core/tagRol.js';
 
 const props = defineProps({
   /** empleado | ticket | prioridad | situacion | tipo_cuenta | tipo_ubicacion |
@@ -37,8 +37,9 @@ const props = defineProps({
 });
 
 const info = computed(() => badgeInfo(props.tipo, props.valor));
+const rol = computed(() => rolDeTag(info.value.clase));
 </script>
 
 <template>
-  <CarbonTag :variante="info.clase" :punto="status">{{ info.label }}</CarbonTag>
+  <span class="cds-tag" :class="[`cds-tag--${rol}`, { 'cds-tag--punto': status }]"><span v-if="status" class="cds-tag__punto" aria-hidden="true"></span>{{ info.label }}</span>
 </template>

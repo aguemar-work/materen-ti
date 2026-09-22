@@ -18,9 +18,10 @@ import { generarReporteSatisfaccion } from './reporteSatisfaccion.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
-import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
+import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const cargando = ref(true);
@@ -64,6 +65,15 @@ const respuestasFiltradas = computed(() => {
 // inicial porque un reporte se lee de más reciente a más antiguo.
 const { columna, direccion, ordenarPor, listaOrdenada: respuestasOrdenadas } = useOrdenTabla(respuestasFiltradas, 'created_at', 'desc');
 const { paginaActual, listaPaginada: respuestasPagina, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(respuestasOrdenadas);
+
+const totalPaginas = computed(() => totalPaginasDe(totalItems.value, tamPagina.value));
+const paginas = computed(() => paginasDe(totalPaginas.value));
+const rangoPaginacion = computed(() => rangoDe(paginaActual.value, tamPagina.value, totalItems.value));
+const desde = computed(() => rangoPaginacion.value.desde);
+const hasta = computed(() => rangoPaginacion.value.hasta);
+function irAPagina(pagina) {
+  paginaActual.value = clampPagina(pagina, totalPaginas.value);
+}
 
 // KPIs generales del PDF (independientes del buscador/orden de la tabla:
 // siempre sobre el histórico completo, igual que "Todas las respuestas"
@@ -176,6 +186,8 @@ const columnasPorSolicitante = [
   { clave: 'n5', label: '5★', ancho: '48px' },
   { clave: 'promedio', label: 'Promedio' },
 ];
+const columnasPorSolicitanteVisibles = computed(() => columnasVisibles(columnasPorSolicitante));
+const totalColPorSolicitante = computed(() => columnasPorSolicitanteVisibles.value.length);
 
 const columnasPorTecnico = [
   { clave: 'nombre', label: 'Técnico', elastica: true },
@@ -188,6 +200,8 @@ const columnasPorTecnico = [
   { clave: 'n5', label: '5★', ancho: '48px' },
   { clave: 'promedio', label: 'Promedio' },
 ];
+const columnasPorTecnicoVisibles = computed(() => columnasVisibles(columnasPorTecnico));
+const totalColPorTecnico = computed(() => columnasPorTecnicoVisibles.value.length);
 
 const columnasRespuestas = [
   { clave: 'ticket_codigo', label: 'Ticket' },
@@ -197,6 +211,8 @@ const columnasRespuestas = [
   { clave: 'comentario', label: 'Comentario', elastica: true },
   { clave: 'created_at', label: 'Fecha', ordenable: true },
 ];
+const columnasRespuestasVisibles = computed(() => columnasVisibles(columnasRespuestas));
+const totalColRespuestas = computed(() => columnasRespuestasVisibles.value.length);
 
 async function cargar() {
   cargando.value = true;
@@ -225,14 +241,20 @@ onMounted(cargar);
   <div class="satisfaccion-tickets-page vista-modulo">
     <PageHeader titulo="Satisfacción de tickets" icono="ti ti-mood-smile" :conteo="respuestasFiltradas.length">
       <template #acciones>
-        <CarbonButton
-          variante="secondary"
-          icono="ti-download"
-          :cargando="exportandoPdf"
-          :deshabilitado="cargando"
+        <button
+          type="button"
+          class="btn btn--secondary"
+          :disabled="exportandoPdf || cargando"
           @click="descargarPdf"
-        >{{ exportandoPdf ? 'Generando...' : 'Descargar PDF' }}</CarbonButton>
-        <CarbonButton variante="secondary" icono="ti-arrow-left" to="/tickets">Volver</CarbonButton>
+        >
+          {{ exportandoPdf ? 'Generando...' : 'Descargar PDF' }}
+          <i v-if="exportandoPdf" class="ti ti-loader-2" aria-hidden="true"></i>
+          <i v-else class="ti ti-download" aria-hidden="true"></i>
+        </button>
+        <RouterLink to="/tickets" class="btn btn--secondary">
+          Volver
+          <i class="ti ti-arrow-left" aria-hidden="true"></i>
+        </RouterLink>
       </template>
     </PageHeader>
 
@@ -244,55 +266,91 @@ onMounted(cargar);
           <div class="card">
             <div class="datos-title"><i class="ti ti-user"></i> Por solicitante</div>
             <p class="tk-nota">Promedio marcado en gris con menos de {{ MIN_MUESTRA_PROMEDIO }} respuestas con nivel.</p>
-            <CarbonDataTable
-              :columnas="columnasPorSolicitante"
-              :filas="porSolicitanteConNiveles"
-              :cargando="cargando"
-              :con-tarjetas="false"
-              densidad="sm"
-              clave="empleado_id"
-              etiqueta="Satisfacción por solicitante"
-              vacio-titulo="Sin datos"
-              vacio-mensaje="Todavía no hay encuestas generadas."
-            >
-              <template #celda-encuestasRespondidas="{ fila }">{{ fila.encuestasRespondidas }}</template>
-              <template #celda-pendientes="{ fila }">{{ fila.encuestasGeneradas - fila.encuestasRespondidas }}</template>
-              <template #celda-n1="{ fila }"><span class="nivel-valor">{{ fila.conteos[1] }}</span></template>
-              <template #celda-n2="{ fila }"><span class="nivel-valor">{{ fila.conteos[2] }}</span></template>
-              <template #celda-n3="{ fila }"><span class="nivel-valor">{{ fila.conteos[3] }}</span></template>
-              <template #celda-n4="{ fila }"><span class="nivel-valor">{{ fila.conteos[4] }}</span></template>
-              <template #celda-n5="{ fila }"><span class="nivel-valor">{{ fila.conteos[5] }}</span></template>
-              <template #celda-promedio="{ fila }">
-                <TextoVacio v-if="fila.promedio === null" placeholder="Sin respuestas" />
-                <span v-else :class="{ 'text-muted': fila.muestra < MIN_MUESTRA_PROMEDIO }">{{ fila.promedio.toFixed(1) }}/5</span>
-              </template>
-            </CarbonDataTable>
+            <div class="table-wrap">
+              <table class="cds-table cds-table--sm" aria-label="Satisfacción por solicitante">
+                <thead>
+                  <tr>
+                    <th
+                      v-for="col in columnasPorSolicitanteVisibles"
+                      :key="col.clave"
+                      scope="col"
+                      :class="{ 'col-num': col.num }"
+                      :style="estiloColumna(col)"
+                    >{{ col.label }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <SkeletonTabla v-if="cargando" :columnas="totalColPorSolicitante" />
+                  <tr v-else-if="!porSolicitanteConNiveles.length">
+                    <td :colspan="totalColPorSolicitante" class="cds-table__vacio">
+                      <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Todavía no hay encuestas generadas." />
+                    </td>
+                  </tr>
+                  <template v-else>
+                    <tr v-for="fila in porSolicitanteConNiveles" :key="fila.empleado_id">
+                      <td v-for="col in columnasPorSolicitanteVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
+                        <template v-if="col.clave === 'encuestasRespondidas'">{{ fila.encuestasRespondidas }}</template>
+                        <template v-else-if="col.clave === 'pendientes'">{{ fila.encuestasGeneradas - fila.encuestasRespondidas }}</template>
+                        <span v-else-if="col.clave === 'n1'" class="nivel-valor">{{ fila.conteos[1] }}</span>
+                        <span v-else-if="col.clave === 'n2'" class="nivel-valor">{{ fila.conteos[2] }}</span>
+                        <span v-else-if="col.clave === 'n3'" class="nivel-valor">{{ fila.conteos[3] }}</span>
+                        <span v-else-if="col.clave === 'n4'" class="nivel-valor">{{ fila.conteos[4] }}</span>
+                        <span v-else-if="col.clave === 'n5'" class="nivel-valor">{{ fila.conteos[5] }}</span>
+                        <template v-else-if="col.clave === 'promedio'">
+                          <TextoVacio v-if="fila.promedio === null" placeholder="Sin respuestas" />
+                          <span v-else :class="{ 'text-muted': fila.muestra < MIN_MUESTRA_PROMEDIO }">{{ fila.promedio.toFixed(1) }}/5</span>
+                        </template>
+                        <template v-else>{{ fila[col.clave] }}</template>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div class="card">
             <div class="datos-title"><i class="ti ti-headset"></i> Por técnico</div>
             <p class="tk-nota">Es quien marcó el ticket como resuelto por última vez, no necesariamente el asignado actual.</p>
-            <CarbonDataTable
-              :columnas="columnasPorTecnico"
-              :filas="porTecnicoConNiveles"
-              :cargando="cargando"
-              :con-tarjetas="false"
-              densidad="sm"
-              clave="tecnico_id"
-              etiqueta="Satisfacción por técnico"
-              vacio-titulo="Sin datos"
-              vacio-mensaje="Todavía no hay encuestas generadas."
-            >
-              <template #celda-n1="{ fila }"><span class="nivel-valor">{{ fila.conteos[1] }}</span></template>
-              <template #celda-n2="{ fila }"><span class="nivel-valor">{{ fila.conteos[2] }}</span></template>
-              <template #celda-n3="{ fila }"><span class="nivel-valor">{{ fila.conteos[3] }}</span></template>
-              <template #celda-n4="{ fila }"><span class="nivel-valor">{{ fila.conteos[4] }}</span></template>
-              <template #celda-n5="{ fila }"><span class="nivel-valor">{{ fila.conteos[5] }}</span></template>
-              <template #celda-promedio="{ fila }">
-                <TextoVacio v-if="fila.promedio === null" placeholder="Sin respuestas" />
-                <span v-else :class="{ 'text-muted': fila.muestra < MIN_MUESTRA_PROMEDIO }">{{ fila.promedio.toFixed(1) }}/5</span>
-              </template>
-            </CarbonDataTable>
+            <div class="table-wrap">
+              <table class="cds-table cds-table--sm" aria-label="Satisfacción por técnico">
+                <thead>
+                  <tr>
+                    <th
+                      v-for="col in columnasPorTecnicoVisibles"
+                      :key="col.clave"
+                      scope="col"
+                      :class="{ 'col-num': col.num }"
+                      :style="estiloColumna(col)"
+                    >{{ col.label }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <SkeletonTabla v-if="cargando" :columnas="totalColPorTecnico" />
+                  <tr v-else-if="!porTecnicoConNiveles.length">
+                    <td :colspan="totalColPorTecnico" class="cds-table__vacio">
+                      <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Todavía no hay encuestas generadas." />
+                    </td>
+                  </tr>
+                  <template v-else>
+                    <tr v-for="fila in porTecnicoConNiveles" :key="fila.tecnico_id">
+                      <td v-for="col in columnasPorTecnicoVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
+                        <span v-if="col.clave === 'n1'" class="nivel-valor">{{ fila.conteos[1] }}</span>
+                        <span v-else-if="col.clave === 'n2'" class="nivel-valor">{{ fila.conteos[2] }}</span>
+                        <span v-else-if="col.clave === 'n3'" class="nivel-valor">{{ fila.conteos[3] }}</span>
+                        <span v-else-if="col.clave === 'n4'" class="nivel-valor">{{ fila.conteos[4] }}</span>
+                        <span v-else-if="col.clave === 'n5'" class="nivel-valor">{{ fila.conteos[5] }}</span>
+                        <template v-else-if="col.clave === 'promedio'">
+                          <TextoVacio v-if="fila.promedio === null" placeholder="Sin respuestas" />
+                          <span v-else :class="{ 'text-muted': fila.muestra < MIN_MUESTRA_PROMEDIO }">{{ fila.promedio.toFixed(1) }}/5</span>
+                        </template>
+                        <template v-else>{{ fila[col.clave] }}</template>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -328,41 +386,84 @@ onMounted(cargar);
 
             <template v-else>
               <p v-if="cargando" class="sr-only" role="status">Cargando satisfacción de tickets…</p>
-              <CarbonDataTable
-                :columnas="columnasRespuestas"
-                :filas="respuestasPagina"
-                :cargando="cargando"
-                :con-tarjetas="false"
-                densidad="sm"
-                :orden-por="columna"
-                :orden-dir="direccion"
-                etiqueta="Todas las respuestas de satisfacción"
-                @ordenar="ordenarPor"
-              >
-                <template #celda-ticket_codigo="{ fila }">
-                  <RouterLink :to="`/tickets/${fila.ticket_id}`">{{ fila.ticket_codigo }}</RouterLink>
-                </template>
-                <template #celda-tecnico="{ fila }">{{ nombreTecnico(fila.tecnico_id) }}</template>
-                <template #celda-nivel="{ fila }">
-                  <span v-if="fila.nivel !== null">{{ fila.nivel }}/5</span>
-                  <TextoVacio v-else-if="!fila.respondida" placeholder="Pendiente" />
-                  <TextoVacio v-else />
-                </template>
-                <template #celda-comentario="{ fila }">
-                  <span v-if="fila.comentario">{{ fila.comentario }}</span><TextoVacio v-else />
-                </template>
-                <template #celda-created_at="{ fila }">{{ formatFechaHora(fila.fecha_envio || fila.created_at) }}</template>
-              </CarbonDataTable>
+              <div class="table-wrap">
+                <table class="cds-table cds-table--sm" aria-label="Todas las respuestas de satisfacción">
+                  <thead>
+                    <tr>
+                      <template v-for="col in columnasRespuestasVisibles" :key="col.clave">
+                        <ThOrdenable
+                          v-if="col.ordenable"
+                          :clave="col.clave"
+                          :columna="columna"
+                          :direccion="direccion"
+                          :class="{ 'col-num': col.num }"
+                          :style="estiloColumna(col)"
+                          @ordenar="ordenarPor(col.clave)"
+                        >{{ col.label }}</ThOrdenable>
+                        <th v-else scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
+                      </template>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <SkeletonTabla v-if="cargando" :columnas="totalColRespuestas" />
+                    <tr v-else-if="!respuestasPagina.length">
+                      <td :colspan="totalColRespuestas" class="cds-table__vacio">
+                        <EmptyState icono="ti ti-inbox" titulo="Sin resultados" />
+                      </td>
+                    </tr>
+                    <template v-else>
+                      <tr v-for="fila in respuestasPagina" :key="fila.id">
+                        <td v-for="col in columnasRespuestasVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
+                          <RouterLink v-if="col.clave === 'ticket_codigo'" :to="`/tickets/${fila.ticket_id}`">{{ fila.ticket_codigo }}</RouterLink>
+                          <template v-else-if="col.clave === 'tecnico'">{{ nombreTecnico(fila.tecnico_id) }}</template>
+                          <template v-else-if="col.clave === 'nivel'">
+                            <span v-if="fila.nivel !== null">{{ fila.nivel }}/5</span>
+                            <TextoVacio v-else-if="!fila.respondida" placeholder="Pendiente" />
+                            <TextoVacio v-else />
+                          </template>
+                          <template v-else-if="col.clave === 'comentario'">
+                            <span v-if="fila.comentario">{{ fila.comentario }}</span><TextoVacio v-else />
+                          </template>
+                          <template v-else-if="col.clave === 'created_at'">{{ formatFechaHora(fila.fecha_envio || fila.created_at) }}</template>
+                          <template v-else>{{ fila[col.clave] }}</template>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
             </template>
-            <CarbonPagination
-              v-if="!cargando"
-              v-model="paginaActual"
-              :total-items="totalItems"
-              :tam-pagina="tamPagina"
-              :tamanos-pagina="TAMANOS_PAGINA"
-              unidad="respuestas"
-              @update:tam-pagina="cambiarTamPagina"
-            />
+            <nav v-if="!cargando && totalItems > 0" class="paginacion" aria-label="Paginación">
+              <div class="paginacion__lado">
+                <label class="paginacion__campo">
+                  <span>Filas por página:</span>
+                  <select
+                    class="paginacion__select"
+                    :value="tamPagina"
+                    @change="cambiarTamPagina(Number($event.target.value))"
+                  >
+                    <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </label>
+                <span class="paginacion__rango">{{ desde }}–{{ hasta }} de {{ totalItems }} respuestas</span>
+              </div>
+
+              <div v-if="totalPaginas > 1" class="paginacion__lado">
+                <label class="paginacion__campo">
+                  <span class="sr-only">Ir a la página</span>
+                  <select class="paginacion__select" :value="paginaActual" @change="irAPagina(Number($event.target.value))">
+                    <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
+                  </select>
+                  <span>de {{ totalPaginas }}</span>
+                </label>
+                <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irAPagina(paginaActual - 1)">
+                  <i class="ti ti-chevron-left" aria-hidden="true"></i>
+                </button>
+                <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irAPagina(paginaActual + 1)">
+                  <i class="ti ti-chevron-right" aria-hidden="true"></i>
+                </button>
+              </div>
+            </nav>
           </template>
         </div>
       </template>
@@ -370,81 +471,4 @@ onMounted(cargar);
   </div>
 </template>
 
-<style scoped>
-/* Antes eran 2 columnas lado a lado (3 datos c/u, entraban cómodas a media
-   pantalla). Con el desglose 1-5★ (2026-08-19) cada tarjeta pasó a 9
-   columnas — a la mitad del viewport scrollearían casi todo el tiempo, así
-   que se apilan a ancho completo; .table-wrap ya resuelve el scroll
-   horizontal dentro de cada una si hace falta en pantallas angostas. */
-.resumenes-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 16px;
-}
 
-/* Columnas de conteo por nivel (1★..5★): números cortos, centrados. El
-   ancho angosto ahora lo fija la columna (`ancho: '48px'`), acá solo queda
-   centrar el valor dentro de la celda. */
-.nivel-valor {
-  display: block;
-  text-align: center;
-}
-
-.chips-filtro {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-/* Mismo par tenue-acento que el ítem activo del sidebar y los chips de
-   TicketsView (GUIA-UX-UI): sin bordes, solo fondo/color de acento cuando
-   el filtro está activo. */
-.chip-filtro {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 40px;
-  padding: 0 12px;
-  border: none;
-  border-radius: var(--radius-base);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-secondary);
-  font-size: var(--fs-body-01);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.chip-filtro:hover { background: var(--color-bg-hover); }
-
-.chip-filtro:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.chip-filtro--activo {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-}
-
-/* .datos-title/.tk-nota viven duplicados como estilo scoped en cada vista
-   que los usa (TicketDetalleView, ProblemaDetalleView, etc.) — a esta
-   vista le faltaban por completo, así que el título de cada tarjeta y las
-   notas quedaban sin tratar (tamaño/peso de párrafo suelto). A diferencia
-   de esas vistas de detalle (donde el padding vive en un wrapper por
-   tarjeta, ej. .tk-historial), acá cada tarjeta sigue con .table-wrap a
-   sangre — igual que en .card--fill — así que el padding va en el
-   título/nota, no en la tarjeta entera. */
-/* Únicos ajustes sobre las clases globales de ficha (main.css): acá el
-   título y la nota van dentro de una card sin padding propio, así que lo
-   ponen ellos. */
-.datos-title { padding: 16px 20px 0; }
-
-.tk-nota {
-  padding: 0 20px;
-  margin: 0 0 14px;
-}
-</style>

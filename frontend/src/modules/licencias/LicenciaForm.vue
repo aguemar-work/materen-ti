@@ -4,12 +4,13 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useLicenciasStore } from '../../stores/licencias.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { generarPassword } from '../../core/generarPassword.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+
+const infoError = infoNotificacion('error');
 
 const props = defineProps({
   licencia: { type: Object, default: null },
@@ -33,7 +34,7 @@ const error = ref('');
 const claveVisible = ref(false);
 
 // Campo que falló la última validación ('' | 'correo' | 'plataforma'), para
-// resaltar el control y llevarle el foco además del mensaje de CarbonNotification.
+// resaltar el control y llevarle el foco además del mensaje de aviso.
 const campoInvalido = ref('');
 const refGrupoCorreo = ref(null);
 const refPlataforma = ref(null);
@@ -84,6 +85,25 @@ const busquedaCorreo = ref('');
 const registrandoCorreo = ref(false);
 const nuevoCorreo = ref({ plataforma_id: '', tipo_cuenta: 'compartida', password: '' });
 const passwordCorreoVisible = ref(false);
+
+const campoSoftware = useCampoAccesible();
+const campoTipo = useCampoAccesible();
+const campoCantidad = useCampoAccesible();
+const campoEmpresa = useCampoAccesible();
+const campoFechaVencimiento = useCampoAccesible();
+const campoRenovacion = useCampoAccesible();
+const campoProveedor = useCampoAccesible();
+const campoCosto = useCampoAccesible();
+const campoPlataformaNueva = useCampoAccesible({
+  error: () => (campoInvalido.value === 'plataforma' ? 'Selecciona la plataforma del correo nuevo' : ''),
+});
+const campoTipoCuenta = useCampoAccesible();
+const campoPasswordCorreo = useCampoAccesible();
+const campoClaveLogin = useCampoAccesible({
+  ayuda: () => 'Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su propia contraseña. Si se entra con la contraseña del correo, déjalo vacío.',
+});
+const campoClaveDirecta = useCampoAccesible();
+const campoNotas = useCampoAccesible();
 
 const correoEscritoValido = computed(() =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(busquedaCorreo.value.trim())
@@ -262,65 +282,125 @@ async function guardar() {
     @close="emit('cerrar', resultado)"
   >
     <form id="lic-form" class="form-grid" @submit.prevent="guardar">
-        <CarbonCampo
-          v-model="form.software"
-          class="full"
-          etiqueta="Software"
-          requerido
-          placeholder="ej: Microsoft 365 Business"
-          :deshabilitado="guardando"
-        />
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoSoftware.id">Software<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoSoftware.id"
+              v-model="form.software"
+              class="campo__control"
+              type="text"
+              placeholder="ej: Microsoft 365 Business"
+              required
+              :disabled="guardando"
+            >
+          </div>
+        </div>
 
-        <CarbonCampo v-model="form.tipo" etiqueta="Tipo" tipo="select" requerido :deshabilitado="guardando">
-          <template #opciones>
-            <option value="suscripcion">Suscripción (se renueva)</option>
-            <option value="perpetua">Perpetua (no vence)</option>
-          </template>
-        </CarbonCampo>
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoTipo.id">Tipo<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <select
+              :id="campoTipo.id"
+              class="campo__control campo__control--select"
+              :value="form.tipo"
+              required
+              :disabled="guardando"
+              @change="form.tipo = $event.target.value"
+            >
+              <option value="suscripcion">Suscripción (se renueva)</option>
+              <option value="perpetua">Perpetua (no vence)</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+        </div>
 
-        <CarbonCampo
-          v-model.number="form.cantidad"
-          etiqueta="Asientos (usuarios máx.)"
-          tipo="number"
-          min="1"
-          requerido
-          :deshabilitado="guardando"
-        />
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoCantidad.id">Asientos (usuarios máx.)<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoCantidad.id"
+              v-model.number="form.cantidad"
+              class="campo__control"
+              type="number"
+              min="1"
+              required
+              :disabled="guardando"
+            >
+          </div>
+        </div>
 
-        <CarbonCampo v-model="form.empresa_id" etiqueta="Empresa" tipo="select" :deshabilitado="guardando || cargandoCatalogos">
-          <template #opciones>
-            <option value="">Del grupo (sin empresa)</option>
-            <option v-for="e in empresas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
-          </template>
-        </CarbonCampo>
+        <div class="campo" :class="{ 'campo--inerte': guardando || cargandoCatalogos }">
+          <label class="campo__etiqueta" :for="campoEmpresa.id">Empresa</label>
+          <div class="campo__caja">
+            <select
+              :id="campoEmpresa.id"
+              class="campo__control campo__control--select"
+              :value="form.empresa_id"
+              :disabled="guardando || cargandoCatalogos"
+              @change="form.empresa_id = $event.target.value"
+            >
+              <option value="">Del grupo (sin empresa)</option>
+              <option v-for="e in empresas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+        </div>
 
         <template v-if="form.tipo === 'suscripcion'">
-          <CarbonCampo
-            v-model="form.fecha_vencimiento"
-            etiqueta="Próximo vencimiento"
-            tipo="date"
-            :deshabilitado="guardando"
-          />
+          <div class="campo" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoFechaVencimiento.id">Próximo vencimiento</label>
+            <div class="campo__caja">
+              <input
+                :id="campoFechaVencimiento.id"
+                v-model="form.fecha_vencimiento"
+                class="campo__control"
+                type="date"
+                :disabled="guardando"
+              >
+            </div>
+          </div>
 
-          <CarbonCampo v-model="form.renovacion_meses" etiqueta="Renovación" tipo="select" :deshabilitado="guardando">
-            <template #opciones>
-              <option v-for="p in PERIODOS" :key="p.value" :value="p.value">{{ p.label }}</option>
-            </template>
-          </CarbonCampo>
+          <div class="campo" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoRenovacion.id">Renovación</label>
+            <div class="campo__caja">
+              <select
+                :id="campoRenovacion.id"
+                class="campo__control campo__control--select"
+                :value="form.renovacion_meses"
+                :disabled="guardando"
+                @change="form.renovacion_meses = $event.target.value"
+              >
+                <option v-for="p in PERIODOS" :key="p.value" :value="p.value">{{ p.label }}</option>
+              </select>
+              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+            </div>
+          </div>
         </template>
 
-        <CarbonCampo v-model="form.proveedor" etiqueta="Proveedor" :deshabilitado="guardando" />
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoProveedor.id">Proveedor</label>
+          <div class="campo__caja">
+            <input :id="campoProveedor.id" v-model="form.proveedor" class="campo__control" type="text" :disabled="guardando">
+          </div>
+        </div>
 
         <div class="costo-inputs">
-          <CarbonCampo
-            v-model="form.costo"
-            etiqueta="Costo"
-            tipo="number"
-            step="0.01"
-            min="0"
-            placeholder="0.00"
-            :deshabilitado="guardando"
-          />
+          <div class="campo" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoCosto.id">Costo</label>
+            <div class="campo__caja">
+              <input
+                :id="campoCosto.id"
+                v-model="form.costo"
+                class="campo__control"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                :disabled="guardando"
+              >
+            </div>
+          </div>
           <select v-model="form.moneda" :disabled="guardando" aria-label="Moneda" class="costo-moneda">
             <option value="PEN">S/</option>
             <option value="USD">US$</option>
@@ -411,37 +491,65 @@ async function guardar() {
               Este correo no existe todavía: se registrará en el módulo Correos al guardar.
             </p>
             <div class="nuevo-correo-campos">
-              <CarbonCampo
-                ref="refPlataforma"
-                v-model="nuevoCorreo.plataforma_id"
-                etiqueta="Plataforma"
-                tipo="select"
-                requerido
-                :deshabilitado="guardando"
-                :error="campoInvalido === 'plataforma' ? 'Selecciona la plataforma del correo nuevo' : ''"
-              >
-                <template #opciones>
-                  <option value="" disabled>Seleccionar plataforma</option>
-                  <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
-                </template>
-              </CarbonCampo>
+              <div class="campo" :class="{ 'campo--invalido': campoPlataformaNueva.invalido.value, 'campo--inerte': guardando }">
+                <label class="campo__etiqueta" :for="campoPlataformaNueva.id">Plataforma<span aria-hidden="true"> *</span></label>
+                <div class="campo__caja">
+                  <select
+                    :id="campoPlataformaNueva.id"
+                    ref="refPlataforma"
+                    class="campo__control campo__control--select"
+                    :value="nuevoCorreo.plataforma_id"
+                    required
+                    :disabled="guardando"
+                    :aria-invalid="campoPlataformaNueva.invalido.value"
+                    :aria-describedby="campoPlataformaNueva.describedBy.value"
+                    @change="nuevoCorreo.plataforma_id = $event.target.value"
+                  >
+                    <option value="" disabled>Seleccionar plataforma</option>
+                    <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                  </select>
+                  <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+                </div>
+                <p
+                  v-if="campoPlataformaNueva.invalido.value"
+                  :id="campoPlataformaNueva.idAyuda"
+                  class="campo__pie campo__pie--error"
+                  role="alert"
+                >Selecciona la plataforma del correo nuevo</p>
+              </div>
 
-              <CarbonCampo v-model="nuevoCorreo.tipo_cuenta" etiqueta="Tipo de correo" tipo="select" :deshabilitado="guardando">
-                <template #opciones>
-                  <option value="compartida">Compartido (varios a la vez)</option>
-                  <option value="reutilizable">Reutilizable (uno a la vez)</option>
-                </template>
-              </CarbonCampo>
+              <div class="campo" :class="{ 'campo--inerte': guardando }">
+                <label class="campo__etiqueta" :for="campoTipoCuenta.id">Tipo de correo</label>
+                <div class="campo__caja">
+                  <select
+                    :id="campoTipoCuenta.id"
+                    class="campo__control campo__control--select"
+                    :value="nuevoCorreo.tipo_cuenta"
+                    :disabled="guardando"
+                    @change="nuevoCorreo.tipo_cuenta = $event.target.value"
+                  >
+                    <option value="compartida">Compartido (varios a la vez)</option>
+                    <option value="reutilizable">Reutilizable (uno a la vez)</option>
+                  </select>
+                  <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+                </div>
+              </div>
 
               <div class="full input-with-action">
-                <CarbonCampo
-                  v-model="nuevoCorreo.password"
-                  etiqueta="Contraseña del correo"
-                  :tipo="passwordCorreoVisible ? 'text' : 'password'"
-                  autocomplete="new-password"
-                  placeholder="Opcional, se puede completar después en Correos"
-                  :deshabilitado="guardando"
-                />
+                <div class="campo" :class="{ 'campo--inerte': guardando }">
+                  <label class="campo__etiqueta" :for="campoPasswordCorreo.id">Contraseña del correo</label>
+                  <div class="campo__caja">
+                    <input
+                      :id="campoPasswordCorreo.id"
+                      v-model="nuevoCorreo.password"
+                      class="campo__control"
+                      :type="passwordCorreoVisible ? 'text' : 'password'"
+                      autocomplete="new-password"
+                      placeholder="Opcional, se puede completar después en Correos"
+                      :disabled="guardando"
+                    >
+                  </div>
+                </div>
                 <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generarPasswordCorreo">
                   <i class="ti ti-refresh" aria-hidden="true"></i>
                 </button>
@@ -453,15 +561,22 @@ async function guardar() {
           </div>
 
           <div class="full input-with-action">
-            <CarbonCampo
-              v-model="form.clave"
-              :etiqueta="esEdicion && licencia?.tiene_clave ? 'Nueva contraseña del software' : 'Contraseña del software'"
-              :tipo="claveVisible ? 'text' : 'password'"
-              autocomplete="off"
-              :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'Dejar vacío si es la misma del correo'"
-              :deshabilitado="guardando"
-              ayuda="Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su propia contraseña. Si se entra con la contraseña del correo, déjalo vacío."
-            />
+            <div class="campo" :class="{ 'campo--inerte': guardando }">
+              <label class="campo__etiqueta" :for="campoClaveLogin.id">{{ esEdicion && licencia?.tiene_clave ? 'Nueva contraseña del software' : 'Contraseña del software' }}</label>
+              <div class="campo__caja">
+                <input
+                  :id="campoClaveLogin.id"
+                  v-model="form.clave"
+                  class="campo__control"
+                  :type="claveVisible ? 'text' : 'password'"
+                  autocomplete="off"
+                  :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'Dejar vacío si es la misma del correo'"
+                  :disabled="guardando"
+                  :aria-describedby="campoClaveLogin.describedBy.value"
+                >
+              </div>
+              <p :id="campoClaveLogin.idAyuda" class="campo__pie">Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su propia contraseña. Si se entra con la contraseña del correo, déjalo vacío.</p>
+            </div>
             <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
               <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
             </button>
@@ -469,29 +584,46 @@ async function guardar() {
         </template>
 
         <div v-if="modoAcceso === 'clave'" class="full input-with-action">
-          <CarbonCampo
-            v-model="form.clave"
-            :etiqueta="esEdicion && licencia?.tiene_clave ? 'Nueva clave/serial' : 'Clave / serial'"
-            :tipo="claveVisible ? 'text' : 'password'"
-            autocomplete="off"
-            :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'XXXXX-XXXXX-XXXXX'"
-            :deshabilitado="guardando"
-          />
+          <div class="campo" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoClaveDirecta.id">{{ esEdicion && licencia?.tiene_clave ? 'Nueva clave/serial' : 'Clave / serial' }}</label>
+            <div class="campo__caja">
+              <input
+                :id="campoClaveDirecta.id"
+                v-model="form.clave"
+                class="campo__control"
+                :type="claveVisible ? 'text' : 'password'"
+                autocomplete="off"
+                :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'XXXXX-XXXXX-XXXXX'"
+                :disabled="guardando"
+              >
+            </div>
+          </div>
           <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
             <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
           </button>
         </div>
 
-        <CarbonCampo v-model="form.notas" class="full" etiqueta="Notas" tipo="textarea" :deshabilitado="guardando" />
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNotas.id">Notas</label>
+          <div class="campo__caja">
+            <textarea :id="campoNotas.id" v-model="form.notas" class="campo__control campo__control--area" :rows="3" :disabled="guardando"></textarea>
+          </div>
+        </div>
 
-        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ error }}</p>
+          </div>
+        </div>
     </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" tipo="submit" form="lic-form" :cargando="guardando">
+      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
+      <button type="submit" form="lic-form" class="btn btn--primary" :disabled="guardando">
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </CarbonButton>
+        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 
@@ -508,169 +640,4 @@ async function guardar() {
   />
 </template>
 
-<style scoped>
-/* Ancho: .modal-lg de la escala centralizada (main.css) */
 
-/* .form-group.full (main.css) exige la clase .form-group, que trae consigo
-   estilos de <input>/<select> viejos que pisarían los de CarbonCampo — acá
-   se repite solo el grid-column. Vue aplica el scope del padre también a la
-   raíz de un componente hijo (CarbonCampo incluido), así que esta regla
-   simple alcanza tanto a los <div class="full"> propios como a los
-   <CarbonCampo class="full">. */
-.full {
-  grid-column: 1 / -1;
-}
-
-.costo-inputs {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-}
-
-.costo-inputs :deep(.cds-campo) { flex: 1; min-width: 0; }
-
-/* La moneda ya no vive dentro de .form-group (para no filtrarle su estilo
-   viejo de <select> al <input> de CarbonCampo de al lado), así que reproduce
-   a mano la misma caja outlined que usa CarbonCampo. */
-.costo-moneda {
-  width: 76px;
-  height: var(--space-11);
-  padding: 0 var(--space-6);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--fs-body-01);
-  cursor: pointer;
-}
-
-.costo-moneda:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.costo-moneda:disabled {
-  cursor: not-allowed;
-  color: var(--color-text-disabled);
-  background: var(--color-bg-subtle);
-}
-
-.acceso-options {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.acceso-option {
-  display: flex;
-  cursor: pointer;
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.acceso-option input[type="radio"] {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.acceso-option:hover {
-  border-color: var(--color-primary);
-  background: var(--color-accent-subtle);
-}
-
-.acceso-option:focus-within {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.acceso-option--active {
-  border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-}
-
-.acceso-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.acceso-body > i {
-  font-size: var(--icon-md);
-  color: var(--color-primary);
-  margin-bottom: 3px;
-}
-
-.acceso-label {
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.acceso-desc {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  line-height: 1.3;
-}
-
-.nuevo-correo-panel {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  background: var(--color-bg-subtle, var(--color-bg));
-  padding: 12px;
-}
-
-.nuevo-correo-titulo {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 10px;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.nuevo-correo-titulo i {
-  font-size: var(--icon-sm);
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.nuevo-correo-campos {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.nuevo-correo-campos .full {
-  grid-column: 1 / -1;
-}
-
-.input-with-action {
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
-}
-
-.input-with-action :deep(.cds-campo) { flex: 1; min-width: 0; }
-
-.field-hint {
-  margin: 4px 0 0;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  line-height: 1.4;
-}
-
-/* Resalta el campo que falló la última validación (ver campoInvalido en el
-   script) — respaldo visual del mensaje de CarbonNotification, no un reemplazo.
-   El select de plataforma ahora usa el estado inválido propio de CarbonCampo
-   (prop :error); esta regla solo cubre el combo de correo, que no es CarbonCampo. */
-.combo-correo.campo-invalido :deep(input) {
-  border-color: var(--color-danger-border);
-}
-</style>

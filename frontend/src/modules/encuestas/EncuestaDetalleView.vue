@@ -13,9 +13,8 @@ import { resumenPregunta } from '../../core/dominio-encuestas.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { rolDeTag } from '../../core/tagRol.js';
+import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -147,6 +146,7 @@ const columnas = [
   { clave: 'abierta_en', label: 'Abierta', num: true, movil: 'principal' },
   { clave: 'acciones', label: 'Acciones', ancho: '132px', movil: 'pie' },
 ];
+const columnasVisiblesLista = computed(() => columnasVisibles(columnas));
 
 function claseFilaRonda(ronda) {
   return { 'fila-activa': rondaSeleccionada.value?.id === ronda.id };
@@ -159,10 +159,21 @@ onMounted(cargar);
   <div class="encuesta-detalle-page vista-modulo">
     <PageHeader :titulo="encuesta?.titulo || 'Encuesta'" icono="ti ti-clipboard-list">
       <template #acciones>
-        <CarbonButton variante="secondary" icono="ti-arrow-left" :to="'/encuestas'">Volver</CarbonButton>
-        <CarbonButton v-if="auth.esJefe" variante="primary" icono="ti-circle-plus" :cargando="creandoRonda" @click="nuevaRonda">
-          {{ creandoRonda ? 'Abriendo...' : 'Nueva ronda' }}
-        </CarbonButton>
+        <RouterLink class="btn btn--secondary" to="/encuestas">
+          Volver
+          <i class="ti ti-arrow-left" aria-hidden="true"></i>
+        </RouterLink>
+        <button
+          v-if="auth.esJefe"
+          type="button"
+          class="btn btn--primary"
+          :disabled="creandoRonda"
+          @click="nuevaRonda"
+        >
+          <span class="btn__label">{{ creandoRonda ? 'Abriendo...' : 'Nueva ronda' }}</span>
+          <i v-if="creandoRonda" class="ti ti-loader-2 btn__icono--girando" aria-hidden="true"></i>
+          <i v-else class="ti ti-circle-plus" aria-hidden="true"></i>
+        </button>
       </template>
     </PageHeader>
 
@@ -180,49 +191,93 @@ onMounted(cargar);
             :mensaje="auth.esJefe ? 'Abra una ronda para generar el link que va a compartir.' : 'Todavía no se abrió ninguna ronda de esta encuesta.'"
           />
 
-          <CarbonDataTable
-            v-else
-            :columnas="columnas"
-            :filas="rondas"
-            :clase-fila="claseFilaRonda"
-            etiqueta="Rondas de la encuesta"
-          >
-            <template #celda-estado="{ fila }">
-              <CarbonTag :variante="fila.cerrada ? 'neutral' : 'success'">
-                {{ fila.cerrada ? 'Cerrada' : 'Abierta' }}
-              </CarbonTag>
-            </template>
-            <template #celda-abierta_en="{ fila }">
-              <span :title="formatFechaHora(fila.abierta_en)">{{ formatAntiguedad(fila.abierta_en) }}</span>
-            </template>
-            <template #celda-acciones="{ fila }">
-              <div class="actions">
-                <button class="icon-btn fila-accion" type="button" title="Copiar link" aria-label="Copiar link" :disabled="fila.cerrada" @click="copiarLink(fila)">
-                  <i class="ti ti-link"></i>
-                </button>
-                <button class="icon-btn fila-accion" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(fila)">
-                  <i class="ti ti-chart-bar"></i>
-                </button>
-                <button
-                  v-if="auth.esJefe && !fila.cerrada"
-                  class="icon-btn fila-accion"
-                  type="button"
-                  title="Cerrar ronda"
-                  aria-label="Cerrar ronda"
-                  :disabled="cerrandoId === fila.id"
-                  @click="pedirCerrarRonda(fila)"
-                >
-                  <i class="ti ti-lock"></i>
-                </button>
+          <template v-else>
+          <div class="tabla-envoltorio">
+            <table class="tabla" aria-label="Rondas de la encuesta">
+              <thead>
+                <tr>
+                  <th v-for="col in columnasVisiblesLista" :key="col.clave" scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="fila in rondas" :key="fila.id" :class="claseFilaRonda(fila)">
+                  <td>
+                    <span class="tag" :class="[`tag--${rolDeTag(fila.cerrada ? 'neutral' : 'success')}`]">
+                      {{ fila.cerrada ? 'Cerrada' : 'Abierta' }}
+                    </span>
+                  </td>
+                  <td class="col-num">{{ fila.n_respuestas }}</td>
+                  <td class="col-num">
+                    <span :title="formatFechaHora(fila.abierta_en)">{{ formatAntiguedad(fila.abierta_en) }}</span>
+                  </td>
+                  <td>
+                    <div class="actions">
+                      <button class="icon-btn fila-accion" type="button" title="Copiar link" aria-label="Copiar link" :disabled="fila.cerrada" @click="copiarLink(fila)">
+                        <i class="ti ti-link"></i>
+                      </button>
+                      <button class="icon-btn fila-accion" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(fila)">
+                        <i class="ti ti-chart-bar"></i>
+                      </button>
+                      <button
+                        v-if="auth.esJefe && !fila.cerrada"
+                        class="icon-btn fila-accion"
+                        type="button"
+                        title="Cerrar ronda"
+                        aria-label="Cerrar ronda"
+                        :disabled="cerrandoId === fila.id"
+                        @click="pedirCerrarRonda(fila)"
+                      >
+                        <i class="ti ti-lock"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <ul class="lista-tarjetas solo-movil" aria-label="Rondas de la encuesta">
+            <li v-for="fila in rondas" :key="fila.id" class="tarjeta-fila" :class="claseFilaRonda(fila)">
+              <div class="tarjeta-fila__principal">
+                <span :title="formatFechaHora(fila.abierta_en)">{{ formatAntiguedad(fila.abierta_en) }}</span>
               </div>
-            </template>
-          </CarbonDataTable>
+              <div class="tarjeta-fila__sec">{{ fila.n_respuestas }} respuestas</div>
+              <div class="tarjeta-fila__pie">
+                <span class="tag" :class="[`tag--${rolDeTag(fila.cerrada ? 'neutral' : 'success')}`]">
+                  {{ fila.cerrada ? 'Cerrada' : 'Abierta' }}
+                </span>
+                <div class="actions">
+                  <button class="icon-btn fila-accion" type="button" title="Copiar link" aria-label="Copiar link" :disabled="fila.cerrada" @click="copiarLink(fila)">
+                    <i class="ti ti-link"></i>
+                  </button>
+                  <button class="icon-btn fila-accion" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(fila)">
+                    <i class="ti ti-chart-bar"></i>
+                  </button>
+                  <button
+                    v-if="auth.esJefe && !fila.cerrada"
+                    class="icon-btn fila-accion"
+                    type="button"
+                    title="Cerrar ronda"
+                    aria-label="Cerrar ronda"
+                    :disabled="cerrandoId === fila.id"
+                    @click="pedirCerrarRonda(fila)"
+                  >
+                    <i class="ti ti-lock"></i>
+                  </button>
+                </div>
+              </div>
+            </li>
+          </ul>
+          </template>
         </div>
 
         <div v-if="rondaSeleccionada" class="card card--fill resultados-card">
           <div class="card-toolbar">
             <div class="toolbar-title">Resultados — {{ formatFecha(rondaSeleccionada.abierta_en) }}</div>
-            <CarbonButton variante="secondary" tam="sm" icono="ti-table-export" :deshabilitado="cargandoRespuestas || !respuestas.length" @click="exportar">Exportar</CarbonButton>
+            <button type="button" class="btn btn--secondary btn--sm" :disabled="cargandoRespuestas || !respuestas.length" @click="exportar">
+              Exportar
+              <i class="ti ti-table-export" aria-hidden="true"></i>
+            </button>
           </div>
 
           <p v-if="cargandoRespuestas" class="sr-only" role="status">Cargando respuestas…</p>
@@ -282,35 +337,4 @@ onMounted(cargar);
   </div>
 </template>
 
-<style scoped>
-.encuesta-descripcion {
-  color: var(--color-text-secondary);
-  margin: -8px 0 16px;
-}
 
-/* :deep porque la fila y la tarjeta activa las pinta CarbonDataTable en su
-   propio scope; sin :deep esta regla no llegaría al <tr>/<li> reales. */
-:deep(.fila-activa) { background: var(--color-bg-hover); }
-
-.resultados-card { margin-top: 16px; }
-
-.resumenes {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 16px 20px;
-}
-
-.resumen-bloque { border-top: 1px solid var(--color-border-subtle); padding-top: 14px; }
-.resumen-bloque:first-child { border-top: none; padding-top: 0; }
-
-.resumen-etiqueta { font-weight: 600; margin: 0 0 2px; }
-.resumen-total { font-size: var(--fs-label-01); color: var(--color-text-tertiary); margin: 0 0 8px; }
-
-.resumen-opciones { display: flex; flex-direction: column; gap: 4px; max-width: 320px; }
-.resumen-opcion { display: flex; justify-content: space-between; font-size: var(--fs-body-01); }
-.resumen-cant { font-weight: 600; }
-.resumen-promedio { margin: 0 0 6px; font-size: var(--fs-body-01); }
-
-.resumen-textos { margin: 0; padding-left: 18px; font-size: var(--fs-body-01); display: flex; flex-direction: column; gap: 4px; }
-</style>

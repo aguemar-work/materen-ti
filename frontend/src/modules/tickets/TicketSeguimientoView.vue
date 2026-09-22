@@ -10,7 +10,6 @@ import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import EncuestaSatisfaccionForm from './EncuestaSatisfaccionForm.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
 
 const route = useRoute();
 
@@ -79,12 +78,14 @@ function enlaceSeguimiento() {
         </div>
 
         <div class="segui-copiar">
-          <CarbonButton variante="secondary" ancho tam="sm" :icono="copiado === 'link' ? 'ti-check' : 'ti-link'" @click="copiar(enlaceSeguimiento(), 'link')">
+          <button type="button" class="btn btn--secondary btn--ancho btn--sm" @click="copiar(enlaceSeguimiento(), 'link')">
             {{ copiado === 'link' ? 'Enlace copiado' : 'Copiar enlace' }}
-          </CarbonButton>
-          <CarbonButton variante="secondary" ancho tam="sm" :icono="copiado === 'codigo' ? 'ti-check' : 'ti-copy'" @click="copiar(ticket.codigo, 'codigo')">
+            <i class="ti" :class="copiado === 'link' ? 'ti-check' : 'ti-link'" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="btn btn--secondary btn--ancho btn--sm" @click="copiar(ticket.codigo, 'codigo')">
             {{ copiado === 'codigo' ? 'Código copiado' : 'Copiar código' }}
-          </CarbonButton>
+            <i class="ti" :class="copiado === 'codigo' ? 'ti-check' : 'ti-copy'" aria-hidden="true"></i>
+          </button>
         </div>
 
         <h2 class="ticket-title">{{ ticket.titulo }}</h2>
@@ -114,121 +115,4 @@ function enlaceSeguimiento() {
   </div>
 </template>
 
-<style scoped>
-.ticket-title {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 8px;
-}
 
-.ticket-texto {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 10px;
-}
-
-.ticket-error-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-
-.segui-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.segui-codigo {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.segui-copiar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.segui-meta {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-tertiary);
-  margin: 0 0 16px;
-}
-
-.segui-subtitulo {
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-tertiary);
-  margin: 0 0 10px;
-}
-
-.segui-comentarios {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.segui-comentario {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-  background: var(--color-bg-subtle);
-}
-
-.segui-comentario p {
-  margin: 4px 0 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-}
-
-.segui-comentario-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.segui-autor {
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  color: var(--color-accent-text);
-}
-
-.segui-fecha {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-tertiary);
-}
-
-.segui-encuesta {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border);
-}
-
-.ticket-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-align: center;
-  padding: 10px 14px;
-  margin: 4px 0 0;
-  border: 1.5px solid var(--color-accent);
-  border-radius: var(--radius-base);
-  color: var(--color-accent-text);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.ticket-link:hover {
-  background: var(--color-accent-subtle);
-}
-</style>

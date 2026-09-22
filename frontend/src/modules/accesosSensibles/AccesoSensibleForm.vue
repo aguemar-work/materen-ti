@@ -8,9 +8,8 @@ import { generarPassword } from '../../core/generarPassword.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   acceso: { type: Object, default: null },
@@ -40,6 +39,13 @@ const form = ref({
   password: '',
   notas: '',
 });
+
+const campoNombre = useCampoAccesible();
+const campoCategoria = useCampoAccesible();
+const campoUsuario = useCampoAccesible();
+const campoPassword = useCampoAccesible();
+const campoNotas = useCampoAccesible();
+const infoErrorForm = infoNotificacion('error');
 
 // Quién puede revelar/editar/eliminar esta credencial. El usuario actual
 // SIEMPRE aparece marcado y no se puede destildar acá: si se sacara a sí
@@ -150,26 +156,75 @@ async function guardar() {
     @close="emit('cerrar', resultado)"
   >
     <form id="acceso-sensible-form" class="form-grid" @submit.prevent="guardar">
-      <CarbonCampo class="full" v-model="form.nombre" etiqueta="Nombre" requerido placeholder="ej: Router principal, Correo gerencia" :deshabilitado="guardando" />
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoNombre.id">Nombre<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoNombre.id"
+            v-model="form.nombre"
+            class="campo__control full"
+            type="text"
+            placeholder="ej: Router principal, Correo gerencia"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoNombre.invalido.value"
+            :aria-describedby="campoNombre.describedBy.value"
+          >
+        </div>
+      </div>
 
-      <CarbonCampo v-model="form.categoria" etiqueta="Categoría" tipo="select" requerido :deshabilitado="guardando">
-        <template #opciones>
-          <option value="" disabled>Seleccionar categoría</option>
-          <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.label }}</option>
-        </template>
-      </CarbonCampo>
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoCategoria.id">Categoría<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <select
+            :id="campoCategoria.id"
+            v-model="form.categoria"
+            class="campo__control campo__control--select"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoCategoria.invalido.value"
+            :aria-describedby="campoCategoria.describedBy.value"
+          >
+            <option value="" disabled>Seleccionar categoría</option>
+            <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.label }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
 
-      <CarbonCampo v-model="form.usuario" etiqueta="Usuario" requerido :deshabilitado="guardando" />
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoUsuario.id">Usuario<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoUsuario.id"
+            v-model="form.usuario"
+            class="campo__control"
+            type="text"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoUsuario.invalido.value"
+            :aria-describedby="campoUsuario.describedBy.value"
+          >
+        </div>
+      </div>
 
       <div class="full input-with-action">
-        <CarbonCampo
-          v-model="form.password"
-          :etiqueta="esEdicion ? 'Nueva contraseña' : 'Contraseña'"
-          :tipo="passwordVisible ? 'text' : 'password'"
-          autocomplete="new-password"
-          :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-          :deshabilitado="guardando"
-        />
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoPassword.id">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
+          <div class="campo__caja">
+            <input
+              :id="campoPassword.id"
+              v-model="form.password"
+              class="campo__control"
+              :type="passwordVisible ? 'text' : 'password'"
+              autocomplete="new-password"
+              :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+              :disabled="guardando"
+              :aria-invalid="campoPassword.invalido.value"
+              :aria-describedby="campoPassword.describedBy.value"
+            >
+          </div>
+        </div>
         <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
           <i class="ti ti-refresh" aria-hidden="true"></i>
         </button>
@@ -178,7 +233,20 @@ async function guardar() {
         </button>
       </div>
 
-      <CarbonCampo v-model="form.notas" class="full" etiqueta="Notas" tipo="textarea" :deshabilitado="guardando" />
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoNotas.id">Notas</label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoNotas.id"
+            v-model="form.notas"
+            class="campo__control campo__control--area full"
+            :rows="3"
+            :disabled="guardando"
+            :aria-invalid="campoNotas.invalido.value"
+            :aria-describedby="campoNotas.describedBy.value"
+          ></textarea>
+        </div>
+      </div>
 
       <div class="form-group full section-label">
         <i class="ti ti-shield-lock" aria-hidden="true"></i> Quién puede revelar esta credencial
@@ -205,20 +273,25 @@ async function guardar() {
         </p>
       </div>
 
-      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+      <div v-if="error" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+        <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
-      <CarbonButton
-        variante="primary"
-        tipo="submit"
+      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
+      <button
+        type="submit"
+        class="btn btn--primary"
         form="acceso-sensible-form"
-        :deshabilitado="guardando || cargandoJefes"
-        :cargando="guardando"
+        :disabled="guardando || cargandoJefes"
       >
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </CarbonButton>
+        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 
@@ -235,60 +308,4 @@ async function guardar() {
   />
 </template>
 
-<style scoped>
-/* CarbonCampo no puede envolverse en el viejo .form-group.full (le filtraría
-   el estilo de <input>/<select>/<textarea> anterior), así que repite solo el
-   grid-column (mismo criterio que LicenciaForm.vue/EquipoForm.vue). */
-.full {
-  grid-column: 1 / -1;
-}
 
-.loading-inline {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  padding: 8px 0;
-}
-
-.input-with-action {
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
-}
-
-.input-with-action :deep(.cds-campo) { flex: 1; min-width: 0; }
-
-.permisos-lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 180px;
-  overflow-y: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-}
-
-.permiso-item label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  font-weight: 400;
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-.permiso-yo {
-  color: var(--color-text-tertiary);
-  font-size: var(--fs-label-01);
-}
-
-.field-hint {
-  margin: 6px 0 0;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-</style>

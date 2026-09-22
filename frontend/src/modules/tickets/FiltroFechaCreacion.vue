@@ -46,42 +46,4 @@ defineEmits(['update:desde', 'update:hasta']);
   </div>
 </template>
 
-<style scoped>
-/* Estas reglas venían del <style scoped> de TicketsView.vue y se mudan acá
-   con el markup, no por prolijidad sino porque si no dejan de aplicar: el
-   scoped del padre solo alcanza el ELEMENTO RAÍZ de un hijo, nunca su
-   interior — .tk-filtro-grupo seguiría estilado desde el padre, pero
-   .tk-filtro-titulo y .tk-filtro-fecha-campo quedarían sin estilo. */
-.tk-filtro-grupo { padding: 4px 0; }
 
-.tk-filtro-titulo {
-  display: block;
-  margin-bottom: 8px;
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  color: var(--color-text-tertiary);
-}
-
-/* Desde/Hasta apilados verticalmente, cada uno con su propia mini-etiqueta
-   — antes iban lado a lado sin label visible (solo aria-label), separados
-   por un guion, apretados en un ancho pensado para 5 filtros que ahora es
-   solo 1. Un campo por línea se lee mejor en los 200px del nav. */
-.tk-filtro-fecha-campo {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.tk-filtro-fecha-campo + .tk-filtro-fecha-campo {
-  margin-top: 8px;
-}
-
-.tk-filtro-fecha-campo label {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-tertiary);
-}
-
-.tk-filtro-fecha-campo input[type="date"] {
-  width: 100%;
-}
-</style>

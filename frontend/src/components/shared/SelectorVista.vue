@@ -31,26 +31,4 @@ const emit = defineEmits(['update:modelValue']);
   </div>
 </template>
 
-<style scoped>
-.selector-vista {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  background: var(--color-bg-subtle);
-}
 
-/* Mismo par tenue/acento que el ítem activo del sidebar y de .tnav-item
-   (GUIA-UX-UI) para "esto está seleccionado" — más --shadow-sm porque acá
-   el fondo activo es igual de claro que el contenedor (bg-elevated sobre
-   bg-subtle), y sin la sombra el botón activo no se distinguía del resto
-   en el tema claro. */
-.selector-vista__btn--activo {
-  background: var(--color-bg-elevated);
-  color: var(--color-accent-text);
-  box-shadow: none;
-}
-.selector-vista__btn--activo:hover { background: var(--color-bg-elevated); }
-</style>

@@ -8,9 +8,8 @@ import { showToast } from '../../core/toast.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   cuenta: { type: Object, default: null },
@@ -38,6 +37,13 @@ const cargandoCompartidos = ref(false);
 const cuentaCompartidaId = ref('');
 
 const esEdicion = computed(() => !!props.cuenta?.id);
+
+const infoError = infoNotificacion('error');
+const campoPlataforma = useCampoAccesible();
+const campoUsuario = useCampoAccesible();
+const campoPassword = useCampoAccesible();
+const campoUrl = useCampoAccesible();
+const campoNotas = useCampoAccesible();
 
 const form = ref({
   plataforma_id: '',
@@ -213,30 +219,62 @@ async function guardar() {
 
         <!-- Modo: cuenta personal nueva o edición -->
         <template v-else>
-          <CarbonCampo
-            v-model="form.plataforma_id"
-            class="full"
-            etiqueta="Plataforma"
-            tipo="select"
-            requerido
-            :deshabilitado="guardando || cargandoPlataformas"
-          >
-            <template #opciones>
-              <option value="" disabled>Seleccionar plataforma</option>
-              <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
-            </template>
-          </CarbonCampo>
+          <div class="campo full" :class="{ 'campo--inerte': guardando || cargandoPlataformas }">
+            <label class="campo__etiqueta" :for="campoPlataforma.id">
+              Plataforma<span aria-hidden="true"> *</span>
+            </label>
+            <div class="campo__caja">
+              <select
+                :id="campoPlataforma.id"
+                v-model="form.plataforma_id"
+                class="campo__control campo__control--select"
+                required
+                :disabled="guardando || cargandoPlataformas"
+                :aria-invalid="campoPlataforma.invalido.value"
+                :aria-describedby="campoPlataforma.describedBy.value"
+              >
+                <option value="" disabled>Seleccionar plataforma</option>
+                <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+              </select>
+              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+            </div>
+          </div>
 
-          <CarbonCampo v-model="form.usuario" class="full" etiqueta="Usuario" requerido :deshabilitado="guardando" />
+          <div class="campo full" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoUsuario.id">
+              Usuario<span aria-hidden="true"> *</span>
+            </label>
+            <div class="campo__caja">
+              <input
+                :id="campoUsuario.id"
+                v-model="form.usuario"
+                type="text"
+                class="campo__control"
+                required
+                :disabled="guardando"
+                :aria-invalid="campoUsuario.invalido.value"
+                :aria-describedby="campoUsuario.describedBy.value"
+              >
+            </div>
+          </div>
 
           <div class="full input-with-action">
-            <CarbonCampo
-              v-model="form.password"
-              :etiqueta="esEdicion ? 'Nueva contraseña' : 'Contraseña'"
-              autocomplete="new-password"
-              :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-              :deshabilitado="guardando"
-            />
+            <div class="campo" :class="{ 'campo--inerte': guardando }">
+              <label class="campo__etiqueta" :for="campoPassword.id">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
+              <div class="campo__caja">
+                <input
+                  :id="campoPassword.id"
+                  v-model="form.password"
+                  type="text"
+                  class="campo__control"
+                  autocomplete="new-password"
+                  :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+                  :disabled="guardando"
+                  :aria-invalid="campoPassword.invalido.value"
+                  :aria-describedby="campoPassword.describedBy.value"
+                >
+              </div>
+            </div>
             <button class="icon-btn" type="button" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
               <i class="ti ti-refresh" aria-hidden="true"></i>
             </button>
@@ -253,21 +291,54 @@ async function guardar() {
             </button>
           </div>
 
-          <CarbonCampo v-model="form.url" class="full" etiqueta="URL" tipo="text" placeholder="https://..." :deshabilitado="guardando" />
+          <div class="campo full" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoUrl.id">URL</label>
+            <div class="campo__caja">
+              <input
+                :id="campoUrl.id"
+                v-model="form.url"
+                type="text"
+                class="campo__control"
+                placeholder="https://..."
+                :disabled="guardando"
+                :aria-invalid="campoUrl.invalido.value"
+                :aria-describedby="campoUrl.describedBy.value"
+              >
+            </div>
+          </div>
 
-          <CarbonCampo v-model="form.notas" class="full" etiqueta="Notas" tipo="textarea" :deshabilitado="guardando" />
+          <div class="campo full" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoNotas.id">Notas</label>
+            <div class="campo__caja">
+              <textarea
+                :id="campoNotas.id"
+                v-model="form.notas"
+                class="campo__control campo__control--area"
+                rows="3"
+                :disabled="guardando"
+                :aria-invalid="campoNotas.invalido.value"
+                :aria-describedby="campoNotas.describedBy.value"
+              ></textarea>
+            </div>
+          </div>
         </template>
 
         </div>
 
-        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ error }}</p>
+          </div>
+        </div>
       </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" tipo="submit" form="cuenta-form" :deshabilitado="guardando" :cargando="guardando">
+      <button type="button" class="btn btn--secondary btn--md" :disabled="guardando" @click="cancelar">Cancelar</button>
+      <button type="submit" form="cuenta-form" class="btn btn--primary btn--md" :disabled="guardando">
         {{ guardando ? 'Guardando...' : (modoCompartido ? 'Asignar' : 'Guardar') }}
-      </CarbonButton>
+        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 
@@ -284,75 +355,4 @@ async function guardar() {
   />
 </template>
 
-<style scoped>
-.modo-toggle {
-  display: flex;
-  gap: 0;
-  padding: 0 24px 0;
-  border-bottom: 1px solid var(--color-border);
-  margin-bottom: 4px;
-}
 
-.modo-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px 0;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  font-size: var(--fs-body-01);
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  transition: color 0.15s, border-color 0.15s;
-  margin-bottom: -1px;
-}
-
-.modo-btn:hover {
-  color: var(--color-text-primary);
-}
-
-.modo-btn--active {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
-}
-
-.loading-inline {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  padding: 8px 0;
-}
-
-/* .form-group.full (main.css) exige la clase .form-group, que trae consigo
-   estilos de <input>/<select> viejos que pisarían los de CarbonCampo — acá
-   se repite solo el grid-column (mismo criterio que LicenciaForm.vue). */
-.full {
-  grid-column: 1 / -1;
-}
-
-.input-with-action {
-  display: flex;
-  gap: 4px;
-  align-items: flex-end;
-}
-
-.input-with-action :deep(.cds-campo) { flex: 1; min-width: 0; }
-
-.field-hint {
-  margin: 4px 0 0;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.field-hint a {
-  color: var(--color-primary);
-  text-decoration: none;
-}
-
-.field-hint a:hover {
-  text-decoration: underline;
-}
-</style>

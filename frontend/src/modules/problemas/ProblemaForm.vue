@@ -6,9 +6,8 @@ import { OPCIONES_SEVERIDAD_PROBLEMA } from '../../core/dominio-problemas.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 // ticketDisparador (opcional): { id, titulo, descripcion } de un ticket
 // desde el que se abre el problema (flujo "Marcar como problema" de
@@ -39,6 +38,12 @@ const form = ref({
 const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => form.value);
 tomarSnapshot();
+
+const campoTitulo = useCampoAccesible();
+const campoDescripcion = useCampoAccesible();
+const campoSeveridad = useCampoAccesible();
+const campoResponsable = useCampoAccesible();
+const infoError = infoNotificacion('error');
 
 async function guardar() {
   error.value = '';
@@ -87,31 +92,81 @@ onMounted(async () => {
         <i class="ti ti-ticket" aria-hidden="true"></i> Originado en el ticket {{ ticketDisparador.codigo || ticketDisparador.id }}
       </p>
 
-      <CarbonCampo class="full" v-model="form.titulo" etiqueta="Título" requerido :deshabilitado="guardando" placeholder="Ej.: VPN institucional cae varias veces por semana" />
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoTitulo.id">Título<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoTitulo.id"
+            v-model="form.titulo"
+            class="campo__control"
+            type="text"
+            placeholder="Ej.: VPN institucional cae varias veces por semana"
+            required
+            :disabled="guardando"
+          >
+        </div>
+      </div>
 
-      <CarbonCampo class="full" v-model="form.descripcion" etiqueta="Descripción" tipo="textarea" :filas="5" requerido :deshabilitado="guardando" placeholder="Qué pasó, cronología de lo observado" />
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoDescripcion.id">Descripción<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoDescripcion.id"
+            v-model="form.descripcion"
+            class="campo__control campo__control--area"
+            :rows="5"
+            placeholder="Qué pasó, cronología de lo observado"
+            required
+            :disabled="guardando"
+          ></textarea>
+        </div>
+      </div>
 
-      <CarbonCampo v-model="form.severidad" etiqueta="Severidad" tipo="select" :deshabilitado="guardando">
-        <template #opciones>
-          <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
-        </template>
-      </CarbonCampo>
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoSeveridad.id">Severidad</label>
+        <div class="campo__caja">
+          <select
+            :id="campoSeveridad.id"
+            v-model="form.severidad"
+            class="campo__control campo__control--select"
+            :disabled="guardando"
+          >
+            <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
 
-      <CarbonCampo v-model="form.responsable_id" etiqueta="Responsable" tipo="select" :deshabilitado="guardando || cargandoStaff">
-        <template #opciones>
-          <option value="">Sin asignar</option>
-          <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-        </template>
-      </CarbonCampo>
+      <div class="campo" :class="{ 'campo--inerte': guardando || cargandoStaff }">
+        <label class="campo__etiqueta" :for="campoResponsable.id">Responsable</label>
+        <div class="campo__caja">
+          <select
+            :id="campoResponsable.id"
+            v-model="form.responsable_id"
+            class="campo__control campo__control--select"
+            :disabled="guardando || cargandoStaff"
+          >
+            <option value="">Sin asignar</option>
+            <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
 
-      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" tipo="submit" form="problema-form" :cargando="guardando">
+      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
+      <button type="submit" form="problema-form" class="btn btn--primary" :disabled="guardando">
         {{ guardando ? 'Creando...' : 'Crear problema' }}
-      </CarbonButton>
+        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 
@@ -128,24 +183,4 @@ onMounted(async () => {
   />
 </template>
 
-<style scoped>
-/* CarbonCampo no puede envolverse en el viejo .form-group.full (le filtraría
-   el estilo de <input>/<select>/<textarea> anterior), así que repite solo el
-   grid-column (mismo criterio que EquipoForm.vue/EmpleadoForm.vue). */
-.full {
-  grid-column: 1 / -1;
-}
 
-.problema-disparador {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-subtle);
-  border-radius: var(--radius-base);
-  padding: 8px 12px;
-  margin: 0;
-}
-</style>

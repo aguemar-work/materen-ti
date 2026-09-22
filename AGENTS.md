@@ -1,11 +1,11 @@
 # AGENTS.md
 
 > **Materen — Sistema TI**: panel interno de inventario de empleados, accesos,
-> tickets, correos, licencias y equipos. El estándar de UI/UX es **IBM Carbon
-> Design System v11** (desde el 2026-09-02): valores en
-> `frontend/src/styles/carbon-theme.css` (`--cds-*`), roles del producto en
-> `frontend/src/styles/main.css` (`--color-*`, `--fs-*`…), y el criterio
-> completo en [`docs/GUIA-UX-UI.md`](docs/GUIA-UX-UI.md).
+> tickets, correos, licencias y equipos. **Sin sistema de diseño activo desde
+> el 2026-09-05** (se retiró IBM Carbon v11 por completo: CSS global vacío,
+> sin `<style>` en los componentes). Ver
+> [`docs/NOTAS-DISENO-ANTERIOR.md`](docs/NOTAS-DISENO-ANTERIOR.md) para lo
+> que se rescató del sistema anterior antes de borrarlo.
 
 **Estado del repo — a propósito no se anota a mano acá.** Este encabezado
 llevaba una fecha y una lista de migraciones escritas a mano, y quedó 14 días y
@@ -23,9 +23,10 @@ podrirse). Para saber el estado real, mirar la fuente — nunca este archivo:
 ⚠️ Una rama de trabajo puede no tener las últimas migraciones de `main`: antes
 de numerar una nueva, comparar contra `origin/main`, no contra el working tree.
 
-**Precedencia documental**: ante conflicto, `README.md` y `GUIA-UX-UI.md` describen
-intención; **ganan** los valores literales en `carbon-theme.css`/`main.css` y el
-esquema real en `migrations/*.sql`.
+**Precedencia documental**: ante conflicto, `README.md` describe intención;
+**ganan** el esquema real en `migrations/*.sql` y, en UI, el estado real de
+`carbon-theme.css`/`main.css` (hoy vacíos a propósito — ver
+`docs/NOTAS-DISENO-ANTERIOR.md`).
 
 Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
 modelo de seguridad y estructura del repo), `docs/PANORAMA-SISTEMA.md`
@@ -114,8 +115,9 @@ cuándo y si la contraseña se rotó después.
   dominio, seguridad, esquema o UI debe actualizar la documentación
   correspondiente **en el mismo cambio**, no después: `README.md` (dominio,
   flujos, historial de migraciones), este archivo (reglas/gotchas),
-  `docs/PANORAMA-SISTEMA.md` (esquema/decisiones) y/o `docs/GUIA-UX-UI.md`
-  (design system), según lo que se tocó. Dejar además una línea en
+  `docs/PANORAMA-SISTEMA.md` (esquema/decisiones) y/o `docs/NOTAS-DISENO-ANTERIOR.md`
+  (mientras no exista un sistema de diseño nuevo con su propia guía), según
+  lo que se tocó. Dejar además una línea en
   `docs/CHANGELOG.md`. Un hallazgo de auditoría cerrado o abierto se
   actualiza en `docs/HISTORIAL-AUDITORIAS.md`, no en un informe nuevo suelto.
   No es opcional ni una tarea aparte: un PR que cambia comportamiento y no
@@ -247,27 +249,21 @@ cuándo y si la contraseña se rotó después.
       foco), para popovers teletransportados a `<body>` (`MenuAcciones`,
       `NotificacionesCampana`). No confundir con `useCerrarConEscape`/
       `useFocoAtrapado`, que son para modales hand-rolled.
-- **UI/UX — IBM Carbon v11**: colores, tipografías y clases reutilizables en
- `docs/GUIA-UX-UI.md`. **Dos capas de CSS, y la frontera importa**:
- `styles/carbon-theme.css` tiene los VALORES de Carbon (`--cds-*`: escalas,
- type set, geometría, métricas del shell) y `styles/main.css` los ROLES del
- producto mapeados sobre ellos. Un `<style>` de componente consume el rol
- (`var(--color-danger-text)`), **nunca** el valor de la escala
- (`var(--cds-red-70)`); la única excepción son los `--cds-shell-*`, que
- consumen los cuatro componentes del shell porque el shell es oscuro en los
- dos temas. Sin Tailwind ni librería de componentes (tampoco `@carbon/styles`
- — se adopta la especificación, no el paquete: ver la GUIA, "Qué se adopta y
- qué no"). Tres reglas que no se negocian sin leer el motivo: **radio 0**
- (`--radius-base`), **elevación plana** (sombra solo en capas
- teletransportadas, `--shadow-overlay`) y la **escala tipográfica de 5 pasos**
- del type set productivo (`--fs-label-01`, `--fs-body-01`,
- `--fs-heading-02/03/05`). Nombre del producto en UI: **Materen — Sistema TI**.
-- **Primitivas de Carbon** en `frontend/src/components/carbon/`:
- `CarbonTag` (tag rectangular), `CarbonDataTable` (tabla de alta densidad
- declarativa) y `CarbonPasswordReveal` (revelado auditado con cuenta
- regresiva de 8s). Se separan de `components/shared/` porque el criterio
- para tocarlos es distinto: `shared/` resuelve "este producto necesita
- esto", `carbon/` resuelve "Carbon define esto así".
+- **UI/UX — sin sistema de diseño activo (desde el 2026-09-05)**: se retiró
+ IBM Carbon v11 por completo. `styles/carbon-theme.css` y `styles/main.css`
+ están intencionalmente vacíos, y ningún componente `.vue` tiene bloque
+ `<style>` — es un reinicio a cero, no un bug. Antes de escribir CSS nuevo,
+ ver `docs/NOTAS-DISENO-ANTERIOR.md` (lo rescatado del sistema anterior:
+ identidad de marca, principios de diseño del JEFE, reglas de accesibilidad
+ que siguen vigentes). Nombre del producto en UI: **Materen — Sistema TI**.
+- **`frontend/src/components/carbon/` ya no existe** (borrada 2026-09-05):
+ no hay ninguna librería de componentes de diseño en el árbol. Cada vista
+ pinta su propio HTML nativo (`<table>`, `<button>`, `<span>`, `<input>`).
+ La lógica real que tenían 4 de esos 9 componentes (revelado auditado de
+ contraseñas, matemática de paginación, colspan/agrupación de columnas,
+ id+aria de un campo) se rescató en `composables/useRevelado.js`,
+ `core/paginacionRender.js`, `core/tablaColumnas.js` y
+ `composables/useCampoAccesible.js` — ver `docs/NOTAS-DISENO-ANTERIOR.md` §5.
 - **Gotcha del padding de tabla (ago 2026)**: el alto de fila vive en **dos**
  lugares que tienen que moverse juntos — `th`/`td` en `main.css` (hoy `9px`
  de padding vertical) y `.th-ordenable-btn` en
@@ -428,13 +424,14 @@ cuándo y si la contraseña se rotó después.
  red — verifica que exigen un rechazo específico y que sus mensajes de
  fallo nunca imprimen un payload). Corren en CI en cada push
  (`.github/workflows/ci.yml`, job `build-y-tests`), junto con
- los **5 guardrails de diseño** — `node scripts/contraste.mjs` (contraste
- WCAG), `node scripts/tokens-vs-guia.mjs` (nombres de token + referencias
- `var()` rotas), `node scripts/literales-vs-tokens.mjs` (valores a mano que
- deberían ser token), `node scripts/patrones-ui.mjs` (estructura del
- marcado) y `node scripts/clases-muertas.mjs` (clases huérfanas) — y
+ `node scripts/patrones-ui.mjs` (estructura/accesibilidad del marcado) y
  `npm audit --omit=dev --audit-level=high` (vulnerabilidades de
- dependencias). Mapa completo en `docs/GOBERNANZA-DISENO.md`.
+ dependencias). Los otros 4 guardrails de Design System
+ (`contraste.mjs`, `tokens-vs-guia.mjs`, `literales-vs-tokens.mjs`,
+ `clases-muertas.mjs`) se retiraron de CI en el reinicio del sistema de
+ estilos (2026-09-05, ver `docs/NOTAS-DISENO-ANTERIOR.md`): dependían de
+ tokens/CSS/`docs/GUIA-UX-UI.md`, que ya no existen. Siguen en `scripts/`
+ sin invocarse.
  **CI estuvo en rojo sin que nadie lo notara** desde el commit `030cc89`
  (2026-08-15, "Pruebas" — 30+ archivos sin relación bajo un solo mensaje) hasta
  que se cerró esto: ese commit cambió la forma de `porTecnico`, retiró
@@ -531,7 +528,7 @@ cuándo y si la contraseña se rotó después.
  apariencia**: `happy-dom` no calcula estilos.
 - **Antes de corregir un hallazgo de diseño, preguntar por qué el sistema lo
  permitió.** Si nada lo impedía, el arreglo no está completo hasta que algo
- lo impida. Ver `docs/GOBERNANZA-DISENO.md` §7.
+ lo impida. Ver `docs/NOTAS-DISENO-ANTERIOR.md` §4.
 - Probar la función sin sesión:
  `npx @insforge/cli functions invoke credenciales --data '{"action":"entregaAbrir","token":"x"}'`
  debe responder `{"ok":false,"code":"no_existe"}`.

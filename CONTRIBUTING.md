@@ -80,8 +80,8 @@ pero en resumen:
 
 - Documentación actualizada en el mismo cambio (regla de `AGENTS.md`): si
   tocaste dominio, seguridad, esquema o UI, actualiza
-  `README.md`/`docs/PANORAMA-SISTEMA.md`/`docs/GUIA-UX-UI.md` según
-  corresponda, más una línea en `docs/CHANGELOG.md`.
+  `README.md`/`docs/PANORAMA-SISTEMA.md`/`docs/NOTAS-DISENO-ANTERIOR.md`
+  según corresponda, más una línea en `docs/CHANGELOG.md`.
 - `cd frontend && npm run build && npm test` en verde.
 - Si el cambio toca esquema o una edge function, qué capa de deploy se ve
   afectada (frontend/Vercel, edge function, esquema de BD — son 3

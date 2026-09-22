@@ -8,8 +8,9 @@ import { abrirEncuesta, responderEncuesta, MENSAJES_ERROR_ENCUESTA } from '../..
 import { respuestaValida } from '../../core/dominio-encuestas.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
 import PreguntaCampo from './PreguntaCampo.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+
+const infoError = infoNotificacion('error');
 
 const route = useRoute();
 const slug = String(route.params.slug || '');
@@ -107,60 +108,25 @@ onMounted(async () => {
             @update:model-value="(v) => (respuestas[p.id] = v)"
           />
 
-          <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+          <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+            <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+            <div class="notif__texto">
+              <p class="notif__detalle">{{ error }}</p>
+            </div>
+          </div>
 
-          <CarbonButton variante="primary" tipo="submit" ancho class="ticket-submit" :cargando="estado === 'enviando'">
-            {{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}
-          </CarbonButton>
+          <button
+            type="submit"
+            class="btn btn--primary btn--ancho ticket-submit"
+            :disabled="estado === 'enviando'"
+          >
+            <span class="btn__label">{{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}</span>
+            <i v-if="estado === 'enviando'" class="ti ti-loader-2 btn__icono--girando" aria-hidden="true"></i>
+          </button>
         </form>
       </template>
     </div>
   </div>
 </template>
 
-<style scoped>
-.ticket-title {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 16px;
-}
 
-.ticket-texto {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 10px;
-}
-
-.encuesta-progreso {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  margin: 0 0 14px;
-}
-
-.ticket-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.ticket-submit {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
-  margin-top: 4px;
-}
-
-.ticket-ok-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-success-text);
-  margin-bottom: 8px;
-}
-
-.ticket-error-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-</style>

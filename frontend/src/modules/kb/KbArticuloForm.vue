@@ -3,11 +3,10 @@ import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useKbStore } from '../../stores/kb.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const emit = defineEmits(['cerrar']);
 
@@ -21,6 +20,12 @@ const error = ref('');
 const categorias = ref([]);
 
 const form = ref({ titulo: '', categoria_id: '', sintoma: '', solucion: '' });
+const infoError = infoNotificacion('error');
+
+const campoTitulo = useCampoAccesible();
+const campoCategoria = useCampoAccesible();
+const campoSintoma = useCampoAccesible();
+const campoSolucion = useCampoAccesible();
 
 const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => form.value);
@@ -64,48 +69,80 @@ onMounted(async () => {
 <template>
   <Modal ref="modal" titulo="Nuevo artículo" :confirmar-cierre="confirmarCierre" @close="emit('cerrar', resultado)">
     <form id="kb-form" class="form-grid" @submit.prevent="guardar">
-      <CarbonCampo
-        v-model="form.titulo"
-        class="full"
-        etiqueta="Título"
-        requerido
-        :deshabilitado="guardando"
-        placeholder="Ej.: No conecta a la VPN institucional"
-      />
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoTitulo.id">Título<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoTitulo.id"
+            v-model="form.titulo"
+            class="campo__control"
+            type="text"
+            required
+            placeholder="Ej.: No conecta a la VPN institucional"
+            :disabled="guardando"
+          >
+        </div>
+      </div>
 
-      <CarbonCampo v-model="form.categoria_id" class="full" etiqueta="Categoría" tipo="select" :deshabilitado="guardando || cargandoCategorias">
-        <template #opciones>
-          <option value="">Sin categoría</option>
-          <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-        </template>
-      </CarbonCampo>
+      <div class="campo full" :class="{ 'campo--inerte': guardando || cargandoCategorias }">
+        <label class="campo__etiqueta" :for="campoCategoria.id">Categoría</label>
+        <div class="campo__caja">
+          <select
+            :id="campoCategoria.id"
+            class="campo__control campo__control--select"
+            :value="form.categoria_id"
+            :disabled="guardando || cargandoCategorias"
+            @change="form.categoria_id = $event.target.value"
+          >
+            <option value="">Sin categoría</option>
+            <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
 
-      <CarbonCampo
-        v-model="form.sintoma"
-        class="full"
-        etiqueta="Síntoma"
-        :deshabilitado="guardando"
-        placeholder="Cómo lo describe quien reporta"
-      />
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoSintoma.id">Síntoma</label>
+        <div class="campo__caja">
+          <input
+            :id="campoSintoma.id"
+            v-model="form.sintoma"
+            class="campo__control"
+            type="text"
+            placeholder="Cómo lo describe quien reporta"
+            :disabled="guardando"
+          >
+        </div>
+      </div>
 
-      <CarbonCampo
-        v-model="form.solucion"
-        class="full"
-        etiqueta="Solución"
-        tipo="textarea"
-        :filas="6"
-        :deshabilitado="guardando"
-        placeholder="Pasos para resolverlo (texto plano)"
-      />
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoSolucion.id">Solución</label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoSolucion.id"
+            v-model="form.solucion"
+            class="campo__control campo__control--area"
+            :rows="6"
+            placeholder="Pasos para resolverlo (texto plano)"
+            :disabled="guardando"
+          ></textarea>
+        </div>
+      </div>
 
-      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" tipo="submit" form="kb-form" :cargando="guardando">
+      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
+      <button type="submit" form="kb-form" class="btn btn--primary" :disabled="guardando">
         {{ guardando ? 'Creando...' : 'Crear artículo' }}
-      </CarbonButton>
+        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 
@@ -122,13 +159,4 @@ onMounted(async () => {
   />
 </template>
 
-<style scoped>
-/* .form-group.full (main.css) exige la clase .form-group, que trae consigo
-   estilos de <input>/<select> viejos que pisarían los de CarbonCampo — acá
-   se repite solo el grid-column. Vue aplica el scope del padre también a la
-   raíz de un componente hijo (CarbonCampo incluido), así que esta regla
-   simple alcanza a los <CarbonCampo class="full">. */
-.full {
-  grid-column: 1 / -1;
-}
-</style>
+

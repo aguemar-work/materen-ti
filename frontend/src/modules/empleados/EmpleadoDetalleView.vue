@@ -17,7 +17,7 @@ import { formatFecha, formatTelefono, fechaLocalISO } from '../../core/formatter
 import { tonoAvatar, inicialesDe } from '../../core/avatar.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { rolDeTag } from '../../core/tagRol.js';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
@@ -25,7 +25,6 @@ import CuentasPanel from '../cuentas/CuentasPanel.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AsignarEquipoModal from '../equipos/AsignarEquipoModal.vue';
 import AsignarLicenciaModal from '../licencias/AsignarLicenciaModal.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -250,21 +249,30 @@ onMounted(cargar);
         </div>
       </template>
       <template v-if="empleado" #acciones>
-        <CarbonButton variante="secondary" icono="ti-pencil" :deshabilitado="procesando" @click="mostrarForm = true">Editar</CarbonButton>
-        <CarbonButton
+        <button type="button" class="btn btn--secondary btn--md" :disabled="procesando" @click="mostrarForm = true">
+          Editar
+          <i class="ti ti-pencil" aria-hidden="true"></i>
+        </button>
+        <button
           v-if="empleado.estado !== 'Inactivo'"
-          variante="danger"
-          icono="ti-user-off"
-          :deshabilitado="procesando"
+          type="button"
+          class="btn btn--danger btn--md"
+          :disabled="procesando"
           @click="mostrarBaja = true"
-        >Dar de baja</CarbonButton>
-        <CarbonButton
+        >
+          Dar de baja
+          <i class="ti ti-user-off" aria-hidden="true"></i>
+        </button>
+        <button
           v-else
-          variante="primary"
-          icono="ti-user-check"
-          :deshabilitado="procesando"
+          type="button"
+          class="btn btn--primary btn--md"
+          :disabled="procesando"
           @click="mostrarReactivar = true"
-        >Reactivar</CarbonButton>
+        >
+          Reactivar
+          <i class="ti ti-user-check" aria-hidden="true"></i>
+        </button>
       </template>
     </PageHeader>
 
@@ -313,15 +321,14 @@ onMounted(cargar);
                 {{ paso.label }}
                 <span v-if="!paso.requisito && !paso.hecho" class="alta-paso-opcional">opcional</span>
               </span>
-              <CarbonButton
+              <button
                 v-if="!paso.hecho && paso.ejecutar"
-                variante="secondary"
-                tam="sm"
-                class="alta-paso-btn"
+                type="button"
+                class="btn btn--secondary btn--sm alta-paso-btn"
                 @click="paso.ejecutar()"
               >
                 {{ paso.accion }}
-              </CarbonButton>
+              </button>
             </li>
           </ol>
         </div>
@@ -407,7 +414,10 @@ onMounted(cargar);
                     Equipos
                     <span class="badge-count">{{ equipos.length }}</span>
                   </div>
-                  <CarbonButton variante="secondary" tam="sm" icono="ti-plus" @click="mostrarAsignarEquipo = true">Asignar</CarbonButton>
+                  <button type="button" class="btn btn--secondary btn--sm" @click="mostrarAsignarEquipo = true">
+                    Asignar
+                    <i class="ti ti-plus" aria-hidden="true"></i>
+                  </button>
                 </div>
 
                 <p v-if="equipos.length === 0" class="panel-vacio">
@@ -450,7 +460,10 @@ onMounted(cargar);
                     Licencias
                     <span class="badge-count">{{ licencias.length }}</span>
                   </div>
-                  <CarbonButton variante="secondary" tam="sm" icono="ti-plus" @click="mostrarAsignarLicencia = true">Asignar</CarbonButton>
+                  <button type="button" class="btn btn--secondary btn--sm" @click="mostrarAsignarLicencia = true">
+                    Asignar
+                    <i class="ti ti-plus" aria-hidden="true"></i>
+                  </button>
                 </div>
 
                 <p v-if="licencias.length === 0" class="panel-vacio">
@@ -461,11 +474,11 @@ onMounted(cargar);
                     <div class="panel-item-info">
                       <span class="panel-item-titulo">
                         {{ lic.software }}
-                        <CarbonTag
+                        <span
                           v-if="vencimientoLicencia(lic)"
-                          class="badge-inline"
-                          :variante="vencimientoLicencia(lic).clase"
-                        >{{ vencimientoLicencia(lic).texto }}</CarbonTag>
+                          class="tag badge-inline"
+                          :class="`tag--${rolDeTag(vencimientoLicencia(lic).clase)}`"
+                        >{{ vencimientoLicencia(lic).texto }}</span>
                       </span>
                       <span class="panel-item-meta">
                         Desde {{ formatFecha(lic.fecha_inicio) }}
@@ -562,278 +575,4 @@ onMounted(cargar);
   </div>
 </template>
 
-<style scoped>
-/* .header-left/.header-inner se estilan en main.css (shell de PageHeader) */
-.btn-volver {
-  flex-shrink: 0;
-}
 
-/* El avatar de la ficha usa la familia .avatar de main.css (rediseño
-   Materen, Fase 1): antes era .emp-avatar, 40px con gradiente de marca, la
-   tercera implementación del patrón. Ver la nota del bloque .avatar en
-   main.css. */
-
-.header-emp {
-  min-width: 0;
-}
-
-.header-emp h1 {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.header-sub {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-}
-
-.alta-guia {
-  background: var(--color-accent-subtle);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
-  border-radius: var(--radius-base);
-  padding: var(--space-6) var(--space-7);
-  margin-bottom: var(--space-7);
-}
-
-.alta-guia-cab {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-}
-
-.alta-guia-titulo {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--fs-body-01);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.alta-guia-titulo i {
-  font-size: var(--icon-md);
-  color: var(--color-accent-text);
-}
-
-.alta-guia-dias {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-/* La X queda al extremo, separada de los pasos: cerrar la guía no es una
-   acción del alta, es salir de ella. */
-.alta-guia-cerrar {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* Los pasos fluyen en fila y bajan de a uno en pantallas angostas, en vez de
-   comprimirse: un paso que no se lee entero no invita a completarlo. */
-.alta-guia-pasos {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4) var(--space-7);
-}
-
-.alta-paso {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-}
-
-.alta-paso i {
-  font-size: var(--icon-md);
-  flex-shrink: 0;
-}
-
-.alta-paso--hecho {
-  color: var(--color-success-text);
-}
-
-.alta-paso--hecho i {
-  color: var(--color-success);
-}
-
-.alta-paso-label {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-
-.alta-paso-opcional {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-tertiary);
-}
-
-/* El botón del paso es secundario a propósito: el acento primario de la
-   vista ya lo tiene el header (regla "un solo acento visible por vista"). */
-.alta-paso-btn {
-  padding: var(--space-1) var(--space-5);
-  font-size: var(--fs-label-01);
-}
-
-@media (max-width: 640px) {
-  .alta-guia-pasos {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .alta-paso-btn {
-    margin-left: auto;
-  }
-}
-
-.detalle-grid {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 16px;
-  align-items: start;
-}
-
-@media (max-width: 900px) {
-  .detalle-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.datos-card {
-  padding: 16px 20px 20px;
-}
-
-/* Único ajuste sobre la .datos-title global (main.css): un poco más de
-   aire bajo el título en esta ficha. */
-.datos-title { margin-bottom: 14px; }
-
-.datos-lista {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.dato dt {
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
-  margin-bottom: 2px;
-}
-
-.dato dd {
-  margin: 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-}
-
-.dato-truncar {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dato--notas dd {
-  white-space: pre-wrap;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-}
-
-.dato-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--color-primary);
-  text-decoration: none;
-}
-
-.dato-link:hover {
-  text-decoration: underline;
-}
-
-/* Columna derecha: Accesos arriba, Equipos + Licencias en dúo debajo */
-.col-vinculos {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.paneles-duo {
-  display: grid;
-  /* min(320px, 100%): en teléfonos angostos (<352px de viewport) la
-     columna cede en lugar de desbordar horizontalmente */
-  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
-  gap: 16px;
-  align-items: start;
-}
-
-.panel-card {
-  padding: 0 0 6px;
-}
-
-/* .panel-toolbar/.panel-title (pasada de diseño ago 2026): retirados —
-   duplicaban byte a byte .card-toolbar/.toolbar-title (main.css, la misma
-   toolbar que ya usa Tickets), incluida la misma duplicación en
-   CuentasPanel.vue. El template de acá usa esas clases globales
-   directamente ahora. */
-
-/* Vacío compacto: estos paneles son secundarios, no ameritan el EmptyState grande */
-.panel-vacio {
-  margin: 0;
-  padding: 18px 20px;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-tertiary);
-}
-
-.panel-lista {
-  list-style: none;
-  margin: 0;
-  padding: 6px 8px;
-}
-
-.panel-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: var(--radius-base);
-}
-
-.panel-item:hover {
-  background: var(--color-bg-subtle);
-}
-
-.panel-item-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.panel-item-titulo {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-}
-
-.panel-item-meta {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-/* Identificadores en mono — solo cambia la familia, nunca peso/color */
-.mono {
-  font-family: var(--font-mono, monospace);
-}
-
-</style>

@@ -28,37 +28,4 @@ function icono() {
   </th>
 </template>
 
-<style scoped>
-.th-ordenable { padding: 0; }
 
-.th-ordenable-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: 9px 1.25rem; /* espeja el <th> global (densidad ago 2026) */
-  background: none;
-  border: none;
-  font: inherit;
-  color: inherit;
-  text-transform: inherit;
-  letter-spacing: inherit;
-  white-space: inherit;
-  cursor: pointer;
-}
-
-.th-ordenable-icono {
-  font-size: var(--icon-sm);
-  opacity: 0.5;
-}
-
-.th-ordenable-btn:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
-.th-ordenable-btn:hover .th-ordenable-icono { opacity: 1; }
-.th-ordenable-btn:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-}
-.th-ordenable-btn:focus-visible .th-ordenable-icono { opacity: 1; }
-.th-ordenable[aria-sort="ascending"] .th-ordenable-icono,
-.th-ordenable[aria-sort="descending"] .th-ordenable-icono { opacity: 1; color: var(--color-primary); }
-</style>

@@ -6,9 +6,8 @@
 import { ref } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import Modal from '../../components/shared/Modal.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   miembro: { type: Object, required: true }, // { user_id, nombre }
@@ -19,6 +18,11 @@ const modal = ref(null);
 const guardando = ref(false);
 const error = ref('');
 const nombre = ref(props.miembro.nombre);
+
+const campoNombre = useCampoAccesible({
+  ayuda: () => 'Aparece en tickets, problemas y reportes en vez del usuario de acceso.',
+});
+const infoError = infoNotificacion('error');
 
 async function guardar() {
   error.value = '';
@@ -43,22 +47,41 @@ async function guardar() {
 <template>
   <Modal ref="modal" titulo="Editar nombre" size="sm" @close="emit('cerrar')">
     <form id="staff-nombre-form" @submit.prevent="guardar">
-      <CarbonCampo
-        v-model="nombre"
-        etiqueta="Nombre para mostrar"
-        requerido
-        :deshabilitado="guardando"
-        placeholder="ej: Ana Guevara"
-        ayuda="Aparece en tickets, problemas y reportes en vez del usuario de acceso."
-      />
-      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+      <div class="campo" :class="{ 'campo--invalido': campoNombre.invalido.value, 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoNombre.id">
+          Nombre para mostrar<span aria-hidden="true"> *</span>
+        </label>
+        <div class="campo__caja">
+          <input
+            :id="campoNombre.id"
+            v-model="nombre"
+            class="campo__control"
+            type="text"
+            placeholder="ej: Ana Guevara"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoNombre.invalido.value"
+            :aria-describedby="campoNombre.describedBy.value"
+          >
+        </div>
+        <p :id="campoNombre.idAyuda.value" class="campo__pie">
+          Aparece en tickets, problemas y reportes en vez del usuario de acceso.
+        </p>
+      </div>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modal?.cerrar()">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" tipo="submit" form="staff-nombre-form" :cargando="guardando">
+      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="modal?.cerrar()">Cancelar</button>
+      <button type="submit" form="staff-nombre-form" class="btn btn--primary" :disabled="guardando">
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </CarbonButton>
+        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 </template>

@@ -8,13 +8,15 @@ import { OPCIONES_ESTADO_PROBLEMA, OPCIONES_SEVERIDAD_PROBLEMA, severidadProblem
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import ProblemaForm from './ProblemaForm.vue';
-import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
+import { columnasVisibles, estiloColumna, agruparParaTarjeta } from '../../core/tablaColumnas.js';
+import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const router = useRouter();
@@ -35,11 +37,6 @@ watch(
   [filtroEstado, filtroSeveridad],
   ([estado, severidad]) => store.aplicarFiltros({ estado, severidad }),
 );
-
-const paginaActual = computed({
-  get: () => store.pagina,
-  set: (p) => store.irAPagina(p),
-});
 
 function verProblema(problema) {
   router.push(`/problemas/${problema.id}`);
@@ -70,6 +67,19 @@ const columnas = [
   { clave: 'updated_at', label: 'Actualizado', ordenable: true, num: true, movil: 'sec' },
 ];
 
+const columnasVisiblesLista = computed(() => columnasVisibles(columnas));
+const totalColumnas = computed(() => columnasVisiblesLista.value.length);
+const enTarjeta = computed(() => agruparParaTarjeta(columnasVisiblesLista.value));
+
+const totalPaginas = computed(() => totalPaginasDe(total.value, store.tamPagina));
+const paginas = computed(() => paginasDe(totalPaginas.value));
+const rango = computed(() => rangoDe(store.pagina, store.tamPagina, total.value));
+
+function irA(pagina) {
+  const destino = clampPagina(pagina, totalPaginas.value);
+  if (destino !== store.pagina) store.irAPagina(destino);
+}
+
 function claseFilaProblema() {
   return 'fila-problema tarjeta-fila--clic';
 }
@@ -97,7 +107,10 @@ onMounted(async () => {
   <div class="problemas-page vista-modulo">
     <PageHeader titulo="Problemas" icono="ti ti-alert-hexagon" :conteo="total">
       <template #acciones>
-        <CarbonButton variante="primary" icono="ti-plus" @click="mostrarForm = true">Nuevo problema</CarbonButton>
+        <button type="button" class="btn btn--primary" @click="mostrarForm = true">
+          Nuevo problema
+          <i class="ti ti-plus" aria-hidden="true"></i>
+        </button>
       </template>
     </PageHeader>
 
@@ -129,52 +142,127 @@ onMounted(async () => {
         <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando problemas…</p>
 
-        <CarbonDataTable
-          :columnas="columnas"
-          :filas="lista"
-          :cargando="cargando"
-          :orden-por="ordenColumna"
-          :orden-dir="ordenDireccion"
-          :clase-fila="claseFilaProblema"
-          etiqueta="Problemas"
-          vacio-icono="ti ti-alert-hexagon"
-          vacio-titulo="Sin problemas"
-          :vacio-mensaje="busqueda || filtroEstado || filtroSeveridad ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer problema con causa raíz y acciones correctivas.'"
-          @ordenar="store.ordenarPor"
-          @clic-fila="verProblema"
-        >
-          <template #celda-severidad="{ fila }">
-            <span class="severidad-ind" :class="claseSeveridad(fila.severidad)">
-              {{ severidadProblemaInfo(fila.severidad).label }}
-            </span>
-          </template>
-          <template #celda-titulo="{ fila }">
-            <RouterLink class="problema-titulo-link" :to="`/problemas/${fila.id}`" @click.stop>{{ fila.titulo }}</RouterLink>
-          </template>
-          <template #celda-estado="{ fila }">
-            <BadgeEstado tipo="problema_estado" :valor="fila.estado" />
-          </template>
-          <template #celda-responsable="{ fila }">
-            <span v-if="fila.responsable_id">{{ staffPorId[fila.responsable_id] || 'Staff' }}</span>
-            <TextoVacio v-else placeholder="Sin asignar" />
-          </template>
-          <template #celda-updated_at="{ fila }">
-            <span class="fecha-cell" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
-          </template>
-          <template #vacio-accion>
-            <CarbonButton v-if="!busqueda && !filtroEstado && !filtroSeveridad" variante="secondary" icono="ti-plus" @click="mostrarForm = true">Nuevo problema</CarbonButton>
-          </template>
-        </CarbonDataTable>
+        <div class="table-wrap">
+          <table class="tabla" aria-label="Problemas">
+            <thead>
+              <tr>
+                <template v-for="col in columnasVisiblesLista" :key="col.clave">
+                  <ThOrdenable
+                    v-if="col.ordenable"
+                    :clave="col.clave"
+                    :columna="ordenColumna"
+                    :direccion="ordenDireccion"
+                    :class="{ 'col-num': col.num }"
+                    :style="estiloColumna(col)"
+                    @ordenar="store.ordenarPor(col.clave)"
+                  >{{ col.label }}</ThOrdenable>
+                  <th v-else scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
+                </template>
+              </tr>
+            </thead>
+            <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
+              <tr v-else-if="!lista.length">
+                <td :colspan="totalColumnas" class="tabla__vacio">
+                  <EmptyState
+                    icono="ti ti-alert-hexagon"
+                    titulo="Sin problemas"
+                    :mensaje="busqueda || filtroEstado || filtroSeveridad ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer problema con causa raíz y acciones correctivas.'"
+                  >
+                    <button v-if="!busqueda && !filtroEstado && !filtroSeveridad" type="button" class="btn btn--secondary" @click="mostrarForm = true">
+                      Nuevo problema
+                      <i class="ti ti-plus" aria-hidden="true"></i>
+                    </button>
+                  </EmptyState>
+                </td>
+              </tr>
+              <template v-else>
+                <tr
+                  v-for="fila in lista"
+                  :key="fila.id"
+                  :class="claseFilaProblema()"
+                  @click="verProblema(fila)"
+                >
+                  <td>
+                    <span class="severidad-ind" :class="claseSeveridad(fila.severidad)">
+                      {{ severidadProblemaInfo(fila.severidad).label }}
+                    </span>
+                  </td>
+                  <td>
+                    <RouterLink class="problema-titulo-link" :to="`/problemas/${fila.id}`" @click.stop>{{ fila.titulo }}</RouterLink>
+                  </td>
+                  <td>
+                    <BadgeEstado tipo="problema_estado" :valor="fila.estado" />
+                  </td>
+                  <td>
+                    <span v-if="fila.responsable_id">{{ staffPorId[fila.responsable_id] || 'Staff' }}</span>
+                    <TextoVacio v-else placeholder="Sin asignar" />
+                  </td>
+                  <td class="col-num">
+                    <span class="fecha-cell" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
 
-        <CarbonPagination
-          v-if="!cargando"
-          v-model="paginaActual"
-          :total-items="total"
-          :tam-pagina="store.tamPagina"
-          :tamanos-pagina="TAMANOS_PAGINA"
-          unidad="problemas"
-          @update:tam-pagina="store.cambiarTamPagina"
-        />
+        <ul v-if="!cargando && lista.length" class="lista-tarjetas solo-movil" aria-label="Problemas">
+          <li
+            v-for="fila in lista"
+            :key="fila.id"
+            class="tarjeta-fila"
+            :class="claseFilaProblema()"
+            @click="verProblema(fila)"
+          >
+            <div class="tarjeta-fila__principal">
+              <RouterLink class="problema-titulo-link" :to="`/problemas/${fila.id}`" @click.stop>{{ fila.titulo }}</RouterLink>
+            </div>
+            <div v-if="enTarjeta.sec.length" class="tarjeta-fila__sec">
+              <span v-if="fila.responsable_id">{{ staffPorId[fila.responsable_id] || 'Staff' }}</span>
+              <TextoVacio v-else placeholder="Sin asignar" />
+              <span class="fecha-cell" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <span class="severidad-ind" :class="claseSeveridad(fila.severidad)">
+                {{ severidadProblemaInfo(fila.severidad).label }}
+              </span>
+              <BadgeEstado tipo="problema_estado" :valor="fila.estado" />
+            </div>
+          </li>
+        </ul>
+
+        <nav v-if="!cargando && total > 0" class="paginacion" aria-label="Paginación">
+          <div class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span>Filas por página:</span>
+              <select
+                class="paginacion__select"
+                :value="store.tamPagina"
+                @change="store.cambiarTamPagina(Number($event.target.value))"
+              >
+                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </label>
+            <span class="paginacion__rango">{{ rango.desde }}–{{ rango.hasta }} de {{ total }} problemas</span>
+          </div>
+
+          <div v-if="totalPaginas > 1" class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span class="sr-only">Ir a la página</span>
+              <select class="paginacion__select" :value="store.pagina" @change="irA(Number($event.target.value))">
+                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span>de {{ totalPaginas }}</span>
+            </label>
+            <button class="paginacion__flecha" type="button" :disabled="store.pagina <= 1" aria-label="Página anterior" @click="irA(store.pagina - 1)">
+              <i class="ti ti-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button class="paginacion__flecha" type="button" :disabled="store.pagina >= totalPaginas" aria-label="Página siguiente" @click="irA(store.pagina + 1)">
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </nav>
         </template>
       </div>
     </main>
@@ -183,65 +271,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.problemas-error { color: var(--color-danger); }
 
-/* :deep porque CarbonDataTable pinta el <tr>/<li> en su propio scope; el
-   hover en sí ya lo cubre main.css para toda tabla, esto solo agrega el
-   cursor de "fila clicable" que main.css no asume por defecto. */
-:deep(.fila-problema) { cursor: pointer; }
-
-.problema-titulo-link {
-  /* Peso 400, no 600 (pasada de diseño de tablas ago 2026): pisaba la
-     regla global "ningún dato de tabla en negrita" — bug real, no una
-     excepción a propósito. */
-  color: var(--color-text-primary);
-  text-decoration: none;
-}
-.problema-titulo-link:hover,
-.problema-titulo-link:focus-visible {
-  text-decoration: underline;
-}
-
-.fecha-cell { white-space: nowrap; }
-
-/* Indicador de Severidad: punto + texto, mismo mecanismo visual que
-   IndicadorPrioridad.vue (componentes/shared, Tickets) pero LOCAL a este
-   archivo — Severidad es un dato de dominio propio de Problemas, no vale
-   generalizar el componente de Tickets para esto. El punto es decorativo
-   (::before, fuera del árbol de accesibilidad): el texto siempre está al
-   lado, el color nunca es el único portador del significado (WCAG 1.4.1). */
-.severidad-ind {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-tertiary);
-}
-
-.severidad-ind::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-border-strong);
-  flex-shrink: 0;
-}
-
-/* alta conserva el mismo púrpura que ya tenía el badge (SEVERIDADES_PROBLEMA);
-   crítica conserva el mismo rojo — el vocabulario de color no cambia. */
-.severidad-ind--alta {
-  color: var(--color-text-secondary);
-}
-.severidad-ind--alta::before {
-  background: var(--color-purple-text);
-}
-
-.severidad-ind--critica {
-  color: var(--color-danger-text);
-}
-.severidad-ind--critica::before {
-  background: var(--color-danger-text);
-}
-</style>

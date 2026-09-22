@@ -4,9 +4,7 @@ import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/auth.js';
 import { NOMBRE_PRODUCTO } from '../../core/marca.js';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -32,6 +30,12 @@ const resetToken = ref('');
 const nuevaPassword = ref('');
 const confirmarPassword = ref('');
 const errorConfirmar = ref('');
+
+const campoEmailLogin = useCampoAccesible();
+const campoEmailReset = useCampoAccesible();
+const campoCodigo = useCampoAccesible();
+const campoNuevaPassword = useCampoAccesible();
+const campoConfirmarPassword = useCampoAccesible({ error: () => errorConfirmar.value });
 
 const titulo = computed(() => ({
   'login': 'Iniciar sesión',
@@ -132,15 +136,23 @@ async function onCambiarPassword() {
 
       <!-- Paso: login -->
       <form v-if="modo === 'login'" class="login-form" @submit.prevent="onSubmit">
-        <CarbonCampo
-          v-model="email"
-          etiqueta="Correo electrónico"
-          tipo="email"
-          placeholder="tu@empresa.com"
-          requerido
-          :deshabilitado="cargando"
-          autocomplete="username"
-        />
+        <div class="campo" :class="{ 'campo--inerte': cargando }">
+          <label class="campo__etiqueta" :for="campoEmailLogin.id">Correo electrónico<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoEmailLogin.id"
+              v-model="email"
+              class="campo__control"
+              type="email"
+              placeholder="tu@empresa.com"
+              required
+              :disabled="cargando"
+              autocomplete="username"
+              :aria-invalid="campoEmailLogin.invalido.value"
+              :aria-describedby="campoEmailLogin.describedBy.value"
+            >
+          </div>
+        </div>
 
         <div class="form-group full">
           <label for="password">Contraseña</label>
@@ -167,16 +179,10 @@ async function onCambiarPassword() {
           </div>
         </div>
 
-        <CarbonButton
-          class="login-submit"
-          variante="primary"
-          tipo="submit"
-          ancho
-          :deshabilitado="cargando"
-          :cargando="cargando"
-        >
+        <button class="btn btn--primary btn--ancho login-submit" type="submit" :disabled="cargando">
           {{ cargando ? 'Ingresando...' : 'Ingresar' }}
-        </CarbonButton>
+          <i v-if="cargando" class="ti ti-loader-2" aria-hidden="true"></i>
+        </button>
 
         <button class="login-link" type="button" @click="irA('reset-email')">
           Olvidé la contraseña
@@ -188,19 +194,28 @@ async function onCambiarPassword() {
 
       <!-- Paso: pedir correo -->
       <form v-else-if="modo === 'reset-email'" class="login-form" @submit.prevent="onSolicitarCodigo">
-        <CarbonCampo
-          v-model="email"
-          etiqueta="Correo electrónico"
-          tipo="email"
-          placeholder="tu@empresa.com"
-          requerido
-          :deshabilitado="procesando"
-          autocomplete="username"
-        />
+        <div class="campo" :class="{ 'campo--inerte': procesando }">
+          <label class="campo__etiqueta" :for="campoEmailReset.id">Correo electrónico<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoEmailReset.id"
+              v-model="email"
+              class="campo__control"
+              type="email"
+              placeholder="tu@empresa.com"
+              required
+              :disabled="procesando"
+              autocomplete="username"
+              :aria-invalid="campoEmailReset.invalido.value"
+              :aria-describedby="campoEmailReset.describedBy.value"
+            >
+          </div>
+        </div>
 
-        <CarbonButton class="login-submit" variante="primary" tipo="submit" ancho :deshabilitado="procesando" :cargando="procesando">
+        <button class="btn btn--primary btn--ancho login-submit" type="submit" :disabled="procesando">
           {{ procesando ? 'Enviando...' : 'Enviar código' }}
-        </CarbonButton>
+          <i v-if="procesando" class="ti ti-loader-2" aria-hidden="true"></i>
+        </button>
 
         <button class="login-link" type="button" @click="volverAlLogin">
           Volver a iniciar sesión
@@ -211,20 +226,29 @@ async function onCambiarPassword() {
 
       <!-- Paso: código de verificación -->
       <form v-else-if="modo === 'reset-codigo'" class="login-form" @submit.prevent="onVerificarCodigo">
-        <CarbonCampo
-          v-model="codigo"
-          class="input-codigo"
-          etiqueta="Código de verificación"
-          placeholder="123456"
-          requerido
-          :deshabilitado="procesando"
-          autocomplete="one-time-code"
-          inputmode="numeric"
-        />
+        <div class="campo" :class="{ 'campo--inerte': procesando }">
+          <label class="campo__etiqueta" :for="campoCodigo.id">Código de verificación<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoCodigo.id"
+              v-model="codigo"
+              class="campo__control input-codigo"
+              type="text"
+              placeholder="123456"
+              required
+              :disabled="procesando"
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              :aria-invalid="campoCodigo.invalido.value"
+              :aria-describedby="campoCodigo.describedBy.value"
+            >
+          </div>
+        </div>
 
-        <CarbonButton class="login-submit" variante="primary" tipo="submit" ancho :deshabilitado="procesando || codigo.trim().length < 6" :cargando="procesando">
+        <button class="btn btn--primary btn--ancho login-submit" type="submit" :disabled="procesando || codigo.trim().length < 6">
           {{ procesando ? 'Verificando...' : 'Verificar código' }}
-        </CarbonButton>
+          <i v-if="procesando" class="ti ti-loader-2" aria-hidden="true"></i>
+        </button>
 
         <button class="login-link" type="button" :disabled="procesando" @click="onSolicitarCodigo">
           Reenviar código
@@ -240,30 +264,53 @@ async function onCambiarPassword() {
 
       <!-- Paso: nueva contraseña -->
       <form v-else class="login-form" @submit.prevent="onCambiarPassword">
-        <CarbonCampo
-          v-model="nuevaPassword"
-          etiqueta="Nueva contraseña"
-          tipo="password"
-          placeholder="••••••••"
-          requerido
-          :deshabilitado="procesando"
-          autocomplete="new-password"
-        />
+        <div class="campo" :class="{ 'campo--inerte': procesando }">
+          <label class="campo__etiqueta" :for="campoNuevaPassword.id">Nueva contraseña<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoNuevaPassword.id"
+              v-model="nuevaPassword"
+              class="campo__control"
+              type="password"
+              placeholder="••••••••"
+              required
+              :disabled="procesando"
+              autocomplete="new-password"
+              :aria-invalid="campoNuevaPassword.invalido.value"
+              :aria-describedby="campoNuevaPassword.describedBy.value"
+            >
+          </div>
+        </div>
 
-        <CarbonCampo
-          v-model="confirmarPassword"
-          etiqueta="Confirmar contraseña"
-          tipo="password"
-          placeholder="••••••••"
-          requerido
-          :error="errorConfirmar"
-          :deshabilitado="procesando"
-          autocomplete="new-password"
-        />
+        <div class="campo" :class="{ 'campo--invalido': campoConfirmarPassword.invalido.value, 'campo--inerte': procesando }">
+          <label class="campo__etiqueta" :for="campoConfirmarPassword.id">Confirmar contraseña<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoConfirmarPassword.id"
+              v-model="confirmarPassword"
+              class="campo__control"
+              type="password"
+              placeholder="••••••••"
+              required
+              :disabled="procesando"
+              autocomplete="new-password"
+              :aria-invalid="campoConfirmarPassword.invalido.value"
+              :aria-describedby="campoConfirmarPassword.describedBy.value"
+            >
+            <i v-if="campoConfirmarPassword.invalido.value" class="ti ti-alert-circle-filled campo__adorno" aria-hidden="true"></i>
+          </div>
+          <p
+            v-if="errorConfirmar"
+            :id="campoConfirmarPassword.idAyuda"
+            class="campo__pie campo__pie--error"
+            role="alert"
+          >{{ errorConfirmar }}</p>
+        </div>
 
-        <CarbonButton class="login-submit" variante="primary" tipo="submit" ancho :deshabilitado="procesando" :cargando="procesando">
+        <button class="btn btn--primary btn--ancho login-submit" type="submit" :disabled="procesando">
           {{ procesando ? 'Guardando...' : 'Cambiar contraseña' }}
-        </CarbonButton>
+          <i v-if="procesando" class="ti ti-loader-2" aria-hidden="true"></i>
+        </button>
 
         <button class="login-link" type="button" @click="volverAlLogin">
           Cancelar
@@ -275,162 +322,4 @@ async function onCambiarPassword() {
   </div>
 </template>
 
-<style scoped>
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-}
 
-.login-card {
-  width: 100%;
-  max-width: 400px;
-  padding: 2rem;
-}
-
-.login-logo {
-  display: block;
-  height: 32px;
-  width: auto;
-  margin-bottom: 1.75rem;
-}
-
-/* El logo es azul de marca (#0064E0, ver frontend/public/logo_materen_sisti.svg):
-   en oscuro se pasa a blanco para no perderse contra el fondo (antes lo
-   resolvía un plate blanco). Corregido 2026-09-01: este comentario decía
-   "verde pino (#072E2A)", el color de la marca anterior — quedó describiendo
-   un logo que ya no existía desde la migración a azul. */
-[data-theme="dark"] .login-logo {
-  filter: brightness(0) invert(1);
-}
-
-.login-title {
-  font-size: var(--fs-heading-03);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin-bottom: 1.25rem;
-}
-
-/* Cuando hay subtítulo (flujo de reset), el título se le acerca */
-.login-title:has(+ .login-subtitle) {
-  margin-bottom: 4px;
-}
-
-.login-subtitle {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  margin-bottom: 1.5rem;
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.login-form .form-group.full {
-  grid-column: unset;
-}
-
-.login-submit {
-  width: 100%;
-  justify-content: center;
-  margin-top: 4px;
-  padding: 10px 14px;
-}
-
-.login-submit:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.login-form input:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-  background: var(--color-bg-subtle);
-}
-
-.password-field {
-  position: relative;
-}
-
-.password-field input {
-  width: 100%;
-  padding-right: 38px;
-}
-
-.password-toggle {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  font-size: var(--icon-sm);
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-base);
-  transition: color 0.12s;
-}
-
-.password-toggle:hover {
-  color: var(--color-text-primary);
-}
-
-.password-toggle:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.login-link {
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-primary);
-  cursor: pointer;
-  align-self: center;
-}
-
-.login-link:hover {
-  text-decoration: underline;
-}
-
-.login-link:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.input-codigo :deep(.cds-campo__control) {
-  text-align: center;
-  font-size: var(--fs-heading-02);
-  letter-spacing: 0.4em;
-  font-variant-numeric: tabular-nums;
-}
-
-.login-aviso {
-  color: var(--color-success-text);
-  background: var(--color-success-bg);
-  border: 1px solid var(--color-success-border);
-  border-radius: var(--radius-base);
-  padding: 8px 12px;
-  font-size: var(--fs-body-01);
-  margin: 0;
-}
-
-.login-error {
-  color: var(--color-danger-text);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-base);
-  padding: 8px 12px;
-  font-size: var(--fs-body-01);
-  margin: 0;
-}
-</style>

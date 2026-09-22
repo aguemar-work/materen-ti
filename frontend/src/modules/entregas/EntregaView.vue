@@ -6,7 +6,6 @@ import { ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { abrirEntrega } from '../../api/passwords.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
 
 const route = useRoute();
 
@@ -54,7 +53,10 @@ async function copiar(texto, id) {
             captura de pantalla).
           </p>
         </div>
-        <CarbonButton variante="primary" ancho icono="ti-lock-open" class="entrega-btn" @click="revelar">Ver accesos</CarbonButton>
+        <button type="button" class="btn btn--primary btn--ancho entrega-btn" @click="revelar">
+          Ver accesos
+          <i class="ti ti-lock-open" aria-hidden="true"></i>
+        </button>
       </template>
 
       <div v-else-if="estado === 'cargando'" class="entrega-cargando" role="status">
@@ -107,14 +109,14 @@ async function copiar(texto, id) {
             Si las credenciales no fueron guardadas o se requiere un nuevo enlace,
             cree un ticket de soporte. Si el caso ya fue reportado, puede consultarse por DNI.
           </p>
-          <CarbonButton
-            variante="primary"
-            ancho
-            icono="ti-ticket"
-            class="entrega-accion-primaria"
-            :to="{ name: 'ticket-nuevo' }"
-          >Crear ticket de soporte</CarbonButton>
-          <CarbonButton variante="secondary" ancho icono="ti-search" :to="{ name: 'ticket-buscar' }">Buscar ticket por DNI</CarbonButton>
+          <RouterLink :to="{ name: 'ticket-nuevo' }" class="btn btn--primary btn--ancho entrega-accion-primaria">
+            Crear ticket de soporte
+            <i class="ti ti-ticket" aria-hidden="true"></i>
+          </RouterLink>
+          <RouterLink :to="{ name: 'ticket-buscar' }" class="btn btn--secondary btn--ancho">
+            Buscar ticket por DNI
+            <i class="ti ti-search" aria-hidden="true"></i>
+          </RouterLink>
         </div>
       </template>
 
@@ -125,146 +127,13 @@ async function copiar(texto, id) {
           exclusivamente a través de ticket. No se atenderán consultas por WhatsApp
           ni por ningún otro canal.
         </p>
-        <CarbonButton variante="secondary" ancho icono="ti-ticket" :to="{ name: 'ticket-nuevo' }">Crear ticket de soporte</CarbonButton>
+        <RouterLink :to="{ name: 'ticket-nuevo' }" class="btn btn--secondary btn--ancho">
+          Crear ticket de soporte
+          <i class="ti ti-ticket" aria-hidden="true"></i>
+        </RouterLink>
       </div>
     </div>
   </div>
 </template>
 
-<style scoped>
-.entrega-centro {
-  text-align: center;
-}
 
-.entrega-title {
-  font-size: var(--fs-heading-03);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin: 0 0 8px;
-}
-
-.entrega-texto {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 12px;
-}
-
-.entrega-btn {
-  margin-top: 4px;
-}
-
-.entrega-cargando {
-  text-align: center;
-  padding: 24px 0;
-  color: var(--color-text-secondary);
-  font-size: var(--fs-body-01);
-}
-
-.entrega-aviso {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--color-warning-text-strong);
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-}
-
-.entrega-aviso i { font-size: var(--icon-sm); flex-shrink: 0; }
-
-.cred-lista {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.cred-item {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  padding: 10px 14px;
-}
-
-.cred-plataforma {
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-primary, var(--color-accent));
-  margin-bottom: 6px;
-}
-
-.cred-fila {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
-  min-width: 0;
-}
-
-.cred-label {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  width: 82px;
-  flex-shrink: 0;
-}
-
-.cred-valor {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  overflow-wrap: anywhere;
-  min-width: 0;
-  flex: 1;
-}
-
-.cred-url {
-  color: var(--color-primary, var(--color-accent));
-  text-decoration: none;
-}
-
-.cred-url:hover { text-decoration: underline; }
-
-.entrega-error-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-text-secondary);
-  text-align: center;
-  margin-bottom: 8px;
-}
-
-.entrega-acciones {
-  margin-top: 4px;
-}
-
-.entrega-acciones-texto {
-  margin-bottom: 14px;
-  text-align: center;
-}
-
-.entrega-accion-primaria {
-  margin-bottom: 8px;
-}
-
-.soporte-aviso {
-  margin-top: 16px;
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
-}
-
-.soporte-texto {
-  font-size: var(--fs-label-01);
-  line-height: 1.5;
-  text-align: center;
-  color: var(--color-warning-text-strong);
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-  margin: 0 0 10px;
-}
-
-</style>

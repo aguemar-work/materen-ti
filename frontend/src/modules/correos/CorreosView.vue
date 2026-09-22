@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useCorreosStore } from '../../stores/correos.js';
@@ -9,16 +9,18 @@ import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composabl
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { badgeInfo } from '../../core/badges.js';
+import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
+import { rolDeTag } from '../../core/tagRol.js';
+import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
+import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 import CorreoForm from './CorreoForm.vue';
-import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import CarbonPasswordReveal from '../../components/carbon/CarbonPasswordReveal.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useCorreosStore();
@@ -42,10 +44,13 @@ const correoEditar = ref(null);
 
 watch(filtroTipo, (tipo) => store.aplicarFiltros({ tipo }));
 
-const paginaActual = computed({
-  get: () => store.pagina,
-  set: (p) => store.irAPagina(p),
-});
+const totalPaginas = computed(() => totalPaginasDe(total.value, store.tamPagina));
+const paginas = computed(() => paginasDe(totalPaginas.value));
+const rango = computed(() => rangoDe(store.pagina, store.tamPagina, total.value));
+function irA(pagina) {
+  const destino = clampPagina(pagina, totalPaginas.value);
+  if (destino !== store.pagina) store.irAPagina(destino);
+}
 
 const exportando = ref(false);
 async function exportar() {
@@ -73,11 +78,28 @@ async function exportar() {
 
 // El revelado de una credencial (peticion a la edge function `credenciales`,
 // auditoria en accesos_log con el motivo, cuenta regresiva de 8 segundos y
-// ocultado automatico) vive en CarbonPasswordReveal.vue. Esta vista solo
-// declara QUE se revela. Hasta el 2026-09-02 tenia su propio
-// `passwordVisibles` mas sus propios togglePassword/copiarPassword: una de
-// las cuatro copias del mismo patron en el arbol, y ninguna de las cuatro
-// ocultaba la credencial sola.
+// ocultado automatico) vive en composables/useRevelado.js. Esta vista solo
+// declara QUE se revela — una instancia por fila, creada perezosamente.
+const revelados = new Map();
+function revelarDe(fila) {
+  if (!revelados.has(fila.id)) {
+    revelados.set(fila.id, crearRevelado({
+      revelar: (motivo) => revelarPassword(fila.id, motivo),
+      etiqueta: 'contraseña',
+    }));
+  }
+  return revelados.get(fila.id);
+}
+// Bloqueo uniforme (no por fila): si el permiso general se cae mientras hay
+// credenciales a la vista, se ocultan todas.
+watch(() => authStore.puedeVerCredenciales, (puede) => {
+  if (!puede) revelados.forEach((r) => r.ocultar());
+});
+const detenerOcultamiento = escucharOcultamientoPorCambioDePestana(() => [...revelados.values()]);
+onBeforeUnmount(() => {
+  detenerOcultamiento();
+  revelados.forEach((r) => r.ocultar());
+});
 
 function abrirNuevo() {
   correoEditar.value = null;
@@ -89,7 +111,7 @@ function abrirEditar(correo) {
   mostrarForm.value = true;
 }
 
-// Definición de columnas de CarbonDataTable: paginación y orden son de
+// Definición de columnas: paginación y orden son de
 // servidor (store.ordenarPor). "Cuenta" es la elástica; URL y Notas no
 // tienen sentido en la tarjeta móvil angosta (no se mostraban ahí antes).
 const columnas = [
@@ -100,6 +122,8 @@ const columnas = [
   { clave: 'notas', label: 'Notas', ordenable: true, movil: false },
   { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
 ];
+const columnasVisiblesLista = columnasVisibles(columnas);
+const totalColumnas = columnasVisiblesLista.length;
 
 function onFormCerrado(guardado) {
   const fueEdicion = !!correoEditar.value;
@@ -146,10 +170,15 @@ onMounted(async () => {
   <div class="correos-page vista-modulo">
     <PageHeader titulo="Correos" icono="ti ti-mail-share" :conteo="total">
       <template #acciones>
-        <CarbonButton variante="secondary" icono="ti-table-export" title="Exportar a Excel (CSV)" :deshabilitado="exportando" :cargando="exportando" @click="exportar">
+        <button type="button" class="btn btn--secondary" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
           {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </CarbonButton>
-        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNuevo">Nuevo correo</CarbonButton>
+          <i v-if="exportando" class="ti ti-loader-2" aria-hidden="true"></i>
+          <i v-else class="ti ti-table-export" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="btn btn--primary" @click="abrirNuevo">
+          Nuevo correo
+          <i class="ti ti-plus" aria-hidden="true"></i>
+        </button>
       </template>
     </PageHeader>
 
@@ -179,114 +208,231 @@ onMounted(async () => {
         <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando correos compartidos…</p>
 
-        <CarbonDataTable
-          :columnas="columnas"
-          :filas="lista"
-          :cargando="cargando"
-          :orden-por="ordenColumna"
-          :orden-dir="ordenDireccion"
-          etiqueta="Correos compartidos y reutilizables"
-          vacio-icono="ti ti-mail-share"
-          vacio-titulo="Sin correos compartidos"
-          :vacio-mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.'"
-          @ordenar="store.ordenarPor"
-        >
-          <template #celda-usuario="{ fila }">
-            <!-- Plataforma + Tipo colapsan en la celda "Cuenta" (mismo
-                 criterio que Tickets: identificador+categoría arriba en gris
-                 chico, dato principal abajo). Tipo deja de ser badge — es
-                 metadato de clasificación fijo (compartida/reutilizable/
-                 personal), no un estado — mismo argumento que bajó Categoría
-                 a texto en Tickets. -->
-            <div class="celda-apilada">
-              <span class="celda-apilada__meta">
-                <TextoVacio :valor="fila.plataforma_nombre" />
-                <span class="celda-sep" aria-hidden="true">·</span>
-                <span>{{ badgeInfo('tipo_cuenta', fila.tipo_cuenta).label }}</span>
-              </span>
-              <span class="celda-apilada__principal correo-usuario">{{ fila.usuario }}</span>
-            </div>
-          </template>
-          <template #celda-asignado="{ fila }">
-            <div class="asignado-cell">
-              <template v-if="fila.tipo_cuenta === 'reutilizable'">
-                <RouterLink
-                  v-if="fila.asignados?.length"
-                  class="asignado-nombre empleado-link"
-                  :to="`/empleados/${fila.asignados[0].id}`"
-                  :title="fila.asignados.map((a) => a.nombre).join(', ')"
-                >
-                  {{ fila.asignados[0].nombre }}
-                </RouterLink>
-                <CarbonTag v-else variante="success">
-                  <i class="ti ti-circle-check"></i> Libre
-                </CarbonTag>
-              </template>
+        <div class="tabla-envoltorio">
+          <table class="tabla" aria-label="Correos compartidos y reutilizables">
+            <thead>
+              <tr>
+                <template v-for="col in columnasVisiblesLista" :key="col.clave">
+                  <ThOrdenable
+                    v-if="col.ordenable"
+                    :clave="col.clave"
+                    :columna="ordenColumna"
+                    :direccion="ordenDireccion"
+                    :style="estiloColumna(col)"
+                    @ordenar="store.ordenarPor(col.clave)"
+                  >{{ col.label }}</ThOrdenable>
+                  <th v-else scope="col" :style="estiloColumna(col)">{{ col.label }}</th>
+                </template>
+              </tr>
+            </thead>
+            <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
+              <tr v-else-if="!lista.length">
+                <td :colspan="totalColumnas" class="tabla__vacio">
+                  <EmptyState
+                    icono="ti ti-mail-share"
+                    titulo="Sin correos compartidos"
+                    :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.'"
+                  >
+                    <button v-if="!busqueda" type="button" class="btn btn--secondary" @click="abrirNuevo">
+                      Nuevo correo compartido
+                      <i class="ti ti-plus" aria-hidden="true"></i>
+                    </button>
+                  </EmptyState>
+                </td>
+              </tr>
               <template v-else>
-                <span
-                  v-if="fila.asignados?.length"
-                  class="asignado-nombre"
-                  :title="fila.asignados.map((a) => a.nombre).join(', ')"
-                >
-                  {{ fila.asignados.length }} usuario{{ fila.asignados.length === 1 ? '' : 's' }}
-                </span>
-                <TextoVacio v-else placeholder="Sin usuarios" />
+                <tr v-for="fila in lista" :key="fila.id">
+                  <td>
+                    <!-- Plataforma + Tipo colapsan en la celda "Cuenta" (mismo
+                         criterio que Tickets: identificador+categoría arriba en gris
+                         chico, dato principal abajo). Tipo deja de ser badge — es
+                         metadato de clasificación fijo (compartida/reutilizable/
+                         personal), no un estado — mismo argumento que bajó Categoría
+                         a texto en Tickets. -->
+                    <div class="celda-apilada">
+                      <span class="celda-apilada__meta">
+                        <TextoVacio :valor="fila.plataforma_nombre" />
+                        <span class="celda-sep" aria-hidden="true">·</span>
+                        <span>{{ badgeInfo('tipo_cuenta', fila.tipo_cuenta).label }}</span>
+                      </span>
+                      <span class="celda-apilada__principal correo-usuario">{{ fila.usuario }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="asignado-cell">
+                      <template v-if="fila.tipo_cuenta === 'reutilizable'">
+                        <RouterLink
+                          v-if="fila.asignados?.length"
+                          class="asignado-nombre empleado-link"
+                          :to="`/empleados/${fila.asignados[0].id}`"
+                          :title="fila.asignados.map((a) => a.nombre).join(', ')"
+                        >
+                          {{ fila.asignados[0].nombre }}
+                        </RouterLink>
+                        <span v-else class="tag" :class="`tag--${rolDeTag('success')}`">
+                          <i class="ti ti-circle-check"></i> Libre
+                        </span>
+                      </template>
+                      <template v-else>
+                        <span
+                          v-if="fila.asignados?.length"
+                          class="asignado-nombre"
+                          :title="fila.asignados.map((a) => a.nombre).join(', ')"
+                        >
+                          {{ fila.asignados.length }} usuario{{ fila.asignados.length === 1 ? '' : 's' }}
+                        </span>
+                        <TextoVacio v-else placeholder="Sin usuarios" />
+                      </template>
+                      <span v-if="fila.requiere_rotacion" class="tag" :class="`tag--${rolDeTag('warning')}`" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
+                        <i class="ti ti-alert-triangle"></i> Rotar contraseña
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cred">
+                      <span v-if="revelarDe(fila).valor.value" class="cred__valor">{{ revelarDe(fila).valor.value }}</span>
+                      <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                      <template v-if="authStore.puedeVerCredenciales">
+                        <button
+                          type="button"
+                          class="cred__accion"
+                          :disabled="revelarDe(fila).pidiendo.value"
+                          :aria-label="revelarDe(fila).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                          @click="revelarDe(fila).mostrar()"
+                        >
+                          <i :class="revelarDe(fila).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                        </button>
+                        <button
+                          type="button"
+                          class="cred__accion"
+                          :disabled="revelarDe(fila).pidiendo.value"
+                          aria-label="Copiar contraseña"
+                          @click="revelarDe(fila).copiar()"
+                        >
+                          <i class="ti ti-copy" aria-hidden="true"></i>
+                        </button>
+                        <span v-if="revelarDe(fila).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(fila).restante.value }}s</span>
+                      </template>
+                      <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas" title="Sin permiso para ver contraseñas">
+                        <i class="ti ti-lock" aria-hidden="true"></i>
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    <a
+                      v-if="fila.url"
+                      :href="fila.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="url-link"
+                      :title="fila.url"
+                      aria-label="Abrir URL de la plataforma"
+                    >
+                      <i class="ti ti-external-link"></i>
+                    </a>
+                    <TextoVacio v-else />
+                  </td>
+                  <td>
+                    <span v-if="fila.notas" class="notas-cell" :title="fila.notas">{{ fila.notas }}</span>
+                    <TextoVacio v-else />
+                  </td>
+                  <td>
+                    <div class="actions">
+                      <button class="icon-btn fila-accion" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(fila)">
+                        <i class="ti ti-pencil"></i>
+                      </button>
+                      <button class="icon-btn danger fila-accion" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = fila">
+                        <i class="ti ti-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               </template>
-              <CarbonTag v-if="fila.requiere_rotacion" variante="warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
-                <i class="ti ti-alert-triangle"></i> Rotar contraseña
-              </CarbonTag>
+            </tbody>
+          </table>
+        </div>
+
+        <ul v-if="!cargando && lista.length" class="lista-tarjetas solo-movil" aria-label="Correos compartidos y reutilizables">
+          <li v-for="fila in lista" :key="fila.id" class="tarjeta-fila">
+            <div class="tarjeta-fila__principal">
+              <div class="celda-apilada">
+                <span class="celda-apilada__meta">
+                  <TextoVacio :valor="fila.plataforma_nombre" />
+                  <span class="celda-sep" aria-hidden="true">·</span>
+                  <span>{{ badgeInfo('tipo_cuenta', fila.tipo_cuenta).label }}</span>
+                </span>
+                <span class="celda-apilada__principal correo-usuario">{{ fila.usuario }}</span>
+              </div>
             </div>
-          </template>
-          <template #celda-contrasena="{ fila }">
-            <CarbonPasswordReveal
-              :revelar="(motivo) => revelarPassword(fila.id, motivo)"
-              :bloqueado="!authStore.puedeVerCredenciales"
-              motivo-bloqueo="Sin permiso para ver contraseñas"
-            />
-          </template>
-          <template #celda-url="{ fila }">
-            <a
-              v-if="fila.url"
-              :href="fila.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="url-link"
-              :title="fila.url"
-              aria-label="Abrir URL de la plataforma"
-            >
-              <i class="ti ti-external-link"></i>
-            </a>
-            <TextoVacio v-else />
-          </template>
-          <template #celda-notas="{ fila }">
-            <span v-if="fila.notas" class="notas-cell" :title="fila.notas">{{ fila.notas }}</span>
-            <TextoVacio v-else />
-          </template>
-          <template #celda-acciones="{ fila }">
-            <div class="actions">
-              <button class="icon-btn fila-accion" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(fila)">
-                <i class="ti ti-pencil"></i>
-              </button>
-              <button class="icon-btn danger fila-accion" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = fila">
-                <i class="ti ti-trash"></i>
-              </button>
+            <div class="tarjeta-fila__sec">
+              <div class="asignado-cell">
+                <template v-if="fila.tipo_cuenta === 'reutilizable'">
+                  <RouterLink
+                    v-if="fila.asignados?.length"
+                    class="asignado-nombre empleado-link"
+                    :to="`/empleados/${fila.asignados[0].id}`"
+                  >{{ fila.asignados[0].nombre }}</RouterLink>
+                  <span v-else class="tag" :class="`tag--${rolDeTag('success')}`"><i class="ti ti-circle-check"></i> Libre</span>
+                </template>
+                <template v-else>
+                  <span v-if="fila.asignados?.length" class="asignado-nombre">{{ fila.asignados.length }} usuario{{ fila.asignados.length === 1 ? '' : 's' }}</span>
+                  <TextoVacio v-else placeholder="Sin usuarios" />
+                </template>
+                <span v-if="fila.requiere_rotacion" class="tag" :class="`tag--${rolDeTag('warning')}`"><i class="ti ti-alert-triangle"></i> Rotar contraseña</span>
+              </div>
             </div>
-          </template>
-          <template #vacio-accion>
-            <CarbonButton v-if="!busqueda" variante="secondary" icono="ti-plus" @click="abrirNuevo">Nuevo correo compartido</CarbonButton>
-          </template>
-        </CarbonDataTable>
+            <div class="tarjeta-fila__sec">
+              <div class="cred">
+                <span v-if="revelarDe(fila).valor.value" class="cred__valor">{{ revelarDe(fila).valor.value }}</span>
+                <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                <template v-if="authStore.puedeVerCredenciales">
+                  <button type="button" class="cred__accion" :disabled="revelarDe(fila).pidiendo.value" :aria-label="revelarDe(fila).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="revelarDe(fila).mostrar()">
+                    <i :class="revelarDe(fila).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                  </button>
+                  <button type="button" class="cred__accion" :disabled="revelarDe(fila).pidiendo.value" aria-label="Copiar contraseña" @click="revelarDe(fila).copiar()">
+                    <i class="ti ti-copy" aria-hidden="true"></i>
+                  </button>
+                </template>
+                <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
+              </div>
+            </div>
+            <div class="tarjeta-fila__pie">
+              <div class="actions">
+                <button class="icon-btn fila-accion" type="button" aria-label="Editar" @click="abrirEditar(fila)"><i class="ti ti-pencil"></i></button>
+                <button class="icon-btn danger fila-accion" type="button" aria-label="Eliminar" @click="porEliminar = fila"><i class="ti ti-trash"></i></button>
+              </div>
+            </div>
+          </li>
+        </ul>
         </template>
 
-        <CarbonPagination
-          v-if="!cargando"
-          v-model="paginaActual"
-          :total-items="total"
-          :tam-pagina="store.tamPagina"
-          :tamanos-pagina="TAMANOS_PAGINA"
-          unidad="correos"
-          @update:tam-pagina="store.cambiarTamPagina"
-        />
+        <nav v-if="!cargando && total > 0" class="paginacion" aria-label="Paginación">
+          <div class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span>Filas por página:</span>
+              <select class="paginacion__select" :value="store.tamPagina" @change="store.cambiarTamPagina(Number($event.target.value))">
+                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </label>
+            <span class="paginacion__rango">{{ rango.desde }}–{{ rango.hasta }} de {{ total }} correos</span>
+          </div>
+          <div v-if="totalPaginas > 1" class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span class="sr-only">Ir a la página</span>
+              <select class="paginacion__select" :value="store.pagina" @change="irA(Number($event.target.value))">
+                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span>de {{ totalPaginas }}</span>
+            </label>
+            <button class="paginacion__flecha" type="button" :disabled="store.pagina <= 1" aria-label="Página anterior" @click="irA(store.pagina - 1)">
+              <i class="ti ti-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button class="paginacion__flecha" type="button" :disabled="store.pagina >= totalPaginas" aria-label="Página siguiente" @click="irA(store.pagina + 1)">
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </nav>
       </div>
     </main>
 
@@ -312,61 +458,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.correos-error { color: var(--color-danger); }
 
-.correo-usuario {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-body-01);
-}
-
-/* Celda "Cuenta" de la tabla de escritorio: el dato principal es un correo/
-   usuario de login, se lee mejor en mono (mismo criterio que .correo-usuario
-   de la tarjeta móvil, sin tocar esa clase — sigue usándose ahí). */
-.table-wrap .celda-apilada__principal {
-  font-family: var(--font-mono, monospace);
-}
-
-.asignado-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-}
-
-.asignado-nombre {
-  font-size: var(--fs-body-01);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 160px;
-}
-
-.password-cell {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.password-text {
-  font-family: var(--font-mono, monospace);
-  letter-spacing: 0.05em;
-  min-width: 80px;
-}
-
-.notas-cell {
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.url-link {
-  color: var(--color-primary);
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-
-.url-link:hover { text-decoration: underline; }
-</style>

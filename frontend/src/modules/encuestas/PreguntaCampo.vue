@@ -1,6 +1,6 @@
 <script setup>
 import { TIPOS_PREGUNTA } from '../../core/dominio-encuestas.js';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 defineProps({
   pregunta: { type: Object, required: true },
@@ -9,6 +9,8 @@ defineProps({
 });
 const emit = defineEmits(['update:modelValue']);
 
+const campo = useCampoAccesible();
+
 function actualizar(valor) {
   emit('update:modelValue', valor);
 }
@@ -16,29 +18,35 @@ function actualizar(valor) {
 
 <template>
   <div class="full">
-    <template v-if="pregunta.tipo === 'texto_corto' || pregunta.tipo === 'texto_largo'">
-      <CarbonCampo
-        v-if="pregunta.tipo === 'texto_corto'"
-        :model-value="modelValue || ''"
-        :etiqueta="pregunta.etiqueta"
-        :requerido="pregunta.requerido"
-        :deshabilitado="disabled"
-        :maxlength="TIPOS_PREGUNTA.texto_corto.maxLen"
-        @update:model-value="actualizar"
-      />
-
-      <CarbonCampo
-        v-else
-        :model-value="modelValue || ''"
-        :etiqueta="pregunta.etiqueta"
-        tipo="textarea"
-        :filas="4"
-        :requerido="pregunta.requerido"
-        :deshabilitado="disabled"
-        :maxlength="TIPOS_PREGUNTA.texto_largo.maxLen"
-        @update:model-value="actualizar"
-      />
-    </template>
+    <div v-if="pregunta.tipo === 'texto_corto' || pregunta.tipo === 'texto_largo'" class="campo" :class="{ 'campo--inerte': disabled }">
+      <label class="campo__etiqueta" :for="campo.id">
+        {{ pregunta.etiqueta }}<span v-if="pregunta.requerido" aria-hidden="true"> *</span>
+      </label>
+      <div class="campo__caja">
+        <input
+          v-if="pregunta.tipo === 'texto_corto'"
+          :id="campo.id"
+          class="campo__control"
+          type="text"
+          :value="modelValue || ''"
+          :required="pregunta.requerido"
+          :disabled="disabled"
+          :maxlength="TIPOS_PREGUNTA.texto_corto.maxLen"
+          @input="actualizar($event.target.value)"
+        >
+        <textarea
+          v-else
+          :id="campo.id"
+          class="campo__control campo__control--area"
+          :value="modelValue || ''"
+          :rows="4"
+          :required="pregunta.requerido"
+          :disabled="disabled"
+          :maxlength="TIPOS_PREGUNTA.texto_largo.maxLen"
+          @input="actualizar($event.target.value)"
+        ></textarea>
+      </div>
+    </div>
 
     <!-- opcion_unica / escala_1_5 / si_no: grupo de opciones sin un único
          control al que un <label for> pueda apuntar — fieldset/legend en
@@ -99,85 +107,4 @@ function actualizar(valor) {
   </div>
 </template>
 
-<style scoped>
-/* Reset de fieldset/legend para que se vean como el .form-group/label que
-   reemplazan (mismo tamaño/color/peso que "label" en main.css), no como el
-   recuadro nativo del navegador. */
-.pc-fieldset {
-  border: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
 
-.pc-fieldset legend {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  font-weight: 600;
-  padding: 0;
-}
-
-.pc-opciones, .pc-sino {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.pc-opcion {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 400;
-}
-
-/* Radios uno por línea en mobile: en flex-wrap una opción sola se ve
-   suelta y el toque es menos preciso que con la fila completa. */
-@media (max-width: 768px) {
-  .pc-opciones {
-    flex-direction: column;
-    gap: 10px;
-  }
-}
-
-.pc-escala-fila {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.pc-escala-hint {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.pc-escala {
-  display: flex;
-  gap: 8px;
-}
-
-.pc-escala-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-base);
-  border: 1.5px solid var(--color-border);
-  background: none;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.pc-escala-btn--activo {
-  border-color: var(--color-primary);
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-}
-
-.pc-sino-btn--activo {
-  border-color: var(--color-primary);
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-}
-</style>

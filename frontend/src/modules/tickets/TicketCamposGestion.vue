@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue';
 import {
   OPCIONES_PRIORIDAD as PRIORIDADES,
   OPCIONES_TIPO as TIPOS,
@@ -7,7 +8,7 @@ import {
   ESTADOS_TERMINALES,
 } from '../../core/dominio-tickets.js';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 // Campos de gestión de un ticket (prioridad, nivel de atención, responsable
 // y tipo) en las 3 formas que toman según el estado:
@@ -19,7 +20,7 @@ import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
 // TicketDetallePanel.vue (split-view): hasta ago 2026 cada uno tenía su
 // copia de estos 3 bloques, idénticos salvo el prefijo de los `id` y la
 // etiqueta del responsable — y ya habían empezado a divergir.
-defineProps({
+const props = defineProps({
   ticket: { type: Object, required: true },
   staffActivo: { type: Array, required: true },
   staffPorId: { type: Object, required: true },
@@ -46,120 +47,185 @@ const emit = defineEmits([
   'cambiar-asignado',
   'cambiar-tipo',
 ]);
+
+// Un useCampoAccesible por campo (no se reutiliza entre distintos <select>) —
+// mismo criterio que useId() adentro de CarbonCampo.vue antes de retirarlo.
+const campoPrioridadAbierto = useCampoAccesible();
+const campoNivelAbierto = useCampoAccesible();
+const campoAsignadoAbierto = useCampoAccesible();
+const ayudaTipoAbierto = computed(() => (props.tipoAmbiguoSinClasificar
+  ? 'Esta subcategoría no tiene un tipo por defecto (puede ser incidente o solicitud según el caso) — elígelo manualmente antes de iniciar.'
+  : ''));
+const campoTipoAbierto = useCampoAccesible({ ayuda: () => ayudaTipoAbierto.value });
+const campoPrioridadCurso = useCampoAccesible();
+const campoNivelCurso = useCampoAccesible();
+const campoAsignadoCurso = useCampoAccesible();
+const campoTipoCurso = useCampoAccesible();
 </script>
 
 <template>
   <!-- abierto: se guardan recién al iniciar la atención -->
   <template v-if="ticket.estado === 'abierto'">
-    <CarbonCampo
-      tipo="select"
-      etiqueta="Prioridad"
-      :model-value="atencionPrioridad"
-      :deshabilitado="iniciando"
-      @update:model-value="emit('update:atencionPrioridad', $event)"
-    >
-      <template #opciones>
-        <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
-      </template>
-    </CarbonCampo>
+    <div class="campo" :class="{ 'campo--inerte': iniciando }">
+      <label class="campo__etiqueta" :for="campoPrioridadAbierto.id">Prioridad</label>
+      <div class="campo__caja">
+        <select
+          :id="campoPrioridadAbierto.id"
+          class="campo__control campo__control--select"
+          :value="atencionPrioridad"
+          :disabled="iniciando"
+          :aria-invalid="campoPrioridadAbierto.invalido.value"
+          :aria-describedby="campoPrioridadAbierto.describedBy.value"
+          @change="emit('update:atencionPrioridad', $event.target.value)"
+        >
+          <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
+        </select>
+        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+      </div>
+    </div>
 
-    <CarbonCampo
-      tipo="select"
-      etiqueta="Nivel de atención"
-      :model-value="atencionNivel"
-      :deshabilitado="iniciando"
-      @update:model-value="emit('update:atencionNivel', $event)"
-    >
-      <template #opciones>
-        <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
-      </template>
-    </CarbonCampo>
+    <div class="campo" :class="{ 'campo--inerte': iniciando }">
+      <label class="campo__etiqueta" :for="campoNivelAbierto.id">Nivel de atención</label>
+      <div class="campo__caja">
+        <select
+          :id="campoNivelAbierto.id"
+          class="campo__control campo__control--select"
+          :value="atencionNivel"
+          :disabled="iniciando"
+          :aria-invalid="campoNivelAbierto.invalido.value"
+          :aria-describedby="campoNivelAbierto.describedBy.value"
+          @change="emit('update:atencionNivel', $event.target.value)"
+        >
+          <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
+        </select>
+        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+      </div>
+    </div>
 
-    <CarbonCampo
-      tipo="select"
-      :etiqueta="labelAsignado"
-      :model-value="atencionAsignado"
-      :deshabilitado="iniciando"
-      @update:model-value="emit('update:atencionAsignado', $event)"
-    >
-      <template #opciones>
-        <option value="" disabled>Seleccionar</option>
-        <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">
-          {{ s.user_id === usuarioId ? `${s.nombre} (yo)` : s.nombre }}
-        </option>
-      </template>
-    </CarbonCampo>
+    <div class="campo" :class="{ 'campo--inerte': iniciando }">
+      <label class="campo__etiqueta" :for="campoAsignadoAbierto.id">{{ labelAsignado }}</label>
+      <div class="campo__caja">
+        <select
+          :id="campoAsignadoAbierto.id"
+          class="campo__control campo__control--select"
+          :value="atencionAsignado"
+          :disabled="iniciando"
+          :aria-invalid="campoAsignadoAbierto.invalido.value"
+          :aria-describedby="campoAsignadoAbierto.describedBy.value"
+          @change="emit('update:atencionAsignado', $event.target.value)"
+        >
+          <option value="" disabled>Seleccionar</option>
+          <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">
+            {{ s.user_id === usuarioId ? `${s.nombre} (yo)` : s.nombre }}
+          </option>
+        </select>
+        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+      </div>
+    </div>
 
-    <CarbonCampo
-      tipo="select"
-      etiqueta="Tipo"
-      :model-value="atencionTipo"
-      :ayuda="tipoAmbiguoSinClasificar ? 'Esta subcategoría no tiene un tipo por defecto (puede ser incidente o solicitud según el caso) — elígelo manualmente antes de iniciar.' : ''"
-      :deshabilitado="iniciando"
-      @update:model-value="emit('update:atencionTipo', $event)"
-    >
-      <template #opciones>
-        <option value="" disabled>Seleccionar</option>
-        <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-      </template>
-    </CarbonCampo>
+    <div class="campo" :class="{ 'campo--inerte': iniciando }">
+      <label class="campo__etiqueta" :for="campoTipoAbierto.id">Tipo</label>
+      <div class="campo__caja">
+        <select
+          :id="campoTipoAbierto.id"
+          class="campo__control campo__control--select"
+          :value="atencionTipo"
+          :disabled="iniciando"
+          :aria-invalid="campoTipoAbierto.invalido.value"
+          :aria-describedby="campoTipoAbierto.describedBy.value"
+          @change="emit('update:atencionTipo', $event.target.value)"
+        >
+          <option value="" disabled>Seleccionar</option>
+          <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+        </select>
+        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+      </div>
+      <p
+        v-if="ayudaTipoAbierto"
+        :id="campoTipoAbierto.idAyuda"
+        class="campo__pie"
+      >{{ ayudaTipoAbierto }}</p>
+    </div>
   </template>
 
   <!-- en curso: cada cambio se guarda al vuelo -->
   <template v-if="ESTADOS_EN_CURSO.includes(ticket.estado)">
-    <CarbonCampo
-      tipo="select"
-      etiqueta="Prioridad"
-      :model-value="ticket.prioridad"
-      :deshabilitado="guardandoCampo"
-      @update:model-value="emit('cambiar-prioridad', $event)"
-    >
-      <template #opciones>
-        <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
-      </template>
-    </CarbonCampo>
+    <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
+      <label class="campo__etiqueta" :for="campoPrioridadCurso.id">Prioridad</label>
+      <div class="campo__caja">
+        <select
+          :id="campoPrioridadCurso.id"
+          class="campo__control campo__control--select"
+          :value="ticket.prioridad"
+          :disabled="guardandoCampo"
+          :aria-invalid="campoPrioridadCurso.invalido.value"
+          :aria-describedby="campoPrioridadCurso.describedBy.value"
+          @change="emit('cambiar-prioridad', $event.target.value)"
+        >
+          <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
+        </select>
+        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+      </div>
+    </div>
 
-    <CarbonCampo
-      tipo="select"
-      etiqueta="Nivel de atención"
-      :model-value="ticket.nivel_atencion || ''"
-      :deshabilitado="guardandoCampo"
-      @update:model-value="emit('cambiar-nivel', $event)"
-    >
-      <template #opciones>
-        <option value="" disabled>Sin definir</option>
-        <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
-      </template>
-    </CarbonCampo>
+    <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
+      <label class="campo__etiqueta" :for="campoNivelCurso.id">Nivel de atención</label>
+      <div class="campo__caja">
+        <select
+          :id="campoNivelCurso.id"
+          class="campo__control campo__control--select"
+          :value="ticket.nivel_atencion || ''"
+          :disabled="guardandoCampo"
+          :aria-invalid="campoNivelCurso.invalido.value"
+          :aria-describedby="campoNivelCurso.describedBy.value"
+          @change="emit('cambiar-nivel', $event.target.value)"
+        >
+          <option value="" disabled>Sin definir</option>
+          <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
+        </select>
+        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+      </div>
+    </div>
 
     <!-- Sin v-model: el handler necesita el $event.target real (para
          revertir el <select> a mano si el usuario cancela desasignar, ver
-         useTicketDetalleLogica.js) — @change llega al control real por
-         $attrs igual que en el <select> nativo anterior. -->
-    <CarbonCampo
-      tipo="select"
-      :etiqueta="labelAsignado"
-      :model-value="ticket.asignado_a || ''"
-      :deshabilitado="guardandoCampo"
-      @change="emit('cambiar-asignado', $event.target.value, $event)"
-    >
-      <template #opciones>
-        <option value="">Sin asignar</option>
-        <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-      </template>
-    </CarbonCampo>
+         useTicketDetalleLogica.js). -->
+    <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
+      <label class="campo__etiqueta" :for="campoAsignadoCurso.id">{{ labelAsignado }}</label>
+      <div class="campo__caja">
+        <select
+          :id="campoAsignadoCurso.id"
+          class="campo__control campo__control--select"
+          :value="ticket.asignado_a || ''"
+          :disabled="guardandoCampo"
+          :aria-invalid="campoAsignadoCurso.invalido.value"
+          :aria-describedby="campoAsignadoCurso.describedBy.value"
+          @change="emit('cambiar-asignado', $event.target.value, $event)"
+        >
+          <option value="">Sin asignar</option>
+          <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+        </select>
+        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+      </div>
+    </div>
 
-    <CarbonCampo
-      tipo="select"
-      etiqueta="Tipo"
-      :model-value="ticket.tipo"
-      :deshabilitado="guardandoCampo"
-      @update:model-value="emit('cambiar-tipo', $event)"
-    >
-      <template #opciones>
-        <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-      </template>
-    </CarbonCampo>
+    <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
+      <label class="campo__etiqueta" :for="campoTipoCurso.id">Tipo</label>
+      <div class="campo__caja">
+        <select
+          :id="campoTipoCurso.id"
+          class="campo__control campo__control--select"
+          :value="ticket.tipo"
+          :disabled="guardandoCampo"
+          :aria-invalid="campoTipoCurso.invalido.value"
+          :aria-describedby="campoTipoCurso.describedBy.value"
+          @change="emit('cambiar-tipo', $event.target.value)"
+        >
+          <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+        </select>
+        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+      </div>
+    </div>
   </template>
 
   <!-- terminal: solo lectura -->

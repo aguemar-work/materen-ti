@@ -7,9 +7,8 @@ import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const props = defineProps({
   equipo: { type: Object, default: null },
@@ -34,6 +33,24 @@ const campoInvalido = ref('');
 const refCodigo = useTemplateRef('refCodigo');
 const refCodigoAlmacen = useTemplateRef('refCodigoAlmacen');
 const refSerie = useTemplateRef('refSerie');
+
+const infoError = infoNotificacion('error');
+const campoCodigo = useCampoAccesible({
+  error: () => (campoInvalido.value === 'codigo' ? 'Ya existe un equipo con ese código' : ''),
+});
+const campoCodigoAlmacen = useCampoAccesible({
+  error: () => (campoInvalido.value === 'codigo_almacen' ? 'Ya existe un equipo con ese código de almacén' : ''),
+});
+const campoTipo = useCampoAccesible();
+const campoMarca = useCampoAccesible();
+const campoModelo = useCampoAccesible();
+const campoSerie = useCampoAccesible({
+  error: () => (campoInvalido.value === 'serie' ? 'Ya existe un equipo con ese número de serie' : ''),
+});
+const campoFechaCompra = useCampoAccesible();
+const campoGarantia = useCampoAccesible();
+const campoCosto = useCampoAccesible();
+const campoNotas = useCampoAccesible();
 
 async function enfocarCampoInvalido() {
   await nextTick();
@@ -332,61 +349,133 @@ async function guardar() {
           <i class="ti ti-device-desktop"></i> Datos del equipo
         </div>
 
-        <CarbonCampo
-          ref="refCodigo"
-          v-model="form.codigo"
-          etiqueta="Código de equipo"
-          requerido
-          placeholder="EQ-0001"
-          :deshabilitado="guardando"
-          :error="campoInvalido === 'codigo' ? 'Ya existe un equipo con ese código' : ''"
-          @update:model-value="campoInvalido === 'codigo' && (campoInvalido = '')"
-        />
+        <div class="campo" :class="{ 'campo--invalido': campoCodigo.invalido.value, 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoCodigo.id">Código de equipo<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoCodigo.id"
+              ref="refCodigo"
+              v-model="form.codigo"
+              class="campo__control"
+              type="text"
+              placeholder="EQ-0001"
+              required
+              :disabled="guardando"
+              :aria-invalid="campoCodigo.invalido.value"
+              :aria-describedby="campoCodigo.describedBy.value"
+              @input="campoInvalido === 'codigo' && (campoInvalido = '')"
+            >
+            <i v-if="campoCodigo.invalido.value" class="ti ti-alert-circle-filled campo__adorno campo__adorno--error" aria-hidden="true"></i>
+          </div>
+          <p v-if="campoInvalido === 'codigo'" :id="campoCodigo.idAyuda" class="campo__pie campo__pie--error" role="alert">
+            Ya existe un equipo con ese código
+          </p>
+        </div>
 
-        <CarbonCampo
-          ref="refCodigoAlmacen"
-          v-model="form.codigo_almacen"
-          etiqueta="Código de almacén"
-          placeholder="Según sistema de almacén"
-          :deshabilitado="guardando"
-          :error="campoInvalido === 'codigo_almacen' ? 'Ya existe un equipo con ese código de almacén' : ''"
-          @update:model-value="campoInvalido === 'codigo_almacen' && (campoInvalido = '')"
-        />
+        <div class="campo" :class="{ 'campo--invalido': campoCodigoAlmacen.invalido.value, 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoCodigoAlmacen.id">Código de almacén</label>
+          <div class="campo__caja">
+            <input
+              :id="campoCodigoAlmacen.id"
+              ref="refCodigoAlmacen"
+              v-model="form.codigo_almacen"
+              class="campo__control"
+              type="text"
+              placeholder="Según sistema de almacén"
+              :disabled="guardando"
+              :aria-invalid="campoCodigoAlmacen.invalido.value"
+              :aria-describedby="campoCodigoAlmacen.describedBy.value"
+              @input="campoInvalido === 'codigo_almacen' && (campoInvalido = '')"
+            >
+            <i v-if="campoCodigoAlmacen.invalido.value" class="ti ti-alert-circle-filled campo__adorno campo__adorno--error" aria-hidden="true"></i>
+          </div>
+          <p v-if="campoInvalido === 'codigo_almacen'" :id="campoCodigoAlmacen.idAyuda" class="campo__pie campo__pie--error" role="alert">
+            Ya existe un equipo con ese código de almacén
+          </p>
+        </div>
 
-        <CarbonCampo v-model="form.tipo_id" etiqueta="Tipo de equipo" tipo="select" requerido :deshabilitado="guardando">
-          <template #opciones>
-            <option value="" disabled>Seleccionar tipo</option>
-            <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
-          </template>
-        </CarbonCampo>
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoTipo.id">Tipo de equipo<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <select
+              :id="campoTipo.id"
+              v-model="form.tipo_id"
+              class="campo__control campo__control--select"
+              required
+              :disabled="guardando"
+            >
+              <option value="" disabled>Seleccionar tipo</option>
+              <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+        </div>
 
-        <CarbonCampo v-model="form.marca" etiqueta="Marca" placeholder="HP, Lenovo, Epson..." :deshabilitado="guardando" />
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoMarca.id">Marca</label>
+          <div class="campo__caja">
+            <input :id="campoMarca.id" v-model="form.marca" class="campo__control" type="text" placeholder="HP, Lenovo, Epson..." :disabled="guardando">
+          </div>
+        </div>
 
-        <CarbonCampo v-model="form.modelo" etiqueta="Modelo" :deshabilitado="guardando" />
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoModelo.id">Modelo</label>
+          <div class="campo__caja">
+            <input :id="campoModelo.id" v-model="form.modelo" class="campo__control" type="text" :disabled="guardando">
+          </div>
+        </div>
 
-        <CarbonCampo
-          ref="refSerie"
-          v-model="form.serie"
-          etiqueta="Número de serie"
-          :deshabilitado="guardando"
-          :error="campoInvalido === 'serie' ? 'Ya existe un equipo con ese número de serie' : ''"
-          @update:model-value="campoInvalido === 'serie' && (campoInvalido = '')"
-        />
+        <div class="campo" :class="{ 'campo--invalido': campoSerie.invalido.value, 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoSerie.id">Número de serie</label>
+          <div class="campo__caja">
+            <input
+              :id="campoSerie.id"
+              ref="refSerie"
+              v-model="form.serie"
+              class="campo__control"
+              type="text"
+              :disabled="guardando"
+              :aria-invalid="campoSerie.invalido.value"
+              :aria-describedby="campoSerie.describedBy.value"
+              @input="campoInvalido === 'serie' && (campoInvalido = '')"
+            >
+            <i v-if="campoSerie.invalido.value" class="ti ti-alert-circle-filled campo__adorno campo__adorno--error" aria-hidden="true"></i>
+          </div>
+          <p v-if="campoInvalido === 'serie'" :id="campoSerie.idAyuda" class="campo__pie campo__pie--error" role="alert">
+            Ya existe un equipo con ese número de serie
+          </p>
+        </div>
 
-        <CarbonCampo v-model="form.fecha_compra" etiqueta="Fecha de compra" tipo="date" :deshabilitado="guardando" />
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoFechaCompra.id">Fecha de compra</label>
+          <div class="campo__caja">
+            <input :id="campoFechaCompra.id" v-model="form.fecha_compra" class="campo__control" type="date" :disabled="guardando">
+          </div>
+        </div>
 
-        <CarbonCampo v-model="form.garantia_hasta" etiqueta="Garantía hasta" tipo="date" :deshabilitado="guardando" />
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoGarantia.id">Garantía hasta</label>
+          <div class="campo__caja">
+            <input :id="campoGarantia.id" v-model="form.garantia_hasta" class="campo__control" type="date" :disabled="guardando">
+          </div>
+        </div>
 
         <div class="costo-inputs">
-          <CarbonCampo
-            v-model="form.costo"
-            etiqueta="Precio"
-            tipo="number"
-            step="0.01"
-            min="0"
-            placeholder="0.00"
-            :deshabilitado="guardando"
-          />
+          <div class="campo" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoCosto.id">Precio</label>
+            <div class="campo__caja">
+              <input
+                :id="campoCosto.id"
+                v-model="form.costo"
+                class="campo__control"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                :disabled="guardando"
+              >
+            </div>
+          </div>
           <select v-model="form.moneda" :disabled="guardando" aria-label="Moneda" class="costo-moneda">
             <option value="PEN">S/</option>
             <option value="USD">US$</option>
@@ -397,13 +486,12 @@ async function guardar() {
           <div class="form-group full section-label">
             <i class="ti ti-list-details"></i> Especificaciones ({{ tipoActual?.nombre }})
           </div>
-          <CarbonCampo
-            v-for="campo in camposSpec"
-            :key="campo"
-            v-model="form.specs[campo]"
-            :etiqueta="campo"
-            :deshabilitado="guardando"
-          />
+          <div v-for="campo in camposSpec" :key="campo" class="campo" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="`eq-spec-${campo}`">{{ campo }}</label>
+            <div class="campo__caja">
+              <input :id="`eq-spec-${campo}`" v-model="form.specs[campo]" class="campo__control" type="text" :disabled="guardando">
+            </div>
+          </div>
         </template>
 
         <!-- Kit de accesorios: lista editable con código de almacén -->
@@ -506,12 +594,9 @@ async function guardar() {
                 aria-label="Cantidad"
                 :disabled="guardando"
               >
-              <CarbonButton
-                variante="secondary"
-                tam="sm"
-                :deshabilitado="guardando || !nuevaLinea.descripcion.trim()"
-                @click="agregarLineaManual"
-              >Agregar</CarbonButton>
+              <button type="button" class="btn btn--secondary btn--sm" :disabled="guardando || !nuevaLinea.descripcion.trim()" @click="agregarLineaManual">
+                Agregar
+              </button>
             </div>
             <p class="field-hint">Los ítems nuevos se guardan en el catálogo de almacén para reutilizarlos.</p>
           </div>
@@ -552,16 +637,27 @@ async function guardar() {
           <p class="field-hint">Se comprimen automáticamente (~200 KB c/u) para no llenar el almacenamiento.</p>
         </div>
 
-        <CarbonCampo v-model="form.notas" class="full" etiqueta="Notas" tipo="textarea" :deshabilitado="guardando" />
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNotas.id">Notas</label>
+          <div class="campo__caja">
+            <textarea :id="campoNotas.id" v-model="form.notas" class="campo__control campo__control--area" :rows="3" :disabled="guardando"></textarea>
+          </div>
+        </div>
 
-        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ error }}</p>
+          </div>
+        </div>
     </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" tipo="submit" form="eq-form" :cargando="guardando">
+      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
+      <button type="submit" form="eq-form" class="btn btn--primary" :disabled="guardando">
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </CarbonButton>
+        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 
@@ -578,246 +674,4 @@ async function guardar() {
   />
 </template>
 
-<style scoped>
-/* Ancho: .modal-lg de la escala centralizada (main.css) */
 
-/* .form-group.full (main.css) exige la clase .form-group, que trae consigo
-   estilos de <input>/<select>/<textarea> viejos que pisarían los de
-   CarbonCampo — acá se repite solo el grid-column (mismo criterio que
-   LicenciaForm.vue). */
-.full {
-  grid-column: 1 / -1;
-}
-
-.costo-inputs {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-}
-
-.costo-inputs :deep(.cds-campo) { flex: 1; min-width: 0; }
-
-/* La moneda ya no vive dentro de .form-group (para no filtrarle su estilo
-   viejo de <select> al <input> de CarbonCampo de al lado), así que reproduce
-   a mano la misma caja outlined que usa CarbonCampo (mismo criterio que
-   LicenciaForm.vue). */
-.costo-moneda {
-  width: 76px;
-  height: var(--space-11);
-  padding: 0 var(--space-6);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--fs-body-01);
-  cursor: pointer;
-}
-
-.costo-moneda:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.costo-moneda:disabled {
-  cursor: not-allowed;
-  color: var(--color-text-disabled);
-  background: var(--color-bg-subtle);
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-}
-
-.acc-buscar {
-  position: relative;
-  margin-bottom: 10px;
-}
-
-.acc-buscar > input { width: 100%; }
-
-.acc-sugerencias {
-  position: absolute;
-  z-index: 20;
-  left: 0;
-  right: 0;
-  top: calc(100% + 2px);
-  margin: 0;
-  padding: 4px 0;
-  list-style: none;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  box-shadow: none;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.acc-sugerencias li {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: var(--fs-body-01);
-}
-
-.acc-sugerencias li:hover {
-  background: var(--color-bg-subtle);
-}
-
-.acc-sug-codigo {
-  flex: 0 0 88px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-secondary);
-  font-size: var(--fs-label-01);
-}
-
-.acc-sug-desc { flex: 1; min-width: 0; }
-
-.acc-lista {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.acc-lista-head,
-.acc-fila {
-  display: grid;
-  grid-template-columns: 100px 1fr 64px 36px;
-  gap: 6px;
-  align-items: center;
-  padding: 6px 8px;
-}
-
-.acc-lista-head {
-  background: var(--color-bg-subtle);
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--color-text-secondary);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.acc-fila + .acc-fila {
-  border-top: 1px solid var(--color-border-subtle, var(--color-border));
-}
-
-.acc-fila input {
-  width: 100%;
-  min-width: 0;
-}
-
-.acc-fila input[type="number"] {
-  text-align: center;
-}
-
-.acc-vacio { margin: 0 0 10px; }
-
-.acc-nueva {
-  display: grid;
-  grid-template-columns: 100px 1fr 64px auto;
-  gap: 6px;
-  align-items: center;
-}
-
-.acc-nueva input { width: 100%; min-width: 0; }
-.acc-nueva input[type="number"] { text-align: center; }
-
-.fotos-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.foto-thumb {
-  position: relative;
-  width: 92px;
-  height: 92px;
-  border-radius: var(--radius-base);
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-}
-
-.foto-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.foto-x {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--icon-sm);
-}
-
-.foto-x:hover { background: var(--color-danger-hover); }
-
-.foto-agregar {
-  width: 92px;
-  height: 92px;
-  border: 1.5px dashed var(--color-border);
-  border-radius: var(--radius-base);
-  background: none;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: var(--color-text-secondary);
-  font-size: var(--fs-label-01);
-}
-
-.foto-agregar:hover:not(:disabled) {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.foto-agregar i { font-size: var(--icon-md); }
-
-.field-hint {
-  margin: 6px 0 0;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-@media (max-width: 768px) {
-  .acc-lista-head,
-  .acc-fila,
-  .acc-nueva {
-    grid-template-columns: 1fr 56px 36px;
-  }
-  .acc-lista-head span:first-child,
-  .acc-fila > input:first-child,
-  .acc-nueva > input:first-child {
-    display: none;
-  }
-  .acc-nueva {
-    grid-template-columns: 1fr 56px auto;
-  }
-}
-</style>

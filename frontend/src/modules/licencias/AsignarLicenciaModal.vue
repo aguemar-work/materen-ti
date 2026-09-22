@@ -10,10 +10,9 @@
 // sigue siendo exclusivo del módulo Licencias.
 import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 import Modal from '../../components/shared/Modal.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
 
 const props = defineProps({
   empleadoId: { type: String, required: true },
@@ -27,6 +26,7 @@ const conCupo = ref([]);
 const licenciaSelId = ref('');
 const procesando = ref(false);
 const error = ref('');
+const infoError = infoNotificacion('error');
 
 onMounted(async () => {
   try {
@@ -93,13 +93,19 @@ async function confirmar() {
       </p>
     </div>
 
-    <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+    <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+      <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+      <div class="notif__texto">
+        <p class="notif__detalle">{{ error }}</p>
+      </div>
+    </div>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="procesando" @click="modal?.cerrar()">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" :cargando="procesando" :deshabilitado="!licenciaSelId" @click="confirmar">
+      <button type="button" class="btn btn--secondary" :disabled="procesando" @click="modal?.cerrar()">Cancelar</button>
+      <button type="button" class="btn btn--primary" :disabled="procesando || !licenciaSelId" @click="confirmar">
         {{ procesando ? 'Asignando...' : 'Asignar' }}
-      </CarbonButton>
+        <i v-if="procesando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 </template>

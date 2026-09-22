@@ -11,10 +11,9 @@ import { formatFecha, formatFechaHora, fechaLocalISO } from '../../core/formatte
 import { OPCIONES_SEVERIDAD_PROBLEMA, OPCIONES_ESTADO_ACCION } from '../../core/dominio-problemas.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { rolDeTag } from '../../core/tagRol.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +24,8 @@ const { volver } = useVolverContextual();
 const { problema, ticketsVinculados, accionesCorrectivas, staffActivo, staffPorId, cargando } = storeToRefs(store);
 
 const guardandoCampo = ref(false);
+const campoSeveridadDetalle = useCampoAccesible();
+const campoResponsableDetalle = useCampoAccesible();
 
 async function cargar() {
   try {
@@ -42,6 +43,9 @@ async function cargar() {
 const editando = ref(false);
 const guardandoEdicion = ref(false);
 const formEdicion = ref({ titulo: '', descripcion: '', causa_raiz: '' });
+const campoTituloEdicion = useCampoAccesible();
+const campoDescripcionEdicion = useCampoAccesible();
+const campoCausaRaizEdicion = useCampoAccesible();
 
 function abrirEdicion() {
   formEdicion.value = {
@@ -257,14 +261,22 @@ onUnmounted(() => store.limpiar());
             <BadgeEstado tipo="problema_severidad" :valor="problema.severidad" />
 
             <div v-if="!editando" class="problema-encabezado-acciones">
-              <CarbonButton
+              <button
                 v-if="problema.estado !== 'cerrado'"
-                variante="primary"
-                icono="ti-arrow-right"
-                :cargando="cambiandoEstado"
+                type="button"
+                class="btn btn--primary"
+                :disabled="cambiandoEstado"
                 @click="avanzarEstado"
-              >{{ LABEL_TRANSICION[problema.estado] }}</CarbonButton>
-              <CarbonButton v-else variante="secondary" icono="ti-refresh" :cargando="cambiandoEstado" @click="reabrirProblema">Reabrir</CarbonButton>
+              >
+                {{ LABEL_TRANSICION[problema.estado] }}
+                <i v-if="cambiandoEstado" class="ti ti-loader-2" aria-hidden="true"></i>
+                <i v-else class="ti ti-arrow-right" aria-hidden="true"></i>
+              </button>
+              <button v-else type="button" class="btn btn--secondary" :disabled="cambiandoEstado" @click="reabrirProblema">
+                Reabrir
+                <i v-if="cambiandoEstado" class="ti ti-loader-2" aria-hidden="true"></i>
+                <i v-else class="ti ti-refresh" aria-hidden="true"></i>
+              </button>
             </div>
           </div>
 
@@ -280,20 +292,63 @@ onUnmounted(() => store.limpiar());
             </div>
 
             <div class="problema-acciones">
-              <CarbonButton variante="secondary" icono="ti-pencil" @click="abrirEdicion">Editar</CarbonButton>
-              <CarbonButton v-if="auth.esJefe" variante="danger" icono="ti-trash" @click="confirmarEliminar = true">Eliminar</CarbonButton>
+              <button type="button" class="btn btn--secondary" @click="abrirEdicion">
+                Editar
+                <i class="ti ti-pencil" aria-hidden="true"></i>
+              </button>
+              <button v-if="auth.esJefe" type="button" class="btn btn--danger" @click="confirmarEliminar = true">
+                Eliminar
+                <i class="ti ti-trash" aria-hidden="true"></i>
+              </button>
             </div>
           </template>
 
           <form v-else class="problema-form-edicion" @submit.prevent="guardarEdicion">
-            <CarbonCampo v-model="formEdicion.titulo" etiqueta="Título" requerido :deshabilitado="guardandoEdicion" />
-            <CarbonCampo v-model="formEdicion.descripcion" etiqueta="Descripción" tipo="textarea" :filas="5" requerido :deshabilitado="guardandoEdicion" />
-            <CarbonCampo v-model="formEdicion.causa_raiz" etiqueta="Causa raíz" tipo="textarea" :filas="4" :deshabilitado="guardandoEdicion" placeholder="Se completa durante el diagnóstico" />
+            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+              <label class="campo__etiqueta" :for="campoTituloEdicion.id">Título<span aria-hidden="true"> *</span></label>
+              <div class="campo__caja">
+                <input
+                  :id="campoTituloEdicion.id"
+                  v-model="formEdicion.titulo"
+                  class="campo__control"
+                  type="text"
+                  required
+                  :disabled="guardandoEdicion"
+                >
+              </div>
+            </div>
+            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+              <label class="campo__etiqueta" :for="campoDescripcionEdicion.id">Descripción<span aria-hidden="true"> *</span></label>
+              <div class="campo__caja">
+                <textarea
+                  :id="campoDescripcionEdicion.id"
+                  v-model="formEdicion.descripcion"
+                  class="campo__control campo__control--area"
+                  :rows="5"
+                  required
+                  :disabled="guardandoEdicion"
+                ></textarea>
+              </div>
+            </div>
+            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+              <label class="campo__etiqueta" :for="campoCausaRaizEdicion.id">Causa raíz</label>
+              <div class="campo__caja">
+                <textarea
+                  :id="campoCausaRaizEdicion.id"
+                  v-model="formEdicion.causa_raiz"
+                  class="campo__control campo__control--area"
+                  :rows="4"
+                  placeholder="Se completa durante el diagnóstico"
+                  :disabled="guardandoEdicion"
+                ></textarea>
+              </div>
+            </div>
             <div class="modal-actions">
-              <CarbonButton variante="secondary" :deshabilitado="guardandoEdicion" @click="editando = false">Cancelar</CarbonButton>
-              <CarbonButton variante="primary" tipo="submit" :cargando="guardandoEdicion">
+              <button type="button" class="btn btn--secondary" :disabled="guardandoEdicion" @click="editando = false">Cancelar</button>
+              <button type="submit" class="btn btn--primary" :disabled="guardandoEdicion">
                 {{ guardandoEdicion ? 'Guardando...' : 'Guardar' }}
-              </CarbonButton>
+                <i v-if="guardandoEdicion" class="ti ti-loader-2" aria-hidden="true"></i>
+              </button>
             </div>
           </form>
 
@@ -307,7 +362,7 @@ onUnmounted(() => store.limpiar());
                   <p class="accion-meta">
                     <span v-if="a.responsable_id">{{ staffPorId[a.responsable_id] || 'Staff' }} · </span>
                     Vence {{ formatFecha(a.fecha_limite) }}
-                    <CarbonTag v-if="accionVencida(a)" variante="danger" class="badge-inline">Vencida</CarbonTag>
+                    <span v-if="accionVencida(a)" class="tag badge-inline" :class="`tag--${rolDeTag('danger')}`">Vencida</span>
                   </p>
                 </div>
                 <select :value="a.estado" @change="cambiarEstadoAccion(a.id, $event.target.value)">
@@ -327,7 +382,16 @@ onUnmounted(() => store.limpiar());
                 <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
               </select>
               <input v-model="nuevaAccion.fecha_limite" type="date" aria-label="Fecha límite de la acción correctiva" :disabled="creandoAccion">
-              <CarbonButton variante="secondary" icono="ti-plus" tipo="submit" :cargando="creandoAccion" title="Agregar acción correctiva" aria-label="Agregar acción correctiva" />
+              <button
+                type="submit"
+                class="btn btn--secondary btn--solo-icono"
+                :disabled="creandoAccion"
+                title="Agregar acción correctiva"
+                aria-label="Agregar acción correctiva"
+              >
+                <i v-if="creandoAccion" class="ti ti-loader-2" aria-hidden="true"></i>
+                <i v-else class="ti ti-plus" aria-hidden="true"></i>
+              </button>
             </form>
           </div>
         </div>
@@ -335,30 +399,38 @@ onUnmounted(() => store.limpiar());
         <div class="card col-4 problema-meta">
           <div class="datos-title"><i class="ti ti-info-circle"></i> Detalle</div>
 
-          <CarbonCampo
-            tipo="select"
-            etiqueta="Severidad"
-            :model-value="problema.severidad"
-            :deshabilitado="guardandoCampo"
-            @update:model-value="cambiarSeveridad"
-          >
-            <template #opciones>
-              <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
-            </template>
-          </CarbonCampo>
+          <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
+            <label class="campo__etiqueta" :for="campoSeveridadDetalle.id">Severidad</label>
+            <div class="campo__caja">
+              <select
+                :id="campoSeveridadDetalle.id"
+                class="campo__control campo__control--select"
+                :value="problema.severidad"
+                :disabled="guardandoCampo"
+                @change="cambiarSeveridad($event.target.value)"
+              >
+                <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
+              </select>
+              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+            </div>
+          </div>
 
-          <CarbonCampo
-            tipo="select"
-            etiqueta="Responsable"
-            :model-value="problema.responsable_id || ''"
-            :deshabilitado="guardandoCampo"
-            @update:model-value="cambiarResponsable"
-          >
-            <template #opciones>
-              <option value="">Sin asignar</option>
-              <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-            </template>
-          </CarbonCampo>
+          <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
+            <label class="campo__etiqueta" :for="campoResponsableDetalle.id">Responsable</label>
+            <div class="campo__caja">
+              <select
+                :id="campoResponsableDetalle.id"
+                class="campo__control campo__control--select"
+                :value="problema.responsable_id || ''"
+                :disabled="guardandoCampo"
+                @change="cambiarResponsable($event.target.value)"
+              >
+                <option value="">Sin asignar</option>
+                <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+              </select>
+              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+            </div>
+          </div>
           <p class="tk-detalle">Creado {{ formatFechaHora(problema.created_at) }}</p>
 
           <div class="tk-seccion">
@@ -375,7 +447,16 @@ onUnmounted(() => store.limpiar());
 
             <form class="vincular-ticket-form" @submit.prevent="vincularTicketPorCodigo">
               <input v-model="codigoNuevoTicket" aria-label="Código de ticket a vincular" placeholder="ej: TCK-0001" :disabled="vinculandoTicket">
-              <CarbonButton variante="secondary" icono="ti-link" :cargando="vinculandoTicket" :deshabilitado="!codigoNuevoTicket.trim()" @click="vincularTicketPorCodigo">Vincular</CarbonButton>
+              <button
+                type="button"
+                class="btn btn--secondary"
+                :disabled="vinculandoTicket || !codigoNuevoTicket.trim()"
+                @click="vincularTicketPorCodigo"
+              >
+                Vincular
+                <i v-if="vinculandoTicket" class="ti ti-loader-2" aria-hidden="true"></i>
+                <i v-else class="ti ti-link" aria-hidden="true"></i>
+              </button>
             </form>
           </div>
         </div>
@@ -397,119 +478,4 @@ onUnmounted(() => store.limpiar());
   </div>
 </template>
 
-<style scoped>
-.header-emp h1 {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  margin: 0;
-}
 
-.header-sub {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.btn-volver { flex-shrink: 0; }
-
-.problema-contenido, .problema-meta { padding: 16px 20px 20px; }
-
-.problema-encabezado {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
-.problema-encabezado-acciones { margin-left: auto; }
-
-.problema-bloque { margin-bottom: 20px; }
-
-.problema-texto {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  white-space: pre-wrap;
-  margin: 6px 0 0;
-}
-
-.problema-acciones {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  border-top: 1px solid var(--color-border);
-  padding-top: 16px;
-}
-
-.problema-form-edicion {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.tk-kb-relacionado {
-  font-size: var(--fs-label-01);
-  color: var(--color-accent-text);
-  text-decoration: none;
-}
-.tk-kb-relacionado:hover { text-decoration: underline; }
-
-/* ── Acciones correctivas ────────────────────────────────────────────── */
-.acciones-lista { display: flex; flex-direction: column; gap: 8px; }
-
-.accion-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-base);
-  background: var(--color-bg-subtle);
-}
-
-.accion-info { flex: 1; min-width: 0; }
-
-.accion-descripcion {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  margin: 0;
-}
-
-.accion-meta {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  margin: 2px 0 0;
-}
-
-.accion-form-nueva {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-@media (max-width: 768px) {
-  .accion-form-nueva {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ── Tickets vinculados ────────────────────────────────────────────────── */
-.tickets-vinculados-lista { display: flex; flex-direction: column; gap: 6px; }
-
-.ticket-vinculado-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.vincular-ticket-form {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.vincular-ticket-form input { flex: 1; }
-
-/* Estructura y color: sistema de badges global (.badge + .badge--X);
-   aquí solo el ajuste de este contexto: separación del texto vecino. */
-</style>

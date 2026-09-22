@@ -8,10 +8,9 @@ import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { rolDeTag } from '../../core/tagRol.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -67,6 +66,11 @@ async function cargar() {
 const editando = ref(false);
 const guardandoEdicion = ref(false);
 const formEdicion = ref({ titulo: '', categoria_id: '', sintoma: '', solucion: '' });
+
+const campoTituloEdicion = useCampoAccesible();
+const campoCategoriaEdicion = useCampoAccesible();
+const campoSintomaEdicion = useCampoAccesible();
+const campoSolucionEdicion = useCampoAccesible();
 
 function abrirEdicion() {
   formEdicion.value = {
@@ -192,82 +196,115 @@ onMounted(async () => {
               <div class="datos-title">Solución</div>
               <p v-if="articulo.solucion" class="kb-texto kb-solucion">{{ articulo.solucion }}</p>
               <p v-else class="kb-solucion-pendiente">
-                <CarbonTag variante="warning">Pendiente</CarbonTag> Todavía sin completar.
+                <span class="tag" :class="`tag--${rolDeTag('warning')}`">Pendiente</span> Todavía sin completar.
               </p>
             </div>
 
             <div class="kb-acciones">
-              <CarbonButton v-if="puedeEditar" variante="secondary" icono="ti-pencil" @click="abrirEdicion">
+              <button v-if="puedeEditar" type="button" class="btn btn--secondary" @click="abrirEdicion">
                 Editar
-              </CarbonButton>
-              <CarbonButton
+                <i class="ti ti-pencil" aria-hidden="true"></i>
+              </button>
+              <button
                 v-if="puedeEditar && articulo.estado === 'borrador'"
-                variante="secondary"
-                icono="ti-send"
-                :deshabilitado="cambiandoEstado"
+                type="button"
+                class="btn btn--secondary"
+                :disabled="cambiandoEstado"
                 @click="cambiarEstado('en_revision')"
               >
                 Enviar a revisión
-              </CarbonButton>
-              <CarbonButton
+                <i class="ti ti-send" aria-hidden="true"></i>
+              </button>
+              <button
                 v-if="auth.esJefe && ['borrador', 'en_revision'].includes(articulo.estado)"
-                variante="primary"
-                icono="ti-circle-check"
-                :deshabilitado="cambiandoEstado"
+                type="button"
+                class="btn btn--primary"
+                :disabled="cambiandoEstado"
                 @click="cambiarEstado('publicado')"
               >
                 Publicar
-              </CarbonButton>
-              <CarbonButton
+                <i class="ti ti-circle-check" aria-hidden="true"></i>
+              </button>
+              <button
                 v-if="auth.esJefe && articulo.estado === 'publicado'"
-                variante="secondary"
-                icono="ti-archive"
-                :deshabilitado="cambiandoEstado"
+                type="button"
+                class="btn btn--secondary"
+                :disabled="cambiandoEstado"
                 @click="cambiarEstado('obsoleto')"
               >
                 Marcar obsoleto
-              </CarbonButton>
-              <CarbonButton v-if="puedeEditar" variante="danger" icono="ti-trash" @click="confirmarEliminar = true">
+                <i class="ti ti-archive" aria-hidden="true"></i>
+              </button>
+              <button v-if="puedeEditar" type="button" class="btn btn--danger" @click="confirmarEliminar = true">
                 Eliminar
-              </CarbonButton>
+                <i class="ti ti-trash" aria-hidden="true"></i>
+              </button>
             </div>
 
             <div v-if="puedeVotar" class="kb-feedback-bloque">
               <span class="kb-feedback-label">¿Te sirvió este artículo?</span>
-              <CarbonButton variante="ghost" icono="ti-thumb-up" :deshabilitado="votando" @click="votar(true)">
+              <button type="button" class="btn btn--ghost" :disabled="votando" @click="votar(true)">
                 Sí ({{ articulo.util_si }})
-              </CarbonButton>
-              <CarbonButton variante="ghost" icono="ti-thumb-down" :deshabilitado="votando" @click="votar(false)">
+                <i class="ti ti-thumb-up" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="btn btn--ghost" :disabled="votando" @click="votar(false)">
                 No ({{ articulo.util_no }})
-              </CarbonButton>
+                <i class="ti ti-thumb-down" aria-hidden="true"></i>
+              </button>
             </div>
           </template>
 
           <form v-else class="kb-form-edicion" @submit.prevent="guardarEdicion">
-            <CarbonCampo v-model="formEdicion.titulo" etiqueta="Título" requerido :deshabilitado="guardandoEdicion" />
+            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+              <label class="campo__etiqueta" :for="campoTituloEdicion.id">Título<span aria-hidden="true"> *</span></label>
+              <div class="campo__caja">
+                <input :id="campoTituloEdicion.id" v-model="formEdicion.titulo" class="campo__control" type="text" required :disabled="guardandoEdicion">
+              </div>
+            </div>
 
-            <CarbonCampo v-model="formEdicion.categoria_id" etiqueta="Categoría" tipo="select" :deshabilitado="guardandoEdicion">
-              <template #opciones>
-                <option value="">Sin categoría</option>
-                <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-              </template>
-            </CarbonCampo>
+            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+              <label class="campo__etiqueta" :for="campoCategoriaEdicion.id">Categoría</label>
+              <div class="campo__caja">
+                <select
+                  :id="campoCategoriaEdicion.id"
+                  class="campo__control campo__control--select"
+                  :value="formEdicion.categoria_id"
+                  :disabled="guardandoEdicion"
+                  @change="formEdicion.categoria_id = $event.target.value"
+                >
+                  <option value="">Sin categoría</option>
+                  <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+                </select>
+                <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+              </div>
+            </div>
 
-            <CarbonCampo v-model="formEdicion.sintoma" etiqueta="Síntoma" :deshabilitado="guardandoEdicion" />
+            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+              <label class="campo__etiqueta" :for="campoSintomaEdicion.id">Síntoma</label>
+              <div class="campo__caja">
+                <input :id="campoSintomaEdicion.id" v-model="formEdicion.sintoma" class="campo__control" type="text" :disabled="guardandoEdicion">
+              </div>
+            </div>
 
-            <CarbonCampo
-              v-model="formEdicion.solucion"
-              etiqueta="Solución"
-              tipo="textarea"
-              :filas="8"
-              placeholder="Pasos para resolverlos..."
-              :deshabilitado="guardandoEdicion"
-            />
+            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+              <label class="campo__etiqueta" :for="campoSolucionEdicion.id">Solución</label>
+              <div class="campo__caja">
+                <textarea
+                  :id="campoSolucionEdicion.id"
+                  v-model="formEdicion.solucion"
+                  class="campo__control campo__control--area"
+                  :rows="8"
+                  placeholder="Pasos para resolverlos..."
+                  :disabled="guardandoEdicion"
+                ></textarea>
+              </div>
+            </div>
             <div class="modal-actions">
-              <CarbonButton variante="secondary" :deshabilitado="guardandoEdicion" @click="editando = false">Cancelar</CarbonButton>
-              <CarbonButton variante="primary" tipo="submit" :cargando="guardandoEdicion">
+              <button type="button" class="btn btn--secondary" :disabled="guardandoEdicion" @click="editando = false">Cancelar</button>
+              <button type="submit" class="btn btn--primary" :disabled="guardandoEdicion">
                 {{ guardandoEdicion ? 'Guardando...' : 'Guardar' }}
-              </CarbonButton>
+                <i v-if="guardandoEdicion" class="ti ti-loader-2" aria-hidden="true"></i>
+              </button>
             </div>
           </form>
         </div>
@@ -315,95 +352,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.header-emp h1 {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  margin: 0;
-}
 
-.header-sub {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.btn-volver { flex-shrink: 0; }
-
-.kb-contenido, .kb-meta { padding: 16px 20px 20px; }
-
-.kb-encabezado {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
-.kb-fecha {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-tertiary);
-}
-
-.kb-bloque { margin-bottom: 20px; }
-
-.kb-texto {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  white-space: pre-wrap;
-  margin: 6px 0 0;
-}
-
-.kb-solucion {
-  background: var(--color-bg-subtle);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-}
-
-/* A diferencia de un "sin datos" neutro (.tk-nota), este vacío requiere
-   acción: es el borrador que el sistema crea solo al cerrar un ticket. */
-.kb-solucion-pendiente {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-label-01);
-  color: var(--color-warning-text);
-  margin: 6px 0 0;
-}
-
-.kb-acciones {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  border-top: 1px solid var(--color-border);
-  padding-top: 16px;
-}
-
-.kb-feedback-bloque {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.kb-feedback-label {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.kb-form-edicion {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-/* Mismo patrón que TicketDetalleView (columna de datos): título de sección
-   con ícono, bloques separados por borde superior sutil, texto secundario
-   para el detalle y terciario/itálica para las notas vacías. */
-.tk-kb-relacionado {
-  display: block;
-  font-size: var(--fs-label-01);
-  color: var(--color-accent-text);
-  text-decoration: none;
-}
-.tk-kb-relacionado:hover { text-decoration: underline; }
-</style>

@@ -2,7 +2,6 @@
 import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import TicketDetallePanel from './TicketDetallePanel.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
 
 // Arnés de preview — solo-dev (ver ticket-panel-preview.routes.js). Único
 // propósito: montar TicketDetallePanel.vue standalone, sin la lista al
@@ -48,7 +47,7 @@ function cargarId() {
           placeholder="ID del ticket (UUID) — ej. 3f2a1c9e-..."
           @keyup.enter="cargarId"
         >
-        <CarbonButton variante="primary" @click="cargarId">Cargar</CarbonButton>
+        <button type="button" class="btn btn--primary" @click="cargarId">Cargar</button>
       </div>
     </div>
 
@@ -64,67 +63,4 @@ function cargarId() {
   </div>
 </template>
 
-<style scoped>
-.preview-ticket-panel-page {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
 
-.ptp-toolbar {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-subtle);
-  flex-shrink: 0;
-}
-
-.ptp-toolbar h1 {
-  font-size: var(--fs-heading-02);
-  margin-bottom: 6px;
-}
-
-.ptp-nota {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  max-width: 720px;
-  margin-bottom: 14px;
-}
-
-.ptp-form {
-  display: flex;
-  gap: 8px;
-  max-width: 480px;
-}
-
-.ptp-form input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-label-01);
-}
-
-/* Escenario angosto a propósito — simula el ancho que tendría el panel
-   derecho del split-view real (~420px), no todo el viewport. */
-.ptp-stage {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  justify-content: center;
-  padding: 24px;
-  overflow-y: auto;
-  background: var(--color-bg);
-}
-
-.ptp-stage > * {
-  width: 420px;
-  max-width: 100%;
-}
-
-.ptp-vacio {
-  color: var(--color-text-tertiary);
-  font-style: italic;
-  margin-top: 40px;
-}
-</style>

@@ -3,8 +3,9 @@ import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { MODULOS_CONFIGURABLES } from '../../constants/modulos.js';
 import Modal from '../../components/shared/Modal.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+
+const infoError = infoNotificacion('error');
 
 const props = defineProps({
   miembro: { type: Object, required: true }, // { user_id, nombre }
@@ -70,55 +71,22 @@ async function guardar() {
           Los módulos sin marcar desaparecen del menú de {{ miembro.nombre }} y no son accesibles por URL directa.
         </p>
       </template>
-      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modal?.cerrar()">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" tipo="submit" form="staff-modulos-form" :cargando="guardando" :deshabilitado="cargando">
+      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="modal?.cerrar()">Cancelar</button>
+      <button type="submit" form="staff-modulos-form" class="btn btn--primary" :disabled="guardando || cargando">
         {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </CarbonButton>
+        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 </template>
 
-<style scoped>
-.loading-inline {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  padding: 8px 0;
-}
 
-.modulos-lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.modulo-item label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  font-weight: 400;
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-/* Mismo tratamiento que .form-group input[type="checkbox"]:focus-visible
-   (main.css) — este checklist vive fuera de .form-group, así que necesita
-   la regla propia para no caer al outline nativo del navegador. */
-.modulo-item input[type="checkbox"]:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.field-hint {
-  margin: 10px 0 0;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-</style>

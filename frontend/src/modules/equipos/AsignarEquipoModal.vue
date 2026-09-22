@@ -12,9 +12,8 @@ import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import Modal from '../../components/shared/Modal.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const props = defineProps({
   empleadoId: { type: String, required: true },
@@ -29,6 +28,8 @@ const equipoSelId = ref('');
 const condicionEntrega = ref('');
 const procesando = ref(false);
 const error = ref('');
+const infoError = infoNotificacion('error');
+const campoCondicion = useCampoAccesible();
 
 function enAlmacen(eq) {
   return eq.situacion === 'disponible' || eq.situacion === 'en_ubicacion';
@@ -98,15 +99,33 @@ async function confirmar() {
       </p>
     </div>
 
-    <CarbonCampo v-model="condicionEntrega" etiqueta="Condición de entrega" placeholder="ej: nuevo, con cargador y mochila" :deshabilitado="procesando" />
+    <div class="campo" :class="{ 'campo--inerte': procesando }">
+      <label class="campo__etiqueta" :for="campoCondicion.id">Condición de entrega</label>
+      <div class="campo__caja">
+        <input
+          :id="campoCondicion.id"
+          v-model="condicionEntrega"
+          class="campo__control"
+          type="text"
+          placeholder="ej: nuevo, con cargador y mochila"
+          :disabled="procesando"
+        >
+      </div>
+    </div>
 
-    <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+    <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+      <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+      <div class="notif__texto">
+        <p class="notif__detalle">{{ error }}</p>
+      </div>
+    </div>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="procesando" @click="modal?.cerrar()">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" :cargando="procesando" :deshabilitado="!equipoSelId" @click="confirmar">
+      <button type="button" class="btn btn--secondary" :disabled="procesando" @click="modal?.cerrar()">Cancelar</button>
+      <button type="button" class="btn btn--primary" :disabled="procesando || !equipoSelId" @click="confirmar">
         {{ procesando ? 'Entregando...' : 'Entregar' }}
-      </CarbonButton>
+        <i v-if="procesando" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 </template>

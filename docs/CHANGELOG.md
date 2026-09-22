@@ -27,6 +27,21 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-05** (**Retiro de IBM Carbon v11 — reinicio del sistema de
+  estilos a cero**) — `styles/carbon-theme.css` y `styles/main.css`
+  vaciados a propósito, bloques `<style>` eliminados de todos los
+  componentes `.vue`, `frontend/src/components/carbon/` (9 componentes)
+  borrada junto con `tests/componentes/carbon.render.test.js`, y retiradas
+  `docs/GUIA-UX-UI.md`, `docs/GOBERNANZA-DISENO.md` y
+  `docs/PLAN-MAESTRO-MATEREN.md`. `index.html` deja de cargar IBM Plex y
+  Tabler Icons. La lógica real de 4 de esos componentes se rescató en
+  `composables/useRevelado.js`, `core/paginacionRender.js`,
+  `core/tablaColumnas.js` y `composables/useCampoAccesible.js`; lo que sigue
+  vigente (marca, principios del JEFE, accesibilidad) quedó en
+  `docs/NOTAS-DISENO-ANTERIOR.md`. CI deja de correr 4 de los 5 guardrails
+  de diseño (solo sigue `patrones-ui.mjs`, ver `.github/workflows/ci.yml`).
+  Entrada agregada el 2026-09-22 al commitear: el cambio se había hecho sin
+  registrarlo acá.
 - **2026-09-05** (**Fix HTTP 414 en el filtro "disponible" de Equipos**) —
   `equiposApi.queryEquipos()` resolvía la situación "disponible" trayendo a
   JS el `equipo_id` de TODA asignación activa del inventario y armando un

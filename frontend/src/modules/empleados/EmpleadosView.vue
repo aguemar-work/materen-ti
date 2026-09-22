@@ -15,19 +15,20 @@ import { nombreCompleto } from '../../core/dominio-empleados.js';
 import { tonoAvatar, inicialesDe } from '../../core/avatar.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
-import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
+import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
+import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -37,11 +38,11 @@ const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
 const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-// Definición de columnas de CarbonDataTable, densidad `lg` (vista insignia,
-// ver template): mobile nunca pasa por acá (`:con-tarjetas="false"`) porque
-// ya tiene su propia grilla real de tarjetas (vista "Tarjetas" de arriba,
-// que también sirve de fallback móvil) — la tarjeta que arma CarbonDataTable
-// por columna hubiera sido una segunda tarjeta redundante.
+// Definición de columnas de la tabla nativa, densidad `lg` (vista insignia,
+// ver template): mobile nunca pasa por esta tabla porque ya tiene su propia
+// grilla real de tarjetas (vista "Tarjetas" de arriba, que también sirve de
+// fallback móvil) — una tarjeta por columna hubiera sido una segunda
+// tarjeta redundante.
 const columnasEmpleados = [
   { clave: 'apellidos', label: 'Nombre', ordenable: true, elastica: true },
   { clave: 'cargo', label: 'Cargo', ordenable: true },
@@ -50,13 +51,8 @@ const columnasEmpleados = [
   { clave: 'estado', label: 'Estado', ordenable: true },
   { clave: 'acciones', label: 'Acciones', ancho: '176px' },
 ];
-
-// Fila entera clicable (va a la ficha) — mismo patrón que KbView.vue: la
-// clase se pinta en el scope de CarbonDataTable, así que el estilo abajo
-// necesita :deep().
-function claseFilaEmpleado() {
-  return 'fila-empleado';
-}
+const columnasVisiblesLista = computed(() => columnasVisibles(columnasEmpleados));
+const totalColumnas = computed(() => columnasVisiblesLista.value.length);
 
 // ── Selector Tabla/Tarjetas (FASE 4) ────────────────────────────────────
 // "Lista con avatar" queda pendiente como 3ª opción (falta el mockup de
@@ -114,6 +110,15 @@ const paginaActual = computed({
   get: () => store.pagina,
   set: (p) => store.irAPagina(p),
 });
+
+const totalPaginas = computed(() => totalPaginasDe(total.value, store.tamPagina));
+const paginas = computed(() => paginasDe(totalPaginas.value));
+const desde = computed(() => rangoDe(paginaActual.value, store.tamPagina, total.value).desde);
+const hasta = computed(() => rangoDe(paginaActual.value, store.tamPagina, total.value).hasta);
+function irA(pagina) {
+  const destino = clampPagina(pagina, totalPaginas.value);
+  if (destino !== store.pagina) store.irAPagina(destino);
+}
 
 // Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
 const exportando = ref(false);
@@ -258,10 +263,21 @@ onMounted(async () => {
     <PageHeader titulo="Empleados" icono="ti ti-users" :conteo="total">
       <template #acciones>
         <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio" />
-        <CarbonButton variante="secondary" icono="ti-table-export" :cargando="exportando" title="Exportar a Excel (CSV)" @click="exportar">
-          {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </CarbonButton>
-        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNuevo">Nuevo empleado</CarbonButton>
+        <button
+          type="button"
+          class="btn btn--secondary"
+          title="Exportar a Excel (CSV)"
+          :disabled="exportando"
+          @click="exportar"
+        >
+          <span class="btn__label">{{ exportando ? 'Exportando...' : 'Exportar' }}</span>
+          <i v-if="exportando" class="ti ti-loader-2 btn__icono--girando" aria-hidden="true"></i>
+          <i v-else class="ti ti-table-export" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="btn btn--primary" @click="abrirNuevo">
+          Nuevo empleado
+          <i class="ti ti-plus" aria-hidden="true"></i>
+        </button>
       </template>
     </PageHeader>
 
@@ -303,114 +319,134 @@ onMounted(async () => {
           titulo="Sin empleados"
           :mensaje="busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agregue el primer empleado al inventario.'"
         >
-          <CarbonButton v-if="!busqueda && !filtroEstado" variante="secondary" icono="ti-plus" @click="abrirNuevo">Agregar empleado</CarbonButton>
+          <button v-if="!busqueda && !filtroEstado" type="button" class="btn btn--secondary" @click="abrirNuevo">
+            Agregar empleado
+            <i class="ti ti-plus" aria-hidden="true"></i>
+          </button>
         </EmptyState>
 
         <template v-if="!error && (cargando || total > 0)">
         <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
-        <CarbonDataTable
-          v-if="vista === 'tabla' && !esMovil"
-          :columnas="columnasEmpleados"
-          :filas="lista"
-          :cargando="cargando"
-          densidad="lg"
-          :orden-por="ordenColumna"
-          :orden-dir="ordenDireccion"
-          :con-tarjetas="false"
-          :clase-fila="claseFilaEmpleado"
-          etiqueta="Inventario de empleados"
-          @ordenar="store.ordenarPor"
-          @clic-fila="verFicha"
-        >
-          <template #celda-apellidos="{ fila }">
-            <!-- DNI + Nombre colapsan (mismo criterio que Tickets):
-                 identificador arriba en gris chico, dato principal abajo. -->
-            <div class="celda-apilada">
-              <span class="celda-apilada__meta">{{ fila.dni }}</span>
-              <span class="celda-apilada__principal">{{ nombreCompleto(fila) }}</span>
-            </div>
-          </template>
-          <template #celda-cargo="{ valor }">
-            <TextoVacio :valor="valor" />
-          </template>
-          <template #celda-empresa_nombre="{ valor }">
-            <TextoVacio :valor="valor" />
-          </template>
-          <template #celda-vinculos="{ fila }">
-            <div v-if="fila.n_cuentas != null" class="vinculos">
-              <span
-                class="vinculo"
-                :class="{ 'vinculo--cero': !fila.n_cuentas, 'vinculo--pendiente': altaPendiente(fila) }"
-                :title="tituloCuentas(fila)"
-                :aria-label="tituloCuentas(fila)"
-              >
-                <i class="ti ti-key" aria-hidden="true"></i>{{ fila.n_cuentas }}
-              </span>
-              <span
-                class="vinculo"
-                :class="{ 'vinculo--cero': !fila.n_equipos }"
-                :title="`${fila.n_equipos} equipo(s) asignado(s)`"
-                :aria-label="`${fila.n_equipos} equipo(s) asignado(s)`"
-              >
-                <i class="ti ti-devices" aria-hidden="true"></i>{{ fila.n_equipos }}
-              </span>
-              <span
-                class="vinculo"
-                :class="{ 'vinculo--cero': !fila.n_licencias }"
-                :title="`${fila.n_licencias} licencia(s) directa(s)`"
-                :aria-label="`${fila.n_licencias} licencia(s) directa(s)`"
-              >
-                <i class="ti ti-license" aria-hidden="true"></i>{{ fila.n_licencias }}
-              </span>
-            </div>
-            <TextoVacio v-else />
-          </template>
-          <template #celda-estado="{ fila }">
-            <BadgeEstado tipo="empleado" :valor="fila.estado" status />
-          </template>
-          <template #celda-acciones="{ fila }">
-            <div class="actions" @click.stop>
-              <button
-                class="icon-btn fila-accion"
-                type="button"
-                title="Ver ficha"
-                aria-label="Ver ficha"
-                @click="verFicha(fila)"
-              >
-                <i class="ti ti-eye"></i>
-              </button>
-              <button
-                class="icon-btn fila-accion"
-                type="button"
-                title="Editar"
-                aria-label="Editar"
-                @click="abrirEditar(fila)"
-              >
-                <i class="ti ti-pencil"></i>
-              </button>
-              <button
-                class="icon-btn fila-accion"
-                type="button"
-                :title="auth.puedeVerCredenciales ? 'Enviar credenciales por WhatsApp' : 'Sin permiso para ver contraseñas'"
-                aria-label="Enviar credenciales por WhatsApp"
-                :disabled="enviandoCredsId === fila.id || !auth.puedeVerCredenciales"
-                @click="enviarCredenciales(fila)"
-              >
-                <i :class="enviandoCredsId === fila.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'"></i>
-              </button>
-              <button
-                v-if="fila.estado !== 'Inactivo'"
-                class="icon-btn danger fila-accion"
-                type="button"
-                title="Dar de baja"
-                aria-label="Dar de baja"
-                @click="darDeBaja(fila)"
-              >
-                <i class="ti ti-user-off"></i>
-              </button>
-            </div>
-          </template>
-        </CarbonDataTable>
+        <div v-if="vista === 'tabla' && !esMovil" class="tabla-envoltorio">
+          <table class="tabla tabla--lg" aria-label="Inventario de empleados">
+            <thead>
+              <tr>
+                <template v-for="col in columnasVisiblesLista" :key="col.clave">
+                  <ThOrdenable
+                    v-if="col.ordenable"
+                    :clave="col.clave"
+                    :columna="ordenColumna"
+                    :direccion="ordenDireccion"
+                    :class="{ 'col-num': col.num }"
+                    :style="estiloColumna(col)"
+                    @ordenar="store.ordenarPor(col.clave)"
+                  >{{ col.label }}</ThOrdenable>
+                  <th v-else scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
+                </template>
+              </tr>
+            </thead>
+            <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
+              <tr v-else-if="!lista.length">
+                <td :colspan="totalColumnas" class="tabla__vacio">
+                  <EmptyState icono="ti ti-inbox" titulo="Sin resultados" />
+                </td>
+              </tr>
+              <template v-else>
+                <tr v-for="fila in lista" :key="fila.id" class="fila-empleado" @click="verFicha(fila)">
+                  <td>
+                    <!-- DNI + Nombre colapsan (mismo criterio que Tickets):
+                         identificador arriba en gris chico, dato principal abajo. -->
+                    <div class="celda-apilada">
+                      <span class="celda-apilada__meta">{{ fila.dni }}</span>
+                      <span class="celda-apilada__principal">{{ nombreCompleto(fila) }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <TextoVacio :valor="fila.cargo" />
+                  </td>
+                  <td>
+                    <TextoVacio :valor="fila.empresa_nombre" />
+                  </td>
+                  <td>
+                    <div v-if="fila.n_cuentas != null" class="vinculos">
+                      <span
+                        class="vinculo"
+                        :class="{ 'vinculo--cero': !fila.n_cuentas, 'vinculo--pendiente': altaPendiente(fila) }"
+                        :title="tituloCuentas(fila)"
+                        :aria-label="tituloCuentas(fila)"
+                      >
+                        <i class="ti ti-key" aria-hidden="true"></i>{{ fila.n_cuentas }}
+                      </span>
+                      <span
+                        class="vinculo"
+                        :class="{ 'vinculo--cero': !fila.n_equipos }"
+                        :title="`${fila.n_equipos} equipo(s) asignado(s)`"
+                        :aria-label="`${fila.n_equipos} equipo(s) asignado(s)`"
+                      >
+                        <i class="ti ti-devices" aria-hidden="true"></i>{{ fila.n_equipos }}
+                      </span>
+                      <span
+                        class="vinculo"
+                        :class="{ 'vinculo--cero': !fila.n_licencias }"
+                        :title="`${fila.n_licencias} licencia(s) directa(s)`"
+                        :aria-label="`${fila.n_licencias} licencia(s) directa(s)`"
+                      >
+                        <i class="ti ti-license" aria-hidden="true"></i>{{ fila.n_licencias }}
+                      </span>
+                    </div>
+                    <TextoVacio v-else />
+                  </td>
+                  <td>
+                    <BadgeEstado tipo="empleado" :valor="fila.estado" status />
+                  </td>
+                  <td>
+                    <div class="actions" @click.stop>
+                      <button
+                        class="icon-btn fila-accion"
+                        type="button"
+                        title="Ver ficha"
+                        aria-label="Ver ficha"
+                        @click="verFicha(fila)"
+                      >
+                        <i class="ti ti-eye"></i>
+                      </button>
+                      <button
+                        class="icon-btn fila-accion"
+                        type="button"
+                        title="Editar"
+                        aria-label="Editar"
+                        @click="abrirEditar(fila)"
+                      >
+                        <i class="ti ti-pencil"></i>
+                      </button>
+                      <button
+                        class="icon-btn fila-accion"
+                        type="button"
+                        :title="auth.puedeVerCredenciales ? 'Enviar credenciales por WhatsApp' : 'Sin permiso para ver contraseñas'"
+                        aria-label="Enviar credenciales por WhatsApp"
+                        :disabled="enviandoCredsId === fila.id || !auth.puedeVerCredenciales"
+                        @click="enviarCredenciales(fila)"
+                      >
+                        <i :class="enviandoCredsId === fila.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'"></i>
+                      </button>
+                      <button
+                        v-if="fila.estado !== 'Inactivo'"
+                        class="icon-btn danger fila-accion"
+                        type="button"
+                        title="Dar de baja"
+                        aria-label="Dar de baja"
+                        @click="darDeBaja(fila)"
+                      >
+                        <i class="ti ti-user-off"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
 
         <!-- Tarjetas no tiene un equivalente propio de SkeletonTabla (esa
              es la del modo Tabla) — mismo texto genérico que ya usa mobile
@@ -468,15 +504,37 @@ onMounted(async () => {
           </li>
         </ul>
 
-        <CarbonPagination
-          v-if="!cargando"
-          v-model="paginaActual"
-          :total-items="total"
-          :tam-pagina="store.tamPagina"
-          :tamanos-pagina="TAMANOS_PAGINA"
-          unidad="empleados"
-          @update:tam-pagina="store.cambiarTamPagina"
-        />
+        <nav v-if="!cargando && total > 0" class="paginacion" aria-label="Paginación">
+          <div class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span>Filas por página:</span>
+              <select
+                class="paginacion__select"
+                :value="store.tamPagina"
+                @change="store.cambiarTamPagina(Number($event.target.value))"
+              >
+                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </label>
+            <span class="paginacion__rango">{{ desde }}–{{ hasta }} de {{ total }} empleados</span>
+          </div>
+
+          <div v-if="totalPaginas > 1" class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span class="sr-only">Ir a la página</span>
+              <select class="paginacion__select" :value="paginaActual" @change="irA(Number($event.target.value))">
+                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span>de {{ totalPaginas }}</span>
+            </label>
+            <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
+              <i class="ti ti-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </nav>
         </template>
       </div>
     </main>
@@ -495,117 +553,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.empleados-error { color: var(--color-danger); }
 
-/* :deep() porque CarbonDataTable renderiza el <tr> en su propio ámbito de
-   scope (vía claseFila) — un selector scoped normal acá nunca lo alcanza.
-   Mismo patrón que KbView.vue. */
-:deep(.fila-empleado) { cursor: pointer; }
-:deep(.fila-empleado:hover td) { background: var(--color-bg-hover, var(--color-bg-subtle)); }
-
-/* Conteos de cuentas/equipos: dato secundario, no badge (no es estado) */
-.vinculos {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.vinculo {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--color-text-secondary);
-}
-
-.vinculo i { font-size: var(--icon-sm); }
-
-.vinculo--cero { color: var(--color-text-tertiary); }
-
-/* Cero cuentas EN ALGUIEN QUE ACABA DE ENTRAR: no es información neutra, es
-   trabajo pendiente. Gana el tono de atención sobre el apagado de --cero por
-   orden de aparición (misma especificidad), que es lo que se busca. */
-.vinculo--pendiente { color: var(--color-warning-text); }
-
-/* Grilla real de tarjetas (ver nota larga en el template). Responsive sin
-   media query: cada columna pide un mínimo de 260px, así que en una
-   pantalla angosta `auto-fill` ya cae solo a 1 columna. */
-.emp-tarjetas {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
-  align-content: start;
-  padding: 1rem 1.25rem;
-}
-
-.emp-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-}
-
-.emp-card__cab {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.emp-card__id {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1;
-}
-
-/* Sin esto, un nombre largo compite por espacio con el disparador de
-   MenuAcciones (ninguno de los dos tiene flex-shrink:0 por defecto) y el
-   ícono ⋮ puede terminar deformado — el nombre ya tiene su propio
-   ellipsis para ceder espacio primero. */
-.emp-card__cab :deep(.icon-btn) {
-  flex-shrink: 0;
-}
-
-.emp-card__nombre {
-  font-weight: 600;
-  color: var(--color-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.emp-card__dni {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-tertiary);
-  font-family: var(--font-mono, monospace);
-}
-
-.emp-card__sec {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* margin-top:auto empuja el pie al fondo de la tarjeta: las tarjetas de una
-   misma fila del grid ya estiran parejo (comportamiento default de Grid,
-   align-items:stretch), así que una tarjeta con menos texto en el medio
-   (sin cargo/empresa) igual alinea su pie con las de al lado. */
-.emp-card__pie {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: auto;
-}
-
-/* Los 3 conteos pueden envolver en una tarjeta angosta sin romper layout
-   (a diferencia de la fila de tabla, con todo el ancho disponible). */
-.vinculos--tarjeta {
-  flex-wrap: wrap;
-  row-gap: 4px;
-}
-</style>

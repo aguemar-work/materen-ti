@@ -6,9 +6,8 @@
 // el enlace de seguimiento ya lo tiene desde que creó el ticket).
 import { ref, computed, onMounted } from 'vue';
 import { responderEncuesta, encuestaYaRespondida } from '../../api/ticketsPublicos.js';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   token: { type: String, required: true },
@@ -28,6 +27,8 @@ const nivel = ref(0);
 const comentario = ref('');
 
 const oculto = computed(() => props.embebido && estado.value === 'error');
+const campoComentario = useCampoAccesible();
+const infoError = infoNotificacion('error');
 
 // Antes de mostrar el formulario, hay que saber si ya se respondió: si no,
 // tras refrescar la página parece que se puede volver a enviar (aunque el
@@ -107,26 +108,38 @@ async function enviar() {
         </button>
       </div>
 
-      <CarbonCampo
-        v-model="comentario"
-        etiqueta="Comentarios (opcional)"
-        tipo="textarea"
-        :filas="3"
-        placeholder="Observaciones adicionales..."
-        :deshabilitado="estado === 'enviando'"
-      />
+      <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+        <label class="campo__etiqueta" :for="campoComentario.id">Comentarios (opcional)</label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoComentario.id"
+            v-model="comentario"
+            class="campo__control campo__control--area"
+            rows="3"
+            placeholder="Observaciones adicionales..."
+            :disabled="estado === 'enviando'"
+            :aria-invalid="campoComentario.invalido.value"
+            :aria-describedby="campoComentario.describedBy.value"
+          ></textarea>
+        </div>
+      </div>
 
-      <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+      <div v-if="error" class="notif notif--inline" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
 
-      <CarbonButton
-        class="ticket-submit"
-        variante="primary"
-        ancho
-        :cargando="estado === 'enviando'"
+      <button
+        type="button"
+        class="btn btn--primary btn--ancho ticket-submit"
+        :disabled="estado === 'enviando'"
         @click="enviar"
       >
         {{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}
-      </CarbonButton>
+        <i v-if="estado === 'enviando'" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
 
     <template v-else-if="estado === 'gracias'">
@@ -143,79 +156,4 @@ async function enviar() {
   </div>
 </template>
 
-<style scoped>
-.ticket-title {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 4px;
-}
 
-.ticket-texto {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 16px;
-}
-
-.niveles {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.nivel-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 48px;
-  /* Excepción declarada a la escala tipográfica: glifo de la escala de
-     satisfacción 1-5 en un target táctil de 48px. No es ni texto de UI ni un
-     ícono del sistema — es el contenido del control. Única en el sistema
-     junto a .ds-swatch span de DesignSystemView.vue. */
-  font-size: 24px;
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-base);
-  background: var(--color-bg-elevated);
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-
-.nivel-btn:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent-text);
-}
-
-.nivel-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.nivel-btn--activo {
-  border-color: var(--color-accent);
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-}
-
-.ticket-submit {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
-  margin-top: 12px;
-}
-
-.ticket-ok-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-success-text);
-  margin-bottom: 8px;
-}
-
-.ticket-error-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-</style>

@@ -1,6 +1,6 @@
 <script setup>
 import { formatFechaHora } from '../../core/formatters.js';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { rolDeTag } from '../../core/tagRol.js';
 
 // Feed cronológico único de un ticket — reemplaza a TicketHistorial.vue +
 // TicketComentarios.vue (revisión "Filas con foco", 2026-09-04). Antes eran
@@ -59,9 +59,9 @@ defineProps({
             <div class="timeline-title">
               {{ autorDe(f.autor_id) }}
               <span v-if="fechaInline" class="tk-comentario-fecha">{{ formatFechaHora(f.fecha) }}</span>
-              <CarbonTag class="badge-inline" :variante="f.interno ? 'neutral' : 'success'">
+              <span class="tag badge-inline" :class="`tag--${rolDeTag(f.interno ? 'neutral' : 'success')}`">
                 {{ f.interno ? 'Nota interna' : 'Visible para el empleado' }}
-              </CarbonTag>
+              </span>
             </div>
             <div v-if="!fechaInline" class="timeline-meta">{{ formatFechaHora(f.fecha) }}</div>
             <p class="tk-mensaje">{{ f.mensaje }}</p>
@@ -73,51 +73,4 @@ defineProps({
   </div>
 </template>
 
-<style scoped>
-.tk-descripcion {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-subtle);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-  margin-bottom: 16px;
-  white-space: pre-wrap;
-}
 
-.tk-timeline {
-  margin-bottom: 16px;
-}
-
-.tk-timeline--acotado {
-  max-height: 280px;
-  overflow-y: auto;
-}
-
-/* Mismo par de colores que sus badges (--success = visible, --neutral =
-   interna): un vistazo a la burbuja ya dice qué vio el empleado, sin
-   depender de leer el badge de texto. */
-.tk-comentario-bubble {
-  border-radius: var(--radius-base);
-  padding: 8px 10px;
-}
-
-.tk-comentario-bubble--interno { background: var(--color-neutral-bg); }
-.tk-comentario-bubble--visible { background: var(--color-success-bg); }
-
-/* Fecha inline dentro de .timeline-title — sin esto hereda
-   font-weight:600/color primario de .timeline-title (main.css), que la
-   haría ver como si fuera parte del nombre. Mismo tono/tamaño que
-   .timeline-meta cuando va abajo aparte. */
-.tk-comentario-fecha {
-  font-weight: 400;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.tk-mensaje {
-  margin: 4px 0 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  white-space: pre-wrap;
-}
-</style>

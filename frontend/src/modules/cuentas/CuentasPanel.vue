@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useCuentasStore } from '../../stores/cuentas.js';
 import { useAuthStore } from '../../stores/auth.js';
@@ -10,15 +10,15 @@ import { showToast } from '../../core/toast.js';
 import { formatFecha } from '../../core/formatters.js';
 import { badgeInfo } from '../../core/badges.js';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
 import CuentaForm from './CuentaForm.vue';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import CarbonPasswordReveal from '../../components/carbon/CarbonPasswordReveal.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
+import { rolDeTag } from '../../core/tagRol.js';
+import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
 
 const props = defineProps({
   empleadoId: { type: String, required: true },
@@ -50,6 +50,32 @@ const columnasCuentas = [
   { clave: 'url', label: 'URL', movil: 'sec' },
   { clave: 'acciones', label: 'Acciones', ancho: '160px', movil: 'pie' },
 ];
+const columnasCuentasVisibles = columnasVisibles(columnasCuentas);
+const totalColumnasCuentas = columnasCuentasVisibles.length;
+
+// El revelado (temporizador de 8s, distingue "ver" de "copiar" para el log
+// de seguridad) vive en composables/useRevelado.js — una instancia por fila,
+// creada perezosamente.
+const revelados = new Map();
+function revelarDe(cuenta) {
+  if (!revelados.has(cuenta.asignacion_id)) {
+    revelados.set(cuenta.asignacion_id, crearRevelado({
+      revelar: (motivo) => revelarPassword(cuenta.cuenta_id, motivo),
+      etiqueta: 'contraseña',
+    }));
+  }
+  return revelados.get(cuenta.asignacion_id);
+}
+const detenerOcultamiento = escucharOcultamientoPorCambioDePestana(() => [...revelados.values()]);
+onBeforeUnmount(() => {
+  detenerOcultamiento();
+  revelados.forEach((r) => r.ocultar());
+});
+
+// Si el permiso se cae mientras una credencial está a la vista, se oculta.
+watch(() => auth.puedeVerCredenciales, (puede) => {
+  if (!puede) revelados.forEach((r) => r.ocultar());
+});
 
 function puedeRevelar(cuenta) {
   return auth.puedeVerCredenciales && (auth.esJefe || cuenta.tipo_cuenta !== 'personal');
@@ -277,99 +303,194 @@ onMounted(async () => {
              propio .btn-primary ("Reactivar") — dos acentos compitiendo en
              la misma vista. Mismo peso visual que "Asignar" en los paneles
              de Equipos/Licencias, que ya eran .btn secundario. -->
-        <CarbonButton variante="secondary" icono="ti-plus" @click="abrirNueva">Agregar cuenta</CarbonButton>
+        <button type="button" class="btn btn--secondary" @click="abrirNueva">
+          Agregar cuenta
+          <i class="ti ti-plus" aria-hidden="true"></i>
+        </button>
       </div>
     </div>
 
     <div v-if="error" class="no-results cuentas-error">{{ error }}</div>
 
-    <CarbonDataTable
-      v-else
-      :columnas="columnasCuentas"
-      :filas="lista"
-      :cargando="cargando"
-      clave="asignacion_id"
-      etiqueta="Cuentas del empleado"
-      vacio-icono="ti ti-key"
-      vacio-titulo="Sin cuentas registradas"
-      vacio-mensaje="Agrega la primera cuenta para este empleado."
-    >
-      <template #celda-plataforma="{ fila: cuenta }">
-        <!-- Usuario + Plataforma colapsan (mismo criterio que Tickets):
-             Usuario es el identificador chico arriba, Plataforma es el dato
-             que más se escanea acá (viendo las cuentas de UN empleado, "en
-             qué plataforma" importa más que repetir el usuario en cada
-             fila). tipo_cuenta baja de badge a texto — metadato de
-             clasificación fijo, no estado; "Rotar contraseña" se queda como
-             badge, es una alerta operativa real, igual que en
-             Tickets/Correos. -->
-        <div class="celda-apilada">
-          <span class="celda-apilada__meta">
-            {{ cuenta.usuario }}
-            <template v-if="cuenta.tipo_cuenta === 'compartida' || cuenta.tipo_cuenta === 'reutilizable'">
-              <span class="celda-sep" aria-hidden="true">·</span>
-              {{ badgeInfo('tipo_cuenta', cuenta.tipo_cuenta).label }}
+    <template v-else>
+      <div class="tabla-envoltorio">
+        <table class="tabla" aria-label="Cuentas del empleado">
+          <thead>
+            <tr>
+              <th v-for="col in columnasCuentasVisibles" :key="col.clave" scope="col" :style="estiloColumna(col)">{{ col.label }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <SkeletonTabla v-if="cargando" :columnas="totalColumnasCuentas" />
+            <tr v-else-if="!lista.length">
+              <td :colspan="totalColumnasCuentas" class="tabla__vacio">
+                <EmptyState icono="ti ti-key" titulo="Sin cuentas registradas" mensaje="Agrega la primera cuenta para este empleado.">
+                  <button type="button" class="btn btn--secondary" @click="abrirNueva">
+                    Agregar cuenta
+                    <i class="ti ti-plus" aria-hidden="true"></i>
+                  </button>
+                </EmptyState>
+              </td>
+            </tr>
+            <template v-else>
+              <tr v-for="cuenta in lista" :key="cuenta.asignacion_id">
+                <td>
+                  <!-- Usuario + Plataforma colapsan (mismo criterio que Tickets):
+                       Usuario es el identificador chico arriba, Plataforma es el dato
+                       que más se escanea acá (viendo las cuentas de UN empleado, "en
+                       qué plataforma" importa más que repetir el usuario en cada
+                       fila). tipo_cuenta baja de badge a texto — metadato de
+                       clasificación fijo, no estado; "Rotar contraseña" se queda como
+                       badge, es una alerta operativa real, igual que en
+                       Tickets/Correos. -->
+                  <div class="celda-apilada">
+                    <span class="celda-apilada__meta">
+                      {{ cuenta.usuario }}
+                      <template v-if="cuenta.tipo_cuenta === 'compartida' || cuenta.tipo_cuenta === 'reutilizable'">
+                        <span class="celda-sep" aria-hidden="true">·</span>
+                        {{ badgeInfo('tipo_cuenta', cuenta.tipo_cuenta).label }}
+                      </template>
+                    </span>
+                    <span class="celda-apilada__principal">
+                      {{ cuenta.plataforma_nombre }}
+                      <span
+                        v-if="cuenta.requiere_rotacion"
+                        class="tag badge-inline"
+                        :class="`tag--${rolDeTag('warning')}`"
+                        title="Un titular anterior dejó esta cuenta y la contraseña no se ha cambiado"
+                      >
+                        <i class="ti ti-alert-triangle"></i> Rotar contraseña
+                      </span>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div class="cred">
+                    <span v-if="revelarDe(cuenta).valor.value" class="cred__valor">{{ revelarDe(cuenta).valor.value }}</span>
+                    <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                    <template v-if="puedeRevelar(cuenta)">
+                      <button
+                        type="button"
+                        class="cred__accion"
+                        :disabled="revelarDe(cuenta).pidiendo.value"
+                        :aria-label="revelarDe(cuenta).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                        @click="revelarDe(cuenta).mostrar()"
+                      >
+                        <i :class="revelarDe(cuenta).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="cred__accion"
+                        :disabled="revelarDe(cuenta).pidiendo.value"
+                        aria-label="Copiar contraseña"
+                        @click="revelarDe(cuenta).copiar()"
+                      >
+                        <i class="ti ti-copy" aria-hidden="true"></i>
+                      </button>
+                      <span v-if="revelarDe(cuenta).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(cuenta).restante.value }}s</span>
+                    </template>
+                    <span v-else class="cred__candado" role="img" :aria-label="motivoBloqueo()" :title="motivoBloqueo()">
+                      <i class="ti ti-lock" aria-hidden="true"></i>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <a v-if="cuenta.url" :href="cuenta.url" target="_blank" rel="noopener noreferrer" class="url-link" :title="cuenta.url" aria-label="Abrir URL de la plataforma">
+                    <i class="ti ti-external-link"></i>
+                  </a>
+                  <TextoVacio v-else />
+                </td>
+                <td>
+                  <div class="actions">
+                    <button class="icon-btn fila-accion" type="button" title="Historial" aria-label="Historial" @click="verHistorial(cuenta)">
+                      <i class="ti ti-history"></i>
+                    </button>
+                    <button class="icon-btn fila-accion" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(cuenta)">
+                      <i class="ti ti-pencil"></i>
+                    </button>
+                    <button
+                      v-if="cuenta.tipo_cuenta !== 'compartida'"
+                      class="icon-btn fila-accion"
+                      type="button"
+                      title="Traspasar a otro empleado"
+                      aria-label="Traspasar a otro empleado"
+                      @click="abrirTraspaso(cuenta)"
+                    >
+                      <i class="ti ti-transfer"></i>
+                    </button>
+                    <button
+                      class="icon-btn danger fila-accion"
+                      type="button"
+                      :title="cuenta.tipo_cuenta === 'personal' ? 'Eliminar' : (cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar')"
+                      :aria-label="cuenta.tipo_cuenta === 'personal' ? 'Eliminar' : (cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar')"
+                      @click="porRevocar = cuenta"
+                    >
+                      <i class="ti ti-user-minus"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
             </template>
-          </span>
-          <span class="celda-apilada__principal">
-            {{ cuenta.plataforma_nombre }}
-            <CarbonTag
-              v-if="cuenta.requiere_rotacion"
-              variante="warning"
-              class="badge-inline"
-              title="Un titular anterior dejó esta cuenta y la contraseña no se ha cambiado"
-            >
-              <i class="ti ti-alert-triangle"></i> Rotar contraseña
-            </CarbonTag>
-          </span>
-        </div>
-      </template>
-      <template #celda-password="{ fila: cuenta }">
-        <CarbonPasswordReveal
-          :revelar="(motivo) => revelarPassword(cuenta.cuenta_id, motivo)"
-          :bloqueado="!puedeRevelar(cuenta)"
-          :motivo-bloqueo="motivoBloqueo()"
-        />
-      </template>
-      <template #celda-url="{ fila: cuenta }">
-        <a v-if="cuenta.url" :href="cuenta.url" target="_blank" rel="noopener noreferrer" class="url-link" :title="cuenta.url" aria-label="Abrir URL de la plataforma">
-          <i class="ti ti-external-link"></i>
-        </a>
-        <TextoVacio v-else />
-      </template>
-      <template #celda-acciones="{ fila: cuenta }">
-        <div class="actions">
-          <button class="icon-btn fila-accion" type="button" title="Historial" aria-label="Historial" @click="verHistorial(cuenta)">
-            <i class="ti ti-history"></i>
-          </button>
-          <button class="icon-btn fila-accion" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(cuenta)">
-            <i class="ti ti-pencil"></i>
-          </button>
-          <button
-            v-if="cuenta.tipo_cuenta !== 'compartida'"
-            class="icon-btn fila-accion"
-            type="button"
-            title="Traspasar a otro empleado"
-            aria-label="Traspasar a otro empleado"
-            @click="abrirTraspaso(cuenta)"
-          >
-            <i class="ti ti-transfer"></i>
-          </button>
-          <button
-            class="icon-btn danger fila-accion"
-            type="button"
-            :title="cuenta.tipo_cuenta === 'personal' ? 'Eliminar' : (cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar')"
-            :aria-label="cuenta.tipo_cuenta === 'personal' ? 'Eliminar' : (cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar')"
-            @click="porRevocar = cuenta"
-          >
-            <i class="ti ti-user-minus"></i>
-          </button>
-        </div>
-      </template>
-      <template #vacio-accion>
-        <CarbonButton variante="secondary" icono="ti-plus" @click="abrirNueva">Agregar cuenta</CarbonButton>
-      </template>
-    </CarbonDataTable>
+          </tbody>
+        </table>
+      </div>
+
+      <ul v-if="!cargando && lista.length" class="lista-tarjetas solo-movil" aria-label="Cuentas del empleado">
+        <li v-for="cuenta in lista" :key="cuenta.asignacion_id" class="tarjeta-fila">
+          <div class="tarjeta-fila__principal">
+            <div class="celda-apilada">
+              <span class="celda-apilada__meta">
+                {{ cuenta.usuario }}
+                <template v-if="cuenta.tipo_cuenta === 'compartida' || cuenta.tipo_cuenta === 'reutilizable'">
+                  <span class="celda-sep" aria-hidden="true">·</span>
+                  {{ badgeInfo('tipo_cuenta', cuenta.tipo_cuenta).label }}
+                </template>
+              </span>
+              <span class="celda-apilada__principal">
+                {{ cuenta.plataforma_nombre }}
+                <span v-if="cuenta.requiere_rotacion" class="tag badge-inline" :class="`tag--${rolDeTag('warning')}`">
+                  <i class="ti ti-alert-triangle"></i> Rotar contraseña
+                </span>
+              </span>
+            </div>
+          </div>
+          <div class="tarjeta-fila__sec">
+            <div class="cred">
+              <span v-if="revelarDe(cuenta).valor.value" class="cred__valor">{{ revelarDe(cuenta).valor.value }}</span>
+              <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+              <template v-if="puedeRevelar(cuenta)">
+                <button type="button" class="cred__accion" :disabled="revelarDe(cuenta).pidiendo.value" :aria-label="revelarDe(cuenta).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="revelarDe(cuenta).mostrar()">
+                  <i :class="revelarDe(cuenta).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="cred__accion" :disabled="revelarDe(cuenta).pidiendo.value" aria-label="Copiar contraseña" @click="revelarDe(cuenta).copiar()">
+                  <i class="ti ti-copy" aria-hidden="true"></i>
+                </button>
+              </template>
+              <span v-else class="cred__candado" role="img" :aria-label="motivoBloqueo()"><i class="ti ti-lock" aria-hidden="true"></i></span>
+            </div>
+          </div>
+          <div class="tarjeta-fila__sec">
+            <a v-if="cuenta.url" :href="cuenta.url" target="_blank" rel="noopener noreferrer" class="url-link" :title="cuenta.url" aria-label="Abrir URL de la plataforma">
+              <i class="ti ti-external-link"></i>
+            </a>
+            <TextoVacio v-else />
+          </div>
+          <div class="tarjeta-fila__pie">
+            <div class="actions">
+              <button class="icon-btn fila-accion" type="button" aria-label="Historial" @click="verHistorial(cuenta)"><i class="ti ti-history"></i></button>
+              <button class="icon-btn fila-accion" type="button" aria-label="Editar" @click="abrirEditar(cuenta)"><i class="ti ti-pencil"></i></button>
+              <button v-if="cuenta.tipo_cuenta !== 'compartida'" class="icon-btn fila-accion" type="button" aria-label="Traspasar a otro empleado" @click="abrirTraspaso(cuenta)"><i class="ti ti-transfer"></i></button>
+              <button
+                class="icon-btn danger fila-accion"
+                type="button"
+                :aria-label="cuenta.tipo_cuenta === 'personal' ? 'Eliminar' : (cuenta.tipo_cuenta === 'compartida' ? 'Revocar acceso' : 'Revocar')"
+                @click="porRevocar = cuenta"
+              ><i class="ti ti-user-minus"></i></button>
+            </div>
+          </div>
+        </li>
+      </ul>
+    </template>
   </div>
 
   <CuentaForm
@@ -413,15 +534,28 @@ onMounted(async () => {
             </template>
           </BuscadorCombo>
         </div>
-        <CarbonCampo v-model="notasTraspaso" etiqueta="Notas" placeholder="ej: rotación de contraseña previa" :deshabilitado="guardandoTraspaso" />
+        <div class="campo">
+          <label class="campo__etiqueta" for="traspaso-notas">Notas</label>
+          <div class="campo__caja">
+            <input
+              id="traspaso-notas"
+              v-model="notasTraspaso"
+              class="campo__control"
+              type="text"
+              placeholder="ej: rotación de contraseña previa"
+              :disabled="guardandoTraspaso"
+            >
+          </div>
+        </div>
       </template>
     </div>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardandoTraspaso" @click="cerrarTraspaso">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" :cargando="guardandoTraspaso" :deshabilitado="!nuevoEmpleadoId" @click="confirmarTraspaso">
+      <button type="button" class="btn btn--secondary" :disabled="guardandoTraspaso" @click="cerrarTraspaso">Cancelar</button>
+      <button type="button" class="btn btn--primary" :disabled="guardandoTraspaso || !nuevoEmpleadoId" @click="confirmarTraspaso">
         {{ guardandoTraspaso ? 'Traspasando...' : 'Traspasar' }}
-      </CarbonButton>
+        <i v-if="guardandoTraspaso" class="ti ti-loader-2" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 
@@ -447,7 +581,7 @@ onMounted(async () => {
             <div class="timeline-title">
               <RouterLink v-if="h.empleado_id" class="empleado-link" :to="`/empleados/${h.empleado_id}`">{{ h.empleado_nombre }}</RouterLink>
               <template v-else>{{ h.empleado_nombre }}</template>
-              <CarbonTag v-if="h.activa" variante="success" class="badge-inline">Activa</CarbonTag>
+              <span v-if="h.activa" class="tag badge-inline" :class="`tag--${rolDeTag('success')}`">Activa</span>
             </div>
             <div class="timeline-meta">
               Desde {{ formatFecha(h.fecha_inicio) }}
@@ -475,61 +609,4 @@ onMounted(async () => {
   />
 </template>
 
-<style scoped>
-.cuentas-panel {
-  padding: 0 0 8px;
-}
 
-/* .panel-toolbar/.panel-title (pasada de diseño ago 2026): retirados —
-   duplicaban byte a byte .card-toolbar/.toolbar-title, ya global en
-   main.css. El template usa esas clases directamente ahora. */
-
-.panel-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Anchos: .modal-sm / .modal-detail de la escala centralizada (main.css) */
-
-.url-link {
-  color: var(--color-primary);
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-
-.url-link:hover { text-decoration: underline; }
-
-/* Tamaño reducido para este toolbar — el color/contraste ya vienen de la
-   clase global .btn-whatsapp (main.css); no sobreescribir background/color
-   acá, ese override reintroducía texto blanco a ~2:1 sobre el verde. */
-.btn-whatsapp {
-  font-size: var(--fs-body-01);
-  padding: 6px 12px;
-}
-
-.cuentas-error { color: var(--color-danger); }
-
-/* Estructura y color: sistema de badges global (.badge + .badge--X);
-   aquí solo el ajuste de este contexto: separación del texto vecino. */
-/* Modales internos (Modal.vue compartido): el div propio de la envoltura
-   .modal-body vive en el componente compartido y no hereda este scope, así
-   que el padding/gap que antes se aplicaba ahí se replica en un wrapper
-   propio dentro del slot por defecto. */
-.modal-body-inner {
-  padding: 16px 24px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.traspaso-info {
-  margin: 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-}
-
-/* Estructura del historial: sistema de timeline global (main.css) */
-</style>

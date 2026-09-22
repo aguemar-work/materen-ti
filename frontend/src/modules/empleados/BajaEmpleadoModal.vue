@@ -5,8 +5,7 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
 import Modal from '../../components/shared/Modal.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   empleado: { type: Object, required: true },
@@ -24,6 +23,7 @@ const licencias = ref([]);
 const equipos = ref([]);
 const cargando = ref(true);
 const error = ref('');
+const infoError = infoNotificacion('error');
 
 const nombreCompleto = computed(() => nombreCompletoDe(props.empleado));
 
@@ -258,161 +258,28 @@ async function confirmarBaja() {
           </span>
         </div>
 
-        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ error }}</p>
+          </div>
+        </div>
       </template>
     </div>
 
     <template v-if="fase !== 'confirmando'" #acciones>
-      <CarbonButton variante="secondary" @click="modal?.cerrar()">Cancelar</CarbonButton>
-      <CarbonButton
-        variante="danger"
-        icono="ti-user-off"
-        :deshabilitado="cargando"
+      <button type="button" class="btn btn--secondary btn--md" @click="modal?.cerrar()">Cancelar</button>
+      <button
+        type="button"
+        class="btn btn--danger btn--md"
+        :disabled="cargando"
         @click="confirmarBaja"
       >
         Confirmar baja
-      </CarbonButton>
+        <i class="ti ti-user-off" aria-hidden="true"></i>
+      </button>
     </template>
   </Modal>
 </template>
 
-<style scoped>
-.baja-title-con-icono {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 
-.baja-body {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.baja-cargando {
-  padding: 24px 0;
-  text-align: center;
-  color: var(--color-text-secondary);
-  font-size: var(--fs-body-01);
-}
-
-.baja-checklist {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.checklist-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 4px;
-  font-size: var(--fs-body-01);
-}
-
-.checklist-icono {
-  flex-shrink: 0;
-  font-size: var(--icon-md);
-}
-
-.checklist-icono--exito { color: var(--color-success-text); }
-.checklist-icono--pendiente { color: var(--color-warning-text-strong); }
-.checklist-icono--activo { color: var(--color-accent); }
-.checklist-icono--espera { color: var(--color-text-secondary); }
-
-.checklist-texto--espera {
-  color: var(--color-text-secondary);
-}
-
-.baja-intro {
-  margin: 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-}
-
-.baja-sin-cuentas {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-}
-
-.baja-grupo {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  overflow: hidden;
-}
-
-.grupo-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  padding: 8px 12px;
-}
-
-.grupo-header--danger { background: var(--color-danger-bg); color: var(--color-danger-text); }
-.grupo-header--ok     { background: var(--color-success-bg); color: var(--color-success-text); }
-.grupo-header--info   { background: var(--color-info-bg); color: var(--color-info-text); }
-
-.baja-grupo ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.baja-grupo li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--color-border);
-  font-size: var(--fs-body-01);
-}
-
-.cuenta-usuario {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-label-01);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.cuenta-plataforma {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-}
-
-.baja-aviso-rotacion {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  font-size: var(--fs-label-01);
-  line-height: 1.45;
-  color: var(--color-warning-text-strong);
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-base);
-  padding: 10px 12px;
-}
-
-.baja-aviso-rotacion i {
-  /* Token de ícono, no de texto (mismo valor, 14px, pero es la escala
-     correcta — misma distinción tokenizada en el barrido de Tickets). */
-  font-size: var(--icon-sm);
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-</style>

@@ -12,9 +12,8 @@ import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import Modal from '../../components/shared/Modal.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 // Las categorías viven en el store de catálogos; las subcategorías son
 // un detalle de este panel y se quedan locales (insforgeApi directo).
@@ -30,6 +29,8 @@ const mostrarCatForm = ref(false);
 const catEditar = ref(null);
 const catForm = ref({ id: '', nombre: '' });
 const errorForm = ref('');
+const campoNombreCategoria = useCampoAccesible();
+const infoErrorForm = infoNotificacion('error');
 
 // Cerrar vía Modal.cerrar() reproduce la animación de salida;
 // el @close del Modal es quien baja mostrarCatForm.
@@ -174,7 +175,10 @@ onMounted(async () => {
           Categorías de tickets
           <span class="badge-count">{{ categorias.length }}</span>
         </div>
-        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNuevaCategoria">Nueva categoría</CarbonButton>
+        <button type="button" class="btn btn--primary" @click="abrirNuevaCategoria">
+          Nueva categoría
+          <i class="ti ti-plus" aria-hidden="true"></i>
+        </button>
       </div>
 
       <div v-if="cargando" class="cat-lista" aria-hidden="true">
@@ -190,7 +194,10 @@ onMounted(async () => {
         titulo="Sin categorías"
         mensaje="Crea la primera categoría para clasificar los tickets."
       >
-        <CarbonButton variante="secondary" icono="ti-plus" @click="abrirNuevaCategoria">Nueva categoría</CarbonButton>
+        <button type="button" class="btn btn--secondary" @click="abrirNuevaCategoria">
+          Nueva categoría
+          <i class="ti ti-plus" aria-hidden="true"></i>
+        </button>
       </EmptyState>
 
       <div v-else class="cat-lista">
@@ -236,7 +243,7 @@ onMounted(async () => {
                 <option value="" disabled>Tipo</option>
                 <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
               </select>
-              <CarbonButton variante="secondary" tam="sm" @click="agregarSubcategoria(cat.id)">Agregar</CarbonButton>
+              <button type="button" class="btn btn--secondary btn--sm" @click="agregarSubcategoria(cat.id)">Agregar</button>
             </div>
           </div>
         </div>
@@ -252,20 +259,35 @@ onMounted(async () => {
       @close="mostrarCatForm = false"
     >
       <form id="cat-form" @submit.prevent="guardarCategoria">
-        <CarbonCampo
-          v-model="catForm.nombre"
-          etiqueta="Nombre"
-          requerido
-          placeholder="ej: Accesos y Cuentas"
-          :deshabilitado="guardando"
-        />
-        <CarbonNotification v-if="errorForm" tipo="error">{{ errorForm }}</CarbonNotification>
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNombreCategoria.id">Nombre<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoNombreCategoria.id"
+              v-model="catForm.nombre"
+              class="campo__control"
+              type="text"
+              placeholder="ej: Accesos y Cuentas"
+              required
+              :disabled="guardando"
+              :aria-invalid="campoNombreCategoria.invalido.value"
+              :aria-describedby="campoNombreCategoria.describedBy.value"
+            >
+          </div>
+        </div>
+        <div v-if="errorForm" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+          <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorForm }}</p>
+          </div>
+        </div>
       </form>
       <template #acciones>
-        <CarbonButton variante="secondary" :deshabilitado="guardando" @click="modalCatForm?.cerrar()">Cancelar</CarbonButton>
-        <CarbonButton variante="primary" tipo="submit" form="cat-form" :deshabilitado="guardando" :cargando="guardando">
+        <button type="button" class="btn btn--secondary" :disabled="guardando" @click="modalCatForm?.cerrar()">Cancelar</button>
+        <button type="submit" class="btn btn--primary" form="cat-form" :disabled="guardando">
           {{ guardando ? 'Guardando...' : 'Guardar' }}
-        </CarbonButton>
+          <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
+        </button>
       </template>
     </Modal>
 
@@ -285,92 +307,4 @@ onMounted(async () => {
   </main>
 </template>
 
-<style scoped>
-.cat-lista {
-  display: flex;
-  flex-direction: column;
-}
 
-.cat-item {
-  border-bottom: 1px solid var(--color-border);
-}
-
-.cat-item:last-child { border-bottom: none; }
-
-.cat-fila {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.cat-fila-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-  padding: 12px 0 12px 16px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-}
-
-.cat-fila-toggle:hover { background: var(--color-bg-hover); }
-
-.cat-fila-toggle:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-}
-
-.cat-fila .actions {
-  padding-right: 16px;
-}
-
-.cat-chevron { color: var(--color-text-secondary); font-size: var(--icon-sm); }
-
-.cat-count {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  margin-left: auto;
-}
-
-.cat-subs {
-  padding: 4px 16px 14px 42px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.cat-sub-fila {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  padding: 4px 0;
-}
-
-.cat-sub-nueva {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.cat-sub-nueva .form-group { flex: 1; }
-
-.cat-item--skeleton {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-}
-
-.cat-item--skeleton:nth-child(1) .skeleton-bar { width: 70%; }
-.cat-item--skeleton:nth-child(2) .skeleton-bar { width: 45%; }
-.cat-item--skeleton:nth-child(3) .skeleton-bar { width: 60%; }
-.cat-item--skeleton:nth-child(4) .skeleton-bar { width: 35%; }
-.cat-item--skeleton:nth-child(5) .skeleton-bar { width: 55%; }
-</style>

@@ -5,7 +5,6 @@
 // de la vista que quedó debajo (ej. un formulario ya completado).
 import { reintentarErrorRed } from '../../core/error-red.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
 </script>
 
 <template>
@@ -20,38 +19,12 @@ import CarbonButton from '../../components/carbon/CarbonButton.vue';
         nuevamente.
       </p>
 
-      <CarbonButton variante="primary" icono="ti-refresh" ancho @click="reintentarErrorRed">
+      <button type="button" class="btn btn--primary btn--ancho" @click="reintentarErrorRed">
         Reintentar
-      </CarbonButton>
+        <i class="ti ti-refresh" aria-hidden="true"></i>
+      </button>
     </div>
   </div>
 </template>
 
-<style scoped>
-.error-red {
-  position: fixed;
-  inset: 0;
-  z-index: 900;
-}
 
-.error-red-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-
-.error-red-title {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 4px;
-}
-
-.error-red-texto {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 16px;
-}
-
-</style>

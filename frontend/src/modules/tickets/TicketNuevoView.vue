@@ -16,9 +16,8 @@ import { catalogoTickets, crearTicket, MENSAJES_ERROR_TICKETS } from '../../api/
 import { comprimirImagen, archivoABase64 } from '../../core/imagenes.js';
 import { esDniValido } from '../../core/utils.js';
 import PublicBrand from '../../components/shared/PublicBrand.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 // estado: 'cargando_catalogo' | 'formulario' | 'enviando' | 'confirmacion' | 'error_catalogo'
 const estado = ref('cargando_catalogo');
@@ -55,6 +54,13 @@ const previewUrl = ref('');
 const inputArchivo = ref(null);
 
 const resultado = ref(null); // { codigo, token, vinculado }
+
+const campoDni = useCampoAccesible({ error: () => errorDni.value });
+const campoCategoria = useCampoAccesible();
+const campoSubcategoria = useCampoAccesible();
+const campoTitulo = useCampoAccesible();
+const campoDescripcion = useCampoAccesible();
+const infoError = infoNotificacion('error');
 
 async function onArchivoSeleccionado(e) {
   const file = e.target.files?.[0];
@@ -138,76 +144,126 @@ onMounted(cargarCatalogo);
         <div class="ticket-error-icon"><i class="ti ti-plug-connected-x" aria-hidden="true"></i></div>
         <h2 class="ticket-title">No se pudo cargar el formulario</h2>
         <p class="ticket-texto">{{ error }}</p>
-        <CarbonButton variante="primary" ancho icono="ti-refresh" class="ticket-submit" @click="cargarCatalogo">Reintentar</CarbonButton>
+        <button type="button" class="btn btn--primary btn--ancho ticket-submit" @click="cargarCatalogo">
+          Reintentar
+          <i class="ti ti-refresh" aria-hidden="true"></i>
+        </button>
       </template>
 
       <template v-else-if="estado === 'formulario' || estado === 'enviando'">
         <h2 class="ticket-title">Nuevo ticket</h2>
 
         <form class="ticket-form" @submit.prevent="enviar">
-          <CarbonCampo
-            :model-value="form.contacto"
-            etiqueta="DNI"
-            requerido
-            inputmode="numeric"
-            maxlength="8"
-            placeholder="8 dígitos"
-            :deshabilitado="estado === 'enviando'"
-            :error="errorDni"
-            @update:model-value="onDniInput"
-            @blur="dniTocado = true"
-          />
+          <div class="campo" :class="{ 'campo--invalido': campoDni.invalido.value, 'campo--inerte': estado === 'enviando' }">
+            <label class="campo__etiqueta" :for="campoDni.id">
+              DNI<span aria-hidden="true"> *</span>
+            </label>
+            <div class="campo__caja">
+              <input
+                :id="campoDni.id"
+                class="campo__control"
+                type="text"
+                :value="form.contacto"
+                inputmode="numeric"
+                maxlength="8"
+                placeholder="8 dígitos"
+                required
+                :disabled="estado === 'enviando'"
+                :aria-invalid="campoDni.invalido.value"
+                :aria-describedby="campoDni.describedBy.value"
+                @input="onDniInput($event.target.value)"
+                @blur="dniTocado = true"
+              >
+              <i v-if="campoDni.invalido.value" class="ti ti-alert-circle-filled campo__adorno" aria-hidden="true"></i>
+            </div>
+            <p
+              v-if="errorDni"
+              :id="campoDni.idAyuda"
+              class="campo__pie campo__pie--error"
+              role="alert"
+            >{{ errorDni }}</p>
+          </div>
 
-          <CarbonCampo
-            v-model="form.categoriaId"
-            etiqueta="Tipo de solicitud"
-            tipo="select"
-            requerido
-            :deshabilitado="estado === 'enviando'"
-          >
-            <template #opciones>
-              <option value="" disabled>Seleccionar</option>
-              <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-            </template>
-          </CarbonCampo>
+          <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+            <label class="campo__etiqueta" :for="campoCategoria.id">
+              Tipo de solicitud<span aria-hidden="true"> *</span>
+            </label>
+            <div class="campo__caja">
+              <select
+                :id="campoCategoria.id"
+                class="campo__control campo__control--select"
+                :value="form.categoriaId"
+                required
+                :disabled="estado === 'enviando'"
+                @change="form.categoriaId = $event.target.value"
+              >
+                <option value="" disabled>Seleccionar</option>
+                <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+              </select>
+              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+            </div>
+          </div>
 
-          <CarbonCampo
-            v-if="subcategoriasFiltradas.length"
-            v-model="form.subcategoriaId"
-            etiqueta="Subcategoría"
-            tipo="select"
-            :deshabilitado="estado === 'enviando'"
-          >
-            <template #opciones>
-              <option value="">Seleccionar (opcional)</option>
-              <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
-            </template>
-          </CarbonCampo>
+          <div v-if="subcategoriasFiltradas.length" class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+            <label class="campo__etiqueta" :for="campoSubcategoria.id">Subcategoría</label>
+            <div class="campo__caja">
+              <select
+                :id="campoSubcategoria.id"
+                class="campo__control campo__control--select"
+                :value="form.subcategoriaId"
+                :disabled="estado === 'enviando'"
+                @change="form.subcategoriaId = $event.target.value"
+              >
+                <option value="">Seleccionar (opcional)</option>
+                <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+              </select>
+              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+            </div>
+          </div>
 
-          <CarbonCampo
-            v-model="form.titulo"
-            etiqueta="Resumen breve"
-            requerido
-            maxlength="200"
-            placeholder="Ej.: sin acceso al correo institucional"
-            :deshabilitado="estado === 'enviando'"
-          />
+          <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+            <label class="campo__etiqueta" :for="campoTitulo.id">
+              Resumen breve<span aria-hidden="true"> *</span>
+            </label>
+            <div class="campo__caja">
+              <input
+                :id="campoTitulo.id"
+                v-model="form.titulo"
+                class="campo__control"
+                type="text"
+                maxlength="200"
+                placeholder="Ej.: sin acceso al correo institucional"
+                required
+                :disabled="estado === 'enviando'"
+              >
+            </div>
+          </div>
 
-          <CarbonCampo
-            v-model="form.descripcion"
-            etiqueta="Detalle de la solicitud"
-            tipo="textarea"
-            :filas="4"
-            requerido
-            maxlength="5000"
-            placeholder="Indique el problema, fecha de inicio y detalles relevantes"
-            :deshabilitado="estado === 'enviando'"
-          />
+          <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+            <label class="campo__etiqueta" :for="campoDescripcion.id">
+              Detalle de la solicitud<span aria-hidden="true"> *</span>
+            </label>
+            <div class="campo__caja">
+              <textarea
+                :id="campoDescripcion.id"
+                v-model="form.descripcion"
+                class="campo__control campo__control--area"
+                :rows="4"
+                maxlength="5000"
+                placeholder="Indique el problema, fecha de inicio y detalles relevantes"
+                required
+                :disabled="estado === 'enviando'"
+              ></textarea>
+            </div>
+          </div>
 
           <div class="form-group full">
             <label>Captura de pantalla (opcional)</label>
             <div v-if="!archivo" class="ticket-adjuntar">
-              <CarbonButton variante="secondary" icono="ti-camera-plus" :deshabilitado="estado === 'enviando'" @click="inputArchivo?.click()">Adjuntar captura</CarbonButton>
+              <button type="button" class="btn btn--secondary" :disabled="estado === 'enviando'" @click="inputArchivo?.click()">
+                Adjuntar captura
+                <i class="ti ti-camera-plus" aria-hidden="true"></i>
+              </button>
             </div>
             <div v-else class="ticket-preview">
               <img :src="previewUrl" alt="Captura adjunta">
@@ -218,11 +274,17 @@ onMounted(cargarCatalogo);
             <input ref="inputArchivo" type="file" accept="image/*" style="display: none" @change="onArchivoSeleccionado">
           </div>
 
-          <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+          <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+            <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+            <div class="notif__texto">
+              <p class="notif__detalle">{{ error }}</p>
+            </div>
+          </div>
 
-          <CarbonButton variante="primary" ancho tipo="submit" class="ticket-submit" :cargando="estado === 'enviando'" :deshabilitado="!dniValido">
+          <button type="submit" class="btn btn--primary btn--ancho ticket-submit" :disabled="estado === 'enviando' || !dniValido">
             {{ estado === 'enviando' ? 'Enviando...' : 'Enviar solicitud' }}
-          </CarbonButton>
+            <i v-if="estado === 'enviando'" class="ti ti-loader-2" aria-hidden="true"></i>
+          </button>
         </form>
       </template>
 
@@ -247,87 +309,4 @@ onMounted(cargarCatalogo);
   </div>
 </template>
 
-<style scoped>
-.ticket-title {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 16px;
-}
 
-.ticket-texto {
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 10px;
-}
-
-.ticket-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.ticket-adjuntar { display: flex; }
-
-.ticket-preview {
-  position: relative;
-  width: 96px;
-  height: 96px;
-}
-
-.ticket-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: var(--radius-base);
-  border: 1px solid var(--color-border);
-}
-
-.ticket-preview .icon-btn {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  border-radius: 50%;
-  width: 22px;
-  height: 22px;
-}
-
-.ticket-submit {
-  margin-top: 4px;
-}
-
-.ticket-ok-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-success-text);
-  margin-bottom: 8px;
-}
-
-.ticket-error-icon {
-  font-size: var(--icon-lg);
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-
-.ticket-link {
-  display: block;
-  text-align: center;
-  padding: 10px 14px;
-  margin: 12px 0;
-  border: 1.5px solid var(--color-accent);
-  border-radius: var(--radius-base);
-  color: var(--color-accent-text);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.ticket-link:hover {
-  background: var(--color-accent-subtle);
-}
-
-.ticket-nota {
-  font-size: var(--fs-label-01);
-}
-</style>

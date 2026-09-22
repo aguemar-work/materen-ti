@@ -279,12 +279,11 @@ global `Deno`.
 │       │   ├── insforge.js    # capa de datos (PostgREST vía SDK)
 │       │   └── passwords.js   # todo lo que toca contraseñas → edge function
 │       ├── styles/
-│       │   ├── carbon-theme.css # capa vendor: valores de IBM Carbon v11 (--cds-*)
-│       │   └── main.css        # capa de roles del producto, mapeada sobre la anterior
+│       │   ├── carbon-theme.css # vacío a propósito desde el reinicio de diseño (2026-09-05)
+│       │   └── main.css        # vacío a propósito desde el reinicio de diseño (2026-09-05)
 │       ├── components/
-│       │   ├── shared/         # AppLayout (shell de Carbon), PageHeader, Modal, ...
-│       │   └── carbon/         # primitivas: CarbonTag, CarbonDataTable, CarbonPasswordReveal
-│       ├── core/              # formatters, toast, utils
+│       │   └── shared/         # AppLayout, PageHeader, Modal, ... (sin components/carbon/: se borró en el reinicio)
+│       ├── core/              # formatters, toast, utils, paginacionRender.js, tablaColumnas.js, tagRol.js, notificacionInfo.js
 │       ├── modules/           # una carpeta por módulo de UI
 │       │   ├── actividad/     # auditoría (solo JEFE)
 │       │   ├── auth/          # login + reestablecer contraseña (código por email)
@@ -313,13 +312,11 @@ global `Deno`.
 │   └── equipos-fotos.ts    # edge function: subirFoto / eliminarFoto / version (staff, valida magic bytes)
 ├── migrations/             # 001..084 — esquema completo, en orden, comentado
 ├── docs/
-│   ├── PLAN-MAESTRO-MATEREN.md # blueprint de producto: diagnóstico, decisiones, fases
-│   ├── GOBERNANZA-DISENO.md   # quién manda, dónde se implementa y qué lo verifica (matriz + guardrails)
-│   ├── GUIA-UX-UI.md          # design system (IBM Carbon v11): referencia del estado actual
+│   ├── NOTAS-DISENO-ANTERIOR.md # reinicio del sistema de diseño (2026-09-05): qué se rescató antes de borrar Carbon v11
 │   ├── PANORAMA-SISTEMA.md    # arquitectura, modelo de datos y decisiones verificadas
 │   ├── HISTORIAL-AUDITORIAS.md # hallazgos de auditoría con estado + inventario de archivos + revisiones de design.pen
 │   ├── GOTCHAS-CLI.md         # gotchas del CLI de InsForge: leer antes de aplicar una migración
-│   └── CHANGELOG.md           # historial completo: cambios de documentación y de diseño (design.pen/GUIA-UX-UI.md)
+│   └── CHANGELOG.md           # historial completo: cambios de documentación y de diseño (design.pen)
 ├── AGENTS.md               # contexto para agentes de código
 └── insforge.toml           # config del backend (auth por código, password min 6)
 ```

@@ -9,12 +9,14 @@ import { showToast } from '../../core/toast.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
+import EmptyState from '../../components/shared/EmptyState.vue';
+import { rolDeTag } from '../../core/tagRol.js';
+import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
+import { columnasVisibles, estiloColumna, agruparParaTarjeta } from '../../core/tablaColumnas.js';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const registros = ref([]);
@@ -71,6 +73,19 @@ const columnas = [
   { clave: 'created_at', label: 'Fecha', ordenable: true, num: true, movil: 'pie' },
 ];
 
+const columnasVisiblesLista = computed(() => columnasVisibles(columnas));
+const totalColumnas = computed(() => columnasVisiblesLista.value.length);
+const enTarjeta = computed(() => agruparParaTarjeta(columnasVisiblesLista.value));
+
+const totalPaginas = computed(() => totalPaginasDe(totalItems.value, tamPagina.value));
+const paginas = computed(() => paginasDe(totalPaginas.value));
+const rangoPagina = computed(() => rangoDe(paginaActual.value, tamPagina.value, totalItems.value));
+const desde = computed(() => rangoPagina.value.desde);
+const hasta = computed(() => rangoPagina.value.hasta);
+function irA(pagina) {
+  paginaActual.value = clampPagina(pagina, totalPaginas.value);
+}
+
 onMounted(async () => {
   try {
     registros.value = await insforgeApi.listActividad(200);
@@ -86,7 +101,10 @@ onMounted(async () => {
   <div class="actividad-page vista-modulo">
     <PageHeader titulo="Actividad" icono="ti ti-activity" :conteo="listaFiltrada.length">
       <template #acciones>
-        <CarbonButton variante="secondary" icono="ti-table-export" title="Exportar a Excel (CSV)" @click="exportar">Exportar</CarbonButton>
+        <button type="button" class="btn btn--secondary" title="Exportar a Excel (CSV)" @click="exportar">
+          Exportar
+          <i class="ti ti-table-export" aria-hidden="true"></i>
+        </button>
       </template>
     </PageHeader>
 
@@ -106,70 +124,131 @@ onMounted(async () => {
           </div>
         </div>
 
-        <CarbonDataTable
-          densidad="sm"
-          :columnas="columnas"
-          :filas="listaPaginada"
-          :cargando="cargando"
-          :orden-por="columna"
-          :orden-dir="direccion"
-          etiqueta="Auditoría de accesos a contraseñas"
-          vacio-icono="ti ti-activity"
-          vacio-titulo="Sin actividad registrada"
-          vacio-mensaje="Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña."
-          @ordenar="ordenarPor"
-        >
-          <template #celda-user_email="{ fila }">
-            {{ fila.user_email || '(empleado, vía enlace)' }}
-          </template>
-          <template #celda-accion="{ fila }">
-            <CarbonTag :variante="infoAccion(fila.accion).clase">
-              <i :class="infoAccion(fila.accion).icon"></i>
-              {{ infoAccion(fila.accion).label }}
-            </CarbonTag>
-          </template>
-          <template #celda-cuenta_usuario="{ fila }">
-            <!-- Cuenta + Plataforma colapsan (mismo criterio que
-                 Tickets): Plataforma es el metadato que agrupa,
-                 Cuenta es el dato principal de la fila. -->
-            <div class="celda-apilada">
-              <span class="celda-apilada__meta"><TextoVacio :valor="fila.plataforma" /></span>
-              <span class="celda-apilada__principal cuenta-cell"><TextoVacio :valor="fila.cuenta_usuario" /></span>
+        <div class="tabla-envoltorio">
+          <table class="tabla tabla--sm" aria-label="Auditoría de accesos a contraseñas">
+            <thead>
+              <tr>
+                <template v-for="col in columnasVisiblesLista" :key="col.clave">
+                  <ThOrdenable
+                    v-if="col.ordenable"
+                    :clave="col.clave"
+                    :columna="columna"
+                    :direccion="direccion"
+                    :class="{ 'col-num': col.num }"
+                    :style="estiloColumna(col)"
+                    @ordenar="ordenarPor(col.clave)"
+                  >{{ col.label }}</ThOrdenable>
+                  <th v-else scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
+                </template>
+              </tr>
+            </thead>
+            <tbody>
+              <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
+              <tr v-else-if="!listaPaginada.length">
+                <td :colspan="totalColumnas" class="tabla__vacio">
+                  <EmptyState icono="ti ti-activity" titulo="Sin actividad registrada" mensaje="Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña." />
+                </td>
+              </tr>
+              <template v-else>
+                <tr v-for="fila in listaPaginada" :key="fila.id">
+                  <td v-for="col in columnasVisiblesLista" :key="col.clave" :class="{ 'col-num': col.num }">
+                    <template v-if="col.clave === 'user_email'">
+                      {{ fila.user_email || '(empleado, vía enlace)' }}
+                    </template>
+                    <span
+                      v-else-if="col.clave === 'accion'"
+                      class="tag"
+                      :class="`tag--${rolDeTag(infoAccion(fila.accion).clase)}`"
+                    >
+                      <i :class="infoAccion(fila.accion).icon"></i>
+                      {{ infoAccion(fila.accion).label }}
+                    </span>
+                    <!-- Cuenta + Plataforma colapsan (mismo criterio que
+                         Tickets): Plataforma es el metadato que agrupa,
+                         Cuenta es el dato principal de la fila. -->
+                    <div v-else-if="col.clave === 'cuenta_usuario'" class="celda-apilada">
+                      <span class="celda-apilada__meta"><TextoVacio :valor="fila.plataforma" /></span>
+                      <span class="celda-apilada__principal cuenta-cell"><TextoVacio :valor="fila.cuenta_usuario" /></span>
+                    </div>
+                    <template v-else-if="col.clave === 'detalle'">
+                      <span v-if="fila.detalle" class="detalle-cell" :title="fila.detalle">{{ fila.detalle }}</span>
+                      <TextoVacio v-else />
+                    </template>
+                    <span v-else-if="col.clave === 'created_at'" class="fecha-cell" :title="formatFechaHora(fila.created_at)">{{ formatAntiguedad(fila.created_at) }}</span>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <ul v-if="!cargando && listaPaginada.length" class="lista-tarjetas solo-movil" aria-label="Auditoría de accesos a contraseñas">
+          <li v-for="fila in listaPaginada" :key="fila.id" class="tarjeta-fila">
+            <div v-if="enTarjeta.cab.length" class="tarjeta-fila__cab">
+              <template v-for="col in enTarjeta.cab" :key="col.clave">
+                <span
+                  v-if="col.clave === 'accion'"
+                  class="tag"
+                  :class="`tag--${rolDeTag(infoAccion(fila.accion).clase)}`"
+                >
+                  <i :class="infoAccion(fila.accion).icon"></i>
+                  {{ infoAccion(fila.accion).label }}
+                </span>
+              </template>
             </div>
-          </template>
-          <template #celda-detalle="{ fila }">
-            <span v-if="fila.detalle" class="detalle-cell" :title="fila.detalle">{{ fila.detalle }}</span>
-            <TextoVacio v-else />
-          </template>
-          <template #celda-created_at="{ fila }">
-            <span class="fecha-cell" :title="formatFechaHora(fila.created_at)">{{ formatAntiguedad(fila.created_at) }}</span>
-          </template>
-        </CarbonDataTable>
-        <CarbonPagination
-          v-if="!cargando"
-          v-model="paginaActual"
-          :total-items="totalItems"
-          :tam-pagina="tamPagina"
-          :tamanos-pagina="TAMANOS_PAGINA"
-          unidad="movimientos"
-          @update:tam-pagina="cambiarTamPagina"
-        />
+            <div v-for="col in enTarjeta.principal" :key="col.clave" class="tarjeta-fila__principal">
+              <div v-if="col.clave === 'cuenta_usuario'" class="celda-apilada">
+                <span class="celda-apilada__meta"><TextoVacio :valor="fila.plataforma" /></span>
+                <span class="celda-apilada__principal cuenta-cell"><TextoVacio :valor="fila.cuenta_usuario" /></span>
+              </div>
+            </div>
+            <div v-for="col in enTarjeta.sec" :key="col.clave" class="tarjeta-fila__sec">
+              <template v-if="col.clave === 'user_email'">
+                {{ fila.user_email || '(empleado, vía enlace)' }}
+              </template>
+              <template v-else-if="col.clave === 'detalle'">
+                <span v-if="fila.detalle" class="detalle-cell" :title="fila.detalle">{{ fila.detalle }}</span>
+                <TextoVacio v-else />
+              </template>
+            </div>
+            <div v-if="enTarjeta.pie.length" class="tarjeta-fila__pie">
+              <template v-for="col in enTarjeta.pie" :key="col.clave">
+                <span v-if="col.clave === 'created_at'" class="fecha-cell" :title="formatFechaHora(fila.created_at)">{{ formatAntiguedad(fila.created_at) }}</span>
+              </template>
+            </div>
+          </li>
+        </ul>
+
+        <nav v-if="!cargando && totalItems > 0" class="paginacion" aria-label="Paginación">
+          <div class="paginacion__lado">
+            <label v-if="TAMANOS_PAGINA?.length" class="paginacion__campo">
+              <span>Filas por página:</span>
+              <select class="paginacion__select" :value="tamPagina" @change="cambiarTamPagina($event.target.value)">
+                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </label>
+            <span class="paginacion__rango">{{ desde }}–{{ hasta }} de {{ totalItems }} movimientos</span>
+          </div>
+
+          <div v-if="totalPaginas > 1" class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span class="sr-only">Ir a la página</span>
+              <select class="paginacion__select" :value="paginaActual" @change="irA(Number($event.target.value))">
+                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span>de {{ totalPaginas }}</span>
+            </label>
+            <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
+              <i class="ti ti-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </nav>
       </div>
     </main>
   </div>
 </template>
 
-<style scoped>
-/* Datos uniformes: solo cambia la familia (mono para identificadores) */
-.fecha-cell { white-space: nowrap; }
 
-.cuenta-cell {
-  font-family: var(--font-mono, monospace);
-}
-
-.detalle-cell {
-  max-width: 240px;
-  white-space: normal;
-  word-break: break-word;
-}
-</style>

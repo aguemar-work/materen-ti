@@ -100,45 +100,25 @@ jobs:
         run: npm run build
       - name: Tests unitarios (cifrado + validaciones de tickets)
         run: npm test
-      - name: Contraste WCAG de los tokens de UI
-        run: node ../scripts/contraste.mjs
-      # Guardrail hermano del de contraste: el de arriba vigila que los pares
-      # de color cumplan WCAG; este vigila que los tokens que main.css define,
-      # los que el código consume y los que docs/GUIA-UX-UI.md documenta sigan
-      # siendo el mismo conjunto. Cierra el mecanismo detrás de Q-01/DS-01..05/
-      # DP-05/DP-06 (la guía afirmando estados que el código no tiene), que
-      # hasta ahora se corregía a mano un caso por ciclo de auditoría.
-      - name: Deriva entre tokens, su uso real y la guía de UX/UI
-        run: node ../scripts/tokens-vs-guia.mjs
-      # Tercer guardrail de Design System. Los dos de arriba miran tokens
-      # (contraste de sus valores, coherencia de sus nombres); este mira lo
-      # que ninguno ve: los VALORES escritos a mano en los <style> de los
-      # componentes. Color/radio/sombra/tipografía se exigen en 0 — están
-      # limpios y el check impide que se ensucien. Espaciado va por
-      # trinquete: hay ~480 literales, la línea base vive en
-      # scripts/literales-base.json y el check falla solo si el número SUBE,
-      # así la deuda solo puede encogerse (adopción progresiva, no
-      # sustitución masiva — ver docs/PLAN-MAESTRO-MATEREN.md §6.2).
-      - name: Literales que deberían ser tokens (color/radio/sombra/tipografía/espaciado)
-        run: node ../scripts/literales-vs-tokens.mjs
-      # Cuarto guardrail: invariantes de ESTRUCTURA del marcado (modal hecho
-      # a mano en vez del <Modal> compartido, <img> sin alt, botón solo-ícono
-      # sin nombre accesible). Las 3 reglas están en verde: es un trinquete
-      # contra la regresión, no un cazador de bugs — el ciclo 2026-08-31
-      # corrigió 8 modales y 4 campos a mano y nada impedía que volvieran.
+      # Guardrail de estructura/accesibilidad del marcado (modal hecho a mano
+      # en vez del <Modal> compartido, <img> sin alt, cabecera de columna sin
+      # texto, botón solo-ícono sin nombre accesible). Es el único de los 5
+      # guardrails de Design System que sigue verificando algo real después
+      # del reinicio del sistema de estilos (2026-09-05, ver
+      # docs/NOTAS-DISENO-ANTERIOR.md): no depende de tokens ni de CSS, mira
+      # la estructura del template.
       - name: Invariantes de estructura y accesibilidad del marcado
         run: node ../scripts/patrones-ui.mjs
-      # Quinto guardrail. Los otros cuatro miran tokens (valores y nombres),
-      # literales y estructura del marcado; ninguno miraba las CLASES. Falla
-      # solo ante una HUERFANA -- una clase aplicada que ninguna hoja define,
-      # que no hace nada y cuyo "no hacer nada" es indistinguible de "asi se
-      # diseno" (le paso a `.badge-inline` durante meses, en 4 de sus 8
-      # consumidores). Las MUERTAS se reportan como inventario y NO fallan:
-      # durante la convergencia a Carbon suben a proposito, porque cada
-      # modulo que adopta components/carbon/ deja atras su familia vieja de
-      # main.css hasta que la Fase D la borra.
-      - name: Clases CSS huerfanas (aplicadas sin definir) e inventario de muertas
-        run: node ../scripts/clases-muertas.mjs
+      # Los otros 4 guardrails de Design System (contraste WCAG, deriva de
+      # tokens vs. docs/GUIA-UX-UI.md, literales vs. tokens, clases huérfanas)
+      # se retiraron de CI en el mismo reinicio: 2 crasheaban/fallaban de
+      # inmediato (la guía ya no existe; sin CSS, todas las clases del
+      # markup son "huérfanas") y los otros 2 pasaban en verde sin verificar
+      # nada real (contraste contra una paleta hardcodeada en el propio
+      # script; 0 literales porque no queda CSS que escanear) — el
+      # antipatrón que el propio proyecto documentó como Q-01. Los 5 scripts
+      # siguen en `scripts/` sin invocarse, listos para revivirse si el
+      # próximo sistema de diseño quiere el mismo mecanismo.
       - name: Vulnerabilidades conocidas en dependencias de producción
         run: npm audit --omit=dev --audit-level=high
 
