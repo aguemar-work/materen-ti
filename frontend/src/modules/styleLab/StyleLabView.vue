@@ -27,6 +27,13 @@ import ThOrdenable from '../../components/shared/ThOrdenable.vue';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import { NOMBRE_PRODUCTO } from '../../core/marca.js';
 import { tonoAvatar } from '../../core/avatar.js';
+// Base nueva (2026-09-07): PrimeVue Unstyled + Tailwind — ver
+// frontend/AGENTS.md "UI/UX". Estas dos secciones (AppButton/AppTable) son
+// documentación viva de los wrappers reales: si sus presets cambian, la
+// grilla de abajo cambia sola, nunca hace falta actualizarla a mano.
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
 
 const oscuro = ref(false);
 const modalAbierto = ref(false);
@@ -93,6 +100,8 @@ const SECCIONES = [
   { id: 'auditoria', label: 'Auditoría de color' },
   { id: 'validacion', label: 'Validación operativa' },
   { id: 'elevacion', label: 'Elevación y superficies' },
+  { id: 'app-button', label: 'AppButton (nuevo)' },
+  { id: 'app-table', label: 'AppTable (nuevo)' },
 ];
 
 // ── Paleta ──────────────────────────────────────────────────────────────
@@ -322,6 +331,51 @@ const TICKETS_SELECCIONABLES = TICKETS_GRANDES.slice(0, 8).map((t) => ({
   // entera pintada — ver .sl-sla-flag.
   slaRiesgo: t.prioridad === 'Urgente' && t.estado !== 'Resuelto',
 }));
+
+// ── AppButton (PrimeVue Unstyled + Tailwind) — catálogo completo ─────────
+const VARIANTES_APPBUTTON = ['solid', 'outline', 'text'];
+const SEVERIDADES_APPBUTTON = ['primary', 'secondary', 'danger'];
+
+// ── AppTable (PrimeVue Unstyled + Tailwind) — mock de servidor ───────────
+// Reutiliza TICKETS_GRANDES (ya definido arriba para "Validación operativa")
+// en vez de armar un tercer dataset ficticio — mismos 25 tickets, ordenados
+// y paginados acá con la MISMA forma que un store real
+// (stores/crearStorePaginado.js): `orden` es { columna, direccion } o null,
+// `ordenarPor(columna)` decide él mismo si alterna o empieza en asc.
+const TAM_PAGINA_APPTABLE = 8;
+const paginaAppTable = ref(1);
+const ordenAppTable = ref(null);
+const cargandoAppTable = ref(false);
+
+const filasOrdenadasAppTable = computed(() => {
+  if (!ordenAppTable.value) return TICKETS_GRANDES;
+  const { columna, direccion } = ordenAppTable.value;
+  const factor = direccion === 'asc' ? 1 : -1;
+  return [...TICKETS_GRANDES].sort((a, b) => {
+    if (a[columna] < b[columna]) return -1 * factor;
+    if (a[columna] > b[columna]) return 1 * factor;
+    return 0;
+  });
+});
+const filasPaginaAppTable = computed(() => {
+  const inicio = (paginaAppTable.value - 1) * TAM_PAGINA_APPTABLE;
+  return filasOrdenadasAppTable.value.slice(inicio, inicio + TAM_PAGINA_APPTABLE);
+});
+
+// ~400ms de latencia simulada — el `loading` que ve AppTable es real, no un
+// spinner de mentira superpuesto sin estado detrás.
+function ordenarPorAppTable(columna) {
+  cargandoAppTable.value = true;
+  setTimeout(() => {
+    if (ordenAppTable.value?.columna === columna) {
+      ordenAppTable.value = { columna, direccion: ordenAppTable.value.direccion === 'asc' ? 'desc' : 'asc' };
+    } else {
+      ordenAppTable.value = { columna, direccion: 'asc' };
+    }
+    paginaAppTable.value = 1;
+    cargandoAppTable.value = false;
+  }, 400);
+}
 
 const seleccionMasiva = ref([]);
 const todosSeleccionados = computed(() => TICKETS_SELECCIONABLES.length > 0 && seleccionMasiva.value.length === TICKETS_SELECCIONABLES.length);
@@ -1271,613 +1325,100 @@ const ROLES_COLOR = [
         en la respuesta del chat.
       </p>
     </section>
+
+    <!-- ═══ 13. AppButton — PrimeVue Unstyled + Tailwind ═══ -->
+    <section id="app-button" class="sl-seccion">
+      <h2>AppButton — PrimeVue Unstyled + Tailwind</h2>
+      <p class="sl-seccion-nota">
+        Catálogo real de <code>components/ui/AppButton.vue</code> — documentación viva: cada botón
+        de abajo es el componente real, no una maqueta. Si <code>pt/button.pt.js</code> cambia,
+        esta grilla cambia sola.
+      </p>
+
+      <div v-for="variante in VARIANTES_APPBUTTON" :key="variante" class="mb-8">
+        <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Variante: {{ variante }}</h3>
+        <div class="flex flex-wrap items-center gap-3">
+          <AppButton
+            v-for="severity in SEVERIDADES_APPBUTTON"
+            :key="severity"
+            :label="severity"
+            :severity="severity"
+            :variant="variante"
+          />
+        </div>
+      </div>
+
+      <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Tamaños</h3>
+      <div class="mb-8 flex flex-wrap items-center gap-3">
+        <AppButton label="Small" size="sm" />
+        <AppButton label="Medium" size="md" />
+        <AppButton label="Large" size="lg" />
+      </div>
+
+      <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Con ícono</h3>
+      <p class="sl-seccion-nota">
+        El ícono es agnóstico de librería (prop <code>icon</code>, cualquier clase CSS) — todavía
+        no hay iconografía decidida para el sistema (ver <code>docs/NOTAS-DISENO-ANTERIOR.md</code>),
+        estos dos ejemplos usan <code>ti ti-*</code> solo a título ilustrativo.
+      </p>
+      <div class="mb-8 flex flex-wrap items-center gap-3">
+        <AppButton label="Nuevo ticket" icon="ti ti-plus" />
+        <AppButton label="Exportar" icon="ti ti-download" icon-pos="right" variant="outline" />
+      </div>
+
+      <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Estados interactivos</h3>
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <AppButton label="Disabled" disabled />
+        <AppButton label="Danger disabled" severity="danger" disabled />
+        <AppButton label="Guardando..." loading />
+      </div>
+      <div class="max-w-xs">
+        <AppButton label="Ancho completo (block)" block />
+      </div>
+    </section>
+
+    <!-- ═══ 14. AppTable — PrimeVue Unstyled + Tailwind ═══ -->
+    <section id="app-table" class="sl-seccion">
+      <h2>AppTable — PrimeVue Unstyled + Tailwind</h2>
+      <p class="sl-seccion-nota">
+        Catálogo real de <code>components/ui/AppTable.vue</code> + <code>AppColumn</code>
+        (<code>components/ui/AppColumn.js</code> es un re-export, no un wrapper — el porqué está
+        comentado en ese archivo). Orden y paginación de abajo simulan el contrato exacto de
+        <code>stores/crearStorePaginado.js</code>: <code>@ordenar</code> dispara un
+        <code>ordenarPor(columna)</code> local con ~400ms de latencia real (el <code>loading</code>
+        que ve la tabla no es un spinner de mentira), y la paginación usa
+        <code>components/shared/Pagination.vue</code> — el mismo componente que ya paginan los 7
+        listados reales, no uno nuevo.
+      </p>
+      <div class="card">
+        <AppTable
+          :value="filasPaginaAppTable"
+          :loading="cargandoAppTable"
+          :total-records="TICKETS_GRANDES.length"
+          :rows="TAM_PAGINA_APPTABLE"
+          :sort-field="ordenAppTable?.columna ?? null"
+          :sort-order="ordenAppTable?.direccion === 'desc' ? -1 : ordenAppTable?.direccion === 'asc' ? 1 : null"
+          @ordenar="ordenarPorAppTable"
+        >
+          <AppColumn field="id" header="Ticket" />
+          <AppColumn field="titulo" header="Título" sortable />
+          <AppColumn field="solicitante" header="Solicitante" />
+          <AppColumn field="prioridad" header="Prioridad" />
+          <AppColumn field="estado" header="Estado" />
+          <AppColumn field="responsable" header="Responsable" />
+          <AppColumn field="antiguedadMin" header="Antigüedad" sortable>
+            <template #body="{ data }">{{ data.antiguedad }}</template>
+          </AppColumn>
+        </AppTable>
+      </div>
+      <div class="sl-fila-demo" style="margin-top: 12px">
+        <Pagination v-model="paginaAppTable" :total-items="TICKETS_GRANDES.length" :page-size="TAM_PAGINA_APPTABLE" />
+        <span class="sl-fs-secundario">
+          Clic en "Título" o "Antigüedad" para ordenar de verdad (server-side simulado).
+        </span>
+      </div>
+    </section>
   </div>
 </template>
 
-<style>
-/* ============================================================
-   Style Lab — tokens scoped, SIN tocar :root de main.css
-   ============================================================
-   Redefine los mismos nombres (--color-*, --fs-*, --radius-*, --shadow-*)
-   que ya usan .btn, .badge, .stat-card, table, .modal, .avatar, .toast,
-   .timeline, .capacity-bar y .form-group en main.css. Al vivir en
-   .sl-lab (no en :root), el resto de la app no se entera de que esto
-   existe: la herencia de custom properties de CSS resuelve el valor
-   más cercano en el árbol del DOM, así que todo lo que está DENTRO de
-   .sl-lab hereda esta paleta y todo lo que está FUERA sigue leyendo
-   :root sin cambios. */
-.sl-lab {
-  /* Tokens nuevos del brief (sin equivalente previo en main.css) */
-  --color-brand-500: #0082FB;
-  --color-brand-600: #0064E0;
-  --color-brand-700: #0052B8;
-  --color-brand-100: #E5F2FF;
-  --color-brand-50: #F3F9FF;
-  --color-bg-app: #F1F5F8;
-  --color-bg-surface: #FFFFFF;
-  --color-bg-muted: #E8EEF2;
-  --color-text-link: var(--color-brand-600);
-  --color-focus: var(--color-brand-500);
-  --color-focus-ring: rgba(0, 130, 251, 0.28);
-  /* --shadow-overlay era un token con valor propio (idéntico a --shadow-overlay)
-     desde la primera pasada de esta paleta — dos nombres para el mismo
-     número, nunca resuelto. Se cierra acá como decisión final de
-     elevación: alias de --shadow-overlay (declarado más abajo), no un valor
-     paralelo — un solo tono de "capa siempre elevada". */
-  --shadow-overlay: var(--shadow-overlay);
 
-  /* Remapeo de los alias --color-*, --fs-*, --radius-*, --shadow-* que
-     main.css ya usa en sus componentes — acá es donde el sistema
-     REAL se re-pinta. Corregidos contra WCAG AA (ver notas en cada
-     swatch de la sección Paleta). */
-  --color-accent: var(--color-brand-600);
-  --color-accent-hover: var(--color-brand-700);
-  --color-accent-subtle: var(--color-brand-100);
-  --color-accent-text: var(--color-brand-600);
-  /* --color-primary es alias de --color-accent-text, NO de --color-accent
-     directo: brand-600 como texto sobre superficie oscura mide 3.06:1
-     (bajo AA), por eso el alias de texto tiene que seguir al valor que SÍ
-     cambia por tema (accent-text, #3D9CFF en oscuro) y no al del botón. */
-  --color-primary: var(--color-accent-text);
-
-  --color-bg-elevated: var(--color-bg-surface);
-  --color-bg-subtle: #F8FAFC;
-  --color-bg-hover: var(--color-bg-muted);
-
-  --color-text-primary: #1C2B33;
-  --color-text-secondary: #52636D;
-  --color-text-tertiary: #5B6B74;
-  --color-text-inverse: #FFFFFF;
-
-  /* Jerarquía de bordes de 3 niveles (Ajuste 1). --color-border (el alias
-     genérico que main.css ya usa en .card/.stat-card/.modal/th/select/
-     input por igual) se remapea al nivel SUTIL: así cards/tabla/modal
-     quedan con borde discreto por defecto. Los controles interactivos
-     (input/select/textarea/botón) se bumpean explícitamente a "default"
-     más abajo (selectores .sl-lab .form-group input, etc.) porque
-     main.css no tiene una variable propia solo para ellos. */
-  --color-border-subtle: #D9E2E8;
-  --color-border: var(--color-border-subtle);
-  --color-border-default: #7E96A3;
-  --color-border-strong: #526A7B;
-
-  --color-success: #0F7A4E;
-  --color-success-bg: #E8F7F0;
-  --color-success-text: #0F7A4E;
-  --color-success-border: #BFE8D3;
-
-  /* warning/danger/info: sin cambio respecto a main.css — la dirección de
-     marca azul solo toca brand/bg/text/border, nunca los semánticos. Los 3
-     bloques de acá abajo (claro y oscuro) son una copia exacta de
-     --color-warning/-danger/-info en main.css, no una propuesta nueva. */
-  --color-warning-bg: #FBF0DC;
-  --color-warning-text: #845A0E;
-  --color-warning-text-strong: #6B4809;
-  --color-warning-bg-strong: #F5E4C4;
-  --color-warning-border: #E8D4A8;
-
-  --color-danger: #963D28;
-  --color-danger-bg: #FAEAE3;
-  --color-danger-text: #963D28;
-  --color-danger-border: #E8C4B4;
-
-  --color-info-bg: #E7EAF7;
-  --color-info-text: #3B4FA0;
-  --color-info-border: #C5CCE7;
-
-  --color-neutral-bg: var(--color-bg-muted);
-  --color-neutral-text: var(--color-text-secondary);
-  --color-neutral-border: var(--color-border);
-
-  --ring: var(--color-focus-ring);
-  /* Invariantes entre temas, igual que en main.css — no se redefinen en
-     .sl-lab.sl-oscuro más abajo. */
-  --color-danger-hover: #DC2626;
-  --color-danger-solid: #DC2626;
-
-  /* Tipografía: --fs-heading-02/--fs-heading-02 suben de 15/17 a 16/18 (brief);
-     --fs-3xl es nuevo (título de página). Resto de la escala sin cambio. */
-  --fs-heading-02: 16px;
-  --fs-heading-02: 18px;
-  --fs-3xl: 24px;
-
-  /* Radio: lg/xl dejan de ser iguales (14/14 en el sistema real) y
-     pasan a 12/16, más diferenciados. sm/md no cambian. */
-  --radius-base: 12px;
-  --radius-base: 16px;
-
-  /* Sombras — decisión de elevación CERRADA (ver sección "Elevación y
-     superficies"). El sistema real declara --shadow-sm/md/lg pero NINGÚN
-     componente los consume hoy ("sin sombras en contenedores"). Acá se
-     conectan, pero NO a cards/stat-cards/tablas en reposo — solo a capas
-     realmente elevadas o a estados de interacción puntuales. Mapeo final,
-     componente por componente:
-       --shadow-sm     → .sl-card--clicable, SOLO en :hover/:focus-visible
-                          (nunca en reposo) — única "elevación" de una card.
-       --shadow-overlay     → .sl-popover (dropdown/menú contextual, estático y
-                          el real con toggle de "Elevación y superficies")
-                          y .toast (flota sobre la página, no es un
-                          contenedor de layout — mismo nivel que el popover).
-       --shadow-overlay     → .modal (única capa "siempre elevada").
-       --shadow-overlay  → alias de --shadow-overlay (mismo valor, ver abajo) —
-                          existían los dos nombres desde la primera pasada
-                          sin resolver cuál "ganaba"; queda resuelto así.
-     Cards, stat-cards y tabla quedan con superficie blanca + borde sutil,
-     sin sombra permanente — cero box-shadow en las reglas .card/.stat-card
-     más abajo, confirmado en la sección de validación de esta ronda. */
-  --shadow-sm: 0 1px 2px rgba(28, 43, 51, 0.06);
-  --shadow-overlay: 0 4px 12px rgba(28, 43, 51, 0.08);
-  --shadow-overlay: 0 16px 40px rgba(28, 43, 51, 0.16);
-
-  /* Espaciado ícono/input (Ajuste "ruido visual") — el ícono de
-     .search-wrap real (main.css) queda a 11px del borde y el texto arranca
-     a 34px: solo 7px de aire entre el borde derecho del ícono (11+16=27) y
-     el placeholder, perceptible como "pegado". Estas 3 variables fijan un
-     espacio constante y calculable en vez de un padding a ojo por
-     componente — un solo lugar para ajustar los 2 buscadores de esta
-     página (Inputs y Validación operativa → filtros). */
-  --sl-input-icon-size: 16px;
-  --sl-input-icon-gap: 8px;
-  --sl-input-padding-inline: 12px;
-
-  background: var(--color-bg-app);
-  color: var(--color-text-primary);
-  min-height: 100vh;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
-  font-family: var(--font-sans);
-}
-
-/* Sombras — ver política completa en el comentario de --shadow-* arriba.
-   .card/.stat-card NO llevan box-shadow (Ajuste 2): quedan solo con borde
-   sutil. El modal es la única capa "siempre elevada". */
-.sl-lab .modal { box-shadow: var(--shadow-overlay); }
-.sl-lab .toast { box-shadow: var(--shadow-overlay); }
-
-/* Jerarquía de bordes de controles interactivos (Ajuste 1) — main.css usa
-   el mismo --color-border para cards Y para input/select/textarea/botón;
-   como ya se remapeó --color-border al nivel sutil (arriba), acá se
-   "recupera" el nivel default específicamente para los controles que
-   necesitan un borde que se distinga por sí solo (3:1 real, ver Paleta →
-   Bordes). El hover a border-strong de .btn/.stat-card/.toast NO necesita
-   override: main.css ya lo tiene cableado nativamente a var(--color-border-strong). */
-.sl-lab .form-group input,
-.sl-lab .form-group select,
-.sl-lab .form-group textarea,
-.sl-lab select,
-.sl-lab .search-wrap input,
-.sl-lab .btn:not(.btn-primary):not(.btn-danger):not(.btn-danger-solid):not(.btn-whatsapp):not(.sl-btn-ghost):not(:focus-visible) {
-  border-color: var(--color-border-default);
-}
-
-/* Botones sólidos — hallazgo de una ronda anterior: la regla de arriba
-   (pensada para el botón secundario) le pegaba un borde gris/plomo a
-   CUALQUIER .btn, incluidos los sólidos (primary, danger-solid) y el
-   ghost, porque ".sl-lab .btn" (2 clases) tiene más especificidad que
-   ".btn-primary" (1 clase) — un fondo sólido no necesita borde para
-   comunicar su límite. :not() de arriba excluye los sólidos/ghost/focus
-   de ese borde gris; estas reglas fijan explícitamente "sin borde"
-   (transparent, no "none": mantiene el mismo box-model que main.css, sin
-   saltos de 1px).
-   :not(:focus-visible) es obligatorio acá, no cosmético: esta regla y la
-   nativa ".btn:focus-visible" de main.css empatan en especificidad
-   (0,2,0 las dos). Sin el :not(), quién gana depende del orden de
-   inyección de los <style> en el bundle final — un empate silencioso que
-   podría, según el build, tapar el foco con "transparent" en vez de con
-   el borde de acento. Con el :not(), esta regla directamente no aplica
-   cuando el botón tiene foco de teclado, así que no hay empate posible:
-   gana siempre la regla de foco, sin depender del orden. Verificado con
-   captura de pantalla + Tab (ver Validación operativa). */
-.sl-lab .btn-primary:not(:focus-visible),
-.sl-lab .btn-danger-solid:not(:focus-visible) {
-  border-color: transparent;
-}
-
-.sl-lab .form-group input:hover:not(:disabled):not(:focus),
-.sl-lab .form-group select:hover:not(:disabled):not(:focus),
-.sl-lab .form-group textarea:hover:not(:disabled):not(:focus),
-.sl-lab select:hover:not(:disabled):not(:focus),
-.sl-lab .search-wrap input:hover:not(:disabled):not(:focus) {
-  border-color: var(--color-border-strong);
-}
-
-/* Separación ícono/placeholder de .search-wrap — ver --sl-input-icon-*
-   arriba. Ícono centrado en su propia caja de --sl-input-icon-size en vez
-   de un left: 11px fijo, y el padding del input se calcula (no se adivina)
-   a partir de las mismas 3 variables: icono + gap + padding base. Aplica
-   a los 2 buscadores de esta página (Inputs, Validación operativa). */
-.sl-lab .search-wrap i {
-  left: var(--sl-input-padding-inline);
-  width: var(--sl-input-icon-size);
-  height: var(--sl-input-icon-size);
-  font-size: var(--sl-input-icon-size);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.sl-lab .search-wrap input {
-  padding-left: calc(var(--sl-input-padding-inline) + var(--sl-input-icon-size) + var(--sl-input-icon-gap));
-}
-
-/* El foco SIEMPRE se resuelve con --color-focus (borde) + --color-focus-ring
-   (anillo) — nunca solo con un cambio de tono de borde neutro. Ya es el
-   comportamiento nativo de main.css (.form-group input:focus, .btn:focus-visible,
-   select:focus todos fijan border-color: var(--color-accent) + box-shadow con
-   var(--ring)); acá remapeado --ring: var(--color-focus-ring) arriba,
-   así que no hace falta ningún override adicional para foco. */
-
-/* ── Tema oscuro — toggle propio (.sl-oscuro), independiente del
-   [data-theme="dark"] real de la app (no se pisan entre sí). Los
-   botones (--color-accent/-hover) no cambian: brand-600/700 con texto
-   blanco ya funciona en cualquier fondo, así que no hace falta un
-   segundo par de tonos para el botón primario en oscuro. */
-.sl-lab.sl-oscuro {
-  --color-bg-app: #0F1720;
-  --color-bg-surface: #16202B;
-  --color-bg-subtle: #1B2733;
-  --color-bg-muted: #212E3B;
-
-  --color-text-primary: #EDF2F5;
-  --color-text-secondary: #9FB0BA;
-  --color-text-tertiary: #7A8B96;
-
-  /* Mismo criterio que en claro: --color-border colapsa al nivel sutil
-     (cards/tabla/modal quedan discretos incluso en oscuro); default/strong
-     se recalculan para 3:1 reales contra la superficie oscura (#16202B)
-     — en oscuro "fuerte" tiene que ser MÁS CLARO que "default" (más
-     luminancia = más contraste sobre fondo oscuro, al revés que en claro). */
-  --color-border-subtle: #1F2A35;
-  --color-border: var(--color-border-subtle);
-  --color-border-default: #5A6E7E;
-  --color-border-strong: #7B93A3;
-
-  --color-accent-subtle: rgba(0, 130, 251, 0.16);
-  --color-accent-text: #3D9CFF;
-  --color-text-link: #3D9CFF;
-  --color-focus-ring: rgba(0, 130, 251, 0.35);
-
-  --color-success-bg: rgba(15, 122, 78, 0.16);
-  --color-success-text: #6FD9AE;
-  --color-success-border: rgba(15, 122, 78, 0.35);
-
-  --color-warning-bg: rgba(156, 107, 18, 0.18);
-  --color-warning-text: #E8C878;
-  --color-warning-text-strong: #F5DCA0;
-  --color-warning-bg-strong: rgba(156, 107, 18, 0.28);
-  --color-warning-border: rgba(156, 107, 18, 0.35);
-
-  --color-danger-bg: rgba(176, 80, 58, 0.16);
-  --color-danger-text: #E88870;
-  --color-danger-border: rgba(176, 80, 58, 0.35);
-
-  --color-info-bg: rgba(59, 79, 160, 0.16);
-  --color-info-text: #9CAAE2;
-  --color-info-border: rgba(59, 79, 160, 0.32);
-
-  /* Tonos de avatar: mismos valores que el bloque [data-theme="dark"] de
-     main.css. Van acá porque el lab no usa data-theme, sino esta clase. */
-  --color-avatar-azul-bg: rgba(46, 90, 142, 0.28);
-  --color-avatar-azul-text: #9CC0EA;
-  --color-avatar-slate-bg: rgba(120, 112, 96, 0.32);
-  --color-avatar-slate-text: #C9C4BA;
-  --color-avatar-teal-bg: rgba(31, 110, 92, 0.30);
-  --color-avatar-teal-text: #7FD3BC;
-  --color-avatar-violeta-bg: rgba(91, 75, 150, 0.30);
-  --color-avatar-violeta-text: #C3B4EA;
-  --color-avatar-arena-bg: rgba(122, 90, 53, 0.30);
-  --color-avatar-arena-text: #E0BE8E;
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-overlay: 0 16px 40px rgba(0, 0, 0, 0.6);
-}
-
-/* ── Shell de la página (prefijo sl-, no colisiona con nada global) ── */
-.sl-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-.sl-header-titulo { display: flex; flex-direction: column; gap: 12px; }
-.sl-header-marca { display: flex; align-items: flex-start; gap: 12px; }
-.sl-logo { width: 32px; height: 32px; flex-shrink: 0; margin-top: 2px; }
-.sl-header h1 { font-family: var(--font-display); font-size: var(--fs-heading-03); font-weight: 700; letter-spacing: -0.01em; margin-bottom: 4px; }
-.sl-header p { font-size: var(--fs-body-01); color: var(--color-text-secondary); max-width: 60ch; }
-.sl-header code { font-family: var(--font-mono); font-size: 0.9em; }
-
-.sl-paleta-activa { display: flex; gap: 8px; flex-wrap: wrap; }
-.sl-paleta-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: var(--fs-label-01); color: var(--color-text-secondary);
-  background: var(--color-bg-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius-base); padding: 3px 10px 3px 4px;
-}
-.sl-paleta-swatch { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 1px solid var(--color-border); }
-.sl-paleta-chip code { font-family: var(--font-mono); }
-
-.sl-toc { display: flex; gap: 14px; flex-wrap: wrap; margin: 20px 0; padding: 8px 0 12px; border-bottom: 1px solid var(--color-border); }
-.sl-toc a { font-size: var(--fs-label-01); color: var(--color-text-link); text-decoration: none; font-weight: 600; }
-.sl-toc a:hover { text-decoration: underline; }
-
-/* position, no flex — hallazgo de esta ronda: con display:flex, un <p> que
-   mezcla texto + <strong> + varios <code> convierte CADA nodo de texto e
-   inline en un flex item aparte (nowrap por defecto), así que el párrafo
-   se fragmentaba en columnas angostas que envolvían su propio texto en
-   vez de fluir como un párrafo normal — visible sobre todo en notas con
-   varios <code> (timeline, avatares, botones de esta ronda). El ícono
-   siempre es el primer hijo en las 7 instancias de .sl-nota del archivo;
-   con position:absolute se posiciona sin tocar el flujo del resto del
-   contenido, que vuelve a ser texto corrido normal. */
-.sl-nota { position: relative; font-size: var(--fs-label-01); padding: 10px 14px 10px 34px; border-radius: var(--radius-base); margin-bottom: 8px; }
-.sl-nota > i:first-child { position: absolute; left: 14px; top: 12px; }
-.sl-nota--info { background: var(--color-info-bg); color: var(--color-info-text); }
-.sl-nota--ok { background: var(--color-success-bg); color: var(--color-success-text); }
-.sl-nota code { font-family: var(--font-mono); }
-
-.sl-seccion { padding: 32px 0; border-bottom: 1px solid var(--color-border-subtle); }
-.sl-seccion:last-child { border-bottom: none; }
-.sl-seccion h2 { font-family: var(--font-display); font-size: var(--fs-heading-02); font-weight: 600; margin-bottom: 16px; letter-spacing: -0.01em; }
-.sl-seccion h3 { font-family: var(--font-display); font-size: var(--fs-heading-02); font-weight: 600; margin: 20px 0 10px; }
-.sl-seccion h4 { font-family: var(--font-display); font-size: var(--fs-body-01); font-weight: 600; margin: 24px 0 10px; }
-.sl-seccion-nota { font-size: var(--fs-label-01); color: var(--color-text-secondary); margin-bottom: 12px; }
-
-.sl-familia { margin-top: 16px; }
-.sl-familia h3 { margin-top: 0; }
-.sl-swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-.sl-swatch-card { background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-base); overflow: hidden; }
-.sl-swatch-color { height: 56px; }
-.sl-swatch-info { padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
-.sl-swatch-nombre { font-weight: 600; font-size: var(--fs-body-01); }
-.sl-swatch-token, .sl-swatch-hex { font-family: var(--font-mono); font-size: var(--fs-label-01); color: var(--color-text-secondary); }
-.sl-swatch-uso { font-size: var(--fs-label-01); color: var(--color-text-tertiary); margin-top: 4px; }
-.sl-swatch-ajustado { font-size: var(--fs-label-01); color: var(--color-warning-text); background: var(--color-warning-bg); border-radius: var(--radius-base); padding: 4px 6px; margin-top: 6px; display: flex; gap: 4px; align-items: flex-start; }
-
-.sl-tipo-tabla { display: flex; flex-direction: column; gap: 14px; }
-.sl-tipo-fila { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--color-border-subtle); }
-.sl-tipo-meta { display: flex; flex-direction: column; gap: 2px; }
-.sl-tipo-meta strong { font-size: var(--fs-body-01); }
-.sl-tipo-meta span { font-size: var(--fs-label-01); color: var(--color-text-tertiary); font-family: var(--font-mono); }
-
-.sl-fs-pagina { font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
-.sl-fs-seccion { font-family: var(--font-display); font-size: var(--fs-heading-02); font-weight: 600; line-height: 1.3; }
-.sl-fs-card { font-family: var(--font-display); font-size: var(--fs-heading-02); font-weight: 600; line-height: 1.3; display: flex; align-items: center; gap: 6px; }
-.sl-fs-body { font-size: var(--fs-body-01); font-weight: 400; line-height: 1.5; }
-.sl-fs-secundario { font-size: var(--fs-body-01); font-weight: 400; line-height: 1.5; color: var(--color-text-secondary); }
-.sl-fs-metadata { font-size: var(--fs-label-01); font-weight: 500; line-height: 1.4; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
-.sl-fs-kpi { font-size: var(--fs-heading-05); font-weight: 700; line-height: 1.1; }
-
-.sl-fila-demo { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.sl-fila-demo--col { flex-direction: column; align-items: flex-start; }
-
-.sl-inputs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
-.sl-inputs-grid .form-group.full { grid-column: 1 / -1; }
-
-.sl-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; align-items: start; }
-.sl-card-pad { padding: 1rem 1.15rem; }
-
-.sl-resp { display: flex; align-items: center; gap: 8px; }
-
-/* ── Componentes nuevos propuestos (no existen todavía en main.css) ── */
-
-/* Botón terciario/ghost — mismo box-model que .btn, sin borde ni fondo */
-.sl-btn-ghost {
-  background: transparent;
-  border-color: transparent;
-  color: var(--color-text-secondary);
-}
-.sl-btn-ghost:hover { background: var(--color-bg-muted); color: var(--color-text-primary); border-color: transparent; }
-.sl-btn-ghost:focus-visible { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--ring); }
-
-/* Icon-box consolidado — reemplaza .feed-icon (Dashboard) y
-   .soporte-accion-icono (Soporte), hoy divergentes en tamaño/radio. */
-.sl-icon-box {
-  width: 36px; height: 36px; border-radius: var(--radius-base);
-  display: flex; align-items: center; justify-content: center;
-  font-size: var(--icon-md); flex-shrink: 0;
-}
-/* --color-accent-subtle/-text en vez de --color-brand-100/-600 directos:
-   esos dos SÍ están tematizados para oscuro (ver .sl-lab.sl-oscuro) — usar
-   el token de marca crudo acá dejaba el ícono "brand" como un cuadro casi
-   blanco sobre fondo oscuro (bug real, encontrado en la captura de verificación). */
-.sl-icon-box--brand   { background: var(--color-accent-subtle); color: var(--color-accent-text); }
-.sl-icon-box--success { background: var(--color-success-bg); color: var(--color-success-text); }
-.sl-icon-box--warning { background: var(--color-warning-bg); color: var(--color-warning-text); }
-.sl-icon-box--danger  { background: var(--color-danger-bg); color: var(--color-danger-text); }
-.sl-icon-box--info    { background: var(--color-info-bg); color: var(--color-info-text); }
-
-/* Avatar — portado a main.css (.avatar/.avatar.sm/.avatar.lg + los 6
-   .avatar--*, con sus valores en tokens --color-avatar-*). Las reglas
-   .sl-avatar--* que vivían acá eran el prototipo y se retiraron: la página
-   usa ahora las clases reales, así que lo que se ve acá ES lo que se ve en
-   producción. El tema oscuro del lab redefine los 10 tokens en
-   .sl-lab.sl-oscuro, igual que hace con danger/warning/info.
-   Contraste medido de los 5 tonos: 5.22:1 a 5.99:1 en claro, 6.64:1 a
-   7.34:1 en oscuro (scripts/contraste.mjs, pares avatar*). */
-
-/* Fila de tabla seleccionada (demo de click único, sección "Tabla ITSM") —
-   mismo criterio que .sl-fila-marcada (checkbox): inset, no border-left,
-   para no desplazar el contenido con un padding compensatorio. Antes usaba
-   border-left real; unificado a la técnica ya validada para no tener dos
-   formas distintas de mostrar "esto está seleccionado" en la misma página.
-   Hallazgo de esta ronda: usaba --color-brand-50 (#F3F9FF fijo, nunca
-   redefinido en .sl-oscuro) en vez de --color-accent-subtle (que sí tiene
-   override oscuro, rgba(0,130,251,0.16)) — en tema oscuro la fila quedaba
-   casi blanca, una superficie clara metida dentro de una página oscura.
-   --color-accent-subtle ya es exactamente el token que pide este ajuste;
-   no hace falta declarar rgba(0,130,251,0.16) de nuevo a mano. */
-.sl-fila-seleccionada td { background: var(--color-accent-subtle); }
-.sl-fila-seleccionada td:first-child { box-shadow: inset 2px 0 0 var(--color-accent); }
-
-/* Encabezado de card con alerta — icon-box warning + título, en vez de un
-   border-left (ruido visual repetido card tras card). La card en sí queda
-   con el mismo borde completo y sutil que cualquier otra card normal. */
-.sl-alerta-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-
-.sl-timeline-demo { max-width: 420px; }
-
-/* Card clicable — única card con elevación, y solo en hover/focus (Ajuste 2).
-   Hover usa --color-border-default (no -strong): "strong" queda reservado
-   para hover de CONTROLES de formulario (input/select/botón) — una card
-   clicable es una señal más liviana, un escalón abajo en la escala. */
-.sl-card--clicable { cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; }
-.sl-card--clicable:hover { box-shadow: none; border-color: var(--color-border-default); }
-.sl-card--clicable:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--ring);
-  border-color: var(--color-accent);
-}
-
-/* Navegación — mismos tokens que .sb-nav-item.is-activo real */
-.sl-nav-demo { display: flex; flex-direction: column; gap: 2px; max-width: 220px; }
-.sl-nav-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 12px; border-radius: var(--radius-base);
-  font-size: var(--fs-body-01); font-weight: 500;
-  color: var(--color-text-secondary); text-decoration: none;
-}
-.sl-nav-item:hover { background: var(--color-bg-muted); color: var(--color-text-primary); }
-/* Mismo criterio que .sb-nav-item real (AppNav.vue): outline sólido de 2px
-   con offset negativo, no el anillo translúcido de .mat-ring — el ítem de
-   nav ya tiene fondo propio en :hover/activo, un anillo alfa quedaba débil
-   encima. */
-.sl-nav-item:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
-.sl-nav-item--activo,
-.sl-nav-item--activo:hover {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-  font-weight: 600;
-}
-
-/* Menú contextual / dropdown — único consumidor de --shadow-overlay. La demo
-   estática de "Componentes operativos" (siempre visible, div) y la de
-   "Elevación y superficies" (real, button + toggle) comparten estas
-   clases — mismo componente visual, dos usos distintos. */
-.sl-popover {
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-base);
-  box-shadow: var(--shadow-overlay);
-  padding: 6px;
-  width: 220px;
-}
-/* Flotante: posicionada relativa a .sl-dropdown-wrap, sin Teleport (ver
-   nota del script sobre por qué no se reusa MenuAcciones.vue literal). */
-.sl-popover--flotante { position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; }
-.sl-dropdown-wrap { position: relative; display: inline-block; }
-
-.sl-popover-item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 8px 10px; border-radius: var(--radius-base);
-  font-size: var(--fs-body-01); font-family: var(--font-sans);
-  color: var(--color-text-primary); text-align: left;
-  background: none; border: none; cursor: pointer;
-}
-.sl-popover-item:hover { background: var(--color-bg-muted); }
-.sl-popover-item:focus-visible { outline: none; background: var(--color-bg-muted); box-shadow: 0 0 0 2px var(--ring); }
-.sl-popover-item--danger { color: var(--color-danger-text); }
-.sl-popover-item--danger i { color: var(--color-danger-text); }
-.sl-popover-sep { height: 1px; margin: 4px 8px; background: var(--color-border-subtle); }
-
-/* ── Pantalla de ejemplo compuesta ── */
-.sl-pantalla { display: flex; flex-direction: column; gap: 20px; }
-.sl-pantalla-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-.sl-pantalla-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-
-/* ── Auditoría de color ── */
-.sl-auditoria-bloque h3 { font-size: var(--fs-body-01); margin: 20px 0 6px; }
-.sl-auditoria-tabla { display: flex; flex-direction: column; gap: 1px; background: var(--color-border-subtle); border-radius: var(--radius-base); overflow: hidden; margin-top: 8px; }
-.sl-auditoria-fila { display: grid; grid-template-columns: 1.2fr 1.4fr 1fr 2fr; gap: 12px; padding: 8px 12px; background: var(--color-bg-surface); align-items: center; }
-.sl-auditoria-fila--header { background: var(--color-bg-subtle); font-size: var(--fs-label-01); font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
-.sl-auditoria-fila code { font-family: var(--font-mono); font-size: var(--fs-label-01); color: var(--color-text-secondary); }
-
-/* ── Validación operativa — A. Lista (estado vacío compacto) ── */
-.sl-vacio-compacto {
-  text-align: center; padding: 1.5rem 1rem;
-  color: var(--color-text-secondary); font-size: var(--fs-body-01);
-}
-
-/* Ticket enlazable — mismo criterio que .empleado-link real (main.css):
-   el azul es visible siempre (es la señal de "esto es clickeable"), no
-   solo al pasar el mouse — está permitido por el principio de esta ronda
-   ("el azul debe comunicar... link"), no es decoración. */
-.sl-ticket-link { color: var(--color-text-link); text-decoration: none; font-weight: 500; }
-.sl-ticket-link:hover,
-.sl-ticket-link:focus-visible { text-decoration: underline; }
-.sl-ticket-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 2px; }
-
-/* Marca semántica LOCALIZADA de SLA en riesgo — un ícono junto al título,
-   nunca la fila entera pintada de warning/danger/azul. */
-.sl-sla-flag { margin-left: 6px; color: var(--color-warning-text); font-size: var(--icon-sm); vertical-align: middle; }
-
-/* Checkboxes de selección — accent-color para que el estado "marcado" use
-   el azul de marca (no el azul nativo del navegador, que no coincide con
-   la paleta) y foco visible explícito (bare, no viven dentro de
-   .form-group, que es lo único que trae este estado en main.css). */
-.sl-lab input[type="checkbox"] { accent-color: var(--color-accent); cursor: pointer; }
-.sl-lab input[type="checkbox"]:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-.sl-th-check { width: 44px; text-align: center; }
-
-/* Barra de acciones masivas — siempre visible (evita el "aparece de
-   golpe" al seleccionar), superficie neutra (--color-bg-subtle, la misma
-   del header de tabla), NUNCA un fondo de --color-accent. El único azul
-   que puede aparecer acá es el foco de sus propios botones. Antes de
-   seleccionar, los CTA quedan disabled (atributo real, no solo opacidad) y
-   "Cerrar" se ve neutro — recupera .btn-danger recién cuando hay selección,
-   para no mostrar un rojo "apagado" que sigue leyéndose como advertencia. */
-.sl-bulkbar {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap;
-  padding: 10px 1.25rem;
-  background: var(--color-bg-subtle);
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-/* Fila marcada (checkbox) — fondo --color-accent-subtle + indicador
-   INSET de 2px (no border-left que empuja el contenido: box-shadow inset
-   no consume ancho de la celda). 2px, no 3px: respeta la regla ya vigente
-   del sistema real ("ningún borde/acento estructural supera 2px") sin
-   crear una excepción nueva solo para tablas — la selección ya se
-   distingue de sobra con el checkbox marcado, el fondo accent-subtle,
-   este indicador y la barra de acciones masivas. */
-.sl-fila-marcada td { background: var(--color-accent-subtle); }
-.sl-fila-marcada td:first-child { box-shadow: inset 2px 0 0 var(--color-accent); }
-
-/* ── Validación operativa — B. Detalle de ticket ── */
-.sl-detalle { display: flex; flex-direction: column; gap: 16px; }
-.sl-detalle-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-.sl-detalle-titulo { display: flex; align-items: center; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
-.sl-detalle-meta { display: flex; gap: 32px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--color-border-subtle); border-bottom: 1px solid var(--color-border-subtle); }
-.sl-detalle-meta > div { display: flex; flex-direction: column; gap: 4px; }
-.sl-detalle-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start; }
-.sl-detalle-principal h4 { font-family: var(--font-display); font-size: var(--fs-body-01); font-weight: 600; margin: 4px 0 10px; }
-.sl-detalle-sidebar { display: flex; flex-direction: column; gap: 12px; }
-.sl-relacionado { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--color-border-subtle); flex-wrap: wrap; }
-.sl-relacionado:first-of-type { border-top: none; }
-.sl-relacionado code { font-family: var(--font-mono); font-size: var(--fs-label-01); color: var(--color-text-secondary); }
-.sl-relacionado .sl-fs-secundario { flex: 1; min-width: 120px; }
-
-/* ── Validación operativa — C. Dashboard 3 columnas ── */
-.sl-dashboard-3col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
-.sl-empleado-fila,
-.sl-pendiente-fila { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--color-border-subtle); }
-.sl-empleado-fila:first-of-type,
-.sl-pendiente-fila:first-of-type { border-top: none; padding-top: 12px; }
-.sl-resumen-fila { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--color-border-subtle); }
-.sl-resumen-fila:first-of-type { border-top: none; padding-top: 12px; }
-.sl-resumen-valor { font-size: var(--fs-heading-02); font-weight: 700; color: var(--color-text-primary); }
-
-/* ── Elevación y superficies (A/B lado a lado) ── */
-.sl-elevacion-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-.sl-elevacion-grid h4 { margin-top: 0; }
-.sl-card-clicable-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-/* Neutro (text-tertiary) a propósito: el chevron es una pista de "esto
-   navega", no necesita el azul de marca para cumplir su función. */
-.sl-card-clicable-chevron { font-size: var(--icon-md); color: var(--color-text-tertiary); flex-shrink: 0; }
-
-@media (max-width: 768px) {
-  .sl-inputs-grid { grid-template-columns: 1fr; }
-  .sl-tipo-fila { grid-template-columns: 1fr; }
-  .sl-pantalla-kpis { grid-template-columns: 1fr; }
-  .sl-detalle-grid { grid-template-columns: 1fr; }
-  .sl-dashboard-3col { grid-template-columns: 1fr; }
-  .sl-auditoria-fila { grid-template-columns: 1fr; gap: 2px; }
-  .sl-elevacion-grid { grid-template-columns: 1fr; }
-}
-</style>

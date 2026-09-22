@@ -8,14 +8,14 @@ import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import ProblemaForm from '../problemas/ProblemaForm.vue';
 import TicketCamposGestion from './TicketCamposGestion.vue';
 import TicketComposer from './TicketComposer.vue';
 import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
+import { rolDeTag } from '../../core/tagRol.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -51,6 +51,9 @@ async function cargar() {
 }
 
 onMounted(cargar);
+
+const campoMotivoRechazo = useCampoAccesible();
+const campoMotivoReabrir = useCampoAccesible();
 </script>
 
 <template>
@@ -83,7 +86,7 @@ onMounted(cargar);
             <span v-if="ticket.empleado_correo" class="tk-detalle">{{ ticket.empleado_correo }}</span>
           </div>
           <div v-else class="tk-sin-vincular">
-            <CarbonTag :variante="badgeInfo('ticket_sin_vincular').clase"><i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}</CarbonTag>
+            <span class="tag" :class="`tag--${rolDeTag(badgeInfo('ticket_sin_vincular').clase)}`"><i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}</span>
             <p v-if="ticket.contacto_ingresado" class="tk-detalle">Contacto ingresado: {{ ticket.contacto_ingresado }}</p>
             <p class="tk-nota">Revisa manualmente quién es y, si corresponde, vincúlalo desde comentarios.</p>
           </div>
@@ -157,28 +160,43 @@ onMounted(cargar);
 
             <!-- abierto: Rechazar / Iniciar atención -->
             <div v-if="ticket.estado === 'abierto' && !mostrarRechazar" class="tk-acciones-estado">
-              <CarbonButton variante="danger" ancho icono="ti-x" :deshabilitado="iniciando" @click="abrirRechazar">Rechazar</CarbonButton>
-              <CarbonButton variante="primary" ancho icono="ti-player-play" :cargando="iniciando" @click="confirmarIniciar">
-                {{ iniciando ? 'Iniciando...' : 'Iniciar atención' }}
-              </CarbonButton>
+              <AppButton severity="danger" icon="ti ti-x" label="Rechazar" block :disabled="iniciando" @click="abrirRechazar" />
+              <AppButton
+                severity="primary"
+                icon="ti ti-player-play"
+                :label="iniciando ? 'Iniciando...' : 'Iniciar atención'"
+                :loading="iniciando"
+                block
+                @click="confirmarIniciar"
+              />
             </div>
 
             <!-- Formulario: Rechazar -->
             <div v-if="mostrarRechazar" class="tk-form-inline">
-              <CarbonCampo
-                v-model="motivoRechazo"
-                etiqueta="Motivo del rechazo"
-                tipo="textarea"
-                :filas="3"
-                requerido
-                placeholder="El empleado verá este motivo en su seguimiento"
-                :deshabilitado="rechazando"
-              />
+              <div class="campo" :class="{ 'campo--inerte': rechazando }">
+                <label class="campo__etiqueta" :for="campoMotivoRechazo.id">
+                  Motivo del rechazo<span aria-hidden="true"> *</span>
+                </label>
+                <div class="campo__caja">
+                  <textarea
+                    :id="campoMotivoRechazo.id"
+                    v-model="motivoRechazo"
+                    class="campo__control campo__control--area"
+                    :rows="3"
+                    required
+                    placeholder="El empleado verá este motivo en su seguimiento"
+                    :disabled="rechazando"
+                  ></textarea>
+                </div>
+              </div>
               <div class="modal-actions">
-                <CarbonButton variante="secondary" :deshabilitado="rechazando" @click="mostrarRechazar = false">Cancelar</CarbonButton>
-                <CarbonButton variante="danger" :cargando="rechazando" @click="confirmarRechazar">
-                  {{ rechazando ? 'Rechazando...' : 'Confirmar rechazo' }}
-                </CarbonButton>
+                <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="rechazando" @click="mostrarRechazar = false" />
+                <AppButton
+                  severity="danger"
+                  :label="rechazando ? 'Rechazando...' : 'Confirmar rechazo'"
+                  :loading="rechazando"
+                  @click="confirmarRechazar"
+                />
               </div>
             </div>
 
@@ -188,41 +206,67 @@ onMounted(cargar);
                 <input v-model="guardarComoKb" type="checkbox" :disabled="resolviendo">
                 ¿Guardar esta solución en la Base de Conocimiento?
               </label>
-              <CarbonButton variante="primary" ancho icono="ti-circle-check" class="tk-btn-resolver" @click="mostrarConfirmarResolver = true">Marcar como resuelto</CarbonButton>
+              <AppButton
+                severity="primary"
+                icon="ti ti-circle-check"
+                label="Marcar como resuelto"
+                block
+                class="tk-btn-resolver"
+                @click="mostrarConfirmarResolver = true"
+              />
             </template>
 
             <!-- terminal: Reabrir (solo jefe) -->
             <template v-if="ESTADOS_TERMINALES.includes(ticket.estado) && !mostrarReabrir">
-              <CarbonButton v-if="auth.esJefe" variante="secondary" ancho icono="ti-refresh" class="tk-btn-reabrir" :cargando="reabriendo" @click="abrirReabrir">{{ reabriendo ? 'Reabriendo...' : 'Reabrir ticket' }}</CarbonButton>
+              <AppButton
+                v-if="auth.esJefe"
+                severity="secondary"
+                icon="ti ti-refresh"
+                :label="reabriendo ? 'Reabriendo...' : 'Reabrir ticket'"
+                :loading="reabriendo"
+                block
+                class="tk-btn-reabrir"
+                @click="abrirReabrir"
+              />
               <p v-else class="tk-nota">Solo el jefe puede reabrir este ticket.</p>
             </template>
 
             <!-- Formulario: Reabrir (motivo obligatorio, queda como nota interna) -->
             <div v-if="mostrarReabrir" class="tk-form-inline">
-              <CarbonCampo
-                v-model="motivoReabrir"
-                etiqueta="Motivo para reabrir"
-                tipo="textarea"
-                :filas="3"
-                requerido
-                placeholder="Queda como nota interna, no visible para el empleado"
-                :deshabilitado="reabriendo"
-              />
+              <div class="campo" :class="{ 'campo--inerte': reabriendo }">
+                <label class="campo__etiqueta" :for="campoMotivoReabrir.id">
+                  Motivo para reabrir<span aria-hidden="true"> *</span>
+                </label>
+                <div class="campo__caja">
+                  <textarea
+                    :id="campoMotivoReabrir.id"
+                    v-model="motivoReabrir"
+                    class="campo__control campo__control--area"
+                    :rows="3"
+                    required
+                    placeholder="Queda como nota interna, no visible para el empleado"
+                    :disabled="reabriendo"
+                  ></textarea>
+                </div>
+              </div>
               <div class="modal-actions">
-                <CarbonButton variante="secondary" :deshabilitado="reabriendo" @click="mostrarReabrir = false">Cancelar</CarbonButton>
-                <CarbonButton variante="primary" :cargando="reabriendo" @click="confirmarReabrir">
-                  {{ reabriendo ? 'Reabriendo...' : 'Confirmar reabrir' }}
-                </CarbonButton>
+                <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="reabriendo" @click="mostrarReabrir = false" />
+                <AppButton
+                  severity="primary"
+                  :label="reabriendo ? 'Reabriendo...' : 'Confirmar reabrir'"
+                  :loading="reabriendo"
+                  @click="confirmarReabrir"
+                />
               </div>
             </div>
 
             <div class="tk-problema-vinculado">
               <RouterLink v-if="problemaVinculado" :to="`/problemas/${problemaVinculado.id}`" class="tk-problema-link">
-                <CarbonTag variante="danger" class="badge-inline">
+                <span class="tag badge-inline" :class="`tag--${rolDeTag('danger')}`">
                   <i class="ti ti-alert-hexagon" aria-hidden="true"></i> Problema abierto: {{ problemaVinculado.titulo }}
-                </CarbonTag>
+                </span>
               </RouterLink>
-              <CarbonButton v-else variante="secondary" icono="ti-alert-hexagon" @click="mostrarProblemaForm = true">Marcar como problema</CarbonButton>
+              <AppButton v-else severity="secondary" icon="ti ti-alert-hexagon" label="Marcar como problema" @click="mostrarProblemaForm = true" />
             </div>
           </div>
 
@@ -234,7 +278,14 @@ onMounted(cargar);
             <p v-if="satisfaccion.comentario" class="tk-nota">"{{ satisfaccion.comentario }}"</p>
             <template v-if="!satisfaccion.fecha_envio">
               <p class="tk-nota">Encuesta enviada, sin respuesta todavía.</p>
-              <CarbonButton variante="secondary" ancho icono="ti-brand-whatsapp" class="tk-btn-satisfaccion" @click="copiarMensajeSatisfaccion">Copiar mensaje de WhatsApp</CarbonButton>
+              <AppButton
+                severity="secondary"
+                icon="ti ti-brand-whatsapp"
+                label="Copiar mensaje de WhatsApp"
+                block
+                class="tk-btn-satisfaccion"
+                @click="copiarMensajeSatisfaccion"
+              />
             </template>
           </div>
         </div>
@@ -299,103 +350,4 @@ onMounted(cargar);
   </div>
 </template>
 
-<style scoped>
-/* .header-left/.header-inner se estilan en main.css (shell de PageHeader) */
-.btn-volver { flex-shrink: 0; }
 
-.header-emp h1 {
-  font-size: var(--fs-heading-02);
-  font-weight: 600;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tk-codigo {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.header-sub {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.tk-datos, .tk-actividad {
-  padding: 16px 20px 20px;
-}
-
-.tk-estado-badge {
-  margin-left: auto;
-}
-
-.tk-acciones-estado {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.tk-form-inline {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.tk-btn-resolver {
-  margin-top: 6px;
-}
-
-.tk-btn-reabrir {
-  margin-top: 6px;
-}
-
-.tk-btn-satisfaccion {
-  margin-top: 8px;
-}
-
-.tk-solicitante, .tk-sin-vincular {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.tk-kb-relacionado {
-  display: block;
-  font-size: var(--fs-label-01);
-  color: var(--color-accent-text);
-  text-decoration: none;
-  margin-bottom: 6px;
-}
-.tk-kb-relacionado:hover { text-decoration: underline; }
-
-.tk-nombre { font-size: var(--fs-body-01); font-weight: 600; color: var(--color-text-primary); }
-.tk-adjunto {
-  max-width: 100%;
-  border-radius: var(--radius-base);
-  border: 1px solid var(--color-border);
-}
-
-.tk-problema-vinculado { margin-top: 10px; }
-
-.tk-problema-link {
-  display: inline-block;
-  text-decoration: none;
-}
-
-.check-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  cursor: pointer;
-  margin-top: 10px;
-}
-
-/* Actividad y conversación (descripción, feed unificado, composer) vive en
-   TicketTimelineUnificado.vue / TicketComposer.vue, con sus estilos
-   adentro — compartidos con TicketDetallePanel.vue. */
-</style>

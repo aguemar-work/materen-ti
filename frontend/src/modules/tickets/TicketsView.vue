@@ -16,42 +16,47 @@ import TicketInternoForm from './TicketInternoForm.vue';
 import ReporteTicketsModal from './ReporteTicketsModal.vue';
 import TicketDetallePanel from './TicketDetallePanel.vue';
 import FiltroFechaCreacion from './FiltroFechaCreacion.vue';
-import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
 import IndicadorPrioridad from '../../components/shared/IndicadorPrioridad.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
 import ListaVistas from '../../components/shared/ListaVistas.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppButton from '../../components/ui/AppButton.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
 import { useAtajosLista } from '../../composables/useAtajosLista.js';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import { rolDeTag } from '../../core/tagRol.js';
+import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
+import { columnasVisibles, agruparParaTarjeta } from '../../core/tablaColumnas.js';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const router = useRouter();
 const store = useTicketsStore();
 const auth = useAuthStore();
 const { lista, total, cargando, cargandoMas, error, orden, vistaActiva } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
+// Forma que espera AppTable (props nativas de PrimeVue DataTable) — misma
+// traducción que Licencias/Equipos.
+const sortFieldTabla = computed(() => orden.value?.columna ?? null);
+const sortOrderTabla = computed(() => {
+  if (!orden.value) return null;
+  return orden.value.direccion === 'desc' ? -1 : 1;
+});
 
-// Definición de columnas de CarbonDataTable (solo el modo Tabla — Triage,
-// más abajo, es un panel de lista angosta + detalle, no una tabla, y no usa
-// este componente). Densidad `lg`: vista insignia, confirmado por el JEFE.
-//
-// "check" (selección múltiple, piloto Tabla de escritorio — ver
-// `seleccionados` más abajo) es la única columna del sistema con encabezado
-// propio (`#encabezado-check`, extensión aditiva de CarbonDataTable) en vez
-// de texto — el checkbox "seleccionar todos" no es una etiqueta. `movil:
-// false` porque la selección en lote no existe en mobile (Triage tampoco
-// la monta: es exclusivo de esta tabla de escritorio).
+// Definición de columnas — hoy sirve SOLO para agrupar la tarjeta móvil
+// (`agruparParaTarjeta`, más abajo). La tabla de escritorio se migró a
+// AppTable/AppColumn (2026-09-08): la columna "check" (selección múltiple)
+// ya no vive acá, es una <AppColumn selection-mode="multiple"> declarada
+// directo en el template — PrimeVue la resuelve sola, no necesita entrada
+// en este array (que además nunca la usó para mobile: `movil:false` la
+// excluía de agruparParaTarjeta desde siempre, la selección en lote es
+// exclusiva de la tabla de escritorio).
 //
 // "codigo"/"Ticket" absorbe categoría + nivel de atención + título en un
 // único .celda-apilada — igual que el <td> de antes — y es también la
@@ -61,7 +66,6 @@ const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 // para su columna principal, y evita que "categoría"/"nivel" quedaran
 // huérfanos sin dónde caer en la tarjeta nueva).
 const columnasTickets = [
-  { clave: 'check', label: '', ancho: '36px', movil: false },
   { clave: 'prioridad', label: 'Prioridad', ordenable: true, movil: 'pie' },
   { clave: 'codigo', label: 'Ticket', ordenable: true, elastica: true, movil: 'principal' },
   { clave: 'solicitante', label: 'Solicitante', movil: 'sec' },
@@ -293,28 +297,27 @@ const staffPorId = computed(() => {
 // borde-izquierdo de acento en la fila seleccionada usa la excepción de 2px
 // ya aprobada a la regla "sin bordes de costado" (mismo criterio que ya se
 // usa para severidad).
+//
+// `seleccionados` sigue siendo un Set<id> — TODA la lógica de acciones
+// masivas de abajo (ticketsSeleccionados, todosResueltos, la barra de
+// selección) se queda exactamente como estaba, cero riesgo de tocarla. Lo
+// único nuevo (2026-09-08, migración a AppTable) es `seleccionParaTabla`:
+// un puente hacia `v-model:selection`, que en PrimeVue es un array de FILAS
+// (compara por dataKey, no por id suelto) — no una razón para reescribir
+// `seleccionados` a otra forma en todo el resto del archivo.
 const seleccionados = ref(new Set());
 
 function estaSeleccionado(id) {
   return seleccionados.value.has(id);
 }
-function alternarSeleccion(id) {
-  const s = new Set(seleccionados.value);
-  if (s.has(id)) s.delete(id); else s.add(id);
-  seleccionados.value = s;
-}
 function limpiarSeleccion() {
   seleccionados.value = new Set();
 }
-const todosSeleccionadosEnPagina = computed(() =>
-  lista.value.length > 0 && lista.value.every((t) => seleccionados.value.has(t.id))
-);
-function alternarSeleccionTodos() {
-  seleccionados.value = todosSeleccionadosEnPagina.value
-    ? new Set()
-    : new Set(lista.value.map((t) => t.id));
-}
 const ticketsSeleccionados = computed(() => lista.value.filter((t) => seleccionados.value.has(t.id)));
+const seleccionParaTabla = computed({
+  get: () => ticketsSeleccionados.value,
+  set: (filas) => { seleccionados.value = new Set(filas.map((t) => t.id)); },
+});
 // Cerrar en lote solo tiene sentido si CADA seleccionado ya está resuelto —
 // mismo alcance que cerrarTicket() (resuelto -> cerrado, único salto que
 // hace esa RPC). No es "todos o ninguno" por conveniencia: mezclar un
@@ -474,6 +477,20 @@ const paginaActual = computed({
   set: (p) => store.irAPagina(p),
 });
 
+// Paginación (ex-CarbonPagination): server-side, la fuente es el store.
+const totalPaginasTickets = computed(() => totalPaginasDe(total.value, store.tamPagina));
+const paginasTickets = computed(() => paginasDe(totalPaginasTickets.value));
+const rangoTickets = computed(() => rangoDe(paginaActual.value, store.tamPagina, total.value));
+function irAPaginaTickets(pagina) {
+  const destino = clampPagina(pagina, totalPaginasTickets.value);
+  if (destino !== store.pagina) store.irAPagina(destino);
+}
+
+// Tabla (ex-CarbonDataTable): derivaciones de `columnasTickets` para el
+// <table> y la tarjeta móvil escritos a mano más abajo.
+const columnasVisiblesTickets = computed(() => columnasVisibles(columnasTickets));
+const enTarjetaTickets = computed(() => agruparParaTarjeta(columnasVisiblesTickets.value));
+
 // Antigüedad: siempre visible bajo la fecha; se resalta cuando señala
 // riesgo operativo (abierto sin atender >24h, en curso sin novedad >3 días).
 function ticketEnvejecido(t) {
@@ -503,14 +520,15 @@ function fechaListaAngosta(iso) {
 // Triage (desktop): selecciona en el panel, sin navegar. Tabla o mobile
 // (vistaEfectiva ya resuelve mobile a 'tabla'): navega a la página
 // completa, igual que el comportamiento de siempre.
-// Clases de fila para CarbonDataTable: la MISMA función alimenta el <tr> de
-// escritorio y el <li> de la tarjeta móvil (ver claseFila en el
-// componente), así que devuelve la unión de las dos familias de clases que
-// antes vivían por separado a mano: `.fila-ticket*` (reglas que apuntan a
-// `td`, sirven en la fila de escritorio) y `.tarjeta-fila--activa` (reglas
-// sin `td`, sirven en la tarjeta). Ambos juegos de selectores siguen
-// existiendo tal cual en el <style> de abajo — esto no les agrega trabajo,
-// solo hace que las dos superficies reciban las clases que ya necesitaban.
+// Clases de fila: la MISMA función alimenta el <tr> de escritorio (vía
+// `:row-class` de AppTable — es una prop nativa de DataTable, no un invento
+// nuestro, ver AppTable.vue) y el <li> de la tarjeta móvil, así que
+// devuelve la unión de las dos familias de clases que antes vivían por
+// separado a mano: `.fila-ticket*` (reglas que apuntan a `td`, sirven en la
+// fila de escritorio) y `.tarjeta-fila--activa` (reglas sin `td`, sirven en
+// la tarjeta). Ambos juegos de selectores siguen existiendo tal cual en el
+// <style> de abajo — esto no les agrega trabajo, solo hace que las dos
+// superficies reciban las clases que ya necesitaban.
 function claseFilaTicket(fila) {
   const clases = ['fila-ticket', 'tarjeta-fila--clic'];
   if (fila.id === store.ultimoAbierto) clases.push('fila-ticket--activa', 'tarjeta-fila--activa');
@@ -518,11 +536,13 @@ function claseFilaTicket(fila) {
   return clases;
 }
 
-// aria-current, no solo la clase visual: el <tr> a mano lo llevaba en la
-// fila activa (el ticket que se está viendo) para que un lector de
-// pantalla lo anuncie, no solo lo resalte en color. `claseFila` no expresa
-// atributos ARIA, por eso `filaAtributos` (agregado a CarbonDataTable en
-// esta misma migración) es lo que lo preserva.
+// aria-current, no solo la clase visual: la fila activa (el ticket que se
+// está viendo) lo lleva para que un lector de pantalla lo anuncie, no solo
+// lo resalte en color. `claseFilaTicket` no expresa atributos ARIA, por eso
+// esta función existe aparte — en la tabla de escritorio se conecta vía
+// `:row-attrs` de AppTable (prop nueva, 2026-09-08: DataTable no tiene un
+// equivalente nativo a "atributos extra por fila" más allá de clase/estilo,
+// así que se resuelve por PT — ver table.pt.js).
 function filaAtributosTicket(fila) {
   return fila.id === store.ultimoAbierto ? { 'aria-current': 'true' } : null;
 }
@@ -659,7 +679,7 @@ onMounted(async () => {
       <template #acciones>
         <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" class="solo-escritorio" />
         <MenuAcciones texto="Más" label="Más acciones" :acciones="accionesMas" />
-        <CarbonButton variante="primary" icono="ti-plus" @click="mostrarNuevo = true">Ticket interno</CarbonButton>
+        <AppButton severity="primary" icon="ti ti-plus" label="Ticket interno" @click="mostrarNuevo = true" />
       </template>
     </PageHeader>
 
@@ -817,21 +837,22 @@ onMounted(async () => {
               <option value="" disabled>Reasignar a...</option>
               <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
             </select>
-            <CarbonButton variante="secondary" tam="sm" :deshabilitado="!reasignarLoteA || procesandoLote" @click="pedirReasignarLote">
-              Reasignar
-            </CarbonButton>
-            <CarbonButton
-              variante="secondary"
-              tam="sm"
-              :deshabilitado="!todosResueltos || procesandoLote"
+            <AppButton
+              severity="secondary"
+              size="sm"
+              label="Reasignar"
+              :disabled="!reasignarLoteA || procesandoLote"
+              @click="pedirReasignarLote"
+            />
+            <AppButton
+              severity="secondary"
+              size="sm"
+              label="Cerrar seleccionados"
+              :disabled="!todosResueltos || procesandoLote"
               :title="todosResueltos ? 'Cerrar los tickets seleccionados' : 'Solo se pueden cerrar en lote tickets ya resueltos'"
               @click="pedirCerrarLote"
-            >
-              Cerrar seleccionados
-            </CarbonButton>
-            <CarbonButton variante="secondary" tam="sm" :deshabilitado="procesandoLote" @click="limpiarSeleccion">
-              Cancelar
-            </CarbonButton>
+            />
+            <AppButton severity="secondary" size="sm" label="Cancelar" :disabled="procesandoLote" @click="limpiarSeleccion" />
           </div>
         </div>
 
@@ -867,97 +888,175 @@ onMounted(async () => {
              JEFE. `claseFilaTicket` unifica las clases de fila que antes
              vivían por separado en el <tr> y el <li> (ver el comentario en
              el script) — el <style> de abajo no cambió una línea. -->
-        <CarbonDataTable
-          :columnas="columnasTickets"
-          :filas="lista"
-          :cargando="cargando"
-          densidad="lg"
-          :orden-por="ordenColumna"
-          :orden-dir="ordenDireccion"
-          :clase-fila="claseFilaTicket"
-          :fila-atributos="filaAtributosTicket"
-          etiqueta="Tickets de soporte"
-          @ordenar="store.ordenarPor"
-          @clic-fila="verTicket"
-        >
-          <template #encabezado-check>
-            <span class="chk-celda">
-              <input
-                type="checkbox"
-                :checked="todosSeleccionadosEnPagina"
-                aria-label="Seleccionar todos los tickets de esta página"
-                @change="alternarSeleccionTodos"
-              >
-            </span>
-          </template>
-          <template #celda-check="{ fila }">
-            <span class="chk-celda" @click.stop>
-              <input
-                type="checkbox"
-                :checked="estaSeleccionado(fila.id)"
-                :aria-label="`Seleccionar ${fila.codigo}`"
-                @change="alternarSeleccion(fila.id)"
-              >
-            </span>
-          </template>
-          <template #celda-prioridad="{ fila }">
-            <IndicadorPrioridad :valor="fila.prioridad" />
-          </template>
-          <template #celda-codigo="{ fila }">
-            <div class="celda-apilada">
-              <span class="celda-apilada__meta">
-                <RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${fila.id}`" @click.stop>{{ fila.codigo }}</RouterLink>
-                <template v-if="fila.categoria">
-                  <span class="celda-sep" aria-hidden="true">·</span>
-                  <span class="tk-categoria">{{ fila.categoria }}</span>
-                </template>
-                <!-- Nivel de atención se fusiona acá (séptima pasada). Ver
-                     nota larga arriba: misma familia que Categoría, sin
-                     `v-else`/TextoVacio a propósito. -->
-                <template v-if="fila.nivel_atencion">
-                  <span class="celda-sep" aria-hidden="true">·</span>
-                  <span class="tk-nivel" :title="`Nivel de atención ${fila.nivel_atencion}`">{{ fila.nivel_atencion }}</span>
-                </template>
-              </span>
-              <span class="celda-apilada__principal">{{ fila.titulo }}</span>
-            </div>
-          </template>
-          <template #celda-solicitante="{ fila }">
-            <CarbonTag v-if="!fila.vinculado" class="badge-inline" :variante="badgeInfo('ticket_sin_vincular').clase" title="No se pudo identificar al solicitante">
-              <i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}
-            </CarbonTag>
-            <RouterLink v-else-if="fila.solicitante_id" class="empleado-link" :to="`/empleados/${fila.solicitante_id}`" @click.stop>{{ fila.solicitante }}</RouterLink>
-            <TextoVacio v-else :valor="fila.solicitante" />
-          </template>
-          <template #celda-estado="{ fila }">
-            <BadgeEstado tipo="ticket" :valor="fila.estado" />
-          </template>
-          <template #celda-asignado_a="{ fila }">
-            <!-- Sin avatar acá a propósito: .avatar.sm mide 32px y llevaría
-                 la fila de ~32px a ~50px, anulando la densidad nueva — y
-                 suma un círculo de acento por fila, justo el ruido de
-                 color que este rediseño quita. El avatar se queda donde sí
-                 paga: la tarjeta angosta de Triage, que no tiene ancho para
-                 el nombre completo. -->
-            <TextoVacio v-if="!fila.asignado_a" placeholder="Sin asignar" />
-            <span v-else class="tk-asignado">{{ staffPorId[fila.asignado_a] || 'Staff' }}</span>
-          </template>
-          <template #celda-created_at="{ fila }">
-            <span class="tk-edad" :class="{ 'tk-antiguedad--alerta': ticketEnvejecido(fila) }" :title="formatFechaHora(fila.created_at)">
-              {{ formatAntiguedad(fila.created_at) }}
-            </span>
-          </template>
-        </CarbonDataTable>
+        <div class="tabla-envoltorio solo-escritorio">
+          <AppTable
+            v-model:selection="seleccionParaTabla"
+            :value="lista"
+            :loading="cargando"
+            :total-records="total"
+            :rows="store.tamPagina"
+            :sort-field="sortFieldTabla"
+            :sort-order="sortOrderTabla"
+            :row-class="claseFilaTicket"
+            :row-attrs="filaAtributosTicket"
+            :table-props="{ 'aria-label': 'Tickets de soporte' }"
+            @ordenar="store.ordenarPor"
+            @row-click="({ data }) => verTicket(data)"
+          >
+            <!-- Selección múltiple (piloto, solo esta tabla): columna real
+                 de PrimeVue, no un checkbox a mano — ver AppTable.vue. -->
+            <AppColumn selection-mode="multiple" :header-style="{ width: '36px' }" />
 
-        <CarbonPagination
-          v-if="!cargando"
-          v-model="paginaActual"
-          :total-items="total"
-          :tam-pagina="store.tamPagina"
-          :tamanos-pagina="TAMANOS_PAGINA"
-          unidad="tickets"
-          @update:tam-pagina="store.cambiarTamPagina"
-        />
+            <AppColumn field="prioridad" header="Prioridad" sortable>
+              <template #body="{ data: fila }"><IndicadorPrioridad :valor="fila.prioridad" /></template>
+            </AppColumn>
+
+            <AppColumn field="codigo" header="Ticket" sortable>
+              <template #body="{ data: fila }">
+                <div class="celda-apilada">
+                  <span class="celda-apilada__meta">
+                    <RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${fila.id}`" @click.stop>{{ fila.codigo }}</RouterLink>
+                    <template v-if="fila.categoria">
+                      <span class="celda-sep" aria-hidden="true">·</span>
+                      <span class="tk-categoria">{{ fila.categoria }}</span>
+                    </template>
+                    <!-- Nivel de atención se fusiona acá (séptima pasada). Ver
+                         nota larga en el comentario del script: misma familia
+                         que Categoría, sin `v-else`/TextoVacio a propósito. -->
+                    <template v-if="fila.nivel_atencion">
+                      <span class="celda-sep" aria-hidden="true">·</span>
+                      <span class="tk-nivel" :title="`Nivel de atención ${fila.nivel_atencion}`">{{ fila.nivel_atencion }}</span>
+                    </template>
+                  </span>
+                  <span class="celda-apilada__principal">{{ fila.titulo }}</span>
+                </div>
+              </template>
+            </AppColumn>
+
+            <AppColumn field="solicitante" header="Solicitante">
+              <template #body="{ data: fila }">
+                <span v-if="!fila.vinculado" class="tag badge-inline" :class="`tag--${rolDeTag(badgeInfo('ticket_sin_vincular').clase)}`" title="No se pudo identificar al solicitante">
+                  <i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}
+                </span>
+                <RouterLink v-else-if="fila.solicitante_id" class="empleado-link" :to="`/empleados/${fila.solicitante_id}`" @click.stop>{{ fila.solicitante }}</RouterLink>
+                <TextoVacio v-else :valor="fila.solicitante" />
+              </template>
+            </AppColumn>
+
+            <AppColumn field="estado" header="Estado" sortable>
+              <template #body="{ data: fila }"><BadgeEstado tipo="ticket" :valor="fila.estado" /></template>
+            </AppColumn>
+
+            <AppColumn field="asignado_a" header="Asignado a">
+              <!-- Sin avatar acá a propósito: .avatar.sm mide 32px y llevaría
+                   la fila de ~32px a ~50px, anulando la densidad nueva — y
+                   suma un círculo de acento por fila, justo el ruido de
+                   color que este rediseño quita. El avatar se queda donde sí
+                   paga: la tarjeta angosta de Triage, que no tiene ancho para
+                   el nombre completo. -->
+              <template #body="{ data: fila }">
+                <TextoVacio v-if="!fila.asignado_a" placeholder="Sin asignar" />
+                <span v-else class="tk-asignado">{{ staffPorId[fila.asignado_a] || 'Staff' }}</span>
+              </template>
+            </AppColumn>
+
+            <AppColumn field="created_at" header="Edad" sortable>
+              <template #body="{ data: fila }">
+                <span class="tk-edad" :class="{ 'tk-antiguedad--alerta': ticketEnvejecido(fila) }" :title="formatFechaHora(fila.created_at)">
+                  {{ formatAntiguedad(fila.created_at) }}
+                </span>
+              </template>
+            </AppColumn>
+          </AppTable>
+        </div>
+
+        <ul v-if="!cargando && lista.length" class="lista-tarjetas solo-movil" aria-label="Tickets de soporte">
+          <li
+            v-for="fila in lista"
+            :key="fila.id"
+            class="tarjeta-fila"
+            :class="claseFilaTicket(fila)"
+            @click="verTicket(fila)"
+          >
+            <div v-if="enTarjetaTickets.cab.length" class="tarjeta-fila__cab">
+              <template v-for="col in enTarjetaTickets.cab" :key="col.clave">
+                <span v-if="col.clave === 'created_at'" class="tk-edad" :class="{ 'tk-antiguedad--alerta': ticketEnvejecido(fila) }" :title="formatFechaHora(fila.created_at)">
+                  {{ formatAntiguedad(fila.created_at) }}
+                </span>
+              </template>
+            </div>
+
+            <div v-for="col in enTarjetaTickets.principal" :key="col.clave" class="tarjeta-fila__principal">
+              <div v-if="col.clave === 'codigo'" class="celda-apilada">
+                <span class="celda-apilada__meta">
+                  <RouterLink class="tk-codigo tk-codigo-link" :to="`/tickets/${fila.id}`" @click.stop>{{ fila.codigo }}</RouterLink>
+                  <template v-if="fila.categoria">
+                    <span class="celda-sep" aria-hidden="true">·</span>
+                    <span class="tk-categoria">{{ fila.categoria }}</span>
+                  </template>
+                  <template v-if="fila.nivel_atencion">
+                    <span class="celda-sep" aria-hidden="true">·</span>
+                    <span class="tk-nivel" :title="`Nivel de atención ${fila.nivel_atencion}`">{{ fila.nivel_atencion }}</span>
+                  </template>
+                </span>
+                <span class="celda-apilada__principal">{{ fila.titulo }}</span>
+              </div>
+            </div>
+
+            <div v-for="col in enTarjetaTickets.sec" :key="col.clave" class="tarjeta-fila__sec">
+              <template v-if="col.clave === 'solicitante'">
+                <span v-if="!fila.vinculado" class="tag badge-inline" :class="`tag--${rolDeTag(badgeInfo('ticket_sin_vincular').clase)}`" title="No se pudo identificar al solicitante">
+                  <i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}
+                </span>
+                <RouterLink v-else-if="fila.solicitante_id" class="empleado-link" :to="`/empleados/${fila.solicitante_id}`" @click.stop>{{ fila.solicitante }}</RouterLink>
+                <TextoVacio v-else :valor="fila.solicitante" />
+              </template>
+              <template v-else-if="col.clave === 'asignado_a'">
+                <TextoVacio v-if="!fila.asignado_a" placeholder="Sin asignar" />
+                <span v-else class="tk-asignado">{{ staffPorId[fila.asignado_a] || 'Staff' }}</span>
+              </template>
+            </div>
+
+            <div v-if="enTarjetaTickets.pie.length" class="tarjeta-fila__pie">
+              <template v-for="col in enTarjetaTickets.pie" :key="col.clave">
+                <IndicadorPrioridad v-if="col.clave === 'prioridad'" :valor="fila.prioridad" />
+                <BadgeEstado v-else-if="col.clave === 'estado'" tipo="ticket" :valor="fila.estado" />
+              </template>
+            </div>
+          </li>
+        </ul>
+
+        <nav v-if="!cargando && total > 0" class="paginacion" aria-label="Paginación">
+          <div class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span>Filas por página:</span>
+              <select
+                class="paginacion__select"
+                :value="store.tamPagina"
+                @change="store.cambiarTamPagina($event.target.value)"
+              >
+                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </label>
+            <span class="paginacion__rango">{{ rangoTickets.desde }}–{{ rangoTickets.hasta }} de {{ total }} tickets</span>
+          </div>
+
+          <div v-if="totalPaginasTickets > 1" class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span class="sr-only">Ir a la página</span>
+              <select class="paginacion__select" :value="paginaActual" @change="irAPaginaTickets(Number($event.target.value))">
+                <option v-for="p in paginasTickets" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span>de {{ totalPaginasTickets }}</span>
+            </label>
+            <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irAPaginaTickets(paginaActual - 1)">
+              <i class="ti ti-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginasTickets" aria-label="Página siguiente" @click="irAPaginaTickets(paginaActual + 1)">
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </nav>
         </template>
       </div>
     </main>
@@ -1073,9 +1172,12 @@ onMounted(async () => {
           </ul>
 
           <div v-if="!cargando && lista.length < total" class="tickets-cargar-mas">
-            <CarbonButton variante="secondary" :cargando="cargandoMas" @click="store.cargarMas()">
-              {{ cargandoMas ? 'Cargando...' : `Cargar más (${lista.length} de ${total})` }}
-            </CarbonButton>
+            <AppButton
+              severity="secondary"
+              :label="cargandoMas ? 'Cargando...' : `Cargar más (${lista.length} de ${total})`"
+              :loading="cargandoMas"
+              @click="store.cargarMas()"
+            />
           </div>
           </template>
         </div>
@@ -1141,642 +1243,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-/* ── Shell común a los tres modos (octava pasada, ago 2026) ──────────────
-   Un solo grid con el nav de Bandejas como primera columna en TODOS los
-   modos; lo único que cambia entre ellos es qué ocupa el resto — Tabla es
-   una columna (la tabla completa), Triage son dos (lista angosta + detalle),
-   y el mismo hueco es donde entrará Kanban (columnas por estado) cuando se
-   agregue: ninguno de los tres necesita su propio shell, solo su propio
-   `grid-template-columns`.
 
-   Hasta la séptima pasada, Tabla y Triage (entonces "Isla") NO compartían
-   paradigma de superficie a propósito: Tabla iba full-bleed, pegada a los
-   bordes, sin marco; Triage flotaba con gap/padding como tarjetas separadas.
-   La razón documentada era real (una tabla densa se sirve mejor sin marco
-   que compita con las filas) pero el costo, en uso real, resultó mayor que
-   el beneficio: alternar de modo recolocaba el nav de sitio (de riel pegado
-   al borde a tarjeta con radio) y todo el layout se sentía "mal hecho" en
-   el cambio, no como dos vistas del mismo sistema. Ahora las tres tarjetas
-   (nav, contenido, y el panel de detalle cuando existe) usan SIEMPRE el
-   mismo tratamiento — borde, radio, gap, padding — sin importar el modo; lo
-   que cambia entre Tabla y Triage es la densidad INTERNA de cada tarjeta
-   (la tabla sigue tan compacta como antes), no el marco que la contiene. */
-.tickets-shell {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  /* La fila se declara EXPLÍCITA y acotada. Sin esto el grid usa su fila
-     implícita `auto`, que se dimensiona por el hijo más alto y crece por
-     debajo del shell: las tarjetas se derraman fuera del padding de 16px
-     y del viewport, y sus esquinas redondeadas de abajo nunca se ven.
-     Peor: con la fila en `auto` ninguna tarjeta tiene un alto del que
-     desbordar, así que el `overflow-y:auto` del nav (y el de la lista)
-     jamás se dispara — el scroll que debería vivir DENTRO de cada tarjeta
-     no existe y scrollea la página entera. Con minmax(0,1fr) cada tarjeta
-     mide exactamente el alto del shell y scrollea puertas adentro, que es
-     el contrato de un layout multi-panel. */
-  grid-template-rows: minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px;
-  background: var(--color-bg);
-}
-
-/* Tabla: riel de 200px + tabla, ahora en tarjeta igual que el nav — antes
-   era full-bleed sin gap ni padding (ver nota de la octava pasada arriba).
-   200px es el ancho de la guía externa y alcanza para "Todos (vigentes)"
-   con su contador sin recortar. */
-.tickets-shell--tabla {
-  grid-template-columns: 200px 1fr;
-}
-
-/* Triage: el mismo riel + lista angosta + detalle, las tres como tarjetas
-   flotantes del mismo tamaño de gap/padding que Tabla. */
-.tickets-shell--triage {
-  grid-template-columns: 200px minmax(240px, 25%) 1fr;
-}
-
-/* Mobile: no hay nav (v-if="!esMovil"), el grid vuelve a una sola columna
-   y el contenido ocupa todo el ancho, igual que el resto de los módulos —
-   ahí no aplica ninguna de las dos tarjetas, mismo criterio de siempre. */
-@media (max-width: 768px) {
-  .tickets-shell,
-  .tickets-shell--tabla,
-  .tickets-shell--triage {
-    grid-template-columns: 1fr;
-    gap: 0;
-    padding: 0;
-  }
-
-}
-
-.tickets-nav {
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  /* Con `overflow-y:auto` el eje X computa a `auto` por especificación, así
-     que cualquier hijo más ancho que el riel de 200px (una etiqueta de
-     bandeja larga, un input de fecha) le colgaría una barra horizontal al
-     nav. Nada del riel debe scrollear en X: lo que no entra, se recorta. */
-  overflow-x: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  background: var(--color-bg-elevated);
-  padding: 12px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* La regla que despojaba al nav de Tabla (borde+radio -> solo borde
-   derecho, "riel pegado a la tabla") se retiró en la octava pasada: el nav
-   es ahora la misma tarjeta en los dos modos, no hace falta un override por
-   modo. */
-
-/* .tnav-item/.tnav-label/.tnav-contador/.tnav-item--activo se movieron a
-   ListaVistas.vue (global, sin scope) — los usa ese componente Y el botón
-   "Vencidos" de acá abajo, que no es una vista más. */
-.tickets-nav-vistas {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.tnav-separador {
-  height: 1px;
-  background: var(--color-border-subtle);
-  margin: 8px 4px;
-}
-
-/* Sub-estado dentro del riel. Sigue indentado para leerse como hijo de las
-   bandejas de trabajo de arriba, pero desde la séptima pasada es UNA sola
-   lista contextual (la de la bandeja activa) en vez de dos listas fijas con
-   las mismas 4 etiquetas, una de ellas siempre deshabilitada. Con ese cambio
-   desapareció también el único uso de la prop `disabled` de ListaVistas.vue
-   en esta vista: ya no hay ningún control apagado en pantalla. */
-.tk-subestado-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 4px;
-}
-
-.tk-substate {
-  padding-left: 12px;
-}
-
-/* Encabezado del grupo: sin él, los 4 sub-estados se leen como 4 bandejas
-   más del riel. Mismo tratamiento que el título del filtro de fecha (ver
-   FiltroFechaCreacion.vue) — son las dos únicas etiquetas de grupo del
-   riel y tienen que verse iguales. */
-.tk-nav-titulo {
-  display: block;
-  padding: 4px 10px 2px 12px;
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  color: var(--color-text-tertiary);
-}
-
-
-/* Filtro secundario: Fecha de creación (ago 2026, cuarta pasada retiró
-   Prioridad/Nivel/Tipo/Categoría — ver nota en el script). Sigue siendo un
-   bloque siempre visible, no detrás de un popover — en el nav de
-   escritorio, apilado bajo las Bandejas; en mobile (sin nav), su propia
-   fila bajo la barra de búsqueda. */
-.tk-filtros-secundarios {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px 10px 8px;
-}
-
-.tk-filtros-secundarios--movil {
-  padding: 0 1.25rem 10px;
-}
-
-/* .tk-filtro-grupo/.tk-filtro-titulo/.tk-filtro-fecha-campo se mudaron a
-   FiltroFechaCreacion.vue junto con su markup — obligatorio, no cosmético:
-   el <style scoped> de un padre alcanza el elemento RAÍZ de un hijo pero no
-   su interior, así que acá habrían dejado de aplicar. */
-
-.tk-filtros-limpiar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  padding: 8px 0 4px;
-  border: none;
-  border-top: 1px solid var(--color-border-subtle);
-  background: none;
-  color: var(--color-text-secondary);
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.tk-filtros-limpiar:hover { color: var(--color-danger-text); }
-
-/* .tnav-proximamente/.tnav-badge-proximamente se retiraron con el ítem
-   "Vencidos · Próximamente" del nav (ver nota en el template). */
-
-.tfs-badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.tickets-lista { min-width: 0; }
-
-/* .card--fill es adrede sin borde/radio en main.css (comentario propio ahí:
-   "pegado a los bordes") — pensado para el resto del sistema, donde el
-   listado ocupa el área de contenido entera sin tarjeta propia. Dentro de
-   Tickets NINGÚN modo usa ese comportamiento por defecto: desde la octava
-   pasada, tanto la tabla completa (Tabla) como la lista angosta (Triage)
-   vuelven a ganar el borde+radio para leerse como la misma tarjeta flotante
-   que el nav — selector `.tickets-shell .card--fill` en vez de
-   `.tickets-lista .card--fill` (como era hasta la séptima pasada) para
-   cubrir las DOS, no solo Triage. Override LOCAL, scoped a esta vista: el
-   resto del sistema sigue usando `.card--fill` sin tocar. */
-.tickets-shell .card--fill {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  /* main.css deja .card--fill en `overflow:auto` (pensado para contenido
-     no-tabla). Con el borde y el radio de vuelta eso hace dos daños:
-     scrollea la card ENTERA — el buscador y la fila de chips se van de
-     vista al bajar por la lista, cuando son justamente el cromo que tiene
-     que quedar fijo — y deja que las filas pasen por encima de las
-     esquinas redondeadas. `hidden` devuelve el scroll al hijo que ya lo
-     maneja solo (`.table-wrap`/`.lista-tarjetas`, ambos flex:1 /
-     min-height:0 / overflow-y:auto en main.css) y es lo único que debería
-     moverse. */
-  overflow: hidden;
-}
-
-/* Reset a mobile: tiene que venir DESPUÉS de la regla de arriba en el
-   archivo — misma especificidad (`.tickets-shell .card--fill` en los dos
-   casos) y CSS resuelve un empate por orden de aparición, no por si un lado
-   está dentro de `@media`. Puesto antes (como se probó primero), la regla
-   de arriba lo pisaba también en mobile: la tarjeta quedaba con
-   borde+radio+overflow:hidden pegada a los 4 bordes de la pantalla (el
-   shell va a padding:0 en mobile), el radio se veía cortado contra el
-   viewport y el borde no separaba de nada. Acá sí gana, y devuelve el
-   comportamiento full-bleed de siempre — igual que el resto de los
-   módulos en mobile. */
-@media (max-width: 768px) {
-  .tickets-shell .card--fill {
-    border: 0;
-    border-radius: var(--radius-base);
-    overflow: auto;
-  }
-}
-
-.tickets-panel {
-  min-width: 0;
-}
-
-/* Solo la tarjeta: superficie, borde y centrado. Tipografía, ícono y espaciado
-   los pone EmptyState — por eso acá ya no hay font-size ni color propios. */
-.tickets-panel-vacio {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  background: var(--color-bg-elevated);
-}
-
-.tickets-cargar-mas {
-  display: flex;
-  justify-content: center;
-  padding: 16px;
-}
-
-/* EmptyState viene con padding de página completa (3.5rem); dentro de una
-   tarjeta de ~40% del ancho eso lo empuja contra los bordes. Acotar el ancho
-   del mensaje mantiene la medida de lectura sin tocar el componente, que
-   sirve igual a las otras 15 vistas. */
-.tickets-panel-vacio :deep(.empty) { padding: 1.5rem; }
-.tickets-panel-vacio :deep(.empty p) { max-width: 34ch; margin-inline: auto; }
-
-/* Triage: el buscador queda solo en su fila (Prioridad vive en el nav). */
-.search-wrap--full { flex: 1; }
-
-.tk-error { color: var(--color-danger); }
-
-.tk-codigo {
-  font-family: var(--font-mono, monospace);
-  white-space: nowrap; /* el código nunca se parte en dos líneas */
-}
-
-.fecha-cell { white-space: nowrap; }
-
-/* En la tarjeta móvil, fecha + antigüedad pueden partirse en dos líneas
-   si no caben (a diferencia de la celda de tabla, que sí fuerza una sola). */
-.tarjeta-fila__cab .fecha-cell {
-  white-space: normal;
-  text-align: right;
-}
-
-.tk-codigo-link {
-  color: inherit;
-  text-decoration: none;
-}
-.tk-codigo-link:hover,
-.tk-codigo-link:focus-visible {
-  text-decoration: underline;
-}
-
-/* .chips-filtro/.chip-filtro* ahora viven en main.css (global) — ago 2026,
-   cuarta pasada retiró ChipsFiltro.vue (sin consumidores tras quitar
-   Prioridad/Nivel/Tipo como filtros), pero la fila de "chips de filtros
-   activos" de acá abajo (Fecha, removible con X) sigue usando esas mismas
-   clases, de ahí el traslado a main.css en vez de borrarlas.
-   ReporteSatisfaccionView.vue tiene su propia copia scoped de estas mismas
-   reglas para "Solo insatisfechos" — independiente, no se tocó. */
-
-/* Vistas en modo Tabla: mismos .tnav-item que la columna de Triage, en fila
-   horizontal con wrap en vez de columna — mismo componente/datos, layout
-   distinto por contexto (ver comentario en el template). */
-.tickets-vistas-fila {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-/* La barra única, ahora compartida por Tabla y Triage: .filters trae
-   align-items:flex-end (pensado para selects con label arriba); acá todo mide
-   lo mismo de alto y va centrado. El buscador deja de estirarse a discreción
-   (flex:2 global) — con Vistas y Prioridad ya en el nav, un campo de 340px
-   alcanza de sobra y deja que el sub-estado se ancle a la derecha. */
-.tickets-filtros {
-  align-items: center;
-  gap: 12px;
-}
-
-/* En Triage el buscador SÍ se estira (.search-wrap--full, flex:1): esa columna
-   es angosta y no hay nada más compitiendo por el ancho. */
-.tickets-filtros .search-wrap:not(.search-wrap--full) {
-  flex: 0 1 340px;
-}
-
-/* Sub-estado como segmento: solo existe en la barra móvil (en escritorio
-   vive en el riel). Fila completa, y si las 4 opciones con sus contadores no
-   entran, scrollea en X — lo que no debe es partirse en dos líneas y dejar de
-   leerse como un grupo exclusivo. */
-.tk-subestado {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-/* main.css tiene `.filters .search-wrap { flex-basis: 100% }` para móvil,
-   pero esta regla scoped gana por especificidad (el atributo data-v suma) y
-   dejaría el buscador clavado en 340px. Se restituye a mano: en móvil la
-   barra apila y el buscador va a fila completa, igual que en el resto de los
-   módulos. Modo Tabla ES lo que se ve en móvil (ver vistaEfectiva), así que
-   esta barra sí se renderiza ahí. */
-@media (max-width: 768px) {
-  .tickets-filtros .search-wrap:not(.search-wrap--full) {
-    flex: 1 1 100%;
-  }
-  .tk-subestado { flex: 1 1 100%; }
-}
-
-/* Pista del atajo "/" dentro del buscador. Decorativa (aria-hidden): el
-   atajo no es la única forma de llegar al campo, se puede tabular. Se oculta
-   apenas el campo tiene foco para no competir con el texto que se escribe. */
-.search-atajo {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 1px 6px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-base);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-tertiary);
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-label-01);
-  line-height: 1.5;
-  pointer-events: none;
-}
-
-.search-wrap:focus-within .search-atajo { display: none; }
-
-/* Nivel de atención: dato de clasificación, no estado — texto plano, sin
-   píldora (la guía externa lo pedía como `badge badge-info`: una píldora azul
-   por fila reintroduce el ruido de color que este rediseño quitó). Mono
-   porque N1/N2/N3 se lee como un código.
-   `color: inherit` desde la séptima pasada, cuando dejó de ser columna
-   propia y pasó a la línea de metadatos de "Ticket": ahí el código y la
-   categoría son terciarios, y un secundario en el medio se leería como el
-   dato más importante de los tres. Heredar además lo hace subir solo con el
-   resto de la línea en la fila activa (ver la regla de contraste más abajo),
-   sin sumar un selector más a esa lista. */
-.tk-nivel {
-  font-family: var(--font-mono, monospace);
-  color: inherit;
-}
-
-/* Fila/tarjeta abierta. Solo fondo tenue, SIN indicador lateral: la
-   dirección validada en el Style Lab suma un inset de 2px en el borde
-   izquierdo, pero la guía dejó explícitamente esa parte pendiente de
-   confirmación del JEFE (choca con el principio "sin bordes de acento en los
-   costados"). El fondo solo ya cumple "la selección de fila es visible" y es
-   además lo que pide el principio vigente: hover/activo sin bordes, solo
-   fondos muy tenues. */
-/* :deep() porque CarbonDataTable pinta el <tr> en su propio ámbito de
-   scope (vía claseFila) — mismo bug/lección que EmpleadosView/KbView. */
-:deep(.fila-ticket--activa td),
-:deep(.fila-ticket--activa:hover td) {
-  background: var(--color-accent-subtle);
-}
-
-/* Selección múltiple (Plan Maestro, 2026-09-01): borde-izquierdo de acento
-   de 2px — la excepción ya aprobada a "sin bordes de costado", mismo
-   criterio que severidad. Deliberadamente distinto de --activa (fondo
-   teñido, "este es el que tengo abierto"): acá es "está en mi selección",
-   ambos pueden convivir en la misma fila sin confundirse. */
-:deep(.fila-ticket--seleccionada td:first-child) {
-  box-shadow: inset 2px 0 0 var(--color-accent);
-}
-
-/* Columna de selección (checkbox): CarbonDataTable no da una clase propia
-   al <td>/<th> según la columna (solo `col-num`), así que el centrado vive
-   en un wrapper dentro del slot en vez de en `.col-check` sobre la celda —
-   reemplaza esa regla del <table> a mano. El ancho fijo de 36px ahora sale
-   de `columnasTickets` (`ancho: '36px'`). */
-.chk-celda {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.chk-celda input[type="checkbox"] {
-  cursor: pointer;
-}
-
-.barra-seleccion {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 10px 14px;
-  margin-bottom: 10px;
-  background: var(--color-accent-subtle);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-base);
-}
-
-.barra-seleccion__conteo {
-  font-weight: 600;
-  font-size: var(--fs-body-01);
-  color: var(--color-accent-text);
-}
-
-.barra-seleccion__acciones {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.barra-seleccion__acciones select {
-  height: 34px;
-}
-
-.lote-lista {
-  max-height: 220px;
-  overflow-y: auto;
-  margin: 8px 0 0;
-  padding-left: 20px;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-/* :deep(): esta clase la pinta tanto el <li> de Triage (mismo scope, ya
-   funcionaba) como, desde la migración a CarbonDataTable, la tarjeta móvil
-   del modo Tabla (scope del componente hijo) — bare :deep() la vuelve un
-   selector sin atributo de scope, así que alcanza a las dos por igual. */
-:deep(.tarjeta-fila--activa) {
-  background: var(--color-accent-subtle);
-}
-
-/* El fondo de acento sube la luminancia bajo el texto y hunde el contraste
-   de los tonos grises más claros: medido, --color-text-tertiary cae a
-   4.27:1 en claro y 3.87:1 en oscuro sobre esta superficie — debajo del
-   4.5:1 exigible a texto normal. Dentro de la fila/tarjeta activa esos
-   tonos suben un escalón a --color-text-secondary (5.49:1 claro / 6.05:1
-   oscuro, ambos verificados). No se toca el token global: es un ajuste
-   local a la única superficie que lo necesita.
-   `.prio` ya NO entra en esta regla (rediseño Materen, Fase 1): los cuatro
-   niveles de prioridad tienen color propio, ninguno depende del gris
-   terciario. Los dos que siguen siendo texto suelto pasan sobre este fondo
-   sin ayuda (baja/sky 5.34:1, media/teal 6.26:1 en claro; 7.41:1 y 6.54:1
-   en oscuro — verificados en scripts/contraste.mjs, pares
-   prioridadBajaFilaActiva/prioridadMediaFilaActiva), y alta/urgente son
-   badges con fondo propio que tapa esta superficie. Antes la regla los
-   incluía con `:not(.prio--urgente)`; hoy ese :not tendría que ser
-   `:not(.prio--baja):not(.prio--media):not(.prio--alta):not(.prio--urgente)`,
-   o sea nada. */
-:deep(.fila-ticket--activa) .celda-apilada__meta,
-:deep(.fila-ticket--activa) .celda-sep,
-:deep(.fila-ticket--activa) .tk-categoria,
-:deep(.fila-ticket--activa) .tk-edad,
-:deep(.fila-ticket--activa) .text-muted,
-:deep(.tarjeta-fila--activa) .celda-sep,
-:deep(.tarjeta-fila--activa) .tk-antiguedad,
-:deep(.tarjeta-fila--activa) .tfs-solicitante {
-  color: var(--color-text-secondary);
-}
-
-/* Metadato de fila que no es estado: categoría en la tabla y en la tarjeta
-   móvil. Antes era .badge--neutral — una píldora gris compitiendo por
-   atención con la píldora de Estado, que sí la merece. */
-.tk-categoria {
-  color: var(--color-text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Nombre del técnico: una sola línea, la columna no se ensancha por un
-   nombre largo (la elástica es "Ticket", ver `elastica: true` en
-   `columnasTickets`). */
-.tk-asignado { white-space: nowrap; }
-
-/* Columna Edad: relativa siempre visible, fecha/hora exacta en el title.
-   Antes eran 2 líneas por fila (fecha completa + antigüedad debajo). */
-.tk-edad {
-  white-space: nowrap;
-  color: var(--color-text-tertiary);
-}
-
-.tk-antiguedad {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-tertiary);
-}
-
-/* Envejecido = riesgo operativo (ver ticketEnvejecido()). Es el ÚNICO
-   color que este rediseño agrega a la fila fuera de la píldora de Estado y
-   del punto de prioridad alta/urgente — y solo aparece cuando hay algo que
-   mirar. */
-.tk-antiguedad--alerta,
-.tk-edad.tk-antiguedad--alerta { color: var(--color-warning-text); }
-
-/* Identidad de la tarjeta angosta de Triage: código + solicitante en un solo
-   renglón, el solicitante cede espacio primero (el código nunca se corta). */
-.tfs-identidad {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
-
-.tfs-solicitante {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* La antigüedad es el ancla derecha del renglón de identidad: mide lo que
-   mide y nunca se parte en dos líneas ni cede espacio. Quien cede es
-   .tfs-solicitante, que para eso tiene el ellipsis de arriba — sin este
-   flex-shrink:0 el reparto es al revés y "hace 3 h" se desarma en dos
-   renglones apenas el nombre del solicitante es largo. */
-.tarjeta-fila__cab .tk-antiguedad {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-/* Título del ticket en la columna angosta (~280px). .tarjeta-fila__principal
-   trae `overflow-wrap: anywhere` de main.css, pensado para la tarjeta móvil
-   —que tiene el ancho entero de la pantalla—; acá un título largo se
-   desarma en 4 o 5 renglones, cada tarjeta termina midiendo distinto y la
-   lista deja de escanearse en vertical, que es lo único para lo que existe
-   una lista de triage. Se corta en 2 líneas; el título completo queda en el
-   `title` y, a un clic, en el panel de detalle de al lado. */
-.tickets-lista .tarjeta-fila__principal {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-}
-
-:deep(.fila-ticket) { cursor: pointer; }
-:deep(.fila-ticket:hover td) { background: var(--color-bg-hover); }
-
-/* Ícono "sin vincular" en la tarjeta angosta de Triage (4.6) — mismo color
-   que la píldora .badge--danger que ya usa este mismo dato en la tabla y en
-   la tarjeta móvil (--color-danger-text), sin el fondo: acá no hay espacio
-   para una píldora completa. */
-.tfs-sin-vincular {
-  color: var(--color-danger-text);
-  font-size: var(--fs-body-01);
-  flex-shrink: 0;
-}
-
-/* Fila de "N resultados" + chips, sobre la lista angosta de Triage. */
-.tk-resultados-fila {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 10px 1.25rem 0;
-}
-
-.tk-resultados-conteo {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-tertiary);
-  flex-shrink: 0;
-}
-
-.tk-chips-activos {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-/* En Tabla, la fila de chips es su propio renglón con el mismo gutter que
-   .filters; en Triage comparte renglón con el conteo de resultados. */
-.tk-chips-activos:not(.tk-chips-activos--triage) {
-  padding: 10px 1.25rem 0;
-}
-
-/* Cada chip es un .chip-filtro--activo (mismo componente visual que los
-   filtros del nav) con una X: reusa el par tenue/acento ya validado en vez
-   de inventar un estilo de "chip removible" aparte. */
-.tk-chip-quitar {
-  gap: 5px;
-  height: 30px;
-  padding: 0 8px 0 12px;
-}
-
-.tk-chip-quitar i { font-size: var(--icon-sm); opacity: 0.7; }
-.tk-chip-quitar:hover i { opacity: 1; }
-
-.tk-limpiar-todo {
-  background: none;
-  border: none;
-  padding: 6px 4px;
-  color: var(--color-text-secondary);
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  text-decoration: underline;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.tk-limpiar-todo:hover { color: var(--color-text-primary); }
-.tk-limpiar-todo:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-base);
-}
-</style>

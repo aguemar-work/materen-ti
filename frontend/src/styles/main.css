@@ -1,2 +1,36 @@
 /* Sistema de diseño reiniciado a cero el 2026-09-05 — ver
-   docs/NOTAS-DISENO-ANTERIOR.md. Vacío a propósito. */
+   docs/NOTAS-DISENO-ANTERIOR.md. El 2026-09-07 se decidió la base nueva:
+   PrimeVue v4 en modo Unstyled + Tailwind CSS v4 (ver frontend/AGENTS.md,
+   sección "UI/UX"). Este archivo es hoy el único lugar donde se declaran
+   tokens visuales — no hay tailwind.config.js: en v4 el tema vive en CSS
+   con @theme. */
+
+@import "tailwindcss";
+
+@theme {
+  /*
+   * Azul de marca (#0064E0) como --color-primary-500, con una rampa 50-950
+   * generada en HSL (mismo tono/matiz, solo varía luminosidad) para tener
+   * fondos tenues (50-100), texto/bordes (300-600) y estados hover/active
+   * (600/700) sin inventar un color distinto para cada uso. `--color-primary`
+   * (sin sufijo) es un alias al 500 para el caso más común: "el acento".
+   *
+   * Es la ÚNICA escala de color con intención de marca en el sistema — regla
+   * de producto "un solo acento visual principal". No agregar success/warn/
+   * info/etc. por iniciativa propia: si un componente futuro necesita otro
+   * color con significado (ej. severidad de un ticket), es una decisión para
+   * pedir explícitamente, no para completar la paleta "porque falta".
+   */
+  --color-primary-50: #f1f7fe;
+  --color-primary-100: #ddebfd;
+  --color-primary-200: #bad8fc;
+  --color-primary-300: #89bcfa;
+  --color-primary-400: #4297ff;
+  --color-primary-500: #0064e0;
+  --color-primary-600: #0054bd;
+  --color-primary-700: #004499;
+  --color-primary-800: #00377a;
+  --color-primary-900: #042c5d;
+  --color-primary-950: #031e40;
+  --color-primary: var(--color-primary-500);
+}

@@ -13,20 +13,21 @@ import { generarActa } from './acta.js';
 import { generarActaDevolucion } from './acta-devolucion.js';
 import { construirDatosReporteEquipos, generarReporteEquipos, LIMITE_MOVIMIENTOS_PDF } from './reporteEquipos.js';
 import EquipoForm from './EquipoForm.vue';
-import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
 import Modal from '../../components/shared/Modal.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppButton from '../../components/ui/AppButton.vue';
+import { rolDeTag } from '../../core/tagRol.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
@@ -34,25 +35,15 @@ import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useEquiposStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
-
-// Definición de columnas de CarbonDataTable, densidad `lg` (ver template):
-// mobile nunca pasa por acá (`:con-tarjetas="false"`) porque ya tiene su
-// propia grilla de tarjetas más abajo (vista "Tarjetas", que también sirve
-// de fallback móvil) — mismo criterio que EmpleadosView. `lg` porque la fila
-// es densa: foto/badge/select inline de ubicación + hasta 2 icon-btn + menú
-// de overflow, comparable a StaffView.
-const columnasEquipos = [
-  { clave: 'codigo', label: 'Código equipo', ordenable: true },
-  { clave: 'codigo_almacen', label: 'Código almacén', ordenable: true },
-  { clave: 'equipo', label: 'Equipo', elastica: true },
-  { clave: 'serie', label: 'Serie', ordenable: true },
-  { clave: 'situacion', label: 'Situación', ancho: '120px' },
-  { clave: 'portador', label: 'Asignado a' },
-  { clave: 'ubicacion', label: 'Ubicación' },
-  { clave: 'acciones', label: 'Acciones', ancho: '176px' },
-];
+// Forma que espera AppTable (props nativas de PrimeVue DataTable) — ver la
+// misma traducción en LicenciasView.vue: sortOrder es 1 (asc) | -1 (desc) |
+// null (sin orden), no el string 'asc'/'desc' que usa el store puertas
+// adentro.
+const sortFieldTabla = computed(() => orden.value?.columna ?? null);
+const sortOrderTabla = computed(() => {
+  if (!orden.value) return null;
+  return orden.value.direccion === 'desc' ? -1 : 1;
+});
 
 // ── Selector Tabla/Tarjetas (FASE 4) — mismo criterio que EmpleadosView:
 // "Lista con avatar" queda pendiente, solo 2 opciones por ahora; mobile
@@ -109,6 +100,14 @@ const paginaActual = computed({
   get: () => store.pagina,
   set: (p) => store.irAPagina(p),
 });
+const totalPaginasEquipos = computed(() => totalPaginasDe(total.value, store.tamPagina));
+const paginasEquipos = computed(() => paginasDe(totalPaginasEquipos.value));
+const rangoEquipos = computed(() => rangoDe(paginaActual.value, store.tamPagina, total.value));
+
+function irAPaginaEquipos(pagina) {
+  const destino = clampPagina(pagina, totalPaginasEquipos.value);
+  if (destino !== store.pagina) store.irAPagina(destino);
+}
 
 // PDF: siempre el inventario COMPLETO (sin los filtros del toolbar), es la
 // foto de todo el parque — decisión de producto 2026-08-22, distinto del
@@ -221,6 +220,8 @@ const condicionEntrega = ref('');
 const procesando = ref(false);
 const errorAsignar = ref('');
 const modalAsignar = ref(null);
+const infoErrorAsignar = infoNotificacion('error');
+const campoCondicionEntrega = useCampoAccesible();
 
 // Guard de cierre del Modal compartido (X, Escape, backdrop): no cierra
 // mientras se está procesando, para "Entregar" y "Devolución" (formularios
@@ -270,6 +271,8 @@ const condicionDevolucion = ref('');
 const motivoCierre = ref('devolucion');
 const aReparacion = ref(false);
 const modalDevolver = ref(null);
+const campoCondicionDevolucion = useCampoAccesible();
+const campoMotivoCierre = useCampoAccesible();
 
 // "Perdida/robo" y "volvió dañado" son contradictorios (el backend ya le da
 // prioridad a perdida, pero mejor que el form ni permita capturar la mezcla):
@@ -559,7 +562,7 @@ onMounted(async () => {
       <template #acciones>
         <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EQUIPOS" class="solo-escritorio" />
         <MenuAcciones texto="Más" label="Más acciones" :acciones="accionesMas" />
-        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNuevo">Nuevo equipo</CarbonButton>
+        <AppButton severity="primary" icon="ti ti-plus" label="Nuevo equipo" @click="abrirNuevo" />
       </template>
     </PageHeader>
 
@@ -640,123 +643,146 @@ onMounted(async () => {
           titulo="Sin equipos"
           :mensaje="busqueda || filtroTipo || filtroSituacion ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer equipo del inventario.'"
         >
-          <CarbonButton v-if="!busqueda && !filtroTipo && !filtroSituacion" variante="secondary" icono="ti-plus" @click="abrirNuevo">Nuevo equipo</CarbonButton>
+          <AppButton
+            v-if="!busqueda && !filtroTipo && !filtroSituacion"
+            variant="outline"
+            severity="secondary"
+            icon="ti ti-plus"
+            label="Nuevo equipo"
+            @click="abrirNuevo"
+          />
         </EmptyState>
 
         <template v-if="!error && (cargando || total > 0)">
         <p v-if="cargando" class="sr-only" role="status">Cargando equipos…</p>
-        <CarbonDataTable
-          v-if="vista === 'tabla' && !esMovil"
-          :columnas="columnasEquipos"
-          :filas="lista"
-          :cargando="cargando"
-          densidad="lg"
-          :orden-por="ordenColumna"
-          :orden-dir="ordenDireccion"
-          :con-tarjetas="false"
-          etiqueta="Inventario de equipos"
-          @ordenar="store.ordenarPor"
-        >
-          <template #celda-codigo="{ fila }">
-            <span class="eq-codigo">{{ fila.codigo }}</span>
-          </template>
-          <template #celda-codigo_almacen="{ valor }">
-            <span class="eq-codigo-almacen"><TextoVacio :valor="valor" /></span>
-          </template>
-          <template #celda-equipo="{ fila }">
-            <div class="eq-info">
-              <a v-if="fila.fotos.length" class="eq-foto" :href="fila.fotos[0].url" target="_blank" rel="noopener noreferrer" title="Ver foto" aria-label="Ver foto del equipo">
-                <img :src="fila.fotos[0].url" alt="">
-              </a>
-              <div class="celda-apilada">
-                <span class="celda-apilada__meta"><TextoVacio :valor="fila.modelo" />{{ fila.empresa_nombre ? ` · ${fila.empresa_nombre}` : '' }}</span>
-                <span class="celda-apilada__principal">{{ fila.tipo_nombre }} {{ fila.marca }}</span>
-              </div>
-            </div>
-          </template>
-          <template #celda-serie="{ valor }">
-            <span class="eq-serie"><TextoVacio :valor="valor" /></span>
-          </template>
-          <template #celda-situacion="{ fila }">
-            <CarbonTag :variante="badgeEstadoFisico(fila).clase">{{ badgeEstadoFisico(fila).label }}</CarbonTag>
-          </template>
-          <template #celda-portador="{ fila }">
-            <template v-if="fila.portador">
-              <RouterLink class="empleado-link" :to="`/empleados/${fila.empleado_id}`">{{ fila.portador }}</RouterLink>
-              <CarbonTag v-if="fila.portador_inactivo" variante="danger" class="badge-sin-devolver" title="Este empleado fue dado de baja y no ha devuelto el equipo">
-                <i class="ti ti-alert-triangle"></i> Sin devolver
-              </CarbonTag>
-            </template>
-            <TextoVacio v-else />
-          </template>
-          <template #celda-ubicacion="{ fila }">
-            <div v-if="creandoUbicacionId === fila.id" class="ubicacion-nueva-inline">
-              <input
-                v-model="nombreNuevaUbicacion"
-                placeholder="Nombre de la ubicación"
-                :disabled="moviendoId === fila.id"
-                @keydown.enter.prevent="confirmarNuevaUbicacion(fila)"
-                @keydown.esc.prevent="cancelarNuevaUbicacion"
-              >
-              <button class="icon-btn" type="button" title="Crear y mover aquí" aria-label="Crear y mover aquí" :disabled="moviendoId === fila.id || !nombreNuevaUbicacion.trim()" @click="confirmarNuevaUbicacion(fila)">
-                <i class="ti" :class="moviendoId === fila.id ? 'ti-loader-2 spinner-icon' : 'ti-check'"></i>
-              </button>
-              <button class="icon-btn" type="button" title="Cancelar" aria-label="Cancelar" :disabled="moviendoId === fila.id" @click="cancelarNuevaUbicacion">
-                <i class="ti ti-x"></i>
-              </button>
-            </div>
-            <select
-              v-else-if="enAlmacen(fila)"
-              class="ubicacion-select"
-              :value="fila.ubicacion_id || ''"
-              :disabled="moviendoId === fila.id"
-              aria-label="Ubicación"
-              @change="onCambiarUbicacion(fila, $event.target.value)"
-            >
-              <option value="" disabled>Seleccionar ubicación</option>
-              <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-              <option value="__nueva__">+ Crear nueva ubicación…</option>
-            </select>
-            <template v-else>
-              <span v-if="fila.ubicacion_nombre" class="ubicacion-nombre">
-                <i class="ti ti-map-pin"></i> {{ fila.ubicacion_nombre }}
-              </span>
-              <TextoVacio v-else />
-            </template>
-          </template>
-          <template #celda-acciones="{ fila }">
-            <!-- Sin `.fila-accion` en el icon-btn inline a propósito: es la
-                 ÚNICA acción contextual disponible para la situación actual
-                 del equipo (Entregar/Registrar devolución/Marcar reparado/
-                 Reactivar/Recuperar, mutuamente excluyentes por `situacion`
-                 — ver accionesInlineDe()), no una acción secundaria de
-                 relleno — mismo criterio que CarbonPasswordReveal en
-                 EmpleadosView. El disparador de MenuAcciones (⋮) tampoco
-                 lleva la clase: ese componente ya decide su propia
-                 visibilidad. Sin `@click.stop`: esta vista no tiene fila
-                 clicable (a diferencia de Tickets/Empleados), así que no
-                 hay navegación que frenar. -->
-            <div class="actions">
-              <button
-                v-for="a in accionesInlineDe(fila)"
-                :key="a.label"
-                class="icon-btn"
-                :class="{ danger: a.danger }"
-                type="button"
-                :title="a.label"
-                :aria-label="a.label"
-                @click="a.onClick"
-              >
-                <i class="ti" :class="a.icono"></i>
-              </button>
-              <MenuAcciones
-                v-if="accionesOverflowDe(fila).length"
-                :acciones="accionesOverflowDe(fila)"
-                :label="`Más acciones de ${fila.codigo}`"
-              />
-            </div>
-          </template>
-        </CarbonDataTable>
+        <div v-if="vista === 'tabla' && !esMovil" class="tabla-envoltorio">
+          <AppTable
+            :value="lista"
+            :loading="cargando"
+            :total-records="total"
+            :rows="store.tamPagina"
+            :sort-field="sortFieldTabla"
+            :sort-order="sortOrderTabla"
+            @ordenar="store.ordenarPor"
+          >
+            <AppColumn field="codigo" header="Código equipo" sortable>
+              <template #body="{ data: fila }"><span class="eq-codigo">{{ fila.codigo }}</span></template>
+            </AppColumn>
+
+            <AppColumn field="codigo_almacen" header="Código almacén" sortable>
+              <template #body="{ data: fila }"><span class="eq-codigo-almacen"><TextoVacio :valor="fila.codigo_almacen" /></span></template>
+            </AppColumn>
+
+            <AppColumn field="equipo" header="Equipo">
+              <template #body="{ data: fila }">
+                <div class="eq-info">
+                  <a v-if="fila.fotos.length" class="eq-foto" :href="fila.fotos[0].url" target="_blank" rel="noopener noreferrer" title="Ver foto" aria-label="Ver foto del equipo">
+                    <img :src="fila.fotos[0].url" alt="">
+                  </a>
+                  <div class="celda-apilada">
+                    <span class="celda-apilada__meta"><TextoVacio :valor="fila.modelo" />{{ fila.empresa_nombre ? ` · ${fila.empresa_nombre}` : '' }}</span>
+                    <span class="celda-apilada__principal">{{ fila.tipo_nombre }} {{ fila.marca }}</span>
+                  </div>
+                </div>
+              </template>
+            </AppColumn>
+
+            <AppColumn field="serie" header="Serie" sortable>
+              <template #body="{ data: fila }"><span class="eq-serie"><TextoVacio :valor="fila.serie" /></span></template>
+            </AppColumn>
+
+            <AppColumn field="situacion" header="Situación" :header-style="{ width: '120px' }">
+              <template #body="{ data: fila }">
+                <span class="tag" :class="`tag--${rolDeTag(badgeEstadoFisico(fila).clase)}`">{{ badgeEstadoFisico(fila).label }}</span>
+              </template>
+            </AppColumn>
+
+            <AppColumn field="portador" header="Asignado a">
+              <template #body="{ data: fila }">
+                <template v-if="fila.portador">
+                  <RouterLink class="empleado-link" :to="`/empleados/${fila.empleado_id}`">{{ fila.portador }}</RouterLink>
+                  <span v-if="fila.portador_inactivo" class="tag" :class="`tag--${rolDeTag('danger')}`" title="Este empleado fue dado de baja y no ha devuelto el equipo">
+                    <i class="ti ti-alert-triangle"></i> Sin devolver
+                  </span>
+                </template>
+                <TextoVacio v-else />
+              </template>
+            </AppColumn>
+
+            <AppColumn field="ubicacion" header="Ubicación">
+              <template #body="{ data: fila }">
+                <div v-if="creandoUbicacionId === fila.id" class="ubicacion-nueva-inline">
+                  <input
+                    v-model="nombreNuevaUbicacion"
+                    placeholder="Nombre de la ubicación"
+                    :disabled="moviendoId === fila.id"
+                    @keydown.enter.prevent="confirmarNuevaUbicacion(fila)"
+                    @keydown.esc.prevent="cancelarNuevaUbicacion"
+                  >
+                  <button class="icon-btn" type="button" title="Crear y mover aquí" aria-label="Crear y mover aquí" :disabled="moviendoId === fila.id || !nombreNuevaUbicacion.trim()" @click="confirmarNuevaUbicacion(fila)">
+                    <i class="ti" :class="moviendoId === fila.id ? 'ti-loader-2 spinner-icon' : 'ti-check'"></i>
+                  </button>
+                  <button class="icon-btn" type="button" title="Cancelar" aria-label="Cancelar" :disabled="moviendoId === fila.id" @click="cancelarNuevaUbicacion">
+                    <i class="ti ti-x"></i>
+                  </button>
+                </div>
+                <select
+                  v-else-if="enAlmacen(fila)"
+                  class="ubicacion-select"
+                  :value="fila.ubicacion_id || ''"
+                  :disabled="moviendoId === fila.id"
+                  aria-label="Ubicación"
+                  @change="onCambiarUbicacion(fila, $event.target.value)"
+                >
+                  <option value="" disabled>Seleccionar ubicación</option>
+                  <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+                  <option value="__nueva__">+ Crear nueva ubicación…</option>
+                </select>
+                <template v-else>
+                  <span v-if="fila.ubicacion_nombre" class="ubicacion-nombre">
+                    <i class="ti ti-map-pin"></i> {{ fila.ubicacion_nombre }}
+                  </span>
+                  <TextoVacio v-else />
+                </template>
+              </template>
+            </AppColumn>
+
+            <AppColumn field="acciones" header="Acciones" :header-style="{ width: '176px' }">
+              <!-- Sin `.fila-accion` en el icon-btn inline a propósito: es la
+                   ÚNICA acción contextual disponible para la situación actual
+                   del equipo (Entregar/Registrar devolución/Marcar reparado/
+                   Reactivar/Recuperar, mutuamente excluyentes por `situacion`
+                   — ver accionesInlineDe()), no una acción secundaria de
+                   relleno — mismo criterio que CarbonPasswordReveal en
+                   EmpleadosView. El disparador de MenuAcciones (⋮) tampoco
+                   lleva la clase: ese componente ya decide su propia
+                   visibilidad. Sin `@click.stop`: esta vista no tiene fila
+                   clicable (a diferencia de Tickets/Empleados), así que no
+                   hay navegación que frenar. -->
+              <template #body="{ data: fila }">
+                <div class="actions">
+                  <button
+                    v-for="a in accionesInlineDe(fila)"
+                    :key="a.label"
+                    class="icon-btn"
+                    :class="{ danger: a.danger }"
+                    type="button"
+                    :title="a.label"
+                    :aria-label="a.label"
+                    @click="a.onClick"
+                  >
+                    <i class="ti" :class="a.icono"></i>
+                  </button>
+                  <MenuAcciones
+                    v-if="accionesOverflowDe(fila).length"
+                    :acciones="accionesOverflowDe(fila)"
+                    :label="`Más acciones de ${fila.codigo}`"
+                  />
+                </div>
+              </template>
+            </AppColumn>
+          </AppTable>
+        </div>
 
         <!-- Tarjetas no tiene equivalente propio de SkeletonTabla (esa es
              la del modo Tabla) — mismo texto genérico que ya usa mobile
@@ -784,9 +810,9 @@ onMounted(async () => {
             <div v-if="eq.portador || eq.ubicacion_nombre || enAlmacen(eq)" class="tarjeta-fila__sec">
               <template v-if="eq.portador">
                 <RouterLink class="empleado-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
-                <CarbonTag v-if="eq.portador_inactivo" variante="danger" class="badge-sin-devolver" title="Este empleado fue dado de baja y no ha devuelto el equipo">
+                <span v-if="eq.portador_inactivo" class="tag" :class="`tag--${rolDeTag('danger')}`" title="Este empleado fue dado de baja y no ha devuelto el equipo">
                   <i class="ti ti-alert-triangle"></i> Sin devolver
-                </CarbonTag>
+                </span>
               </template>
               <div v-else-if="creandoUbicacionId === eq.id" class="ubicacion-nueva-inline">
                 <input
@@ -821,21 +847,43 @@ onMounted(async () => {
               </span>
             </div>
             <div class="tarjeta-fila__pie">
-              <CarbonTag :variante="badgeEstadoFisico(eq).clase">{{ badgeEstadoFisico(eq).label }}</CarbonTag>
+              <span class="tag" :class="`tag--${rolDeTag(badgeEstadoFisico(eq).clase)}`">{{ badgeEstadoFisico(eq).label }}</span>
               <MenuAcciones :acciones="accionesDe(eq)" :label="`Acciones de ${eq.codigo}`" />
             </div>
           </li>
         </ul>
 
-        <CarbonPagination
-          v-if="!cargando"
-          v-model="paginaActual"
-          :total-items="total"
-          :tam-pagina="store.tamPagina"
-          :tamanos-pagina="TAMANOS_PAGINA"
-          unidad="equipos"
-          @update:tam-pagina="store.cambiarTamPagina"
-        />
+        <nav v-if="!cargando && total > 0" class="paginacion" aria-label="Paginación">
+          <div class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span>Filas por página:</span>
+              <select
+                class="paginacion__select"
+                :value="store.tamPagina"
+                @change="store.cambiarTamPagina(Number($event.target.value))"
+              >
+                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </label>
+            <span class="paginacion__rango">{{ rangoEquipos.desde }}–{{ rangoEquipos.hasta }} de {{ total }} equipos</span>
+          </div>
+
+          <div v-if="totalPaginasEquipos > 1" class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span class="sr-only">Ir a la página</span>
+              <select class="paginacion__select" :value="paginaActual" @change="irAPaginaEquipos(Number($event.target.value))">
+                <option v-for="p in paginasEquipos" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span>de {{ totalPaginasEquipos }}</span>
+            </label>
+            <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irAPaginaEquipos(paginaActual - 1)">
+              <i class="ti ti-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginasEquipos" aria-label="Página siguiente" @click="irAPaginaEquipos(paginaActual + 1)">
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </nav>
         </template>
       </div>
     </main>
@@ -872,15 +920,36 @@ onMounted(async () => {
         </BuscadorCombo>
       </div>
 
-      <CarbonCampo v-model="condicionEntrega" etiqueta="Condición de entrega" placeholder="ej: nuevo, con cargador y mochila" :deshabilitado="procesando" />
+      <div class="campo" :class="{ 'campo--inerte': procesando }">
+        <label class="campo__etiqueta" :for="campoCondicionEntrega.id">Condición de entrega</label>
+        <div class="campo__caja">
+          <input
+            :id="campoCondicionEntrega.id"
+            v-model="condicionEntrega"
+            class="campo__control"
+            type="text"
+            placeholder="ej: nuevo, con cargador y mochila"
+            :disabled="procesando"
+          >
+        </div>
+      </div>
 
-      <CarbonNotification v-if="errorAsignar" tipo="error">{{ errorAsignar }}</CarbonNotification>
+      <div v-if="errorAsignar" class="notif" :class="[`notif--${infoErrorAsignar.rol}`, 'notif--inline']" :role="infoErrorAsignar.rolAria">
+        <i class="ti" :class="infoErrorAsignar.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ errorAsignar }}</p>
+        </div>
+      </div>
 
       <template #acciones>
-        <CarbonButton variante="secondary" :deshabilitado="procesando" @click="modalAsignar?.cerrar()">Cancelar</CarbonButton>
-        <CarbonButton variante="primary" :cargando="procesando" :deshabilitado="!empleadoSelId" @click="confirmarAsignar">
-          {{ procesando ? 'Entregando...' : 'Entregar' }}
-        </CarbonButton>
+        <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="procesando" @click="modalAsignar?.cerrar()" />
+        <AppButton
+          severity="primary"
+          :label="procesando ? 'Entregando...' : 'Entregar'"
+          :loading="procesando"
+          :disabled="!empleadoSelId"
+          @click="confirmarAsignar"
+        />
       </template>
     </Modal>
 
@@ -896,22 +965,33 @@ onMounted(async () => {
       <template #titulo><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Devolución de {{ equipoDevolver?.codigo }}</template>
       <p class="modal-info">Lo tiene: <strong>{{ equipoDevolver?.portador }}</strong></p>
 
-      <CarbonCampo
-        v-model="condicionDevolucion"
-        etiqueta="Condición en que vuelve"
-        requerido
-        placeholder="ej: operativo / pantalla rota / sin cargador"
-        :deshabilitado="procesando"
-      />
+      <div class="campo" :class="{ 'campo--inerte': procesando }">
+        <label class="campo__etiqueta" :for="campoCondicionDevolucion.id">Condición en que vuelve<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoCondicionDevolucion.id"
+            v-model="condicionDevolucion"
+            class="campo__control"
+            type="text"
+            required
+            placeholder="ej: operativo / pantalla rota / sin cargador"
+            :disabled="procesando"
+          >
+        </div>
+      </div>
 
-      <CarbonCampo v-model="motivoCierre" etiqueta="Motivo" tipo="select" :deshabilitado="procesando">
-        <template #opciones>
-          <option value="devolucion">Devolución normal</option>
-          <option value="cambio_equipo">Cambio de equipo</option>
-          <option value="baja_empleado">Baja del empleado</option>
-          <option value="perdida">Pérdida / robo</option>
-        </template>
-      </CarbonCampo>
+      <div class="campo" :class="{ 'campo--inerte': procesando }">
+        <label class="campo__etiqueta" :for="campoMotivoCierre.id">Motivo</label>
+        <div class="campo__caja">
+          <select :id="campoMotivoCierre.id" v-model="motivoCierre" class="campo__control campo__control--select" :disabled="procesando">
+            <option value="devolucion">Devolución normal</option>
+            <option value="cambio_equipo">Cambio de equipo</option>
+            <option value="baja_empleado">Baja del empleado</option>
+            <option value="perdida">Pérdida / robo</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
 
       <label class="check-reparacion" :class="{ 'check-reparacion--disabled': motivoCierre === 'perdida' }">
         <input v-model="aReparacion" type="checkbox" :disabled="procesando || motivoCierre === 'perdida'">
@@ -922,10 +1002,14 @@ onMounted(async () => {
       </p>
 
       <template #acciones>
-        <CarbonButton variante="secondary" :deshabilitado="procesando" @click="modalDevolver?.cerrar()">Cancelar</CarbonButton>
-        <CarbonButton variante="primary" :cargando="procesando" :deshabilitado="!condicionDevolucion.trim()" @click="confirmarDevolver">
-          {{ procesando ? 'Registrando...' : 'Registrar devolución' }}
-        </CarbonButton>
+        <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="procesando" @click="modalDevolver?.cerrar()" />
+        <AppButton
+          severity="primary"
+          :label="procesando ? 'Registrando...' : 'Registrar devolución'"
+          :loading="procesando"
+          :disabled="!condicionDevolucion.trim()"
+          @click="confirmarDevolver"
+        />
       </template>
     </Modal>
 
@@ -936,9 +1020,9 @@ onMounted(async () => {
     <Modal v-if="mostrarHoja" ref="modalHoja" size="detail" lateral @close="mostrarHoja = false">
       <template #titulo><i class="ti ti-history" aria-hidden="true"></i> Hoja de vida — {{ equipoHoja?.codigo }}</template>
       <p class="modal-info">{{ equipoHoja?.tipo_nombre }} {{ equipoHoja?.marca }} {{ equipoHoja?.modelo }}</p>
-      <CarbonTag v-if="equipoHoja" :variante="badgeEstadoFisico(equipoHoja).clase">
+      <span v-if="equipoHoja" class="tag" :class="`tag--${rolDeTag(badgeEstadoFisico(equipoHoja).clase)}`">
         {{ badgeEstadoFisico(equipoHoja).label }}
-      </CarbonTag>
+      </span>
 
       <div v-if="equipoHoja?.fotos.length" class="hoja-seccion">
         <div class="hoja-seccion-titulo">Fotos</div>
@@ -1009,238 +1093,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.eq-error { color: var(--color-danger); }
 
-/* Datos uniformes: solo cambia la familia (mono para identificadores),
-   nunca el peso/tamaño/color */
-.eq-codigo {
-  font-family: var(--font-mono, monospace);
-}
-
-.eq-codigo-almacen {
-  font-family: var(--font-mono, monospace);
-  color: var(--color-text-secondary);
-}
-
-.eq-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.eq-foto {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-base);
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.eq-foto img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.eq-serie {
-  font-family: var(--font-mono, monospace);
-}
-
-/* Columna Situación: ancho fijo de 120px, declarado en `columnasEquipos`
-   (`ancho: '120px'`) para que "Robado/Perdido" (el label más largo) no
-   corte el badge — reemplaza la vieja regla `.th-situacion` del <table>
-   a mano. */
-
-.ubicacion-nombre {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Solo el icono conserva el color de la familia "ubicaciones" */
-.ubicacion-nombre i { color: var(--color-purple-text); }
-
-.ubicacion-select {
-  max-width: 170px;
-}
-
-.ubicacion-select:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.ubicacion-nueva-inline {
-  display: flex;
-  gap: 6px;
-  max-width: 220px;
-}
-
-.ubicacion-nueva-inline input { flex: 1; min-width: 0; }
-
-.badge-sin-devolver {
-  /* Estructura y color: sistema de badges global (.badge + .badge--danger);
-     aquí solo el ajuste único de este chip: separación del texto vecino.
-     Sin peso extra: 700 se reserva para stat cards y wordmark (Materen Core #fundaciones). */
-  margin-left: 6px;
-}
-
-/* Anchos: .modal-sm / .modal-detail de la escala centralizada (main.css) */
-
-.modal-title { display: flex; align-items: center; justify-content: space-between; }
-
-.modal-body {
-  padding: 16px 24px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.modal-info {
-  margin: 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-}
-
-.check-reparacion {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-.check-reparacion--disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.check-reparacion-hint {
-  margin: 2px 0 0 24px;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-/* ── KPI de disponibilidad (Plan Maestro v2, Frente 4) ──
-   .stat-card/.stat-icon/.stat-info .stat-value/.stat-label son globales
-   (main.css) — acá solo lo que ese componente no cubre: que además de
-   RouterLink pueda ser un <button> (reset de fuente/cursor nativos), el
-   estado "activo" cuando su situación es el filtro elegido, y los 3 colores
-   de icono propios de esta vista (mismo patrón que las variantes de
-   DashboardView.vue: cada vista define los suyos). */
-.eq-kpis { margin-bottom: 16px; }
-
-.stat-card--clic {
-  font: inherit;
-  cursor: pointer;
-  transition: box-shadow 0.12s, border-color 0.12s;
-}
-
-.stat-card--activo {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent);
-}
-
-.stat-icon--libre      { background: var(--color-success-bg); color: var(--color-success-text); }
-.stat-icon--ocupado    { background: var(--color-info-bg); color: var(--color-info-text); }
-.stat-icon--reparacion { background: var(--color-warning-bg-strong); color: var(--color-warning-text); }
-
-/* ── Secciones del drawer de hoja de vida (Frente 4) ── */
-.hoja-seccion + .hoja-seccion {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border);
-}
-
-.hoja-seccion-titulo {
-  font-size: var(--fs-label-01);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-
-.hoja-fotos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.hoja-foto {
-  width: 72px;
-  height: 72px;
-  border-radius: var(--radius-base);
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.hoja-foto img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.hoja-specs {
-  margin: 0;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 12px;
-}
-
-.hoja-specs dt {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-.hoja-specs dd {
-  margin: 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-}
-
-.hoja-accesorios {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-}
-
-/* Hoja de vida */
-.hoja-lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.hoja-lista li {
-  display: flex;
-  gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.hoja-lista li:last-child { border-bottom: none; }
-
-.hoja-lista li > i {
-  font-size: var(--icon-sm);
-  color: var(--color-primary);
-  margin-top: 1px;
-  flex-shrink: 0;
-}
-
-.hoja-info { display: flex; flex-direction: column; min-width: 0; }
-.hoja-detalle { font-size: var(--fs-body-01); color: var(--color-text-primary); }
-.hoja-meta { font-size: var(--fs-label-01); color: var(--color-text-secondary); }
-</style>

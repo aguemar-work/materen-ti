@@ -1,13 +1,13 @@
 // Paginación client-side sobre una lista reactiva (normalmente la lista
 // filtrada). Replica el patrón que vivía copiado en 12 vistas:
 // página actual + reset al cambiar la lista + slice de la página.
-// El control visual es components/carbon/CarbonPagination.vue.
+// El control visual es el <nav> de cada vista (matemática en core/paginacionRender.js).
 import { ref, computed, watch, unref } from 'vue';
 import { TAM_PAGINA_DEFECTO } from '../constants/paginacion.js';
 
 export function usePaginacion(lista, tamPaginaInicial = TAM_PAGINA_DEFECTO) {
   const paginaActual = ref(1);
-  // Reactivo (antes un número fijo) para que CarbonPagination pueda ofrecer
+  // Reactivo (antes un número fijo) para que la paginación de la vista pueda ofrecer
   // el selector "Filas por página" — sin esto, cambiar de 20 a 100 filas no
   // tenía dónde guardarse.
   const tamPagina = ref(tamPaginaInicial);
@@ -24,7 +24,7 @@ export function usePaginacion(lista, tamPaginaInicial = TAM_PAGINA_DEFECTO) {
 
   // Cambiar el tamaño de página vuelve a la 1: quedarse en una página que ya
   // no existe con el nuevo tamaño deja la vista vacía sin explicar por qué.
-  // El reset vive acá (y en el store), no en CarbonPagination — ver el
+  // El reset vive acá (y en el store), no en el control visual — ver el
   // comentario de `cambiarTam()` en ese componente.
   function cambiarTamPagina(nuevoTam) {
     tamPagina.value = nuevoTam;

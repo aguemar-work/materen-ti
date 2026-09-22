@@ -1,6 +1,6 @@
 <script setup>
 import { nextTick, ref, watch } from 'vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 // Caja para comentar un ticket (mensaje + "nota interna" + enviar).
 // Compartida por TicketDetalleView.vue y TicketDetallePanel.vue, que hasta
@@ -64,62 +64,15 @@ watch(
         >
         Nota interna (no visible para el empleado)
       </label>
-      <CarbonButton
-        variante="secondary"
-        :deshabilitado="enviando || !mensaje.trim()"
-        :cargando="enviando"
+      <AppButton
+        severity="secondary"
+        :label="enviando ? 'Enviando...' : 'Comentar'"
+        :loading="enviando"
+        :disabled="!mensaje.trim()"
         @click="emit('enviar')"
-      >{{ enviando ? 'Enviando...' : 'Comentar' }}</CarbonButton>
+      />
     </div>
   </div>
 </template>
 
-<style scoped>
-.tk-nuevo-comentario {
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
 
-.tk-comentario-input {
-  width: 100%;
-  min-height: 40px;
-  max-height: 160px;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  font-size: var(--fs-body-01);
-  font-family: var(--font-sans);
-  line-height: 1.4;
-  color: var(--color-text-primary);
-  background: var(--color-bg-elevated);
-  resize: none;
-  overflow-y: auto;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.tk-comentario-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.tk-comentario-acciones {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.check-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-</style>

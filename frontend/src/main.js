@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import * as Sentry from '@sentry/vue';
 import { createPinia } from 'pinia';
+import PrimeVue from 'primevue/config';
 import App from './App.vue';
 import router from './router/index.js';
 import { setupGuards } from './router/guards.js';
@@ -43,6 +44,13 @@ async function boot() {
 
   initObservabilidad(app);
   app.use(pinia);
+  // Unstyled (headless): PrimeVue no inyecta NINGÚN CSS propio — cero clases
+  // `p-*`, cero tema (Aura/Lara u otro). El 100% del look sale de Tailwind vía
+  // Pass-Through, siempre desde nuestros wrappers en components/ui/ (ver
+  // AppButton.vue). Nunca importar un componente de PrimeVue directo en una
+  // vista o módulo — eso reabre la puerta a estilos inconsistentes que el
+  // wrapper existe justamente para cerrar.
+  app.use(PrimeVue, { unstyled: true, ripple: false });
 
   const auth = useAuthStore();
   await auth.cargarSesion();

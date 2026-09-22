@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute } from 'vue-router';
 import { useLicenciasStore } from '../../stores/licencias.js';
@@ -12,42 +12,37 @@ import { showToast } from '../../core/toast.js';
 import { formatFecha, fechaISO, fechaLocalISO } from '../../core/formatters.js';
 import { estadoVencimientoLicencia, CLASE_VENCIMIENTO_LICENCIA } from '../../core/dominio-licencias.js';
 import LicenciaForm from './LicenciaForm.vue';
-import CarbonPagination from '../../components/carbon/CarbonPagination.vue';
 import PageHeader from '../../components/shared/PageHeader.vue';
 import EmptyState from '../../components/shared/EmptyState.vue';
 import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
-import CarbonDataTable from '../../components/carbon/CarbonDataTable.vue';
-import CarbonPasswordReveal from '../../components/carbon/CarbonPasswordReveal.vue';
-import CarbonTag from '../../components/carbon/CarbonTag.vue';
 import Modal from '../../components/shared/Modal.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppButton from '../../components/ui/AppButton.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { rolDeTag } from '../../core/tagRol.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
+import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useLicenciasStore();
 const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
+// Forma que espera AppTable (props nativas de PrimeVue DataTable), derivada
+// de la misma `orden` que ya expone el store — ver AppTable.vue: sortOrder
+// es 1 (asc) | -1 (desc) | null (sin orden), no el string 'asc'/'desc' que
+// usa el store puertas adentro.
+const sortFieldTabla = computed(() => orden.value?.columna ?? null);
+const sortOrderTabla = computed(() => {
+  if (!orden.value) return null;
+  return orden.value.direccion === 'desc' ? -1 : 1;
+});
 
 useRealtimeRefresco('licencias:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
-
-// Definición de columnas de CarbonDataTable. "Acciones" usa MenuAcciones
-// (menú ⋮), no icon-btn sueltos, así que no lleva `.fila-accion` — ese
-// disparador ya tiene su propio estilo.
-const columnasLicencias = [
-  { clave: 'software', label: 'Software', ordenable: true, elastica: true, movil: 'principal' },
-  { clave: 'empresa', label: 'Empresa', movil: 'sec' },
-  { clave: 'acceso', label: 'Acceso', movil: false },
-  { clave: 'asientos', label: 'Asientos', movil: 'sec' },
-  { clave: 'usuarios', label: 'Usuarios', movil: false },
-  { clave: 'fecha_vencimiento', label: 'Vencimiento', ordenable: true, movil: 'pie' },
-  { clave: 'acciones', label: 'Acciones', ancho: '56px', movil: 'pie' },
-];
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 
@@ -59,10 +54,21 @@ watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); }
 const mostrarForm = ref(false);
 const licenciaEditar = ref(null);
 
-const paginaActual = computed({
-  get: () => store.pagina,
-  set: (p) => store.irAPagina(p),
-});
+// Paginación: se mantiene tal cual (no vía AppTable). Este `<nav>` propio
+// (selector de filas por página + salto a página N + flechas, más abajo en
+// el template) ya es más completo que el paginador nativo de PrimeVue, y ya
+// llama a store.irAPagina/cambiarTamPagina directo — meterlo por AppTable
+// (`paginator`, `@pagina-cambiada`/`@tam-pagina-cambiada`) duplicaría la UI
+// sin ganar nada. Ver la nota de arquitectura en AppTable.vue: esos dos
+// eventos existen para el listado que SÍ quiera un paginador inline de
+// PrimeVue — Licencias no es ese caso.
+const totalPaginas = computed(() => totalPaginasDe(total.value, store.tamPagina));
+const paginas = computed(() => paginasDe(totalPaginas.value));
+const rango = computed(() => rangoDe(store.pagina, store.tamPagina, total.value));
+function irA(pagina) {
+  const destino = clampPagina(pagina, totalPaginas.value);
+  if (destino !== store.pagina) store.irAPagina(destino);
+}
 
 const exportando = ref(false);
 async function exportar() {
@@ -208,8 +214,26 @@ async function revelarDeLicencia(licencia, motivo) {
 
 // El revelado de una credencial (peticion a la edge function `credenciales`,
 // auditoria en accesos_log con el motivo, cuenta regresiva de 8 segundos y
-// ocultado automatico) vive en CarbonPasswordReveal.vue desde el
-// 2026-09-02. Esta vista solo declara QUE credencial se revela.
+// ocultado automatico) vive en composables/useRevelado.js. Esta vista solo
+// declara QUE credencial se revela — una instancia por licencia.
+const revelados = new Map();
+function revelarDe(lic) {
+  if (!revelados.has(lic.id)) {
+    revelados.set(lic.id, crearRevelado({
+      revelar: (motivo) => revelarDeLicencia(lic, motivo),
+      etiqueta: lic.tiene_clave ? 'contraseña del software' : 'contraseña del correo',
+    }));
+  }
+  return revelados.get(lic.id);
+}
+watch(() => auth.puedeVerCredenciales, (puede) => {
+  if (!puede) revelados.forEach((r) => r.ocultar());
+});
+const detenerOcultamiento = escucharOcultamientoPorCambioDePestana(() => [...revelados.values()]);
+onBeforeUnmount(() => {
+  detenerOcultamiento();
+  revelados.forEach((r) => r.ocultar());
+});
 
 async function abrirAsignar(licencia) {
   licenciaAsignar.value = licencia;
@@ -319,10 +343,16 @@ onMounted(async () => {
   <div class="licencias-page vista-modulo">
     <PageHeader titulo="Licencias" icono="ti ti-license" :conteo="total">
       <template #acciones>
-        <CarbonButton variante="secondary" icono="ti-table-export" :cargando="exportando" title="Exportar a Excel (CSV)" @click="exportar">
-          {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </CarbonButton>
-        <CarbonButton variante="primary" icono="ti-plus" @click="abrirNueva">Nueva licencia</CarbonButton>
+        <AppButton
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-table-export"
+          :loading="exportando"
+          :label="exportando ? 'Exportando...' : 'Exportar'"
+          title="Exportar a Excel (CSV)"
+          @click="exportar"
+        />
+        <AppButton severity="primary" icon="ti ti-plus" label="Nueva licencia" @click="abrirNueva" />
       </template>
     </PageHeader>
 
@@ -344,117 +374,199 @@ onMounted(async () => {
           titulo="Sin licencias"
           :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra la primera licencia para ordenar el software que pagan.'"
         >
-          <CarbonButton v-if="!busqueda" variante="secondary" icono="ti-plus" @click="abrirNueva">Nueva licencia</CarbonButton>
+          <AppButton v-if="!busqueda" variant="outline" severity="secondary" icon="ti ti-plus" label="Nueva licencia" @click="abrirNueva" />
         </EmptyState>
 
         <template v-if="!error && (cargando || total > 0)">
         <p v-if="cargando" class="sr-only" role="status">Cargando licencias…</p>
-        <CarbonDataTable
-          :columnas="columnasLicencias"
-          :filas="lista"
-          :cargando="cargando"
-          :orden-por="ordenColumna"
-          :orden-dir="ordenDireccion"
-          etiqueta="Licencias de software"
-          @ordenar="store.ordenarPor"
-        >
-          <template #celda-software="{ fila: lic }">
-            <!-- Proveedor + Software colapsan (mismo criterio que Tickets):
-                 ya vivía apilado a mano (.user-name + .lic-proveedor, sin el
-                 gris de __meta) — se migra a las clases oficiales en vez de
-                 mantener la reimplementación incompleta. -->
-            <div class="celda-apilada">
-              <span v-if="lic.proveedor" class="celda-apilada__meta">{{ lic.proveedor }}</span>
-              <span class="celda-apilada__principal">{{ lic.software }}</span>
-            </div>
-          </template>
-          <template #celda-empresa="{ fila: lic }">{{ lic.empresa_nombre || 'Del grupo' }}</template>
-          <template #celda-acceso="{ fila: lic }">
-            <div v-if="lic.cuenta_id" class="acceso-login">
-              <span class="lic-acceso" :title="lic.cuenta_usuario">
-                <i class="ti ti-mail"></i> {{ lic.cuenta_usuario }}
-              </span>
-              <div class="clave-cell">
-                <CarbonPasswordReveal
-                  :revelar="(motivo) => revelarDeLicencia(lic, motivo)"
-                  :bloqueado="!auth.puedeVerCredenciales"
-                  :etiqueta="lic.tiene_clave ? 'contraseña del software' : 'contraseña del correo'"
-                  motivo-bloqueo="Sin permiso para ver contraseñas"
-                />
-                <span class="clave-origen">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
+
+        <div class="tabla-envoltorio">
+          <AppTable
+            :value="lista"
+            :loading="cargando"
+            :total-records="total"
+            :rows="store.tamPagina"
+            :sort-field="sortFieldTabla"
+            :sort-order="sortOrderTabla"
+            @ordenar="store.ordenarPor"
+          >
+            <AppColumn field="software" header="Software" sortable>
+              <!-- Proveedor + Software colapsan (mismo criterio que Tickets):
+                   ya vivía apilado a mano (.user-name + .lic-proveedor, sin el
+                   gris de __meta) — se migra a las clases oficiales en vez de
+                   mantener la reimplementación incompleta. -->
+              <template #body="{ data: lic }">
+                <div class="celda-apilada">
+                  <span v-if="lic.proveedor" class="celda-apilada__meta">{{ lic.proveedor }}</span>
+                  <span class="celda-apilada__principal">{{ lic.software }}</span>
+                </div>
+              </template>
+            </AppColumn>
+
+            <AppColumn field="empresa_nombre" header="Empresa">
+              <template #body="{ data: lic }">{{ lic.empresa_nombre || 'Del grupo' }}</template>
+            </AppColumn>
+
+            <AppColumn field="acceso" header="Acceso">
+              <template #body="{ data: lic }">
+                <div v-if="lic.cuenta_id" class="acceso-login">
+                  <span class="lic-acceso" :title="lic.cuenta_usuario">
+                    <i class="ti ti-mail"></i> {{ lic.cuenta_usuario }}
+                  </span>
+                  <div class="clave-cell">
+                    <div class="cred">
+                      <span v-if="revelarDe(lic).valor.value" class="cred__valor">{{ revelarDe(lic).valor.value }}</span>
+                      <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                      <template v-if="auth.puedeVerCredenciales">
+                        <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" :aria-label="revelarDe(lic).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="revelarDe(lic).mostrar()">
+                          <i :class="revelarDe(lic).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" aria-label="Copiar contraseña" @click="revelarDe(lic).copiar()">
+                          <i class="ti ti-copy" aria-hidden="true"></i>
+                        </button>
+                        <span v-if="revelarDe(lic).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(lic).restante.value }}s</span>
+                      </template>
+                      <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
+                    </div>
+                    <span class="clave-origen">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
+                  </div>
+                </div>
+                <div v-else-if="lic.tiene_clave" class="clave-cell">
+                  <div class="cred">
+                    <span v-if="revelarDe(lic).valor.value" class="cred__valor">{{ revelarDe(lic).valor.value }}</span>
+                    <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                    <template v-if="auth.puedeVerCredenciales">
+                      <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" :aria-label="revelarDe(lic).valor.value ? 'Ocultar clave' : 'Mostrar clave'" @click="revelarDe(lic).mostrar()">
+                        <i :class="revelarDe(lic).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                      </button>
+                      <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" aria-label="Copiar clave" @click="revelarDe(lic).copiar()">
+                        <i class="ti ti-copy" aria-hidden="true"></i>
+                      </button>
+                      <span v-if="revelarDe(lic).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(lic).restante.value }}s</span>
+                    </template>
+                    <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
+                  </div>
+                </div>
+                <TextoVacio v-else />
+              </template>
+            </AppColumn>
+
+            <AppColumn field="asientos" header="Asientos">
+              <template #body="{ data: lic }">
+                <div class="capacity">
+                  <div class="capacity-bar">
+                    <div
+                      class="capacity-fill"
+                      :class="capacidadInfo(lic).clase"
+                      :style="{ width: capacidadInfo(lic).pct + '%' }"
+                    ></div>
+                  </div>
+                  <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
+                </div>
+              </template>
+            </AppColumn>
+
+            <AppColumn field="usuarios" header="Usuarios">
+              <template #body="{ data: lic }">
+                <div v-if="lic.usuarios.length" class="usuarios-cell">
+                  <span
+                    v-for="(u, i) in lic.usuarios"
+                    :key="i"
+                    class="usuario-chip"
+                  >
+                    <RouterLink v-if="u.empleado_id" class="empleado-link" :to="`/empleados/${u.empleado_id}`">{{ u.nombre }}</RouterLink>
+                    <template v-else>{{ u.nombre }}</template>
+                    <button
+                      v-if="u.asignacion_id"
+                      class="chip-x"
+                      type="button"
+                      title="Liberar asiento"
+                      aria-label="Liberar asiento"
+                      @click="pedirLiberar(lic, u)"
+                    >
+                      <i class="ti ti-x"></i>
+                    </button>
+                  </span>
+                </div>
+                <TextoVacio v-else placeholder="Sin usuarios" />
+              </template>
+            </AppColumn>
+
+            <AppColumn field="fecha_vencimiento" header="Vencimiento" sortable>
+              <template #body="{ data: lic }">
+                <div class="venc-cell">
+                  <span class="tag" :class="`tag--${rolDeTag(estadoVencimiento(lic).clase)}`">
+                    {{ estadoVencimiento(lic).texto }}
+                  </span>
+                  <span v-if="lic.tipo === 'suscripcion' && lic.renovacion_meses" class="venc-periodo">
+                    <i class="ti ti-refresh"></i> {{ periodoLabel(lic.renovacion_meses) }}
+                  </span>
+                </div>
+              </template>
+            </AppColumn>
+
+            <AppColumn field="acciones" header="Acciones" :header-style="{ width: '56px' }">
+              <template #body="{ data: lic }">
+                <div class="actions">
+                  <MenuAcciones :acciones="accionesDe(lic)" :label="`Acciones de ${lic.software}`" />
+                </div>
+              </template>
+            </AppColumn>
+          </AppTable>
+        </div>
+
+        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Licencias de software">
+          <li v-for="lic in lista" :key="lic.id" class="tarjeta-fila">
+            <div class="tarjeta-fila__principal">
+              <div class="celda-apilada">
+                <span v-if="lic.proveedor" class="celda-apilada__meta">{{ lic.proveedor }}</span>
+                <span class="celda-apilada__principal">{{ lic.software }}</span>
               </div>
             </div>
-            <div v-else-if="lic.tiene_clave" class="clave-cell">
-              <CarbonPasswordReveal
-                :revelar="(motivo) => revelarDeLicencia(lic, motivo)"
-                :bloqueado="!auth.puedeVerCredenciales"
-                etiqueta="clave"
-                motivo-bloqueo="Sin permiso para ver contraseñas"
-              />
-            </div>
-            <TextoVacio v-else />
-          </template>
-          <template #celda-asientos="{ fila: lic }">
-            <div class="capacity">
-              <div class="capacity-bar">
-                <div
-                  class="capacity-fill"
-                  :class="capacidadInfo(lic).clase"
-                  :style="{ width: capacidadInfo(lic).pct + '%' }"
-                ></div>
+            <div class="tarjeta-fila__sec">{{ lic.empresa_nombre || 'Del grupo' }}</div>
+            <div class="tarjeta-fila__sec">
+              <div class="capacity">
+                <div class="capacity-bar">
+                  <div class="capacity-fill" :class="capacidadInfo(lic).clase" :style="{ width: capacidadInfo(lic).pct + '%' }"></div>
+                </div>
+                <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
               </div>
-              <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
             </div>
-          </template>
-          <template #celda-usuarios="{ fila: lic }">
-            <div v-if="lic.usuarios.length" class="usuarios-cell">
-              <span
-                v-for="(u, i) in lic.usuarios"
-                :key="i"
-                class="usuario-chip"
-              >
-                <RouterLink v-if="u.empleado_id" class="empleado-link" :to="`/empleados/${u.empleado_id}`">{{ u.nombre }}</RouterLink>
-                <template v-else>{{ u.nombre }}</template>
-                <button
-                  v-if="u.asignacion_id"
-                  class="chip-x"
-                  type="button"
-                  title="Liberar asiento"
-                  aria-label="Liberar asiento"
-                  @click="pedirLiberar(lic, u)"
-                >
-                  <i class="ti ti-x"></i>
-                </button>
-              </span>
-            </div>
-            <TextoVacio v-else placeholder="Sin usuarios" />
-          </template>
-          <template #celda-fecha_vencimiento="{ fila: lic }">
-            <div class="venc-cell">
-              <CarbonTag :variante="estadoVencimiento(lic).clase">
-                {{ estadoVencimiento(lic).texto }}
-              </CarbonTag>
-              <span v-if="lic.tipo === 'suscripcion' && lic.renovacion_meses" class="venc-periodo">
-                <i class="ti ti-refresh"></i> {{ periodoLabel(lic.renovacion_meses) }}
-              </span>
-            </div>
-          </template>
-          <template #celda-acciones="{ fila: lic }">
-            <div class="actions">
+            <div class="tarjeta-fila__pie">
+              <div class="venc-cell">
+                <span class="tag" :class="`tag--${rolDeTag(estadoVencimiento(lic).clase)}`">{{ estadoVencimiento(lic).texto }}</span>
+              </div>
               <MenuAcciones :acciones="accionesDe(lic)" :label="`Acciones de ${lic.software}`" />
             </div>
-          </template>
-        </CarbonDataTable>
+          </li>
+        </ul>
 
-        <CarbonPagination
-          v-if="!cargando"
-          v-model="paginaActual"
-          :total-items="total"
-          :tam-pagina="store.tamPagina"
-          :tamanos-pagina="TAMANOS_PAGINA"
-          unidad="licencias"
-          @update:tam-pagina="store.cambiarTamPagina"
-        />
+        <nav v-if="!cargando" class="paginacion" aria-label="Paginación">
+          <div class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span>Filas por página:</span>
+              <select class="paginacion__select" :value="store.tamPagina" @change="store.cambiarTamPagina(Number($event.target.value))">
+                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </label>
+            <span class="paginacion__rango">{{ rango.desde }}–{{ rango.hasta }} de {{ total }} licencias</span>
+          </div>
+          <div v-if="totalPaginas > 1" class="paginacion__lado">
+            <label class="paginacion__campo">
+              <span class="sr-only">Ir a la página</span>
+              <select class="paginacion__select" :value="store.pagina" @change="irA(Number($event.target.value))">
+                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span>de {{ totalPaginas }}</span>
+            </label>
+            <button class="paginacion__flecha" type="button" :disabled="store.pagina <= 1" aria-label="Página anterior" @click="irA(store.pagina - 1)">
+              <i class="ti ti-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button class="paginacion__flecha" type="button" :disabled="store.pagina >= totalPaginas" aria-label="Página siguiente" @click="irA(store.pagina + 1)">
+              <i class="ti ti-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </nav>
         </template>
       </div>
     </main>
@@ -507,13 +619,22 @@ onMounted(async () => {
         </BuscadorCombo>
       </div>
 
-      <CarbonNotification v-if="errorAsignar" tipo="error">{{ errorAsignar }}</CarbonNotification>
+      <div v-if="errorAsignar" class="notif" :class="[`notif--${infoNotificacion('error').rol}`, 'notif--inline']" :role="infoNotificacion('error').rolAria">
+        <i class="ti" :class="infoNotificacion('error').icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ errorAsignar }}</p>
+        </div>
+      </div>
 
       <template #acciones>
-        <CarbonButton variante="secondary" :deshabilitado="asignando" @click="modalAsignar?.cerrar()">Cancelar</CarbonButton>
-        <CarbonButton variante="primary" :cargando="asignando" :deshabilitado="!empleadoAsignarId" @click="confirmarAsignar">
-          {{ asignando ? 'Asignando...' : 'Asignar' }}
-        </CarbonButton>
+        <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="asignando" @click="modalAsignar?.cerrar()" />
+        <AppButton
+          severity="primary"
+          :label="asignando ? 'Asignando...' : 'Asignar'"
+          :loading="asignando"
+          :disabled="!empleadoAsignarId"
+          @click="confirmarAsignar"
+        />
       </template>
     </Modal>
 
@@ -534,114 +655,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
-.lic-error { color: var(--color-danger); }
 
-.lic-acceso {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-label-01);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.acceso-login {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.clave-cell {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.clave-origen {
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-subtle, var(--color-neutral-bg));
-  border-radius: var(--radius-base);
-  padding: 1px 6px;
-  white-space: nowrap;
-}
-
-/* Ocupación de asientos: .capacity/.capacity-bar globales (main.css) */
-
-.usuarios-cell {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  max-width: 240px;
-}
-
-.usuario-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: var(--fs-label-01);
-  background: var(--color-bg-subtle, var(--color-neutral-bg));
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-base);
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-
-.chip-x {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  font-size: var(--icon-sm);
-}
-
-.chip-x:hover { color: var(--color-danger, var(--color-danger)); }
-
-.venc-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-}
-
-.venc-periodo {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: var(--fs-label-01);
-  color: var(--color-text-secondary);
-}
-
-/* Ancho: .modal-sm de la escala centralizada (main.css) */
-
-.modal-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.modal-body {
-  padding: 16px 24px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.asignar-info {
-  margin: 0;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-secondary);
-}
-</style>

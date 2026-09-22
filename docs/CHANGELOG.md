@@ -27,6 +27,162 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-22** (**`AGENTS.md` al día con la base PrimeVue/Tailwind**) —
+  el encabezado, la precedencia documental y la regla de UI seguían diciendo
+  "sin sistema de diseño, `main.css` vacío" dos semanas después de que el
+  2026-09-07 se definiera la base nueva; ahora remiten a `frontend/AGENTS.md`
+  (sección "UI/UX"). Se retira el gotcha del padding de tabla (`th`/`td` en
+  `main.css` + `ThOrdenable.vue`): ninguno de los dos lugares tiene ya ese CSS.
+- **2026-09-08** (**Tickets Fase 3: `TicketInternoForm.vue` — cierre del
+  módulo**) — 2 botones → `AppButton`. Su `<Modal>` pasó a
+  `components/ui/AppDialog.vue`, wrapper nuevo sobre `primevue/dialog` +
+  el MISMO `pt/dialog.pt.js` que `ConfirmDialog.vue` (`buildDialogPT` gana
+  un parámetro `{size}`: `'sm'` sin cambio para confirmaciones, `'md'`
+  nuevo para formularios). `Modal.vue` no se tocó — sigue siendo lo
+  correcto para sus otros ~21 consumidores, migrarlos es aparte.
+  `AppDialog.vue` quedó drop-in con `useFormularioModal.js`: `cerrar()`
+  incondicional (flujo de éxito) vs. `confirmarCierre` como veto de
+  X/Escape/backdrop, mismo reparto que `Modal.vue` — verificado con el
+  flujo real de "cambios sin guardar", no solo supuesto. Verificado
+  también (no asumido): un `AppButton type="submit" form="ti-form"` en el
+  footer del Dialog sigue disparando el submit del `<form>` de afuera.
+  5 tests nuevos (`TicketInternoForm.render.test.js`). **397/397 en la
+  suite completa — módulo Tickets cerrado** (Fases 1+2+3, 3 PRs
+  autocontenidos, la app compiló en verde después de cada uno).
+- **2026-09-08** (**Tickets Fase 2: detalle + timeline → `AppButton`**) —
+  19 botones legacy migrados en `TicketDetalleView.vue`,
+  `TicketDetallePanel.vue` y `TicketComposer.vue` — cero cambios en
+  `useTicketDetalleLogica.js`/`stores/ticketDetalle.js` (la máquina de
+  estados). Verificado con tests que disparan cada transición real
+  (iniciar → `actualizarTicket(en_progreso)`, rechazar →
+  `crearComentarioTicket`+`actualizarTicket(rechazado)`, resolver vía
+  `ConfirmDialog` → `cerrarTicket`, reabrir con motivo, solo JEFE), no solo
+  que el botón se vea bien. Toggle "KB" resuelve su estado "activo"
+  reusando `variant`/`severity` existentes de `AppButton` (sin agregar una
+  prop `pressed` nueva). `TicketCamposGestion.vue` sin cambios (0 botones/
+  tablas/modales, estaba en alcance pero no había nada que tocar).
+  `TicketTimelineUnificado.vue` sin cambios — hallazgo real: no usa ninguna
+  clase de Tailwind (100% clases sin respaldo en `main.css` desde el
+  2026-09-05), no había nada que "heredar". Botones icon-only de layout
+  (volver, cerrar panel, colapsar contexto) y el "Problema" ya vinculado
+  (RouterLink real) quedaron fuera, mismo criterio que fases anteriores.
+  15 tests nuevos (`TicketComposer`/`TicketDetalleView`/
+  `TicketDetallePanel`/`TicketTimelineUnificado.render.test.js`). 392/392
+  en la suite completa.
+- **2026-09-08** (**Tickets Fase 1: listado principal + selección múltiple
+  en `AppTable`**) — extensión real de `AppTable.vue`/`pt/table.pt.js`:
+  `selection`/`update:selection` (v-model), `rowClass` (nativa de
+  DataTable) y `rowAttrs` (resuelta por PT, DataTable no tiene equivalente
+  nativo). Preset nuevo para `column.pcHeaderCheckbox`/`pcRowCheckbox`
+  (mismo `primevue/checkbox` por dentro para header y fila, verificado en
+  su fuente) — acento primario al marcar, borde ≤1px, transición suave.
+  `TicketsView.vue`: `<table>` → `AppTable`+`AppColumn` (7 columnas, 4
+  ordenables), columna de selección real de PrimeVue (`AppColumn` no
+  necesitó cambios, `selection-mode="multiple"` ya es nativa). La lógica de
+  acciones masivas existente (`seleccionados` Set<id>) no se tocó — un
+  computed puente (`seleccionParaTabla`) traduce hacia el array de filas
+  que espera `v-model:selection`. `claseFilaTicket`/`filaAtributosTicket`
+  preservan clase de fila y `aria-current` de la fila activa vía
+  `row-class`/`row-attrs`. Botones del header/barra de acciones masivas/
+  "Cargar más" de Triage → `AppButton`. Verificado (no supuesto): ni
+  `TicketsView.vue` ni `stores/tickets.js` usan InsForge Realtime — nada
+  que proteger en esta fase. Fuera de alcance a propósito: modo Triage
+  (salvo su botón "Cargar más"), `TicketDetalleView`/`TicketDetallePanel`
+  (Fase 2), `TicketInternoForm` (Fase 3), chips de filtro y flechas de
+  paginación (mismo criterio que Licencias/Equipos). 8 tests nuevos
+  (`TicketsView.render.test.js`), incluye la selección de fila actualizando
+  el modelo reactivo y habilitando la barra — 373/373 en la suite completa.
+- **2026-09-07** (**Segundo módulo de negocio migrado: `EquiposView.vue`**)
+  — mismo patrón que Licencias: `<table>` → `AppTable`+`AppColumn` (8
+  columnas, 3 ordenables), `@ordenar` → `store.ordenarPor`, paginación
+  deliberadamente fuera de `AppTable` (su propio `<nav>` ya llamaba al
+  store directo). `MenuAcciones`/`ConfirmDialog` no necesitaron NINGÚN
+  cambio acá — ya venían migrados con API pública intacta. Vista
+  "Tarjetas" y KPIs sin tocar (no son tabla). `ImportarEquiposView.vue`:
+  6 botones de flujo → `AppButton`, su propia grilla de corrección
+  (in-memory, edición inline) sin migrar a AppTable — caso de uso
+  distinto, no un listado server-side. Verificado (no supuesto): el
+  hotfix HTTP 414 (migración 085) vive en `api/domains/equipos.js`, no
+  tocado. Dato real de bundle: con un segundo consumidor de `AppTable`,
+  Rollup extrajo el código común de PrimeVue a un chunk compartido — el
+  chunk de `LicenciasView` bajó de ~120 kB a ~11 kB gzip, `EquiposView`
+  entra con ~18 kB gzip (no ~120 kB de nuevo) — el costo se amortiza, no
+  se multiplica. 8 tests nuevos (`EquiposView.render.test.js`, incluye un
+  guardrail explícito contra la regresión HTTP 414). 365/365 en la suite
+  completa.
+- **2026-09-07** (**Capa interactiva global migrada: `MenuAcciones`/
+  `ConfirmDialog`**) — antes de tocar Tickets (el core del ITSM), se
+  estandarizó la interacción global. `MenuAcciones.vue` (5 vistas) pasó a
+  `components/ui/AppMenu.vue` (`primevue/menu`, popup) + `pt/menu.pt.js` —
+  posicionamiento/foco por teclado/cierre por click-afuera ahora los
+  resuelve PrimeVue en vez de `usePopoverFlotante` (que sigue viva en
+  `NotificacionesCampana.vue`). `ConfirmDialog.vue` (~31 vistas) pasó a
+  `primevue/dialog` + `pt/dialog.pt.js` + `AppButton`, **no** a
+  `primevue/confirmdialog` + `ConfirmationService` — el servicio imperativo
+  de PrimeVue no calza con el contrato reactivo actual (`cargando` cambia
+  con el diálogo ya abierto, motivo con validación propia); se documentó la
+  decisión en vez de forzarlo o de construir un servicio global en paralelo
+  sin ningún consumidor real. **API pública de ambos componentes sin
+  cambios** — ninguna de las ~36 vistas que los usan necesitó tocarse. 16
+  tests de render nuevos (`MenuAcciones.render.test.js` +
+  `ConfirmDialog.render.test.js`), incluye el hallazgo real de que
+  `aria-expanded`/`@show`/`@hide` de Menu no se pueden probar vía la
+  transición (no completa en happy-dom) — se resolvió actualizando
+  `abierto` en el momento de la acción, no como eco de la animación.
+  357/357 en la suite completa, `npx vite build` limpio (aviso nuevo: el
+  bundle principal, no uno de ruta, creció ~22 kB gzip porque estos dos
+  componentes se cargan desde casi toda la app — aceptado, ver AGENTS.md).
+- **2026-09-07** (**Primer módulo de negocio migrado: `LicenciasView.vue`**)
+  — PoC deliberado de bajo riesgo (Licencias, no Tickets, antes de tocar el
+  core del ITSM). `<table>` nativa → `AppTable`+`AppColumn`, preservando
+  cada celda custom (credenciales reveladas, capacidad, chips de usuario,
+  tag de vencimiento) vía `#body`; `@ordenar` → `store.ordenarPor`.
+  Paginación deliberadamente **fuera** de `AppTable` — el `<nav>` propio de
+  esta vista (filas por página + salto a página + flechas) ya era más
+  completo que el paginador nativo de PrimeVue y ya llamaba al store
+  directo. Botones de header/EmptyState/modal "asignar asiento" →
+  `AppButton`; `MenuAcciones` y `ConfirmDialog` (compartidos) sin tocar,
+  fuera de alcance. Código muerto retirado:
+  `columnasLicencias`/`columnasVisibles`/`estiloColumna`/`ThOrdenable`/
+  `SkeletonTabla` ya no se usaban en esta vista. `npm run build` limpio
+  (aviso nuevo, real: el chunk de esta vista pasó a ~120 kB gzip — DataTable
+  no se tree-shakea bien dentro de un `<script>`, conocido y aceptado, no
+  bloquea nada por ser lazy-loaded). `LicenciasView.render.test.js` (7
+  tests) es el primer test de render de una vista completa con store+router
+  real en el proyecto (solo `api/insforge.js` mockeado) — 341/341 en la
+  suite completa.
+- **2026-09-07** (**Segundo wrapper: `AppTable`/`AppColumn` + catálogo en
+  Style Lab**) — sobre la base del punto anterior: `AppTable.vue` envuelve
+  `primevue/datatable`, con su preset `pt/table.pt.js` (fila blanca, borde
+  inferior de 1px como único separador, sin bordes laterales, hover
+  `bg-slate-50`, encabezado `font-medium`). Hallazgo de arquitectura real
+  (no supuesto — verificado con test descartable): DataTable reconoce
+  columnas por la referencia exacta del componente `Column`, así que
+  `Column` no se envuelve como a Button — `AppColumn.js` lo re-exporta
+  directo, documentado como excepción al patrón wrapper. Paginación
+  deliberadamente fuera de `AppTable` (se reusa `Pagination.vue`, ya
+  conectado a los 7 listados reales); `@sort`/`@page` se traducen a eventos
+  con la forma exacta de `crearStorePaginado.js`
+  (`ordenarPor`/`irAPagina`/`cambiarTamPagina`). Catálogo completo de
+  `AppButton` (severidad × variante × tamaño × estados) y de
+  `AppTable`+`AppColumn` (orden y paginación simulando latencia real) en
+  `modules/styleLab/StyleLabView.vue`. De paso: `/style-lab` no tenía ruta
+  registrada pese a que el router ya lo daba por hecho en dos comentarios —
+  se restauró `style-lab.routes.js` (dev-only, mismo criterio que
+  `/design-system`). 18 tests de render nuevos (`AppButton.render.test.js` +
+  `AppTable.render.test.js`), 334/334 pasan en la suite completa.
+- **2026-09-07** (**Base de UI nueva: PrimeVue v4 Unstyled + Tailwind v4**) —
+  a pedido explícito (no iniciativa del asistente), se define la base que
+  reemplaza a Carbon (retirado el 2026-09-05): PrimeVue instalado con
+  `unstyled: true` (`main.js`, sin tema Aura/Lara ni clases `p-*`) + Tailwind
+  v4 vía el plugin de Vite (`@tailwindcss/vite`, sin `tailwind.config.js` —
+  el tema vive en `@theme` dentro de `frontend/src/styles/main.css`). Rampa
+  de color primario `--color-primary-50..950` generada en HSL a partir del
+  azul de marca exacto `#0064E0` (pinned en 500). Se fija el patrón wrapper
+  estricto (ningún `primevue/*` directo en vistas, todo pasa por
+  `components/ui/*` + preset `pt/` propio) con el primer caso real,
+  `AppButton.vue` + `components/ui/pt/button.pt.js`. `frontend/AGENTS.md`
+  actualizado (sección "UI/UX").
 - **2026-09-05** (**Retiro de IBM Carbon v11 — reinicio del sistema de
   estilos a cero**) — `styles/carbon-theme.css` y `styles/main.css`
   vaciados a propósito, bloques `<style>` eliminados de todos los

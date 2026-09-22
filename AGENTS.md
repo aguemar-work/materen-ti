@@ -1,11 +1,11 @@
 # AGENTS.md
 
 > **Materen — Sistema TI**: panel interno de inventario de empleados, accesos,
-> tickets, correos, licencias y equipos. **Sin sistema de diseño activo desde
-> el 2026-09-05** (se retiró IBM Carbon v11 por completo: CSS global vacío,
-> sin `<style>` en los componentes). Ver
-> [`docs/NOTAS-DISENO-ANTERIOR.md`](docs/NOTAS-DISENO-ANTERIOR.md) para lo
-> que se rescató del sistema anterior antes de borrarlo.
+> tickets, correos, licencias y equipos. **UI sobre PrimeVue v4 Unstyled +
+> Tailwind v4 desde el 2026-09-07** (IBM Carbon v11 se retiró por completo el
+> 2026-09-05). Reglas de la base nueva: `frontend/AGENTS.md`, sección
+> "UI/UX". Lo que se rescató del sistema anterior:
+> [`docs/NOTAS-DISENO-ANTERIOR.md`](docs/NOTAS-DISENO-ANTERIOR.md).
 
 **Estado del repo — a propósito no se anota a mano acá.** Este encabezado
 llevaba una fecha y una lista de migraciones escritas a mano, y quedó 14 días y
@@ -25,8 +25,8 @@ de numerar una nueva, comparar contra `origin/main`, no contra el working tree.
 
 **Precedencia documental**: ante conflicto, `README.md` describe intención;
 **ganan** el esquema real en `migrations/*.sql` y, en UI, el estado real de
-`carbon-theme.css`/`main.css` (hoy vacíos a propósito — ver
-`docs/NOTAS-DISENO-ANTERIOR.md`).
+`styles/main.css` (el `@theme` de Tailwind, único lugar con tokens) y los
+presets `components/ui/pt/*`. `carbon-theme.css` sigue vacío a propósito.
 
 Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
 modelo de seguridad y estructura del repo), `docs/PANORAMA-SISTEMA.md`
@@ -249,27 +249,23 @@ cuándo y si la contraseña se rotó después.
       foco), para popovers teletransportados a `<body>` (`MenuAcciones`,
       `NotificacionesCampana`). No confundir con `useCerrarConEscape`/
       `useFocoAtrapado`, que son para modales hand-rolled.
-- **UI/UX — sin sistema de diseño activo (desde el 2026-09-05)**: se retiró
- IBM Carbon v11 por completo. `styles/carbon-theme.css` y `styles/main.css`
- están intencionalmente vacíos, y ningún componente `.vue` tiene bloque
- `<style>` — es un reinicio a cero, no un bug. Antes de escribir CSS nuevo,
- ver `docs/NOTAS-DISENO-ANTERIOR.md` (lo rescatado del sistema anterior:
- identidad de marca, principios de diseño del JEFE, reglas de accesibilidad
- que siguen vigentes). Nombre del producto en UI: **Materen — Sistema TI**.
-- **`frontend/src/components/carbon/` ya no existe** (borrada 2026-09-05):
- no hay ninguna librería de componentes de diseño en el árbol. Cada vista
- pinta su propio HTML nativo (`<table>`, `<button>`, `<span>`, `<input>`).
- La lógica real que tenían 4 de esos 9 componentes (revelado auditado de
+- **UI/UX — PrimeVue v4 Unstyled + Tailwind v4 (desde el 2026-09-07)**: la
+ base que reemplazó a IBM Carbon v11 (retirado el 2026-09-05). Las reglas
+ (wrapper estricto `components/ui/*` + preset `pt/`, nunca `primevue/*`
+ directo en una vista; tokens solo en el `@theme` de `styles/main.css`)
+ viven en `frontend/AGENTS.md`, sección "UI/UX" — no se repiten acá.
+ Migrados hoy: Licencias, Equipos, Tickets, `MenuAcciones`, `ConfirmDialog`;
+ el resto de las vistas sigue en HTML nativo sin estilos hasta migrarse.
+ Ningún componente `.vue` tiene bloque `<style>`. Lo rescatado del sistema
+ anterior (marca, principios del JEFE, accesibilidad):
+ `docs/NOTAS-DISENO-ANTERIOR.md`. Nombre del producto en UI: **Materen —
+ Sistema TI**.
+- **`frontend/src/components/carbon/` ya no existe** (borrada 2026-09-05).
+ La lógica real que tenían 4 de sus 9 componentes (revelado auditado de
  contraseñas, matemática de paginación, colspan/agrupación de columnas,
  id+aria de un campo) se rescató en `composables/useRevelado.js`,
  `core/paginacionRender.js`, `core/tablaColumnas.js` y
  `composables/useCampoAccesible.js` — ver `docs/NOTAS-DISENO-ANTERIOR.md` §5.
-- **Gotcha del padding de tabla (ago 2026)**: el alto de fila vive en **dos**
- lugares que tienen que moverse juntos — `th`/`td` en `main.css` (hoy `9px`
- de padding vertical) y `.th-ordenable-btn` en
- `components/shared/ThOrdenable.vue`, porque ese `<th>` va a `padding: 0` y
- el alto lo pone el botón de adentro. Tocar solo uno deja la fila de
- encabezados desalineada contra el resto de las columnas.
 - **Gotcha de `resetearFiltros()` en cada montaje (patrón de 18 módulos,
  Tickets es la ÚNICA excepción desde ago 2026)**: Empleados/Correos/
  Equipos/KB/Licencias/Problemas llaman

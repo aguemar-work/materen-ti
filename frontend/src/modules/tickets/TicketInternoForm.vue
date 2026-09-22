@@ -8,18 +8,24 @@ import { insforgeApi } from '../../api/insforge.js';
 import { crearTicket } from '../../api/ticketsPublicos.js';
 import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import CarbonButton from '../../components/carbon/CarbonButton.vue';
-import CarbonCampo from '../../components/carbon/CarbonCampo.vue';
-import CarbonNotification from '../../components/carbon/CarbonNotification.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const emit = defineEmits(['cerrar']);
 
-// Migrado a Modal.vue (mismo patrón que EmpleadoForm.vue/AccesoSensibleForm.vue):
-// Teleport, bloqueo de scroll del body, atrapamiento de foco y Escape los
-// resuelve el componente compartido.
+// Migrado a AppDialog.vue (2026-09-08, Fase 3 de Tickets — primevue/dialog
+// Unstyled + Tailwind, ver components/ui/AppDialog.vue): Teleport, foco
+// atrapado, Escape, aria-modal y backdrop los resuelve PrimeVue Dialog por
+// dentro. Sigue siendo el único formulario migrado a AppDialog — el resto
+// de los ~21 formularios sobre <Modal> (EmpleadoForm.vue,
+// AccesoSensibleForm.vue, etc.) no se tocaron, fuera de alcance de esta
+// fase. useFormularioModal.js no supo nada de este cambio: su contrato
+// (`modal.value?.cerrar()` incondicional + `:confirmar-cierre` como veto)
+// es el mismo que ya exponía Modal.vue.
 let resultado = false;
 
 const cargandoCatalogo = ref(true);
@@ -40,6 +46,13 @@ const form = ref({
 
 const esParaEmpleado = ref(false);
 const empleadoSelId = ref('');
+
+const campoCategoria = useCampoAccesible();
+const campoSubcategoria = useCampoAccesible();
+const campoTipo = useCampoAccesible();
+const campoTitulo = useCampoAccesible();
+const campoDescripcion = useCampoAccesible();
+const infoError = infoNotificacion('error');
 
 // Solo creación: el snapshot inicial es el form en blanco. El buscador de
 // empleado es transitorio; la selección (empleadoSelId) sí cuenta.
@@ -110,7 +123,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Modal
+  <AppDialog
     ref="modal"
     titulo="Nuevo ticket interno"
     :confirmar-cierre="confirmarCierre"
@@ -143,41 +156,113 @@ onMounted(async () => {
           </BuscadorCombo>
         </div>
 
-        <CarbonCampo class="full" v-model="form.categoriaId" etiqueta="Tipo de solicitud" tipo="select" requerido :deshabilitado="guardando || cargandoCatalogo">
-          <template #opciones>
-            <option value="" disabled>Seleccionar</option>
-            <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-          </template>
-        </CarbonCampo>
+        <div class="campo full" :class="{ 'campo--inerte': guardando || cargandoCatalogo }">
+          <label class="campo__etiqueta" :for="campoCategoria.id">
+            Tipo de solicitud<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <select
+              :id="campoCategoria.id"
+              class="campo__control campo__control--select"
+              :value="form.categoriaId"
+              required
+              :disabled="guardando || cargandoCatalogo"
+              @change="form.categoriaId = $event.target.value"
+            >
+              <option value="" disabled>Seleccionar</option>
+              <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+        </div>
 
-        <CarbonCampo v-if="subcategoriasFiltradas.length" class="full" v-model="form.subcategoriaId" etiqueta="Subcategoría" tipo="select" :deshabilitado="guardando">
-          <template #opciones>
-            <option value="">Seleccionar (opcional)</option>
-            <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
-          </template>
-        </CarbonCampo>
+        <div v-if="subcategoriasFiltradas.length" class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoSubcategoria.id">Subcategoría</label>
+          <div class="campo__caja">
+            <select
+              :id="campoSubcategoria.id"
+              class="campo__control campo__control--select"
+              :value="form.subcategoriaId"
+              :disabled="guardando"
+              @change="form.subcategoriaId = $event.target.value"
+            >
+              <option value="">Seleccionar (opcional)</option>
+              <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+        </div>
 
-        <CarbonCampo class="full" v-model="form.tipo" etiqueta="Tipo" tipo="select" :deshabilitado="guardando">
-          <template #opciones>
-            <option value="">Sin definir</option>
-            <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-          </template>
-        </CarbonCampo>
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoTipo.id">Tipo</label>
+          <div class="campo__caja">
+            <select
+              :id="campoTipo.id"
+              class="campo__control campo__control--select"
+              :value="form.tipo"
+              :disabled="guardando"
+              @change="form.tipo = $event.target.value"
+            >
+              <option value="">Sin definir</option>
+              <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+        </div>
 
-        <CarbonCampo class="full" v-model="form.titulo" etiqueta="Resumen breve" requerido maxlength="200" :deshabilitado="guardando" />
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoTitulo.id">
+            Resumen breve<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <input
+              :id="campoTitulo.id"
+              v-model="form.titulo"
+              class="campo__control"
+              type="text"
+              required
+              maxlength="200"
+              :disabled="guardando"
+            >
+          </div>
+        </div>
 
-        <CarbonCampo class="full" v-model="form.descripcion" etiqueta="Detalle" tipo="textarea" :filas="4" requerido maxlength="5000" :deshabilitado="guardando" />
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoDescripcion.id">
+            Detalle<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <textarea
+              :id="campoDescripcion.id"
+              v-model="form.descripcion"
+              class="campo__control campo__control--area"
+              :rows="4"
+              required
+              maxlength="5000"
+              :disabled="guardando"
+            ></textarea>
+          </div>
+        </div>
 
-        <CarbonNotification v-if="error" tipo="error">{{ error }}</CarbonNotification>
+        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ error }}</p>
+          </div>
+        </div>
     </form>
 
     <template #acciones>
-      <CarbonButton variante="secondary" :deshabilitado="guardando" @click="cancelar">Cancelar</CarbonButton>
-      <CarbonButton variante="primary" tipo="submit" form="ti-form" :cargando="guardando">
-        {{ guardando ? 'Creando...' : 'Crear ticket' }}
-      </CarbonButton>
+      <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton
+        type="submit"
+        form="ti-form"
+        severity="primary"
+        :label="guardando ? 'Creando...' : 'Crear ticket'"
+        :loading="guardando"
+      />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
@@ -192,22 +277,4 @@ onMounted(async () => {
   />
 </template>
 
-<style scoped>
-/* Ancho: .modal base (540px) de la escala centralizada (main.css) */
 
-/* CarbonCampo no puede envolverse en el viejo .form-group.full (le filtraría
-   el estilo de <input>/<select>/<textarea> anterior), así que repite solo el
-   grid-column (mismo criterio que EquipoForm.vue/EmpleadoForm.vue). */
-.full {
-  grid-column: 1 / -1;
-}
-
-.check-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-body-01);
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-</style>
