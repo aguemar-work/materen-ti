@@ -365,7 +365,7 @@ async function guardar() {
               :aria-describedby="campoCodigo.describedBy.value"
               @input="campoInvalido === 'codigo' && (campoInvalido = '')"
             >
-            <i v-if="campoCodigo.invalido.value" class="ti ti-alert-circle-filled campo__adorno campo__adorno--error" aria-hidden="true"></i>
+            <i v-if="campoCodigo.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
           </div>
           <p v-if="campoInvalido === 'codigo'" :id="campoCodigo.idAyuda" class="campo__pie campo__pie--error" role="alert">
             Ya existe un equipo con ese código
@@ -387,7 +387,7 @@ async function guardar() {
               :aria-describedby="campoCodigoAlmacen.describedBy.value"
               @input="campoInvalido === 'codigo_almacen' && (campoInvalido = '')"
             >
-            <i v-if="campoCodigoAlmacen.invalido.value" class="ti ti-alert-circle-filled campo__adorno campo__adorno--error" aria-hidden="true"></i>
+            <i v-if="campoCodigoAlmacen.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
           </div>
           <p v-if="campoInvalido === 'codigo_almacen'" :id="campoCodigoAlmacen.idAyuda" class="campo__pie campo__pie--error" role="alert">
             Ya existe un equipo con ese código de almacén
@@ -439,7 +439,7 @@ async function guardar() {
               :aria-describedby="campoSerie.describedBy.value"
               @input="campoInvalido === 'serie' && (campoInvalido = '')"
             >
-            <i v-if="campoSerie.invalido.value" class="ti ti-alert-circle-filled campo__adorno campo__adorno--error" aria-hidden="true"></i>
+            <i v-if="campoSerie.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
           </div>
           <p v-if="campoInvalido === 'serie'" :id="campoSerie.idAyuda" class="campo__pie campo__pie--error" role="alert">
             Ya existe un equipo con ese número de serie

@@ -34,3 +34,30 @@
   --color-primary-950: #031e40;
   --color-primary: var(--color-primary-500);
 }
+
+@theme {
+  /* Inter Variable (self-hosted vía @fontsource, importada en main.js) con
+     la pila del sistema como respaldo mientras carga. */
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    /* Números tabulares: códigos TCK-, DNI, series y montos alinean en
+       columna dentro de las tablas. */
+    font-feature-settings: 'tnum' 1, 'cv11' 1;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 text-sm;
+  }
+
+  /* El webfont de Tabler dibuja el glifo sobre la línea base; centrado
+     óptico contra el texto vecino en botones, links y celdas. */
+  .ti {
+    line-height: 1;
+    vertical-align: -0.125em;
+  }
+}

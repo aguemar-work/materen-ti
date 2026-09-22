@@ -17,10 +17,9 @@ defineOptions({ inheritAttrs: false });
 
 const props = defineProps({
   label: { type: String, default: '' },
-  // Clase de ícono a mostrar (agnóstico de librería: 'pi pi-check',
-  // 'ti ti-check', etc.) — el sistema de iconografía todavía no está
-  // decidido (ver docs/NOTAS-DISENO-ANTERIOR.md), así que este wrapper no
-  // asume ninguna.
+  // Clase de ícono a mostrar, completa ('ti ti-check'). La iconografía del
+  // sistema es Tabler (webfont, importado en main.js), pero el wrapper
+  // recibe la clase entera y no asume la librería.
   icon: { type: String, default: undefined },
   iconPos: { type: String, default: 'left', validator: (v) => ['left', 'right', 'top', 'bottom'].includes(v) },
   severity: { type: String, default: 'primary', validator: (v) => ['primary', 'secondary', 'danger'].includes(v) },

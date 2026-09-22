@@ -87,7 +87,7 @@ async function buscar() {
               @input="onDniInput($event.target.value)"
               @blur="dniTocado = true"
             >
-            <i v-if="campoDni.invalido.value" class="ti ti-alert-circle-filled campo__adorno" aria-hidden="true"></i>
+            <i v-if="campoDni.invalido.value" class="ti ti-alert-circle campo__adorno" aria-hidden="true"></i>
           </div>
           <p
             v-if="errorDni || error"

@@ -1,6 +1,6 @@
 <script setup>
-// Campana del header del shell (HeaderGlobalAction + panel flotante de
-// Carbon v11). Alimentada por el store de notificaciones: la carga inicial
+// Campana del header del shell + panel flotante (estilos: Tailwind +
+// components/shared/shellClases.js). Alimentada por el store de notificaciones: la carga inicial
 // y las dos suscripciones realtime viven en AppNotifications.vue
 // (`notificaciones:nuevas` broadcast + `notificaciones:usuario:<id>`
 // personal, migración 048), este componente solo lee el store y dispara las
@@ -11,9 +11,10 @@
 // Cambió de sitio con el rediseño del 2026-09-02: vivía en el pie del
 // SideNav y el panel abría hacia ARRIBA (no había header en desktop). Ahora
 // es una acción global del header y el panel cae hacia abajo, alineado a su
-// borde derecho, como el NotificationPanel de Carbon.
+// borde derecho.
 import { useRouter } from 'vue-router';
 import { usePopoverFlotante } from '../../composables/usePopoverFlotante.js';
+import { ACCION_HEADER, PANEL_FLOTANTE, ITEM_PANEL } from './shellClases.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useNotificacionesStore } from '../../stores/notificaciones.js';
 import { formatAntiguedad } from '../../core/formatters.js';
@@ -58,7 +59,7 @@ async function marcarTodas() {
 <template>
   <button
     ref="trigger"
-    class="cds-campana"
+    :class="ACCION_HEADER"
     type="button"
     :title="store.noLeidas.length ? `Notificaciones (${store.noLeidas.length} sin leer)` : 'Notificaciones'"
     :aria-label="store.noLeidas.length ? `Notificaciones (${store.noLeidas.length} sin leer)` : 'Notificaciones'"
@@ -67,45 +68,47 @@ async function marcarTodas() {
     @click.stop="alternar"
   >
     <i class="ti ti-bell" aria-hidden="true"></i>
-    <span v-if="store.noLeidas.length" class="cds-campana__conteo">{{ store.noLeidas.length }}</span>
+    <span
+      v-if="store.noLeidas.length"
+      class="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-primary-500 px-1 text-center text-[10px] font-semibold leading-4 text-white"
+    >{{ store.noLeidas.length }}</span>
   </button>
 
   <Teleport to="body">
     <div
       v-if="abierto"
       ref="panel"
-      class="cds-panel"
+      :class="[PANEL_FLOTANTE, 'max-h-[70vh] w-[min(22rem,calc(100vw-1rem))]']"
       role="menu"
       aria-label="Notificaciones"
       :style="{ top: coords.top + 'px', left: coords.left + 'px' }"
     >
-      <div class="cds-panel__header">
-        <span class="cds-panel__titulo">Notificaciones</span>
+      <div class="flex items-center justify-between gap-2 border-b border-gray-100 px-3 pb-2 pt-1.5">
+        <span class="text-sm font-semibold text-gray-900">Notificaciones</span>
         <button
           v-if="store.noLeidas.length"
           type="button"
-          class="cds-panel__accion"
+          class="rounded px-1.5 py-0.5 text-xs font-medium text-primary-600 hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           @click="marcarTodas"
         >
           Marcar todas como leídas
         </button>
       </div>
 
-      <div v-if="!store.lista.length" class="cds-panel__vacio">Sin notificaciones</div>
+      <div v-if="!store.lista.length" class="px-3 py-6 text-center text-sm text-gray-500">Sin notificaciones</div>
 
       <button
         v-for="n in store.lista"
         :key="n.id"
         type="button"
-        class="cds-panel__item"
-        :class="{ 'cds-panel__item--no-leida': !store.leidasIds.has(n.id) }"
+        :class="[ITEM_PANEL, 'items-start', { 'bg-primary-50/60': !store.leidasIds.has(n.id) }]"
         role="menuitem"
         @click="abrirNotificacion(n)"
       >
-        <i class="ti" :class="icono(n.tipo)" aria-hidden="true"></i>
-        <span class="cds-panel__item-texto">
-          <span class="cds-panel__item-titulo">{{ n.titulo }}</span>
-          <span class="cds-panel__item-fecha">{{ formatAntiguedad(n.creado_en) }}</span>
+        <i class="ti mt-0.5 shrink-0 text-base text-gray-400" :class="icono(n.tipo)" aria-hidden="true"></i>
+        <span class="flex min-w-0 flex-1 flex-col">
+          <span class="text-sm text-gray-800">{{ n.titulo }}</span>
+          <span class="text-xs text-gray-500">{{ formatAntiguedad(n.creado_en) }}</span>
         </span>
       </button>
     </div>

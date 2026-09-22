@@ -1,44 +1,26 @@
 <script setup>
-// ── Shell raíz: UI Shell de IBM Carbon v11 ────────────────────────────
+// ── Shell raíz: header + SideNav + workspace ──────────────────────────
 //
-// ANATOMÍA (docs/GUIA-UX-UI.md, "Anatomía del shell")
-//   Header  48px, Gray 100 (#161616) — marca + acciones globales
-//   SideNav 256px expandido / 48px en riel, Gray 90 (#262626) — navegación
-//   Content Gray 10 (#f4f4f4) — el workspace, donde vive cada módulo
+// ANATOMÍA (base PrimeVue/Tailwind, 2026-09-22 — ver frontend/AGENTS.md)
+//   Header  56px, blanco, borde inferior de 1px — marca + acciones globales
+//   SideNav 256px expandido / 56px en riel, blanco, borde derecho de 1px
+//   Content gris 50 — el workspace, donde vive cada módulo
 //
-// Reemplaza al shell anterior (sidebar de 240px que se FUNDÍA con el fondo
-// del contenido, sin header en desktop). Los tres cambios de fondo, con su
-// motivo, porque no son estéticos:
+// Shell CLARO y fundido (decisión explícita, no por defecto): header y nav
+// comparten la superficie blanca y se separan del workspace solo por un
+// borde de 1px, no por una capa de color — principios del JEFE en
+// docs/NOTAS-DISENO-ANTERIOR.md §2 ("preferir fusión de superficies",
+// "minimalista"). Reemplaza al shell oscuro de Carbon (Gray 100/90).
 //
-//   1. Aparece un header en desktop. Antes solo existía en móvil. Todo lo
-//      que no es navegación de módulo salió del sidebar y subió acá:
-//      búsqueda global, campana e identidad del usuario. El SideNav queda
-//      SOLO para navegar, que es lo que Carbon llama un shell "de una
-//      responsabilidad por región" — antes el pie del sidebar apilaba
-//      avatar + nombre + rol + 3 botones de ícono en 240px de ancho y el
-//      nombre truncaba (por eso tema y logout se habían condensado en un
-//      menú "⋮"; ese apretujamiento ya no existe).
-//   2. El shell es OSCURO en los dos temas. No es "el header del tema
-//      oscuro": en Carbon el shell es Gray 100/90 siempre, y el tema
-//      claro/oscuro solo gobierna el workspace. Por eso consume tokens
-//      `--cds-shell-*` y no roles `--color-*` (ver la cabecera de
-//      styles/carbon-theme.css, sección 6).
-//   3. Hay separación real entre navegación y contenido. Antes el sidebar
-//      usaba `--color-bg` (el mismo fondo del contenido) y se apoyaba en
-//      un borde de 1px para distinguirse; ahora la distinción es la capa
-//      de gris, que es como Carbon resuelve jerarquía sin sombras.
+// El header sigue concentrando lo que no es navegación de módulo
+// (búsqueda global, campana, usuario); el SideNav queda SOLO para navegar.
 //
 // POR QUÉ FLEX Y NO `position: fixed`
-// La implementación de Carbon fija el header y el SideNav y compensa el
-// contenido con `margin-left`/`padding-top`. Acá el shell es un flex de
-// dos filas (header, luego nav + contenido) y el resultado visual es el
-// mismo, con una ventaja concreta: el contenido es su PROPIO contenedor de
-// scroll, así que el `position: sticky; top: 0` del `.site-header` de cada
-// vista (el h1 del módulo) se pega justo debajo del header del shell sin
-// necesidad de saber que el shell mide 48px. Con `fixed` había que
-// escribir `top: 48px` en una regla global aparte — que es exactamente lo
-// que hacía el bloque `<style>` sin scoped al final de la versión
-// anterior de este archivo, y que acá desaparece.
+// El shell es un flex de dos filas (header, luego nav + contenido) y el
+// contenido es su PROPIO contenedor de scroll: el `sticky top-0` del
+// encabezado de cada vista se pega justo debajo del header del shell sin
+// necesidad de saber cuánto mide. Solo en móvil el nav pasa a `fixed`
+// (panel deslizante sobre el contenido).
 import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
@@ -46,12 +28,13 @@ import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { getClient } from '../../api/client.js';
 import { temaActual, alternarTema } from '../../core/tema.js';
-// El HeaderName de Carbon es prefijo + nombre, y marca.js ya tenia las dos
-// piezas por separado desde antes de este rediseno (NOMBRE_MARCA sobrevive
-// al crecimiento fuera de TI, NOMBRE_CORTO no). Se consumen las tres: las
-// dos piezas para el titulo visible y el nombre completo para el alt.
+// El nombre del header es marca + descriptor, y marca.js ya tiene las dos
+// piezas por separado (NOMBRE_MARCA sobrevive al crecimiento fuera de TI,
+// NOMBRE_CORTO no). Se consumen las tres: las dos piezas para el título
+// visible y el nombre completo para el alt.
 import { NOMBRE_PRODUCTO, NOMBRE_MARCA, NOMBRE_CORTO } from '../../core/marca.js';
-import { tonoAvatar, inicialesDe } from '../../core/avatar.js';
+import { inicialesDe } from '../../core/avatar.js';
+import { ACCION_HEADER } from './shellClases.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco, crearRefrescoDebounced, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import NotificacionesCampana from './NotificacionesCampana.vue';
@@ -145,18 +128,16 @@ useRealtimeRefresco('tickets:list', (payload) => {
 
 // ── Estado del SideNav ────────────────────────────────────────
 // Dos mecanismos distintos, no uno con dos nombres:
-//   navAbierto   solo móvil (≤768px): el nav es un panel deslizante sobre
+//   navAbierto   solo móvil (<768px, el breakpoint `md` de Tailwind): el nav es un panel deslizante sobre
 //                el contenido, con velo detrás. Se abre desde el botón de
 //                menú del header y se cierra al navegar o al tocar el velo.
 //   navEnRiel    solo desktop: el nav se contrae a 48px y deja solo los
-//                íconos (el "rail" de Carbon). Es una preferencia, y se
-//                recuerda.
+//                íconos (riel). Es una preferencia, y se recuerda.
 const navAbierto = ref(false);
 
 const CLAVE_NAV = 'sistema-ti-sidebar';
-// Sin preferencia guardada: riel por defecto por debajo de 1056px, que es
-// el breakpoint `lg` de la grilla de Carbon y el punto donde su propio
-// shell empieza a esconder el SideNav. Así el nav no le compite el ancho al
+// Sin preferencia guardada: riel por defecto por debajo de 1056px (el punto
+// que ya usaba el shell anterior). Así el nav no le compite el ancho al
 // contenido en una laptop sin que el usuario tenga que descubrir el toggle.
 // Quien ya eligió una vez, siempre gana esa elección sobre el tamaño de
 // ventana. La clave de localStorage NO cambia de nombre a propósito: quien
@@ -173,7 +154,7 @@ const navEnRiel = ref(
 // la misma cosa desde el punto de vista del usuario ("mostrame/escondeme la
 // navegación"): en móvil abre el panel, en desktop alterna el riel.
 function alternarNav() {
-  if (window.innerWidth <= 768) {
+  if (window.innerWidth < 768) {
     navAbierto.value = !navAbierto.value;
     return;
   }
@@ -191,8 +172,10 @@ function cerrarNav() {
 }
 
 // ── Tema claro/oscuro ─────────────────────────────────────────
-// Gobierna el WORKSPACE, no el shell: el header y el nav son Gray 100/90
-// en los dos temas (ver la nota 2 de la cabecera).
+// ⚠️ Hoy el tema oscuro no tiene estilos: la base Tailwind solo define el
+// tema claro. El toggle sigue alternando `data-theme` (y recordándolo) para
+// no perder la preferencia guardada de nadie, pero visualmente no cambia
+// nada hasta que se diseñe el oscuro.
 const tema = ref(temaActual());
 
 function toggleTema() {
@@ -206,13 +189,23 @@ const nombreUsuario = computed(() => auth.nombre || auth.user?.email || '');
 // que es lo que la función devuelve para un string de una palabra.
 const inicialesUsuario = computed(() => inicialesDe(nombreUsuario.value) || '?');
 
+// Móvil: panel `fixed` que entra desde la izquierda. Desktop (md+): columna
+// estática del flex, 256px o 56px en riel.
+const claseNav = computed(() => [
+  'z-40 flex flex-col overflow-y-auto border-r border-gray-200 bg-white',
+  'fixed bottom-0 left-0 top-14 w-64 transition-transform duration-200',
+  navAbierto.value ? 'translate-x-0' : '-translate-x-full',
+  'md:static md:translate-x-0 md:transition-[width]',
+  navEnRiel.value ? 'md:w-14' : 'md:w-64',
+]);
+
 const mostrarEditarNombre = ref(false);
 
 function onNombreGuardado(actualizado) {
   auth.actualizarNombre(actualizado.nombre);
 }
 
-// Menú de usuario del header (HeaderGlobalAction con avatar en Carbon).
+// Menú de usuario del header (avatar con iniciales).
 // Configuración sigue acá y además tiene ítem propio en el SideNav: es la
 // entrada de "administrar el sistema", y llegar solo por un menú "⋮" era
 // un hallazgo abierto (un usuario nuevo no asocia "⋮" con "catálogos").
@@ -236,11 +229,11 @@ async function cerrarSesion() {
 </script>
 
 <template>
-  <div class="cds-shell">
-    <!-- ══ Header (48px, Gray 100) ══════════════════════════════ -->
-    <header class="cds-header" role="banner">
+  <div class="flex h-screen flex-col overflow-hidden bg-gray-50">
+    <!-- ══ Header (56px) ════════════════════════════════════════ -->
+    <header class="flex h-14 shrink-0 items-center gap-1 border-b border-gray-200 bg-white px-2 sm:px-3" role="banner">
       <button
-        class="cds-header__action cds-header__menu"
+        :class="ACCION_HEADER"
         type="button"
         :title="navEnRiel ? 'Expandir navegación' : 'Contraer navegación'"
         :aria-label="navEnRiel ? 'Expandir navegación' : 'Contraer navegación'"
@@ -250,22 +243,25 @@ async function cerrarSesion() {
         <i class="ti ti-menu-2" aria-hidden="true"></i>
       </button>
 
-      <!-- HeaderName de Carbon: prefijo en peso normal + nombre en 600.
-           Enlaza al Dashboard, que es la pantalla de entrada. -->
-      <RouterLink to="/dashboard" class="cds-header__name" @click="cerrarNav">
-        <img :src="'/icon_sisti.svg'" :alt="NOMBRE_PRODUCTO" class="cds-header__logo">
-        <span class="cds-header__name-texto">
-          <span class="cds-header__prefijo">{{ NOMBRE_MARCA }}</span>
-          <span class="cds-header__producto">{{ NOMBRE_CORTO }}</span>
+      <!-- Marca + descriptor. Enlaza al Dashboard, la pantalla de entrada. -->
+      <RouterLink
+        to="/dashboard"
+        class="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors duration-150 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        @click="cerrarNav"
+      >
+        <img :src="'/icon_sisti.svg'" :alt="NOMBRE_PRODUCTO" class="h-7 w-7 shrink-0">
+        <span class="hidden truncate text-sm sm:inline">
+          <span class="font-semibold text-gray-900">{{ NOMBRE_MARCA }}</span>
+          <span class="ml-1.5 text-gray-500">{{ NOMBRE_CORTO }}</span>
         </span>
       </RouterLink>
 
-      <!-- HeaderGlobalBar: acciones globales, alineadas a la derecha -->
-      <div class="cds-header__global">
+      <!-- Acciones globales, alineadas a la derecha -->
+      <div class="ml-auto flex items-center gap-1">
         <AppSearch ref="appSearchRef" @navegado="cerrarNav" />
         <NotificacionesCampana />
         <button
-          class="cds-header__action"
+          :class="ACCION_HEADER"
           type="button"
           :title="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
           :aria-label="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
@@ -274,35 +270,39 @@ async function cerrarSesion() {
           <i :class="tema === 'dark' ? 'ti ti-sun' : 'ti ti-moon'" aria-hidden="true"></i>
         </button>
         <MenuAcciones
-          class="cds-header__action cds-header__usuario"
+          :class="ACCION_HEADER"
           :acciones="accionesUsuario"
           :label="`Cuenta de ${nombreUsuario}`"
           icono=" "
         >
           <template #trigger>
-            <span class="avatar sm" :class="tonoAvatar(nombreUsuario)" aria-hidden="true">{{ inicialesUsuario }}</span>
+            <span
+              class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700"
+              aria-hidden="true"
+            >{{ inicialesUsuario }}</span>
           </template>
         </MenuAcciones>
       </div>
     </header>
 
     <!-- ══ Fila inferior: SideNav + workspace ═══════════════════ -->
-    <div class="cds-shell__cuerpo">
+    <div class="relative flex min-h-0 flex-1">
       <!-- Velo del panel deslizante (solo móvil) -->
-      <transition name="cds-fade">
+      <transition
+        enter-active-class="transition-opacity duration-200"
+        leave-active-class="transition-opacity duration-200"
+        enter-from-class="opacity-0"
+        leave-to-class="opacity-0"
+      >
         <div
           v-if="navAbierto"
-          class="cds-shell__velo"
+          class="fixed inset-x-0 bottom-0 top-14 z-30 bg-gray-900/30 md:hidden"
           aria-hidden="true"
           @click="cerrarNav"
         />
       </transition>
 
-      <nav
-        class="cds-side-nav"
-        :class="{ 'cds-side-nav--abierto': navAbierto, 'cds-side-nav--riel': navEnRiel }"
-        aria-label="Navegación principal"
-      >
+      <nav :class="claseNav" aria-label="Navegación principal">
         <AppNav
           :nav-en-riel="navEnRiel"
           :tickets-sin-asignar="ticketsSinAsignar"
@@ -311,7 +311,7 @@ async function cerrarSesion() {
         />
       </nav>
 
-      <main class="cds-shell__contenido">
+      <main class="min-w-0 flex-1 overflow-y-auto">
         <slot />
       </main>
     </div>
@@ -326,5 +326,3 @@ async function cerrarSesion() {
     />
   </div>
 </template>
-
-

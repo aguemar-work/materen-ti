@@ -254,8 +254,11 @@ cuándo y si la contraseña se rotó después.
  (wrapper estricto `components/ui/*` + preset `pt/`, nunca `primevue/*`
  directo en una vista; tokens solo en el `@theme` de `styles/main.css`)
  viven en `frontend/AGENTS.md`, sección "UI/UX" — no se repiten acá.
- Migrados hoy: Licencias, Equipos, Tickets, `MenuAcciones`, `ConfirmDialog`;
- el resto de las vistas sigue en HTML nativo sin estilos hasta migrarse.
+ Migrados hoy: el shell (`AppLayout`/`AppNav`/búsqueda/campana/avisos,
+ claro y fundido), Licencias, Equipos, Tickets, `MenuAcciones`,
+ `ConfirmDialog`; el resto de las vistas sigue en HTML nativo sin estilos
+ hasta migrarse. Tipografía Inter e íconos Tabler, servidos desde el bundle
+ (sin CDN). El tema oscuro todavía no tiene estilos.
  Ningún componente `.vue` tiene bloque `<style>`. Lo rescatado del sistema
  anterior (marca, principios del JEFE, accesibilidad):
  `docs/NOTAS-DISENO-ANTERIOR.md`. Nombre del producto en UI: **Materen —

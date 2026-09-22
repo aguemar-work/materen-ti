@@ -1,18 +1,14 @@
 <script setup>
-// Búsqueda global del header del shell (HeaderSearch de Carbon v11).
+// Búsqueda global del header del shell.
 //
-// Vivía en el sidebar hasta el rediseño del 2026-09-02. Se movió por dos
-// razones, una de forma y una de fondo:
-//   · De fondo: en Carbon la búsqueda global es una acción del header, no
-//     de la navegación. Buscar un ticket no es navegar a un módulo.
-//   · De forma: el SideNav pasó a Gray 90 y este campo se pintaba con
-//     `--color-bg-hover` (#e8e8e8) — un rectángulo casi blanco sobre fondo
-//     oscuro. Había que reestilarlo de cualquier manera.
+// Vive en el header y no en el SideNav (desde el 2026-09-02): la búsqueda
+// global es una acción del header, no de la navegación. Buscar un ticket no
+// es navegar a un módulo. Estilos: Tailwind + components/shared/shellClases.js.
 //
-// Patrón de Carbon: colapsado es un botón de lupa de 48×48 igual que
+// Patrón (heredado del shell de Carbon): colapsado es un botón de lupa igual que
 // cualquier otra acción global; expandido es un campo que crece a la
 // izquierda desde ese mismo botón, con una X para cerrar. No hay estado
-// intermedio ni "campo siempre visible" — en un header de 48px un campo
+// intermedio ni "campo siempre visible" — en un header de 56px un campo
 // permanente le come el nombre del producto en cuanto la ventana se angosta.
 //
 // El panel de resultados se teletransporta a <body> vía
@@ -29,6 +25,9 @@ import { insforgeApi } from '../../api/insforge.js';
 import { estadoInfo } from '../../core/dominio-tickets.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { usePopoverFlotante } from '../../composables/usePopoverFlotante.js';
+import { ACCION_HEADER, PANEL_FLOTANTE, ITEM_PANEL, ROTULO_GRUPO } from './shellClases.js';
+
+const VACIO = 'px-3 py-6 text-center text-sm text-gray-500';
 
 const emit = defineEmits(['navegado']);
 
@@ -121,7 +120,7 @@ defineExpose({ enfocar: expandir });
 // Escape con el panel cerrado colapsa el campo. Con el panel abierto,
 // usePopoverFlotante ya consumió el Escape para cerrarlo (y devolvió el
 // foco), así que hacen falta dos pulsaciones: cerrar resultados, cerrar
-// campo. Es el comportamiento de Carbon y el que evita perder el término
+// campo. Es el comportamiento que evita perder el término
 // escrito por accidente.
 function onEscape() {
   if (!panelAbierto.value) colapsar();
@@ -163,10 +162,10 @@ function irALicencia(lic) {
 </script>
 
 <template>
-  <div ref="anclaPanel" class="cds-search" :class="{ 'cds-search--expandido': expandido }">
+  <div ref="anclaPanel" class="flex items-center">
     <button
       v-if="!expandido"
-      class="cds-search__abrir"
+      :class="ACCION_HEADER"
       type="button"
       title="Buscar en todo (Ctrl+K)"
       aria-label="Buscar en todo"
@@ -175,19 +174,22 @@ function irALicencia(lic) {
       <i class="ti ti-search" aria-hidden="true"></i>
     </button>
 
-    <div v-else class="cds-search__campo">
-      <i class="ti ti-search cds-search__icono" aria-hidden="true"></i>
+    <div
+      v-else
+      class="flex h-9 w-56 items-center gap-2 rounded-md bg-gray-100 px-3 text-gray-500 focus-within:ring-2 focus-within:ring-primary-500 sm:w-72"
+    >
+      <i class="ti ti-search shrink-0" aria-hidden="true"></i>
       <input
         ref="inputBusqueda"
         v-model="busqueda"
         type="text"
-        class="cds-search__input"
+        class="min-w-0 flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
         placeholder="Buscar en todo..."
         aria-label="Búsqueda global"
         @keydown.esc="onEscape"
       >
       <button
-        class="cds-search__cerrar"
+        class="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         type="button"
         title="Cerrar búsqueda"
         aria-label="Cerrar búsqueda"
@@ -201,90 +203,90 @@ function irALicencia(lic) {
       <div
         v-if="panelAbierto"
         ref="panel"
-        class="cds-search__panel"
+        :class="[PANEL_FLOTANTE, 'max-h-[70vh] w-[min(24rem,calc(100vw-1rem))]']"
         role="listbox"
         aria-label="Resultados de la búsqueda"
         :style="{ top: coords.top + 'px', left: coords.left + 'px' }"
       >
-        <div v-if="buscando" class="cds-search__vacio">Buscando...</div>
+        <div v-if="buscando" :class="VACIO">Buscando...</div>
         <template v-else-if="hayResultados">
           <template v-if="resultados.empleados.length">
-            <div class="cds-search__grupo">Empleados</div>
+            <div :class="ROTULO_GRUPO">Empleados</div>
             <button
               v-for="e in resultados.empleados"
               :key="e.id"
               type="button"
-              class="cds-search__item"
+              :class="ITEM_PANEL"
               role="option"
               @click="irAEmpleado(e)"
             >
-              <i class="ti ti-user" aria-hidden="true"></i>
-              <span class="cds-search__item-main">{{ e.nombres }} {{ e.apellidos }}</span>
-              <span class="cds-search__item-sec">{{ e.dni }}</span>
+              <i class="ti ti-user shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ e.nombres }} {{ e.apellidos }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ e.dni }}</span>
             </button>
           </template>
           <template v-if="resultados.cuentas.length">
-            <div class="cds-search__grupo">Cuentas</div>
+            <div :class="ROTULO_GRUPO">Cuentas</div>
             <button
               v-for="c in resultados.cuentas"
               :key="c.id"
               type="button"
-              class="cds-search__item"
+              :class="ITEM_PANEL"
               role="option"
               @click="irACuenta(c)"
             >
-              <i class="ti ti-key" aria-hidden="true"></i>
-              <span class="cds-search__item-main">{{ c.usuario }}</span>
-              <span class="cds-search__item-sec">{{ c.plataforma_nombre }}</span>
+              <i class="ti ti-key shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ c.usuario }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ c.plataforma_nombre }}</span>
             </button>
           </template>
           <template v-if="resultados.equipos.length">
-            <div class="cds-search__grupo">Equipos</div>
+            <div :class="ROTULO_GRUPO">Equipos</div>
             <button
               v-for="eq in resultados.equipos"
               :key="eq.id"
               type="button"
-              class="cds-search__item"
+              :class="ITEM_PANEL"
               role="option"
               @click="irAEquipo(eq)"
             >
-              <i class="ti ti-devices" aria-hidden="true"></i>
-              <span class="cds-search__item-main">{{ eq.codigo }}</span>
-              <span class="cds-search__item-sec">{{ eq.descripcion }}</span>
+              <i class="ti ti-devices shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ eq.codigo }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ eq.descripcion }}</span>
             </button>
           </template>
           <template v-if="resultados.tickets.length">
-            <div class="cds-search__grupo">Tickets</div>
+            <div :class="ROTULO_GRUPO">Tickets</div>
             <button
               v-for="t in resultados.tickets"
               :key="t.id"
               type="button"
-              class="cds-search__item"
+              :class="ITEM_PANEL"
               role="option"
               @click="irATicket(t)"
             >
-              <i class="ti ti-headset" aria-hidden="true"></i>
-              <span class="cds-search__item-main">{{ t.titulo }}</span>
-              <span class="cds-search__item-sec">{{ t.codigo }} · {{ estadoInfo(t.estado).label }}</span>
+              <i class="ti ti-headset shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ t.titulo }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ t.codigo }} · {{ estadoInfo(t.estado).label }}</span>
             </button>
           </template>
           <template v-if="resultados.licencias.length">
-            <div class="cds-search__grupo">Licencias</div>
+            <div :class="ROTULO_GRUPO">Licencias</div>
             <button
               v-for="lic in resultados.licencias"
               :key="lic.id"
               type="button"
-              class="cds-search__item"
+              :class="ITEM_PANEL"
               role="option"
               @click="irALicencia(lic)"
             >
-              <i class="ti ti-license" aria-hidden="true"></i>
-              <span class="cds-search__item-main">{{ lic.software }}</span>
-              <span class="cds-search__item-sec">{{ lic.proveedor }}</span>
+              <i class="ti ti-license shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ lic.software }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ lic.proveedor }}</span>
             </button>
           </template>
         </template>
-        <div v-else class="cds-search__vacio">Sin resultados para "{{ busqueda }}"</div>
+        <div v-else :class="VACIO">Sin resultados para "{{ busqueda }}"</div>
       </div>
     </Teleport>
   </div>

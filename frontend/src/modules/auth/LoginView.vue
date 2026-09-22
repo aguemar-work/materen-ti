@@ -297,7 +297,7 @@ async function onCambiarPassword() {
               :aria-invalid="campoConfirmarPassword.invalido.value"
               :aria-describedby="campoConfirmarPassword.describedBy.value"
             >
-            <i v-if="campoConfirmarPassword.invalido.value" class="ti ti-alert-circle-filled campo__adorno" aria-hidden="true"></i>
+            <i v-if="campoConfirmarPassword.invalido.value" class="ti ti-alert-circle campo__adorno" aria-hidden="true"></i>
           </div>
           <p
             v-if="errorConfirmar"

@@ -1,8 +1,9 @@
 # AGENTS.md
 
 > **Materen — Sistema TI**: panel interno de inventario de empleados, accesos,
-> tickets, correos, licencias y equipos. **Sin sistema de diseño activo desde
-> el 2026-09-05** (CSS global vacío, sin `<style>` en los componentes). Ver
+> tickets, correos, licencias y equipos. **UI sobre PrimeVue v4 Unstyled +
+> Tailwind v4 desde el 2026-09-07** (Carbon se retiró el 2026-09-05; reglas
+> en la sección "UI/UX" de este archivo). Lo rescatado del sistema anterior:
 > [`docs/NOTAS-DISENO-ANTERIOR.md`](../docs/NOTAS-DISENO-ANTERIOR.md).
 
 **Estado del repo — a propósito no se anota a mano acá.** Este encabezado
@@ -23,7 +24,8 @@ de numerar una nueva, comparar contra `origin/main`, no contra el working tree.
 
 **Precedencia documental**: ante conflicto, `README.md` describe intención;
 **ganan** el esquema real en `migrations/*.sql` y, en UI, el estado real de
-`main.css` (hoy vacío a propósito — ver `../docs/NOTAS-DISENO-ANTERIOR.md`).
+`styles/main.css` (el `@theme` de Tailwind, único lugar con tokens) y los
+presets `components/ui/pt/*`.
 
 Contexto para agentes de código. Lee también el `README.md` (dominio, flujos,
 modelo de seguridad y estructura del repo), `docs/PANORAMA-SISTEMA.md`
@@ -506,12 +508,37 @@ cuándo y si la contraseña se rotó después.
      dentro de un solo `<script>`) — `LicenciasView` pasó a ~120 kB
      gzip de chunk propio; conocido, no arreglado en este cambio, no
      bloquea nada porque ya es lazy-loaded por ruta.
-- **Gotcha del padding de tabla (ago 2026)**: el alto de fila vive en **dos**
- lugares que tienen que moverse juntos — `th`/`td` en `main.css` (hoy `9px`
- de padding vertical) y `.th-ordenable-btn` en
- `components/shared/ThOrdenable.vue`, porque ese `<th>` va a `padding: 0` y
- el alto lo pone el botón de adentro. Tocar solo uno deja la fila de
- encabezados desalineada contra el resto de las columnas.
+   - **Tipografía e íconos (2026-09-22, decididos a pedido explícito)**:
+     Inter Variable (`@fontsource-variable/inter`) y el webfont de Tabler
+     (`@tabler/icons-webfont`, versión fija), los dos **servidos desde el
+     bundle**, importados en `main.js` — sin Google Fonts ni CDN, así la
+     CSP de `vercel.json` no necesita abrirse. `--font-sans` vive en el
+     `@theme` de `main.css`, con números tabulares (`tnum`) activados en
+     `html`. Los ~183 usos de `ti ti-*` del marcado no cambiaron: entre el
+     2026-09-05 y esta fecha no se veía ningún ícono (el reinicio quitó el
+     `<link>` de Tabler de `index.html` y nada lo reemplazó). La hoja
+     combinada de la 3.48 no trae clases `-filled`: no usar `ti-*-filled`
+     (no dibuja nada); se usan las outline. Costo
+     aceptado: el webfont completo (outline + filled, ~840 kB woff2) viaja
+     igual que antes por CDN; si pesa, la salida es `@tabler/icons-vue`
+     (tree-shaking) a cambio de reescribir cada uso.
+   - **Shell migrado (2026-09-22): `AppLayout`/`AppNav`/`AppSearch`/
+     `NotificacionesCampana`/`AppNotifications`** — shell CLARO y fundido
+     (decisión explícita): header de 56px y SideNav (256px / 56px en riel)
+     sobre blanco, separados del workspace `gray-50` solo por un borde de
+     1px. Ítem activo del nav: `primary-50` + texto `primary-700` + barra
+     izquierda de 2px. HTML nativo con Tailwind (no hay componente de
+     PrimeVue que envolver); las clases repetidas entre las piezas del
+     shell (botón solo-ícono del header, panel flotante, ítem de panel,
+     rótulo de grupo) viven en `components/shared/shellClases.js`. Los
+     avisos flotantes comunican el tipo solo con el color del ícono (rojo/
+     verde/ámbar de la paleta estándar de Tailwind, sin escala propia en el
+     `@theme`). El breakpoint móvil pasó de `<= 768px` a `< 768px` para
+     coincidir con `md` de Tailwind. ⚠️ **El tema oscuro no tiene estilos**:
+     el toggle sigue alternando `data-theme` sin efecto visible, hasta que
+     se diseñe. De paso se corrigió un bug previo: el badge de tickets sin
+     asignar se leía una sola vez al montar y nunca se actualizaba
+     (`tests/componentes/AppNav.render.test.js`).
 - **Gotcha de `resetearFiltros()` en cada montaje (patrón de 18 módulos,
  Tickets es la ÚNICA excepción desde ago 2026)**: Empleados/Correos/
  Equipos/KB/Licencias/Problemas llaman

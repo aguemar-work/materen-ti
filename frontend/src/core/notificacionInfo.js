@@ -2,10 +2,10 @@
 // Extraída de components/carbon/CarbonNotification.vue (reinicio de diseño,
 // 2026-09-05).
 const TIPOS = {
-  error:   { icono: 'ti-alert-circle-filled', rol: 'danger' },
-  success: { icono: 'ti-circle-check-filled', rol: 'success' },
-  warning: { icono: 'ti-alert-triangle-filled', rol: 'warning' },
-  info:    { icono: 'ti-info-circle-filled', rol: 'info' },
+  error:   { icono: 'ti-alert-circle', rol: 'danger' },
+  success: { icono: 'ti-circle-check', rol: 'success' },
+  warning: { icono: 'ti-alert-triangle', rol: 'warning' },
+  info:    { icono: 'ti-info-circle', rol: 'info' },
 };
 
 /**

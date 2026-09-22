@@ -14,6 +14,33 @@ import { iconoNotificacion } from '../../core/notificacionIconos.js';
 import { toasts, descartarToast } from '../../core/toast.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
+// Tarjeta flotante común a los dos stacks: superficie blanca con borde de
+// 1px + sombra (flota sobre el contenido). El tipo se comunica con el
+// COLOR DEL ÍCONO y el texto, nunca con un fondo o borde de color — peso
+// visual proporcional al significado (docs/NOTAS-DISENO-ANTERIOR.md §2).
+// Los colores de estado son los de la paleta estándar de Tailwind (el rojo
+// ya lo usa AppButton `danger`); no hay escala success/warning propia en
+// el @theme, a propósito.
+const TARJETA =
+  'pointer-events-auto flex w-full items-start gap-3 rounded-lg border border-gray-200 bg-white ' +
+  'px-4 py-3 text-sm text-gray-800 shadow-lg';
+const COLOR_ICONO = {
+  danger: 'text-red-600',
+  success: 'text-green-600',
+  warning: 'text-amber-500',
+  info: 'text-primary-500',
+};
+const BOTON_CERRAR =
+  '-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 ' +
+  'hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
+// Transición compartida (entrada desde la derecha, salida con fade).
+const TRANSICION = {
+  enterActiveClass: 'transition duration-200 ease-out',
+  leaveActiveClass: 'transition duration-150 ease-in',
+  enterFromClass: 'translate-x-4 opacity-0',
+  leaveToClass: 'opacity-0',
+};
+
 const router = useRouter();
 const auth = useAuthStore();
 const notificacionesStore = useNotificacionesStore();
@@ -74,24 +101,28 @@ async function irAAviso(aviso) {
 
 <template>
   <!-- Aviso emergente de notificación nueva (tiempo real) -->
-  <transition-group name="aviso-fade" tag="div" class="aviso-stack">
+  <transition-group
+    v-bind="TRANSICION"
+    tag="div"
+    class="pointer-events-none fixed right-4 top-16 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2"
+  >
     <div
       v-for="a in avisos"
       :key="a.key"
-      class="aviso-card"
+      :class="[TARJETA, 'cursor-pointer transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500']"
       role="button"
       tabindex="0"
       @click="irAAviso(a)"
       @keydown.enter="irAAviso(a)"
       @keydown.space.prevent="irAAviso(a)"
     >
-      <i class="ti" :class="a.icono" aria-hidden="true"></i>
-      <div class="aviso-card-texto">
-        <span class="aviso-card-titulo">{{ a.titulo }}</span>
+      <i class="ti mt-0.5 shrink-0 text-base text-primary-500" :class="a.icono" aria-hidden="true"></i>
+      <div class="min-w-0 flex-1">
+        <span class="font-medium text-gray-900">{{ a.titulo }}</span>
       </div>
       <button
         type="button"
-        class="aviso-card-cerrar"
+        :class="BOTON_CERRAR"
         aria-label="Descartar aviso"
         @click.stop="descartarAviso(a.key)"
       >
@@ -103,22 +134,28 @@ async function irAAviso(aviso) {
   <!-- Confirmaciones de acciones propias (showToast, core/toast.js): abajo a
        la derecha, se van solas. Distinto del stack de arriba (avisos
        realtime, arriba a la derecha, los descarta el usuario o expiran a los
-       6s) — mismo componente (CarbonNotification variante "toast"), dos
-       colas independientes porque su origen y su posición en pantalla son
-       distintos (ver CarbonNotification.vue, cabecera). -->
-  <transition-group name="toast-fade" tag="div" class="toast-stack">
+       6s) — misma tarjeta, dos colas independientes porque su origen y
+       su posición en pantalla son distintos. -->
+  <transition-group
+    v-bind="TRANSICION"
+    tag="div"
+    class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2"
+  >
     <div
       v-for="t in toasts"
       :key="t.id"
-      class="notif"
-      :class="[`notif--${infoNotificacion(t.tipo).rol}`, 'notif--toast']"
+      :class="TARJETA"
       :role="infoNotificacion(t.tipo).rolAria"
     >
-      <i class="ti" :class="infoNotificacion(t.tipo).icono" aria-hidden="true"></i>
-      <div class="notif__texto">
-        <p class="notif__detalle">{{ t.msg }}</p>
+      <i
+        class="ti mt-0.5 shrink-0 text-base"
+        :class="[infoNotificacion(t.tipo).icono, COLOR_ICONO[infoNotificacion(t.tipo).rol]]"
+        aria-hidden="true"
+      ></i>
+      <div class="min-w-0 flex-1">
+        <p>{{ t.msg }}</p>
       </div>
-      <button type="button" class="notif__cerrar" aria-label="Descartar aviso" @click="descartarToast(t.id)">
+      <button type="button" :class="BOTON_CERRAR" aria-label="Descartar aviso" @click="descartarToast(t.id)">
         <i class="ti ti-x" aria-hidden="true"></i>
       </button>
     </div>

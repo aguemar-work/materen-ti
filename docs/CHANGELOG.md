@@ -27,6 +27,24 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-22** (**Shell migrado a la base PrimeVue/Tailwind + tipografía e
+  íconos**) — a pedido explícito: shell claro y fundido, Inter Variable y
+  Tabler Icons servidos desde el bundle (`@fontsource-variable/inter`,
+  `@tabler/icons-webfont@3.48.0`, importados en `main.js`; sin CDN, la CSP
+  no se tocó). Desde el 2026-09-05 no se veía ningún ícono en toda la app:
+  el reinicio quitó el `<link>` de Tabler y nada lo reemplazó. La 3.48.0
+  (la 3.35.0 arrastraba `sharp` con CVEs altas) ya no trae clases
+  `-filled` en la hoja combinada: los 11 usos (avisos y adornos de error
+  de formularios) pasan a su versión outline.
+  `AppLayout`/`AppNav`/`AppSearch`/`NotificacionesCampana`/
+  `AppNotifications` pasan a Tailwind (clases compartidas en
+  `components/shared/shellClases.js`); estructura, navegación, copy y
+  permisos sin cambios. Fix de paso: el badge de tickets sin asignar del
+  SideNav se evaluaba una sola vez al montar y nunca se actualizaba.
+  Breakpoint móvil `<= 768px` → `< 768px` (coincide con `md`). Tema oscuro
+  sin estilos todavía (el toggle no tiene efecto visible). 6 tests nuevos
+  (`AppNav.render.test.js`); verificado además con capturas headless a
+  1440/1200/600 px.
 - **2026-09-22** (**`AGENTS.md` al día con la base PrimeVue/Tailwind**) —
   el encabezado, la precedencia documental y la regla de UI seguían diciendo
   "sin sistema de diseño, `main.css` vacío" dos semanas después de que el

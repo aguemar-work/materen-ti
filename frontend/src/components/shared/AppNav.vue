@@ -1,25 +1,20 @@
 <script setup>
-// SideNav del UI Shell de Carbon v11. Extraído de AppLayout.vue (A-06).
+// SideNav del shell. Extraído de AppLayout.vue (A-06).
 //
-// QUÉ CAMBIÓ CON EL REDISEÑO (2026-09-02)
 // La estructura de la navegación —áreas → grupos → ítems, y qué ítem está
-// en qué grupo— no cambió: sigue siendo la del 2026-09-01. Lo que cambió es
-// dónde vive y de qué color es:
-//   · El nav ya NO contiene búsqueda, campana ni identidad de usuario. Todo
-//     eso subió al header del shell (ver AppLayout.vue). Este componente es
-//     ahora lo único que hay dentro del <nav>, que es lo que Carbon espera:
-//     una región con una sola responsabilidad.
-//   · Vive sobre Gray 90 (#262626), no sobre el fondo del contenido. Por eso
-//     consume tokens `--cds-shell-*` en vez de roles `--color-*`: el nav es
-//     oscuro en los dos temas (ver carbon-theme.css, sección 6).
-//   · El ítem activo se marca como en Carbon: capa de gris más clara
-//     (Gray 80) + barra vertical de acento a la izquierda. Antes era un
-//     tinte azul de fondo con texto azul, que sobre una superficie oscura
-//     no funciona.
-//   · Configuración vuelve a tener ítem propio (ver el grupo Administración).
+// en qué grupo— es la del 2026-09-01; el rediseño del 2026-09-22 (base
+// PrimeVue/Tailwind, shell claro) solo cambió cómo se ve:
+//   · Superficie blanca, fundida con el header; se separa del workspace por
+//     un borde de 1px (ver la cabecera de AppLayout.vue).
+//   · Ítem activo: fondo azul tenue + texto azul + barra izquierda de 2px
+//     (principios del JEFE: hover/activo sin bordes, acento ≤2px y solo a
+//     la izquierda — docs/NOTAS-DISENO-ANTERIOR.md §2).
+//   · En el riel (solo desktop, md+) se ocultan rótulos y textos; el badge
+//     pasa a un punto sobre el ícono. En móvil el panel siempre va completo.
 import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
+import { ROTULO_GRUPO } from './shellClases.js';
 
 const props = defineProps({
   navEnRiel: { type: Boolean, default: false },
@@ -78,7 +73,7 @@ const AREAS = [
         id: 'mesa-de-ayuda',
         label: 'Mesa de Ayuda',
         items: [
-          { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset', badge: props.ticketsSinAsignar, modulo: 'tickets' },
+          { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset', badgeSinAsignar: true, modulo: 'tickets' },
           { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books', modulo: 'base_conocimiento' },
           { path: '/problemas', label: 'Problemas', icon: 'ti ti-alert-hexagon', modulo: 'problemas' },
           { path: '/encuestas', label: 'Encuestas', icon: 'ti ti-clipboard-list', modulo: 'encuestas' },
@@ -147,7 +142,13 @@ const navAreas = computed(() => AREAS
     grupos: area.grupos
       .map((grupo) => ({
         ...grupo,
-        items: grupo.items.filter((item) => !item.modulo || auth.puedeVerModulo(item.modulo)),
+        // El badge se resuelve ACÁ, dentro del computed, y no en la constante
+        // AREAS: antes era `badge: props.ticketsSinAsignar` en AREAS, que se
+        // evalúa una sola vez al montar — el badge quedaba congelado en el
+        // valor inicial (0) aunque AppLayout lo actualizara por realtime.
+        items: grupo.items
+          .filter((item) => !item.modulo || auth.puedeVerModulo(item.modulo))
+          .map((item) => ({ ...item, badge: item.badgeSinAsignar ? props.ticketsSinAsignar : 0 })),
       }))
       .filter((grupo) => grupo.items.length > 0),
   }))
@@ -165,33 +166,47 @@ function alNavegar() {
 function expandir() {
   emit('expandir-nav');
 }
+
+// Base del link; el estado activo lo agrega RouterLink vía `active-class`.
+// `relative` es para el punto del badge en el riel.
+const CLASE_LINK =
+  'relative flex h-9 items-center gap-3 rounded-md px-3 text-sm text-gray-700 ' +
+  'transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
+const CLASE_LINK_ACTIVO =
+  'bg-primary-50! text-primary-700! font-medium shadow-[inset_2px_0_0_var(--color-primary-500)]';
 </script>
 
 <template>
-  <div class="cds-nav">
-    <div class="cds-nav__items">
+  <div class="flex min-h-full flex-col">
+    <div class="flex-1 space-y-1 px-2 py-3">
       <template v-for="area in navAreas" :key="area.id">
         <!-- Encabezado de área: solo aparece el día que haya más de una — con
              una sola área (hoy) esto no renderiza nada. -->
-        <div v-if="navAreas.length > 1" class="cds-nav__area">{{ area.label }}</div>
+        <div
+          v-if="navAreas.length > 1"
+          class="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
+          :class="{ 'md:hidden': navEnRiel }"
+        >{{ area.label }}</div>
 
-        <div v-for="grupo in area.grupos" :key="grupo.id" class="cds-nav__grupo">
-          <div v-if="grupo.label" class="cds-nav__grupo-titulo">{{ grupo.label }}</div>
+        <div v-for="grupo in area.grupos" :key="grupo.id" class="space-y-0.5">
+          <div v-if="grupo.label" :class="[ROTULO_GRUPO, { 'md:hidden': navEnRiel }]">{{ grupo.label }}</div>
 
           <RouterLink
             v-for="item in grupo.items"
             :key="item.path"
             :to="item.path"
-            class="cds-nav__link"
-            active-class="cds-nav__link--activo"
+            :class="[CLASE_LINK, { 'md:justify-center md:px-0': navEnRiel }]"
+            :active-class="CLASE_LINK_ACTIVO"
             :title="navEnRiel ? item.label : null"
             @click="alNavegar"
           >
-            <i class="cds-nav__icono" :class="item.icon" aria-hidden="true"></i>
-            <span class="cds-nav__label">{{ item.label }}</span>
+            <i class="text-lg" :class="item.icon" aria-hidden="true"></i>
+            <span class="truncate" :class="{ 'md:sr-only': navEnRiel }">{{ item.label }}</span>
             <span
               v-if="item.badge"
-              class="cds-nav__badge"
+              class="ml-auto rounded-full bg-primary-100 px-1.5 text-xs font-medium leading-5 text-primary-700"
+              :class="{ 'md:absolute md:right-1 md:top-1 md:ml-0 md:h-2 md:w-2 md:overflow-hidden md:bg-primary-500 md:p-0 md:text-[0px]': navEnRiel }"
               :title="`${item.badge} ticket(s) sin asignar`"
             >{{ item.badge }}</span>
           </RouterLink>
@@ -199,10 +214,10 @@ function expandir() {
       </template>
     </div>
 
-    <!-- Pie del riel: única salida del riel sin subir al header -->
+    <!-- Pie del riel: única salida del riel sin subir al header (solo desktop) -->
     <button
       v-if="navEnRiel"
-      class="cds-nav__expandir"
+      class="mx-2 mb-3 hidden h-9 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 md:flex"
       type="button"
       title="Expandir navegación"
       aria-label="Expandir navegación"
@@ -212,11 +227,3 @@ function expandir() {
     </button>
   </div>
 </template>
-
-
-
-<!-- Sin scoped: `.cds-side-nav--riel` vive en el <nav> del shell raíz
-     (AppLayout.vue), un componente distinto — el pseudo-selector :global()
-     de Vue no propaga el descendiente de esta regla (probado: lo pierde al
-     compilar), así que va en un bloque de estilos global. -->
-

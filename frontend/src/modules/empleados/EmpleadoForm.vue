@@ -246,7 +246,7 @@ async function guardar() {
               :aria-describedby="campoDni.describedBy.value"
               @input="campoInvalido === 'dni' && (campoInvalido = '')"
             >
-            <i v-if="campoDni.invalido.value" class="ti ti-alert-circle-filled campo__adorno campo__adorno--error" aria-hidden="true"></i>
+            <i v-if="campoDni.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
           </div>
           <p
             v-if="campoDni.invalido.value"

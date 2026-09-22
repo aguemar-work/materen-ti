@@ -1,33 +1,39 @@
 ---
 name: sistema-ti-design
-description: Criterio de UX/UI para "Materen — Sistema TI" (panel interno de gestión de empleados, tickets, correos, licencias y equipos). El sistema de estilos se reinició a cero el 2026-09-05: no hay un estándar visual activo. Usa este skill cuando se cree o edite cualquier página, componente, tabla, tarjeta, tag, shell o formulario de este proyecto, para conocer qué NO asumir (no hay Carbon, no hay tokens) y qué reglas de producto/comportamiento siguen vigentes aunque el CSS esté vacío.
+description: Criterio de UX/UI para "Materen — Sistema TI" (panel interno de gestión de empleados, tickets, correos, licencias y equipos). La base visual es PrimeVue v4 Unstyled + Tailwind v4 (desde 2026-09-07; Carbon se retiró el 2026-09-05). Usa este skill cuando se cree o edite cualquier página, componente, tabla, tarjeta, tag, shell o formulario de este proyecto, para conocer qué está decidido, qué NO asumir y qué reglas de producto/comportamiento siguen vigentes.
 ---
 
 # Diseño visual — Materen · Sistema TI
 
-## Lo primero: no hay sistema de diseño activo
+## Lo primero: qué está decidido y qué no
 
-El **2026-09-05** se retiró por completo el sistema visual anterior (IBM
-Carbon Design System v11, que había sido el estándar desde el 2026-09-02):
-`frontend/src/styles/main.css` y `carbon-theme.css` quedaron
-intencionalmente vacíos, y ningún componente `.vue` tiene bloque `<style>`.
-**No hay tokens, no hay Carbon, no hay ningún otro sistema todavía.**
+El **2026-09-05** se retiró por completo IBM Carbon v11. El **2026-09-07**
+se decidió la base nueva, y las reglas viven en `frontend/AGENTS.md`,
+sección "UI/UX" — leerla antes de tocar UI. En resumen:
 
-- **No reintroducir Carbon (ni ningún otro design system) por iniciativa
-  propia.** Si una tarea de UI parece necesitar una decisión visual (color,
-  tamaño, radio, tipografía), es una pregunta para el usuario, no algo para
-  resolver solo. Escribir CSS nuevo está bien; inventar un sistema de tokens
-  nuevo sin que se pida, no.
-- Antes de tocar algo visual, leer
+- **PrimeVue v4 en modo Unstyled + Tailwind v4.** Ninguna vista importa
+  `primevue/*` directo: todo pasa por `components/ui/*` (wrapper) + su
+  preset `components/ui/pt/*.pt.js`. Ningún `.vue` tiene bloque `<style>`.
+- **Tokens solo en el `@theme` de `frontend/src/styles/main.css`**: la
+  rampa `--color-primary-50..950` (azul `#0064E0`) y `--font-sans`. Un solo
+  acento de marca; no sumar escalas success/warn/info por iniciativa propia.
+- **Decidido a pedido (2026-09-22):** tipografía Inter Variable e íconos
+  Tabler (`ti ti-*`), los dos servidos desde el bundle; shell claro y
+  fundido (header + SideNav blancos, workspace `gray-50`, separados por
+  1px). Clases compartidas del shell: `components/shared/shellClases.js`.
+- **Todavía NO decidido** (preguntar, no completar solo): tema oscuro (hoy
+  sin estilos), tonos de avatar, colores de estado propios más allá de la
+  paleta estándar de Tailwind.
+- Migrados hoy: shell, Licencias, Equipos, Tickets, `MenuAcciones`,
+  `ConfirmDialog`. El resto sigue en HTML nativo sin estilos hasta migrarse.
+- Antes de tocar algo visual, leer también
   [`docs/NOTAS-DISENO-ANTERIOR.md`](../../../docs/NOTAS-DISENO-ANTERIOR.md):
-  no es la guía vigente, pero rescata identidad de marca, principios de
-  diseño puestos por el JEFE y qué reglas de accesibilidad siguen
-  verificadas por tests aunque el CSS esté en cero.
-- Los 5 scripts de guardrail que existían (`scripts/contraste.mjs`,
-  `tokens-vs-guia.mjs`, `literales-vs-tokens.mjs`, `patrones-ui.mjs`,
-  `clases-muertas.mjs`) ya no corren completos en CI — solo
-  `patrones-ui.mjs` sigue siendo relevante (ver más abajo). Los demás
-  dependían de tokens/CSS que ya no existen.
+  identidad de marca, principios de diseño puestos por el JEFE (minimalista,
+  hover sin bordes, acento ≤2px solo a la izquierda, un acento fuerte por
+  vista, peso visual proporcional) y reglas de accesibilidad verificadas
+  por tests.
+- De los 5 scripts de guardrail de diseño solo `patrones-ui.mjs` corre en
+  CI; los demás dependían de tokens/CSS de Carbon.
 
 ## Qué sigue vigente (comportamiento y producto, no visual)
 
