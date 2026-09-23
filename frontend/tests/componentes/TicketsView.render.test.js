@@ -5,6 +5,10 @@
 // AppTable (2026-09-08). Mismo patrón de test que Licencias/Equipos: mockea
 // solo api/insforge.js, Pinia y router son reales.
 //
+// Rediseño 2026-09-23: la barra de acciones masivas se localiza por su rol
+// (role="toolbar"), no por la clase provisional `.barra-seleccion` que ya no
+// existe — mismo comportamiento verificado, selector semántico.
+//
 // Fuerza vista='tabla' vía localStorage (useVistaModulo la lee ahí) — el
 // modo por defecto de Tickets es 'triage' (split-view, no tabla), y esta
 // migración es específicamente sobre la tabla.
@@ -134,14 +138,14 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
 
   it('marcar el checkbox de una fila actualiza el modelo reactivo y habilita la barra de acciones masivas', async () => {
     const w = await montar();
-    expect(w.find('.barra-seleccion').exists()).toBe(false);
+    expect(w.find('[role="toolbar"]').exists()).toBe(false);
 
     const checkboxesFila = w.findAll('input[type="checkbox"]');
     // El primero es "seleccionar todos" (header); el resto son por fila.
     expect(checkboxesFila.length).toBeGreaterThanOrEqual(3);
     await checkboxesFila[1].setValue(true); // fila de TCK-0001
 
-    const barra = w.find('.barra-seleccion');
+    const barra = w.find('[role="toolbar"]');
     expect(barra.exists()).toBe(true);
     expect(barra.text()).toContain('1 seleccionado');
 
@@ -155,7 +159,7 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
     const w = await montar();
     const checkboxes = w.findAll('input[type="checkbox"]');
     await checkboxes[0].setValue(true); // header
-    const barra = w.find('.barra-seleccion');
+    const barra = w.find('[role="toolbar"]');
     expect(barra.text()).toContain('2 seleccionados');
   });
 
@@ -163,9 +167,9 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
     const w = await montar();
     const checkboxesFila = w.findAll('input[type="checkbox"]');
     await checkboxesFila[1].setValue(true);
-    expect(w.find('.barra-seleccion').exists()).toBe(true);
+    expect(w.find('[role="toolbar"]').exists()).toBe(true);
     await checkboxesFila[1].setValue(false);
-    expect(w.find('.barra-seleccion').exists()).toBe(false);
+    expect(w.find('[role="toolbar"]').exists()).toBe(false);
   });
 
   it('el botón "Ticket interno" del header es el AppButton real (severidad primaria)', async () => {

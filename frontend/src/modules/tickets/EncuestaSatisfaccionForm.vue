@@ -8,6 +8,7 @@ import { ref, computed, onMounted } from 'vue';
 import { responderEncuesta, encuestaYaRespondida } from '../../api/ticketsPublicos.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const props = defineProps({
   token: { type: String, required: true },
@@ -75,40 +76,53 @@ async function enviar() {
 </script>
 
 <template>
+  <!-- Rediseño 2026-09-23 (receta de portal público, SISTEMA-DISENO §4.5):
+       sin contenedor propio — lo pone la página que lo monta (la tarjeta de
+       ResponderEncuestaView o el bloque embebido del seguimiento). Controles
+       grandes, pensado para un teléfono. -->
   <div v-if="!oculto" role="status" aria-live="polite">
-    <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
+    <p v-if="estado === 'cargando'" class="py-6 text-center text-sm text-gray-500">Cargando...</p>
 
-    <template v-else-if="estado === 'error'">
-      <div class="ticket-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
-      <h2 class="ticket-title">No disponible</h2>
-      <p class="ticket-texto">{{ error }}</p>
-      <RouterLink class="public-volver" to="/soporte">
+    <div v-else-if="estado === 'error'" class="py-2 text-center">
+      <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400">
+        <i class="ti ti-link-off" aria-hidden="true"></i>
+      </span>
+      <h2 class="mt-3 text-lg font-semibold text-gray-900">No disponible</h2>
+      <p class="mt-1 text-sm text-gray-500">{{ error }}</p>
+      <RouterLink
+        class="mt-5 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        to="/soporte"
+      >
         <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
       </RouterLink>
-    </template>
+    </div>
 
     <template v-else-if="estado === 'formulario' || estado === 'enviando'">
-      <h2 class="ticket-title">Calificación del servicio</h2>
-      <p class="ticket-texto">Su respuesta contribuye a mejorar el servicio de soporte.</p>
+      <h2 class="text-lg font-semibold text-gray-900">Calificación del servicio</h2>
+      <p class="mt-1 text-sm text-gray-500">¿Cómo fue la atención de su ticket? Su respuesta contribuye a mejorar el servicio de soporte.</p>
 
-      <div class="niveles">
+      <div class="mt-5 grid grid-cols-5 gap-2" role="group" aria-label="Nivel de satisfacción">
         <button
           v-for="n in NIVELES"
           :key="n.valor"
           type="button"
-          class="nivel-btn"
-          :class="{ 'nivel-btn--activo': nivel === n.valor }"
+          class="flex flex-col items-center gap-1 rounded-lg border px-1 py-3 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
+          :class="nivel === n.valor
+            ? 'border-primary-500 bg-primary-50 text-primary-700'
+            : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-900'"
           :disabled="estado === 'enviando'"
           :title="n.label"
           :aria-label="n.label"
           :aria-pressed="nivel === n.valor"
           @click="nivel = n.valor"
         >
-          <i :class="`ti ${n.icono}`" aria-hidden="true"></i>
+          <i class="text-3xl" :class="`ti ${n.icono}`" aria-hidden="true"></i>
+          <span class="text-xs tabular-nums">{{ n.valor }}</span>
         </button>
       </div>
+      <p class="mt-2 h-5 text-center text-sm font-medium text-gray-700">{{ NIVELES.find((n) => n.valor === nivel)?.label || '' }}</p>
 
-      <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+      <div class="campo mt-3" :class="{ 'campo--inerte': estado === 'enviando' }">
         <label class="campo__etiqueta" :for="campoComentario.id">Comentarios (opcional)</label>
         <div class="campo__caja">
           <textarea
@@ -124,36 +138,35 @@ async function enviar() {
         </div>
       </div>
 
-      <div v-if="error" class="notif notif--inline" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
+      <div v-if="error" class="notif notif--inline mt-3" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
         <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
         <div class="notif__texto">
           <p class="notif__detalle">{{ error }}</p>
         </div>
       </div>
 
-      <button
-        type="button"
-        class="btn btn--primary btn--ancho ticket-submit"
-        :disabled="estado === 'enviando'"
+      <AppButton
+        class="mt-5"
+        size="lg"
+        block
+        :label="estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta'"
+        :loading="estado === 'enviando'"
         @click="enviar"
-      >
-        {{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}
-        <i v-if="estado === 'enviando'" class="ti ti-loader-2" aria-hidden="true"></i>
-      </button>
+      />
     </template>
 
-    <template v-else-if="estado === 'gracias'">
-      <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
-      <h2 class="ticket-title">Respuesta registrada</h2>
-      <p class="ticket-texto">Gracias por completar la encuesta de satisfacción.</p>
-    </template>
-
-    <template v-else-if="estado === 'ya_respondida'">
-      <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
-      <h2 class="ticket-title">Respuesta ya registrada</h2>
-      <p class="ticket-texto">La encuesta ya fue completada — no es necesario volver a responder.</p>
-    </template>
+    <div v-else-if="estado === 'gracias' || estado === 'ya_respondida'" class="py-2 text-center">
+      <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-2xl text-green-600">
+        <i class="ti ti-circle-check" aria-hidden="true"></i>
+      </span>
+      <template v-if="estado === 'gracias'">
+        <h2 class="mt-3 text-lg font-semibold text-gray-900">Respuesta registrada</h2>
+        <p class="mt-1 text-sm text-gray-500">Gracias por completar la encuesta de satisfacción.</p>
+      </template>
+      <template v-else>
+        <h2 class="mt-3 text-lg font-semibold text-gray-900">Respuesta ya registrada</h2>
+        <p class="mt-1 text-sm text-gray-500">La encuesta ya fue completada — no es necesario volver a responder.</p>
+      </template>
+    </div>
   </div>
 </template>
-
-

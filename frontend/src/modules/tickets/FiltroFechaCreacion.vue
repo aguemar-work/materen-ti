@@ -1,49 +1,49 @@
 <script setup>
 // Filtro secundario "Fecha de creación" de la bandeja de Tickets.
 //
-// Existe como componente y no como bloque en el template porque se pinta en
-// DOS contenedores distintos: el nav lateral (escritorio) y la barra de
-// filtros (móvil, donde no hay nav — ver `v-if="!esMovil"` en TicketsView).
-// Antes eran 20 líneas duplicadas palabra por palabra salvo los `id`, que
-// tienen que diferir para que cada <label for> apunte a su propio input
-// cuando los dos bloques existen en el mismo documento. Esa duplicación es
-// justo la que ya causó desincronizaciones entre Tabla y Triage (ver el
-// modelo de Vistas, PASO 1): un solo componente, dos montajes.
+// Rediseño 2026-09-23: pasa a ser un control compacto de la barra de
+// filtros (mismo alto h-9 que AppBuscador/AppSelect), en una sola línea
+// "Creado [desde] – [hasta]". Antes se pintaba en dos contenedores (riel
+// lateral en escritorio, barra en móvil); ahora las bandejas y este filtro
+// viven en la misma barra en los dos tamaños, así que hay un solo montaje.
+// El `idPrefijo` se conserva: los `id` tienen que ser únicos si alguna vez
+// vuelve a montarse dos veces.
 //
 // El `v-model` es doble (desde/hasta) porque el rango es UN filtro, no dos:
-// el consumidor lo limpia de una sola vez y el chip removible de la lista
-// también lo trata como uno solo.
+// el consumidor lo limpia de una sola vez.
 defineProps({
   desde: { type: String, default: '' },
   hasta: { type: String, default: '' },
-  // Prefijo de los `id` — distinto por montaje (nav vs. barra móvil).
   idPrefijo: { type: String, required: true },
 });
 defineEmits(['update:desde', 'update:hasta']);
+
+const CAMPO =
+  'h-9 rounded-md border border-gray-200 bg-white px-2.5 text-sm text-gray-900 tabular-nums ' +
+  'focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
 </script>
 
 <template>
-  <div class="tk-filtro-grupo">
-    <span :id="`${idPrefijo}-label`" class="tk-filtro-titulo">Fecha de creación</span>
-    <div class="tk-filtro-fecha-campo" role="group" :aria-labelledby="`${idPrefijo}-label`">
-      <label :for="`${idPrefijo}-desde`">Desde</label>
-      <input
-        :id="`${idPrefijo}-desde`"
-        :value="desde"
-        type="date"
-        @input="$emit('update:desde', $event.target.value)"
-      >
-    </div>
-    <div class="tk-filtro-fecha-campo" role="group" :aria-labelledby="`${idPrefijo}-label`">
-      <label :for="`${idPrefijo}-hasta`">Hasta</label>
-      <input
-        :id="`${idPrefijo}-hasta`"
-        :value="hasta"
-        type="date"
-        @input="$emit('update:hasta', $event.target.value)"
-      >
-    </div>
+  <div class="inline-flex flex-wrap items-center gap-2" role="group" :aria-labelledby="`${idPrefijo}-label`">
+    <span :id="`${idPrefijo}-label`" class="text-sm text-gray-500">Creado</span>
+    <label :for="`${idPrefijo}-desde`" class="sr-only">Desde</label>
+    <input
+      :id="`${idPrefijo}-desde`"
+      :value="desde"
+      type="date"
+      :class="CAMPO"
+      title="Desde"
+      @input="$emit('update:desde', $event.target.value)"
+    >
+    <span class="text-gray-400" aria-hidden="true">–</span>
+    <label :for="`${idPrefijo}-hasta`" class="sr-only">Hasta</label>
+    <input
+      :id="`${idPrefijo}-hasta`"
+      :value="hasta"
+      type="date"
+      :class="CAMPO"
+      title="Hasta"
+      @input="$emit('update:hasta', $event.target.value)"
+    >
   </div>
 </template>
-
-

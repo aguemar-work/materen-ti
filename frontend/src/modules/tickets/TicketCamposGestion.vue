@@ -7,7 +7,7 @@ import {
   ESTADOS_EN_CURSO,
   ESTADOS_TERMINALES,
 } from '../../core/dominio-tickets.js';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
+import AppListaDatos from '../../components/ui/AppListaDatos.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 // Campos de gestión de un ticket (prioridad, nivel de atención, responsable
@@ -54,16 +54,26 @@ const campoPrioridadAbierto = useCampoAccesible();
 const campoNivelAbierto = useCampoAccesible();
 const campoAsignadoAbierto = useCampoAccesible();
 const ayudaTipoAbierto = computed(() => (props.tipoAmbiguoSinClasificar
-  ? 'Esta subcategoría no tiene un tipo por defecto (puede ser incidente o solicitud según el caso) — elígelo manualmente antes de iniciar.'
+  ? 'Esta subcategoría no tiene un tipo por defecto (puede ser incidente o solicitud según el caso) — elíjalo manualmente antes de iniciar.'
   : ''));
 const campoTipoAbierto = useCampoAccesible({ ayuda: () => ayudaTipoAbierto.value });
 const campoPrioridadCurso = useCampoAccesible();
 const campoNivelCurso = useCampoAccesible();
 const campoAsignadoCurso = useCampoAccesible();
 const campoTipoCurso = useCampoAccesible();
+
+// Terminal: solo lectura, como pares etiqueta/valor (un vacío se ve como
+// "Sin registrar" en gris, nunca un guion suelto).
+const datosTerminal = computed(() => [
+  { label: 'Prioridad', valor: PRIORIDADES.find((p) => p.valor === props.ticket.prioridad)?.label || props.ticket.prioridad || '' },
+  { label: 'Nivel de atención', valor: NIVELES_ATENCION.find((n) => n.valor === props.ticket.nivel_atencion)?.label || '' },
+  { label: props.labelAsignado, valor: props.staffPorId[props.ticket.asignado_a] || '' },
+  { label: 'Tipo', valor: TIPOS.find((t) => t.valor === props.ticket.tipo)?.label || '' },
+]);
 </script>
 
 <template>
+  <div class="grid gap-3">
   <!-- abierto: se guardan recién al iniciar la atención -->
   <template v-if="ticket.estado === 'abierto'">
     <div class="campo" :class="{ 'campo--inerte': iniciando }">
@@ -229,17 +239,6 @@ const campoTipoCurso = useCampoAccesible();
   </template>
 
   <!-- terminal: solo lectura -->
-  <template v-if="ESTADOS_TERMINALES.includes(ticket.estado)">
-    <p class="tk-detalle">
-      Prioridad: {{ PRIORIDADES.find((p) => p.valor === ticket.prioridad)?.label || ticket.prioridad }}
-    </p>
-    <p class="tk-detalle">
-      Nivel de atención:
-      <TextoVacio :valor="NIVELES_ATENCION.find((n) => n.valor === ticket.nivel_atencion)?.label" placeholder="Sin definir" />
-    </p>
-    <p class="tk-detalle">
-      {{ labelAsignado }}: <TextoVacio :valor="staffPorId[ticket.asignado_a]" placeholder="Sin asignar" />
-    </p>
-  </template>
+  <AppListaDatos v-if="ESTADOS_TERMINALES.includes(ticket.estado)" :datos="datosTerminal" />
+  </div>
 </template>
-

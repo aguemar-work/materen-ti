@@ -1,20 +1,21 @@
 <script setup>
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { formatFecha } from '../../core/formatters.js';
-import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
-import { badgeInfo } from '../../core/badges.js';
+import { formatFecha, formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
+import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
 import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
+import AppSeccion from '../../components/ui/AppSeccion.vue';
 import ProblemaForm from '../problemas/ProblemaForm.vue';
 import TicketCamposGestion from './TicketCamposGestion.vue';
 import TicketComposer from './TicketComposer.vue';
 import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
-import { rolDeTag } from '../../core/tagRol.js';
+import TicketSolicitante from './TicketSolicitante.vue';
+import TicketContexto from './TicketContexto.vue';
+import PrioridadTicket from './PrioridadTicket.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const route = useRoute();
@@ -54,91 +55,218 @@ onMounted(cargar);
 
 const campoMotivoRechazo = useCampoAccesible();
 const campoMotivoReabrir = useCampoAccesible();
+
+// ── Presentación (rediseño 2026-09-23) ──
+const esTerminal = computed(() => !!ticket.value && ESTADOS_TERMINALES.includes(ticket.value.estado));
+const enCurso = computed(() => !!ticket.value && ESTADOS_EN_CURSO.includes(ticket.value.estado));
+const tipoLabel = computed(() => OPCIONES_TIPO.find((t) => t.valor === ticket.value?.tipo)?.label || '');
+const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.tipo === 'comentario').length);
 </script>
 
 <template>
-  <div class="ticket-detalle-page vista-modulo">
-    <PageHeader>
-      <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" aria-label="Volver" @click="volver('/tickets')">
-          <i class="ti ti-arrow-left"></i>
-        </button>
-        <div v-if="ticket" class="header-emp">
-          <h1>
-            <span class="tk-codigo">{{ ticket.codigo }}</span>
-            {{ ticket.titulo }}
-          </h1>
-          <span class="header-sub">{{ ticket.categoria_nombre }}{{ ticket.subcategoria_nombre ? ` · ${ticket.subcategoria_nombre}` : '' }}</span>
+  <div class="mx-auto w-full max-w-7xl px-4 pb-10 pt-5 sm:px-6">
+    <button
+      type="button"
+      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+      @click="volver('/tickets')"
+    >
+      <i class="ti ti-arrow-left" aria-hidden="true"></i>
+      Tickets
+    </button>
+
+    <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando ticket...</p>
+
+    <p v-else-if="!ticket" class="py-16 text-center text-sm text-gray-500">No se encontró el ticket.</p>
+
+    <template v-else>
+      <!-- ══ Encabezado: qué se pidió, en qué estado está, quién lo tiene y
+           la acción que corresponde ahora (una sola sólida por estado). -->
+      <header class="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start">
+        <div class="min-w-0 flex-1">
+          <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-gray-500">
+            <span class="font-medium tabular-nums text-gray-600">{{ ticket.codigo }}</span>
+            <template v-if="ticket.categoria_nombre">
+              <span aria-hidden="true">·</span>
+              <span>{{ ticket.categoria_nombre }}{{ ticket.subcategoria_nombre ? ` › ${ticket.subcategoria_nombre}` : '' }}</span>
+            </template>
+          </p>
+          <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ ticket.titulo }}</h1>
+            <BadgeEstado tipo="ticket" :valor="ticket.estado" />
+          </div>
+          <ul class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-gray-500">
+            <li><PrioridadTicket :valor="ticket.prioridad" /></li>
+            <li class="inline-flex items-center gap-1.5">
+              <i class="ti ti-user" aria-hidden="true"></i>
+              <span v-if="ticket.vinculado && ticket.empleado_nombre" class="text-gray-700">{{ ticket.empleado_nombre }}</span>
+              <span v-else class="text-red-700">Solicitante sin vincular</span>
+            </li>
+            <li class="inline-flex items-center gap-1.5">
+              <i class="ti ti-user-check" aria-hidden="true"></i>
+              <span v-if="ticket.asignado_a" class="text-gray-700">{{ staffPorId[ticket.asignado_a] || 'Staff' }}</span>
+              <span v-else :class="esTerminal ? 'text-gray-400' : 'text-amber-700'">Sin asignar</span>
+            </li>
+            <li v-if="ticket.created_at" class="inline-flex items-center gap-1.5 tabular-nums" :title="formatFechaHora(ticket.created_at)">
+              <i class="ti ti-clock" aria-hidden="true"></i>Creado {{ formatAntiguedad(ticket.created_at) }}
+            </li>
+            <li v-if="tipoLabel" class="inline-flex items-center gap-1.5">
+              <i class="ti ti-tag" aria-hidden="true"></i>{{ tipoLabel }}<template v-if="ticket.nivel_atencion"> · {{ ticket.nivel_atencion }}</template>
+            </li>
+            <li v-if="problemaVinculado">
+              <RouterLink
+                :to="`/problemas/${problemaVinculado.id}`"
+                class="inline-flex items-center gap-1.5 rounded text-red-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              >
+                <i class="ti ti-alert-hexagon" aria-hidden="true"></i>Problema abierto: {{ problemaVinculado.titulo }}
+              </RouterLink>
+            </li>
+          </ul>
         </div>
-      </template>
-    </PageHeader>
 
-    <main class="page page--padded">
-      <div v-if="cargando" class="no-results">Cargando ticket...</div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
+          <AppButton
+            v-if="!problemaVinculado"
+            variant="outline"
+            severity="secondary"
+            icon="ti ti-alert-hexagon"
+            label="Marcar como problema"
+            @click="mostrarProblemaForm = true"
+          />
 
-      <div v-else-if="ticket" class="grid-12">
-        <!-- Columna de datos -->
-        <div class="card col-3 tk-datos">
-          <div class="datos-title"><i class="ti ti-info-circle"></i> Solicitante</div>
-          <div v-if="ticket.vinculado && ticket.empleado_nombre" class="tk-solicitante">
-            <RouterLink class="tk-nombre empleado-link" :to="`/empleados/${ticket.empleado_id}`">{{ ticket.empleado_nombre }}</RouterLink>
-            <span class="tk-detalle">DNI {{ ticket.empleado_dni }}</span>
-            <span v-if="ticket.empleado_correo" class="tk-detalle">{{ ticket.empleado_correo }}</span>
+          <template v-if="ticket.estado === 'abierto' && !mostrarRechazar">
+            <AppButton variant="outline" severity="danger" icon="ti ti-x" label="Rechazar" :disabled="iniciando" @click="abrirRechazar" />
+            <AppButton
+              icon="ti ti-player-play"
+              :label="iniciando ? 'Iniciando...' : 'Iniciar atención'"
+              :loading="iniciando"
+              @click="confirmarIniciar"
+            />
+          </template>
+
+          <AppButton
+            v-if="enCurso"
+            icon="ti ti-circle-check"
+            label="Marcar como resuelto"
+            @click="mostrarConfirmarResolver = true"
+          />
+
+          <template v-if="esTerminal && !mostrarReabrir">
+            <AppButton
+              v-if="auth.esJefe"
+              variant="outline"
+              severity="secondary"
+              icon="ti ti-refresh"
+              :label="reabriendo ? 'Reabriendo...' : 'Reabrir ticket'"
+              :loading="reabriendo"
+              @click="abrirReabrir"
+            />
+            <p v-else class="text-sm text-gray-500">Solo el jefe puede reabrir este ticket.</p>
+          </template>
+        </div>
+      </header>
+
+      <!-- ══ Formularios inline (rechazar / reabrir): aparecen donde se
+           decidió la acción, antes de la conversación. -->
+      <section
+        v-if="mostrarRechazar"
+        class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-[inset_2px_0_0_var(--color-red-500)]"
+        aria-labelledby="rechazo-titulo"
+      >
+        <h2 id="rechazo-titulo" class="text-sm font-semibold text-gray-900">Rechazar ticket</h2>
+        <p class="mt-0.5 text-xs text-gray-500">El empleado verá este motivo en su seguimiento.</p>
+        <div class="campo mt-3" :class="{ 'campo--inerte': rechazando }">
+          <label class="campo__etiqueta" :for="campoMotivoRechazo.id">
+            Motivo del rechazo<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <textarea
+              :id="campoMotivoRechazo.id"
+              v-model="motivoRechazo"
+              class="campo__control campo__control--area"
+              :rows="3"
+              required
+              placeholder="Explique por qué no se atenderá el pedido"
+              :disabled="rechazando"
+            ></textarea>
           </div>
-          <div v-else class="tk-sin-vincular">
-            <span class="tag" :class="`tag--${rolDeTag(badgeInfo('ticket_sin_vincular').clase)}`"><i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}</span>
-            <p v-if="ticket.contacto_ingresado" class="tk-detalle">Contacto ingresado: {{ ticket.contacto_ingresado }}</p>
-            <p class="tk-nota">Revisa manualmente quién es y, si corresponde, vincúlalo desde comentarios.</p>
-          </div>
+        </div>
+        <div class="mt-3 flex justify-end gap-2">
+          <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="rechazando" @click="mostrarRechazar = false" />
+          <AppButton
+            severity="danger"
+            :label="rechazando ? 'Rechazando...' : 'Confirmar rechazo'"
+            :loading="rechazando"
+            @click="confirmarRechazar"
+          />
+        </div>
+      </section>
 
-          <div v-if="equiposEmpleado.length" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-devices"></i> Equipos asignados</div>
-            <p v-for="eq in equiposEmpleado" :key="eq.equipo_id" class="tk-detalle">
-              <i class="ti ti-device-desktop"></i> {{ eq.codigo }} — {{ eq.marca }} {{ eq.modelo }}
-              <BadgeEstado tipo="situacion" :valor="eq.situacion" class="badge-inline" />
+      <section
+        v-if="mostrarReabrir"
+        class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-[inset_2px_0_0_var(--color-primary-500)]"
+        aria-labelledby="reabrir-titulo"
+      >
+        <h2 id="reabrir-titulo" class="text-sm font-semibold text-gray-900">Reabrir ticket</h2>
+        <p class="mt-0.5 text-xs text-gray-500">El motivo queda como nota interna, no visible para el empleado.</p>
+        <div class="campo mt-3" :class="{ 'campo--inerte': reabriendo }">
+          <label class="campo__etiqueta" :for="campoMotivoReabrir.id">
+            Motivo para reabrir<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <textarea
+              :id="campoMotivoReabrir.id"
+              v-model="motivoReabrir"
+              class="campo__control campo__control--area"
+              :rows="3"
+              required
+              placeholder="Qué volvió a fallar o qué quedó pendiente"
+              :disabled="reabriendo"
+            ></textarea>
+          </div>
+        </div>
+        <div class="mt-3 flex justify-end gap-2">
+          <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="reabriendo" @click="mostrarReabrir = false" />
+          <AppButton
+            :label="reabriendo ? 'Reabriendo...' : 'Confirmar reabrir'"
+            :loading="reabriendo"
+            @click="confirmarReabrir"
+          />
+        </div>
+      </section>
+
+      <!-- ══ Cuerpo: conversación (principal) + gestión y contexto (lateral).
+           Mismo feed y mismo composer que el panel del split-view. -->
+      <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <AppSeccion titulo="Actividad y conversación" :conteo="comentariosTotal || null" sin-padding>
+          <div class="px-5 py-5">
+            <TicketTimelineUnificado :descripcion="ticket.descripcion" :filas="timelineUnificado" :autor-de="autorDe" />
+          </div>
+          <div class="border-t border-gray-100 px-5 py-4">
+            <TicketComposer
+              v-if="!esTerminal"
+              v-model:mensaje="nuevoComentario"
+              v-model:interno="comentarioInterno"
+              :enviando="enviandoComentario"
+              @enviar="enviarComentario"
+            />
+            <p v-else class="flex items-center gap-2 text-sm text-gray-500">
+              <i class="ti ti-lock" aria-hidden="true"></i>
+              Ticket {{ estadoInfo(ticket.estado).label.toLowerCase() }} — {{ auth.esJefe ? 'reábralo para seguir comentando.' : 'solo el jefe puede reabrirlo para seguir comentando.' }}
             </p>
           </div>
+        </AppSeccion>
 
-          <div v-if="ticket.equipo_desc || ticket.cuenta_desc || ticket.licencia_desc" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-link"></i> Enlazado a</div>
-            <p v-if="ticket.equipo_desc" class="tk-detalle"><i class="ti ti-devices"></i> {{ ticket.equipo_desc }}</p>
-            <p v-if="ticket.cuenta_desc" class="tk-detalle"><i class="ti ti-key"></i> {{ ticket.cuenta_desc }}</p>
-            <p v-if="ticket.licencia_desc" class="tk-detalle"><i class="ti ti-license"></i> {{ ticket.licencia_desc }}</p>
-          </div>
-
-          <div v-if="ticket.adjunto_url" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-camera"></i> Captura adjunta</div>
-            <a :href="ticket.adjunto_url" target="_blank" rel="noopener noreferrer">
-              <img class="tk-adjunto" :src="ticket.adjunto_url" alt="Captura adjunta al ticket">
-            </a>
-          </div>
-
-          <div v-if="ticket.categoria_id" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-books"></i> Artículos relacionados</div>
-            <template v-if="articulosRelacionados.length">
-              <RouterLink
-                v-for="a in articulosRelacionados"
-                :key="a.id"
-                class="tk-kb-relacionado"
-                :to="`/base-conocimiento/${a.id}`"
-              >
-                {{ a.titulo }}
-              </RouterLink>
-            </template>
-            <p v-else class="tk-nota">Sin artículos publicados en esta categoría todavía.</p>
-          </div>
-
-          <div class="tk-seccion">
-            <div class="datos-title">
-              <i class="ti ti-adjustments"></i> Gestión
-              <BadgeEstado tipo="ticket" :valor="ticket.estado" class="tk-estado-badge" />
-            </div>
-
-            <!-- Campos según el estado (abierto / en curso / terminal) —
-                 compartidos con TicketDetallePanel.vue. Se ocultan mientras
-                 un formulario inline los reemplaza en el lugar: rechazar
-                 solo ocurre en abierto y reabrir solo en terminal, así que
-                 basta con esconderlos en cualquiera de los dos casos. -->
+        <!-- En abierto, lo primero es triar (prioridad, responsable): en móvil
+             la gestión sube antes de la conversación. -->
+        <aside class="space-y-6 lg:sticky lg:top-6" :class="{ 'order-first lg:order-none': ticket.estado === 'abierto' }">
+          <!-- Campos según el estado (abierto / en curso / terminal) —
+               compartidos con TicketDetallePanel.vue. Se ocultan mientras un
+               formulario inline está abierto: rechazar solo ocurre en
+               abierto y reabrir solo en terminal. -->
+          <AppSeccion
+            titulo="Gestión"
+            :descripcion="ticket.estado === 'abierto' ? 'Se aplican al iniciar la atención.' : enCurso ? 'Cada cambio se guarda al momento.' : ''"
+          >
             <TicketCamposGestion
               v-if="!mostrarRechazar && !mostrarReabrir"
               v-model:atencion-prioridad="atencionForm.prioridad"
@@ -157,164 +285,51 @@ const campoMotivoReabrir = useCampoAccesible();
               @cambiar-asignado="cambiarAsignado"
               @cambiar-tipo="cambiarTipo"
             />
+            <p v-else class="text-sm text-gray-500">Complete el formulario de arriba para continuar.</p>
 
-            <!-- abierto: Rechazar / Iniciar atención -->
-            <div v-if="ticket.estado === 'abierto' && !mostrarRechazar" class="tk-acciones-estado">
-              <AppButton severity="danger" icon="ti ti-x" label="Rechazar" block :disabled="iniciando" @click="abrirRechazar" />
-              <AppButton
-                severity="primary"
-                icon="ti ti-player-play"
-                :label="iniciando ? 'Iniciando...' : 'Iniciar atención'"
-                :loading="iniciando"
-                block
-                @click="confirmarIniciar"
-              />
-            </div>
+            <label v-if="enCurso" class="mt-4 flex cursor-pointer items-start gap-2 border-t border-gray-100 pt-3 text-sm text-gray-700">
+              <input v-model="guardarComoKb" type="checkbox" class="mt-0.5 h-4 w-4 accent-primary-500" :disabled="resolviendo">
+              Al resolver, guardar esta solución en la Base de Conocimiento
+            </label>
+          </AppSeccion>
 
-            <!-- Formulario: Rechazar -->
-            <div v-if="mostrarRechazar" class="tk-form-inline">
-              <div class="campo" :class="{ 'campo--inerte': rechazando }">
-                <label class="campo__etiqueta" :for="campoMotivoRechazo.id">
-                  Motivo del rechazo<span aria-hidden="true"> *</span>
-                </label>
-                <div class="campo__caja">
-                  <textarea
-                    :id="campoMotivoRechazo.id"
-                    v-model="motivoRechazo"
-                    class="campo__control campo__control--area"
-                    :rows="3"
-                    required
-                    placeholder="El empleado verá este motivo en su seguimiento"
-                    :disabled="rechazando"
-                  ></textarea>
-                </div>
-              </div>
-              <div class="modal-actions">
-                <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="rechazando" @click="mostrarRechazar = false" />
-                <AppButton
-                  severity="danger"
-                  :label="rechazando ? 'Rechazando...' : 'Confirmar rechazo'"
-                  :loading="rechazando"
-                  @click="confirmarRechazar"
-                />
-              </div>
-            </div>
+          <AppSeccion titulo="Solicitante">
+            <TicketSolicitante :ticket="ticket" miniatura />
+          </AppSeccion>
 
-            <!-- en curso: guardar en KB + Marcar como resuelto -->
-            <template v-if="ESTADOS_EN_CURSO.includes(ticket.estado)">
-              <label class="check-inline">
-                <input v-model="guardarComoKb" type="checkbox" :disabled="resolviendo">
-                ¿Guardar esta solución en la Base de Conocimiento?
-              </label>
-              <AppButton
-                severity="primary"
-                icon="ti ti-circle-check"
-                label="Marcar como resuelto"
-                block
-                class="tk-btn-resolver"
-                @click="mostrarConfirmarResolver = true"
-              />
+          <AppSeccion v-if="equiposEmpleado.length || ticket.categoria_id" titulo="Contexto">
+            <TicketContexto
+              :equipos="equiposEmpleado"
+              :articulos="articulosRelacionados"
+              :categoria-id="ticket.categoria_id"
+              mostrar-vacios
+            />
+          </AppSeccion>
+
+          <AppSeccion v-if="satisfaccion" titulo="Satisfacción">
+            <template v-if="satisfaccion.fecha_envio">
+              <p class="flex items-baseline gap-2">
+                <span class="text-2xl font-semibold tabular-nums text-gray-900">{{ satisfaccion.nivel }}/5</span>
+                <span class="text-xs text-gray-500">{{ formatFecha(satisfaccion.fecha_envio) }}</span>
+              </p>
+              <p v-if="satisfaccion.comentario" class="mt-2 text-sm text-gray-700">“{{ satisfaccion.comentario }}”</p>
             </template>
-
-            <!-- terminal: Reabrir (solo jefe) -->
-            <template v-if="ESTADOS_TERMINALES.includes(ticket.estado) && !mostrarReabrir">
+            <template v-else>
+              <p class="text-sm text-gray-500">Encuesta enviada, sin respuesta todavía.</p>
               <AppButton
-                v-if="auth.esJefe"
-                severity="secondary"
-                icon="ti ti-refresh"
-                :label="reabriendo ? 'Reabriendo...' : 'Reabrir ticket'"
-                :loading="reabriendo"
-                block
-                class="tk-btn-reabrir"
-                @click="abrirReabrir"
-              />
-              <p v-else class="tk-nota">Solo el jefe puede reabrir este ticket.</p>
-            </template>
-
-            <!-- Formulario: Reabrir (motivo obligatorio, queda como nota interna) -->
-            <div v-if="mostrarReabrir" class="tk-form-inline">
-              <div class="campo" :class="{ 'campo--inerte': reabriendo }">
-                <label class="campo__etiqueta" :for="campoMotivoReabrir.id">
-                  Motivo para reabrir<span aria-hidden="true"> *</span>
-                </label>
-                <div class="campo__caja">
-                  <textarea
-                    :id="campoMotivoReabrir.id"
-                    v-model="motivoReabrir"
-                    class="campo__control campo__control--area"
-                    :rows="3"
-                    required
-                    placeholder="Queda como nota interna, no visible para el empleado"
-                    :disabled="reabriendo"
-                  ></textarea>
-                </div>
-              </div>
-              <div class="modal-actions">
-                <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="reabriendo" @click="mostrarReabrir = false" />
-                <AppButton
-                  severity="primary"
-                  :label="reabriendo ? 'Reabriendo...' : 'Confirmar reabrir'"
-                  :loading="reabriendo"
-                  @click="confirmarReabrir"
-                />
-              </div>
-            </div>
-
-            <div class="tk-problema-vinculado">
-              <RouterLink v-if="problemaVinculado" :to="`/problemas/${problemaVinculado.id}`" class="tk-problema-link">
-                <span class="tag badge-inline" :class="`tag--${rolDeTag('danger')}`">
-                  <i class="ti ti-alert-hexagon" aria-hidden="true"></i> Problema abierto: {{ problemaVinculado.titulo }}
-                </span>
-              </RouterLink>
-              <AppButton v-else severity="secondary" icon="ti ti-alert-hexagon" label="Marcar como problema" @click="mostrarProblemaForm = true" />
-            </div>
-          </div>
-
-          <div v-if="satisfaccion" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-mood-smile"></i> Satisfacción</div>
-            <p v-if="satisfaccion.fecha_envio" class="tk-detalle">
-              Nivel {{ satisfaccion.nivel }}/5 — {{ formatFecha(satisfaccion.fecha_envio) }}
-            </p>
-            <p v-if="satisfaccion.comentario" class="tk-nota">"{{ satisfaccion.comentario }}"</p>
-            <template v-if="!satisfaccion.fecha_envio">
-              <p class="tk-nota">Encuesta enviada, sin respuesta todavía.</p>
-              <AppButton
+                class="mt-3"
+                size="sm"
+                variant="outline"
                 severity="secondary"
                 icon="ti ti-brand-whatsapp"
                 label="Copiar mensaje de WhatsApp"
-                block
-                class="tk-btn-satisfaccion"
                 @click="copiarMensajeSatisfaccion"
               />
             </template>
-          </div>
-        </div>
-
-        <!-- Actividad y conversación: feed único de hitos + comentarios
-             (revisión "Filas con foco", 2026-09-04) — reemplaza a las dos
-             cards separadas (Conversación col-6 + Historial col-3) que
-             tenía esta página. Mismo componente y mismos datos que ya usa
-             TicketDetallePanel.vue (Triage), consistencia entre las dos
-             superficies del ticket en vez de mantener una segunda
-             variante con filtro por tipo. -->
-        <div class="card col-9 tk-actividad">
-          <div class="datos-title"><i class="ti ti-activity"></i> Actividad y conversación</div>
-
-          <TicketTimelineUnificado :descripcion="ticket.descripcion" :filas="timelineUnificado" :autor-de="autorDe" />
-
-          <TicketComposer
-            v-if="!ESTADOS_TERMINALES.includes(ticket.estado)"
-            v-model:mensaje="nuevoComentario"
-            v-model:interno="comentarioInterno"
-            :enviando="enviandoComentario"
-            @enviar="enviarComentario"
-          />
-          <p v-else class="tk-nota">
-            Ticket {{ estadoInfo(ticket.estado).label.toLowerCase() }} — {{ auth.esJefe ? 'reábrelo para seguir comentando.' : 'solo el jefe puede reabrirlo para seguir comentando.' }}
-          </p>
-        </div>
+          </AppSeccion>
+        </aside>
       </div>
-    </main>
+    </template>
 
     <ProblemaForm
       v-if="mostrarProblemaForm"
@@ -322,8 +337,8 @@ const campoMotivoReabrir = useCampoAccesible();
       @cerrar="onProblemaFormCerrado"
     />
 
-    <!-- Confirmación no destructiva (ConfirmDialog compartido): desasignar
-         un ticket en curso, para no dejarlo sin responsable por error -->
+    <!-- Confirmación no destructiva: desasignar un ticket en curso, para no
+         dejarlo sin responsable por error -->
     <ConfirmDialog
       v-if="mostrarConfirmarDesasignar"
       ref="dialogoDesasignar"
@@ -349,5 +364,3 @@ const campoMotivoReabrir = useCampoAccesible();
     />
   </div>
 </template>
-
-

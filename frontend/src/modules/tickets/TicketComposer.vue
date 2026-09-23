@@ -44,28 +44,42 @@ watch(
 </script>
 
 <template>
-  <div class="tk-nuevo-comentario">
+  <!-- Una sola caja: el texto arriba, la visibilidad y el envío abajo. Con
+       "Nota interna" marcada la caja se tiñe de ámbar (mismo código que la
+       nota en el feed): se ve ANTES de enviar a quién le llega el mensaje. -->
+  <div
+    class="rounded-lg border transition-colors duration-150 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500"
+    :class="interno ? 'border-amber-200 bg-amber-50/60' : 'border-gray-200 bg-white'"
+  >
     <textarea
       ref="textarea"
-      rows="1"
-      class="tk-comentario-input"
-      placeholder="Escribe una nota interna o una respuesta para el empleado..."
+      rows="2"
+      class="block w-full resize-none rounded-t-lg bg-transparent px-3.5 pt-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+      aria-label="Mensaje del comentario"
+      :placeholder="interno ? 'Nota interna para el equipo de TI…' : 'Escriba una respuesta para el empleado…'"
       :value="mensaje"
       :disabled="enviando"
       @input="alEscribir"
     ></textarea>
-    <div class="tk-comentario-acciones">
-      <label class="check-inline">
+    <div class="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
+      <label
+        class="inline-flex min-w-0 cursor-pointer select-none items-center gap-2 rounded-md px-1.5 py-1 text-sm"
+        :class="interno ? 'text-amber-800' : 'text-gray-600'"
+      >
         <input
           :checked="interno"
           type="checkbox"
+          class="h-4 w-4 accent-amber-600"
           :disabled="enviando"
           @change="emit('update:interno', $event.target.checked)"
         >
-        Nota interna (no visible para el empleado)
+        <i class="ti ti-lock" aria-hidden="true"></i>
+        <span class="truncate">Nota interna <span class="text-xs text-gray-500">· no la ve el empleado</span></span>
       </label>
       <AppButton
+        size="sm"
         severity="secondary"
+        icon="ti ti-send"
         :label="enviando ? 'Enviando...' : 'Comentar'"
         :loading="enviando"
         :disabled="!mensaje.trim()"
@@ -74,5 +88,3 @@ watch(
     </div>
   </div>
 </template>
-
-

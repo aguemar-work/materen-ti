@@ -27,6 +27,21 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-23** (**Rediseño de Tickets**) — el módulo central, con el
+  sistema de `docs/SISTEMA-DISENO.md`. Bandejas como segmentado con
+  contadores (se retira el riel lateral: le quitaba ~220px a la conversación
+  en Triage), subtítulo con atajo "N sin asignar", tabla con prioridad
+  proporcional, solicitante con avatar y edad en riesgo en rojo; barra de
+  acciones masivas `role="toolbar"`; tarjetas en móvil. Detalle (panel y
+  página) con conversación como columna principal y gestión/solicitante/
+  contexto en lateral; una sola acción sólida por estado, Rechazar en
+  outline de peligro. Timeline como conversación (nota interna: fondo
+  ámbar + candado + rótulo). Reporte de satisfacción como tablero con
+  distribución 1–5. Componentes nuevos del módulo: `PrioridadTicket`,
+  `DistribucionNiveles`, `TicketSolicitante`, `TicketContexto` (compartidos
+  entre panel y página). Copy sin tuteo. Tests de render: selectores de
+  presentación actualizados (`[role="toolbar"]`, `data-tipo`/
+  `data-visibilidad`, outline en KB/Rechazar); ningún `expect` retirado.
 - **2026-09-23** (**Rediseño de Inventario: Equipos y Licencias**) — con el
   sistema de `docs/SISTEMA-DISENO.md`. Equipos: KPIs que filtran (Libres/
   Ocupados/En reparación), tabla de 8 → 5 columnas (equipo con código/almacén

@@ -80,7 +80,7 @@ watch(() => form.value.subcategoriaId, (id) => {
 async function guardar() {
   error.value = '';
   if (!form.value.categoriaId) {
-    error.value = 'Selecciona el tipo de solicitud';
+    error.value = 'Seleccione el tipo de solicitud';
     return;
   }
   guardando.value = true;
@@ -131,15 +131,20 @@ onMounted(async () => {
     @close="emit('cerrar', resultado)"
   >
     <form id="ti-form" class="form-grid" @submit.prevent="guardar">
-        <div class="form-group full">
-          <label class="check-inline">
-            <input v-model="esParaEmpleado" type="checkbox" :disabled="guardando">
-            Es a nombre de un empleado (llamó o pasó en persona)
+        <!-- Para quién es: interno de TI (por defecto) o a nombre de un
+             empleado. Va primero porque cambia qué más hay que llenar. -->
+        <div class="full">
+          <label class="flex cursor-pointer items-start gap-2.5 rounded-md bg-gray-50 px-3 py-2.5 text-sm text-gray-700">
+            <input v-model="esParaEmpleado" type="checkbox" class="mt-0.5 h-4 w-4 accent-primary-500" :disabled="guardando">
+            <span>
+              <span class="font-medium text-gray-900">Es a nombre de un empleado</span>
+              <span class="block text-xs text-gray-500">Llamó o pasó en persona. Sin marcar, queda como tarea interna de TI.</span>
+            </span>
           </label>
         </div>
 
-        <div v-if="esParaEmpleado" class="form-group full">
-          <label for="ti-empleado">Empleado</label>
+        <div v-if="esParaEmpleado" class="campo full">
+          <label class="campo__etiqueta" for="ti-empleado">Empleado</label>
           <BuscadorCombo
             id="ti-empleado"
             v-model="empleadoSelId"
@@ -151,7 +156,7 @@ onMounted(async () => {
           >
             <template #resultado="{ item }">
               <span>{{ item.nombres }} {{ item.apellidos }}</span>
-              <span class="combo-sec">{{ item.dni }}</span>
+              <span class="ml-auto text-xs text-gray-500 tabular-nums">{{ item.dni }}</span>
             </template>
           </BuscadorCombo>
         </div>
@@ -176,7 +181,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="subcategoriasFiltradas.length" class="campo full" :class="{ 'campo--inerte': guardando }">
+        <div v-if="subcategoriasFiltradas.length" class="campo" :class="{ 'campo--inerte': guardando }">
           <label class="campo__etiqueta" :for="campoSubcategoria.id">Subcategoría</label>
           <div class="campo__caja">
             <select
@@ -193,7 +198,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <div class="campo" :class="{ 'campo--inerte': guardando, full: !subcategoriasFiltradas.length }">
           <label class="campo__etiqueta" :for="campoTipo.id">Tipo</label>
           <div class="campo__caja">
             <select

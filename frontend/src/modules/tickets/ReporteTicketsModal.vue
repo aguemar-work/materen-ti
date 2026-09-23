@@ -19,9 +19,12 @@ import { CABECERA_CSV_TICKETS, filaCsvTicket } from '../../core/exportar-tickets
 import Modal from '../../components/shared/Modal.vue';
 import { showToast } from '../../core/toast.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
-import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppKpi from '../../components/ui/AppKpi.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
 import { generarReporteTickets } from './reporte.js';
 import {
   PERIODOS, MESES, anclaDeHoy, normalizarAncla, limitarAncla, desplazarAncla,
@@ -149,64 +152,23 @@ const etiquetaColMismoPeriodo = computed(() => {
   return 'Este mes';
 });
 
-// Definición de columnas de CarbonDataTable para las 4 tablas de reporte con
-// estructura real (filas dinámicas, varias columnas numéricas): densidad
-// `sm` porque son reportes numéricos densos de solo lectura, no un listado
-// operativo con acciones, y `:con-tarjetas="false"` porque ninguna tenía
-// tarjeta móvil propia (ya resolvían pantallas angostas con scroll
-// horizontal dentro de `.table-wrap`). Las 3 tablas de "Volumen y
-// distribución" (Categoría/Prioridad/Tipo) se dejan como `<table>` simple
-// más abajo: son 2 columnas, una lista fija y chica (categorías/prioridades/
-// tipos del dominio), sin orden ni estado vacío real que aporte algo sobre
-// el colspan=2 ya hardcodeado — migrarlas no gana nada y sí les hace perder
-// el layout compacto lado a lado de `.rep-cols`.
-const columnasTiempoPrioridad = [
-  { clave: 'clave', label: 'Prioridad', elastica: true },
-  { clave: 'muestra', label: 'Resueltos', num: true },
-  { clave: 'promedio', label: 'Tiempo medio', num: true },
-  { clave: 'mediana', label: 'Mediana', num: true },
-];
-const columnasTiempoPrioridadVisibles = computed(() => columnasVisibles(columnasTiempoPrioridad));
-const totalColumnasTiempoPrioridad = computed(() => columnasTiempoPrioridadVisibles.value.length);
+// Rediseño 2026-09-23: las tablas del reporte pasan a AppTable en modo
+// cliente (`:lazy="false"`, sin paginador: son pocas filas y ya vienen
+// completas). El rótulo de la 3ª columna de técnicos cambia con el periodo
+// (Hoy/Esta semana/Este mes) — sale de etiquetaColMismoPeriodo.
 
-// Rótulo de la 3ª columna cambia con el periodo (Hoy/Esta semana/Este mes) —
-// por eso este arreglo es un computed y no una constante como las demás.
-const columnasTecnico = computed(() => [
-  { clave: 'nombre', label: 'Técnico', elastica: true },
-  { clave: 'cantidad', label: 'Resueltos', num: true },
-  { clave: 'mismoPeriodo', label: etiquetaColMismoPeriodo.value, num: true },
-  { clave: 'arrastrados', label: 'Anteriores', num: true },
-  { clave: 'promedio', label: 'Tiempo medio', num: true },
-  { clave: 'mediana', label: 'Mediana', num: true },
+// Detalle de un KPI: variación contra el periodo anterior + un desglose
+// opcional, en una sola línea.
+function detalleKpi(delta, extra = '') {
+  return [delta ? `${delta} vs. anterior` : '', extra].filter(Boolean).join(' · ');
+}
+
+// Las tres distribuciones de "Volumen", en el orden en que se leen.
+const gruposVolumen = computed(() => [
+  { titulo: 'Por categoría', filas: datos.value?.porCategoria || [] },
+  { titulo: 'Por prioridad', filas: porPrioridadLabel.value },
+  { titulo: 'Por tipo', filas: porTipoLabel.value },
 ]);
-const columnasTecnicoVisibles = computed(() => columnasVisibles(columnasTecnico.value));
-const totalColumnasTecnico = computed(() => columnasTecnicoVisibles.value.length);
-
-const columnasArrastrados = [
-  { clave: 'codigo', label: 'Código' },
-  { clave: 'titulo', label: 'Título', elastica: true },
-  { clave: 'tecnico', label: 'Técnico' },
-  { clave: 'creadoEn', label: 'Creado el' },
-  { clave: 'diasAbierto', label: 'Días abierto', num: true },
-];
-const columnasArrastradosVisibles = computed(() => columnasVisibles(columnasArrastrados));
-const totalColumnasArrastrados = computed(() => columnasArrastradosVisibles.value.length);
-
-// "Histórico" perdió el title="Total histórico..." que tenía como <th> plano
-// (CarbonDataTable no expone un atributo por columna para eso) — la nota
-// .tk-nota justo encima del template ya explica lo mismo en texto, así que
-// no se pierde la aclaración, solo el tooltip puntual del encabezado.
-const columnasSolicitante = [
-  { clave: 'solicitante', label: 'Usuario', elastica: true },
-  { clave: 'total', label: 'Histórico', num: true },
-  { clave: 'creados', label: 'Ticket creado', num: true },
-  { clave: 'resueltos', label: 'Ticket resuelto', num: true },
-  { clave: 'rechazados', label: 'Rechazado', num: true },
-  { clave: 'encuestasContestadas', label: 'Enc. contestadas', num: true },
-  { clave: 'encuestasPendientes', label: 'Enc. pendientes', num: true },
-];
-const columnasSolicitanteVisibles = computed(() => columnasVisibles(columnasSolicitante));
-const totalColumnasSolicitante = computed(() => columnasSolicitanteVisibles.value.length);
 
 // Comparativa contra el periodo anterior equivalente (mes contra mes, semana
 // contra semana). Es un resumen liviano aparte: no hace falta traer todas las
@@ -386,37 +348,33 @@ async function exportarCsv() {
 onMounted(cargar);
 </script>
 
+
 <template>
-  <Modal ref="modal" size="lg" @close="emit('cerrar')">
-    <template #titulo><i class="ti ti-report" aria-hidden="true"></i> Reporte de tickets</template>
-        <div class="rep-body">
-          <div class="rep-periodos">
-            <div class="rep-granularidad" role="group" aria-label="Tipo de periodo">
-              <button
-                v-for="p in PERIODOS"
-                :key="p.valor"
-                type="button"
-                class="btn"
-                :class="{ 'is-activo': periodo === p.valor }"
-                :disabled="cargando"
-                :aria-pressed="periodo === p.valor"
-                @click="cambiarPeriodo(p.valor)"
-              >{{ p.label }}</button>
-            </div>
+  <Modal ref="modal" size="lg" titulo="Reporte de tickets" @close="emit('cerrar')">
+    <div class="space-y-6">
+      <!-- ══ Qué periodo y de quién: granularidad, navegación y alcance ══ -->
+      <div class="space-y-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <AppSegmentado
+            :model-value="periodo"
+            :opciones="PERIODOS"
+            label="Tipo de periodo"
+            @update:model-value="cambiarPeriodo"
+          />
+          <div class="flex items-center gap-1">
+            <button
+              class="icon-btn"
+              type="button"
+              :disabled="cargando"
+              :aria-label="periodo === 'diario' ? 'Día anterior' : periodo === 'semanal' ? 'Semana anterior' : 'Mes anterior'"
+              @click="mover(-1)"
+            ><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
 
-            <div class="rep-nav">
-              <button
-                class="icon-btn"
-                type="button"
-                :disabled="cargando"
-                :aria-label="periodo === 'diario' ? 'Día anterior' : periodo === 'semanal' ? 'Semana anterior' : 'Mes anterior'"
-                @click="mover(-1)"
-              ><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
-
-              <template v-if="periodo === 'mensual'">
+            <template v-if="periodo === 'mensual'">
+              <label class="relative inline-block">
+                <span class="sr-only">Mes del reporte</span>
                 <select
-                  class="rep-campo"
-                  aria-label="Mes del reporte"
+                  class="h-9 cursor-pointer appearance-none rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   :value="mesElegido"
                   :disabled="cargando"
                   @change="elegirMes"
@@ -428,334 +386,293 @@ onMounted(cargar);
                     :disabled="anioElegido === hoyAnio && i > hoyMes"
                   >{{ nombre }}</option>
                 </select>
+                <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+              </label>
+              <label class="relative inline-block">
+                <span class="sr-only">Año del reporte</span>
                 <select
-                  class="rep-campo rep-campo-anio"
-                  aria-label="Año del reporte"
+                  class="h-9 cursor-pointer appearance-none rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm tabular-nums text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   :value="anioElegido"
                   :disabled="cargando"
                   @change="elegirAnio"
                 >
                   <option v-for="a in anios" :key="a" :value="a">{{ a }}</option>
                 </select>
-              </template>
-              <input
-                v-else
-                class="rep-campo"
-                type="date"
-                :value="ancla"
-                :max="maxDia"
-                :disabled="cargando"
-                :aria-label="periodo === 'diario' ? 'Día del reporte' : 'Semana del reporte (cualquier día de la semana)'"
-                @change="elegirDia"
-              >
-
-              <button
-                class="icon-btn"
-                type="button"
-                :disabled="cargando || !hayPeriodoSiguiente"
-                :aria-label="periodo === 'diario' ? 'Día siguiente' : periodo === 'semanal' ? 'Semana siguiente' : 'Mes siguiente'"
-                @click="mover(1)"
-              ><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
-
-              <button type="button" class="btn btn--secondary" :disabled="cargando || esPeriodoActual" @click="irAlActual">Actual</button>
-            </div>
-
-            <span class="rep-rango">
-              {{ rangoLabel }} · {{ alcanceLabel }}
-              <span v-if="periodoEnCurso" class="rep-encurso">En curso</span>
-            </span>
-          </div>
-
-          <div class="rep-alcance" role="group" aria-label="Alcance del reporte">
-            <button
-              v-for="a in ALCANCES"
-              :key="a.valor"
-              type="button"
-              class="btn"
-              :class="{ 'is-activo': alcance === a.valor }"
+                <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+              </label>
+            </template>
+            <input
+              v-else
+              class="h-9 rounded-md border border-gray-200 bg-white px-2.5 text-sm tabular-nums text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              type="date"
+              :value="ancla"
+              :max="maxDia"
               :disabled="cargando"
-              :aria-pressed="alcance === a.valor"
-              @click="cambiarAlcance(a.valor)"
-            >{{ a.label }}</button>
+              :aria-label="periodo === 'diario' ? 'Día del reporte' : 'Semana del reporte (cualquier día de la semana)'"
+              @change="elegirDia"
+            >
+
+            <button
+              class="icon-btn"
+              type="button"
+              :disabled="cargando || !hayPeriodoSiguiente"
+              :aria-label="periodo === 'diario' ? 'Día siguiente' : periodo === 'semanal' ? 'Semana siguiente' : 'Mes siguiente'"
+              @click="mover(1)"
+            ><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
+
+            <AppButton size="sm" variant="text" severity="secondary" label="Actual" :disabled="cargando || esPeriodoActual" @click="irAlActual" />
           </div>
-
-          <div v-if="cargando" class="no-results">Calculando reporte...</div>
-          <div v-else-if="error" class="notif notif--inline" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
-            <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
-            <div class="notif__texto">
-              <p class="notif__detalle">{{ error }}</p>
-            </div>
-          </div>
-
-          <template v-else-if="datos">
-            <label class="rep-toggle-tasa">
-              <input v-model="incluirTasaRespuesta" type="checkbox">
-              Incluir tasa de respuesta de encuestas
-            </label>
-            <div class="rep-kpis" :class="{ 'rep-kpis-3col': !incluirTasaRespuesta }">
-              <div class="rep-kpi">
-                <span class="rep-kpi-valor">{{ datos.totalCreados }}</span>
-                <span class="rep-kpi-label">Creados</span>
-                <span v-if="deltaDe('totalCreados')" class="rep-kpi-delta">{{ deltaDe('totalCreados') }}</span>
-              </div>
-              <div class="rep-kpi">
-                <span class="rep-kpi-valor">{{ datos.totalResueltos }}</span>
-                <span class="rep-kpi-label">Resueltos</span>
-                <span v-if="deltaDe('totalResueltos')" class="rep-kpi-delta">{{ deltaDe('totalResueltos') }}</span>
-                <span class="rep-kpi-desglose">{{ datos.resueltosMismoPeriodo }} {{ etiquetaResueltosMismoPeriodo }} · {{ datos.resueltosArrastrados }} anteriores</span>
-              </div>
-              <div class="rep-kpi">
-                <span class="rep-kpi-valor">{{ datos.promedioSatisfaccion !== null ? datos.promedioSatisfaccion.toFixed(1) : '—' }}/5</span>
-                <span class="rep-kpi-label">Satisfacción</span>
-                <span v-if="deltaDe('promedioSatisfaccion', 1)" class="rep-kpi-delta">{{ deltaDe('promedioSatisfaccion', 1) }}</span>
-              </div>
-              <div v-if="incluirTasaRespuesta" class="rep-kpi">
-                <span class="rep-kpi-valor">{{ tasaRespuesta }}%</span>
-                <span class="rep-kpi-label">Tasa de respuesta</span>
-                <span v-if="deltaDe('tasaRespuesta', 0, ' pp')" class="rep-kpi-delta">{{ deltaDe('tasaRespuesta', 0, ' pp') }}</span>
-              </div>
-            </div>
-            <p v-if="comparativa" class="rep-comparativa">Variación respecto a {{ etiquetaAnterior }}</p>
-
-            <div class="rep-seccion">
-              <div class="datos-title">Volumen y distribución</div>
-              <div class="rep-cols">
-                <table class="rep-tabla" aria-label="Tickets por categoría">
-                  <thead><tr><th scope="col">Categoría</th><th scope="col" class="num">Cant.</th></tr></thead>
-                  <tbody>
-                    <tr v-for="c in datos.porCategoria" :key="c.clave"><td>{{ c.clave }}</td><td class="num">{{ c.cantidad }}</td></tr>
-                    <tr v-if="!datos.porCategoria.length"><td colspan="2" class="rep-vacio">Sin datos</td></tr>
-                  </tbody>
-                </table>
-                <table class="rep-tabla" aria-label="Tickets por prioridad">
-                  <thead><tr><th scope="col">Prioridad</th><th scope="col" class="num">Cant.</th></tr></thead>
-                  <tbody>
-                    <tr v-for="c in porPrioridadLabel" :key="c.clave"><td>{{ c.clave }}</td><td class="num">{{ c.cantidad }}</td></tr>
-                    <tr v-if="!porPrioridadLabel.length"><td colspan="2" class="rep-vacio">Sin datos</td></tr>
-                  </tbody>
-                </table>
-                <table class="rep-tabla" aria-label="Tickets por tipo">
-                  <thead><tr><th scope="col">Tipo</th><th scope="col" class="num">Cant.</th></tr></thead>
-                  <tbody>
-                    <tr v-for="c in porTipoLabel" :key="c.clave"><td>{{ c.clave }}</td><td class="num">{{ c.cantidad }}</td></tr>
-                    <tr v-if="!porTipoLabel.length"><td colspan="2" class="rep-vacio">Sin datos</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="rep-seccion">
-              <div class="datos-title">Tiempos y calidad de la atención</div>
-              <div class="rep-kpis rep-kpis-3">
-                <div class="rep-kpi">
-                  <span class="rep-kpi-valor">{{ formatHoras(datos.tiempoResolucion?.promedio) }}</span>
-                  <span class="rep-kpi-label">Tiempo medio</span>
-                </div>
-                <div class="rep-kpi">
-                  <span class="rep-kpi-valor">{{ formatHoras(datos.tiempoResolucion?.mediana) }}</span>
-                  <span class="rep-kpi-label">Mediana</span>
-                </div>
-                <div class="rep-kpi">
-                  <span class="rep-kpi-valor">{{ datos.tasaReapertura === null ? '—' : datos.tasaReapertura + '%' }}</span>
-                  <span class="rep-kpi-label">Tasa de reapertura</span>
-                </div>
-              </div>
-              <div class="table-wrap solo-escritorio">
-                <table class="cds-table cds-table--sm" aria-label="Tiempo de atención por prioridad">
-                  <thead>
-                    <tr>
-                      <th
-                        v-for="col in columnasTiempoPrioridadVisibles"
-                        :key="col.clave"
-                        scope="col"
-                        :class="{ 'col-num': col.num }"
-                        :style="estiloColumna(col)"
-                      >{{ col.label }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-if="!tiempoPorPrioridadLabel.length">
-                      <td :colspan="totalColumnasTiempoPrioridad" class="cds-table__vacio">
-                        <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Sin tickets resueltos en el periodo" />
-                      </td>
-                    </tr>
-                    <template v-else>
-                      <tr v-for="fila in tiempoPorPrioridadLabel" :key="fila.clave">
-                        <td v-for="col in columnasTiempoPrioridadVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
-                          <template v-if="col.clave === 'promedio'">{{ formatHoras(fila.promedio) }}</template>
-                          <template v-else-if="col.clave === 'mediana'">{{ formatHoras(fila.mediana) }}</template>
-                          <template v-else>{{ fila[col.clave] }}</template>
-                        </td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-              <p class="tk-nota">
-                {{ datos.reaperturas }} reapertura(s) sobre {{ datos.totalResueltos }} ticket(s) resueltos en el periodo.
-              </p>
-            </div>
-
-            <div class="rep-seccion">
-              <div class="datos-title">Desempeño por técnico</div>
-              <div class="table-wrap solo-escritorio">
-                <table class="cds-table cds-table--sm" aria-label="Desempeño por técnico">
-                  <thead>
-                    <tr>
-                      <th
-                        v-for="col in columnasTecnicoVisibles"
-                        :key="col.clave"
-                        scope="col"
-                        :class="{ 'col-num': col.num }"
-                        :style="estiloColumna(col)"
-                      >{{ col.label }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-if="!porTecnicoNombres.length">
-                      <td :colspan="totalColumnasTecnico" class="cds-table__vacio">
-                        <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Sin tickets resueltos en el periodo" />
-                      </td>
-                    </tr>
-                    <template v-else>
-                      <tr v-for="fila in porTecnicoNombres" :key="fila.nombre">
-                        <td v-for="col in columnasTecnicoVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
-                          <template v-if="col.clave === 'promedio'">{{ formatHoras(fila.promedio) }}</template>
-                          <template v-else-if="col.clave === 'mediana'">{{ formatHoras(fila.mediana) }}</template>
-                          <template v-else>{{ fila[col.clave] }}</template>
-                        </td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="rep-seccion">
-              <div class="datos-title">Tickets anteriores resueltos en el periodo</div>
-              <div class="table-wrap solo-escritorio">
-                <table class="cds-table cds-table--sm" aria-label="Tickets anteriores resueltos en el periodo">
-                  <thead>
-                    <tr>
-                      <th
-                        v-for="col in columnasArrastradosVisibles"
-                        :key="col.clave"
-                        scope="col"
-                        :class="{ 'col-num': col.num }"
-                        :style="estiloColumna(col)"
-                      >{{ col.label }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-if="!arrastradosNombres.length">
-                      <td :colspan="totalColumnasArrastrados" class="cds-table__vacio">
-                        <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Sin tickets arrastrados resueltos en el periodo" />
-                      </td>
-                    </tr>
-                    <template v-else>
-                      <tr v-for="fila in arrastradosNombres" :key="fila.codigo">
-                        <td v-for="col in columnasArrastradosVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
-                          <span v-if="col.clave === 'codigo'" class="rep-codigo">{{ fila.codigo }}</span>
-                          <template v-else-if="col.clave === 'creadoEn'">{{ formatFecha(fila.creadoEn) }}</template>
-                          <template v-else>{{ fila[col.clave] }}</template>
-                        </td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="rep-seccion">
-              <div class="datos-title">Tickets del periodo por solicitante</div>
-              <p class="tk-nota">
-                "Histórico" es el total de siempre para ese usuario, no de este periodo — el resto de columnas sí es solo del periodo.
-              </p>
-              <!-- 7 columnas: en pantallas angostas la tabla scrollea sola en
-                   vez de desbordar el modal (.table-wrap, dentro de
-                   CarbonDataTable). -->
-              <div class="table-wrap solo-escritorio">
-                <table class="cds-table cds-table--sm" aria-label="Tickets del periodo por solicitante">
-                  <thead>
-                    <tr>
-                      <th
-                        v-for="col in columnasSolicitanteVisibles"
-                        :key="col.clave"
-                        scope="col"
-                        :class="{ 'col-num': col.num }"
-                        :style="estiloColumna(col)"
-                      >{{ col.label }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-if="!datos.porSolicitante.length">
-                      <td :colspan="totalColumnasSolicitante" class="cds-table__vacio">
-                        <EmptyState icono="ti ti-inbox" titulo="Sin datos" mensaje="Sin tickets creados en el periodo" />
-                      </td>
-                    </tr>
-                    <template v-else>
-                      <tr v-for="fila in datos.porSolicitante" :key="fila.solicitante">
-                        <td v-for="col in columnasSolicitanteVisibles" :key="col.clave" :class="{ 'col-num': col.num }">
-                          <TextoVacio v-if="col.clave === 'solicitante'" :valor="fila.solicitante" />
-                          <template v-else>{{ fila[col.clave] }}</template>
-                        </td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="rep-seccion">
-              <div class="datos-title">Satisfacción del servicio</div>
-              <p class="tk-detalle">{{ datos.encuestasRespondidas }} de {{ datos.encuestasGeneradas }} encuestas respondidas ({{ tasaRespuesta }}%)</p>
-              <p v-if="datos.comentariosTotal > datos.comentarios.length" class="tk-nota">
-                Se muestran los {{ datos.comentarios.length }} comentarios más recientes de {{ datos.comentariosTotal }}.
-              </p>
-              <ul v-if="datos.comentarios.length" class="rep-comentarios">
-                <li v-for="(c, i) in datos.comentarios" :key="i"><strong>{{ c.nivel }}/5</strong> — {{ c.comentario }} <span class="rep-fecha">({{ formatFechaHora(c.fecha) }})</span></li>
-              </ul>
-              <p v-else class="tk-nota">Sin comentarios en el periodo.</p>
-            </div>
-          </template>
+          <AppSegmentado
+            class="sm:ml-auto"
+            :model-value="alcance"
+            :opciones="ALCANCES"
+            label="Alcance del reporte"
+            @update:model-value="cambiarAlcance"
+          />
         </div>
 
+        <p class="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+          <span class="font-medium text-gray-900">{{ rangoLabel }}</span>
+          <span aria-hidden="true">·</span>
+          <span>{{ alcanceLabel }}</span>
+          <AppTag v-if="periodoEnCurso" tono="warning" punto>En curso</AppTag>
+        </p>
+      </div>
+
+      <p v-if="cargando" class="py-10 text-center text-sm text-gray-500" role="status">Calculando reporte...</p>
+      <div v-else-if="error" class="notif notif--inline" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
+
+      <template v-else-if="datos">
+        <!-- ══ Resumen ══ -->
+        <section class="space-y-3" aria-labelledby="rep-resumen">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 id="rep-resumen" class="text-sm font-semibold text-gray-900">Resumen</h3>
+            <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+              <input v-model="incluirTasaRespuesta" type="checkbox" class="h-4 w-4 accent-primary-500">
+              Incluir tasa de respuesta de encuestas
+            </label>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <AppKpi icono="ti ti-inbox" label="Creados" :valor="datos.totalCreados" :detalle="detalleKpi(deltaDe('totalCreados'))" />
+            <AppKpi
+              icono="ti ti-circle-check"
+              tono="success"
+              label="Resueltos"
+              :valor="datos.totalResueltos"
+              :detalle="detalleKpi(deltaDe('totalResueltos'), `${datos.resueltosMismoPeriodo} ${etiquetaResueltosMismoPeriodo} · ${datos.resueltosArrastrados} anteriores`)"
+            />
+            <AppKpi
+              icono="ti ti-mood-smile"
+              label="Satisfacción"
+              :valor="`${datos.promedioSatisfaccion !== null ? datos.promedioSatisfaccion.toFixed(1) : '—'}/5`"
+              :detalle="detalleKpi(deltaDe('promedioSatisfaccion', 1))"
+            />
+            <AppKpi
+              v-if="incluirTasaRespuesta"
+              icono="ti ti-message-check"
+              label="Tasa de respuesta"
+              :valor="`${tasaRespuesta}%`"
+              :detalle="detalleKpi(deltaDe('tasaRespuesta', 0, ' pp'))"
+            />
+          </div>
+          <p v-if="comparativa" class="text-xs text-gray-500">Variación respecto a {{ etiquetaAnterior }}.</p>
+        </section>
+
+        <!-- ══ Volumen y distribución: tres listas cortas lado a lado ══ -->
+        <section class="space-y-3" aria-labelledby="rep-volumen">
+          <h3 id="rep-volumen" class="text-sm font-semibold text-gray-900">Volumen y distribución</h3>
+          <div class="grid gap-3 sm:grid-cols-3">
+            <div v-for="grupo in gruposVolumen" :key="grupo.titulo" class="rounded-lg border border-gray-200">
+              <p class="border-b border-gray-100 px-3 py-2 text-xs font-medium text-gray-500">{{ grupo.titulo }}</p>
+              <ul v-if="grupo.filas.length" class="divide-y divide-gray-100" :aria-label="`Tickets ${grupo.titulo.toLowerCase()}`">
+                <li v-for="c in grupo.filas" :key="c.clave" class="flex items-center justify-between gap-3 px-3 py-1.5 text-sm">
+                  <span class="truncate text-gray-700">{{ c.clave }}</span>
+                  <span class="font-medium tabular-nums text-gray-900">{{ c.cantidad }}</span>
+                </li>
+              </ul>
+              <p v-else class="px-3 py-3 text-sm text-gray-400">Sin datos</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══ Tiempos y calidad ══ -->
+        <section class="space-y-3" aria-labelledby="rep-tiempos">
+          <h3 id="rep-tiempos" class="text-sm font-semibold text-gray-900">Tiempos y calidad de la atención</h3>
+          <div class="grid gap-3 sm:grid-cols-3">
+            <AppKpi icono="ti ti-clock" label="Tiempo medio de resolución" :valor="formatHoras(datos.tiempoResolucion?.promedio)" />
+            <AppKpi icono="ti ti-clock-hour-4" label="Mediana" :valor="formatHoras(datos.tiempoResolucion?.mediana)" />
+            <AppKpi
+              icono="ti ti-refresh"
+              :tono="datos.tasaReapertura ? 'warning' : 'neutral'"
+              label="Tasa de reapertura"
+              :valor="datos.tasaReapertura === null ? '—' : datos.tasaReapertura + '%'"
+              :detalle="`${datos.reaperturas} de ${datos.totalResueltos} resueltos`"
+            />
+          </div>
+          <div class="overflow-hidden rounded-lg border border-gray-200">
+            <AppTable :value="tiempoPorPrioridadLabel" :lazy="false" data-key="clave" aria-label="Tiempo de atención por prioridad">
+              <AppColumn field="clave" header="Prioridad" />
+              <AppColumn field="muestra" header="Resueltos">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ f.muestra }}</span></template>
+              </AppColumn>
+              <AppColumn field="promedio" header="Tiempo medio">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ formatHoras(f.promedio) }}</span></template>
+              </AppColumn>
+              <AppColumn field="mediana" header="Mediana">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ formatHoras(f.mediana) }}</span></template>
+              </AppColumn>
+              <template #empty><p class="py-6 text-center text-sm text-gray-400">Sin tickets resueltos en el periodo.</p></template>
+            </AppTable>
+          </div>
+        </section>
+
+        <!-- ══ Desempeño por técnico ══ -->
+        <section class="space-y-3" aria-labelledby="rep-tecnicos">
+          <h3 id="rep-tecnicos" class="text-sm font-semibold text-gray-900">Desempeño por técnico</h3>
+          <div class="overflow-hidden rounded-lg border border-gray-200">
+            <AppTable :value="porTecnicoNombres" :lazy="false" data-key="nombre" aria-label="Desempeño por técnico">
+              <AppColumn field="nombre" header="Técnico">
+                <template #body="{ data: f }"><span class="font-medium text-gray-900">{{ f.nombre }}</span></template>
+              </AppColumn>
+              <AppColumn field="cantidad" header="Resueltos">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ f.cantidad }}</span></template>
+              </AppColumn>
+              <AppColumn field="mismoPeriodo" :header="etiquetaColMismoPeriodo">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ f.mismoPeriodo }}</span></template>
+              </AppColumn>
+              <AppColumn field="arrastrados" header="Anteriores">
+                <template #body="{ data: f }"><span class="tabular-nums" :class="f.arrastrados ? '' : 'text-gray-300'">{{ f.arrastrados }}</span></template>
+              </AppColumn>
+              <AppColumn field="promedio" header="Tiempo medio">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ formatHoras(f.promedio) }}</span></template>
+              </AppColumn>
+              <AppColumn field="mediana" header="Mediana">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ formatHoras(f.mediana) }}</span></template>
+              </AppColumn>
+              <template #empty><p class="py-6 text-center text-sm text-gray-400">Sin tickets resueltos en el periodo.</p></template>
+            </AppTable>
+          </div>
+        </section>
+
+        <!-- ══ Arrastrados ══ -->
+        <section class="space-y-3" aria-labelledby="rep-arrastrados">
+          <h3 id="rep-arrastrados" class="text-sm font-semibold text-gray-900">Tickets anteriores resueltos en el periodo</h3>
+          <div class="overflow-hidden rounded-lg border border-gray-200">
+            <AppTable :value="arrastradosNombres" :lazy="false" data-key="codigo" aria-label="Tickets anteriores resueltos en el periodo">
+              <AppColumn field="titulo" header="Ticket">
+                <template #body="{ data: f }">
+                  <div class="min-w-0">
+                    <div class="text-xs font-medium tabular-nums text-gray-500">{{ f.codigo }}</div>
+                    <div class="text-gray-900">{{ f.titulo }}</div>
+                  </div>
+                </template>
+              </AppColumn>
+              <AppColumn field="tecnico" header="Técnico" />
+              <AppColumn field="creadoEn" header="Creado el">
+                <template #body="{ data: f }"><span class="whitespace-nowrap tabular-nums">{{ formatFecha(f.creadoEn) }}</span></template>
+              </AppColumn>
+              <AppColumn field="diasAbierto" header="Días abierto">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ f.diasAbierto }}</span></template>
+              </AppColumn>
+              <template #empty><p class="py-6 text-center text-sm text-gray-400">Sin tickets arrastrados resueltos en el periodo.</p></template>
+            </AppTable>
+          </div>
+        </section>
+
+        <!-- ══ Por solicitante ══ -->
+        <section class="space-y-3" aria-labelledby="rep-solicitantes">
+          <div>
+            <h3 id="rep-solicitantes" class="text-sm font-semibold text-gray-900">Tickets del periodo por solicitante</h3>
+            <p class="mt-0.5 text-xs text-gray-500">"Histórico" es el total de siempre para ese usuario, no de este periodo — el resto de columnas sí es solo del periodo.</p>
+          </div>
+          <div class="overflow-hidden rounded-lg border border-gray-200">
+            <AppTable :value="datos.porSolicitante" :lazy="false" data-key="solicitante" aria-label="Tickets del periodo por solicitante">
+              <AppColumn field="solicitante" header="Usuario">
+                <template #body="{ data: f }">
+                  <span :class="f.solicitante ? 'text-gray-900' : 'text-gray-400'">{{ f.solicitante || 'Sin registrar' }}</span>
+                </template>
+              </AppColumn>
+              <AppColumn field="total" header="Histórico">
+                <template #body="{ data: f }"><span class="tabular-nums text-gray-500">{{ f.total }}</span></template>
+              </AppColumn>
+              <AppColumn field="creados" header="Creados">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ f.creados }}</span></template>
+              </AppColumn>
+              <AppColumn field="resueltos" header="Resueltos">
+                <template #body="{ data: f }"><span class="tabular-nums">{{ f.resueltos }}</span></template>
+              </AppColumn>
+              <AppColumn field="rechazados" header="Rechazados">
+                <template #body="{ data: f }"><span class="tabular-nums" :class="f.rechazados ? '' : 'text-gray-300'">{{ f.rechazados }}</span></template>
+              </AppColumn>
+              <AppColumn field="encuestasContestadas" header="Encuestas">
+                <template #body="{ data: f }">
+                  <span class="whitespace-nowrap tabular-nums" :title="`${f.encuestasContestadas} contestadas, ${f.encuestasPendientes} pendientes`">
+                    {{ f.encuestasContestadas }} <span class="text-gray-400">/ {{ f.encuestasContestadas + f.encuestasPendientes }}</span>
+                  </span>
+                </template>
+              </AppColumn>
+              <template #empty><p class="py-6 text-center text-sm text-gray-400">Sin tickets creados en el periodo.</p></template>
+            </AppTable>
+          </div>
+        </section>
+
+        <!-- ══ Satisfacción ══ -->
+        <section class="space-y-3" aria-labelledby="rep-satisfaccion">
+          <div>
+            <h3 id="rep-satisfaccion" class="text-sm font-semibold text-gray-900">Satisfacción del servicio</h3>
+            <p class="mt-0.5 text-xs tabular-nums text-gray-500">
+              {{ datos.encuestasRespondidas }} de {{ datos.encuestasGeneradas }} encuestas respondidas ({{ tasaRespuesta }}%)
+              <template v-if="datos.comentariosTotal > datos.comentarios.length"> · se muestran los {{ datos.comentarios.length }} comentarios más recientes de {{ datos.comentariosTotal }}</template>
+            </p>
+          </div>
+          <ul v-if="datos.comentarios.length" class="divide-y divide-gray-100 rounded-lg border border-gray-200">
+            <li v-for="(c, i) in datos.comentarios" :key="i" class="flex items-start gap-3 px-3 py-2.5">
+              <AppTag :tono="c.nivel <= 2 ? 'danger' : c.nivel === 3 ? 'warning' : 'success'" class="tabular-nums">{{ c.nivel }}/5</AppTag>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-gray-800">{{ c.comentario }}</p>
+                <p class="mt-0.5 text-xs tabular-nums text-gray-500">{{ formatFechaHora(c.fecha) }}</p>
+              </div>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-gray-400">Sin comentarios en el periodo.</p>
+        </section>
+      </template>
+    </div>
+
     <template #acciones>
-      <button type="button" class="btn btn--secondary" @click="modal?.cerrar()">Cerrar</button>
-      <button
-        type="button"
-        class="btn btn--secondary"
+      <AppButton variant="text" severity="secondary" label="Cerrar" @click="modal?.cerrar()" />
+      <AppButton
+        variant="outline"
+        severity="secondary"
+        :icon="exportandoPeriodo ? 'ti ti-loader-2' : 'ti ti-table-export'"
+        :loading="exportandoPeriodo"
+        :label="exportandoPeriodo ? 'Exportando...' : 'CSV del periodo'"
         :disabled="exportandoPeriodo || cargando"
         title="Exporta los tickets del periodo del reporte"
         @click="exportarCsvPeriodo"
-      >
-        {{ exportandoPeriodo ? 'Exportando...' : 'CSV del periodo' }}
-        <i v-if="exportandoPeriodo" class="ti ti-loader-2" aria-hidden="true"></i>
-        <i v-else class="ti ti-table-export" aria-hidden="true"></i>
-      </button>
-      <button
-        type="button"
-        class="btn btn--secondary"
+      />
+      <AppButton
+        variant="outline"
+        severity="secondary"
+        :icon="exportando ? 'ti ti-loader-2' : 'ti ti-table-export'"
+        :loading="exportando"
+        :label="exportando ? 'Exportando...' : 'CSV de la bandeja'"
         :disabled="exportando"
         title="Exporta la bandeja con los filtros aplicados, no el periodo del reporte"
         @click="exportarCsv"
-      >
-        {{ exportando ? 'Exportando...' : 'CSV de la bandeja' }}
-        <i v-if="exportando" class="ti ti-loader-2" aria-hidden="true"></i>
-        <i v-else class="ti ti-table-export" aria-hidden="true"></i>
-      </button>
-      <button
-        type="button"
-        class="btn btn--primary"
+      />
+      <AppButton
+        :icon="descargando ? 'ti ti-loader-2' : 'ti ti-download'"
+        :loading="descargando"
+        :label="descargando ? 'Generando PDF...' : 'Descargar PDF'"
         :disabled="descargando || cargando || !datos"
         @click="descargar"
-      >
-        {{ descargando ? 'Generando PDF...' : 'Descargar PDF' }}
-        <i v-if="descargando" class="ti ti-loader-2" aria-hidden="true"></i>
-        <i v-else class="ti ti-download" aria-hidden="true"></i>
-      </button>
+      />
     </template>
   </Modal>
 </template>
-
-

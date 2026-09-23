@@ -103,11 +103,15 @@ beforeEach(() => {
 });
 
 describe('TicketDetalleView.vue — botones migrados a AppButton (Fase 2)', () => {
+  // Rediseño 2026-09-23: en una página, lo destructivo es outline + danger
+  // (SISTEMA-DISENO §1.5; el rojo sólido queda para el botón de confirmar).
+  // Se sigue verificando que Rechazar lleve la severidad de peligro.
   it('estado "abierto": Rechazar (danger) e Iniciar atención (primary) se renderizan', async () => {
     const w = await montar();
     const rechazar = w.findAll('button').find((b) => b.text() === 'Rechazar');
     const iniciar = w.findAll('button').find((b) => b.text().includes('Iniciar atención'));
-    expect(rechazar.classes().join(' ')).toContain('bg-red-600');
+    expect(rechazar.classes().join(' ')).toContain('text-red-600');
+    expect(rechazar.classes().join(' ')).toContain('border-red-300');
     expect(iniciar.classes().join(' ')).toContain('bg-primary-500');
   });
 
@@ -179,7 +183,9 @@ describe('TicketDetalleView.vue — botones migrados a AppButton (Fase 2)', () =
 
   it('el composer envía comentarios reales al backend', async () => {
     const w = await montar();
-    const textarea = w.find('textarea.tk-comentario-input');
+    // Por su nombre accesible (nuevo en el rediseño 2026-09-23), no por la
+    // clase `.tk-comentario-input`, que ya no existe.
+    const textarea = w.find('textarea[aria-label="Mensaje del comentario"]');
     await textarea.setValue('Ya llegó el técnico');
     await w.findAll('button').find((b) => b.text().includes('Comentar')).trigger('click');
     await flushPromises();

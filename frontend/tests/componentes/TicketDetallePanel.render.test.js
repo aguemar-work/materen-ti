@@ -100,16 +100,22 @@ beforeEach(() => {
 });
 
 describe('TicketDetallePanel.vue — botones migrados a AppButton (Fase 2)', () => {
-  it('toggle KB: arranca "outline/secondary" y pasa a "solid/primary" al activarse — sin romper aria-pressed', async () => {
+  // Rediseño 2026-09-23: el estado activo pasa de "sólido primario" a
+  // "outline primario" (un solo sólido por pantalla: el de "Marcar
+  // resuelto"). Mismo comportamiento verificado — el toggle se distingue
+  // visualmente al activarse y aria-pressed lo acompaña — con las clases
+  // del estado nuevo.
+  it('toggle KB: arranca neutro y pasa a acento primario al activarse — sin romper aria-pressed', async () => {
     const w = await montar();
     const kb = w.findAll('button').find((b) => b.text() === 'KB');
     expect(kb.attributes('aria-pressed')).toBe('false');
-    expect(kb.classes().join(' ')).not.toContain('bg-primary-500');
+    expect(kb.classes().join(' ')).not.toContain('text-primary-600');
 
     await kb.trigger('click');
     const kbActivo = w.findAll('button').find((b) => b.text() === 'KB');
     expect(kbActivo.attributes('aria-pressed')).toBe('true');
-    expect(kbActivo.classes().join(' ')).toContain('bg-primary-500');
+    expect(kbActivo.classes().join(' ')).toContain('text-primary-600');
+    expect(kbActivo.classes().join(' ')).toContain('border-primary-300');
   });
 
   it('"Marcar resuelto" -> ConfirmDialog -> guarda en KB si el toggle estaba activo', async () => {
@@ -155,6 +161,10 @@ describe('TicketDetallePanel.vue — botones migrados a AppButton (Fase 2)', () 
     insforgeApi.getProblemaAbiertoDeTicket.mockResolvedValue({ id: 'prob-1', titulo: 'Falla recurrente', estado: 'abierto' });
     const w2 = await montar();
     expect(w2.findAll('button').find((b) => b.text().includes('Problema'))).toBeFalsy();
-    expect(w2.find('a.tdp-btn-problema-activo').exists()).toBe(true);
+    // Selector por contenido/destino en vez de la clase `.tdp-btn-problema-activo`
+    // (retirada en el rediseño 2026-09-23): sigue siendo un enlace al problema.
+    const enlace = w2.findAll('a').find((a) => a.text().includes('Problema'));
+    expect(enlace).toBeTruthy();
+    expect(enlace.attributes('href')).toBe('/problemas/prob-1');
   });
 });
