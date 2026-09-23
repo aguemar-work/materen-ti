@@ -81,13 +81,21 @@ export function buildButtonPT(props, attrClass) {
     TAMANOS[props.size] ?? TAMANOS.md,
     porSeveridad,
     props.block ? 'w-full' : '',
+    props.iconPos === 'top' || props.iconPos === 'bottom' ? 'h-auto flex-col py-2' : '',
     attrClass,
   );
 
   return {
     root: { class: rootClass },
     label: { class: 'truncate' },
-    icon: { class: props.loading ? 'animate-spin' : '' },
+    // Unstyled: PrimeVue siempre pinta el ícono ANTES del label y deja la
+    // posición a su CSS de tema (que no cargamos) — el orden se resuelve acá.
+    icon: {
+      class: [
+        props.loading ? 'animate-spin' : '',
+        props.iconPos === 'right' || props.iconPos === 'bottom' ? 'order-last' : '',
+      ].join(' '),
+    },
     loadingIcon: { class: 'animate-spin' },
   };
 }

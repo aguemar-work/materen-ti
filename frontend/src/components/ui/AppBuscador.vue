@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue';
 // Campo de búsqueda de las barras de filtros. v-model = término (la vista
 // decide si lo pasa por useBusqueda con debounce). La etiqueta es solo para
 // lectores de pantalla; el placeholder dice qué se busca.
@@ -8,6 +9,10 @@ defineProps({
   label: { type: String, required: true },
 });
 defineEmits(['update:modelValue']);
+
+// Para atajos de teclado de la vista (ej. "/" en Tickets).
+const input = ref(null);
+defineExpose({ focus: () => input.value?.focus() });
 </script>
 
 <template>
@@ -15,6 +20,7 @@ defineEmits(['update:modelValue']);
     <span class="sr-only">{{ label }}</span>
     <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
     <input
+      ref="input"
       :value="modelValue"
       type="search"
       :placeholder="placeholder"

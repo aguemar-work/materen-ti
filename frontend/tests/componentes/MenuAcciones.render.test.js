@@ -49,13 +49,17 @@ afterEach(() => {
 });
 
 describe('MenuAcciones.vue — reescrito sobre AppMenu/primevue-menu', () => {
-  it('el trigger es icon-btn sin `texto` y btn con `texto`, con aria-haspopup', () => {
+  // Con `texto` el trigger dejó de usar la clase provisional `.btn` (sistema
+  // nuevo, 2026-09-23): se verifica que es un botón de texto — no el
+  // solo-ícono — y que muestra el texto.
+  it('el trigger es icon-btn sin `texto` y botón de texto con `texto`, con aria-haspopup', () => {
     const sinTexto = montar([{ label: 'Editar', onClick: vi.fn() }]);
     expect(sinTexto.find('button').classes()).toContain('icon-btn');
     expect(sinTexto.find('button').attributes('aria-haspopup')).toBe('menu');
 
     const conTexto = montar([{ label: 'Editar', onClick: vi.fn() }], { texto: 'Acciones' });
-    expect(conTexto.find('button').classes()).toContain('btn');
+    expect(conTexto.find('button').classes()).not.toContain('icon-btn');
+    expect(conTexto.find('button').text()).toContain('Acciones');
   });
 
   it('abre el panel al clickear y expone role="menuitem" por acción visible', async () => {

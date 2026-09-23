@@ -29,12 +29,19 @@ const props = defineProps({
   // Etiqueta accesible del botón disparador (y del <ul role="menu">).
   label: { type: String, default: 'Acciones' },
   icono: { type: String, default: 'ti-dots-vertical' },
-  // Texto visible junto al icono; con texto el trigger usa .btn (toolbar),
+  // Texto visible junto al icono; con texto el trigger es un botón de texto (toolbar),
   // sin texto usa .icon-btn (fila de tabla/tarjeta).
   // Con el slot #trigger no aplica ninguna de las dos: quien pasa el slot
   // se hace cargo del aspecto del boton (ver mas abajo).
   texto: { type: String, default: '' },
 });
+
+// Trigger con texto (toolbar): mismo aspecto que AppButton variant="text"
+// severity="secondary" — antes usaba la clase provisional `.btn`.
+const CLASE_CON_TEXTO =
+  'inline-flex h-10 items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium text-gray-600 ' +
+  'transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
 
 // Traducción a la forma nativa de MenuItem de PrimeVue — la única pieza
 // custom es `danger` (no es un campo de PrimeVue); pt/menu.pt.js lo lee vía
@@ -75,7 +82,7 @@ function alternar(event) {
 <template>
   <button
     v-bind="$attrs"
-    :class="$slots.trigger ? null : (texto ? 'btn' : 'icon-btn')"
+    :class="$slots.trigger ? null : (texto ? CLASE_CON_TEXTO : 'icon-btn')"
     type="button"
     :aria-label="label"
     aria-haspopup="menu"

@@ -16,7 +16,7 @@ const idTitulo = useId();
 </script>
 
 <template>
-  <section class="min-w-0 rounded-lg border border-gray-200 bg-white" :aria-labelledby="idTitulo">
+  <section class="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white" :aria-labelledby="idTitulo">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
       <div class="min-w-0">
         <h2 :id="idTitulo" class="flex items-center gap-2 text-sm font-semibold text-gray-900">
