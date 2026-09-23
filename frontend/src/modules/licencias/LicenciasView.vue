@@ -12,9 +12,6 @@ import { showToast } from '../../core/toast.js';
 import { formatFecha, fechaISO, fechaLocalISO } from '../../core/formatters.js';
 import { estadoVencimientoLicencia, CLASE_VENCIMIENTO_LICENCIA } from '../../core/dominio-licencias.js';
 import LicenciaForm from './LicenciaForm.vue';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
@@ -22,12 +19,16 @@ import Modal from '../../components/shared/Modal.vue';
 import AppTable from '../../components/ui/AppTable.vue';
 import AppColumn from '../../components/ui/AppColumn.js';
 import AppButton from '../../components/ui/AppButton.vue';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { rolDeTag } from '../../core/tagRol.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
-import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
-import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useLicenciasStore();
 const auth = useAuthStore();
@@ -54,20 +55,50 @@ watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); }
 const mostrarForm = ref(false);
 const licenciaEditar = ref(null);
 
-// Paginación: se mantiene tal cual (no vía AppTable). Este `<nav>` propio
-// (selector de filas por página + salto a página N + flechas, más abajo en
-// el template) ya es más completo que el paginador nativo de PrimeVue, y ya
-// llama a store.irAPagina/cambiarTamPagina directo — meterlo por AppTable
-// (`paginator`, `@pagina-cambiada`/`@tam-pagina-cambiada`) duplicaría la UI
-// sin ganar nada. Ver la nota de arquitectura en AppTable.vue: esos dos
-// eventos existen para el listado que SÍ quiera un paginador inline de
-// PrimeVue — Licencias no es ese caso.
-const totalPaginas = computed(() => totalPaginasDe(total.value, store.tamPagina));
-const paginas = computed(() => paginasDe(totalPaginas.value));
-const rango = computed(() => rangoDe(store.pagina, store.tamPagina, total.value));
-function irA(pagina) {
-  const destino = clampPagina(pagina, totalPaginas.value);
-  if (destino !== store.pagina) store.irAPagina(destino);
+const { esMovil } = useEsMovil();
+
+// ── Presentación (rediseño 2026-09-23) ─────────────────────────
+// Resumen de "qué requiere atención" (vencidas / por vencer / sin cupo).
+// Solo se calcula cuando la página trae TODAS las licencias: el servidor no
+// expone conteos agregados, y contar sobre una página parcial mentiría.
+const resumen = computed(() => {
+  if (!lista.value.length || lista.value.length < total.value) return null;
+  let vencidas = 0;
+  let porVencer = 0;
+  let sinCupo = 0;
+  for (const l of lista.value) {
+    const estado = estadoVencimientoLicencia(l);
+    if (estado === 'vencida') vencidas += 1;
+    else if (estado === 'por_vencer') porVencer += 1;
+    if (l.cantidad > 0 && l.usados >= l.cantidad) sinCupo += 1;
+  }
+  return { vencidas, porVencer, sinCupo };
+});
+
+function tonoVencimiento(l) {
+  return rolDeTag(estadoVencimiento(l).clase);
+}
+
+// "en 12 días" / "hace 3 días" junto a la fecha — el plazo se lee antes
+// que la fecha misma.
+function plazoVencimiento(l) {
+  if (l.tipo === 'perpetua' || !l.fecha_vencimiento) return '';
+  const hoy = new Date(`${fechaLocalISO()}T00:00:00`);
+  const venc = new Date(`${l.fecha_vencimiento}T00:00:00`);
+  const dias = Math.round((venc - hoy) / 86400000);
+  if (dias === 0) return 'vence hoy';
+  if (dias > 0) return dias > 90 ? '' : `en ${dias} ${dias === 1 ? 'día' : 'días'}`;
+  return `hace ${-dias} ${dias === -1 ? 'día' : 'días'}`;
+}
+
+// Chips de usuarios: se muestran los primeros y el resto tras "+N".
+const MAX_CHIPS = 2;
+const expandidas = ref(new Set());
+function usuariosVisibles(l) {
+  return expandidas.value.has(l.id) ? l.usuarios : l.usuarios.slice(0, MAX_CHIPS);
+}
+function expandir(l) {
+  expandidas.value = new Set([...expandidas.value, l.id]);
 }
 
 const exportando = ref(false);
@@ -116,10 +147,10 @@ function confirmarCierreAsignar() {
 // el trigger de BD (check_tope_licencia) bloquee la asignación.
 function capacidadInfo(l) {
   const pct = l.cantidad > 0 ? Math.min(100, Math.round((l.usados / l.cantidad) * 100)) : 0;
-  let clase = 'capacity-fill--ok';
-  if (pct >= 100) clase = 'capacity-fill--full';
-  else if (pct >= 70) clase = 'capacity-fill--warning';
-  return { pct, clase };
+  let clase = 'bg-green-500';
+  if (pct >= 100) clase = 'bg-red-500';
+  else if (pct >= 70) clase = 'bg-amber-500';
+  return { pct, clase, libres: Math.max(0, l.cantidad - l.usados) };
 }
 
 function estadoVencimiento(l) {
@@ -340,236 +371,301 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="licencias-page vista-modulo">
-    <PageHeader titulo="Licencias" icono="ti ti-license" :conteo="total">
+  <div class="flex h-full min-h-0 flex-col">
+    <AppEncabezado titulo="Licencias">
+      <template #subtitulo>
+        {{ total }} {{ total === 1 ? 'licencia' : 'licencias' }}{{ busqueda.trim() ? ` que coinciden con “${busqueda.trim()}”` : '' }}
+        <template v-if="resumen && (resumen.vencidas || resumen.porVencer || resumen.sinCupo)">
+          <template v-if="resumen.vencidas"> · <span class="font-medium text-red-700">{{ resumen.vencidas }} {{ resumen.vencidas === 1 ? 'vencida' : 'vencidas' }}</span></template>
+          <template v-if="resumen.porVencer"> · <span class="font-medium text-amber-700">{{ resumen.porVencer }} por vencer en 30 días</span></template>
+          <template v-if="resumen.sinCupo"> · {{ resumen.sinCupo }} sin asientos libres</template>
+        </template>
+        <template v-else-if="resumen"> · todas vigentes y con cupo</template>
+      </template>
       <template #acciones>
         <AppButton
-          variant="outline"
+          variant="text"
           severity="secondary"
           icon="ti ti-table-export"
           :loading="exportando"
+          :disabled="exportando"
           :label="exportando ? 'Exportando...' : 'Exportar'"
           title="Exportar a Excel (CSV)"
           @click="exportar"
         />
-        <AppButton severity="primary" icon="ti ti-plus" label="Nueva licencia" @click="abrirNueva" />
+        <AppButton icon="ti ti-plus" label="Nueva licencia" @click="abrirNueva" />
       </template>
-    </PageHeader>
+    </AppEncabezado>
 
-    <main class="page">
-      <div class="card card--fill">
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input v-model="busqueda" type="text" placeholder="Buscar por software, empresa o correo...">
-          </div>
-        </div>
+    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
+    <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+      <AppBuscador v-model="busqueda" label="Buscar licencias" placeholder="Buscar por software, empresa o correo" />
+    </div>
 
-        <div v-if="cargando" class="no-results solo-movil">Cargando licencias...</div>
-        <div v-else-if="error" class="no-results lic-error">{{ error }}</div>
+    <!-- ══ Contenido ═══════════════════════════════════════════════ -->
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <div v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
+      </div>
 
-        <EmptyState
-          v-else-if="!cargando && total === 0"
-          icono="ti ti-license"
-          titulo="Sin licencias"
-          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra la primera licencia para ordenar el software que pagan.'"
-        >
-          <AppButton v-if="!busqueda" variant="outline" severity="secondary" icon="ti ti-plus" label="Nueva licencia" @click="abrirNueva" />
-        </EmptyState>
+      <AppVacio
+        v-else-if="!cargando && total === 0"
+        icono="ti ti-license"
+        :titulo="busqueda ? 'Sin resultados' : 'Sin licencias todavía'"
+        :mensaje="busqueda ? 'No hay licencias que coincidan con la búsqueda.' : 'Registre la primera licencia para controlar asientos, accesos y vencimientos del software que se paga.'"
+      >
+        <AppButton v-if="!busqueda" variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar licencia" @click="abrirNueva" />
+      </AppVacio>
 
-        <template v-if="!error && (cargando || total > 0)">
+      <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando licencias…</p>
 
-        <div class="tabla-envoltorio">
-          <AppTable
-            :value="lista"
-            :loading="cargando"
-            :total-records="total"
-            :rows="store.tamPagina"
-            :sort-field="sortFieldTabla"
-            :sort-order="sortOrderTabla"
-            @ordenar="store.ordenarPor"
-          >
-            <AppColumn field="software" header="Software" sortable>
-              <!-- Proveedor + Software colapsan (mismo criterio que Tickets):
-                   ya vivía apilado a mano (.user-name + .lic-proveedor, sin el
-                   gris de __meta) — se migra a las clases oficiales en vez de
-                   mantener la reimplementación incompleta. -->
-              <template #body="{ data: lic }">
-                <div class="celda-apilada">
-                  <span v-if="lic.proveedor" class="celda-apilada__meta">{{ lic.proveedor }}</span>
-                  <span class="celda-apilada__principal">{{ lic.software }}</span>
-                </div>
-              </template>
-            </AppColumn>
-
-            <AppColumn field="empresa_nombre" header="Empresa">
-              <template #body="{ data: lic }">{{ lic.empresa_nombre || 'Del grupo' }}</template>
-            </AppColumn>
-
-            <AppColumn field="acceso" header="Acceso">
-              <template #body="{ data: lic }">
-                <div v-if="lic.cuenta_id" class="acceso-login">
-                  <span class="lic-acceso" :title="lic.cuenta_usuario">
-                    <i class="ti ti-mail"></i> {{ lic.cuenta_usuario }}
-                  </span>
-                  <div class="clave-cell">
-                    <div class="cred">
-                      <span v-if="revelarDe(lic).valor.value" class="cred__valor">{{ revelarDe(lic).valor.value }}</span>
-                      <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
-                      <template v-if="auth.puedeVerCredenciales">
-                        <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" :aria-label="revelarDe(lic).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="revelarDe(lic).mostrar()">
-                          <i :class="revelarDe(lic).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" aria-label="Copiar contraseña" @click="revelarDe(lic).copiar()">
-                          <i class="ti ti-copy" aria-hidden="true"></i>
-                        </button>
-                        <span v-if="revelarDe(lic).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(lic).restante.value }}s</span>
-                      </template>
-                      <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
+        <!-- ── Tabla (escritorio) ── -->
+        <div v-if="!esMovil" class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div class="min-h-0 flex-1 overflow-auto">
+            <AppTable
+              :value="lista"
+              :loading="cargando"
+              :total-records="total"
+              :rows="store.tamPagina"
+              :sort-field="sortFieldTabla"
+              :sort-order="sortOrderTabla"
+              aria-label="Licencias de software"
+              @ordenar="store.ordenarPor"
+            >
+              <AppColumn field="software" header="Software" sortable>
+                <template #body="{ data: lic }">
+                  <div class="flex min-w-0 max-w-56 items-center gap-3 2xl:max-w-72">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-400">
+                      <i class="ti ti-license" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0">
+                      <div class="truncate font-medium text-gray-900">{{ lic.software }}</div>
+                      <div class="truncate text-xs text-gray-500">
+                        {{ [lic.proveedor, lic.empresa_nombre || 'Del grupo'].filter(Boolean).join(' · ') }}
+                      </div>
                     </div>
-                    <span class="clave-origen">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
                   </div>
-                </div>
-                <div v-else-if="lic.tiene_clave" class="clave-cell">
-                  <div class="cred">
-                    <span v-if="revelarDe(lic).valor.value" class="cred__valor">{{ revelarDe(lic).valor.value }}</span>
-                    <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
-                    <template v-if="auth.puedeVerCredenciales">
-                      <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" :aria-label="revelarDe(lic).valor.value ? 'Ocultar clave' : 'Mostrar clave'" @click="revelarDe(lic).mostrar()">
-                        <i :class="revelarDe(lic).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
-                      </button>
-                      <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" aria-label="Copiar clave" @click="revelarDe(lic).copiar()">
-                        <i class="ti ti-copy" aria-hidden="true"></i>
-                      </button>
-                      <span v-if="revelarDe(lic).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(lic).restante.value }}s</span>
-                    </template>
-                    <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
-                  </div>
-                </div>
-                <TextoVacio v-else />
-              </template>
-            </AppColumn>
+                </template>
+              </AppColumn>
 
-            <AppColumn field="asientos" header="Asientos">
-              <template #body="{ data: lic }">
-                <div class="capacity">
-                  <div class="capacity-bar">
-                    <div
-                      class="capacity-fill"
-                      :class="capacidadInfo(lic).clase"
-                      :style="{ width: capacidadInfo(lic).pct + '%' }"
-                    ></div>
+              <AppColumn field="acceso" header="Acceso">
+                <template #body="{ data: lic }">
+                  <!-- Revelado auditado (useRevelado): marcado .cred* intacto -->
+                  <div v-if="lic.cuenta_id" class="min-w-0 max-w-52 2xl:max-w-64">
+                    <div class="flex min-w-0 items-center gap-1.5 text-sm text-gray-700" :title="lic.cuenta_usuario">
+                      <i class="ti ti-mail shrink-0 text-gray-400" aria-hidden="true"></i>
+                      <span class="truncate">{{ lic.cuenta_usuario }}</span>
+                    </div>
+                    <div class="mt-1 flex items-center gap-2">
+                      <div class="cred">
+                        <span v-if="revelarDe(lic).valor.value" class="cred__valor">{{ revelarDe(lic).valor.value }}</span>
+                        <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                        <template v-if="auth.puedeVerCredenciales">
+                          <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" :aria-label="revelarDe(lic).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="revelarDe(lic).mostrar()">
+                            <i :class="revelarDe(lic).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                          </button>
+                          <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" aria-label="Copiar contraseña" @click="revelarDe(lic).copiar()">
+                            <i class="ti ti-copy" aria-hidden="true"></i>
+                          </button>
+                          <span v-if="revelarDe(lic).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(lic).restante.value }}s</span>
+                        </template>
+                        <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
+                      </div>
+                      <span class="text-xs text-gray-400">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
+                    </div>
                   </div>
-                  <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
-                </div>
-              </template>
-            </AppColumn>
+                  <div v-else-if="lic.tiene_clave" class="min-w-0">
+                    <div class="flex items-center gap-1.5 text-sm text-gray-700">
+                      <i class="ti ti-key text-gray-400" aria-hidden="true"></i>Clave / serial
+                    </div>
+                    <div class="mt-1">
+                      <div class="cred">
+                        <span v-if="revelarDe(lic).valor.value" class="cred__valor">{{ revelarDe(lic).valor.value }}</span>
+                        <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                        <template v-if="auth.puedeVerCredenciales">
+                          <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" :aria-label="revelarDe(lic).valor.value ? 'Ocultar clave' : 'Mostrar clave'" @click="revelarDe(lic).mostrar()">
+                            <i :class="revelarDe(lic).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                          </button>
+                          <button type="button" class="cred__accion" :disabled="revelarDe(lic).pidiendo.value" aria-label="Copiar clave" @click="revelarDe(lic).copiar()">
+                            <i class="ti ti-copy" aria-hidden="true"></i>
+                          </button>
+                          <span v-if="revelarDe(lic).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(lic).restante.value }}s</span>
+                        </template>
+                        <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
+                      </div>
+                    </div>
+                  </div>
+                  <span v-else class="text-gray-400">Sin credencial</span>
+                </template>
+              </AppColumn>
 
-            <AppColumn field="usuarios" header="Usuarios">
-              <template #body="{ data: lic }">
-                <div v-if="lic.usuarios.length" class="usuarios-cell">
-                  <span
-                    v-for="(u, i) in lic.usuarios"
-                    :key="i"
-                    class="usuario-chip"
-                  >
-                    <RouterLink v-if="u.empleado_id" class="empleado-link" :to="`/empleados/${u.empleado_id}`">{{ u.nombre }}</RouterLink>
-                    <template v-else>{{ u.nombre }}</template>
-                    <button
-                      v-if="u.asignacion_id"
-                      class="chip-x"
-                      type="button"
-                      title="Liberar asiento"
-                      aria-label="Liberar asiento"
-                      @click="pedirLiberar(lic, u)"
+              <AppColumn field="asientos" header="Asientos">
+                <template #body="{ data: lic }">
+                  <div class="w-36">
+                    <div class="flex items-baseline justify-between gap-2 text-xs tabular-nums">
+                      <span class="whitespace-nowrap text-gray-700">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
+                      <span v-if="capacidadInfo(lic).libres === 0" class="font-medium text-red-700">Sin cupo</span>
+                      <span v-else class="whitespace-nowrap text-gray-500">{{ capacidadInfo(lic).libres }} {{ capacidadInfo(lic).libres === 1 ? 'libre' : 'libres' }}</span>
+                    </div>
+                    <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+                      <div class="h-full rounded-full" :class="capacidadInfo(lic).clase" :style="{ width: capacidadInfo(lic).pct + '%' }"></div>
+                    </div>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="usuarios" header="Usuarios">
+                <template #body="{ data: lic }">
+                  <ul v-if="lic.usuarios.length" class="flex max-w-96 flex-wrap items-center gap-1.5" :aria-label="`Usuarios de ${lic.software}`">
+                    <li
+                      v-for="(u, i) in usuariosVisibles(lic)"
+                      :key="u.asignacion_id || i"
+                      class="inline-flex h-6 max-w-40 items-center gap-1 rounded-full bg-gray-100 pl-2.5 text-xs text-gray-700"
+                      :class="u.asignacion_id ? 'pr-0.5' : 'pr-2.5'"
                     >
-                      <i class="ti ti-x"></i>
-                    </button>
-                  </span>
-                </div>
-                <TextoVacio v-else placeholder="Sin usuarios" />
-              </template>
-            </AppColumn>
+                      <RouterLink
+                        v-if="u.empleado_id"
+                        class="truncate hover:text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        :to="`/empleados/${u.empleado_id}`"
+                      >{{ u.nombre }}</RouterLink>
+                      <span v-else class="truncate">{{ u.nombre }}</span>
+                      <button
+                        v-if="u.asignacion_id"
+                        class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        type="button"
+                        :title="`Liberar asiento de ${u.nombre}`"
+                        :aria-label="`Liberar asiento de ${u.nombre}`"
+                        @click="pedirLiberar(lic, u)"
+                      >
+                        <i class="ti ti-x text-xs" aria-hidden="true"></i>
+                      </button>
+                    </li>
+                    <li v-if="lic.usuarios.length > usuariosVisibles(lic).length">
+                      <button
+                        type="button"
+                        class="h-6 rounded-full px-2 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        :aria-label="`Ver los ${lic.usuarios.length} usuarios de ${lic.software}`"
+                        @click="expandir(lic)"
+                      >+{{ lic.usuarios.length - usuariosVisibles(lic).length }}</button>
+                    </li>
+                  </ul>
+                  <span v-else class="text-gray-400">Sin usuarios</span>
+                </template>
+              </AppColumn>
 
-            <AppColumn field="fecha_vencimiento" header="Vencimiento" sortable>
-              <template #body="{ data: lic }">
-                <div class="venc-cell">
-                  <span class="tag" :class="`tag--${rolDeTag(estadoVencimiento(lic).clase)}`">
-                    {{ estadoVencimiento(lic).texto }}
-                  </span>
-                  <span v-if="lic.tipo === 'suscripcion' && lic.renovacion_meses" class="venc-periodo">
-                    <i class="ti ti-refresh"></i> {{ periodoLabel(lic.renovacion_meses) }}
-                  </span>
-                </div>
-              </template>
-            </AppColumn>
+              <AppColumn field="fecha_vencimiento" header="Vencimiento" sortable>
+                <template #body="{ data: lic }">
+                  <div class="whitespace-nowrap">
+                    <AppTag :tono="tonoVencimiento(lic)" punto>{{ estadoVencimiento(lic).texto }}</AppTag>
+                    <div class="mt-1 text-xs text-gray-500 tabular-nums">
+                      <template v-if="plazoVencimiento(lic)">{{ plazoVencimiento(lic) }}</template>
+                      <template v-if="plazoVencimiento(lic) && lic.tipo === 'suscripcion' && lic.renovacion_meses"> · </template>
+                      <template v-if="lic.tipo === 'suscripcion' && lic.renovacion_meses">{{ periodoLabel(lic.renovacion_meses) }}</template>
+                    </div>
+                  </div>
+                </template>
+              </AppColumn>
 
-            <AppColumn field="acciones" header="Acciones" :header-style="{ width: '56px' }">
-              <template #body="{ data: lic }">
-                <div class="actions">
-                  <MenuAcciones :acciones="accionesDe(lic)" :label="`Acciones de ${lic.software}`" />
-                </div>
-              </template>
-            </AppColumn>
-          </AppTable>
+              <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+                <template #body="{ data: lic }">
+                  <div class="flex justify-end">
+                    <MenuAcciones :acciones="accionesDe(lic)" :label="`Acciones de ${lic.software}`" />
+                  </div>
+                </template>
+              </AppColumn>
+            </AppTable>
+          </div>
+
+          <AppPaginacion
+            v-if="!cargando && total > 0"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+            @update:tam-pagina="store.cambiarTamPagina"
+          />
         </div>
 
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Licencias de software">
-          <li v-for="lic in lista" :key="lic.id" class="tarjeta-fila">
-            <div class="tarjeta-fila__principal">
-              <div class="celda-apilada">
-                <span v-if="lic.proveedor" class="celda-apilada__meta">{{ lic.proveedor }}</span>
-                <span class="celda-apilada__principal">{{ lic.software }}</span>
-              </div>
-            </div>
-            <div class="tarjeta-fila__sec">{{ lic.empresa_nombre || 'Del grupo' }}</div>
-            <div class="tarjeta-fila__sec">
-              <div class="capacity">
-                <div class="capacity-bar">
-                  <div class="capacity-fill" :class="capacidadInfo(lic).clase" :style="{ width: capacidadInfo(lic).pct + '%' }"></div>
+        <!-- ── Tarjetas (móvil) ── -->
+        <div v-else class="min-h-0 flex-1 overflow-y-auto">
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando licencias...</p>
+          <ul v-else class="grid gap-3 sm:grid-cols-2" aria-label="Licencias de software">
+            <li v-for="lic in lista" :key="lic.id" class="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
+              <div class="flex items-start gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-400">
+                  <i class="ti ti-license" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-medium text-gray-900">{{ lic.software }}</div>
+                  <div class="truncate text-xs text-gray-500">{{ [lic.proveedor, lic.empresa_nombre || 'Del grupo'].filter(Boolean).join(' · ') }}</div>
                 </div>
-                <span class="capacity-label">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
+                <div class="-mr-1 -mt-1">
+                  <MenuAcciones :acciones="accionesDe(lic)" :label="`Acciones de ${lic.software}`" />
+                </div>
               </div>
-            </div>
-            <div class="tarjeta-fila__pie">
-              <div class="venc-cell">
-                <span class="tag" :class="`tag--${rolDeTag(estadoVencimiento(lic).clase)}`">{{ estadoVencimiento(lic).texto }}</span>
-              </div>
-              <MenuAcciones :acciones="accionesDe(lic)" :label="`Acciones de ${lic.software}`" />
-            </div>
-          </li>
-        </ul>
 
-        <nav v-if="!cargando" class="paginacion" aria-label="Paginación">
-          <div class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span>Filas por página:</span>
-              <select class="paginacion__select" :value="store.tamPagina" @change="store.cambiarTamPagina(Number($event.target.value))">
-                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </label>
-            <span class="paginacion__rango">{{ rango.desde }}–{{ rango.hasta }} de {{ total }} licencias</span>
-          </div>
-          <div v-if="totalPaginas > 1" class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span class="sr-only">Ir a la página</span>
-              <select class="paginacion__select" :value="store.pagina" @change="irA(Number($event.target.value))">
-                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
-              </select>
-              <span>de {{ totalPaginas }}</span>
-            </label>
-            <button class="paginacion__flecha" type="button" :disabled="store.pagina <= 1" aria-label="Página anterior" @click="irA(store.pagina - 1)">
-              <i class="ti ti-chevron-left" aria-hidden="true"></i>
-            </button>
-            <button class="paginacion__flecha" type="button" :disabled="store.pagina >= totalPaginas" aria-label="Página siguiente" @click="irA(store.pagina + 1)">
-              <i class="ti ti-chevron-right" aria-hidden="true"></i>
-            </button>
-          </div>
-        </nav>
-        </template>
-      </div>
-    </main>
+              <div class="mt-3">
+                <div class="flex items-baseline justify-between gap-2 text-xs tabular-nums">
+                  <span class="whitespace-nowrap text-gray-700">{{ lic.usados }}/{{ lic.cantidad }} asientos</span>
+                  <span v-if="capacidadInfo(lic).libres === 0" class="font-medium text-red-700">Sin cupo</span>
+                  <span v-else class="whitespace-nowrap text-gray-500">{{ capacidadInfo(lic).libres }} {{ capacidadInfo(lic).libres === 1 ? 'libre' : 'libres' }}</span>
+                </div>
+                <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+                  <div class="h-full rounded-full" :class="capacidadInfo(lic).clase" :style="{ width: capacidadInfo(lic).pct + '%' }"></div>
+                </div>
+              </div>
+
+              <ul v-if="lic.usuarios.length" class="mt-3 flex flex-wrap gap-1.5" :aria-label="`Usuarios de ${lic.software}`">
+                <li
+                  v-for="(u, i) in usuariosVisibles(lic)"
+                  :key="u.asignacion_id || i"
+                  class="inline-flex h-7 max-w-full items-center gap-1 rounded-full bg-gray-100 pl-2.5 text-xs text-gray-700"
+                  :class="u.asignacion_id ? 'pr-0.5' : 'pr-2.5'"
+                >
+                  <RouterLink v-if="u.empleado_id" class="truncate hover:text-primary-600" :to="`/empleados/${u.empleado_id}`">{{ u.nombre }}</RouterLink>
+                  <span v-else class="truncate">{{ u.nombre }}</span>
+                  <button
+                    v-if="u.asignacion_id"
+                    class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-200 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    type="button"
+                    :title="`Liberar asiento de ${u.nombre}`"
+                    :aria-label="`Liberar asiento de ${u.nombre}`"
+                    @click="pedirLiberar(lic, u)"
+                  >
+                    <i class="ti ti-x text-xs" aria-hidden="true"></i>
+                  </button>
+                </li>
+                <li v-if="lic.usuarios.length > usuariosVisibles(lic).length">
+                  <button
+                    type="button"
+                    class="h-7 rounded-full px-2 text-xs font-medium text-gray-500 hover:bg-gray-100"
+                    :aria-label="`Ver los ${lic.usuarios.length} usuarios de ${lic.software}`"
+                    @click="expandir(lic)"
+                  >+{{ lic.usuarios.length - usuariosVisibles(lic).length }}</button>
+                </li>
+              </ul>
+
+              <div class="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 pt-3">
+                <AppTag :tono="tonoVencimiento(lic)" punto>{{ estadoVencimiento(lic).texto }}</AppTag>
+                <span class="text-xs text-gray-500 tabular-nums">
+                  {{ [plazoVencimiento(lic), lic.tipo === 'suscripcion' && lic.renovacion_meses ? periodoLabel(lic.renovacion_meses) : ''].filter(Boolean).join(' · ') }}
+                </span>
+              </div>
+            </li>
+          </ul>
+          <AppPaginacion
+            v-if="!cargando"
+            variante="compacta"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+          />
+        </div>
+      </template>
+    </div>
 
     <LicenciaForm
       v-if="mostrarForm"
@@ -577,7 +673,7 @@ onMounted(async () => {
       @cerrar="onFormCerrado"
     />
 
-    <!-- Modal: asignar asiento (Modal accesible compartido) -->
+    <!-- Modal: asignar asiento -->
     <Modal
       v-if="mostrarAsignar"
       ref="modalAsignar"
@@ -586,50 +682,48 @@ onMounted(async () => {
       :cerrar-en-backdrop="false"
       @close="mostrarAsignar = false"
     >
-      <template #titulo><i class="ti ti-user-plus" aria-hidden="true"></i> Asignar asiento</template>
-      <p class="asignar-info">
-        <strong>{{ licenciaAsignar?.software }}</strong>
-      </p>
-      <div v-if="licenciaAsignar" class="capacity">
-        <div class="capacity-bar">
-          <div
-            class="capacity-fill"
-            :class="capacidadInfo(licenciaAsignar).clase"
-            :style="{ width: capacidadInfo(licenciaAsignar).pct + '%' }"
-          ></div>
+      <template #titulo>Asignar asiento</template>
+      <div class="space-y-4">
+        <div v-if="licenciaAsignar" class="rounded-md bg-gray-50 px-3 py-2.5">
+          <div class="flex items-baseline justify-between gap-3 text-sm">
+            <span class="truncate font-medium text-gray-900">{{ licenciaAsignar.software }}</span>
+            <span class="shrink-0 text-xs text-gray-500 tabular-nums">{{ licenciaAsignar.usados }}/{{ licenciaAsignar.cantidad }} asientos usados</span>
+          </div>
+          <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200" aria-hidden="true">
+            <div class="h-full rounded-full" :class="capacidadInfo(licenciaAsignar).clase" :style="{ width: capacidadInfo(licenciaAsignar).pct + '%' }"></div>
+          </div>
         </div>
-        <span class="capacity-label">{{ licenciaAsignar.usados }}/{{ licenciaAsignar.cantidad }} asientos usados</span>
-      </div>
-      <div v-if="cargandoEmpleados" class="no-results">Cargando empleados...</div>
-      <div v-else class="form-group">
-        <label for="as-empleado">Empleado *</label>
-        <BuscadorCombo
-          id="as-empleado"
-          v-model="empleadoAsignarId"
-          :items="empleadosActivos"
-          :campos-busqueda="['nombres', 'apellidos', 'dni']"
-          :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
-          placeholder="Buscar por nombre o DNI..."
-          :disabled="asignando"
-        >
-          <template #resultado="{ item }">
-            <span>{{ item.nombres }} {{ item.apellidos }}</span>
-            <span class="combo-sec">{{ item.dni }}</span>
-          </template>
-        </BuscadorCombo>
-      </div>
 
-      <div v-if="errorAsignar" class="notif" :class="[`notif--${infoNotificacion('error').rol}`, 'notif--inline']" :role="infoNotificacion('error').rolAria">
-        <i class="ti" :class="infoNotificacion('error').icono" aria-hidden="true"></i>
-        <div class="notif__texto">
-          <p class="notif__detalle">{{ errorAsignar }}</p>
+        <p v-if="cargandoEmpleados" class="text-sm text-gray-500" role="status">Cargando empleados...</p>
+        <div v-else class="campo">
+          <label class="campo__etiqueta" for="as-empleado">Empleado<span aria-hidden="true"> *</span></label>
+          <BuscadorCombo
+            id="as-empleado"
+            v-model="empleadoAsignarId"
+            :items="empleadosActivos"
+            :campos-busqueda="['nombres', 'apellidos', 'dni']"
+            :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
+            placeholder="Buscar por nombre o DNI..."
+            :disabled="asignando"
+          >
+            <template #resultado="{ item }">
+              <span>{{ item.nombres }} {{ item.apellidos }}</span>
+              <span class="combo-sec">{{ item.dni }}</span>
+            </template>
+          </BuscadorCombo>
+        </div>
+
+        <div v-if="errorAsignar" class="notif" :class="[`notif--${infoNotificacion('error').rol}`, 'notif--inline']" :role="infoNotificacion('error').rolAria">
+          <i class="ti" :class="infoNotificacion('error').icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorAsignar }}</p>
+          </div>
         </div>
       </div>
 
       <template #acciones>
-        <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="asignando" @click="modalAsignar?.cerrar()" />
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="asignando" @click="modalAsignar?.cerrar()" />
         <AppButton
-          severity="primary"
           :label="asignando ? 'Asignando...' : 'Asignar'"
           :loading="asignando"
           :disabled="!empleadoAsignarId"
@@ -638,8 +732,6 @@ onMounted(async () => {
       </template>
     </Modal>
 
-    <!-- Confirmación (ConfirmDialog compartido): eliminar/liberar son
-         destructivas (btn-danger); renovar no (btn-primary). -->
     <ConfirmDialog
       v-if="accionPendiente"
       ref="dialogoAccion"
@@ -654,5 +746,3 @@ onMounted(async () => {
     />
   </div>
 </template>
-
-

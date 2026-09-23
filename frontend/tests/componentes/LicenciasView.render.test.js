@@ -107,10 +107,12 @@ describe('LicenciasView.vue — listado migrado a AppTable/AppColumn/AppButton',
     expect(w.text()).toContain('Constructora XYZ');
   });
 
-  it('las 7 columnas declaradas con AppColumn se renderizan como <th>', async () => {
+  // Rediseño 2026-09-23: "Empresa" pasó a la línea secundaria de "Software"
+  // (7 → 6 columnas). Mismo contrato: cada AppColumn sigue siendo un <th>.
+  it('las 6 columnas declaradas con AppColumn se renderizan como <th>', async () => {
     const w = await montar();
     const headers = w.findAll('th').map((th) => th.text());
-    expect(headers).toEqual(['Software', 'Empresa', 'Acceso', 'Asientos', 'Usuarios', 'Vencimiento', 'Acciones']);
+    expect(headers).toEqual(['Software', 'Acceso', 'Asientos', 'Usuarios', 'Vencimiento', 'Acciones']);
   });
 
   it('celdas con contenido custom (#body) siguen renderizando lo mismo que antes', async () => {
@@ -120,9 +122,10 @@ describe('LicenciasView.vue — listado migrado a AppTable/AppColumn/AppButton',
     // Vencimiento de una licencia perpetua
     expect(w.text()).toContain('Perpetua');
     // Chip de usuario asignado, con link al empleado
-    const link = w.find('a.empleado-link');
+    // (antes por la clase provisional `.empleado-link`; ahora por destino)
+    const link = w.find('a[href="/empleados/e1"]');
     expect(link.exists()).toBe(true);
-    expect(link.attributes('href')).toBe('/empleados/e1');
+    expect(link.text()).toBe('Juan Pérez');
   });
 
   it('clic en el header ordenable "Software" llama a store.ordenarPor vía @ordenar, no queda como un no-op', async () => {
@@ -138,10 +141,10 @@ describe('LicenciasView.vue — listado migrado a AppTable/AppColumn/AppButton',
     expect(ultimaLlamada[0].orden).toEqual({ columna: 'software', direccion: 'asc' });
   });
 
-  it('columna "Empresa" (no declarada sortable) no dispara una carga extra al clickearla', async () => {
+  it('columna "Usuarios" (no declarada sortable) no dispara una carga extra al clickearla', async () => {
     const w = await montar();
-    const thEmpresa = w.findAll('th').find((th) => th.text() === 'Empresa');
-    await thEmpresa.trigger('click');
+    const thUsuarios = w.findAll('th').find((th) => th.text() === 'Usuarios');
+    await thUsuarios.trigger('click');
     await flushPromises();
     expect(insforgeApi.listLicenciasPage).toHaveBeenCalledTimes(1);
   });

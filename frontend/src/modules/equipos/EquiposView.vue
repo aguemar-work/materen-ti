@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import { useEquiposStore } from '../../stores/equipos.js';
@@ -14,9 +14,6 @@ import { generarActaDevolucion } from './acta-devolucion.js';
 import { construirDatosReporteEquipos, generarReporteEquipos, LIMITE_MOVIMIENTOS_PDF } from './reporteEquipos.js';
 import EquipoForm from './EquipoForm.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
@@ -24,14 +21,21 @@ import Modal from '../../components/shared/Modal.vue';
 import AppTable from '../../components/ui/AppTable.vue';
 import AppColumn from '../../components/ui/AppColumn.js';
 import AppButton from '../../components/ui/AppButton.vue';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppSelect from '../../components/ui/AppSelect.vue';
+import AppKpi from '../../components/ui/AppKpi.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+import AppAvatar from '../../components/ui/AppAvatar.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppListaDatos from '../../components/ui/AppListaDatos.vue';
 import { rolDeTag } from '../../core/tagRol.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
-import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
-import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useEquiposStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
@@ -96,17 +100,40 @@ function filtrarPorSituacion(situacion) {
   filtroSituacion.value = filtroSituacion.value === situacion ? '' : situacion;
 }
 
-const paginaActual = computed({
-  get: () => store.pagina,
-  set: (p) => store.irAPagina(p),
-});
-const totalPaginasEquipos = computed(() => totalPaginasDe(total.value, store.tamPagina));
-const paginasEquipos = computed(() => paginasDe(totalPaginasEquipos.value));
-const rangoEquipos = computed(() => rangoDe(paginaActual.value, store.tamPagina, total.value));
+// ── Presentación (rediseño 2026-09-23) ─────────────────────────
+// KPI de la franja superior: misma pregunta "¿qué tengo y dónde está?" que
+// el filtro de Situación — cada tarjeta ES ese filtro (clic = filtrar, otro
+// clic = quitar), no una ruta nueva.
+const KPIS = [
+  { situacion: 'disponible', label: 'Libres para entregar', icono: 'ti ti-circle-check', tono: 'success', detalle: 'Listos en almacén o ubicación' },
+  { situacion: 'asignado', label: 'Ocupados', icono: 'ti ti-user-check', tono: 'primary', detalle: 'En manos de un empleado' },
+  { situacion: 'en_reparacion', label: 'En reparación', icono: 'ti ti-tool', tono: 'warning', detalle: 'Fuera de servicio temporal' },
+];
 
-function irAPaginaEquipos(pagina) {
-  const destino = clampPagina(pagina, totalPaginasEquipos.value);
-  if (destino !== store.pagina) store.irAPagina(destino);
+const hayFiltros = computed(() => !!(busqueda.value.trim() || filtroTipo.value || filtroSituacion.value));
+
+function limpiarFiltros() {
+  busqueda.value = '';
+  filtroTipo.value = '';
+  filtroSituacion.value = '';
+}
+
+const subtitulo = computed(() => {
+  const partes = [`${total.value} ${total.value === 1 ? 'equipo' : 'equipos'}`];
+  if (filtroSituacion.value) partes.push(`situación ${situacionInfo(filtroSituacion.value).label.toLowerCase()}`);
+  const tipo = store.tipos.find((t) => t.id === filtroTipo.value);
+  if (tipo) partes.push(tipo.nombre.toLowerCase());
+  if (partes.length === 1) partes.push('quién tiene cada equipo, dónde está y en qué estado');
+  return partes.join(' · ');
+});
+
+// Tono de AppTag desde la clase de dominio (badge--success → success).
+function tonoEstado(eq) {
+  return rolDeTag(badgeEstadoFisico(eq).clase);
+}
+
+function nombreEquipo(eq) {
+  return [eq.tipo_nombre, eq.marca, eq.modelo].filter(Boolean).join(' ') || 'Equipo sin descripción';
 }
 
 // PDF: siempre el inventario COMPLETO (sin los filtros del toolbar), es la
@@ -165,13 +192,13 @@ async function exportar() {
 // pantalla.
 const accionesMas = computed(() => [
   {
-    icono: exportando.value ? 'ti-loader-2 spinner-icon' : 'ti-table-export',
+    icono: exportando.value ? 'ti-loader-2 animate-spin' : 'ti-table-export',
     label: exportando.value ? 'Exportando...' : 'Exportar',
     disabled: exportando.value,
     onClick: exportar,
   },
   {
-    icono: generandoPdf.value ? 'ti-loader-2 spinner-icon' : 'ti-download',
+    icono: generandoPdf.value ? 'ti-loader-2 animate-spin' : 'ti-download',
     label: generandoPdf.value ? 'Generando...' : 'Descargar PDF',
     disabled: generandoPdf.value,
     onClick: descargarPdf,
@@ -384,7 +411,7 @@ const confirmarLabelAccion = computed(() => accionPendiente.value?.confirmarLabe
 
 function pedirCambiarEstado(equipo, estado, label) {
   if (equipo.situacion === 'asignado' && (estado === 'de_baja' || estado === 'perdido')) {
-    showToast('Registra primero la devolución (o ciérrala con motivo pérdida)', 'error');
+    showToast('Registre primero la devolución (o ciérrela con motivo pérdida)', 'error');
     return;
   }
   accionPendiente.value = {
@@ -529,15 +556,25 @@ function accionesVisibles(eq) {
   return accionesDe(eq).filter((a) => a.visible !== false);
 }
 
-// Escritorio: solo la acción principal + Editar quedan sueltas como icon-btn;
-// el resto se cuelga del mismo MenuAcciones que ya usa la tarjeta móvil, para
-// no repetir hasta 6 íconos sin etiqueta en una sola fila (equipo en almacén).
-function accionesInlineDe(eq) {
-  return accionesVisibles(eq).filter((a) => !a.overflow);
+// Acción contextual de la fila (Entregar / Registrar devolución / Marcar
+// reparado / Reactivar / Recuperar — mutuamente excluyentes por situación):
+// queda visible con etiqueta junto al ⋮, que igual trae TODAS las acciones.
+function accionPrincipalDe(eq) {
+  return accionesVisibles(eq).find((a) => !a.overflow && a.label !== 'Editar') || null;
 }
 
-function accionesOverflowDe(eq) {
-  return accionesVisibles(eq).filter((a) => a.overflow);
+// Pie de la hoja de vida: cierra el drawer antes de abrir el modal de la
+// acción (dos modales con foco atrapado a la vez se pelearían el teclado).
+// Se desmonta directo (sin animación) para que devuelva el foco ANTES de que
+// el modal siguiente tome el suyo.
+function desdeHoja(accion) {
+  mostrarHoja.value = false;
+  nextTick(accion);
+}
+
+// Etiqueta visible de esa acción en la fila (la completa va en aria-label).
+function etiquetaCorta(accion) {
+  return accion.label.replace(' a un empleado', '').replace(' (operativo)', '').replace('Registrar devolución', 'Devolución');
 }
 
 onMounted(async () => {
@@ -557,340 +594,352 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="equipos-page vista-modulo">
-    <PageHeader titulo="Equipos" icono="ti ti-devices" :conteo="total">
+  <div class="flex h-full min-h-0 flex-col">
+    <AppEncabezado titulo="Equipos" :subtitulo="subtitulo">
       <template #acciones>
-        <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EQUIPOS" class="solo-escritorio" />
-        <MenuAcciones texto="Más" label="Más acciones" :acciones="accionesMas" />
-        <AppButton severity="primary" icon="ti ti-plus" label="Nuevo equipo" @click="abrirNuevo" />
+        <MenuAcciones
+          label="Más acciones"
+          :acciones="accionesMas"
+          class="inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        >
+          <template #trigger>
+            <i class="ti ti-dots" aria-hidden="true"></i>
+            Más
+          </template>
+        </MenuAcciones>
+        <AppButton icon="ti ti-plus" label="Nuevo equipo" @click="abrirNuevo" />
       </template>
-    </PageHeader>
+    </AppEncabezado>
 
-    <main class="page">
-      <!-- KPI de disponibilidad (Plan Maestro v2, Frente 4): "¿qué tengo
-           listo para entregar ahora mismo?", de un vistazo, antes de bajar a
-           la tabla fila por fila. Clic = mismo filtro de Situación de abajo. -->
-      <div v-if="!cargandoKpi" class="grid-12 eq-kpis">
-        <button
-          type="button"
-          class="stat-card stat-card--clic col-4"
-          :class="{ 'stat-card--activo': filtroSituacion === 'disponible' }"
-          :aria-pressed="filtroSituacion === 'disponible'"
-          @click="filtrarPorSituacion('disponible')"
-        >
-          <div class="stat-icon stat-icon--libre"><i class="ti ti-circle-check"></i></div>
-          <div class="stat-info">
-            <span class="stat-value">{{ kpi.disponible }}</span>
-            <span class="stat-label">Libres para entregar</span>
-          </div>
-        </button>
-        <button
-          type="button"
-          class="stat-card stat-card--clic col-4"
-          :class="{ 'stat-card--activo': filtroSituacion === 'asignado' }"
-          :aria-pressed="filtroSituacion === 'asignado'"
-          @click="filtrarPorSituacion('asignado')"
-        >
-          <div class="stat-icon stat-icon--ocupado"><i class="ti ti-user-check"></i></div>
-          <div class="stat-info">
-            <span class="stat-value">{{ kpi.asignado }}</span>
-            <span class="stat-label">Ocupados</span>
-          </div>
-        </button>
-        <button
-          type="button"
-          class="stat-card stat-card--clic col-4"
-          :class="{ 'stat-card--activo': filtroSituacion === 'en_reparacion' }"
-          :aria-pressed="filtroSituacion === 'en_reparacion'"
-          @click="filtrarPorSituacion('en_reparacion')"
-        >
-          <div class="stat-icon stat-icon--reparacion"><i class="ti ti-tool"></i></div>
-          <div class="stat-info">
-            <span class="stat-value">{{ kpi.en_reparacion }}</span>
-            <span class="stat-label">En reparación</span>
-          </div>
-        </button>
+    <!-- ══ Disponibilidad: cada KPI filtra la lista por su situación ══ -->
+    <div class="grid grid-cols-3 gap-3 px-4 pb-4 sm:px-6" role="group" aria-label="Disponibilidad del inventario">
+      <button
+        v-for="k in KPIS"
+        :key="k.situacion"
+        type="button"
+        class="min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        :aria-pressed="filtroSituacion === k.situacion"
+        @click="filtrarPorSituacion(k.situacion)"
+      >
+        <AppKpi
+          :label="k.label"
+          :valor="cargandoKpi ? '…' : kpi[k.situacion]"
+          :icono="esMovil ? '' : k.icono"
+          :tono="k.tono"
+          :detalle="esMovil ? '' : filtroSituacion === k.situacion ? 'Filtro aplicado · clic para quitar' : k.detalle"
+          class="h-full transition-colors duration-150"
+          :class="filtroSituacion === k.situacion ? 'border-primary-300 bg-primary-50/50' : 'hover:border-gray-300 hover:bg-gray-50/60'"
+        />
+      </button>
+    </div>
+
+    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
+    <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+      <AppBuscador v-model="busqueda" label="Buscar equipos" placeholder="Buscar por código, marca, serie o portador" />
+      <AppSelect v-model="filtroSituacion" label="Filtrar por situación">
+        <option value="">Todas las situaciones</option>
+        <option v-for="(s, k) in SITUACIONES_EQUIPO" :key="k" :value="k">{{ s.label }}</option>
+      </AppSelect>
+      <AppSelect v-model="filtroTipo" label="Filtrar por tipo">
+        <option value="">Todos los tipos</option>
+        <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
+      </AppSelect>
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EQUIPOS" class="solo-escritorio ml-auto" />
+    </div>
+
+    <!-- ══ Contenido ═══════════════════════════════════════════════ -->
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <div v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
       </div>
 
-      <div class="card card--fill">
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input v-model="busqueda" type="text" placeholder="Buscar por código, marca, serie o portador...">
+      <AppVacio
+        v-else-if="!cargando && total === 0"
+        icono="ti ti-devices"
+        :titulo="hayFiltros ? 'Sin resultados' : 'Sin equipos todavía'"
+        :mensaje="hayFiltros ? 'No hay equipos con los filtros aplicados.' : 'Registre el primer equipo del inventario o impórtelos desde Excel.'"
+      >
+        <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
+        <AppButton v-else variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar equipo" @click="abrirNuevo" />
+      </AppVacio>
+
+      <template v-else>
+        <p v-if="cargando" class="sr-only" role="status">Cargando equipos…</p>
+
+        <!-- ── Tabla (escritorio): la fila abre la hoja de vida ── -->
+        <div
+          v-if="vista === 'tabla' && !esMovil"
+          class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white"
+        >
+          <div class="min-h-0 flex-1 overflow-auto">
+            <AppTable
+              :value="lista"
+              :loading="cargando"
+              :total-records="total"
+              :rows="store.tamPagina"
+              :sort-field="sortFieldTabla"
+              :sort-order="sortOrderTabla"
+              :row-class="() => 'cursor-pointer'"
+              aria-label="Inventario de equipos"
+              @ordenar="store.ordenarPor"
+              @row-click="({ data }) => verHoja(data)"
+            >
+              <AppColumn field="codigo" header="Equipo" sortable>
+                <template #body="{ data: eq }">
+                  <div class="flex min-w-0 max-w-60 items-center gap-3 2xl:max-w-md">
+                    <a
+                      v-if="eq.fotos.length"
+                      class="block h-9 w-9 shrink-0 overflow-hidden rounded-md bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                      :href="eq.fotos[0].url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      :aria-label="`Ver foto de ${eq.codigo}`"
+                      @click.stop
+                    >
+                      <img :src="eq.fotos[0].url" alt="" class="h-full w-full object-cover">
+                    </a>
+                    <span v-else class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-400">
+                      <i class="ti ti-devices" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0">
+                      <div class="truncate font-medium text-gray-900" :title="nombreEquipo(eq)">{{ nombreEquipo(eq) }}</div>
+                      <div class="truncate text-xs text-gray-500 tabular-nums">
+                        <span class="font-medium text-gray-700">{{ eq.codigo }}</span>
+                        <template v-if="eq.codigo_almacen"> · Alm. {{ eq.codigo_almacen }}</template>
+                        <template v-if="eq.empresa_nombre"> · {{ eq.empresa_nombre }}</template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="serie" header="Serie" sortable>
+                <template #body="{ data: eq }">
+                  <span class="tabular-nums" :class="eq.serie ? 'text-gray-700' : 'text-gray-400'">{{ eq.serie || 'Sin serie' }}</span>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="situacion" header="Estado">
+                <template #body="{ data: eq }">
+                  <AppTag :tono="tonoEstado(eq)" punto>{{ badgeEstadoFisico(eq).label }}</AppTag>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="asignacion" header="Asignación">
+                <template #body="{ data: eq }">
+                  <!-- Quién lo tiene -->
+                  <div v-if="eq.portador" class="flex min-w-0 items-center gap-2">
+                    <AppAvatar :nombre="eq.portador" />
+                    <div class="min-w-0">
+                      <RouterLink
+                        class="block truncate text-gray-900 hover:text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        :to="`/empleados/${eq.empleado_id}`"
+                        @click.stop
+                      >{{ eq.portador }}</RouterLink>
+                      <AppTag
+                        v-if="eq.portador_inactivo"
+                        tono="danger"
+                        icono="ti ti-alert-triangle"
+                        class="mt-0.5"
+                        title="Este empleado fue dado de baja y no ha devuelto el equipo"
+                      >Sin devolver</AppTag>
+                    </div>
+                  </div>
+                  <!-- En almacén: la ubicación se cambia aquí mismo -->
+                  <div v-else-if="creandoUbicacionId === eq.id" class="flex items-center gap-1" @click.stop>
+                    <input
+                      v-model="nombreNuevaUbicacion"
+                      class="h-8 w-44 rounded-md border border-gray-200 bg-white px-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      aria-label="Nombre de la ubicación nueva"
+                      placeholder="Nombre de la ubicación"
+                      :disabled="moviendoId === eq.id"
+                      @keydown.enter.prevent="confirmarNuevaUbicacion(eq)"
+                      @keydown.esc.prevent="cancelarNuevaUbicacion"
+                    >
+                    <button class="icon-btn" type="button" title="Crear y mover aquí" aria-label="Crear y mover aquí" :disabled="moviendoId === eq.id || !nombreNuevaUbicacion.trim()" @click="confirmarNuevaUbicacion(eq)">
+                      <i class="ti" :class="moviendoId === eq.id ? 'ti-loader-2 animate-spin' : 'ti-check'" aria-hidden="true"></i>
+                    </button>
+                    <button class="icon-btn" type="button" title="Cancelar" aria-label="Cancelar" :disabled="moviendoId === eq.id" @click="cancelarNuevaUbicacion">
+                      <i class="ti ti-x" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                  <label v-else-if="enAlmacen(eq)" class="relative inline-flex items-center" @click.stop>
+                    <span class="sr-only">Ubicación de {{ eq.codigo }}</span>
+                    <i class="ti ti-map-pin pointer-events-none absolute left-2 text-gray-400" aria-hidden="true"></i>
+                    <select
+                      class="h-8 max-w-48 cursor-pointer appearance-none truncate rounded-md border border-transparent bg-transparent pl-7 pr-7 text-sm hover:bg-gray-100 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      :class="eq.ubicacion_id ? 'text-gray-700' : 'text-gray-400'"
+                      data-ui
+                      :value="eq.ubicacion_id || ''"
+                      :disabled="moviendoId === eq.id"
+                      @change="onCambiarUbicacion(eq, $event.target.value)"
+                    >
+                      <option value="" disabled>En almacén, sin ubicación</option>
+                      <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+                      <option value="__nueva__">+ Crear nueva ubicación…</option>
+                    </select>
+                    <i class="ti ti-chevron-down pointer-events-none absolute right-2 text-xs text-gray-400" aria-hidden="true"></i>
+                  </label>
+                  <span v-else-if="eq.ubicacion_nombre" class="inline-flex items-center gap-1.5 text-gray-700">
+                    <i class="ti ti-map-pin text-gray-400" aria-hidden="true"></i>{{ eq.ubicacion_nombre }}
+                  </span>
+                  <span v-else class="text-gray-400">Sin asignar</span>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+                <template #body="{ data: eq }">
+                  <div class="flex items-center justify-end gap-1 whitespace-nowrap" @click.stop>
+                    <AppButton
+                      v-if="accionPrincipalDe(eq)"
+                      size="sm"
+                      variant="text"
+                      severity="secondary"
+                      :icon="`ti ${accionPrincipalDe(eq).icono}`"
+                      :label="etiquetaCorta(accionPrincipalDe(eq))"
+                      :aria-label="`${accionPrincipalDe(eq).label} — ${eq.codigo}`"
+                      @click="accionPrincipalDe(eq).onClick()"
+                    />
+                    <MenuAcciones :acciones="accionesDe(eq)" :label="`Acciones de ${eq.codigo}`" />
+                  </div>
+                </template>
+              </AppColumn>
+            </AppTable>
           </div>
-          <div class="filter-field">
-            <label for="filtro-tipo">Tipo</label>
-            <select id="filtro-tipo" v-model="filtroTipo">
-              <option value="">Todos los tipos</option>
-              <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
-            </select>
-          </div>
-          <div class="filter-field">
-            <label for="filtro-situacion">Situación</label>
-            <select id="filtro-situacion" v-model="filtroSituacion">
-              <option value="">Todas las situaciones</option>
-              <option v-for="(s, k) in SITUACIONES_EQUIPO" :key="k" :value="k">{{ s.label }}</option>
-            </select>
-          </div>
+
+          <AppPaginacion
+            v-if="!cargando && total > 0"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+            @update:tam-pagina="store.cambiarTamPagina"
+          />
         </div>
 
-        <div v-if="cargando" class="no-results solo-movil">Cargando equipos...</div>
-        <div v-else-if="error" class="no-results eq-error">{{ error }}</div>
-
-        <EmptyState
-          v-else-if="!cargando && total === 0"
-          icono="ti ti-devices"
-          titulo="Sin equipos"
-          :mensaje="busqueda || filtroTipo || filtroSituacion ? 'No hay resultados con los filtros aplicados.' : 'Registra el primer equipo del inventario.'"
-        >
-          <AppButton
-            v-if="!busqueda && !filtroTipo && !filtroSituacion"
-            variant="outline"
-            severity="secondary"
-            icon="ti ti-plus"
-            label="Nuevo equipo"
-            @click="abrirNuevo"
-          />
-        </EmptyState>
-
-        <template v-if="!error && (cargando || total > 0)">
-        <p v-if="cargando" class="sr-only" role="status">Cargando equipos…</p>
-        <div v-if="vista === 'tabla' && !esMovil" class="tabla-envoltorio">
-          <AppTable
-            :value="lista"
-            :loading="cargando"
-            :total-records="total"
-            :rows="store.tamPagina"
-            :sort-field="sortFieldTabla"
-            :sort-order="sortOrderTabla"
-            @ordenar="store.ordenarPor"
-          >
-            <AppColumn field="codigo" header="Código equipo" sortable>
-              <template #body="{ data: fila }"><span class="eq-codigo">{{ fila.codigo }}</span></template>
-            </AppColumn>
-
-            <AppColumn field="codigo_almacen" header="Código almacén" sortable>
-              <template #body="{ data: fila }"><span class="eq-codigo-almacen"><TextoVacio :valor="fila.codigo_almacen" /></span></template>
-            </AppColumn>
-
-            <AppColumn field="equipo" header="Equipo">
-              <template #body="{ data: fila }">
-                <div class="eq-info">
-                  <a v-if="fila.fotos.length" class="eq-foto" :href="fila.fotos[0].url" target="_blank" rel="noopener noreferrer" title="Ver foto" aria-label="Ver foto del equipo">
-                    <img :src="fila.fotos[0].url" alt="">
-                  </a>
-                  <div class="celda-apilada">
-                    <span class="celda-apilada__meta"><TextoVacio :valor="fila.modelo" />{{ fila.empresa_nombre ? ` · ${fila.empresa_nombre}` : '' }}</span>
-                    <span class="celda-apilada__principal">{{ fila.tipo_nombre }} {{ fila.marca }}</span>
+        <!-- ── Tarjetas (vista elegida en escritorio, o siempre en móvil) ── -->
+        <div v-else class="min-h-0 flex-1 overflow-y-auto">
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando equipos...</p>
+          <ul v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="Inventario de equipos">
+            <li
+              v-for="eq in lista"
+              :key="eq.id"
+              class="flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300"
+              @click="verHoja(eq)"
+            >
+              <div class="flex items-start gap-3">
+                <a
+                  v-if="eq.fotos.length"
+                  class="block h-12 w-12 shrink-0 overflow-hidden rounded-md bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  :href="eq.fotos[0].url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :aria-label="`Ver foto de ${eq.codigo}`"
+                  @click.stop
+                >
+                  <img :src="eq.fotos[0].url" alt="" class="h-full w-full object-cover">
+                </a>
+                <span v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gray-50 text-2xl text-gray-400">
+                  <i class="ti ti-devices" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-medium text-gray-900" :title="nombreEquipo(eq)">{{ nombreEquipo(eq) }}</div>
+                  <div class="truncate text-xs text-gray-500 tabular-nums">
+                    <span class="font-medium text-gray-700">{{ eq.codigo }}</span>
+                    <template v-if="eq.serie"> · S/N {{ eq.serie }}</template>
+                  </div>
+                  <div v-if="eq.empresa_nombre || eq.codigo_almacen" class="truncate text-xs text-gray-500 tabular-nums">
+                    {{ [eq.codigo_almacen ? `Alm. ${eq.codigo_almacen}` : '', eq.empresa_nombre].filter(Boolean).join(' · ') }}
                   </div>
                 </div>
-              </template>
-            </AppColumn>
+                <div class="-mr-1 -mt-1" @click.stop>
+                  <MenuAcciones :acciones="accionesDe(eq)" :label="`Acciones de ${eq.codigo}`" />
+                </div>
+              </div>
 
-            <AppColumn field="serie" header="Serie" sortable>
-              <template #body="{ data: fila }"><span class="eq-serie"><TextoVacio :valor="fila.serie" /></span></template>
-            </AppColumn>
-
-            <AppColumn field="situacion" header="Situación" :header-style="{ width: '120px' }">
-              <template #body="{ data: fila }">
-                <span class="tag" :class="`tag--${rolDeTag(badgeEstadoFisico(fila).clase)}`">{{ badgeEstadoFisico(fila).label }}</span>
-              </template>
-            </AppColumn>
-
-            <AppColumn field="portador" header="Asignado a">
-              <template #body="{ data: fila }">
-                <template v-if="fila.portador">
-                  <RouterLink class="empleado-link" :to="`/empleados/${fila.empleado_id}`">{{ fila.portador }}</RouterLink>
-                  <span v-if="fila.portador_inactivo" class="tag" :class="`tag--${rolDeTag('danger')}`" title="Este empleado fue dado de baja y no ha devuelto el equipo">
-                    <i class="ti ti-alert-triangle"></i> Sin devolver
-                  </span>
+              <div class="mt-3 flex min-h-8 items-center gap-2 text-sm" @click.stop>
+                <template v-if="eq.portador">
+                  <AppAvatar :nombre="eq.portador" />
+                  <RouterLink
+                    class="truncate text-gray-900 hover:text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    :to="`/empleados/${eq.empleado_id}`"
+                  >{{ eq.portador }}</RouterLink>
+                  <AppTag v-if="eq.portador_inactivo" tono="danger" icono="ti ti-alert-triangle" title="Este empleado fue dado de baja y no ha devuelto el equipo">Sin devolver</AppTag>
                 </template>
-                <TextoVacio v-else />
-              </template>
-            </AppColumn>
-
-            <AppColumn field="ubicacion" header="Ubicación">
-              <template #body="{ data: fila }">
-                <div v-if="creandoUbicacionId === fila.id" class="ubicacion-nueva-inline">
+                <div v-else-if="creandoUbicacionId === eq.id" class="flex w-full items-center gap-1">
                   <input
                     v-model="nombreNuevaUbicacion"
-                    placeholder="Nombre de la ubicación"
-                    :disabled="moviendoId === fila.id"
-                    @keydown.enter.prevent="confirmarNuevaUbicacion(fila)"
+                    class="h-8 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    aria-label="Nombre de la ubicación nueva"
+                    placeholder="ej: Almacén de TI"
+                    :disabled="moviendoId === eq.id"
+                    @keydown.enter.prevent="confirmarNuevaUbicacion(eq)"
                     @keydown.esc.prevent="cancelarNuevaUbicacion"
                   >
-                  <button class="icon-btn" type="button" title="Crear y mover aquí" aria-label="Crear y mover aquí" :disabled="moviendoId === fila.id || !nombreNuevaUbicacion.trim()" @click="confirmarNuevaUbicacion(fila)">
-                    <i class="ti" :class="moviendoId === fila.id ? 'ti-loader-2 spinner-icon' : 'ti-check'"></i>
+                  <button class="icon-btn" type="button" title="Crear y mover aquí" aria-label="Crear y mover aquí" :disabled="moviendoId === eq.id || !nombreNuevaUbicacion.trim()" @click="confirmarNuevaUbicacion(eq)">
+                    <i class="ti" :class="moviendoId === eq.id ? 'ti-loader-2 animate-spin' : 'ti-check'" aria-hidden="true"></i>
                   </button>
-                  <button class="icon-btn" type="button" title="Cancelar" aria-label="Cancelar" :disabled="moviendoId === fila.id" @click="cancelarNuevaUbicacion">
-                    <i class="ti ti-x"></i>
+                  <button class="icon-btn" type="button" title="Cancelar" aria-label="Cancelar" :disabled="moviendoId === eq.id" @click="cancelarNuevaUbicacion">
+                    <i class="ti ti-x" aria-hidden="true"></i>
                   </button>
                 </div>
-                <select
-                  v-else-if="enAlmacen(fila)"
-                  class="ubicacion-select"
-                  :value="fila.ubicacion_id || ''"
-                  :disabled="moviendoId === fila.id"
-                  aria-label="Ubicación"
-                  @change="onCambiarUbicacion(fila, $event.target.value)"
-                >
-                  <option value="" disabled>Seleccionar ubicación</option>
-                  <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-                  <option value="__nueva__">+ Crear nueva ubicación…</option>
-                </select>
-                <template v-else>
-                  <span v-if="fila.ubicacion_nombre" class="ubicacion-nombre">
-                    <i class="ti ti-map-pin"></i> {{ fila.ubicacion_nombre }}
-                  </span>
-                  <TextoVacio v-else />
-                </template>
-              </template>
-            </AppColumn>
-
-            <AppColumn field="acciones" header="Acciones" :header-style="{ width: '176px' }">
-              <!-- Sin `.fila-accion` en el icon-btn inline a propósito: es la
-                   ÚNICA acción contextual disponible para la situación actual
-                   del equipo (Entregar/Registrar devolución/Marcar reparado/
-                   Reactivar/Recuperar, mutuamente excluyentes por `situacion`
-                   — ver accionesInlineDe()), no una acción secundaria de
-                   relleno — mismo criterio que CarbonPasswordReveal en
-                   EmpleadosView. El disparador de MenuAcciones (⋮) tampoco
-                   lleva la clase: ese componente ya decide su propia
-                   visibilidad. Sin `@click.stop`: esta vista no tiene fila
-                   clicable (a diferencia de Tickets/Empleados), así que no
-                   hay navegación que frenar. -->
-              <template #body="{ data: fila }">
-                <div class="actions">
-                  <button
-                    v-for="a in accionesInlineDe(fila)"
-                    :key="a.label"
-                    class="icon-btn"
-                    :class="{ danger: a.danger }"
-                    type="button"
-                    :title="a.label"
-                    :aria-label="a.label"
-                    @click="a.onClick"
+                <label v-else-if="enAlmacen(eq)" class="relative inline-flex min-w-0 items-center">
+                  <span class="sr-only">Ubicación de {{ eq.codigo }}</span>
+                  <i class="ti ti-map-pin pointer-events-none absolute left-2 text-gray-400" aria-hidden="true"></i>
+                  <select
+                    class="h-8 max-w-full cursor-pointer appearance-none truncate rounded-md border border-gray-200 bg-white pl-7 pr-7 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    :class="eq.ubicacion_id ? 'text-gray-700' : 'text-gray-400'"
+                    data-ui
+                    :value="eq.ubicacion_id || ''"
+                    :disabled="moviendoId === eq.id"
+                    @change="onCambiarUbicacion(eq, $event.target.value)"
                   >
-                    <i class="ti" :class="a.icono"></i>
-                  </button>
-                  <MenuAcciones
-                    v-if="accionesOverflowDe(fila).length"
-                    :acciones="accionesOverflowDe(fila)"
-                    :label="`Más acciones de ${fila.codigo}`"
+                    <option value="" disabled>En almacén, sin ubicación</option>
+                    <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+                    <option value="__nueva__">+ Crear nueva ubicación…</option>
+                  </select>
+                  <i class="ti ti-chevron-down pointer-events-none absolute right-2 text-xs text-gray-400" aria-hidden="true"></i>
+                </label>
+                <span v-else-if="eq.ubicacion_nombre" class="inline-flex items-center gap-1.5 text-gray-700">
+                  <i class="ti ti-map-pin text-gray-400" aria-hidden="true"></i>{{ eq.ubicacion_nombre }}
+                </span>
+                <span v-else class="text-gray-400">Sin asignar</span>
+              </div>
+
+              <div class="mt-3 flex min-h-8 items-center justify-between gap-2 border-t border-gray-100 pt-3">
+                <AppTag :tono="tonoEstado(eq)" punto>{{ badgeEstadoFisico(eq).label }}</AppTag>
+                <div class="-my-1 -mr-2" @click.stop>
+                  <AppButton
+                    v-if="accionPrincipalDe(eq)"
+                    size="sm"
+                    variant="text"
+                    severity="secondary"
+                    :icon="`ti ${accionPrincipalDe(eq).icono}`"
+                    :label="etiquetaCorta(accionPrincipalDe(eq))"
+                    :aria-label="`${accionPrincipalDe(eq).label} — ${eq.codigo}`"
+                    @click="accionPrincipalDe(eq).onClick()"
                   />
                 </div>
-              </template>
-            </AppColumn>
-          </AppTable>
-        </div>
-
-        <!-- Tarjetas no tiene equivalente propio de SkeletonTabla (esa es
-             la del modo Tabla) — mismo texto genérico que ya usa mobile
-             mientras carga, mostrado acá también cuando la vista elegida
-             en escritorio es Tarjetas (mobile ya lo cubre el div de
-             arriba, .solo-movil). -->
-        <div v-if="cargando && vista === 'tarjetas' && !esMovil" class="no-results">Cargando equipos...</div>
-
-        <!-- Tarjetas: vista de escritorio elegida por el usuario, o mobile
-             sin importar la preferencia (mobile nunca muestra tabla). -->
-        <ul v-if="!cargando && (vista === 'tarjetas' || esMovil)" class="lista-tarjetas" aria-label="Inventario de equipos">
-          <li v-for="eq in lista" :key="eq.id" class="tarjeta-fila">
-            <div class="tarjeta-fila__cab">
-              <span class="eq-codigo">{{ eq.codigo }}</span>
-              <a v-if="eq.fotos.length" class="eq-foto" :href="eq.fotos[0].url" target="_blank" rel="noopener noreferrer" title="Ver foto" aria-label="Ver foto del equipo">
-                <img :src="eq.fotos[0].url" alt="">
-              </a>
-            </div>
-            <div class="tarjeta-fila__principal user-name">{{ eq.tipo_nombre }} {{ eq.marca }}</div>
-            <div class="tarjeta-fila__sec">
-              <TextoVacio :valor="eq.modelo" />
-              <template v-if="eq.empresa_nombre"><span aria-hidden="true">·</span><span>{{ eq.empresa_nombre }}</span></template>
-              <template v-if="eq.serie"><span aria-hidden="true">·</span><span class="eq-serie">{{ eq.serie }}</span></template>
-            </div>
-            <div v-if="eq.portador || eq.ubicacion_nombre || enAlmacen(eq)" class="tarjeta-fila__sec">
-              <template v-if="eq.portador">
-                <RouterLink class="empleado-link" :to="`/empleados/${eq.empleado_id}`">{{ eq.portador }}</RouterLink>
-                <span v-if="eq.portador_inactivo" class="tag" :class="`tag--${rolDeTag('danger')}`" title="Este empleado fue dado de baja y no ha devuelto el equipo">
-                  <i class="ti ti-alert-triangle"></i> Sin devolver
-                </span>
-              </template>
-              <div v-else-if="creandoUbicacionId === eq.id" class="ubicacion-nueva-inline">
-                <input
-                  v-model="nombreNuevaUbicacion"
-                  aria-label="Nombre de la ubicación nueva"
-                  placeholder="ej: Almacén de TI"
-                  :disabled="moviendoId === eq.id"
-                  @keydown.enter.prevent="confirmarNuevaUbicacion(eq)"
-                  @keydown.esc.prevent="cancelarNuevaUbicacion"
-                >
-                <button class="icon-btn" type="button" title="Crear y mover aquí" aria-label="Crear y mover aquí" :disabled="moviendoId === eq.id || !nombreNuevaUbicacion.trim()" @click="confirmarNuevaUbicacion(eq)">
-                  <i class="ti" :class="moviendoId === eq.id ? 'ti-loader-2 spinner-icon' : 'ti-check'"></i>
-                </button>
-                <button class="icon-btn" type="button" title="Cancelar" aria-label="Cancelar" :disabled="moviendoId === eq.id" @click="cancelarNuevaUbicacion">
-                  <i class="ti ti-x"></i>
-                </button>
               </div>
-              <select
-                v-else-if="enAlmacen(eq)"
-                class="ubicacion-select"
-                :value="eq.ubicacion_id || ''"
-                :disabled="moviendoId === eq.id"
-                aria-label="Ubicación"
-                @change="onCambiarUbicacion(eq, $event.target.value)"
-              >
-                <option value="" disabled>Seleccionar ubicación</option>
-                <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-                <option value="__nueva__">+ Crear nueva ubicación…</option>
-              </select>
-              <span v-else class="ubicacion-nombre">
-                <i class="ti ti-map-pin"></i> {{ eq.ubicacion_nombre }}
-              </span>
-            </div>
-            <div class="tarjeta-fila__pie">
-              <span class="tag" :class="`tag--${rolDeTag(badgeEstadoFisico(eq).clase)}`">{{ badgeEstadoFisico(eq).label }}</span>
-              <MenuAcciones :acciones="accionesDe(eq)" :label="`Acciones de ${eq.codigo}`" />
-            </div>
-          </li>
-        </ul>
-
-        <nav v-if="!cargando && total > 0" class="paginacion" aria-label="Paginación">
-          <div class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span>Filas por página:</span>
-              <select
-                class="paginacion__select"
-                :value="store.tamPagina"
-                @change="store.cambiarTamPagina(Number($event.target.value))"
-              >
-                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </label>
-            <span class="paginacion__rango">{{ rangoEquipos.desde }}–{{ rangoEquipos.hasta }} de {{ total }} equipos</span>
-          </div>
-
-          <div v-if="totalPaginasEquipos > 1" class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span class="sr-only">Ir a la página</span>
-              <select class="paginacion__select" :value="paginaActual" @change="irAPaginaEquipos(Number($event.target.value))">
-                <option v-for="p in paginasEquipos" :key="p" :value="p">{{ p }}</option>
-              </select>
-              <span>de {{ totalPaginasEquipos }}</span>
-            </label>
-            <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irAPaginaEquipos(paginaActual - 1)">
-              <i class="ti ti-chevron-left" aria-hidden="true"></i>
-            </button>
-            <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginasEquipos" aria-label="Página siguiente" @click="irAPaginaEquipos(paginaActual + 1)">
-              <i class="ti ti-chevron-right" aria-hidden="true"></i>
-            </button>
-          </div>
-        </nav>
-        </template>
-      </div>
-    </main>
+            </li>
+          </ul>
+          <AppPaginacion
+            v-if="!cargando"
+            variante="compacta"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+          />
+        </div>
+      </template>
+    </div>
 
     <EquipoForm v-if="mostrarForm" :equipo="equipoEditar" @cerrar="onFormCerrado" />
 
-    <!-- Modal: entregar equipo (Modal accesible compartido) -->
+    <!-- Modal: entregar equipo -->
     <Modal
       v-if="mostrarAsignar"
       ref="modalAsignar"
@@ -899,52 +948,59 @@ onMounted(async () => {
       :cerrar-en-backdrop="false"
       @close="mostrarAsignar = false"
     >
-      <template #titulo><i class="ti ti-user-plus" aria-hidden="true"></i> Entregar {{ equipoAsignar?.codigo }}</template>
-      <p class="modal-info">{{ equipoAsignar?.tipo_nombre }} {{ equipoAsignar?.marca }} {{ equipoAsignar?.modelo }}</p>
+      <template #titulo>Entregar {{ equipoAsignar?.codigo }}</template>
+      <div class="space-y-4">
+        <div class="flex items-center gap-3 rounded-md bg-gray-50 px-3 py-2.5">
+          <i class="ti ti-devices text-lg text-gray-400" aria-hidden="true"></i>
+          <div class="min-w-0 text-sm">
+            <div class="truncate font-medium text-gray-900">{{ equipoAsignar ? nombreEquipo(equipoAsignar) : '' }}</div>
+            <div class="text-xs text-gray-500 tabular-nums">{{ equipoAsignar?.codigo }}<template v-if="equipoAsignar?.serie"> · S/N {{ equipoAsignar.serie }}</template></div>
+          </div>
+        </div>
 
-      <div class="form-group">
-        <label for="asig-emp">Empleado *</label>
-        <BuscadorCombo
-          id="asig-emp"
-          v-model="empleadoSelId"
-          :items="empleadosActivos"
-          :campos-busqueda="['nombres', 'apellidos', 'dni']"
-          :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
-          placeholder="Buscar por nombre o DNI..."
-          :disabled="procesando"
-        >
-          <template #resultado="{ item }">
-            <span>{{ item.nombres }} {{ item.apellidos }}</span>
-            <span class="combo-sec">{{ item.dni }}</span>
-          </template>
-        </BuscadorCombo>
-      </div>
-
-      <div class="campo" :class="{ 'campo--inerte': procesando }">
-        <label class="campo__etiqueta" :for="campoCondicionEntrega.id">Condición de entrega</label>
-        <div class="campo__caja">
-          <input
-            :id="campoCondicionEntrega.id"
-            v-model="condicionEntrega"
-            class="campo__control"
-            type="text"
-            placeholder="ej: nuevo, con cargador y mochila"
+        <div class="campo">
+          <label class="campo__etiqueta" for="asig-emp">Empleado<span aria-hidden="true"> *</span></label>
+          <BuscadorCombo
+            id="asig-emp"
+            v-model="empleadoSelId"
+            :items="empleadosActivos"
+            :campos-busqueda="['nombres', 'apellidos', 'dni']"
+            :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
+            placeholder="Buscar por nombre o DNI..."
             :disabled="procesando"
           >
+            <template #resultado="{ item }">
+              <span>{{ item.nombres }} {{ item.apellidos }}</span>
+              <span class="combo-sec">{{ item.dni }}</span>
+            </template>
+          </BuscadorCombo>
         </div>
-      </div>
 
-      <div v-if="errorAsignar" class="notif" :class="[`notif--${infoErrorAsignar.rol}`, 'notif--inline']" :role="infoErrorAsignar.rolAria">
-        <i class="ti" :class="infoErrorAsignar.icono" aria-hidden="true"></i>
-        <div class="notif__texto">
-          <p class="notif__detalle">{{ errorAsignar }}</p>
+        <div class="campo" :class="{ 'campo--inerte': procesando }">
+          <label class="campo__etiqueta" :for="campoCondicionEntrega.id">Condición de entrega</label>
+          <div class="campo__caja">
+            <input
+              :id="campoCondicionEntrega.id"
+              v-model="condicionEntrega"
+              class="campo__control"
+              type="text"
+              placeholder="ej: nuevo, con cargador y mochila"
+              :disabled="procesando"
+            >
+          </div>
+        </div>
+
+        <div v-if="errorAsignar" class="notif" :class="[`notif--${infoErrorAsignar.rol}`, 'notif--inline']" :role="infoErrorAsignar.rolAria">
+          <i class="ti" :class="infoErrorAsignar.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorAsignar }}</p>
+          </div>
         </div>
       </div>
 
       <template #acciones>
-        <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="procesando" @click="modalAsignar?.cerrar()" />
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="procesando" @click="modalAsignar?.cerrar()" />
         <AppButton
-          severity="primary"
           :label="procesando ? 'Entregando...' : 'Entregar'"
           :loading="procesando"
           :disabled="!empleadoSelId"
@@ -953,7 +1009,7 @@ onMounted(async () => {
       </template>
     </Modal>
 
-    <!-- Modal: registrar devolución (Modal accesible compartido) -->
+    <!-- Modal: registrar devolución -->
     <Modal
       v-if="mostrarDevolver"
       ref="modalDevolver"
@@ -962,49 +1018,66 @@ onMounted(async () => {
       :cerrar-en-backdrop="false"
       @close="mostrarDevolver = false"
     >
-      <template #titulo><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Devolución de {{ equipoDevolver?.codigo }}</template>
-      <p class="modal-info">Lo tiene: <strong>{{ equipoDevolver?.portador }}</strong></p>
+      <template #titulo>Devolución de {{ equipoDevolver?.codigo }}</template>
+      <div class="space-y-4">
+        <div class="flex items-center gap-3 rounded-md bg-gray-50 px-3 py-2.5">
+          <AppAvatar :nombre="equipoDevolver?.portador || ''" />
+          <div class="min-w-0 text-sm">
+            <div class="text-xs text-gray-500">Lo tiene</div>
+            <div class="truncate font-medium text-gray-900">{{ equipoDevolver?.portador }}</div>
+          </div>
+        </div>
 
-      <div class="campo" :class="{ 'campo--inerte': procesando }">
-        <label class="campo__etiqueta" :for="campoCondicionDevolucion.id">Condición en que vuelve<span aria-hidden="true"> *</span></label>
-        <div class="campo__caja">
-          <input
-            :id="campoCondicionDevolucion.id"
-            v-model="condicionDevolucion"
-            class="campo__control"
-            type="text"
-            required
-            placeholder="ej: operativo / pantalla rota / sin cargador"
-            :disabled="procesando"
+        <div class="campo" :class="{ 'campo--inerte': procesando }">
+          <label class="campo__etiqueta" :for="campoCondicionDevolucion.id">Condición en que vuelve<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoCondicionDevolucion.id"
+              v-model="condicionDevolucion"
+              class="campo__control"
+              type="text"
+              required
+              placeholder="ej: operativo / pantalla rota / sin cargador"
+              :disabled="procesando"
+            >
+          </div>
+        </div>
+
+        <div class="campo" :class="{ 'campo--inerte': procesando }">
+          <label class="campo__etiqueta" :for="campoMotivoCierre.id">Motivo</label>
+          <div class="campo__caja">
+            <select :id="campoMotivoCierre.id" v-model="motivoCierre" class="campo__control campo__control--select" :disabled="procesando">
+              <option value="devolucion">Devolución normal</option>
+              <option value="cambio_equipo">Cambio de equipo</option>
+              <option value="baja_empleado">Baja del empleado</option>
+              <option value="perdida">Pérdida / robo</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+        </div>
+
+        <div>
+          <label
+            class="flex items-start gap-2.5 text-sm"
+            :class="motivoCierre === 'perdida' ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer text-gray-700'"
           >
+            <input
+              v-model="aReparacion"
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 shrink-0 accent-primary-500"
+              :disabled="procesando || motivoCierre === 'perdida'"
+            >
+            Volvió dañado — enviarlo a reparación
+          </label>
+          <p v-if="motivoCierre === 'perdida'" class="mt-1 pl-6.5 text-xs text-gray-500">
+            No aplica si el equipo se reporta como perdido/robado.
+          </p>
         </div>
       </div>
-
-      <div class="campo" :class="{ 'campo--inerte': procesando }">
-        <label class="campo__etiqueta" :for="campoMotivoCierre.id">Motivo</label>
-        <div class="campo__caja">
-          <select :id="campoMotivoCierre.id" v-model="motivoCierre" class="campo__control campo__control--select" :disabled="procesando">
-            <option value="devolucion">Devolución normal</option>
-            <option value="cambio_equipo">Cambio de equipo</option>
-            <option value="baja_empleado">Baja del empleado</option>
-            <option value="perdida">Pérdida / robo</option>
-          </select>
-          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-        </div>
-      </div>
-
-      <label class="check-reparacion" :class="{ 'check-reparacion--disabled': motivoCierre === 'perdida' }">
-        <input v-model="aReparacion" type="checkbox" :disabled="procesando || motivoCierre === 'perdida'">
-        Volvió dañado — enviarlo a reparación
-      </label>
-      <p v-if="motivoCierre === 'perdida'" class="check-reparacion-hint">
-        No aplica si el equipo se reporta como perdido/robado.
-      </p>
 
       <template #acciones>
-        <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="procesando" @click="modalDevolver?.cerrar()" />
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="procesando" @click="modalDevolver?.cerrar()" />
         <AppButton
-          severity="primary"
           :label="procesando ? 'Registrando...' : 'Registrar devolución'"
           :loading="procesando"
           :disabled="!condicionDevolucion.trim()"
@@ -1013,71 +1086,88 @@ onMounted(async () => {
       </template>
     </Modal>
 
-    <!-- Drawer: hoja de vida (Modal accesible compartido, modo lateral —
-         Plan Maestro v2, Frente 4). Antes era un Modal centrado tamaño
-         "detail"; el contrato de accesibilidad (foco, Escape, Teleport) no
-         cambió, solo la presentación. -->
+    <!-- Drawer: hoja de vida (Modal lateral compartido) -->
     <Modal v-if="mostrarHoja" ref="modalHoja" size="detail" lateral @close="mostrarHoja = false">
-      <template #titulo><i class="ti ti-history" aria-hidden="true"></i> Hoja de vida — {{ equipoHoja?.codigo }}</template>
-      <p class="modal-info">{{ equipoHoja?.tipo_nombre }} {{ equipoHoja?.marca }} {{ equipoHoja?.modelo }}</p>
-      <span v-if="equipoHoja" class="tag" :class="`tag--${rolDeTag(badgeEstadoFisico(equipoHoja).clase)}`">
-        {{ badgeEstadoFisico(equipoHoja).label }}
-      </span>
-
-      <div v-if="equipoHoja?.fotos.length" class="hoja-seccion">
-        <div class="hoja-seccion-titulo">Fotos</div>
-        <div class="hoja-fotos">
-          <a
-            v-for="(foto, i) in equipoHoja.fotos"
-            :key="foto.key || i"
-            class="hoja-foto"
-            :href="foto.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Ver foto en tamaño completo"
-          >
-            <img :src="foto.url" alt="">
-          </a>
-        </div>
-      </div>
-
-      <div v-if="specsHoja.length" class="hoja-seccion">
-        <div class="hoja-seccion-titulo">Especificaciones técnicas</div>
-        <dl class="hoja-specs">
-          <template v-for="[campo, valor] in specsHoja" :key="campo">
-            <dt>{{ campo }}</dt>
-            <dd>{{ valor }}</dd>
-          </template>
-        </dl>
-      </div>
-
-      <div v-if="equipoHoja?.accesorios_lineas?.length" class="hoja-seccion">
-        <div class="hoja-seccion-titulo">Accesorios</div>
-        <ul class="hoja-accesorios">
-          <li v-for="a in equipoHoja.accesorios_lineas" :key="a.catalogo_id || a.descripcion">
-            {{ a.descripcion }}<span v-if="a.cantidad > 1"> × {{ a.cantidad }}</span>
-          </li>
-        </ul>
-      </div>
-
-      <div class="hoja-seccion">
-        <div class="hoja-seccion-titulo">Historial</div>
-        <div v-if="cargandoEventos" class="no-results">Cargando...</div>
-        <ul v-else class="hoja-lista">
-          <li v-for="ev in eventos" :key="ev.id">
-            <i :class="EVENTO_ICONS[ev.evento] || 'ti ti-point'"></i>
-            <div class="hoja-info">
-              <span class="hoja-detalle">{{ ev.detalle }}</span>
-              <span class="hoja-meta">{{ formatFechaHora(ev.created_at) }}{{ ev.user_email ? ` · ${ev.user_email}` : '' }}</span>
+      <template #titulo>Hoja de vida</template>
+      <div v-if="equipoHoja" class="space-y-6">
+        <header class="flex items-start gap-4">
+          <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-2xl text-gray-400">
+            <i class="ti ti-devices" aria-hidden="true"></i>
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="text-lg font-semibold tracking-tight text-gray-900 tabular-nums">{{ equipoHoja.codigo }}</h3>
+              <AppTag :tono="tonoEstado(equipoHoja)" punto>{{ badgeEstadoFisico(equipoHoja).label }}</AppTag>
             </div>
-          </li>
-        </ul>
+            <p class="mt-0.5 text-sm text-gray-600">{{ nombreEquipo(equipoHoja) }}</p>
+            <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+              <li v-if="equipoHoja.serie" class="inline-flex items-center gap-1 tabular-nums"><i class="ti ti-barcode" aria-hidden="true"></i>S/N {{ equipoHoja.serie }}</li>
+              <li v-if="equipoHoja.portador" class="inline-flex items-center gap-1"><i class="ti ti-user" aria-hidden="true"></i>{{ equipoHoja.portador }}</li>
+              <li v-else-if="equipoHoja.ubicacion_nombre" class="inline-flex items-center gap-1"><i class="ti ti-map-pin" aria-hidden="true"></i>{{ equipoHoja.ubicacion_nombre }}</li>
+            </ul>
+          </div>
+        </header>
+
+        <section v-if="equipoHoja.fotos.length" aria-labelledby="hoja-fotos">
+          <h4 id="hoja-fotos" class="mb-2 text-sm font-semibold text-gray-900">Fotos</h4>
+          <div class="grid grid-cols-4 gap-2">
+            <a
+              v-for="(foto, i) in equipoHoja.fotos"
+              :key="foto.key || i"
+              class="block aspect-square overflow-hidden rounded-md border border-gray-200 bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              :href="foto.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              :aria-label="`Ver foto ${i + 1} en tamaño completo`"
+            >
+              <img :src="foto.url" alt="" class="h-full w-full object-cover">
+            </a>
+          </div>
+        </section>
+
+        <section v-if="specsHoja.length" aria-labelledby="hoja-specs">
+          <h4 id="hoja-specs" class="mb-2 text-sm font-semibold text-gray-900">Especificaciones técnicas</h4>
+          <AppListaDatos :datos="specsHoja.map(([campo, valor]) => ({ label: campo, valor }))" :columnas="2" />
+        </section>
+
+        <section v-if="equipoHoja.accesorios_lineas?.length" aria-labelledby="hoja-acc">
+          <h4 id="hoja-acc" class="mb-2 text-sm font-semibold text-gray-900">Accesorios</h4>
+          <ul class="divide-y divide-gray-100 rounded-md border border-gray-200">
+            <li v-for="a in equipoHoja.accesorios_lineas" :key="a.catalogo_id || a.descripcion" class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <span class="text-gray-900">{{ a.descripcion }}</span>
+              <span v-if="a.cantidad > 1" class="text-xs text-gray-500 tabular-nums">× {{ a.cantidad }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <section aria-labelledby="hoja-historial">
+          <h4 id="hoja-historial" class="mb-3 text-sm font-semibold text-gray-900">Historial</h4>
+          <p v-if="cargandoEventos" class="py-4 text-sm text-gray-500" role="status">Cargando historial...</p>
+          <p v-else-if="!eventos.length" class="py-4 text-sm text-gray-400">Sin movimientos registrados.</p>
+          <ol v-else class="space-y-4">
+            <li v-for="ev in eventos" :key="ev.id" class="flex gap-3">
+              <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm text-gray-500">
+                <i :class="EVENTO_ICONS[ev.evento] || 'ti ti-point'" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 pt-0.5">
+                <p class="text-sm text-gray-900">{{ ev.detalle }}</p>
+                <p class="mt-0.5 text-xs text-gray-500 tabular-nums">{{ formatFechaHora(ev.created_at) }}{{ ev.user_email ? ` · ${ev.user_email}` : '' }}</p>
+              </div>
+            </li>
+          </ol>
+        </section>
       </div>
+      <template v-if="equipoHoja" #acciones>
+        <AppButton variant="outline" severity="secondary" icon="ti ti-pencil" label="Editar" @click="desdeHoja(() => abrirEditar(equipoHoja))" />
+        <AppButton
+          v-if="accionPrincipalDe(equipoHoja)"
+          :icon="`ti ${accionPrincipalDe(equipoHoja).icono}`"
+          :label="accionPrincipalDe(equipoHoja).label"
+          @click="desdeHoja(accionPrincipalDe(equipoHoja).onClick)"
+        />
+      </template>
     </Modal>
 
-    <!-- Confirmación (ConfirmDialog compartido): "de_baja" y "eliminar" son
-         destructivas (btn-danger); las demás transiciones usan el botón
-         primario, igual que "renovar" en Licencias. -->
     <ConfirmDialog
       v-if="accionPendiente"
       ref="dialogoAccion"
@@ -1092,5 +1182,3 @@ onMounted(async () => {
     />
   </div>
 </template>
-
-

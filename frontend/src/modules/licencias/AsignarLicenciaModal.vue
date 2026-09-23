@@ -13,6 +13,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 import Modal from '../../components/shared/Modal.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const props = defineProps({
   empleadoId: { type: String, required: true },
@@ -70,42 +71,46 @@ async function confirmar() {
     :cerrar-en-backdrop="false"
     @close="emit('close')"
   >
-    <template #titulo><i class="ti ti-user-plus" aria-hidden="true"></i> Asignar licencia a {{ empleadoNombre }}</template>
+    <template #titulo>Asignar licencia a {{ empleadoNombre }}</template>
 
-    <div class="form-group">
-      <label for="asig-lic-licencia">Licencia *</label>
-      <BuscadorCombo
-        id="asig-lic-licencia"
-        v-model="licenciaSelId"
-        :items="conCupo"
-        :campos-busqueda="['software', 'proveedor']"
-        :etiqueta="(lic) => `${lic.software} (${lic.usados}/${lic.cantidad})`"
-        :placeholder="cargandoLista ? 'Cargando licencias con cupo...' : 'Buscar por software o proveedor...'"
-        :disabled="procesando || cargandoLista"
-      >
-        <template #resultado="{ item }">
-          <span>{{ item.software }}</span>
-          <span class="combo-sec">{{ item.usados }}/{{ item.cantidad }} asientos</span>
-        </template>
-      </BuscadorCombo>
-      <p v-if="!cargandoLista && conCupo.length === 0" class="form-hint">
-        No hay licencias con cupo disponible ahora mismo.
-      </p>
-    </div>
+    <div class="space-y-4">
+      <div class="campo">
+        <label class="campo__etiqueta" for="asig-lic-licencia">Licencia<span aria-hidden="true"> *</span></label>
+        <BuscadorCombo
+          id="asig-lic-licencia"
+          v-model="licenciaSelId"
+          :items="conCupo"
+          :campos-busqueda="['software', 'proveedor']"
+          :etiqueta="(lic) => `${lic.software} (${lic.usados}/${lic.cantidad})`"
+          :placeholder="cargandoLista ? 'Cargando licencias con cupo...' : 'Buscar por software o proveedor...'"
+          :disabled="procesando || cargandoLista"
+        >
+          <template #resultado="{ item }">
+            <span>{{ item.software }}</span>
+            <span class="combo-sec tabular-nums">{{ item.cantidad - item.usados }} de {{ item.cantidad }} libres</span>
+          </template>
+        </BuscadorCombo>
+        <p v-if="!cargandoLista && conCupo.length === 0" class="campo__pie">
+          No hay licencias con cupo disponible ahora mismo.
+        </p>
+      </div>
 
-    <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
-      <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
-      <div class="notif__texto">
-        <p class="notif__detalle">{{ error }}</p>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
       </div>
     </div>
 
     <template #acciones>
-      <button type="button" class="btn btn--secondary" :disabled="procesando" @click="modal?.cerrar()">Cancelar</button>
-      <button type="button" class="btn btn--primary" :disabled="procesando || !licenciaSelId" @click="confirmar">
-        {{ procesando ? 'Asignando...' : 'Asignar' }}
-        <i v-if="procesando" class="ti ti-loader-2" aria-hidden="true"></i>
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="procesando" @click="modal?.cerrar()" />
+      <AppButton
+        :label="procesando ? 'Asignando...' : 'Asignar'"
+        :loading="procesando"
+        :disabled="!licenciaSelId"
+        @click="confirmar"
+      />
     </template>
   </Modal>
 </template>

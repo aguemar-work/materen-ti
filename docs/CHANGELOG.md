@@ -27,6 +27,18 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-23** (**Rediseño de Inventario: Equipos y Licencias**) — con el
+  sistema de `docs/SISTEMA-DISENO.md`. Equipos: KPIs que filtran (Libres/
+  Ocupados/En reparación), tabla de 8 → 5 columnas (equipo con código/almacén
+  apilados, asignación con avatar o ubicación editable, acción de la situación
+  + ⋮), hoja de vida con pie de acciones, tarjetas en móvil; EquipoForm por
+  secciones con grilla de fotos (subida por `equipos-fotos` sin cambios);
+  Importar con pasos y filtro segmentado. Licencias: subtítulo con vencidas/
+  por vencer, tabla de 7 → 6 columnas, barra de asientos con libres/sin cupo,
+  chips de usuarios con "+N", vencimiento con plazo; LicenciaForm por
+  secciones con modo de acceso en tarjetas. Revelado `.cred*` solo
+  reubicado. Copy sin tuteo. Tests de render: solo selectores de
+  presentación (columnas, enlace por `href` en vez de `.empleado-link`).
 - **2026-09-22** (**Rediseño de Empleados + modo maqueta + capa provisional**)
   — con carta blanca del usuario para reimaginar el sistema (no replicar el
   diseño anterior): Empleados (listado + ficha) y el panel de Accesos

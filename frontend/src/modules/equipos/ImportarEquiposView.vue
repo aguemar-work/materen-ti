@@ -11,16 +11,19 @@ import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { toTitleCase, trimText } from '../../core/formatters.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import AppButton from '../../components/ui/AppButton.vue';
-import { rolDeTag } from '../../core/tagRol.js';
-import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
-import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+import { totalPaginasDe, clampPagina } from '../../core/paginacionRender.js';
+import { columnasVisibles } from '../../core/tablaColumnas.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
-import { TAMANOS_PAGINA, TAM_PAGINA_DEFECTO } from '../../constants/paginacion.js';
+import { TAM_PAGINA_DEFECTO } from '../../constants/paginacion.js';
 import {
   CAMPOS_SISTEMA,
   detectarCampo,
@@ -162,7 +165,7 @@ function construirFilasParaInsertar() {
 function continuarAMapeo() {
   const { encabezados, filas: datos } = parsearPegado(textoPegado.value);
   if (!encabezados.length || !datos.length) {
-    showToast('No se detectaron filas de datos. Verifica que copiaste también la fila de encabezados.', 'error');
+    showToast('No se detectaron filas de datos. Verifique que copió también la fila de encabezados.', 'error');
     return;
   }
   encabezadosDetectados.value = encabezados.map((original) => ({ original, campo: detectarCampo(original) }));
@@ -293,8 +296,6 @@ function cambiarTamPaginaGrid(nuevoTam) {
 }
 
 const totalPaginasGrid = computed(() => totalPaginasDe(filasFiltradas.value.length, tamPaginaGrid.value));
-const paginasGrid = computed(() => paginasDe(totalPaginasGrid.value));
-const rangoGrid = computed(() => rangoDe(paginaGrid.value, tamPaginaGrid.value, filasFiltradas.value.length));
 
 function irAPaginaGrid(pagina) {
   paginaGrid.value = clampPagina(pagina, totalPaginasGrid.value);
@@ -345,8 +346,32 @@ const totalColumnasImportar = computed(() => columnasImportarVisibles.value.leng
 // el mensaje de error ya se ve en su celda, pero el tinte de fila entera
 // ayuda a ubicarla de un vistazo en una bandeja de ~400 filas.
 function claseFilaImportar(fila) {
-  return fila.estadoFila === 'error' ? 'fila-importar-error' : null;
+  return fila.estadoFila === 'error' ? 'bg-red-50/60' : 'bg-white';
 }
+
+// ── Presentación del paso 3 (rediseño 2026-09-23) ──────────────
+const conAvisoDuplicado = computed(() => filas.value.filter((f) => f.duplicadoKapo || duplicadoCodigo(f) || duplicadoSerie(f)).length);
+const opcionesEstadoFila = computed(() => [
+  { valor: '', label: 'Todas', conteo: filas.value.length },
+  { valor: 'pendiente', label: 'Pendientes' },
+  { valor: 'error', label: 'Con error', conteo: conErrores.value || null },
+  { valor: 'duplicado', label: 'Duplicados', conteo: conAvisoDuplicado.value || null },
+]);
+const PASOS = [
+  { id: 'pegar', label: 'Pegar datos' },
+  { id: 'mapeo', label: 'Confirmar columnas' },
+  { id: 'grid', label: 'Corregir y migrar' },
+];
+const indicePaso = computed(() => PASOS.findIndex((p) => p.id === paso.value));
+
+// Ancho de cada columna de la grilla (la de Notas toma el resto).
+const ANCHOS_IMPORTAR = {
+  excel: '11rem', codigo: '8rem', tipo: '10rem', marca_modelo: '11rem', serie: '9rem', costo: '7rem',
+  fecha_compra: '9.5rem', estado_fisico: '9.5rem', asignacion: '14rem', notas: null, migrar: '9rem',
+};
+
+// Clases compartidas de los controles de la grilla de edición.
+const CTRL = 'h-8 w-full min-w-0 rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 aria-[invalid=true]:border-red-500';
 
 // ── Progreso ───────────────────────────────────────────────────────
 const migradosSesion = ref(0);
@@ -456,271 +481,291 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="importar-page vista-modulo">
-    <PageHeader titulo="Importar equipos desde Excel" icono="ti ti-file-import">
-      <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver a Equipos" aria-label="Volver a Equipos" @click="volver('/equipos')">
-          <i class="ti ti-arrow-left"></i>
-        </button>
+  <div class="flex h-full min-h-0 flex-col">
+    <AppEncabezado
+      titulo="Importar equipos desde Excel"
+      volver-label="Equipos"
+      :subtitulo="paso === 'grid'
+        ? `${filas.length} ${filas.length === 1 ? 'equipo' : 'equipos'} en la bandeja · ${cantidadParaMigrar} ${cantidadParaMigrar === 1 ? 'listo' : 'listos'} para migrar`
+        : 'Pegue el inventario, confirme las columnas y corrija cada equipo antes de migrarlo'"
+      @volver="volver('/equipos')"
+    >
+      <template v-if="paso === 'grid' && !cargandoCatalogos" #acciones>
+        <AppButton variant="outline" severity="danger" icon="ti ti-trash" label="Vaciar bandeja" :disabled="migrandoLote" @click="confirmarVaciar = true" />
+        <AppButton
+          icon="ti ti-file-import"
+          :label="migrandoLote ? `Migrando ${progresoLote.hecho}/${progresoLote.total}...` : 'Migrar filas listas'"
+          :loading="migrandoLote"
+          :disabled="!hayListasParaMigrar"
+          @click="confirmarMigrarTodas = true"
+        />
       </template>
-    </PageHeader>
+    </AppEncabezado>
 
-    <main class="page">
-      <div v-if="cargandoCatalogos" class="no-results">Cargando catálogos...</div>
+    <!-- ══ Pasos del asistente ═══════════════════════════════════ -->
+    <ol class="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 pb-4 text-sm sm:px-6" aria-label="Pasos de la importación">
+      <li v-for="(p, i) in PASOS" :key="p.id" class="flex items-center gap-2" :aria-current="paso === p.id ? 'step' : undefined">
+        <span
+          class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums"
+          :class="i < indicePaso ? 'bg-green-50 text-green-700' : i === indicePaso ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-200' : 'bg-gray-100 text-gray-500'"
+        >
+          <i v-if="i < indicePaso" class="ti ti-check" aria-hidden="true"></i>
+          <template v-else>{{ i + 1 }}</template>
+        </span>
+        <span :class="i === indicePaso ? 'font-medium text-gray-900' : 'text-gray-500'">{{ p.label }}</span>
+        <i v-if="i < PASOS.length - 1" class="ti ti-chevron-right mx-1 text-gray-300" aria-hidden="true"></i>
+      </li>
+    </ol>
+
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <p v-if="cargandoCatalogos" class="py-16 text-center text-sm text-gray-500" role="status">Cargando catálogos...</p>
 
       <template v-else>
-      <!-- Paso 1: pegar -->
-      <div v-if="paso === 'pegar'" class="card importar-paso">
-        <h2 class="importar-paso-title">Paso 1 — Pegar los datos</h2>
-        <p class="field-hint">
-          En Excel, selecciona el rango con la fila de encabezados incluida, cópialo (Ctrl+C) y pégalo aquí abajo.
-          Esto crea la bandeja de trabajo — desde ahí corriges cada equipo y lo migras a Equipos cuando esté listo.
-        </p>
-        <div class="campo">
-          <label class="campo__etiqueta" :for="campoTextoPegado.id">Datos pegados desde Excel</label>
-          <div class="campo__caja">
-            <textarea
-              :id="campoTextoPegado.id"
-              v-model="textoPegado"
-              class="campo__control campo__control--area"
-              :rows="10"
-              placeholder="Pega aquí las filas copiadas de Excel..."
-            ></textarea>
+        <!-- ── Paso 1: pegar ── -->
+        <section v-if="paso === 'pegar'" class="max-w-3xl rounded-lg border border-gray-200 bg-white p-5" aria-labelledby="paso-pegar">
+          <h2 id="paso-pegar" class="text-base font-semibold text-gray-900">Pegar los datos</h2>
+          <p class="mt-1 text-sm text-gray-500">
+            En Excel, seleccione el rango con la fila de encabezados incluida, cópielo (Ctrl+C) y péguelo aquí abajo.
+            Esto crea la bandeja de trabajo: desde ahí se corrige cada equipo y se migra a Equipos cuando esté listo.
+          </p>
+          <div class="campo mt-4">
+            <label class="campo__etiqueta" :for="campoTextoPegado.id">Datos pegados desde Excel</label>
+            <div class="campo__caja">
+              <textarea
+                :id="campoTextoPegado.id"
+                v-model="textoPegado"
+                class="campo__control campo__control--area font-mono text-xs"
+                :rows="12"
+                placeholder="Pegue aquí las filas copiadas de Excel..."
+              ></textarea>
+            </div>
           </div>
-        </div>
-        <div class="modal-actions">
-          <AppButton severity="primary" icon="ti ti-arrow-right" icon-pos="right" label="Continuar" :disabled="!textoPegado.trim()" @click="continuarAMapeo" />
-        </div>
-      </div>
+          <div class="mt-5 flex justify-end border-t border-gray-100 pt-4">
+            <AppButton icon="ti ti-arrow-right" icon-pos="right" label="Continuar" :disabled="!textoPegado.trim()" @click="continuarAMapeo" />
+          </div>
+        </section>
 
-      <!-- Paso 2: mapeo de columnas -->
-      <div v-else-if="paso === 'mapeo'" class="card importar-paso">
-        <h2 class="importar-paso-title">Paso 2 — Confirmar columnas</h2>
-        <p class="field-hint">Se detectaron {{ encabezadosDetectados.length }} columnas y {{ filasCrudas.length }} filas. Revisa que cada una apunte al campo correcto.</p>
-        <div class="mapeo-lista">
-          <div class="mapeo-lista-head">
+        <!-- ── Paso 2: mapeo de columnas ── -->
+        <section v-else-if="paso === 'mapeo'" class="max-w-3xl rounded-lg border border-gray-200 bg-white" aria-labelledby="paso-mapeo">
+          <div class="p-5 pb-4">
+            <h2 id="paso-mapeo" class="text-base font-semibold text-gray-900">Confirmar columnas</h2>
+            <p class="mt-1 text-sm text-gray-500">
+              Se detectaron <span class="font-medium text-gray-900 tabular-nums">{{ encabezadosDetectados.length }}</span> columnas y
+              <span class="font-medium text-gray-900 tabular-nums">{{ filasCrudas.length }}</span> filas. Revise que cada una apunte al campo correcto.
+            </p>
+          </div>
+          <div class="grid grid-cols-[minmax(0,1fr)_1.5rem_minmax(0,1fr)] gap-3 border-y border-gray-100 bg-gray-50 px-5 py-2 text-xs font-medium text-gray-500">
             <span>Columna del Excel</span>
-            <span class="mapeo-spacer"></span>
+            <span></span>
             <span>Campo del sistema</span>
           </div>
-          <div v-for="(h, i) in encabezadosDetectados" :key="i" class="mapeo-fila">
-            <span class="mapeo-original">{{ h.original || `(columna ${i + 1})` }}</span>
-            <i class="ti ti-arrow-right" aria-hidden="true"></i>
-            <select v-model="h.campo">
-              <option v-for="c in CAMPOS_SISTEMA" :key="c.clave" :value="c.clave">{{ c.label }}</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <AppButton variant="outline" severity="secondary" label="Atrás" :disabled="generandoGrilla" @click="paso = 'pegar'" />
-          <AppButton
-            severity="primary"
-            :icon="generandoGrilla ? undefined : 'ti ti-arrow-right'"
-            icon-pos="right"
-            :label="generandoGrilla ? 'Guardando bandeja...' : 'Crear bandeja de corrección'"
-            :loading="generandoGrilla"
-            @click="continuarAGrilla"
-          />
-        </div>
-      </div>
-
-      <!-- Paso 3: bandeja / grilla de corrección -->
-      <template v-else>
-        <div class="card importar-resumen">
-          <div class="importar-resumen__conteo">
-            Quedan <strong>{{ filas.length }}</strong> equipos por revisar en la bandeja
-            <span v-if="migradosSesion"> · {{ migradosSesion }} migrados en esta sesión</span>
-            <span v-if="conErrores" class="importar-resumen__errores"> · {{ conErrores }} con error</span>
-          </div>
-          <div class="importar-resumen__acciones">
-            <AppButton severity="danger" label="Vaciar bandeja" :disabled="migrandoLote" @click="confirmarVaciar = true" />
+          <ul class="divide-y divide-gray-100">
+            <li
+              v-for="(h, i) in encabezadosDetectados"
+              :key="i"
+              class="grid grid-cols-[minmax(0,1fr)_1.5rem_minmax(0,1fr)] items-center gap-3 px-5 py-2"
+            >
+              <span class="truncate text-sm" :class="h.original ? 'text-gray-900' : 'text-gray-400'">{{ h.original || `(columna ${i + 1})` }}</span>
+              <i class="ti ti-arrow-right text-center text-gray-300" aria-hidden="true"></i>
+              <label class="relative block">
+                <span class="sr-only">Campo del sistema para {{ h.original || `columna ${i + 1}` }}</span>
+                <select
+                  v-model="h.campo"
+                  data-ui
+                  class="h-9 w-full cursor-pointer appearance-none rounded-md border bg-white pl-3 pr-9 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  :class="h.campo === 'ignorar' ? 'border-gray-200 text-gray-400' : 'border-gray-300 text-gray-900'"
+                >
+                  <option v-for="c in CAMPOS_SISTEMA" :key="c.clave" :value="c.clave">{{ c.label }}</option>
+                </select>
+                <i class="ti ti-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+              </label>
+            </li>
+          </ul>
+          <div class="flex justify-end gap-2 border-t border-gray-100 p-4">
+            <AppButton variant="outline" severity="secondary" icon="ti ti-arrow-left" label="Atrás" :disabled="generandoGrilla" @click="paso = 'pegar'" />
             <AppButton
-              severity="primary"
-              :label="migrandoLote ? `Migrando ${progresoLote.hecho}/${progresoLote.total}...` : 'Migrar todas las filas listas'"
-              :loading="migrandoLote"
-              :disabled="!hayListasParaMigrar"
-              @click="confirmarMigrarTodas = true"
+              :icon="generandoGrilla ? undefined : 'ti ti-arrow-right'"
+              icon-pos="right"
+              :label="generandoGrilla ? 'Guardando bandeja...' : 'Crear bandeja de corrección'"
+              :loading="generandoGrilla"
+              @click="continuarAGrilla"
             />
           </div>
-        </div>
+        </section>
 
-        <div v-if="!filas.length" class="card no-results">
-          Bandeja vacía — todo lo pegado ya se migró a Equipos.
-          <AppButton variant="outline" severity="secondary" label="Pegar otro lote" @click="paso = 'pegar'" />
-        </div>
+        <!-- ── Paso 3: bandeja / grilla de corrección ── -->
+        <template v-else>
+          <p v-if="migradosSesion" class="mb-3 flex items-center gap-2 text-sm text-green-700" role="status">
+            <i class="ti ti-circle-check" aria-hidden="true"></i>
+            {{ migradosSesion }} {{ migradosSesion === 1 ? 'equipo migrado' : 'equipos migrados' }} a Equipos en esta sesión
+          </p>
 
-        <div v-else class="card card--fill">
-          <div class="filters">
-            <div class="search-wrap">
-              <i class="ti ti-search"></i>
-              <input v-model="busquedaGrid" type="text" placeholder="Buscar por código, marca, serie, usuario del Excel...">
+          <AppVacio
+            v-if="!filas.length"
+            icono="ti ti-inbox"
+            titulo="Bandeja vacía"
+            mensaje="Todo lo pegado ya se migró a Equipos. Pegue otro lote para continuar."
+          >
+            <AppButton variant="outline" severity="secondary" icon="ti ti-clipboard" label="Pegar otro lote" @click="paso = 'pegar'" />
+          </AppVacio>
+
+          <template v-else>
+            <div class="flex flex-wrap items-center gap-3 pb-4">
+              <AppBuscador v-model="busquedaGrid" label="Buscar en la bandeja" placeholder="Buscar por código, marca, serie o usuario del Excel" />
+              <AppSegmentado v-model="filtroEstadoFila" :opciones="opcionesEstadoFila" label="Filtrar por estado de fila" />
             </div>
-            <div class="filter-field">
-              <label for="filtro-estado-fila">Estado de fila</label>
-              <select id="filtro-estado-fila" v-model="filtroEstadoFila">
-                <option value="">Todas</option>
-                <option value="pendiente">Pendientes</option>
-                <option value="error">Con error</option>
-                <option value="duplicado">Con aviso de duplicado</option>
-              </select>
-            </div>
-          </div>
 
-          <div class="importar-tabla-wrap">
-          <div class="tabla-envoltorio">
-            <table class="tabla" aria-label="Grilla de corrección de equipos importados">
-              <thead>
-                <tr>
-                  <th v-for="col in columnasImportarVisibles" :key="col.clave" scope="col" :style="estiloColumna(col)">{{ col.label }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="!filasPagina.length">
-                  <td :colspan="totalColumnasImportar" class="tabla__vacio">
-                    <EmptyState icono="ti ti-inbox" titulo="Sin resultados" />
-                  </td>
-                </tr>
-                <template v-else>
-                  <tr v-for="fila in filasPagina" :key="fila.id" :class="claseFilaImportar(fila)">
-                    <td>
-                      <div class="importar-crudo">
-                        <span>{{ fila.raw.categoria }}<template v-if="fila.raw.tipo"> / {{ fila.raw.tipo }}</template></span>
-                        <span v-if="fila.duplicadoKapo" class="tag" :class="`tag--${rolDeTag('warning')}`" title="El Excel marca esta fila como duplicada (columna SUBIDO A KAPO)">
-                          <i class="ti ti-alert-triangle" aria-hidden="true"></i> Duplicado en Excel
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <input v-model="fila.codigo" :aria-invalid="duplicadoCodigo(fila) ? 'true' : undefined" @input="marcarSucia(fila)">
-                      <span v-if="duplicadoCodigo(fila)" class="tag" :class="`tag--${rolDeTag('danger')}`">Código duplicado</span>
-                    </td>
-                    <td>
-                      <select v-model="fila.tipo_id" @change="marcarSucia(fila)">
-                        <option v-for="t in tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
-                      </select>
-                    </td>
-                    <td>
-                      <div class="importar-marca-modelo">
-                        <input v-model="fila.marca" placeholder="Marca" @input="marcarSucia(fila)">
-                        <input v-model="fila.modelo" placeholder="Modelo" @input="marcarSucia(fila)">
-                      </div>
-                    </td>
-                    <td>
-                      <input v-model="fila.serie" :aria-invalid="duplicadoSerie(fila) ? 'true' : undefined" @input="marcarSucia(fila)">
-                      <span v-if="duplicadoSerie(fila)" class="tag" :class="`tag--${rolDeTag('danger')}`">Serie duplicada</span>
-                    </td>
-                    <td>
-                      <input v-model.number="fila.costo" type="number" step="0.01" min="0" @input="marcarSucia(fila)">
-                    </td>
-                    <td>
-                      <input v-model="fila.fecha_compra" type="date" @change="marcarSucia(fila)">
-                    </td>
-                    <td>
-                      <select v-model="fila.estado" @change="marcarSucia(fila)">
-                        <option value="operativo">Operativo</option>
-                        <option value="en_reparacion">En reparación</option>
-                        <option value="de_baja">De baja</option>
-                        <option value="perdido">Perdido/robado</option>
-                      </select>
-                    </td>
-                    <td>
-                      <div class="importar-asignacion">
-                        <select v-model="fila.modo" @change="onModoChange(fila)">
-                          <option value="disponible">Disponible</option>
-                          <option value="empleado">Asignado a empleado</option>
-                          <option value="ubicacion">En ubicación</option>
-                        </select>
-                        <BuscadorCombo
-                          v-if="fila.modo === 'empleado'"
-                          v-model="fila.empleado_id"
-                          :items="empleadosActivos"
-                          :campos-busqueda="['nombres', 'apellidos', 'dni']"
-                          :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
-                          placeholder="Buscar empleado..."
-                          @update:model-value="marcarSucia(fila)"
-                        >
-                          <template #resultado="{ item }">
-                            <span>{{ item.nombres }} {{ item.apellidos }}</span>
-                            <span class="combo-sec">{{ item.dni }}</span>
-                          </template>
-                        </BuscadorCombo>
-                        <div v-else-if="fila.modo === 'ubicacion'" class="importar-ubicacion">
-                          <select v-model="fila.ubicacion_id" @change="marcarSucia(fila)">
-                            <option value="" disabled>Seleccionar ubicación</option>
-                            <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+            <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <!-- Grilla de EDICIÓN (input/select por celda): se desplaza en
+                   horizontal dentro de la card a propósito, también en móvil. -->
+              <div class="min-h-0 flex-1 overflow-auto">
+                <table class="w-full min-w-[1400px] border-collapse text-sm" aria-label="Grilla de corrección de equipos importados">
+                  <thead class="sticky top-0 z-[1] bg-white">
+                    <tr>
+                      <th
+                        v-for="col in columnasImportarVisibles"
+                        :key="col.clave"
+                        scope="col"
+                        class="whitespace-nowrap border-b border-gray-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-gray-600"
+                        :class="col.clave === 'migrar' ? 'sticky right-0 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gray-200' : ''"
+                        :style="ANCHOS_IMPORTAR[col.clave] ? { width: ANCHOS_IMPORTAR[col.clave], minWidth: ANCHOS_IMPORTAR[col.clave] } : null"
+                      >{{ col.label }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!filasPagina.length">
+                      <td :colspan="totalColumnasImportar" class="px-4 py-12 text-center">
+                        <p class="text-sm font-medium text-gray-900">Sin resultados</p>
+                        <p class="mt-1 text-sm text-gray-500">Ninguna fila coincide con la búsqueda o el filtro.</p>
+                      </td>
+                    </tr>
+                    <template v-else>
+                      <tr v-for="fila in filasPagina" :key="fila.id" :class="claseFilaImportar(fila)" class="align-top">
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <div class="flex flex-col items-start gap-1">
+                            <span class="text-xs text-gray-500">{{ fila.raw.categoria }}<template v-if="fila.raw.tipo"> / {{ fila.raw.tipo }}</template></span>
+                            <span v-if="fila.raw.usuario" class="text-xs text-gray-400">{{ fila.raw.usuario }}</span>
+                            <AppTag v-if="fila.duplicadoKapo" tono="warning" icono="ti ti-alert-triangle" title="El Excel marca esta fila como duplicada (columna SUBIDO A KAPO)">
+                              Duplicado en Excel
+                            </AppTag>
+                          </div>
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <input v-model="fila.codigo" :class="[CTRL, 'tabular-nums']" aria-label="Código" :aria-invalid="duplicadoCodigo(fila) ? 'true' : undefined" @input="marcarSucia(fila)">
+                          <AppTag v-if="duplicadoCodigo(fila)" tono="danger" class="mt-1">Código duplicado</AppTag>
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <select v-model="fila.tipo_id" :class="[CTRL, !fila.tipo_id && 'border-amber-400']" aria-label="Tipo" @change="marcarSucia(fila)">
+                            <option v-for="t in tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
                           </select>
-                        </div>
-                        <span v-if="asignacionIncompatible(fila)" class="form-error importar-error-inline" role="alert">
-                          Un equipo no operativo no puede quedar asignado — pasa esta fila a "Disponible" o corrige el estado físico
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <textarea v-model="fila.notas" rows="2" @input="marcarSucia(fila)"></textarea>
-                    </td>
-                    <td>
-                      <div class="importar-guardar">
-                        <AppButton
-                          variant="text"
-                          severity="secondary"
-                          size="sm"
-                          :label="fila.estadoFila === 'guardando' ? '...' : 'Migrar a Equipos'"
-                          :loading="fila.estadoFila === 'guardando'"
-                          :disabled="!puedeMigrar(fila)"
-                          @click="migrarFila(fila)"
-                        />
-                        <span v-if="fila.errorMsg" class="form-error importar-error-inline" role="alert">{{ fila.errorMsg }}</span>
-                      </div>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-          </div>
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <div class="flex flex-col gap-1">
+                            <input v-model="fila.marca" :class="CTRL" placeholder="Marca" aria-label="Marca" @input="marcarSucia(fila)">
+                            <input v-model="fila.modelo" :class="CTRL" placeholder="Modelo" aria-label="Modelo" @input="marcarSucia(fila)">
+                          </div>
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <input v-model="fila.serie" :class="[CTRL, 'tabular-nums']" aria-label="Serie" :aria-invalid="duplicadoSerie(fila) ? 'true' : undefined" @input="marcarSucia(fila)">
+                          <AppTag v-if="duplicadoSerie(fila)" tono="danger" class="mt-1">Serie duplicada</AppTag>
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <input v-model.number="fila.costo" :class="[CTRL, 'tabular-nums']" type="number" step="0.01" min="0" aria-label="Costo" @input="marcarSucia(fila)">
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <input v-model="fila.fecha_compra" :class="CTRL" type="date" aria-label="Fecha de compra" @change="marcarSucia(fila)">
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <select v-model="fila.estado" :class="CTRL" aria-label="Estado físico" @change="marcarSucia(fila)">
+                            <option value="operativo">Operativo</option>
+                            <option value="en_reparacion">En reparación</option>
+                            <option value="de_baja">De baja</option>
+                            <option value="perdido">Perdido/robado</option>
+                          </select>
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <div class="flex flex-col gap-1">
+                            <select v-model="fila.modo" :class="CTRL" aria-label="Asignación" @change="onModoChange(fila)">
+                              <option value="disponible">Disponible</option>
+                              <option value="empleado">Asignado a empleado</option>
+                              <option value="ubicacion">En ubicación</option>
+                            </select>
+                            <BuscadorCombo
+                              v-if="fila.modo === 'empleado'"
+                              v-model="fila.empleado_id"
+                              :items="empleadosActivos"
+                              :campos-busqueda="['nombres', 'apellidos', 'dni']"
+                              :etiqueta="(e) => `${e.nombres} ${e.apellidos}`"
+                              placeholder="Buscar empleado..."
+                              @update:model-value="marcarSucia(fila)"
+                            >
+                              <template #resultado="{ item }">
+                                <span>{{ item.nombres }} {{ item.apellidos }}</span>
+                                <span class="combo-sec">{{ item.dni }}</span>
+                              </template>
+                            </BuscadorCombo>
+                            <select v-else-if="fila.modo === 'ubicacion'" v-model="fila.ubicacion_id" :class="CTRL" aria-label="Ubicación" @change="marcarSucia(fila)">
+                              <option value="" disabled>Seleccionar ubicación</option>
+                              <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+                            </select>
+                            <p v-if="asignacionIncompatible(fila)" class="text-xs text-red-700" role="alert">
+                              Un equipo no operativo no puede quedar asignado: pase esta fila a "Disponible" o corrija el estado físico.
+                            </p>
+                          </div>
+                        </td>
+                        <td class="border-b border-gray-100 px-3 py-2.5">
+                          <textarea
+                            v-model="fila.notas"
+                            rows="2"
+                            class="min-h-16 w-full min-w-48 resize-y rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                            aria-label="Notas"
+                            @input="marcarSucia(fila)"
+                          ></textarea>
+                        </td>
+                        <!-- Fija a la derecha: la acción de la fila siempre a la vista -->
+                        <td class="sticky right-0 border-b border-gray-100 px-3 py-2.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gray-200" :class="fila.estadoFila === 'error' ? 'bg-red-50' : 'bg-white'">
+                          <div class="flex flex-col items-start gap-1">
+                            <AppButton
+                              variant="outline"
+                              severity="secondary"
+                              size="sm"
+                              icon="ti ti-arrow-right"
+                              icon-pos="right"
+                              :label="fila.estadoFila === 'guardando' ? 'Migrando...' : 'Migrar'"
+                              :loading="fila.estadoFila === 'guardando'"
+                              :disabled="!puedeMigrar(fila)"
+                              :aria-label="`Migrar ${fila.codigo || 'fila'} a Equipos`"
+                              @click="migrarFila(fila)"
+                            />
+                            <p v-if="fila.errorMsg" class="text-xs text-red-700" role="alert">{{ fila.errorMsg }}</p>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
 
-          <nav v-if="filasFiltradas.length > 0" class="paginacion" aria-label="Paginación">
-            <div class="paginacion__lado">
-              <label class="paginacion__campo">
-                <span>Filas por página:</span>
-                <select
-                  class="paginacion__select"
-                  :value="tamPaginaGrid"
-                  @change="cambiarTamPaginaGrid(Number($event.target.value))"
-                >
-                  <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-                </select>
-              </label>
-              <span class="paginacion__rango">{{ rangoGrid.desde }}–{{ rangoGrid.hasta }} de {{ filasFiltradas.length }} equipos</span>
+              <AppPaginacion
+                v-if="filasFiltradas.length > 0"
+                :pagina="paginaGrid"
+                :tam-pagina="tamPaginaGrid"
+                :total="filasFiltradas.length"
+                @update:pagina="irAPaginaGrid"
+                @update:tam-pagina="cambiarTamPaginaGrid"
+              />
             </div>
-
-            <div v-if="totalPaginasGrid > 1" class="paginacion__lado">
-              <label class="paginacion__campo">
-                <span class="sr-only">Ir a la página</span>
-                <select class="paginacion__select" :value="paginaGrid" @change="irAPaginaGrid(Number($event.target.value))">
-                  <option v-for="p in paginasGrid" :key="p" :value="p">{{ p }}</option>
-                </select>
-                <span>de {{ totalPaginasGrid }}</span>
-              </label>
-              <button class="paginacion__flecha" type="button" :disabled="paginaGrid <= 1" aria-label="Página anterior" @click="irAPaginaGrid(paginaGrid - 1)">
-                <i class="ti ti-chevron-left" aria-hidden="true"></i>
-              </button>
-              <button class="paginacion__flecha" type="button" :disabled="paginaGrid >= totalPaginasGrid" aria-label="Página siguiente" @click="irAPaginaGrid(paginaGrid + 1)">
-                <i class="ti ti-chevron-right" aria-hidden="true"></i>
-              </button>
-            </div>
-          </nav>
-        </div>
+          </template>
+        </template>
       </template>
-      </template>
-    </main>
+    </div>
 
     <ConfirmDialog
       v-if="confirmarVaciar"
       destructivo
       icono="ti-trash"
       titulo="Vaciar la bandeja de importación"
-      mensaje="Se borrarán todas las filas pendientes de la bandeja (no afecta lo que ya migraste a Equipos). Úsalo si pegaste el lote equivocado."
+      mensaje="Se borrarán todas las filas pendientes de la bandeja (no afecta lo que ya se migró a Equipos). Úselo si pegó el lote equivocado."
       confirmar-label="Vaciar bandeja"
       :cargando="vaciando"
       @cancel="confirmarVaciar = false"
@@ -738,5 +783,3 @@ onMounted(async () => {
     />
   </div>
 </template>
-
-

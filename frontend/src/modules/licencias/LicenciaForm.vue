@@ -9,6 +9,7 @@ import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const infoError = infoNotificacion('error');
 
@@ -95,12 +96,12 @@ const campoRenovacion = useCampoAccesible();
 const campoProveedor = useCampoAccesible();
 const campoCosto = useCampoAccesible();
 const campoPlataformaNueva = useCampoAccesible({
-  error: () => (campoInvalido.value === 'plataforma' ? 'Selecciona la plataforma del correo nuevo' : ''),
+  error: () => (campoInvalido.value === 'plataforma' ? 'Seleccione la plataforma del correo nuevo' : ''),
 });
 const campoTipoCuenta = useCampoAccesible();
 const campoPasswordCorreo = useCampoAccesible();
 const campoClaveLogin = useCampoAccesible({
-  ayuda: () => 'Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su propia contraseña. Si se entra con la contraseña del correo, déjalo vacío.',
+  ayuda: () => 'Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su propia contraseña. Si se entra con la contraseña del correo, déjelo vacío.',
 });
 const campoClaveDirecta = useCampoAccesible();
 const campoNotas = useCampoAccesible();
@@ -213,20 +214,20 @@ async function guardar() {
   error.value = '';
   campoInvalido.value = '';
   if (modoAcceso.value === 'login' && !form.value.cuenta_id && !registrandoCorreo.value) {
-    error.value = 'Selecciona el correo que da acceso a la licencia';
+    error.value = 'Seleccione el correo que da acceso a la licencia';
     campoInvalido.value = 'correo';
     enfocarCampoInvalido();
     return;
   }
   if (modoAcceso.value === 'login' && registrandoCorreo.value) {
     if (!correoEscritoValido.value) {
-      error.value = 'Escribe un correo válido para registrarlo';
+      error.value = 'Escriba un correo válido para registrarlo';
       campoInvalido.value = 'correo';
       enfocarCampoInvalido();
       return;
     }
     if (!nuevoCorreo.value.plataforma_id) {
-      error.value = 'Selecciona la plataforma del correo nuevo';
+      error.value = 'Seleccione la plataforma del correo nuevo';
       campoInvalido.value = 'plataforma';
       enfocarCampoInvalido();
       return;
@@ -282,348 +283,354 @@ async function guardar() {
     @close="emit('cerrar', resultado)"
   >
     <form id="lic-form" class="form-grid" @submit.prevent="guardar">
-        <div class="campo full" :class="{ 'campo--inerte': guardando }">
-          <label class="campo__etiqueta" :for="campoSoftware.id">Software<span aria-hidden="true"> *</span></label>
+      <!-- ── Licencia ── -->
+      <div class="section-label !mt-0 !border-t-0 !pt-0">
+        <i class="ti ti-license" aria-hidden="true"></i> Licencia
+      </div>
+
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoSoftware.id">Software<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoSoftware.id"
+            v-model="form.software"
+            class="campo__control"
+            type="text"
+            placeholder="ej: Microsoft 365 Business"
+            required
+            :disabled="guardando"
+          >
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoTipo.id">Tipo<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <select
+            :id="campoTipo.id"
+            class="campo__control campo__control--select"
+            :value="form.tipo"
+            required
+            :disabled="guardando"
+            @change="form.tipo = $event.target.value"
+          >
+            <option value="suscripcion">Suscripción (se renueva)</option>
+            <option value="perpetua">Perpetua (no vence)</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoCantidad.id">Asientos (usuarios máx.)<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoCantidad.id"
+            v-model.number="form.cantidad"
+            class="campo__control tabular-nums"
+            type="number"
+            min="1"
+            required
+            :disabled="guardando"
+          >
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando || cargandoCatalogos }">
+        <label class="campo__etiqueta" :for="campoEmpresa.id">Empresa</label>
+        <div class="campo__caja">
+          <select
+            :id="campoEmpresa.id"
+            class="campo__control campo__control--select"
+            :value="form.empresa_id"
+            :disabled="guardando || cargandoCatalogos"
+            @change="form.empresa_id = $event.target.value"
+          >
+            <option value="">Del grupo (sin empresa)</option>
+            <option v-for="e in empresas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoProveedor.id">Proveedor</label>
+        <div class="campo__caja">
+          <input :id="campoProveedor.id" v-model="form.proveedor" class="campo__control" type="text" :disabled="guardando">
+        </div>
+      </div>
+
+      <!-- ── Vigencia y costo ── -->
+      <div class="section-label">
+        <i class="ti ti-calendar-event" aria-hidden="true"></i> Vigencia y costo
+      </div>
+
+      <template v-if="form.tipo === 'suscripcion'">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoFechaVencimiento.id">Próximo vencimiento</label>
           <div class="campo__caja">
             <input
-              :id="campoSoftware.id"
-              v-model="form.software"
+              :id="campoFechaVencimiento.id"
+              v-model="form.fecha_vencimiento"
               class="campo__control"
-              type="text"
-              placeholder="ej: Microsoft 365 Business"
-              required
+              type="date"
               :disabled="guardando"
             >
           </div>
         </div>
 
         <div class="campo" :class="{ 'campo--inerte': guardando }">
-          <label class="campo__etiqueta" :for="campoTipo.id">Tipo<span aria-hidden="true"> *</span></label>
+          <label class="campo__etiqueta" :for="campoRenovacion.id">Renovación</label>
           <div class="campo__caja">
             <select
-              :id="campoTipo.id"
+              :id="campoRenovacion.id"
               class="campo__control campo__control--select"
-              :value="form.tipo"
-              required
+              :value="form.renovacion_meses"
               :disabled="guardando"
-              @change="form.tipo = $event.target.value"
+              @change="form.renovacion_meses = $event.target.value"
             >
-              <option value="suscripcion">Suscripción (se renueva)</option>
-              <option value="perpetua">Perpetua (no vence)</option>
+              <option v-for="p in PERIODOS" :key="p.value" :value="p.value">{{ p.label }}</option>
             </select>
             <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
           </div>
         </div>
+      </template>
+      <p v-else class="full -mt-1 flex items-center gap-2 text-sm text-gray-500">
+        <i class="ti ti-infinity text-gray-400" aria-hidden="true"></i> Licencia perpetua: no tiene vencimiento ni renovación.
+      </p>
 
-        <div class="campo" :class="{ 'campo--inerte': guardando }">
-          <label class="campo__etiqueta" :for="campoCantidad.id">Asientos (usuarios máx.)<span aria-hidden="true"> *</span></label>
-          <div class="campo__caja">
-            <input
-              :id="campoCantidad.id"
-              v-model.number="form.cantidad"
-              class="campo__control"
-              type="number"
-              min="1"
-              required
-              :disabled="guardando"
-            >
-          </div>
-        </div>
-
-        <div class="campo" :class="{ 'campo--inerte': guardando || cargandoCatalogos }">
-          <label class="campo__etiqueta" :for="campoEmpresa.id">Empresa</label>
-          <div class="campo__caja">
-            <select
-              :id="campoEmpresa.id"
-              class="campo__control campo__control--select"
-              :value="form.empresa_id"
-              :disabled="guardando || cargandoCatalogos"
-              @change="form.empresa_id = $event.target.value"
-            >
-              <option value="">Del grupo (sin empresa)</option>
-              <option v-for="e in empresas" :key="e.id" :value="e.id">{{ e.nombre }}</option>
-            </select>
-            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-          </div>
-        </div>
-
-        <template v-if="form.tipo === 'suscripcion'">
-          <div class="campo" :class="{ 'campo--inerte': guardando }">
-            <label class="campo__etiqueta" :for="campoFechaVencimiento.id">Próximo vencimiento</label>
-            <div class="campo__caja">
-              <input
-                :id="campoFechaVencimiento.id"
-                v-model="form.fecha_vencimiento"
-                class="campo__control"
-                type="date"
-                :disabled="guardando"
-              >
-            </div>
-          </div>
-
-          <div class="campo" :class="{ 'campo--inerte': guardando }">
-            <label class="campo__etiqueta" :for="campoRenovacion.id">Renovación</label>
-            <div class="campo__caja">
-              <select
-                :id="campoRenovacion.id"
-                class="campo__control campo__control--select"
-                :value="form.renovacion_meses"
-                :disabled="guardando"
-                @change="form.renovacion_meses = $event.target.value"
-              >
-                <option v-for="p in PERIODOS" :key="p.value" :value="p.value">{{ p.label }}</option>
-              </select>
-              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-            </div>
-          </div>
-        </template>
-
-        <div class="campo" :class="{ 'campo--inerte': guardando }">
-          <label class="campo__etiqueta" :for="campoProveedor.id">Proveedor</label>
-          <div class="campo__caja">
-            <input :id="campoProveedor.id" v-model="form.proveedor" class="campo__control" type="text" :disabled="guardando">
-          </div>
-        </div>
-
-        <div class="costo-inputs">
-          <div class="campo" :class="{ 'campo--inerte': guardando }">
-            <label class="campo__etiqueta" :for="campoCosto.id">Costo</label>
-            <div class="campo__caja">
-              <input
-                :id="campoCosto.id"
-                v-model="form.costo"
-                class="campo__control"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                :disabled="guardando"
-              >
-            </div>
-          </div>
-          <select v-model="form.moneda" :disabled="guardando" aria-label="Moneda" class="costo-moneda">
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoCosto.id">Costo</label>
+        <div class="campo__caja">
+          <select
+            v-model="form.moneda"
+            :disabled="guardando"
+            aria-label="Moneda"
+            data-ui
+            class="shrink-0 cursor-pointer self-stretch rounded-l-md border-0 border-r border-gray-200 bg-gray-50 pl-3 pr-2 text-sm text-gray-700 focus:outline-none"
+          >
             <option value="PEN">S/</option>
             <option value="USD">US$</option>
           </select>
+          <input
+            :id="campoCosto.id"
+            v-model="form.costo"
+            class="campo__control tabular-nums"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            :disabled="guardando"
+          >
+        </div>
+      </div>
+
+      <!-- ── Modo de acceso ── -->
+      <div class="section-label">
+        <i class="ti ti-lock-access" aria-hidden="true"></i> Acceso al software
+      </div>
+      <fieldset class="full">
+        <legend class="sr-only">Acceso al software</legend>
+        <div class="grid gap-2 sm:grid-cols-3">
+          <label
+            v-for="op in [
+              { valor: 'ninguno', icono: 'ti ti-ban', label: 'Sin credencial', desc: 'Solo registro del contrato' },
+              { valor: 'login', icono: 'ti ti-mail', label: 'Con login', desc: 'Se entra con un correo del sistema' },
+              { valor: 'clave', icono: 'ti ti-key', label: 'Con clave/serial', desc: 'Clave de activación cifrada' },
+            ]"
+            :key="op.valor"
+            class="relative flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary-500"
+            :class="modoAcceso === op.valor ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white hover:bg-gray-50'"
+          >
+            <input v-model="modoAcceso" type="radio" :value="op.valor" class="sr-only" :disabled="guardando">
+            <i class="mt-0.5 text-lg" :class="[op.icono, modoAcceso === op.valor ? 'text-primary-600' : 'text-gray-400']" aria-hidden="true"></i>
+            <span class="min-w-0">
+              <span class="block text-sm font-medium" :class="modoAcceso === op.valor ? 'text-primary-700' : 'text-gray-900'">{{ op.label }}</span>
+              <span class="mt-0.5 block text-xs text-gray-500">{{ op.desc }}</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
+      <template v-if="modoAcceso === 'login'">
+        <div ref="refGrupoCorreo" class="campo full" :class="{ '[&_.combo-wrap_input]:border-red-500': campoInvalido === 'correo' }">
+          <label class="campo__etiqueta" for="lf-cuenta">Correo que da acceso<span aria-hidden="true"> *</span></label>
+          <BuscadorCombo
+            id="lf-cuenta"
+            v-model="form.cuenta_id"
+            v-model:busqueda="busquedaCorreo"
+            :items="correos"
+            :campos-busqueda="['usuario', 'plataforma_nombre']"
+            :etiqueta="(c) => c.usuario"
+            :placeholder="cargandoCatalogos ? 'Cargando correos...' : 'Buscar correo por dirección o plataforma...'"
+            :disabled="guardando || cargandoCatalogos"
+            :forzar-cerrado="registrandoCorreo"
+            @update:model-value="onSeleccionCorreo"
+          >
+            <template #icono="{ seleccionado }">
+              <i v-if="seleccionado" class="ti ti-circle-check combo-check" aria-hidden="true"></i>
+              <i v-else-if="registrandoCorreo" class="ti ti-circle-plus combo-check combo-check--nuevo" aria-hidden="true"></i>
+            </template>
+            <template #resultado="{ item }">
+              <span class="combo-usuario">{{ item.usuario }}</span>
+              <span class="combo-plataforma">{{ item.plataforma_nombre }}</span>
+            </template>
+            <template #vacio="{ sinResultados }">
+              <li v-if="sinResultados && !correoEscritoValido" class="combo-vacio">
+                Sin resultados. Escriba el correo completo para registrarlo desde aquí.
+              </li>
+            </template>
+            <template #extra>
+              <li
+                v-if="correoEscritoValido && !correoYaRegistrado"
+                class="combo-registrar"
+                @mousedown.prevent="elegirRegistrarCorreo"
+              >
+                <i class="ti ti-circle-plus" aria-hidden="true"></i>
+                <span>Registrar <strong>{{ busquedaCorreo.trim().toLowerCase() }}</strong> como correo nuevo</span>
+              </li>
+            </template>
+          </BuscadorCombo>
+          <p class="campo__pie">
+            Los usuarios se asignan desde la lista de Licencias, desde Correos o desde la ficha del
+            empleado: es la misma cuenta. El sistema no permite más personas que asientos comprados.
+          </p>
         </div>
 
-        <!-- Modo de acceso -->
-        <div class="form-group full">
-          <label>Acceso al software</label>
-          <div class="acceso-options">
-            <label class="acceso-option" :class="{ 'acceso-option--active': modoAcceso === 'ninguno' }">
-              <input v-model="modoAcceso" type="radio" value="ninguno" :disabled="guardando">
-              <div class="acceso-body">
-                <i class="ti ti-ban"></i>
-                <span class="acceso-label">Sin credencial</span>
-                <span class="acceso-desc">Solo registro del contrato</span>
-              </div>
-            </label>
-            <label class="acceso-option" :class="{ 'acceso-option--active': modoAcceso === 'login' }">
-              <input v-model="modoAcceso" type="radio" value="login" :disabled="guardando">
-              <div class="acceso-body">
-                <i class="ti ti-mail"></i>
-                <span class="acceso-label">Con login</span>
-                <span class="acceso-desc">Se entra con un correo del sistema</span>
-              </div>
-            </label>
-            <label class="acceso-option" :class="{ 'acceso-option--active': modoAcceso === 'clave' }">
-              <input v-model="modoAcceso" type="radio" value="clave" :disabled="guardando">
-              <div class="acceso-body">
-                <i class="ti ti-key"></i>
-                <span class="acceso-label">Con clave/serial</span>
-                <span class="acceso-desc">Clave de activación cifrada</span>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <template v-if="modoAcceso === 'login'">
-          <div ref="refGrupoCorreo" class="form-group full combo-correo" :class="{ 'campo-invalido': campoInvalido === 'correo' }">
-            <label for="lf-cuenta">Correo que da acceso *</label>
-            <BuscadorCombo
-              id="lf-cuenta"
-              v-model="form.cuenta_id"
-              v-model:busqueda="busquedaCorreo"
-              :items="correos"
-              :campos-busqueda="['usuario', 'plataforma_nombre']"
-              :etiqueta="(c) => c.usuario"
-              :placeholder="cargandoCatalogos ? 'Cargando correos...' : 'Buscar correo por dirección o plataforma...'"
-              :disabled="guardando || cargandoCatalogos"
-              :forzar-cerrado="registrandoCorreo"
-              @update:model-value="onSeleccionCorreo"
-            >
-              <template #icono="{ seleccionado }">
-                <i v-if="seleccionado" class="ti ti-circle-check combo-check" aria-hidden="true"></i>
-                <i v-else-if="registrandoCorreo" class="ti ti-circle-plus combo-check combo-check--nuevo" aria-hidden="true"></i>
-              </template>
-              <template #resultado="{ item }">
-                <span class="combo-usuario">{{ item.usuario }}</span>
-                <span class="combo-plataforma">{{ item.plataforma_nombre }}</span>
-              </template>
-              <template #vacio="{ sinResultados }">
-                <li v-if="sinResultados && !correoEscritoValido" class="combo-vacio">
-                  Sin resultados. Escribe el correo completo para registrarlo desde aquí.
-                </li>
-              </template>
-              <template #extra>
-                <li
-                  v-if="correoEscritoValido && !correoYaRegistrado"
-                  class="combo-registrar"
-                  @mousedown.prevent="elegirRegistrarCorreo"
+        <!-- Datos mínimos del correo que se registrará en Correos -->
+        <div v-if="registrandoCorreo" class="full rounded-lg border border-primary-200 bg-primary-50/40 p-4">
+          <p class="mb-3 flex items-start gap-2 text-sm text-primary-800">
+            <i class="ti ti-mail-plus mt-0.5" aria-hidden="true"></i>
+            Este correo no existe todavía: se registrará en el módulo Correos al guardar.
+          </p>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="campo" :class="{ 'campo--invalido': campoPlataformaNueva.invalido.value, 'campo--inerte': guardando }">
+              <label class="campo__etiqueta" :for="campoPlataformaNueva.id">Plataforma<span aria-hidden="true"> *</span></label>
+              <div class="campo__caja">
+                <select
+                  :id="campoPlataformaNueva.id"
+                  ref="refPlataforma"
+                  class="campo__control campo__control--select"
+                  :value="nuevoCorreo.plataforma_id"
+                  required
+                  :disabled="guardando"
+                  :aria-invalid="campoPlataformaNueva.invalido.value"
+                  :aria-describedby="campoPlataformaNueva.describedBy.value"
+                  @change="nuevoCorreo.plataforma_id = $event.target.value"
                 >
-                  <i class="ti ti-circle-plus" aria-hidden="true"></i>
-                  <span>Registrar <strong>{{ busquedaCorreo.trim().toLowerCase() }}</strong> como correo nuevo</span>
-                </li>
-              </template>
-            </BuscadorCombo>
-            <p class="field-hint">
-              Los usuarios de la licencia se asignan desde la lista de Licencias (mismo botón
-              que las licencias sin login) o desde Correos/la ficha del empleado — es la misma
-              cuenta. El sistema no permitirá más personas que asientos comprados.
-            </p>
-          </div>
-
-          <!-- Datos mínimos del correo que se registrará en Correos -->
-          <div v-if="registrandoCorreo" class="full nuevo-correo-panel">
-            <p class="nuevo-correo-titulo">
-              <i class="ti ti-mail-plus" aria-hidden="true"></i>
-              Este correo no existe todavía: se registrará en el módulo Correos al guardar.
-            </p>
-            <div class="nuevo-correo-campos">
-              <div class="campo" :class="{ 'campo--invalido': campoPlataformaNueva.invalido.value, 'campo--inerte': guardando }">
-                <label class="campo__etiqueta" :for="campoPlataformaNueva.id">Plataforma<span aria-hidden="true"> *</span></label>
-                <div class="campo__caja">
-                  <select
-                    :id="campoPlataformaNueva.id"
-                    ref="refPlataforma"
-                    class="campo__control campo__control--select"
-                    :value="nuevoCorreo.plataforma_id"
-                    required
-                    :disabled="guardando"
-                    :aria-invalid="campoPlataformaNueva.invalido.value"
-                    :aria-describedby="campoPlataformaNueva.describedBy.value"
-                    @change="nuevoCorreo.plataforma_id = $event.target.value"
-                  >
-                    <option value="" disabled>Seleccionar plataforma</option>
-                    <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
-                  </select>
-                  <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-                </div>
-                <p
-                  v-if="campoPlataformaNueva.invalido.value"
-                  :id="campoPlataformaNueva.idAyuda"
-                  class="campo__pie campo__pie--error"
-                  role="alert"
-                >Selecciona la plataforma del correo nuevo</p>
+                  <option value="" disabled>Seleccionar plataforma</option>
+                  <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                </select>
+                <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
               </div>
+              <p
+                v-if="campoPlataformaNueva.invalido.value"
+                :id="campoPlataformaNueva.idAyuda"
+                class="campo__pie campo__pie--error"
+                role="alert"
+              >Seleccione la plataforma del correo nuevo</p>
+            </div>
 
-              <div class="campo" :class="{ 'campo--inerte': guardando }">
-                <label class="campo__etiqueta" :for="campoTipoCuenta.id">Tipo de correo</label>
-                <div class="campo__caja">
-                  <select
-                    :id="campoTipoCuenta.id"
-                    class="campo__control campo__control--select"
-                    :value="nuevoCorreo.tipo_cuenta"
-                    :disabled="guardando"
-                    @change="nuevoCorreo.tipo_cuenta = $event.target.value"
-                  >
-                    <option value="compartida">Compartido (varios a la vez)</option>
-                    <option value="reutilizable">Reutilizable (uno a la vez)</option>
-                  </select>
-                  <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-                </div>
+            <div class="campo" :class="{ 'campo--inerte': guardando }">
+              <label class="campo__etiqueta" :for="campoTipoCuenta.id">Tipo de correo</label>
+              <div class="campo__caja">
+                <select
+                  :id="campoTipoCuenta.id"
+                  class="campo__control campo__control--select"
+                  :value="nuevoCorreo.tipo_cuenta"
+                  :disabled="guardando"
+                  @change="nuevoCorreo.tipo_cuenta = $event.target.value"
+                >
+                  <option value="compartida">Compartido (varios a la vez)</option>
+                  <option value="reutilizable">Reutilizable (uno a la vez)</option>
+                </select>
+                <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
               </div>
+            </div>
 
-              <div class="full input-with-action">
-                <div class="campo" :class="{ 'campo--inerte': guardando }">
-                  <label class="campo__etiqueta" :for="campoPasswordCorreo.id">Contraseña del correo</label>
-                  <div class="campo__caja">
-                    <input
-                      :id="campoPasswordCorreo.id"
-                      v-model="nuevoCorreo.password"
-                      class="campo__control"
-                      :type="passwordCorreoVisible ? 'text' : 'password'"
-                      autocomplete="new-password"
-                      placeholder="Opcional, se puede completar después en Correos"
-                      :disabled="guardando"
-                    >
-                  </div>
-                </div>
-                <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generarPasswordCorreo">
+            <div class="campo md:col-span-2" :class="{ 'campo--inerte': guardando }">
+              <label class="campo__etiqueta" :for="campoPasswordCorreo.id">Contraseña del correo</label>
+              <div class="campo__caja pr-1">
+                <input
+                  :id="campoPasswordCorreo.id"
+                  v-model="nuevoCorreo.password"
+                  class="campo__control"
+                  :type="passwordCorreoVisible ? 'text' : 'password'"
+                  autocomplete="new-password"
+                  placeholder="Opcional, se puede completar después en Correos"
+                  :disabled="guardando"
+                >
+                <button type="button" class="icon-btn shrink-0" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generarPasswordCorreo">
                   <i class="ti ti-refresh" aria-hidden="true"></i>
                 </button>
-                <button type="button" class="icon-btn" :title="passwordCorreoVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordCorreoVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordCorreoVisible = !passwordCorreoVisible">
-                  <i :class="passwordCorreoVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+                <button type="button" class="icon-btn shrink-0" :title="passwordCorreoVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordCorreoVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordCorreoVisible = !passwordCorreoVisible">
+                  <i :class="passwordCorreoVisible ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
                 </button>
               </div>
             </div>
           </div>
-
-          <div class="full input-with-action">
-            <div class="campo" :class="{ 'campo--inerte': guardando }">
-              <label class="campo__etiqueta" :for="campoClaveLogin.id">{{ esEdicion && licencia?.tiene_clave ? 'Nueva contraseña del software' : 'Contraseña del software' }}</label>
-              <div class="campo__caja">
-                <input
-                  :id="campoClaveLogin.id"
-                  v-model="form.clave"
-                  class="campo__control"
-                  :type="claveVisible ? 'text' : 'password'"
-                  autocomplete="off"
-                  :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'Dejar vacío si es la misma del correo'"
-                  :disabled="guardando"
-                  :aria-describedby="campoClaveLogin.describedBy.value"
-                >
-              </div>
-              <p :id="campoClaveLogin.idAyuda" class="campo__pie">Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su propia contraseña. Si se entra con la contraseña del correo, déjalo vacío.</p>
-            </div>
-            <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
-              <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-            </button>
-          </div>
-        </template>
-
-        <div v-if="modoAcceso === 'clave'" class="full input-with-action">
-          <div class="campo" :class="{ 'campo--inerte': guardando }">
-            <label class="campo__etiqueta" :for="campoClaveDirecta.id">{{ esEdicion && licencia?.tiene_clave ? 'Nueva clave/serial' : 'Clave / serial' }}</label>
-            <div class="campo__caja">
-              <input
-                :id="campoClaveDirecta.id"
-                v-model="form.clave"
-                class="campo__control"
-                :type="claveVisible ? 'text' : 'password'"
-                autocomplete="off"
-                :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'XXXXX-XXXXX-XXXXX'"
-                :disabled="guardando"
-              >
-            </div>
-          </div>
-          <button type="button" class="icon-btn" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
-            <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-          </button>
         </div>
 
         <div class="campo full" :class="{ 'campo--inerte': guardando }">
-          <label class="campo__etiqueta" :for="campoNotas.id">Notas</label>
-          <div class="campo__caja">
-            <textarea :id="campoNotas.id" v-model="form.notas" class="campo__control campo__control--area" :rows="3" :disabled="guardando"></textarea>
+          <label class="campo__etiqueta" :for="campoClaveLogin.id">{{ esEdicion && licencia?.tiene_clave ? 'Nueva contraseña del software' : 'Contraseña del software' }}</label>
+          <div class="campo__caja pr-1">
+            <input
+              :id="campoClaveLogin.id"
+              v-model="form.clave"
+              class="campo__control"
+              :type="claveVisible ? 'text' : 'password'"
+              autocomplete="off"
+              :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'Dejar vacío si es la misma del correo'"
+              :disabled="guardando"
+              :aria-describedby="campoClaveLogin.describedBy.value"
+            >
+            <button type="button" class="icon-btn shrink-0" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
+              <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+            </button>
           </div>
+          <p :id="campoClaveLogin.idAyuda" class="campo__pie">Algunos software (ej: AutoCAD) usan el correo como usuario pero tienen su propia contraseña. Si se entra con la contraseña del correo, déjelo vacío.</p>
         </div>
+      </template>
 
-        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
-          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
-          <div class="notif__texto">
-            <p class="notif__detalle">{{ error }}</p>
-          </div>
+      <div v-if="modoAcceso === 'clave'" class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoClaveDirecta.id">{{ esEdicion && licencia?.tiene_clave ? 'Nueva clave/serial' : 'Clave / serial' }}</label>
+        <div class="campo__caja pr-1">
+          <input
+            :id="campoClaveDirecta.id"
+            v-model="form.clave"
+            class="campo__control tabular-nums"
+            :type="claveVisible ? 'text' : 'password'"
+            autocomplete="off"
+            :placeholder="esEdicion && licencia?.tiene_clave ? 'Dejar vacío para mantener la actual' : 'XXXXX-XXXXX-XXXXX'"
+            :disabled="guardando"
+          >
+          <button type="button" class="icon-btn shrink-0" :title="claveVisible ? 'Ocultar' : 'Mostrar'" :aria-label="claveVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="claveVisible = !claveVisible">
+            <i :class="claveVisible ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+          </button>
         </div>
+      </div>
+
+      <div class="section-label">
+        <i class="ti ti-notes" aria-hidden="true"></i> Notas
+      </div>
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta sr-only" :for="campoNotas.id">Notas</label>
+        <div class="campo__caja">
+          <textarea :id="campoNotas.id" v-model="form.notas" class="campo__control campo__control--area" :rows="3" :disabled="guardando"></textarea>
+        </div>
+      </div>
+
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button type="submit" form="lic-form" class="btn btn--primary" :disabled="guardando">
-        {{ guardando ? 'Guardando...' : 'Guardar' }}
-        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton type="submit" form="lic-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
     </template>
   </Modal>
 
@@ -639,5 +646,3 @@ async function guardar() {
     @confirm="descartarCambios"
   />
 </template>
-
-

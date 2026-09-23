@@ -115,12 +115,13 @@ describe('EquiposView.vue — listado migrado a AppTable/AppColumn/AppButton', (
     expect(w.text()).toContain('Constructora XYZ');
   });
 
-  it('las 8 columnas declaradas con AppColumn se renderizan como <th>', async () => {
+  // Rediseño 2026-09-23: 8 columnas → 5 ricas (código/almacén/empresa van
+  // apilados bajo "Equipo"; "Asignado a" + "Ubicación" se fundieron en
+  // "Asignación"). Mismo contrato: cada AppColumn sigue siendo un <th>.
+  it('las 5 columnas declaradas con AppColumn se renderizan como <th>', async () => {
     const w = await montar();
     const headers = w.findAll('th').map((th) => th.text());
-    expect(headers).toEqual([
-      'Código equipo', 'Código almacén', 'Equipo', 'Serie', 'Situación', 'Asignado a', 'Ubicación', 'Acciones',
-    ]);
+    expect(headers).toEqual(['Equipo', 'Serie', 'Estado', 'Asignación', 'Acciones']);
   });
 
   it('celdas con contenido custom (#body) siguen renderizando lo mismo que antes', async () => {
@@ -130,14 +131,15 @@ describe('EquiposView.vue — listado migrado a AppTable/AppColumn/AppButton', (
     expect(w.text()).toContain('Operativo');
     expect(w.text()).toContain('De baja');
     // Portador con link al empleado.
-    const link = w.find('a.empleado-link');
+    // (antes por la clase provisional `.empleado-link`; ahora por destino)
+    const link = w.find('a[href="/empleados/emp-1"]');
     expect(link.exists()).toBe(true);
-    expect(link.attributes('href')).toBe('/empleados/emp-1');
+    expect(link.text()).toBe('Juan Pérez');
   });
 
-  it('clic en el header ordenable "Código equipo" llama a store.ordenarPor vía @ordenar', async () => {
+  it('clic en el header ordenable "Equipo" (campo codigo) llama a store.ordenarPor vía @ordenar', async () => {
     const w = await montar();
-    const th = w.findAll('th').find((t) => t.text() === 'Código equipo');
+    const th = w.findAll('th').find((t) => t.text() === 'Equipo');
     await th.trigger('click');
     await flushPromises();
     expect(insforgeApi.listEquiposPage).toHaveBeenCalledTimes(2);
@@ -145,9 +147,9 @@ describe('EquiposView.vue — listado migrado a AppTable/AppColumn/AppButton', (
     expect(ultimaLlamada[0].orden).toEqual({ columna: 'codigo', direccion: 'asc' });
   });
 
-  it('columna "Equipo" (no declarada sortable) no dispara una carga extra al clickearla', async () => {
+  it('columna "Asignación" (no declarada sortable) no dispara una carga extra al clickearla', async () => {
     const w = await montar();
-    const th = w.findAll('th').find((t) => t.text() === 'Equipo');
+    const th = w.findAll('th').find((t) => t.text() === 'Asignación');
     await th.trigger('click');
     await flushPromises();
     expect(insforgeApi.listEquiposPage).toHaveBeenCalledTimes(1);
