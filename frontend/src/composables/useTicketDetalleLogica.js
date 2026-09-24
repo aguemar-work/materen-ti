@@ -6,7 +6,7 @@ import { useAuthStore } from '../stores/auth.js';
 import { useTicketDetalleStore } from '../stores/ticketDetalle.js';
 
 // Lógica de negocio de la ficha de ticket — extraída de TicketDetalleView.vue
-// (refactor "split-view", ver GUIA-UX-UI) para que la misma lógica (store,
+// (refactor "split-view") para que la misma lógica (store,
 // transiciones de estado, historial, comentarios) sirva tanto a la página
 // completa (/tickets/:id) como al panel embebido del split-view
 // (TicketDetallePanel.vue), sin duplicar las ~15 funciones de transición en

@@ -1,9 +1,7 @@
 // Cola reactiva de toasts — reemplaza la manipulación directa del DOM
 // (innerHTML + estilos inline sobre un único `#toast`) por un array reactivo
-// que consume `AppNotifications.vue` con `CarbonNotification` (variante
-// "toast"), la primitiva de IBM Carbon v11. Antes esto y `.aviso-card`
-// (avisos realtime) eran dos implementaciones del mismo concepto con CSS
-// propio cada una — ver el comentario de cabecera de CarbonNotification.vue.
+// que pinta `components/shared/AppNotifications.vue` (también los avisos
+// realtime: antes eran dos implementaciones del mismo concepto).
 //
 // La firma pública `showToast(msg, tipo)` NO cambió a propósito: la llaman
 // ~30 archivos y ninguno necesita saber que el mecanismo cambió por dentro.

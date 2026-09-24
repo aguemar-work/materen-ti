@@ -6,8 +6,7 @@
 // funciones de iniciales, dos de ellas idénticas carácter por carácter
 // (TicketsView.vue y TicketDetallePanel.vue).
 //
-// El CSS de los tonos vive en main.css (.avatar--*), documentado en
-// docs/GUIA-UX-UI.md.
+// Los tonos los pinta components/ui/AppAvatar.vue.
 
 // El orden importa: es lo que fija qué tono le toca a cada nombre. Reordenar
 // o insertar un tono en el medio le cambia el color a gente que ya lo tenía

@@ -23,7 +23,7 @@ export const ESTADOS_TICKET = {
 
 // Paleta propia, separada de ESTADOS_TICKET — Estado y Prioridad se pintan
 // una junto a la otra en la misma fila y no pueden compartir color con
-// significado distinto (ver GUIA-UX-UI.md).
+// significado distinto.
 export const PRIORIDADES_TICKET = {
   baja:    { label: 'Baja',    clase: 'badge--neutral' },
   media:   { label: 'Media',   clase: 'badge--teal' },
@@ -79,8 +79,8 @@ export const ESTADOS_TERMINALES = ['cerrado', 'rechazado'];
 
 // Valor de filtro (no un estado real): "vigentes" = todo lo que no sea
 // Resuelto (incluye 'cerrado' en la base) ni Rechazado — todo lo que
-// sigue necesitando atención activa. Default de la Lista de Tickets
-// (GUIA-UX-UI.md, "Filtro de estado con default no-vacío") — centralizado
+// sigue necesitando atención activa. Default de la Lista de Tickets (un
+// filtro de estado nunca arranca vacío) — centralizado
 // acá en vez de repetir el string literal en el store, el API y la vista.
 // El WHERE real (los 3 valores excluidos) vive en queryTickets()
 // (api/domains/tickets.js) — acá solo el nombre del valor de filtro.

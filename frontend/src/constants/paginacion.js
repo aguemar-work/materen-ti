@@ -1,5 +1,5 @@
 // Tamaños de página que ofrece el selector "Filas por página" de
-// CarbonPagination, y el tamaño con el que abre cualquier listado.
+// AppPaginacion, y el tamaño con el que abre cualquier listado.
 //
 // Están acá y no repetidos en cada vista por una razón concreta: el selector
 // muestra el tamaño actual con `:tam-pagina`, así que si el inicial no es una

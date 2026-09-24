@@ -16,7 +16,7 @@ export const ESTADOS_PROBLEMA_ABIERTOS = ['abierto', 'diagnostico', 'acciones'];
 
 // Paleta propia, separada de ESTADOS_PROBLEMA — estado y severidad se pintan
 // uno junto al otro en la misma fila y no pueden compartir color con
-// significado distinto (ver GUIA-UX-UI.md).
+// significado distinto.
 export const SEVERIDADES_PROBLEMA = {
   baja:     { label: 'Baja',     clase: 'badge--neutral' },
   media:    { label: 'Media',    clase: 'badge--teal' },
