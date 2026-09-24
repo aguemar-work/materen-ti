@@ -280,11 +280,13 @@ global `Deno`.
 │       │   ├── insforge.js    # capa de datos (PostgREST vía SDK)
 │       │   └── passwords.js   # todo lo que toca contraseñas → edge function
 │       ├── styles/
-│       │   ├── carbon-theme.css # vacío a propósito desde el reinicio de diseño (2026-09-05)
-│       │   └── main.css        # vacío a propósito desde el reinicio de diseño (2026-09-05)
+│       │   ├── main.css        # @theme de Tailwind (único lugar con tokens)
+│       │   └── componentes.css # primitivas oficiales (.campo, .notif, .cred, .modal...)
 │       ├── components/
-│       │   └── shared/         # AppLayout, PageHeader, Modal, ... (sin components/carbon/: se borró en el reinicio)
-│       ├── core/              # formatters, toast, utils, paginacionRender.js, tablaColumnas.js, tagRol.js, notificacionInfo.js
+│       │   ├── ui/             # wrappers de PrimeVue + componentes base (AppButton, AppTable, AppPortal...)
+│       │   └── shared/         # AppLayout, AppNav, Modal, ConfirmDialog, MenuAcciones, ...
+│       ├── core/              # dominio-*.js, formatters, toast, utils, paginacionRender.js, tagRol.js
+│       ├── maqueta/           # datos inventados para `npm run dev:maqueta` (sin backend)
 │       ├── modules/           # una carpeta por módulo de UI
 │       │   ├── actividad/     # auditoría (solo JEFE)
 │       │   ├── auth/          # login + reestablecer contraseña (código por email)
@@ -311,13 +313,17 @@ global `Deno`.
 │   │                       #   encuestaEstado / encuesta / version
 │   ├── encuestas.ts        # edge function: abrir / responder / version (rondas de encuesta pública)
 │   └── equipos-fotos.ts    # edge function: subirFoto / eliminarFoto / version (staff, valida magic bytes)
-├── migrations/             # 001..084 — esquema completo, en orden, comentado
+├── migrations/             # 001..086 — esquema completo, en orden, comentado
+│   └── rollback/           # rollbacks fuera de la secuencia lineal (075)
 ├── docs/
-│   ├── NOTAS-DISENO-ANTERIOR.md # reinicio del sistema de diseño (2026-09-05): qué se rescató antes de borrar Carbon v11
+│   ├── SISTEMA-DISENO.md      # sistema de diseño vigente: tokens, componentes, recetas de página
+│   ├── NOTAS-DISENO-ANTERIOR.md # qué se rescató del sistema anterior (principios del JEFE, accesibilidad)
 │   ├── PANORAMA-SISTEMA.md    # arquitectura, modelo de datos y decisiones verificadas
-│   ├── HISTORIAL-AUDITORIAS.md # hallazgos de auditoría con estado + inventario de archivos + revisiones de design.pen
+│   ├── HISTORIAL-AUDITORIAS.md # hallazgos de auditoría con estado y pendientes de despliegue
 │   ├── GOTCHAS-CLI.md         # gotchas del CLI de InsForge: leer antes de aplicar una migración
-│   └── CHANGELOG.md           # historial completo: cambios de documentación y de diseño (design.pen)
+│   ├── CHANGELOG.md           # historial de cambios de documentación, producto y diseño
+│   ├── archivo/               # historia retirada (apéndice de diseño v1)
+│   └── propuestas/            # cambios a AGENTS.md pendientes de aprobación
 ├── AGENTS.md               # contexto para agentes de código
 └── insforge.toml           # config del backend (auth por código, password min 6)
 ```
