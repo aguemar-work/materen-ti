@@ -5,6 +5,7 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
 import Modal from '../../components/shared/Modal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
@@ -122,164 +123,179 @@ async function confirmarBaja() {
 <template>
   <Modal
     ref="modal"
-    size="sm"
+    size="md"
     :mostrar-cerrar="fase !== 'confirmando'"
     :cerrar-en-backdrop="fase !== 'confirmando'"
     :confirmar-cierre="() => fase !== 'confirmando'"
     @close="emit('cerrar', resultado)"
   >
     <template #titulo>
-      <span class="baja-title-con-icono">
-        <span class="icon-box icon-box--danger"><i class="ti ti-user-off" aria-hidden="true"></i></span>
-        Dar de baja a {{ nombreCompleto }}
+      <span class="flex min-w-0 items-center gap-3">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50 text-lg text-red-600">
+          <i class="ti ti-user-off" aria-hidden="true"></i>
+        </span>
+        <span class="min-w-0">
+          <span class="block truncate">Dar de baja a {{ nombreCompleto }}</span>
+          <span class="block text-xs font-normal text-gray-500">Revise las consecuencias antes de confirmar</span>
+        </span>
       </span>
     </template>
 
-    <div class="baja-body">
-      <div v-if="cargando" class="baja-cargando">Cargando resumen de accesos...</div>
+    <p v-if="cargando" class="py-8 text-center text-sm text-gray-500" role="status">Cargando resumen de accesos...</p>
 
-      <template v-else-if="fase === 'confirmando'">
-        <p class="baja-intro">Procesando la baja de {{ nombreCompleto }}:</p>
-        <ul class="baja-checklist">
-          <li
-            v-for="(paso, idx) in pasosConfirmacion"
-            :key="paso.id"
-            class="checklist-item"
-          >
-            <i
-              v-if="idx < pasoActivo && paso.estado === 'exito'"
-              class="ti ti-circle-check checklist-icono checklist-icono--exito"
-              aria-hidden="true"
-            ></i>
-            <i
-              v-else-if="idx < pasoActivo"
-              class="ti ti-clock checklist-icono checklist-icono--pendiente"
-              aria-hidden="true"
-            ></i>
-            <i
-              v-else-if="idx === pasoActivo"
-              class="ti ti-loader-2 checklist-icono checklist-icono--activo spinner-icon"
-              aria-hidden="true"
-            ></i>
-            <i v-else class="ti ti-circle-dashed checklist-icono checklist-icono--espera" aria-hidden="true"></i>
-            <span :class="{ 'checklist-texto--espera': idx > pasoActivo }">{{ paso.label }}</span>
+    <!-- ══ Fase 2: procesando (checklist progresivo) ══════════════ -->
+    <div v-else-if="fase === 'confirmando'" role="status" aria-live="polite">
+      <p class="mb-3 text-sm text-gray-600">Procesando la baja de {{ nombreCompleto }}:</p>
+      <ol class="space-y-2">
+        <li
+          v-for="(paso, idx) in pasosConfirmacion"
+          :key="paso.id"
+          class="flex items-center gap-2.5 text-sm"
+        >
+          <i
+            v-if="idx < pasoActivo && paso.estado === 'exito'"
+            class="ti ti-circle-check text-lg text-green-600"
+            aria-hidden="true"
+          ></i>
+          <i
+            v-else-if="idx < pasoActivo"
+            class="ti ti-clock text-lg text-amber-600"
+            aria-hidden="true"
+          ></i>
+          <i
+            v-else-if="idx === pasoActivo"
+            class="ti ti-loader-2 animate-spin text-lg text-primary-600"
+            aria-hidden="true"
+          ></i>
+          <i v-else class="ti ti-circle-dashed text-lg text-gray-300" aria-hidden="true"></i>
+          <span :class="idx > pasoActivo ? 'text-gray-400' : 'text-gray-900'">{{ paso.label }}</span>
+        </li>
+      </ol>
+    </div>
+
+    <!-- ══ Fase 1: resumen de consecuencias ═══════════════════════ -->
+    <div v-else class="space-y-5">
+      <!-- Lo que hace el sistema al confirmar -->
+      <section aria-labelledby="baja-automatico">
+        <h3 id="baja-automatico" class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Al confirmar, el sistema</h3>
+        <ul class="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">
+          <li v-if="personales.length" class="flex gap-3 px-3 py-3">
+            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-50 text-base text-red-600">
+              <i class="ti ti-trash" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-900">
+                Elimina {{ personales.length }} {{ personales.length === 1 ? 'cuenta personal' : 'cuentas personales' }}
+              </p>
+              <ul class="mt-1 space-y-0.5 text-xs text-gray-500">
+                <li v-for="c in personales" :key="c.asignacion_id" class="truncate">
+                  <span class="text-gray-700">{{ c.usuario }}</span> · {{ c.plataforma }}
+                </li>
+              </ul>
+            </div>
+          </li>
+
+          <li v-if="reutilizables.length" class="flex gap-3 px-3 py-3">
+            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-base text-gray-500">
+              <i class="ti ti-transfer" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-900">
+                Libera {{ reutilizables.length }} {{ reutilizables.length === 1 ? 'cuenta reutilizable' : 'cuentas reutilizables' }}
+                <span class="font-normal text-gray-500">— quedan disponibles para otro empleado</span>
+              </p>
+              <ul class="mt-1 space-y-0.5 text-xs text-gray-500">
+                <li v-for="c in reutilizables" :key="c.asignacion_id" class="truncate">
+                  <span class="text-gray-700">{{ c.usuario }}</span> · {{ c.plataforma }}
+                </li>
+              </ul>
+            </div>
+          </li>
+
+          <li v-if="compartidas.length" class="flex gap-3 px-3 py-3">
+            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-base text-gray-500">
+              <i class="ti ti-users" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-900">
+                Le quita el acceso a {{ compartidas.length }} {{ compartidas.length === 1 ? 'cuenta compartida' : 'cuentas compartidas' }}
+                <span class="font-normal text-gray-500">— los demás usuarios continúan</span>
+              </p>
+              <ul class="mt-1 space-y-0.5 text-xs text-gray-500">
+                <li v-for="c in compartidas" :key="c.asignacion_id" class="truncate">
+                  <span class="text-gray-700">{{ c.usuario }}</span> · {{ c.plataforma }}
+                </li>
+              </ul>
+            </div>
+          </li>
+
+          <li v-if="licencias.length" class="flex gap-3 px-3 py-3">
+            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-base text-gray-500">
+              <i class="ti ti-license" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-900">
+                Libera {{ licencias.length }} {{ licencias.length === 1 ? 'asiento de licencia' : 'asientos de licencia' }}
+              </p>
+              <p class="mt-1 truncate text-xs text-gray-500">{{ licencias.map((l) => l.software).join(', ') }}</p>
+            </div>
+          </li>
+
+          <li class="flex gap-3 px-3 py-3">
+            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-base text-gray-500">
+              <i class="ti ti-user-off" aria-hidden="true"></i>
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-900">Marca al empleado como Inactivo</p>
+              <p v-if="sinAccesos" class="mt-1 text-xs text-gray-500">No tiene cuentas, licencias ni equipos asignados actualmente.</p>
+            </div>
           </li>
         </ul>
-      </template>
+      </section>
 
-      <template v-else>
-        <p class="baja-intro">
-          Esto es lo que pasará con sus accesos. Revise antes de confirmar:
-        </p>
+      <!-- Lo que queda a cargo de TI -->
+      <section v-if="reutilizables.length || compartidas.length || equipos.length" aria-labelledby="baja-pendiente">
+        <h3 id="baja-pendiente" class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Queda pendiente para TI</h3>
+        <ul class="space-y-2">
+          <li v-if="reutilizables.length || compartidas.length" class="notif notif--warning">
+            <i class="ti ti-key" aria-hidden="true"></i>
+            <div class="notif__texto">
+              <p class="notif__titulo">Rotar contraseñas</p>
+              <p class="notif__detalle">
+                Las cuentas reutilizables y compartidas quedarán marcadas “Rotar contraseña”: el empleado conoce las claves actuales. Cámbielas cuanto antes.
+              </p>
+            </div>
+          </li>
+          <li v-if="equipos.length" class="notif notif--warning">
+            <i class="ti ti-devices" aria-hidden="true"></i>
+            <div class="notif__texto">
+              <p class="notif__titulo">
+                Recuperar {{ equipos.length }} {{ equipos.length === 1 ? 'equipo' : 'equipos' }}
+              </p>
+              <ul class="my-1 space-y-0.5">
+                <li v-for="eq in equipos" :key="eq.asignacion_id" class="truncate">
+                  <span class="font-medium tabular-nums">{{ eq.codigo }}</span> · {{ [eq.tipo, eq.marca, eq.modelo].filter(Boolean).join(' ') }}
+                </li>
+              </ul>
+              <p class="notif__detalle">
+                La baja no los marca como devueltos: recupérelos físicamente y registre la devolución en el módulo Equipos. Mientras tanto aparecerán como “Sin devolver” en el Dashboard.
+              </p>
+            </div>
+          </li>
+        </ul>
+      </section>
 
-        <div v-if="sinAccesos" class="baja-sin-cuentas">
-          <i class="ti ti-info-circle"></i>
-          No tiene cuentas, licencias ni equipos asignados actualmente.
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
         </div>
-
-        <div v-if="personales.length" class="baja-grupo">
-          <div class="grupo-header grupo-header--danger">
-            <i class="ti ti-user"></i>
-            Cuentas personales — se darán de baja
-          </div>
-          <ul>
-            <li v-for="c in personales" :key="c.asignacion_id">
-              <span class="cuenta-usuario">{{ c.usuario }}</span>
-              <span class="cuenta-plataforma">{{ c.plataforma }}</span>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="reutilizables.length" class="baja-grupo">
-          <div class="grupo-header grupo-header--ok">
-            <i class="ti ti-transfer"></i>
-            Reutilizables — quedarán disponibles para otro empleado
-          </div>
-          <ul>
-            <li v-for="c in reutilizables" :key="c.asignacion_id">
-              <span class="cuenta-usuario">{{ c.usuario }}</span>
-              <span class="cuenta-plataforma">{{ c.plataforma }}</span>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="compartidas.length" class="baja-grupo">
-          <div class="grupo-header grupo-header--info">
-            <i class="ti ti-users"></i>
-            Compartidas — se le quitará el acceso (los demás usuarios continúan)
-          </div>
-          <ul>
-            <li v-for="c in compartidas" :key="c.asignacion_id">
-              <span class="cuenta-usuario">{{ c.usuario }}</span>
-              <span class="cuenta-plataforma">{{ c.plataforma }}</span>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="licencias.length" class="baja-grupo">
-          <div class="grupo-header grupo-header--ok">
-            <i class="ti ti-license"></i>
-            Licencias — el asiento quedará libre
-          </div>
-          <ul>
-            <li v-for="l in licencias" :key="l.asignacion_id">
-              <span class="cuenta-usuario">{{ l.software }}</span>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="reutilizables.length || compartidas.length" class="baja-aviso-rotacion">
-          <i class="ti ti-alert-triangle"></i>
-          <span>
-            Estas cuentas quedarán marcadas <strong>"Rotar contraseña"</strong>:
-            el empleado conoce las claves actuales. Cámbielas cuanto antes.
-          </span>
-        </div>
-
-        <!-- Equipos: NO se cierran con la baja — devolución física pendiente -->
-        <div v-if="equipos.length" class="baja-grupo">
-          <div class="grupo-header grupo-header--danger">
-            <i class="ti ti-devices"></i>
-            Equipos — quedan PENDIENTES DE DEVOLUCIÓN
-          </div>
-          <ul>
-            <li v-for="eq in equipos" :key="eq.asignacion_id">
-              <span class="cuenta-usuario">{{ eq.codigo }} — {{ eq.tipo }} {{ eq.marca }} {{ eq.modelo }}</span>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="equipos.length" class="baja-aviso-rotacion">
-          <i class="ti ti-alert-triangle"></i>
-          <span>
-            La baja <strong>no</strong> marca los equipos como devueltos: recupérelos
-            físicamente y registre la devolución en el módulo <strong>Equipos</strong>.
-            Mientras tanto aparecerán como "Sin devolver" en el Dashboard.
-          </span>
-        </div>
-
-        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
-          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
-          <div class="notif__texto">
-            <p class="notif__detalle">{{ error }}</p>
-          </div>
-        </div>
-      </template>
+      </div>
     </div>
 
     <template v-if="fase !== 'confirmando'" #acciones>
-      <button type="button" class="btn btn--secondary btn--md" @click="modal?.cerrar()">Cancelar</button>
-      <button
-        type="button"
-        class="btn btn--danger btn--md"
-        :disabled="cargando"
-        @click="confirmarBaja"
-      >
-        Confirmar baja
-        <i class="ti ti-user-off" aria-hidden="true"></i>
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" @click="modal?.cerrar()" />
+      <AppButton severity="danger" icon="ti ti-user-off" label="Confirmar baja" :disabled="cargando" @click="confirmarBaja" />
     </template>
   </Modal>
 </template>
-
-

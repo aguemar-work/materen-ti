@@ -6,11 +6,14 @@ import { useAuthStore } from '../../stores/auth.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import { rolDeTag } from '../../core/tagRol.js';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppSeccion from '../../components/ui/AppSeccion.vue';
+import AppListaDatos from '../../components/ui/AppListaDatos.vue';
+import AppTag from '../../components/ui/AppTag.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -152,6 +155,47 @@ async function eliminar() {
   }
 }
 
+// ── Presentación (rediseño 2026-09-23) ───────────────────────────────────
+// Una sola acción sólida por pantalla: el siguiente paso del flujo de
+// publicación (Publicar para el JEFE; Enviar a revisión para el autor).
+// Lo menos frecuente (obsoleto, eliminar) va al menú ⋮.
+const puedePublicar = computed(() =>
+  !!articulo.value && auth.esJefe && ['borrador', 'en_revision'].includes(articulo.value.estado),
+);
+const puedeEnviarRevision = computed(() =>
+  !!articulo.value && puedeEditar.value && articulo.value.estado === 'borrador',
+);
+const accionesMas = computed(() => {
+  if (!articulo.value) return [];
+  return [
+    {
+      icono: 'ti-archive',
+      label: 'Marcar obsoleto',
+      visible: auth.esJefe && articulo.value.estado === 'publicado',
+      disabled: cambiandoEstado.value,
+      onClick: () => cambiarEstado('obsoleto'),
+    },
+    {
+      icono: 'ti-trash',
+      label: 'Eliminar',
+      danger: true,
+      visible: puedeEditar.value,
+      onClick: () => { confirmarEliminar.value = true; },
+    },
+  ];
+});
+const hayAccionesMas = computed(() => accionesMas.value.some((a) => a.visible !== false));
+
+const totalVotos = computed(() => (articulo.value ? articulo.value.util_si + articulo.value.util_no : 0));
+const porcentajeUtil = computed(() => (totalVotos.value ? Math.round((articulo.value.util_si / totalVotos.value) * 100) : 0));
+
+const datosDetalle = computed(() => (articulo.value ? [
+  { label: 'Autor', valor: autorNombre.value },
+  { label: 'Categoría', valor: articulo.value.categoria_nombre || '' },
+  { label: 'Creado', valor: formatFechaHora(articulo.value.created_at), mono: true },
+  { label: 'Actualizado', valor: formatFechaHora(articulo.value.updated_at), mono: true },
+] : []));
+
 onMounted(async () => {
   await cargar();
   try {
@@ -164,178 +208,197 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="kb-detalle-page vista-modulo">
-    <PageHeader>
-      <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" aria-label="Volver" @click="volver('/base-conocimiento')">
-          <i class="ti ti-arrow-left"></i>
-        </button>
-        <div v-if="articulo" class="header-emp">
-          <h1>{{ articulo.titulo }}</h1>
-          <span v-if="articulo.categoria_nombre" class="header-sub">{{ articulo.categoria_nombre }}</span>
-        </div>
-      </template>
-    </PageHeader>
+  <div class="mx-auto w-full max-w-6xl px-4 pb-10 pt-5 sm:px-6">
+    <button
+      type="button"
+      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+      @click="volver('/base-conocimiento')"
+    >
+      <i class="ti ti-arrow-left" aria-hidden="true"></i>
+      Base de conocimiento
+    </button>
 
-    <main class="page page--padded">
-      <div v-if="cargando" class="no-results">Cargando artículo...</div>
+    <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando artículo...</p>
 
-      <div v-else-if="articulo" class="grid-12">
-        <div class="card col-8 kb-contenido">
-          <div class="kb-encabezado">
+    <template v-else-if="articulo">
+      <!-- ══ Cabecera: qué artículo es, en qué estado y qué sigue ══════ -->
+      <header class="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
             <BadgeEstado tipo="kb_estado" :valor="articulo.estado" />
-            <span class="kb-fecha">Actualizado {{ formatFechaHora(articulo.updated_at) }}</span>
+            <span v-if="articulo.categoria_nombre" class="inline-flex items-center gap-1"><i class="ti ti-folder" aria-hidden="true"></i>{{ articulo.categoria_nombre }}</span>
+            <span class="inline-flex items-center gap-1 tabular-nums"><i class="ti ti-clock" aria-hidden="true"></i>Actualizado {{ formatFechaHora(articulo.updated_at) }}</span>
           </div>
-
-          <template v-if="!editando">
-            <div v-if="articulo.sintoma" class="kb-bloque">
-              <div class="datos-title">Síntoma</div>
-              <p class="kb-texto">{{ articulo.sintoma }}</p>
-            </div>
-            <div class="kb-bloque">
-              <div class="datos-title">Solución</div>
-              <p v-if="articulo.solucion" class="kb-texto kb-solucion">{{ articulo.solucion }}</p>
-              <p v-else class="kb-solucion-pendiente">
-                <span class="tag" :class="`tag--${rolDeTag('warning')}`">Pendiente</span> Todavía sin completar.
-              </p>
-            </div>
-
-            <div class="kb-acciones">
-              <button v-if="puedeEditar" type="button" class="btn btn--secondary" @click="abrirEdicion">
-                Editar
-                <i class="ti ti-pencil" aria-hidden="true"></i>
-              </button>
-              <button
-                v-if="puedeEditar && articulo.estado === 'borrador'"
-                type="button"
-                class="btn btn--secondary"
-                :disabled="cambiandoEstado"
-                @click="cambiarEstado('en_revision')"
-              >
-                Enviar a revisión
-                <i class="ti ti-send" aria-hidden="true"></i>
-              </button>
-              <button
-                v-if="auth.esJefe && ['borrador', 'en_revision'].includes(articulo.estado)"
-                type="button"
-                class="btn btn--primary"
-                :disabled="cambiandoEstado"
-                @click="cambiarEstado('publicado')"
-              >
-                Publicar
-                <i class="ti ti-circle-check" aria-hidden="true"></i>
-              </button>
-              <button
-                v-if="auth.esJefe && articulo.estado === 'publicado'"
-                type="button"
-                class="btn btn--secondary"
-                :disabled="cambiandoEstado"
-                @click="cambiarEstado('obsoleto')"
-              >
-                Marcar obsoleto
-                <i class="ti ti-archive" aria-hidden="true"></i>
-              </button>
-              <button v-if="puedeEditar" type="button" class="btn btn--danger" @click="confirmarEliminar = true">
-                Eliminar
-                <i class="ti ti-trash" aria-hidden="true"></i>
-              </button>
-            </div>
-
-            <div v-if="puedeVotar" class="kb-feedback-bloque">
-              <span class="kb-feedback-label">¿Te sirvió este artículo?</span>
-              <button type="button" class="btn btn--ghost" :disabled="votando" @click="votar(true)">
-                Sí ({{ articulo.util_si }})
-                <i class="ti ti-thumb-up" aria-hidden="true"></i>
-              </button>
-              <button type="button" class="btn btn--ghost" :disabled="votando" @click="votar(false)">
-                No ({{ articulo.util_no }})
-                <i class="ti ti-thumb-down" aria-hidden="true"></i>
-              </button>
-            </div>
-          </template>
-
-          <form v-else class="kb-form-edicion" @submit.prevent="guardarEdicion">
-            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
-              <label class="campo__etiqueta" :for="campoTituloEdicion.id">Título<span aria-hidden="true"> *</span></label>
-              <div class="campo__caja">
-                <input :id="campoTituloEdicion.id" v-model="formEdicion.titulo" class="campo__control" type="text" required :disabled="guardandoEdicion">
-              </div>
-            </div>
-
-            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
-              <label class="campo__etiqueta" :for="campoCategoriaEdicion.id">Categoría</label>
-              <div class="campo__caja">
-                <select
-                  :id="campoCategoriaEdicion.id"
-                  class="campo__control campo__control--select"
-                  :value="formEdicion.categoria_id"
-                  :disabled="guardandoEdicion"
-                  @change="formEdicion.categoria_id = $event.target.value"
-                >
-                  <option value="">Sin categoría</option>
-                  <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-                </select>
-                <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-              </div>
-            </div>
-
-            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
-              <label class="campo__etiqueta" :for="campoSintomaEdicion.id">Síntoma</label>
-              <div class="campo__caja">
-                <input :id="campoSintomaEdicion.id" v-model="formEdicion.sintoma" class="campo__control" type="text" :disabled="guardandoEdicion">
-              </div>
-            </div>
-
-            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
-              <label class="campo__etiqueta" :for="campoSolucionEdicion.id">Solución</label>
-              <div class="campo__caja">
-                <textarea
-                  :id="campoSolucionEdicion.id"
-                  v-model="formEdicion.solucion"
-                  class="campo__control campo__control--area"
-                  :rows="8"
-                  placeholder="Pasos para resolverlos..."
-                  :disabled="guardandoEdicion"
-                ></textarea>
-              </div>
-            </div>
-            <div class="modal-actions">
-              <button type="button" class="btn btn--secondary" :disabled="guardandoEdicion" @click="editando = false">Cancelar</button>
-              <button type="submit" class="btn btn--primary" :disabled="guardandoEdicion">
-                {{ guardandoEdicion ? 'Guardando...' : 'Guardar' }}
-                <i v-if="guardandoEdicion" class="ti ti-loader-2" aria-hidden="true"></i>
-              </button>
-            </div>
-          </form>
+          <h1 class="mt-2 text-2xl font-semibold tracking-tight text-gray-900 text-pretty">{{ articulo.titulo }}</h1>
+          <p class="mt-1 text-sm text-gray-500">Por {{ autorNombre }}</p>
         </div>
+        <div v-if="!editando" class="flex shrink-0 flex-wrap items-center gap-2">
+          <AppButton v-if="puedeEditar" variant="outline" severity="secondary" icon="ti ti-pencil" label="Editar" @click="abrirEdicion" />
+          <AppButton
+            v-if="puedePublicar"
+            icon="ti ti-circle-check"
+            label="Publicar"
+            :loading="cambiandoEstado"
+            :disabled="cambiandoEstado"
+            @click="cambiarEstado('publicado')"
+          />
+          <AppButton
+            v-if="puedeEnviarRevision"
+            :variant="puedePublicar ? 'outline' : 'solid'"
+            :severity="puedePublicar ? 'secondary' : 'primary'"
+            icon="ti ti-send"
+            label="Enviar a revisión"
+            :disabled="cambiandoEstado"
+            @click="cambiarEstado('en_revision')"
+          />
+          <MenuAcciones v-if="hayAccionesMas" :acciones="accionesMas" label="Más acciones del artículo" />
+        </div>
+      </header>
 
-        <div class="card col-4 kb-meta">
-          <div class="datos-title"><i class="ti ti-info-circle"></i> Detalle</div>
-          <p class="tk-detalle">Autor: {{ autorNombre }}</p>
-          <p v-if="articulo.categoria_nombre" class="tk-detalle">Categoría: {{ articulo.categoria_nombre }}</p>
-          <p class="tk-detalle">Creado {{ formatFechaHora(articulo.created_at) }}</p>
-          <p class="tk-detalle">Actualizado {{ formatFechaHora(articulo.updated_at) }}</p>
-          <p v-if="!puedeEditar && !['publicado', 'obsoleto'].includes(articulo.estado)" class="tk-nota">
-            Solo el autor o el JEFE pueden ver/editar este artículo mientras no esté publicado.
-          </p>
-
-          <div class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-thumb-up" aria-hidden="true"></i> Feedback</div>
-            <p v-if="articulo.util_si + articulo.util_no > 0" class="tk-detalle">
-              {{ articulo.util_si }} de {{ articulo.util_si + articulo.util_no }} lo encontraron útil
-            </p>
-            <p v-else class="tk-nota">Todavía sin votos.</p>
-          </div>
-
-          <div v-if="articulo.ticket_origen_id" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-ticket" aria-hidden="true"></i> Origen</div>
-            <RouterLink class="tk-kb-relacionado" :to="`/tickets/${articulo.ticket_origen_id}`">
-              Ver ticket de origen
-            </RouterLink>
-          </div>
+      <div
+        v-if="!puedeEditar && !['publicado', 'obsoleto'].includes(articulo.estado)"
+        class="notif notif--info mt-5"
+        role="note"
+      >
+        <i class="ti ti-lock" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">Solo el autor o el JEFE pueden ver y editar este artículo mientras no esté publicado.</p>
         </div>
       </div>
-    </main>
+
+      <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <!-- ══ Lectura ═══════════════════════════════════════════════ -->
+        <article class="min-w-0 rounded-lg border border-gray-200 bg-white">
+          <div v-if="!editando" class="px-5 py-6 sm:px-8 sm:py-8">
+            <div class="max-w-[70ch] space-y-8">
+              <section v-if="articulo.sintoma" aria-labelledby="kb-sintoma">
+                <h2 id="kb-sintoma" class="flex items-center gap-2 text-base font-semibold text-gray-900">
+                  <i class="ti ti-alert-circle text-gray-400" aria-hidden="true"></i>
+                  Síntoma
+                </h2>
+                <p class="mt-2 whitespace-pre-line text-[15px] leading-7 text-gray-700">{{ articulo.sintoma }}</p>
+              </section>
+
+              <section aria-labelledby="kb-solucion">
+                <h2 id="kb-solucion" class="flex items-center gap-2 text-base font-semibold text-gray-900">
+                  <i class="ti ti-tool text-gray-400" aria-hidden="true"></i>
+                  Solución
+                </h2>
+                <!-- pre-wrap: conserva sangrías y saltos de los pasos y
+                     comandos tal como se escribieron. -->
+                <p v-if="articulo.solucion" class="mt-2 whitespace-pre-wrap break-words text-[15px] leading-7 text-gray-800">{{ articulo.solucion }}</p>
+                <p v-else class="mt-2 flex items-center gap-2 text-sm text-gray-500">
+                  <AppTag tono="warning">Pendiente</AppTag>
+                  Todavía sin completar.
+                </p>
+              </section>
+            </div>
+          </div>
+
+          <!-- ── ¿Sirvió? (solo en artículos publicados u obsoletos) ── -->
+          <div
+            v-if="!editando && puedeVotar"
+            class="flex flex-wrap items-center gap-3 border-t border-gray-100 px-5 py-4 sm:px-8"
+          >
+            <span class="text-sm font-medium text-gray-700">¿Le sirvió este artículo?</span>
+            <div class="flex gap-2">
+              <AppButton size="sm" variant="outline" severity="secondary" icon="ti ti-thumb-up" :label="`Sí · ${articulo.util_si}`" :disabled="votando" @click="votar(true)" />
+              <AppButton size="sm" variant="outline" severity="secondary" icon="ti ti-thumb-down" :label="`No · ${articulo.util_no}`" :disabled="votando" @click="votar(false)" />
+            </div>
+          </div>
+
+          <!-- ── Edición en el lugar ── -->
+          <form v-if="editando" class="space-y-4 p-5 sm:p-8" @submit.prevent="guardarEdicion">
+            <h2 class="text-base font-semibold text-gray-900">Editar artículo</h2>
+            <div class="form-grid">
+              <div class="campo full" :class="{ 'campo--inerte': guardandoEdicion }">
+                <label class="campo__etiqueta" :for="campoTituloEdicion.id">Título<span aria-hidden="true"> *</span></label>
+                <div class="campo__caja">
+                  <input :id="campoTituloEdicion.id" v-model="formEdicion.titulo" class="campo__control" type="text" required :disabled="guardandoEdicion">
+                </div>
+              </div>
+
+              <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+                <label class="campo__etiqueta" :for="campoCategoriaEdicion.id">Categoría</label>
+                <div class="campo__caja">
+                  <select
+                    :id="campoCategoriaEdicion.id"
+                    class="campo__control campo__control--select"
+                    :value="formEdicion.categoria_id"
+                    :disabled="guardandoEdicion"
+                    @change="formEdicion.categoria_id = $event.target.value"
+                  >
+                    <option value="">Sin categoría</option>
+                    <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+                  </select>
+                  <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+                </div>
+              </div>
+
+              <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+                <label class="campo__etiqueta" :for="campoSintomaEdicion.id">Síntoma</label>
+                <div class="campo__caja">
+                  <input :id="campoSintomaEdicion.id" v-model="formEdicion.sintoma" class="campo__control" type="text" :disabled="guardandoEdicion">
+                </div>
+              </div>
+
+              <div class="campo full" :class="{ 'campo--inerte': guardandoEdicion }">
+                <label class="campo__etiqueta" :for="campoSolucionEdicion.id">Solución</label>
+                <div class="campo__caja">
+                  <textarea
+                    :id="campoSolucionEdicion.id"
+                    v-model="formEdicion.solucion"
+                    class="campo__control campo__control--area"
+                    :rows="12"
+                    placeholder="Pasos para resolverlo..."
+                    :disabled="guardandoEdicion"
+                  ></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-gray-100 pt-4">
+              <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardandoEdicion" @click="editando = false" />
+              <AppButton type="submit" :label="guardandoEdicion ? 'Guardando...' : 'Guardar'" :loading="guardandoEdicion" :disabled="guardandoEdicion" />
+            </div>
+          </form>
+        </article>
+
+        <!-- ══ Lateral ═══════════════════════════════════════════════ -->
+        <aside class="min-w-0 space-y-6 lg:sticky lg:top-6">
+          <AppSeccion titulo="Utilidad">
+            <template v-if="totalVotos > 0">
+              <p class="text-sm text-gray-700">
+                <span class="text-2xl font-semibold tracking-tight text-gray-900 tabular-nums">{{ porcentajeUtil }}%</span>
+                lo encontró útil
+              </p>
+              <div class="mt-3 flex h-1.5 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+                <div class="h-full bg-green-500" :style="{ width: `${porcentajeUtil}%` }"></div>
+                <div class="h-full bg-red-300" :style="{ width: `${100 - porcentajeUtil}%` }"></div>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 tabular-nums">{{ articulo.util_si }} de {{ totalVotos }} {{ totalVotos === 1 ? 'voto' : 'votos' }}</p>
+            </template>
+            <p v-else class="text-sm text-gray-400">Todavía sin votos.</p>
+          </AppSeccion>
+
+          <AppSeccion titulo="Detalle">
+            <AppListaDatos :datos="datosDetalle" />
+          </AppSeccion>
+
+          <AppSeccion v-if="articulo.ticket_origen_id" titulo="Origen" sin-padding>
+            <RouterLink
+              :to="`/tickets/${articulo.ticket_origen_id}`"
+              class="flex items-center gap-3 px-4 py-3 text-sm text-gray-900 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+            >
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                <i class="ti ti-ticket" aria-hidden="true"></i>
+              </span>
+              <span class="flex-1">Ver ticket de origen</span>
+              <i class="ti ti-arrow-up-right text-gray-400" aria-hidden="true"></i>
+            </RouterLink>
+          </AppSeccion>
+        </aside>
+      </div>
+    </template>
 
     <ConfirmDialog
       v-if="confirmarEliminar"
@@ -351,5 +414,3 @@ onMounted(async () => {
     />
   </div>
 </template>
-
-

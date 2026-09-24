@@ -8,21 +8,31 @@ import { OPCIONES_ESTADO_KB } from '../../core/dominio-kb.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import KbArticuloForm from './KbArticuloForm.vue';
-import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppSelect from '../../components/ui/AppSelect.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
-import { columnasVisibles, estiloColumna, agruparParaTarjeta } from '../../core/tablaColumnas.js';
-import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
-import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
+import { useEsMovil } from '../../composables/useEsMovil.js';
 
 const router = useRouter();
 const store = useKbStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const ordenColumna = computed(() => orden.value?.columna || '');
-const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
+// Orden en la forma que espera AppTable (1 asc | -1 desc | null) — mismo
+// puente que EmpleadosView.
+const sortFieldTabla = computed(() => ordenColumna.value || null);
+const sortOrderTabla = computed(() => {
+  if (!orden.value) return null;
+  return orden.value.direccion === 'desc' ? -1 : 1;
+});
+const { esMovil } = useEsMovil();
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 const filtroCategoria = ref('');
@@ -39,35 +49,24 @@ function verArticulo(articulo) {
   router.push(`/base-conocimiento/${articulo.id}`);
 }
 
-// Toda la fila navega (clic-fila): el link de "Artículo" existe aparte solo
-// para que Ctrl/Cmd-clic y "abrir en pestaña nueva" sigan funcionando.
-function claseFilaKb() {
-  return 'fila-kb tarjeta-fila--clic';
-}
-
-// "¿Sirvió?" no es un campo propio del artículo: combina util_si/util_no en
-// una sola columna sintética (clave 'feedback', sin dato real detrás, solo
-// slot). Va al pie de la tarjeta móvil junto al estado, mismo layout
-// space-between que tenía a mano.
-const columnas = [
-  { clave: 'titulo', label: 'Artículo', ordenable: true, elastica: true, movil: 'principal' },
-  { clave: 'estado', label: 'Estado', ordenable: true, movil: 'pie' },
-  { clave: 'feedback', label: '¿Sirvió?', num: true, movil: 'pie' },
-  { clave: 'updated_at', label: 'Actualizado', ordenable: true, num: true, movil: 'sec' },
+// Estado como segmentado: son 4 y conviene verlos a la vista. '' = todos,
+// mismo valor que la opción "Todos los estados" anterior.
+const ESTADOS_SEGMENTO = [
+  ...OPCIONES_ESTADO_KB,
+  { valor: '', label: 'Todos' },
 ];
-
-const columnasVisiblesLista = computed(() => columnasVisibles(columnas));
-const totalColumnas = computed(() => columnasVisiblesLista.value.length);
-const enTarjeta = computed(() => agruparParaTarjeta(columnasVisiblesLista.value));
-
-const totalPaginas = computed(() => totalPaginasDe(total.value, store.tamPagina));
-const paginas = computed(() => paginasDe(totalPaginas.value));
-const desde = computed(() => rangoDe(store.pagina, store.tamPagina, total.value).desde);
-const hasta = computed(() => rangoDe(store.pagina, store.tamPagina, total.value).hasta);
-function irA(pagina) {
-  const destino = clampPagina(pagina, totalPaginas.value);
-  if (destino !== store.pagina) store.irAPagina(destino);
+const hayFiltros = computed(() => !!(busqueda.value || filtroCategoria.value || filtroEstado.value));
+function limpiarFiltros() {
+  busqueda.value = '';
+  filtroCategoria.value = '';
+  filtroEstado.value = '';
 }
+const subtitulo = computed(() => {
+  const n = total.value;
+  const base = `${n} ${n === 1 ? 'artículo' : 'artículos'}`;
+  const est = OPCIONES_ESTADO_KB.find((e) => e.valor === filtroEstado.value);
+  return `${base}${est ? ` en estado ${est.label.toLowerCase()}` : ''} · soluciones reutilizables para tickets recurrentes`;
+});
 
 function onFormCerrado(creado) {
   mostrarForm.value = false;
@@ -89,177 +88,171 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="kb-page vista-modulo">
-    <PageHeader titulo="Base de Conocimiento" icono="ti ti-books" :conteo="total">
+  <div class="flex h-full min-h-0 flex-col">
+    <AppEncabezado titulo="Base de conocimiento" :subtitulo="subtitulo">
       <template #acciones>
-        <button type="button" class="btn btn--primary" @click="mostrarForm = true">
-          Nuevo artículo
-          <i class="ti ti-plus" aria-hidden="true"></i>
-        </button>
+        <AppButton icon="ti ti-plus" label="Nuevo artículo" @click="mostrarForm = true" />
       </template>
-    </PageHeader>
+    </AppEncabezado>
 
-    <main class="page">
-      <div class="card card--fill">
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input v-model="busqueda" type="text" placeholder="Buscar por título o síntoma...">
-          </div>
-          <div class="filter-field">
-            <label for="filtro-categoria">Categoría</label>
-            <select id="filtro-categoria" v-model="filtroCategoria">
-              <option value="">Todas las categorías</option>
-              <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-            </select>
-          </div>
-          <div class="filter-field">
-            <label for="filtro-estado">Estado</label>
-            <select id="filtro-estado" v-model="filtroEstado">
-              <option value="">Todos los estados</option>
-              <option v-for="e in OPCIONES_ESTADO_KB" :key="e.valor" :value="e.valor">{{ e.label }}</option>
-            </select>
-          </div>
-        </div>
+    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
+    <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+      <AppBuscador v-model="busqueda" label="Buscar artículos" placeholder="Buscar por título o síntoma" />
+      <AppSegmentado v-model="filtroEstado" :opciones="ESTADOS_SEGMENTO" label="Filtrar por estado" />
+      <AppSelect v-model="filtroCategoria" label="Filtrar por categoría">
+        <option value="">Todas las categorías</option>
+        <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+      </AppSelect>
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+    </div>
 
-        <div v-if="error" class="no-results kb-error">{{ error }}</div>
-
-        <template v-else>
-        <div class="tabla-envoltorio">
-          <table class="tabla" aria-label="Artículos de la base de conocimiento">
-            <thead>
-              <tr>
-                <template v-for="col in columnasVisiblesLista" :key="col.clave">
-                  <ThOrdenable
-                    v-if="col.ordenable"
-                    :clave="col.clave"
-                    :columna="ordenColumna"
-                    :direccion="ordenDireccion"
-                    :class="{ 'col-num': col.num }"
-                    :style="estiloColumna(col)"
-                    @ordenar="store.ordenarPor(col.clave)"
-                  >{{ col.label }}</ThOrdenable>
-                  <th v-else scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
-                </template>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
-              <tr v-else-if="!lista.length">
-                <td :colspan="totalColumnas" class="tabla__vacio">
-                  <EmptyState
-                    icono="ti ti-books"
-                    titulo="Sin artículos"
-                    :mensaje="busqueda || filtroCategoria || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Registra la primera solución reutilizable de la base de conocimiento.'"
-                  >
-                    <button
-                      v-if="!busqueda && !filtroCategoria && !filtroEstado"
-                      type="button"
-                      class="btn btn--secondary"
-                      @click="mostrarForm = true"
-                    >
-                      Nuevo artículo
-                      <i class="ti ti-plus" aria-hidden="true"></i>
-                    </button>
-                  </EmptyState>
-                </td>
-              </tr>
-              <template v-else>
-                <tr v-for="fila in lista" :key="fila.id" :class="claseFilaKb(fila)" @click="verArticulo(fila)">
-                  <td>
-                    <!-- Categoría + Síntoma colapsan como metadato arriba (mismo
-                         criterio que Tickets: Categoría baja de badge a texto, es
-                         clasificación fija, no estado), Título como dato principal
-                         abajo. -->
-                    <div class="celda-apilada">
-                      <span v-if="fila.categoria_nombre || fila.sintoma" class="celda-apilada__meta">
-                        <template v-if="fila.categoria_nombre">{{ fila.categoria_nombre }}</template>
-                        <span v-if="fila.categoria_nombre && fila.sintoma" class="celda-sep" aria-hidden="true">·</span>
-                        <template v-if="fila.sintoma">{{ fila.sintoma }}</template>
-                      </span>
-                      <RouterLink class="celda-apilada__principal kb-titulo-link" :to="`/base-conocimiento/${fila.id}`" @click.stop>{{ fila.titulo }}</RouterLink>
-                    </div>
-                  </td>
-                  <td>
-                    <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
-                  </td>
-                  <td class="col-num">
-                    <span class="kb-feedback">
-                      <span title="Le sirvió"><i class="ti ti-thumb-up" aria-hidden="true"></i> {{ fila.util_si }}</span>
-                      <span title="No le sirvió"><i class="ti ti-thumb-down" aria-hidden="true"></i> {{ fila.util_no }}</span>
-                    </span>
-                  </td>
-                  <td class="col-num">
-                    <span class="fecha-cell" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-
-        <ul v-if="!cargando && lista.length" class="lista-tarjetas solo-movil" aria-label="Artículos de la base de conocimiento">
-          <li v-for="fila in lista" :key="fila.id" class="tarjeta-fila" :class="claseFilaKb(fila)" @click="verArticulo(fila)">
-            <div v-for="col in enTarjeta.principal" :key="col.clave" class="tarjeta-fila__principal">
-              <div class="celda-apilada">
-                <span v-if="fila.categoria_nombre || fila.sintoma" class="celda-apilada__meta">
-                  <template v-if="fila.categoria_nombre">{{ fila.categoria_nombre }}</template>
-                  <span v-if="fila.categoria_nombre && fila.sintoma" class="celda-sep" aria-hidden="true">·</span>
-                  <template v-if="fila.sintoma">{{ fila.sintoma }}</template>
-                </span>
-                <RouterLink class="celda-apilada__principal kb-titulo-link" :to="`/base-conocimiento/${fila.id}`" @click.stop>{{ fila.titulo }}</RouterLink>
-              </div>
-            </div>
-            <div v-for="col in enTarjeta.sec" :key="col.clave" class="tarjeta-fila__sec">
-              <span class="fecha-cell" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
-            </div>
-            <div v-if="enTarjeta.pie.length" class="tarjeta-fila__pie">
-              <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
-              <span class="kb-feedback">
-                <span title="Le sirvió"><i class="ti ti-thumb-up" aria-hidden="true"></i> {{ fila.util_si }}</span>
-                <span title="No le sirvió"><i class="ti ti-thumb-down" aria-hidden="true"></i> {{ fila.util_no }}</span>
-              </span>
-            </div>
-          </li>
-        </ul>
-
-        <nav v-if="!cargando && total > 0" class="paginacion" aria-label="Paginación">
-          <div class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span>Filas por página:</span>
-              <select
-                class="paginacion__select"
-                :value="store.tamPagina"
-                @change="store.cambiarTamPagina(Number($event.target.value))"
-              >
-                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </label>
-            <span class="paginacion__rango">{{ desde }}–{{ hasta }} de {{ total }} artículos</span>
-          </div>
-
-          <div v-if="totalPaginas > 1" class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span class="sr-only">Ir a la página</span>
-              <select class="paginacion__select" :value="store.pagina" @change="irA(Number($event.target.value))">
-                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
-              </select>
-              <span>de {{ totalPaginas }}</span>
-            </label>
-            <button class="paginacion__flecha" type="button" :disabled="store.pagina <= 1" aria-label="Página anterior" @click="irA(store.pagina - 1)">
-              <i class="ti ti-chevron-left" aria-hidden="true"></i>
-            </button>
-            <button class="paginacion__flecha" type="button" :disabled="store.pagina >= totalPaginas" aria-label="Página siguiente" @click="irA(store.pagina + 1)">
-              <i class="ti ti-chevron-right" aria-hidden="true"></i>
-            </button>
-          </div>
-        </nav>
-        </template>
+    <!-- ══ Contenido ═══════════════════════════════════════════════ -->
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <div v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
       </div>
-    </main>
+
+      <AppVacio
+        v-else-if="!cargando && total === 0"
+        icono="ti ti-books"
+        :titulo="hayFiltros ? 'Sin resultados' : 'Sin artículos todavía'"
+        :mensaje="hayFiltros ? 'No hay artículos con los filtros aplicados.' : 'Registre la primera solución reutilizable de la base de conocimiento.'"
+      >
+        <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
+        <AppButton v-else variant="outline" severity="secondary" icon="ti ti-plus" label="Nuevo artículo" @click="mostrarForm = true" />
+      </AppVacio>
+
+      <template v-else>
+        <p v-if="cargando" class="sr-only" role="status">Cargando artículos…</p>
+
+        <!-- ── Tabla (escritorio): la fila abre el artículo ── -->
+        <div
+          v-if="!esMovil"
+          class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white"
+        >
+          <div class="min-h-0 flex-1 overflow-auto">
+            <AppTable
+              :value="lista"
+              :loading="cargando"
+              :total-records="total"
+              :rows="store.tamPagina"
+              :sort-field="sortFieldTabla"
+              :sort-order="sortOrderTabla"
+              :row-class="() => 'cursor-pointer'"
+              aria-label="Artículos de la base de conocimiento"
+              @ordenar="store.ordenarPor"
+              @row-click="({ data }) => verArticulo(data)"
+            >
+              <AppColumn field="titulo" header="Artículo" sortable>
+                <template #body="{ data: fila }">
+                  <div class="flex min-w-0 items-start gap-3">
+                    <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                      <i class="ti ti-file-text" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0">
+                      <!-- Enlace real (además del clic de fila) para Ctrl/Cmd-clic
+                           y "abrir en pestaña nueva". -->
+                      <RouterLink
+                        :to="`/base-conocimiento/${fila.id}`"
+                        class="line-clamp-2 font-medium text-gray-900 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        @click.stop
+                      >{{ fila.titulo }}</RouterLink>
+                      <div v-if="fila.categoria_nombre || fila.sintoma" class="mt-0.5 truncate text-xs text-gray-500">
+                        <span v-if="fila.categoria_nombre" class="font-medium text-gray-600">{{ fila.categoria_nombre }}</span>
+                        <template v-if="fila.categoria_nombre && fila.sintoma"> · </template>
+                        <template v-if="fila.sintoma">{{ fila.sintoma }}</template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="estado" header="Estado" sortable>
+                <template #body="{ data: fila }">
+                  <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
+                </template>
+              </AppColumn>
+
+              <AppColumn field="feedback" header="¿Sirvió?">
+                <template #body="{ data: fila }">
+                  <div class="flex items-center gap-4 text-sm tabular-nums">
+                    <span
+                      class="inline-flex items-center gap-1"
+                      :class="fila.util_si ? 'text-green-700' : 'text-gray-300'"
+                      :title="`${fila.util_si} le sirvió`"
+                      :aria-label="`${fila.util_si} le sirvió`"
+                    ><i class="ti ti-thumb-up" aria-hidden="true"></i>{{ fila.util_si }}</span>
+                    <span
+                      class="inline-flex items-center gap-1"
+                      :class="fila.util_no ? 'text-red-700' : 'text-gray-300'"
+                      :title="`${fila.util_no} no le sirvió`"
+                      :aria-label="`${fila.util_no} no le sirvió`"
+                    ><i class="ti ti-thumb-down" aria-hidden="true"></i>{{ fila.util_no }}</span>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="updated_at" header="Actualizado" sortable>
+                <template #body="{ data: fila }">
+                  <span class="whitespace-nowrap text-gray-600 tabular-nums" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
+                </template>
+              </AppColumn>
+            </AppTable>
+          </div>
+
+          <AppPaginacion
+            v-if="!cargando && total > 0"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+            @update:tam-pagina="store.cambiarTamPagina"
+          />
+        </div>
+
+        <!-- ── Lista (móvil) ── -->
+        <div v-else class="min-h-0 flex-1 overflow-y-auto">
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando artículos...</p>
+          <ul v-else class="grid gap-3" aria-label="Artículos de la base de conocimiento">
+            <li
+              v-for="fila in lista"
+              :key="fila.id"
+              class="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300"
+              @click="verArticulo(fila)"
+            >
+              <div v-if="fila.categoria_nombre || fila.sintoma" class="truncate text-xs text-gray-500">
+                <span v-if="fila.categoria_nombre" class="font-medium text-gray-600">{{ fila.categoria_nombre }}</span>
+                <template v-if="fila.categoria_nombre && fila.sintoma"> · </template>
+                <template v-if="fila.sintoma">{{ fila.sintoma }}</template>
+              </div>
+              <RouterLink
+                :to="`/base-conocimiento/${fila.id}`"
+                class="mt-1 line-clamp-2 block font-medium text-gray-900"
+                @click.stop
+              >{{ fila.titulo }}</RouterLink>
+              <div class="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
+                <div class="flex items-center gap-3 text-xs tabular-nums">
+                  <span :class="fila.util_si ? 'text-green-700' : 'text-gray-300'" :aria-label="`${fila.util_si} le sirvió`"><i class="ti ti-thumb-up" aria-hidden="true"></i> {{ fila.util_si }}</span>
+                  <span :class="fila.util_no ? 'text-red-700' : 'text-gray-300'" :aria-label="`${fila.util_no} no le sirvió`"><i class="ti ti-thumb-down" aria-hidden="true"></i> {{ fila.util_no }}</span>
+                  <span class="text-gray-500" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
+                </div>
+              </div>
+            </li>
+          </ul>
+          <AppPaginacion
+            v-if="!cargando"
+            variante="compacta"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+          />
+        </div>
+      </template>
+    </div>
 
     <KbArticuloForm v-if="mostrarForm" @cerrar="onFormCerrado" />
   </div>
 </template>
-
-

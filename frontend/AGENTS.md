@@ -539,6 +539,62 @@ cuándo y si la contraseña se rotó después.
      se diseñe. De paso se corrigió un bug previo: el badge de tickets sin
      asignar se leía una sola vez al montar y nunca se actualizaba
      (`tests/componentes/AppNav.render.test.js`).
+   - **Resto de módulos migrado (2026-09-23)**: Configuración (los 4 paneles
+     de catálogo — Áreas/Obras, Categorías de ticket, Tipos de equipo,
+     Ubicaciones — más Empresas y Plataformas, que se renderizan dentro de
+     Configuración), Correos, Cuentas (`CuentaForm.vue`), Accesos sensibles,
+     Staff, los formularios que faltaban de Empleados (`BajaEmpleadoModal`,
+     `EmpleadoForm`), Dashboard, Actividad, Encuestas (listado + detalle +
+     formulario) y KB/Problemas (listado + detalle + formulario cada uno).
+     Con esto solo queda sin migrar el portal público/sin sesión
+     (`modules/auth/LoginView.vue`, `modules/entregas/EntregaView.vue`,
+     `modules/soporte/SoporteView.vue`) y las páginas de error
+     (`modules/errores/*View.vue`) — candidatos naturales a la receta 4.5 de
+     `docs/SISTEMA-DISENO.md`, no tocados en esta pasada.
+     - Dos componentes nuevos, hoy locales a su módulo y declarados en su
+       propio comentario como "candidato a `components/ui/`" si otra pantalla
+       los necesita: `modules/configuracion/EncabezadoCatalogo.vue` (título +
+       conteo + descripción + acción de un catálogo, lo usan los 6 paneles de
+       Configuración) y `modules/problemas/SeveridadProblema.vue` (punto de
+       texto para baja/media, `AppTag` con fondo para alta/crítica — mismo
+       criterio de peso visual proporcional que `PrioridadTicket.vue`).
+     - Ajustes de comportamiento reales (no solo template/clases), decisión
+       consciente en cada caso, no arrastre accidental del reskin:
+       - `StaffView.vue` suma una columna "Módulos" con chips por fila
+         (`insforgeApi.modulosDeStaff` por integrante no-JEFE, la misma
+         lectura que ya disparaba `StaffModulosForm` al abrirse, adelantada
+         para no tener que abrir cada modal). Si una lectura falla, esa fila
+         dice "No disponible" — nunca bloquea el listado.
+       - `DashboardView.vue`: los KPI de "Pendientes por área" dejan de ser
+         enlace (`to`) y pasan a filtrar en el lugar el mismo feed que se ve
+         debajo — mismo patrón que la fila de disponibilidad de Equipos, sin
+         una segunda consulta ni un segundo criterio de urgencia. Los KPI de
+         "Inventario" (columna lateral) sí siguen usando `to`. Es una
+         variante nueva de la receta 4.3 (ver ese documento, actualizado en
+         el mismo cambio), no una omisión.
+       - `EncuestaDetalleView.vue`: al entrar, preselecciona la ronda más
+         reciente con respuestas y llama `verResultados()` de una vez —
+         antes había que hacer clic siempre, incluso para ver la única ronda
+         que importaba.
+       - `CorreosView.vue`: "URL" deja de ser columna propia (y ordenable) y
+         se pliega como ícono de enlace dentro de "Acciones" — pocas columnas
+         y ricas (4.1), ordenar por URL no aportaba.
+       - `PlataformasView.vue`: **corrige un bug real**, no lo introduce — el
+         ícono se pintaba con `:class="fila.icono"` a secas; el dato se
+         guarda sin el prefijo (`icono: 'ti-brand-gmail'`, ver
+         `src/maqueta/datos.js`), así que el ícono no dibujaba nada desde
+         que existe el campo. Ahora antepone `ti` (`:class="['ti', fila.icono]"`).
+     - De paso, dos botones hechos a mano que duplicaban `AppButton` en vez
+       de usarlo (`EmpleadoForm.vue` "Copiar del teléfono",
+       `ActividadView.vue` chip "N accesos denegados") se migraron al
+       wrapper — mismo criterio que el resto de la tabla de componentes
+       ("Toda acción" → `AppButton`).
+     - Verificado: lint (0 errores), `node scripts/patrones-ui.mjs` (0
+       fallas), build (`vite build`) y la suite completa de Vitest en verde
+       salvo 3 fallas preexistentes y no relacionadas
+       (`reporte-pdf`/`reporte-equipos-pdf`/`reporte-satisfaccion-pdf`, un
+       byte de guion largo que jsPDF no está emitiendo — reproduce igual
+       con este cambio revertido, ver `docs/HISTORIAL-AUDITORIAS.md`).
 - **Gotcha de `resetearFiltros()` en cada montaje (patrón de 18 módulos,
  Tickets es la ÚNICA excepción desde ago 2026)**: Empleados/Correos/
  Equipos/KB/Licencias/Problemas llaman

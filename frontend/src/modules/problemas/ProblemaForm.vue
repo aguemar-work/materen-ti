@@ -6,6 +6,7 @@ import { OPCIONES_SEVERIDAD_PROBLEMA } from '../../core/dominio-problemas.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -88,8 +89,9 @@ onMounted(async () => {
 <template>
   <Modal ref="modal" titulo="Nuevo problema" :confirmar-cierre="confirmarCierre" @close="emit('cerrar', resultado)">
     <form id="problema-form" class="form-grid" @submit.prevent="guardar">
-      <p v-if="ticketDisparador" class="problema-disparador">
-        <i class="ti ti-ticket" aria-hidden="true"></i> Originado en el ticket {{ ticketDisparador.codigo || ticketDisparador.id }}
+      <p v-if="ticketDisparador" class="full flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
+        <i class="ti ti-ticket text-gray-400" aria-hidden="true"></i>
+        Originado en el ticket <span class="font-medium text-gray-900 tabular-nums">{{ ticketDisparador.codigo || ticketDisparador.id }}</span>
       </p>
 
       <div class="campo full" :class="{ 'campo--inerte': guardando }">
@@ -162,11 +164,14 @@ onMounted(async () => {
     </form>
 
     <template #acciones>
-      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button type="submit" form="problema-form" class="btn btn--primary" :disabled="guardando">
-        {{ guardando ? 'Creando...' : 'Crear problema' }}
-        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton
+        type="submit"
+        form="problema-form"
+        :label="guardando ? 'Creando...' : 'Crear problema'"
+        :loading="guardando"
+        :disabled="guardando"
+      />
     </template>
   </Modal>
 

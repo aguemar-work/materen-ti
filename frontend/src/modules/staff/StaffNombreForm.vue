@@ -6,6 +6,7 @@
 import { ref } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import Modal from '../../components/shared/Modal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -46,7 +47,7 @@ async function guardar() {
 
 <template>
   <Modal ref="modal" titulo="Editar nombre" size="sm" @close="emit('cerrar')">
-    <form id="staff-nombre-form" @submit.prevent="guardar">
+    <form id="staff-nombre-form" class="space-y-4" @submit.prevent="guardar">
       <div class="campo" :class="{ 'campo--invalido': campoNombre.invalido.value, 'campo--inerte': guardando }">
         <label class="campo__etiqueta" :for="campoNombre.id">
           Nombre para mostrar<span aria-hidden="true"> *</span>
@@ -77,11 +78,8 @@ async function guardar() {
     </form>
 
     <template #acciones>
-      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="modal?.cerrar()">Cancelar</button>
-      <button type="submit" form="staff-nombre-form" class="btn btn--primary" :disabled="guardando">
-        {{ guardando ? 'Guardando...' : 'Guardar' }}
-        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modal?.cerrar()" />
+      <AppButton type="submit" form="staff-nombre-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
     </template>
   </Modal>
 </template>

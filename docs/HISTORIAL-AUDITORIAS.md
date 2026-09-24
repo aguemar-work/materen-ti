@@ -929,6 +929,17 @@ con fila propia en algún ciclo, esa fila también.
 23. Backup / RPO / RTO / procedimiento de restauración — sin definir.
 24. Los `expect(error)` genéricos de `AUTH-TEST-004` — deuda de tests, no
     endurecida.
+25. Los 3 tests `no destroza los acentos ni el guión largo del castellano`
+    (`reporte-pdf.test.js`, `reporte-equipos-pdf.test.js`,
+    `reporte-satisfaccion-pdf.test.js`) fallan buscando el byte `\x97`
+    (guion largo en codificación WinAnsi) en el PDF crudo que genera jsPDF —
+    detectado 2026-09-23 revisando el rediseño de UI del resto de módulos.
+    **Confirmado que no es una regresión de ese cambio**: falla igual con
+    `git stash` de todo `frontend/src/modules` (ninguno de esos 3 tests ni
+    su código fuente están en ese diff). No investigado a fondo — candidato
+    a un cambio de versión de `jspdf` o de cómo mapea `Times-Roman` ese
+    carácter en este entorno; los otros 8-9 casos de cada archivo (acentos,
+    contenido, estructura del PDF) siguen en verde.
 
 ### Roadmap de producto (nuevo, no auditado todavía)
 

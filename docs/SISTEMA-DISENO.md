@@ -132,8 +132,18 @@ se vean sin estilos, y se borra cuando la última vista deja de usarlo.
 ```
 
 ### 4.3 Tablero (Dashboard, reportes)
-- Fila de `AppKpi` (`grid gap-3 sm:grid-cols-2 xl:grid-cols-4`), cada uno
-  enlazado al listado filtrado que explica la cifra.
+- Fila de `AppKpi` (`grid gap-3 sm:grid-cols-2 xl:grid-cols-4`); cada cifra
+  tiene que explicarse con un clic, de una de dos formas:
+  - **Enlace** (`to`): cuando lo que explica la cifra es OTRA vista (ej.
+    "Empleados activos" → `/empleados?estado=Activo`).
+  - **Filtro en el lugar**: cuando lo que explica la cifra ya está en la
+    misma pantalla, justo debajo (ej. Dashboard, "Pendientes por área"
+    filtra el feed "Requiere atención"; Equipos, Libres/Ocupados/En
+    reparación filtra la tabla). El `AppKpi` va sin `to`, dentro de un
+    `<button>` con `aria-pressed`; el activo se marca con
+    `border-primary-300 bg-primary-50/50` y el detalle cambia a
+    "Filtro aplicado · clic para quitar". No navega: navegar para ver lo
+    que ya estaba en pantalla es un paso de más.
 - Debajo, `AppSeccion` en grilla de 2–3 columnas con listas de pendientes
   ("qué requiere atención"), no gráficos decorativos.
 
@@ -141,6 +151,9 @@ se vean sin estilos, y se borra cuando la última vista deja de usarlo.
 - Navegación de secciones a la izquierda (lista vertical con el ítem activo
   en `bg-primary-50 text-primary-700`) o `AppSegmentado` si son ≤ 5; contenido
   a la derecha como listado compacto (4.1 sin encabezado grande).
+- Cada sección abre con `modules/configuracion/EncabezadoCatalogo.vue`
+  (`titulo`, `conteo`, `descripcion`, slot `acciones` con la única acción
+  sólida): el título grande de página ya lo pone `ConfiguracionView`.
 
 ### 4.5 Portal público (sin sesión)
 - Centrado, `max-w-lg`, logo arriba, una sola card blanca, textos cortos,

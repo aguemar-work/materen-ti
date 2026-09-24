@@ -27,6 +27,21 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-23** (**Rediseño del resto de módulos**) — con el sistema de
+  `docs/SISTEMA-DISENO.md`: Configuración (4 catálogos + Empresas +
+  Plataformas, con `EncabezadoCatalogo.vue` nuevo), Correos, Cuentas,
+  Accesos sensibles, Staff, formularios de Empleados, Dashboard, Actividad,
+  Encuestas, KB y Problemas (`SeveridadProblema.vue` nuevo). Solo quedan sin
+  migrar Login, Entrega pública, Soporte y páginas de error. Ajustes de
+  comportamiento conscientes, detallados en `frontend/AGENTS.md`: columna
+  "Módulos" en Staff, KPIs del Dashboard como filtro en el lugar (receta
+  4.3 ampliada), Encuestas abre con la última ronda con respuestas, URL de
+  Correos plegada en Acciones, y fix del ícono de Plataformas (faltaba el
+  prefijo `ti`, no dibujaba). Dos botones hechos a mano → `AppButton`.
+  Copy sin tuteo ("¿Le sirvió?", "Selecciónelo"). Revelado `.cred*` y
+  permisos sin cambios. 3 tests de PDF fallan desde antes de este cambio
+  (verificado con `git stash`), registrados en `HISTORIAL-AUDITORIAS.md`
+  (pendiente 25).
 - **2026-09-23** (**Rediseño de Tickets**) — el módulo central, con el
   sistema de `docs/SISTEMA-DISENO.md`. Bandejas como segmentado con
   contadores (se retira el riel lateral: le quitaba ~220px a la conversación

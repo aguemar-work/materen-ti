@@ -8,16 +8,17 @@ import { slugDe } from '../../core/utils.js';
 import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import Modal from '../../components/shared/Modal.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import { rolDeTag } from '../../core/tagRol.js';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import EncabezadoCatalogo from './EncabezadoCatalogo.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import AppTag from '../../components/ui/AppTag.vue';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
-import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
-import { columnasVisibles, estiloColumna, agruparParaTarjeta } from '../../core/tablaColumnas.js';
-import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = useTiposEquipoStore();
 const equiposStore = useEquiposStore();
@@ -62,164 +63,142 @@ const {
   },
 });
 
-const columnas = [
-  { clave: 'nombre', label: 'Tipo', ordenable: true, elastica: true, movil: 'principal' },
-  { clave: 'campos_spec', label: 'Specs que pide', movil: 'sec' },
-  { clave: 'accesorios_sugeridos', label: 'Accesorios sugeridos', movil: 'sec' },
-  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
-];
+const { esMovil } = useEsMovil();
 
-const columnasVisiblesLista = computed(() => columnasVisibles(columnas));
-const totalColumnas = computed(() => columnasVisiblesLista.value.length);
-const enTarjeta = computed(() => agruparParaTarjeta(columnasVisiblesLista.value));
+// Puente de orden para AppTable (1 asc | -1 desc | null), mismo patrón que
+// EmpleadosView (sortFieldTabla/sortOrderTabla).
+const sortFieldTabla = computed(() => columna.value || null);
+const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
+
+// Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
+function accionesDe(fila) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar plantilla', onClick: () => abrirEditar(fila) },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = fila; } },
+  ];
+}
 
 const campoNombre = useCampoAccesible();
 const campoSpecs = useCampoAccesible();
 const campoAccesorios = useCampoAccesible();
 const infoErrorForm = infoNotificacion('error');
 
-const totalPaginas = computed(() => totalPaginasDe(totalItems.value, tamPagina.value));
-const paginas = computed(() => paginasDe(totalPaginas.value));
-const rangoPagina = computed(() => rangoDe(paginaActual.value, tamPagina.value, totalItems.value));
-const desde = computed(() => rangoPagina.value.desde);
-const hasta = computed(() => rangoPagina.value.hasta);
-function irA(pagina) {
-  paginaActual.value = clampPagina(pagina, totalPaginas.value);
-}
 </script>
 
 <template>
-  <main class="page">
-    <div class="card card--fill">
-      <div class="card-toolbar">
-        <div class="toolbar-title">
-          Tipos de equipo
-          <span class="badge-count">{{ lista.length }}</span>
-        </div>
-        <button type="button" class="btn btn--primary" @click="abrirNuevo">
-          Nuevo tipo
-          <i class="ti ti-plus" aria-hidden="true"></i>
-        </button>
-      </div>
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Tipos de equipo"
+      :conteo="lista.length"
+      descripcion="Plantillas: qué especificaciones pide cada tipo al registrar un equipo y qué accesorios sugiere al entregarlo."
+    >
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nuevo tipo" @click="abrirNuevo" />
+      </template>
+    </EncabezadoCatalogo>
 
-      <div class="tabla-envoltorio">
-        <table class="tabla" aria-label="Tipos de equipo">
-          <thead>
-            <tr>
-              <template v-for="col in columnasVisiblesLista" :key="col.clave">
-                <ThOrdenable
-                  v-if="col.ordenable"
-                  :clave="col.clave"
-                  :columna="columna"
-                  :direccion="direccion"
-                  :class="{ 'col-num': col.num }"
-                  :style="estiloColumna(col)"
-                  @ordenar="ordenarPor(col.clave)"
-                >{{ col.label }}</ThOrdenable>
-                <th v-else scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
-              </template>
-            </tr>
-          </thead>
-          <tbody>
-            <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
-            <tr v-else-if="!listaPaginada.length">
-              <td :colspan="totalColumnas" class="tabla__vacio">
-                <EmptyState icono="ti ti-devices" titulo="Sin tipos de equipo" mensaje="Crea plantillas con los campos y accesorios que pide cada tipo.">
-                  <button type="button" class="btn btn--secondary" @click="abrirNuevo">
-                    Nuevo tipo
-                    <i class="ti ti-plus" aria-hidden="true"></i>
-                  </button>
-                </EmptyState>
-              </td>
-            </tr>
-            <template v-else>
-              <tr v-for="fila in listaPaginada" :key="fila.id">
-                <td v-for="col in columnasVisiblesLista" :key="col.clave" :class="{ 'col-num': col.num }">
-                  <span v-if="col.clave === 'nombre'" class="user-name">{{ fila.nombre }}</span>
-                  <div v-else-if="col.clave === 'campos_spec'" class="chips">
-                    <span v-for="c in fila.campos_spec" :key="c" class="tag" :class="`tag--${rolDeTag('info')}`">{{ c }}</span>
-                    <TextoVacio v-if="!fila.campos_spec?.length" />
-                  </div>
-                  <div v-else-if="col.clave === 'accesorios_sugeridos'" class="chips">
-                    <span v-for="a in fila.accesorios_sugeridos" :key="a" class="tag" :class="`tag--${rolDeTag('success')}`">{{ a }}</span>
-                    <TextoVacio v-if="!fila.accesorios_sugeridos?.length" />
-                  </div>
-                  <div v-else-if="col.clave === 'acciones'" class="actions">
-                    <button class="icon-btn fila-accion" type="button" title="Editar plantilla" aria-label="Editar plantilla" @click="abrirEditar(fila)">
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button class="icon-btn danger fila-accion" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = fila">
-                      <i class="ti ti-trash"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+    <AppVacio
+      v-if="!cargando && totalItems === 0"
+      icono="ti ti-devices"
+      titulo="Sin tipos de equipo todavía"
+      mensaje="Cree plantillas con los campos y accesorios que pide cada tipo."
+    >
+      <AppButton variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar tipo" @click="abrirNuevo" />
+    </AppVacio>
 
-      <ul v-if="!cargando && listaPaginada.length" class="lista-tarjetas solo-movil" aria-label="Tipos de equipo">
-        <li v-for="fila in listaPaginada" :key="fila.id" class="tarjeta-fila">
-          <div v-if="enTarjeta.cab.length" class="tarjeta-fila__cab">
-            <template v-for="col in enTarjeta.cab" :key="col.clave">{{ fila[col.clave] }}</template>
-          </div>
-          <div v-for="col in enTarjeta.principal" :key="col.clave" class="tarjeta-fila__principal">
-            <span v-if="col.clave === 'nombre'" class="user-name">{{ fila.nombre }}</span>
-          </div>
-          <div v-for="col in enTarjeta.sec" :key="col.clave" class="tarjeta-fila__sec">
-            <div v-if="col.clave === 'campos_spec'" class="chips">
-              <span v-for="c in fila.campos_spec" :key="c" class="tag" :class="`tag--${rolDeTag('info')}`">{{ c }}</span>
-              <TextoVacio v-if="!fila.campos_spec?.length" />
-            </div>
-            <div v-else-if="col.clave === 'accesorios_sugeridos'" class="chips">
-              <span v-for="a in fila.accesorios_sugeridos" :key="a" class="tag" :class="`tag--${rolDeTag('success')}`">{{ a }}</span>
-              <TextoVacio v-if="!fila.accesorios_sugeridos?.length" />
-            </div>
-          </div>
-          <div v-if="enTarjeta.pie.length" class="tarjeta-fila__pie">
-            <template v-for="col in enTarjeta.pie" :key="col.clave">
-              <div v-if="col.clave === 'acciones'" class="actions">
-                <button class="icon-btn fila-accion" type="button" title="Editar plantilla" aria-label="Editar plantilla" @click="abrirEditar(fila)">
-                  <i class="ti ti-pencil"></i>
-                </button>
-                <button class="icon-btn danger fila-accion" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = fila">
-                  <i class="ti ti-trash"></i>
-                </button>
+    <template v-else>
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <p v-if="cargando" class="sr-only" role="status">Cargando tipos de equipo…</p>
+
+        <!-- ── Tabla (escritorio) ── -->
+        <AppTable
+          v-if="!esMovil"
+          :value="listaPaginada"
+          :loading="cargando"
+          :total-records="totalItems"
+          :rows="tamPagina"
+          :sort-field="sortFieldTabla"
+          :sort-order="sortOrderTabla"
+          aria-label="Tipos de equipo"
+          @ordenar="ordenarPor"
+        >
+          <AppColumn field="nombre" header="Tipo" sortable>
+            <template #body="{ data: fila }">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                  <i class="ti ti-devices" aria-hidden="true"></i>
+                </span>
+                <span class="truncate font-medium text-gray-900">{{ fila.nombre }}</span>
               </div>
             </template>
-          </div>
-        </li>
-      </ul>
+          </AppColumn>
+          <AppColumn field="campos_spec" header="Specs que pide">
+            <template #body="{ data: fila }">
+              <div v-if="fila.campos_spec?.length" class="flex flex-wrap gap-1">
+                <AppTag v-for="c in fila.campos_spec" :key="c">{{ c }}</AppTag>
+              </div>
+              <span v-else class="text-gray-400">Sin specs</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="accesorios_sugeridos" header="Accesorios sugeridos">
+            <template #body="{ data: fila }">
+              <div v-if="fila.accesorios_sugeridos?.length" class="flex flex-wrap gap-1">
+                <AppTag v-for="a in fila.accesorios_sugeridos" :key="a">{{ a }}</AppTag>
+              </div>
+              <span v-else class="text-gray-400">Sin accesorios</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+            <template #body="{ data: fila }">
+              <div class="flex justify-end" @click.stop>
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </template>
+          </AppColumn>
+        </AppTable>
 
-      <nav v-if="!cargando && totalItems > 0" class="paginacion" aria-label="Paginación">
-        <div class="paginacion__lado">
-          <label v-if="TAMANOS_PAGINA?.length" class="paginacion__campo">
-            <span>Filas por página:</span>
-            <select class="paginacion__select" :value="tamPagina" @change="cambiarTamPagina($event.target.value)">
-              <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-            </select>
-          </label>
-          <span class="paginacion__rango">{{ desde }}–{{ hasta }} de {{ totalItems }} tipos de equipo</span>
-        </div>
+        <!-- ── Lista (móvil) ── -->
+        <template v-else>
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando tipos de equipo...</p>
+          <ul v-else class="divide-y divide-gray-100" aria-label="Tipos de equipo">
+            <li v-for="fila in listaPaginada" :key="fila.id" class="flex items-start gap-3 px-4 py-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                <i class="ti ti-devices" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 flex-1 space-y-0.5">
+                <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
+                <p class="text-xs" :class="fila.campos_spec?.length ? 'text-gray-500' : 'text-gray-400'">
+                  <span class="text-gray-400">Specs:</span> {{ fila.campos_spec?.length ? fila.campos_spec.join(', ') : 'Sin specs' }}
+                </p>
+                <p class="text-xs" :class="fila.accesorios_sugeridos?.length ? 'text-gray-500' : 'text-gray-400'">
+                  <span class="text-gray-400">Accesorios:</span> {{ fila.accesorios_sugeridos?.length ? fila.accesorios_sugeridos.join(', ') : 'Sin accesorios' }}
+                </p>
+              </div>
+              <div class="-mr-1">
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </li>
+          </ul>
+        </template>
 
-        <div v-if="totalPaginas > 1" class="paginacion__lado">
-          <label class="paginacion__campo">
-            <span class="sr-only">Ir a la página</span>
-            <select class="paginacion__select" :value="paginaActual" @change="irA(Number($event.target.value))">
-              <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
-            </select>
-            <span>de {{ totalPaginas }}</span>
-          </label>
-          <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
-            <i class="ti ti-chevron-left" aria-hidden="true"></i>
-          </button>
-          <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
-            <i class="ti ti-chevron-right" aria-hidden="true"></i>
-          </button>
-        </div>
-      </nav>
-    </div>
+        <AppPaginacion
+          v-if="!esMovil && !cargando && totalItems > 0"
+          :pagina="paginaActual"
+          :tam-pagina="tamPagina"
+          :total="totalItems"
+          @update:pagina="paginaActual = $event"
+          @update:tam-pagina="cambiarTamPagina"
+        />
+      </div>
+      <AppPaginacion
+        v-if="esMovil && !cargando"
+        variante="compacta"
+        :pagina="paginaActual"
+        :tam-pagina="tamPagina"
+        :total="totalItems"
+        @update:pagina="paginaActual = $event"
+      />
+    </template>
 
     <!-- Formulario (Modal accesible compartido) -->
     <Modal
@@ -229,7 +208,7 @@ function irA(pagina) {
       size="sm"
       @close="mostrarForm = false"
     >
-      <form id="te-form" class="te-form" @submit.prevent="guardar">
+      <form id="te-form" class="space-y-4" @submit.prevent="guardar">
         <div class="campo" :class="{ 'campo--inerte': guardando }">
           <label class="campo__etiqueta" :for="campoNombre.id">Nombre<span aria-hidden="true"> *</span></label>
           <div class="campo__caja">
@@ -285,11 +264,8 @@ function irA(pagina) {
         </div>
       </form>
       <template #acciones>
-        <button type="button" class="btn btn--secondary" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
-        <button type="submit" class="btn btn--primary" form="te-form" :disabled="guardando">
-          {{ guardando ? 'Guardando...' : 'Guardar' }}
-          <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
-        </button>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
+        <AppButton type="submit" form="te-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
     </Modal>
 
@@ -306,7 +282,7 @@ function irA(pagina) {
       @cancel="porEliminar = null"
       @confirm="confirmarEliminar"
     />
-  </main>
+  </div>
 </template>
 
 

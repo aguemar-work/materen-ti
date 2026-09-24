@@ -7,6 +7,7 @@ import { infoNotificacion } from '../../core/notificacionInfo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const emit = defineEmits(['cerrar']);
 
@@ -84,7 +85,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="campo full" :class="{ 'campo--inerte': guardando || cargandoCategorias }">
+      <div class="campo" :class="{ 'campo--inerte': guardando || cargandoCategorias }">
         <label class="campo__etiqueta" :for="campoCategoria.id">Categoría</label>
         <div class="campo__caja">
           <select
@@ -101,7 +102,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
         <label class="campo__etiqueta" :for="campoSintoma.id">Síntoma</label>
         <div class="campo__caja">
           <input
@@ -122,7 +123,7 @@ onMounted(async () => {
             :id="campoSolucion.id"
             v-model="form.solucion"
             class="campo__control campo__control--area"
-            :rows="6"
+            :rows="8"
             placeholder="Pasos para resolverlo (texto plano)"
             :disabled="guardando"
           ></textarea>
@@ -138,11 +139,8 @@ onMounted(async () => {
     </form>
 
     <template #acciones>
-      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button type="submit" form="kb-form" class="btn btn--primary" :disabled="guardando">
-        {{ guardando ? 'Creando...' : 'Crear artículo' }}
-        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton type="submit" form="kb-form" :label="guardando ? 'Creando...' : 'Crear artículo'" :loading="guardando" :disabled="guardando" />
     </template>
   </Modal>
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
@@ -8,11 +8,16 @@ import { useProblemaDetalleStore } from '../../stores/problemaDetalle.js';
 import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora, fechaLocalISO } from '../../core/formatters.js';
-import { OPCIONES_SEVERIDAD_PROBLEMA, OPCIONES_ESTADO_ACCION } from '../../core/dominio-problemas.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
+import { OPCIONES_SEVERIDAD_PROBLEMA, OPCIONES_ESTADO_ACCION, OPCIONES_ESTADO_PROBLEMA } from '../../core/dominio-problemas.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import { rolDeTag } from '../../core/tagRol.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppSeccion from '../../components/ui/AppSeccion.vue';
+import AppListaDatos from '../../components/ui/AppListaDatos.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppSelect from '../../components/ui/AppSelect.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+import SeveridadProblema from './SeveridadProblema.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const route = useRoute();
@@ -233,235 +238,391 @@ async function eliminar() {
   }
 }
 
+// ── Presentación (rediseño 2026-09-23) ──────────────────────────────────
+// Ciclo de vida como pasos: dice dónde está el problema y qué falta, sin
+// tener que conocer el orden de los estados de memoria.
+const indiceEstado = computed(() =>
+  OPCIONES_ESTADO_PROBLEMA.findIndex((e) => e.valor === problema.value?.estado),
+);
+
+const resumenAcciones = computed(() => {
+  const total = accionesCorrectivas.value.length;
+  const completadas = accionesCorrectivas.value.filter((a) => a.estado === 'completada').length;
+  const vencidas = accionesCorrectivas.value.filter(accionVencida).length;
+  if (!total) return 'Qué se hará para que no vuelva a ocurrir';
+  return `${completadas} de ${total} completadas${vencidas ? ` · ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}`;
+});
+
+const nombreResponsable = computed(() =>
+  problema.value?.responsable_id ? staffPorId.value[problema.value.responsable_id] || 'Staff' : '',
+);
+
+const datosRegistro = computed(() => [
+  { label: 'Creado', valor: formatFechaHora(problema.value?.created_at), mono: true },
+  { label: 'Última actualización', valor: formatFechaHora(problema.value?.updated_at), mono: true },
+]);
+
 onMounted(cargar);
 onUnmounted(() => store.limpiar());
 </script>
 
 <template>
-  <div class="problema-detalle-page vista-modulo">
-    <PageHeader>
-      <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" aria-label="Volver" @click="volver('/problemas')">
-          <i class="ti ti-arrow-left"></i>
-        </button>
-        <div v-if="problema" class="header-emp">
-          <h1>{{ problema.titulo }}</h1>
-          <span class="header-sub">Actualizado {{ formatFechaHora(problema.updated_at) }}</span>
-        </div>
-      </template>
-    </PageHeader>
+  <div class="mx-auto w-full max-w-7xl px-4 pb-10 pt-5 sm:px-6">
+    <button
+      type="button"
+      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+      @click="volver('/problemas')"
+    >
+      <i class="ti ti-arrow-left" aria-hidden="true"></i>
+      Problemas
+    </button>
 
-    <main class="page page--padded">
-      <div v-if="cargando" class="no-results">Cargando problema...</div>
+    <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando problema...</p>
 
-      <div v-else-if="problema" class="grid-12">
-        <div class="card col-8 problema-contenido">
-          <div class="problema-encabezado">
+    <template v-else-if="problema">
+      <!-- ══ Encabezado: qué problema es, en qué punto está y qué sigue ══ -->
+      <header class="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
+        <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-2xl text-gray-500">
+          <i class="ti ti-alert-hexagon" aria-hidden="true"></i>
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ problema.titulo }}</h1>
             <BadgeEstado tipo="problema_estado" :valor="problema.estado" />
-            <BadgeEstado tipo="problema_severidad" :valor="problema.severidad" />
-
-            <div v-if="!editando" class="problema-encabezado-acciones">
-              <button
-                v-if="problema.estado !== 'cerrado'"
-                type="button"
-                class="btn btn--primary"
-                :disabled="cambiandoEstado"
-                @click="avanzarEstado"
-              >
-                {{ LABEL_TRANSICION[problema.estado] }}
-                <i v-if="cambiandoEstado" class="ti ti-loader-2" aria-hidden="true"></i>
-                <i v-else class="ti ti-arrow-right" aria-hidden="true"></i>
-              </button>
-              <button v-else type="button" class="btn btn--secondary" :disabled="cambiandoEstado" @click="reabrirProblema">
-                Reabrir
-                <i v-if="cambiandoEstado" class="ti ti-loader-2" aria-hidden="true"></i>
-                <i v-else class="ti ti-refresh" aria-hidden="true"></i>
-              </button>
-            </div>
           </div>
+          <ul class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-gray-500">
+            <li class="inline-flex items-center gap-1.5"><span class="sr-only">Severidad:</span><SeveridadProblema :valor="problema.severidad" /></li>
+            <li class="inline-flex items-center gap-1.5">
+              <i class="ti ti-user" aria-hidden="true"></i>
+              <span :class="nombreResponsable ? 'text-gray-700' : 'text-gray-400'">{{ nombreResponsable || 'Sin responsable' }}</span>
+            </li>
+            <li class="inline-flex items-center gap-1.5 tabular-nums">
+              <i class="ti ti-clock" aria-hidden="true"></i>Actualizado {{ formatFechaHora(problema.updated_at) }}
+            </li>
+          </ul>
+        </div>
+        <div v-if="!editando" class="flex shrink-0 flex-wrap gap-2">
+          <AppButton variant="outline" severity="secondary" icon="ti ti-pencil" label="Editar" @click="abrirEdicion" />
+          <AppButton
+            v-if="auth.esJefe"
+            variant="outline"
+            severity="danger"
+            icon="ti ti-trash"
+            label="Eliminar"
+            @click="confirmarEliminar = true"
+          />
+          <AppButton
+            v-if="problema.estado !== 'cerrado'"
+            :icon="cambiandoEstado ? 'ti ti-loader-2' : 'ti ti-arrow-right'"
+            icon-pos="right"
+            :label="LABEL_TRANSICION[problema.estado]"
+            :loading="cambiandoEstado"
+            :disabled="cambiandoEstado"
+            @click="avanzarEstado"
+          />
+          <AppButton
+            v-else
+            variant="outline"
+            severity="secondary"
+            :icon="cambiandoEstado ? 'ti ti-loader-2' : 'ti ti-refresh'"
+            label="Reabrir"
+            :loading="cambiandoEstado"
+            :disabled="cambiandoEstado"
+            @click="reabrirProblema"
+          />
+        </div>
+      </header>
 
-          <template v-if="!editando">
-            <div class="problema-bloque">
-              <div class="datos-title">Descripción</div>
-              <p class="problema-texto">{{ problema.descripcion }}</p>
-            </div>
-            <div class="problema-bloque">
-              <div class="datos-title">Causa raíz</div>
-              <p v-if="problema.causa_raiz" class="problema-texto">{{ problema.causa_raiz }}</p>
-              <p v-else class="tk-nota">Todavía sin diagnosticar.</p>
-            </div>
+      <!-- ══ Ciclo de vida ═════════════════════════════════════════ -->
+      <ol class="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Ciclo de vida del problema">
+        <li
+          v-for="(paso, i) in OPCIONES_ESTADO_PROBLEMA"
+          :key="paso.valor"
+          class="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
+          :class="i === indiceEstado ? 'bg-primary-50 font-medium text-primary-700' : i < indiceEstado ? 'text-gray-600' : 'text-gray-400'"
+          :aria-current="i === indiceEstado ? 'step' : undefined"
+        >
+          <i
+            class="text-base"
+            :class="i < indiceEstado ? 'ti ti-circle-check text-green-600' : i === indiceEstado ? 'ti ti-circle-dot' : 'ti ti-circle-dashed'"
+            aria-hidden="true"
+          ></i>
+          <span class="tabular-nums">{{ i + 1 }}.</span> {{ paso.label }}
+        </li>
+      </ol>
 
-            <div class="problema-acciones">
-              <button type="button" class="btn btn--secondary" @click="abrirEdicion">
-                Editar
-                <i class="ti ti-pencil" aria-hidden="true"></i>
-              </button>
-              <button v-if="auth.esJefe" type="button" class="btn btn--danger" @click="confirmarEliminar = true">
-                Eliminar
-                <i class="ti ti-trash" aria-hidden="true"></i>
-              </button>
-            </div>
-          </template>
-
-          <form v-else class="problema-form-edicion" @submit.prevent="guardarEdicion">
-            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
-              <label class="campo__etiqueta" :for="campoTituloEdicion.id">Título<span aria-hidden="true"> *</span></label>
-              <div class="campo__caja">
-                <input
-                  :id="campoTituloEdicion.id"
-                  v-model="formEdicion.titulo"
-                  class="campo__control"
-                  type="text"
-                  required
+      <!-- ══ Cuerpo ════════════════════════════════════════════════ -->
+      <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div class="min-w-0 space-y-6">
+          <!-- Análisis: descripción + causa raíz (o su edición) -->
+          <AppSeccion titulo="Análisis">
+            <form v-if="editando" class="space-y-4" @submit.prevent="guardarEdicion">
+              <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+                <label class="campo__etiqueta" :for="campoTituloEdicion.id">Título<span aria-hidden="true"> *</span></label>
+                <div class="campo__caja">
+                  <input
+                    :id="campoTituloEdicion.id"
+                    v-model="formEdicion.titulo"
+                    class="campo__control"
+                    type="text"
+                    required
+                    :disabled="guardandoEdicion"
+                  >
+                </div>
+              </div>
+              <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+                <label class="campo__etiqueta" :for="campoDescripcionEdicion.id">Descripción<span aria-hidden="true"> *</span></label>
+                <div class="campo__caja">
+                  <textarea
+                    :id="campoDescripcionEdicion.id"
+                    v-model="formEdicion.descripcion"
+                    class="campo__control campo__control--area"
+                    :rows="5"
+                    required
+                    :disabled="guardandoEdicion"
+                  ></textarea>
+                </div>
+              </div>
+              <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
+                <label class="campo__etiqueta" :for="campoCausaRaizEdicion.id">Causa raíz</label>
+                <div class="campo__caja">
+                  <textarea
+                    :id="campoCausaRaizEdicion.id"
+                    v-model="formEdicion.causa_raiz"
+                    class="campo__control campo__control--area"
+                    :rows="4"
+                    placeholder="Se completa durante el diagnóstico"
+                    :disabled="guardandoEdicion"
+                  ></textarea>
+                </div>
+              </div>
+              <div class="flex justify-end gap-2">
+                <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardandoEdicion" @click="editando = false" />
+                <AppButton
+                  type="submit"
+                  :label="guardandoEdicion ? 'Guardando...' : 'Guardar'"
+                  :loading="guardandoEdicion"
                   :disabled="guardandoEdicion"
+                />
+              </div>
+            </form>
+
+            <div v-else class="space-y-5">
+              <div>
+                <h3 class="text-xs font-medium text-gray-500">Descripción</h3>
+                <p class="mt-1 max-w-prose whitespace-pre-line text-sm leading-relaxed text-gray-900">{{ problema.descripcion }}</p>
+              </div>
+              <div>
+                <h3 class="text-xs font-medium text-gray-500">Causa raíz</h3>
+                <p v-if="problema.causa_raiz" class="mt-1 max-w-prose whitespace-pre-line text-sm leading-relaxed text-gray-900">{{ problema.causa_raiz }}</p>
+                <p v-else class="mt-1 text-sm text-gray-400">Todavía sin diagnosticar.</p>
+              </div>
+            </div>
+          </AppSeccion>
+
+          <!-- Acciones correctivas -->
+          <AppSeccion titulo="Acciones correctivas" :conteo="accionesCorrectivas.length" :descripcion="resumenAcciones" sin-padding>
+            <AppVacio
+              v-if="!accionesCorrectivas.length"
+              variante="seccion"
+              titulo="Sin acciones correctivas todavía"
+              mensaje="Agregue abajo lo que se hará para eliminar la causa raíz."
+            />
+            <ul v-else class="divide-y divide-gray-100">
+              <li
+                v-for="a in accionesCorrectivas"
+                :key="a.id"
+                class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center"
+              >
+                <span
+                  class="hidden h-9 w-9 shrink-0 items-center justify-center rounded-md text-lg sm:flex"
+                  :class="a.estado === 'completada' ? 'bg-green-50 text-green-600' : accionVencida(a) ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-500'"
                 >
-              </div>
-            </div>
-            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
-              <label class="campo__etiqueta" :for="campoDescripcionEdicion.id">Descripción<span aria-hidden="true"> *</span></label>
-              <div class="campo__caja">
-                <textarea
-                  :id="campoDescripcionEdicion.id"
-                  v-model="formEdicion.descripcion"
-                  class="campo__control campo__control--area"
-                  :rows="5"
-                  required
-                  :disabled="guardandoEdicion"
-                ></textarea>
-              </div>
-            </div>
-            <div class="campo" :class="{ 'campo--inerte': guardandoEdicion }">
-              <label class="campo__etiqueta" :for="campoCausaRaizEdicion.id">Causa raíz</label>
-              <div class="campo__caja">
-                <textarea
-                  :id="campoCausaRaizEdicion.id"
-                  v-model="formEdicion.causa_raiz"
-                  class="campo__control campo__control--area"
-                  :rows="4"
-                  placeholder="Se completa durante el diagnóstico"
-                  :disabled="guardandoEdicion"
-                ></textarea>
-              </div>
-            </div>
-            <div class="modal-actions">
-              <button type="button" class="btn btn--secondary" :disabled="guardandoEdicion" @click="editando = false">Cancelar</button>
-              <button type="submit" class="btn btn--primary" :disabled="guardandoEdicion">
-                {{ guardandoEdicion ? 'Guardando...' : 'Guardar' }}
-                <i v-if="guardandoEdicion" class="ti ti-loader-2" aria-hidden="true"></i>
-              </button>
-            </div>
-          </form>
-
-          <div class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-list-check" aria-hidden="true"></i> Acciones correctivas</div>
-
-            <div v-if="accionesCorrectivas.length" class="acciones-lista">
-              <div v-for="a in accionesCorrectivas" :key="a.id" class="accion-item">
-                <div class="accion-info">
-                  <p class="accion-descripcion">{{ a.descripcion }}</p>
-                  <p class="accion-meta">
-                    <span v-if="a.responsable_id">{{ staffPorId[a.responsable_id] || 'Staff' }} · </span>
-                    Vence {{ formatFecha(a.fecha_limite) }}
-                    <span v-if="accionVencida(a)" class="tag badge-inline" :class="`tag--${rolDeTag('danger')}`">Vencida</span>
+                  <i :class="a.estado === 'completada' ? 'ti ti-circle-check' : accionVencida(a) ? 'ti ti-alarm' : 'ti ti-list-check'" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm" :class="a.estado === 'completada' ? 'text-gray-500 line-through decoration-gray-300' : 'text-gray-900'">{{ a.descripcion }}</p>
+                  <p class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                    <span :class="a.responsable_id ? '' : 'text-gray-400'">{{ a.responsable_id ? staffPorId[a.responsable_id] || 'Staff' : 'Sin responsable' }}</span>
+                    <span aria-hidden="true">·</span>
+                    <span class="tabular-nums">Vence {{ formatFecha(a.fecha_limite) }}</span>
+                    <AppTag v-if="accionVencida(a)" tono="danger">Vencida</AppTag>
                   </p>
                 </div>
-                <select :value="a.estado" @change="cambiarEstadoAccion(a.id, $event.target.value)">
-                  <option v-for="e in OPCIONES_ESTADO_ACCION" :key="e.valor" :value="e.valor">{{ e.label }}</option>
-                </select>
-                <button class="icon-btn" type="button" title="Eliminar acción" aria-label="Eliminar acción" @click="eliminarAccion(a.id)">
-                  <i class="ti ti-trash" aria-hidden="true"></i>
-                </button>
-              </div>
-            </div>
-            <p v-else class="tk-nota">Sin acciones correctivas todavía.</p>
+                <div class="flex items-center gap-1">
+                  <AppSelect
+                    :model-value="a.estado"
+                    :label="`Estado de la acción: ${a.descripcion}`"
+                    @update:model-value="cambiarEstadoAccion(a.id, $event)"
+                  >
+                    <option v-for="e in OPCIONES_ESTADO_ACCION" :key="e.valor" :value="e.valor">{{ e.label }}</option>
+                  </AppSelect>
+                  <button class="icon-btn danger" type="button" title="Eliminar acción" aria-label="Eliminar acción" @click="eliminarAccion(a.id)">
+                    <i class="ti ti-trash" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </li>
+            </ul>
 
-            <form class="accion-form-nueva" @submit.prevent="crearAccion">
-              <input v-model="nuevaAccion.descripcion" aria-label="Nueva acción correctiva" placeholder="ej: Reemplazar switch del piso 3" :disabled="creandoAccion">
-              <select v-model="nuevaAccion.responsable_id" aria-label="Responsable de la acción correctiva" :disabled="creandoAccion">
-                <option value="">Sin asignar</option>
-                <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-              </select>
-              <input v-model="nuevaAccion.fecha_limite" type="date" aria-label="Fecha límite de la acción correctiva" :disabled="creandoAccion">
-              <button
+            <!-- Alta de una acción: al pie de la lista, donde se lee -->
+            <form
+              class="grid gap-3 border-t border-gray-100 bg-gray-50/60 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_180px_160px_auto] sm:items-end"
+              @submit.prevent="crearAccion"
+            >
+              <div class="campo" :class="{ 'campo--inerte': creandoAccion }">
+                <label class="campo__etiqueta" for="accion-nueva-descripcion">Nueva acción</label>
+                <div class="campo__caja">
+                  <input
+                    id="accion-nueva-descripcion"
+                    v-model="nuevaAccion.descripcion"
+                    class="campo__control"
+                    placeholder="ej: Reemplazar switch del piso 3"
+                    :disabled="creandoAccion"
+                  >
+                </div>
+              </div>
+              <div class="campo" :class="{ 'campo--inerte': creandoAccion }">
+                <label class="campo__etiqueta" for="accion-nueva-responsable">Responsable</label>
+                <div class="campo__caja">
+                  <select
+                    id="accion-nueva-responsable"
+                    v-model="nuevaAccion.responsable_id"
+                    class="campo__control campo__control--select"
+                    :disabled="creandoAccion"
+                  >
+                    <option value="">Sin asignar</option>
+                    <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+                  </select>
+                  <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+                </div>
+              </div>
+              <div class="campo" :class="{ 'campo--inerte': creandoAccion }">
+                <label class="campo__etiqueta" for="accion-nueva-fecha">Fecha límite</label>
+                <div class="campo__caja">
+                  <input
+                    id="accion-nueva-fecha"
+                    v-model="nuevaAccion.fecha_limite"
+                    class="campo__control"
+                    type="date"
+                    :disabled="creandoAccion"
+                  >
+                </div>
+              </div>
+              <AppButton
                 type="submit"
-                class="btn btn--secondary btn--solo-icono"
+                variant="outline"
+                severity="secondary"
+                :icon="creandoAccion ? 'ti ti-loader-2' : 'ti ti-plus'"
+                label="Agregar"
+                :loading="creandoAccion"
                 :disabled="creandoAccion"
-                title="Agregar acción correctiva"
-                aria-label="Agregar acción correctiva"
-              >
-                <i v-if="creandoAccion" class="ti ti-loader-2" aria-hidden="true"></i>
-                <i v-else class="ti ti-plus" aria-hidden="true"></i>
-              </button>
+                class="h-10"
+              />
             </form>
-          </div>
+          </AppSeccion>
+
+          <!-- Tickets vinculados: los incidentes que originaron el problema -->
+          <AppSeccion
+            titulo="Tickets vinculados"
+            :conteo="ticketsVinculados.length"
+            descripcion="Incidentes que comparten esta causa"
+            sin-padding
+          >
+            <AppVacio
+              v-if="!ticketsVinculados.length"
+              variante="seccion"
+              titulo="Sin tickets vinculados todavía"
+              mensaje="Vincule los tickets que comparten esta causa con su código."
+            />
+            <ul v-else class="divide-y divide-gray-100">
+              <li v-for="t in ticketsVinculados" :key="t.vinculo_id" class="flex items-center gap-3 px-4 py-3">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                  <i class="ti ti-ticket" aria-hidden="true"></i>
+                </span>
+                <RouterLink
+                  class="min-w-0 flex-1 rounded-md text-sm hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  :to="`/tickets/${t.ticket_id}`"
+                >
+                  <span class="font-medium text-gray-900 tabular-nums">{{ t.codigo }}</span>
+                  <span class="ml-2 text-gray-600">{{ t.titulo }}</span>
+                </RouterLink>
+                <button class="icon-btn" type="button" title="Desvincular" aria-label="Desvincular" @click="desvincular(t.vinculo_id)">
+                  <i class="ti ti-unlink" aria-hidden="true"></i>
+                </button>
+              </li>
+            </ul>
+            <form class="flex items-end gap-2 border-t border-gray-100 bg-gray-50/60 px-4 py-3" @submit.prevent="vincularTicketPorCodigo">
+              <div class="campo flex-1 sm:max-w-xs" :class="{ 'campo--inerte': vinculandoTicket }">
+                <label class="campo__etiqueta" for="vincular-ticket-codigo">Código de ticket a vincular</label>
+                <div class="campo__caja">
+                  <input
+                    id="vincular-ticket-codigo"
+                    v-model="codigoNuevoTicket"
+                    class="campo__control tabular-nums"
+                    placeholder="ej: TCK-0001"
+                    :disabled="vinculandoTicket"
+                  >
+                </div>
+              </div>
+              <AppButton
+                variant="outline"
+                severity="secondary"
+                :icon="vinculandoTicket ? 'ti ti-loader-2' : 'ti ti-link'"
+                label="Vincular"
+                :loading="vinculandoTicket"
+                :disabled="vinculandoTicket || !codigoNuevoTicket.trim()"
+                class="h-10"
+                @click="vincularTicketPorCodigo"
+              />
+            </form>
+          </AppSeccion>
         </div>
 
-        <div class="card col-4 problema-meta">
-          <div class="datos-title"><i class="ti ti-info-circle"></i> Detalle</div>
+        <!-- ── Lateral: clasificación editable + registro ── -->
+        <aside class="space-y-6 lg:sticky lg:top-6">
+          <AppSeccion titulo="Clasificación" descripcion="Los cambios se guardan al elegir">
+            <div class="space-y-4">
+              <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
+                <label class="campo__etiqueta" :for="campoSeveridadDetalle.id">Severidad</label>
+                <div class="campo__caja">
+                  <select
+                    :id="campoSeveridadDetalle.id"
+                    class="campo__control campo__control--select"
+                    :value="problema.severidad"
+                    :disabled="guardandoCampo"
+                    @change="cambiarSeveridad($event.target.value)"
+                  >
+                    <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
+                  </select>
+                  <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+                </div>
+              </div>
 
-          <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
-            <label class="campo__etiqueta" :for="campoSeveridadDetalle.id">Severidad</label>
-            <div class="campo__caja">
-              <select
-                :id="campoSeveridadDetalle.id"
-                class="campo__control campo__control--select"
-                :value="problema.severidad"
-                :disabled="guardandoCampo"
-                @change="cambiarSeveridad($event.target.value)"
-              >
-                <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
-              </select>
-              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-            </div>
-          </div>
-
-          <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
-            <label class="campo__etiqueta" :for="campoResponsableDetalle.id">Responsable</label>
-            <div class="campo__caja">
-              <select
-                :id="campoResponsableDetalle.id"
-                class="campo__control campo__control--select"
-                :value="problema.responsable_id || ''"
-                :disabled="guardandoCampo"
-                @change="cambiarResponsable($event.target.value)"
-              >
-                <option value="">Sin asignar</option>
-                <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-              </select>
-              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-            </div>
-          </div>
-          <p class="tk-detalle">Creado {{ formatFechaHora(problema.created_at) }}</p>
-
-          <div class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-ticket" aria-hidden="true"></i> Tickets vinculados</div>
-            <div v-if="ticketsVinculados.length" class="tickets-vinculados-lista">
-              <div v-for="t in ticketsVinculados" :key="t.vinculo_id" class="ticket-vinculado-item">
-                <RouterLink class="tk-kb-relacionado" :to="`/tickets/${t.ticket_id}`">{{ t.codigo }} — {{ t.titulo }}</RouterLink>
-                <button class="icon-btn" type="button" title="Desvincular" aria-label="Desvincular" @click="desvincular(t.vinculo_id)">
-                  <i class="ti ti-x" aria-hidden="true"></i>
-                </button>
+              <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
+                <label class="campo__etiqueta" :for="campoResponsableDetalle.id">Responsable</label>
+                <div class="campo__caja">
+                  <select
+                    :id="campoResponsableDetalle.id"
+                    class="campo__control campo__control--select"
+                    :value="problema.responsable_id || ''"
+                    :disabled="guardandoCampo"
+                    @change="cambiarResponsable($event.target.value)"
+                  >
+                    <option value="">Sin asignar</option>
+                    <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+                  </select>
+                  <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+                </div>
               </div>
             </div>
-            <p v-else class="tk-nota">Sin tickets vinculados todavía.</p>
+          </AppSeccion>
 
-            <form class="vincular-ticket-form" @submit.prevent="vincularTicketPorCodigo">
-              <input v-model="codigoNuevoTicket" aria-label="Código de ticket a vincular" placeholder="ej: TCK-0001" :disabled="vinculandoTicket">
-              <button
-                type="button"
-                class="btn btn--secondary"
-                :disabled="vinculandoTicket || !codigoNuevoTicket.trim()"
-                @click="vincularTicketPorCodigo"
-              >
-                Vincular
-                <i v-if="vinculandoTicket" class="ti ti-loader-2" aria-hidden="true"></i>
-                <i v-else class="ti ti-link" aria-hidden="true"></i>
-              </button>
-            </form>
-          </div>
-        </div>
+          <AppSeccion titulo="Registro">
+            <AppListaDatos :datos="datosRegistro" />
+          </AppSeccion>
+        </aside>
       </div>
-    </main>
+    </template>
 
     <ConfirmDialog
       v-if="confirmarEliminar"
@@ -477,5 +638,3 @@ onUnmounted(() => store.limpiar());
     />
   </div>
 </template>
-
-

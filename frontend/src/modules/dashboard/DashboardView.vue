@@ -4,10 +4,15 @@ import { RouterLink } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import { rolDeTag } from '../../core/tagRol.js';
-import IndicadorPrioridad from '../../components/shared/IndicadorPrioridad.vue';
+import { prioridadInfo } from '../../core/dominio-tickets.js';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppKpi from '../../components/ui/AppKpi.vue';
+import AppSeccion from '../../components/ui/AppSeccion.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import { construirFeedPendientes } from './pendientesFeed.js';
 
 const auth = useAuthStore();
@@ -36,9 +41,100 @@ const LIMITE_FEED = 10;
 const feedExpandido = ref(false);
 
 const feedPendientes = computed(() => construirFeedPendientes(pendientes.value, pendientesTickets.value, pendientesProblemas.value, altasIncompletas.value));
-const feedMostrado = computed(() =>
-  feedExpandido.value ? feedPendientes.value : feedPendientes.value.slice(0, LIMITE_FEED)
+
+// ── Presentación (rediseño 2026-09-23) ─────────────────────────────────
+// Los KPIs de arriba agrupan el MISMO feed por área y lo filtran en el
+// lugar (mismo patrón que la fila de disponibilidad de Equipos): la cifra
+// explica exactamente qué filas hay debajo, sin una segunda consulta ni un
+// segundo criterio de urgencia. El grupo sale del prefijo de `key` que ya
+// arma pendientesFeed.js — no se toca la regla de tiers.
+const GRUPOS = [
+  { id: 'tickets', label: 'Tickets', icono: 'ti ti-headset', prefijos: ['tk-'] },
+  { id: 'accesos', label: 'Accesos y altas', icono: 'ti ti-key', prefijos: ['sinpw-', 'rotar-', 'alta-'] },
+  { id: 'inventario', label: 'Licencias y equipos', icono: 'ti ti-devices', prefijos: ['lic-', 'garantia-', 'equipo-'] },
+  { id: 'problemas', label: 'Problemas', icono: 'ti ti-bug', prefijos: ['accion-vencida-', 'recurrencia-'] },
+];
+function grupoDe(item) {
+  return GRUPOS.find((g) => g.prefijos.some((p) => item.key.startsWith(p)))?.id || null;
+}
+const filtroGrupo = ref('');
+function alternarGrupo(id) {
+  filtroGrupo.value = filtroGrupo.value === id ? '' : id;
+  feedExpandido.value = false;
+}
+const kpisGrupo = computed(() => GRUPOS.map((g) => {
+  const items = feedPendientes.value.filter((i) => grupoDe(i) === g.id);
+  const criticos = items.filter((i) => i.tier === 1).length;
+  let tono = 'success';
+  let detalle = 'Al día';
+  if (criticos) {
+    tono = 'danger';
+    detalle = `${criticos} ${criticos === 1 ? 'crítico' : 'críticos'}`;
+  } else if (items.length) {
+    tono = 'warning';
+    detalle = 'Requieren atención';
+  }
+  return { ...g, total: items.length, tono, detalle };
+}));
+const feedFiltrado = computed(() =>
+  filtroGrupo.value ? feedPendientes.value.filter((i) => grupoDe(i) === filtroGrupo.value) : feedPendientes.value
 );
+const feedMostrado = computed(() =>
+  feedExpandido.value ? feedFiltrado.value : feedFiltrado.value.slice(0, LIMITE_FEED)
+);
+// Crítico y atención como dos bloques con su propio rótulo: el orden ya
+// venía por tier, esto solo lo hace visible.
+const bloquesFeed = computed(() => [
+  { tier: 1, label: 'Crítico', items: feedMostrado.value.filter((i) => i.tier === 1) },
+  { tier: 2, label: 'Atención', items: feedMostrado.value.filter((i) => i.tier !== 1) },
+].filter((b) => b.items.length));
+const totalCriticos = computed(() => feedPendientes.value.filter((i) => i.tier === 1).length);
+const grupoActivo = computed(() => GRUPOS.find((g) => g.id === filtroGrupo.value) || null);
+
+const CAJA_ICONO = {
+  danger: 'bg-red-50 text-red-600',
+  warning: 'bg-amber-50 text-amber-600',
+  info: 'bg-primary-50 text-primary-600',
+  neutral: 'bg-gray-100 text-gray-500',
+};
+function tonoFamilia(familia) {
+  const rol = rolDeTag(familia);
+  return CAJA_ICONO[rol] ? rol : 'neutral';
+}
+
+function tonoPrioridad(p) {
+  return rolDeTag(prioridadInfo(p).clase);
+}
+
+const fechaHoy = computed(() => {
+  const txt = new Date().toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+});
+const subtitulo = computed(() => {
+  if (cargando.value) return fechaHoy.value;
+  const n = feedPendientes.value.length;
+  if (!n) return `${fechaHoy.value} · todo al día`;
+  const pend = `${n} ${n === 1 ? 'pendiente' : 'pendientes'}`;
+  const crit = totalCriticos.value ? `, ${totalCriticos.value} ${totalCriticos.value === 1 ? 'crítico' : 'críticos'}` : '';
+  return `${fechaHoy.value} · ${pend}${crit}`;
+});
+
+// Inventario: cifras de "cuánto hay", secundarias — una lista compacta en
+// la columna lateral, no tarjetas que compitan con los pendientes. Mismos
+// gates de módulo y mismos destinos que las stat-cards anteriores.
+const inventario = computed(() => {
+  if (!stats.value) return [];
+  const s = stats.value;
+  return [
+    { label: 'Tickets abiertos', icono: 'ti ti-headset', valor: s.ticketsAbiertos, to: '/tickets', visible: auth.puedeVerModulo('tickets') },
+    { label: 'Empleados activos', icono: 'ti ti-users', valor: s.empleadosActivos, to: '/empleados?estado=Activo', visible: auth.puedeVerModulo('empleados') },
+    { label: 'Dados de baja', icono: 'ti ti-users-minus', valor: s.empleadosTotal - s.empleadosActivos, to: '/empleados?estado=Inactivo', visible: auth.puedeVerModulo('empleados') },
+    // Sin enlace: no existe una vista global de cuentas (viven en la ficha del empleado)
+    { label: 'Cuentas asignadas', icono: 'ti ti-key', valor: s.cuentasAsignadas, to: null, visible: true },
+    { label: 'Correos compartidos', icono: 'ti ti-mail-share', valor: s.correosCompartidos, to: '/correos', visible: auth.puedeVerModulo('correos') },
+    { label: 'Equipos', icono: 'ti ti-devices', valor: s.equiposTotal, to: '/equipos', visible: auth.puedeVerModulo('equipos') },
+  ].filter((f) => f.visible);
+});
 
 onMounted(async () => {
   try {
@@ -66,181 +162,174 @@ onMounted(async () => {
 });
 </script>
 
+
 <template>
-  <div class="dashboard-page vista-modulo">
-    <PageHeader titulo="Dashboard" icono="ti ti-layout-dashboard" />
+  <div class="mx-auto w-full max-w-7xl pb-10">
+    <AppEncabezado titulo="Dashboard" :subtitulo="subtitulo" />
 
-    <main class="page page--padded dashboard-body">
-      <div v-if="cargando" aria-hidden="true">
-        <div class="section">
-          <div class="grid-12 pendientes-row">
-            <div class="mio-col">
-              <div class="skel-bar skel-bar--title"></div>
-              <div class="skel-block skel-block--mio"></div>
-            </div>
+    <!-- ══ Carga: esqueleto con la misma forma que la página ══════════ -->
+    <div v-if="cargando" class="px-4 sm:px-6" aria-hidden="true">
+      <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div v-for="n in 4" :key="n" class="h-[76px] animate-pulse rounded-lg border border-gray-200 bg-white"></div>
+      </div>
+      <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div class="h-96 animate-pulse rounded-lg border border-gray-200 bg-white"></div>
+        <div class="h-64 animate-pulse rounded-lg border border-gray-200 bg-white"></div>
+      </div>
+    </div>
+    <p v-if="cargando" class="sr-only" role="status">Cargando el dashboard…</p>
 
-            <div class="pendientes-col">
-              <div class="skel-bar skel-bar--title"></div>
-              <div class="skel-block skel-block--pendientes"></div>
-            </div>
-          </div>
-        </div>
-        <div class="section">
-          <div class="skel-bar skel-bar--title skel-bar--secondary"></div>
-          <div class="grid-12">
-            <div v-for="n in 8" :key="n" class="skel-block skel-block--stat col-2"></div>
-          </div>
-        </div>
+    <template v-else>
+      <!-- ══ Pendientes por área: cada KPI filtra la lista de abajo ═════ -->
+      <div class="grid grid-cols-2 gap-3 px-4 sm:px-6 xl:grid-cols-4" role="group" aria-label="Pendientes por área">
+        <button
+          v-for="k in kpisGrupo"
+          :key="k.id"
+          type="button"
+          class="min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          :aria-pressed="filtroGrupo === k.id"
+          @click="alternarGrupo(k.id)"
+        >
+          <AppKpi
+            :label="k.label"
+            :valor="k.total"
+            :icono="k.icono"
+            :tono="k.tono"
+            :detalle="filtroGrupo === k.id ? 'Filtro aplicado · clic para quitar' : k.detalle"
+            class="h-full transition-colors duration-150"
+            :class="filtroGrupo === k.id ? 'border-primary-300 bg-primary-50/50' : 'hover:border-gray-300 hover:bg-gray-50/60'"
+          />
+        </button>
       </div>
 
-      <template v-else>
-        <!-- Feed de pendientes del equipo (único, ordenado por urgencia) con
-             "Mi trabajo" como columna angosta a su izquierda: lo propio y lo
-             de todos, uno al lado del otro. -->
-        <div class="section">
-          <div class="grid-12 pendientes-row">
-            <div class="mio-col">
-              <h2 class="section-title">Mi trabajo</h2>
+      <div class="mt-6 grid items-start gap-6 px-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <!-- ══ Requiere atención (feed único, ordenado por urgencia) ══ -->
+        <AppSeccion
+          titulo="Requiere atención"
+          :conteo="feedFiltrado.length"
+          :descripcion="grupoActivo ? `Solo ${grupoActivo.label.toLowerCase()}` : 'Lo que nadie tomó todavía o se está pasando de tiempo'"
+          sin-padding
+        >
+          <template v-if="grupoActivo" #acciones>
+            <AppButton size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Quitar filtro" @click="filtroGrupo = ''" />
+          </template>
 
-              <!-- Reemplaza a "Últimos empleados" (hasta 2026-09-02). Ese
-                   bloque respondía "quién entró hace poco", una pregunta sin
-                   decisión asociada — y desde que existe el pendiente "Alta
-                   sin completar" el feed ya muestra el subconjunto que sí
-                   pide acción. Este sitio pasa a lo que un técnico abre la
-                   app para ver: lo suyo. El feed de al lado cubre lo que
-                   NADIE tomó todavía o lo que se está pasando de tiempo; un
-                   ticket asignado a mí, en curso, no estaba en pantalla. -->
-              <div v-if="misTickets.total === 0" class="mio-vacio">
-                <i class="ti ti-circle-check" aria-hidden="true"></i>
-                <span>Sin tickets asignados</span>
-              </div>
+          <div v-if="feedFiltrado.length === 0" class="flex flex-col items-center px-6 py-12 text-center">
+            <span class="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-green-50 text-xl text-green-600">
+              <i class="ti ti-circle-check" aria-hidden="true"></i>
+            </span>
+            <p class="text-sm font-medium text-gray-900">Todo al día</p>
+            <p class="mt-1 max-w-sm text-sm text-gray-500">
+              <template v-if="grupoActivo">Sin pendientes en {{ grupoActivo.label.toLowerCase() }}.</template>
+              <template v-else>Sin contraseñas por rotar, licencias por vencer, equipos sin devolver ni tickets pendientes.</template>
+            </p>
+          </div>
 
-              <template v-else>
-                <div class="panel-lista">
+          <template v-else>
+            <div v-for="bloque in bloquesFeed" :key="bloque.tier">
+              <h3
+                class="flex items-center gap-2 border-b border-gray-100 bg-gray-50/70 px-4 py-1.5 text-xs font-medium"
+                :class="bloque.tier === 1 ? 'text-red-700' : 'text-gray-500'"
+              >
+                <span class="h-1.5 w-1.5 rounded-full" :class="bloque.tier === 1 ? 'bg-red-500' : 'bg-amber-400'" aria-hidden="true"></span>
+                {{ bloque.label }}
+              </h3>
+              <ul class="divide-y divide-gray-100">
+                <li v-for="item in bloque.items" :key="item.key">
                   <RouterLink
-                    v-for="t in misTickets.lista"
-                    :key="t.id"
-                    class="mio-item"
-                    :to="`/tickets/${t.id}`"
+                    :to="item.destino"
+                    class="group flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
                   >
-                    <span class="mio-item-cab">
-                      <span class="mio-codigo">{{ t.codigo }}</span>
-                      <IndicadorPrioridad :valor="t.prioridad" />
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-lg" :class="CAJA_ICONO[tonoFamilia(item.colorFamilia)]">
+                      <i :class="item.icono" aria-hidden="true"></i>
                     </span>
-                    <span class="mio-titulo">{{ t.titulo }}</span>
-                    <BadgeEstado tipo="ticket" :valor="t.estado" status />
+                    <div class="min-w-0 flex-1">
+                      <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span class="min-w-0 truncate text-sm font-medium text-gray-900">{{ item.titulo }}</span>
+                        <AppTag class="shrink-0">{{ item.categoriaLabel }}</AppTag>
+                      </div>
+                      <p class="mt-0.5 truncate text-xs text-gray-500">{{ item.contexto }}</p>
+                    </div>
+                    <i class="ti ti-chevron-right shrink-0 text-gray-300 transition-colors group-hover:text-gray-500" aria-hidden="true"></i>
                   </RouterLink>
-                </div>
-
-                <!-- El total es de todos los asignados, no de los 5
-                     mostrados: el enlace tiene que decir la verdad. -->
-                <RouterLink
-                  v-if="misTickets.total > misTickets.lista.length"
-                  class="mio-todos"
-                  to="/tickets"
-                >
-                  Ver mis {{ misTickets.total }} tickets
-                  <i class="ti ti-arrow-right" aria-hidden="true"></i>
-                </RouterLink>
-              </template>
+                </li>
+              </ul>
             </div>
-
-            <div class="pendientes-col">
-              <h2 class="section-title">Pendientes</h2>
-
-              <div v-if="feedPendientes.length === 0" class="todo-ok">
-                <i class="ti ti-circle-check"></i> Todo al día: sin contraseñas por rotar, licencias por vencer, equipos sin devolver ni tickets pendientes.
-              </div>
-
-              <div v-else class="panel-lista">
-                <RouterLink
-                  v-for="item in feedMostrado"
-                  :key="item.key"
-                  class="feed-item"
-                  :to="item.destino"
-                >
-                  <span class="icon-box" :class="`icon-box--${item.colorFamilia}`"><i :class="item.icono"></i></span>
-                  <div class="feed-main">
-                    <span class="feed-titulo">{{ item.titulo }}</span>
-                    <span class="feed-sep">·</span>
-                    <span class="feed-contexto">{{ item.contexto }}</span>
-                  </div>
-                  <span class="tag feed-badge" :class="`tag--${rolDeTag(item.colorFamilia)}`">{{ item.categoriaLabel }}</span>
-                  <i class="ti ti-chevron-right feed-chevron"></i>
-                </RouterLink>
-                <button
-                  v-if="feedPendientes.length > LIMITE_FEED"
-                  type="button"
-                  class="pend-vermas"
-                  @click="feedExpandido = !feedExpandido"
-                >
-                  {{ feedExpandido ? 'Ver menos' : `Ver ${feedPendientes.length - LIMITE_FEED} más` }}
-                </button>
-              </div>
+            <div v-if="feedFiltrado.length > LIMITE_FEED" class="border-t border-gray-100 px-2 py-1.5">
+              <AppButton
+                size="sm"
+                variant="text"
+                block
+                :icon="feedExpandido ? 'ti ti-chevron-up' : 'ti ti-chevron-down'"
+                :label="feedExpandido ? 'Ver menos' : `Ver ${feedFiltrado.length - LIMITE_FEED} más`"
+                @click="feedExpandido = !feedExpandido"
+              />
             </div>
-          </div>
-        </div>
+          </template>
+        </AppSeccion>
 
-        <!-- Resumen: inventario, no pendientes. Solo cifras que responden
-             "cuánto hay" y sirven de entrada al módulo.
-             Se retiraron el 2026-09-02 "Contraseñas por rotar" y "Licencias
-             por vencer": las dos duplicaban filas del feed de arriba con
-             MENOS información (el feed dice cuáles, desde cuándo y lleva a
-             cada una; la tarjeta decía un número). La de rotación era el caso
-             extremo — su única acción era hacer scroll hacia el feed que
-             tenía justo encima. -->
-        <div class="section section--stats">
-          <h2 class="section-title section-title--secondary">Resumen</h2>
-          <div v-if="!stats" class="no-results no-results--compacto">No se pudo cargar el resumen.</div>
-          <div v-else class="grid-12">
-            <RouterLink v-if="auth.puedeVerModulo('empleados')" to="/empleados?estado=Activo" class="stat-card stat-card--clic col-2">
-              <div class="stat-icon stat-icon--empleados"><i class="ti ti-users"></i></div>
-              <div class="stat-info">
-                <span class="stat-value">{{ stats.empleadosActivos }}</span>
-                <span class="stat-label">Empleados activos</span>
-              </div>
-            </RouterLink>
-            <RouterLink v-if="auth.puedeVerModulo('empleados')" to="/empleados?estado=Inactivo" class="stat-card stat-card--clic col-2">
-              <div class="stat-icon stat-icon--neutral"><i class="ti ti-users-minus"></i></div>
-              <div class="stat-info">
-                <span class="stat-value">{{ stats.empleadosTotal - stats.empleadosActivos }}</span>
-                <span class="stat-label">Dados de baja</span>
-              </div>
-            </RouterLink>
-            <!-- Sin link: no existe una vista global de cuentas (viven en la ficha del empleado) -->
-            <div class="stat-card stat-card--no-clic col-2">
-              <div class="stat-icon stat-icon--accesos"><i class="ti ti-key"></i></div>
-              <div class="stat-info">
-                <span class="stat-value">{{ stats.cuentasAsignadas }}</span>
-                <span class="stat-label">Cuentas asignadas</span>
-              </div>
-            </div>
-            <RouterLink v-if="auth.puedeVerModulo('correos')" to="/correos" class="stat-card stat-card--clic col-2">
-              <div class="stat-icon stat-icon--correos"><i class="ti ti-mail-share"></i></div>
-              <div class="stat-info">
-                <span class="stat-value">{{ stats.correosCompartidos }}</span>
-                <span class="stat-label">Correos compartidos</span>
-              </div>
-            </RouterLink>
-            <RouterLink v-if="auth.puedeVerModulo('equipos')" to="/equipos" class="stat-card stat-card--clic col-2">
-              <div class="stat-icon stat-icon--equipos"><i class="ti ti-devices"></i></div>
-              <div class="stat-info">
-                <span class="stat-value">{{ stats.equiposTotal }}</span>
-                <span class="stat-label">Equipos</span>
-              </div>
-            </RouterLink>
-            <RouterLink v-if="auth.puedeVerModulo('tickets')" to="/tickets" class="stat-card stat-card--clic col-2">
-              <div class="stat-icon stat-icon--tickets"><i class="ti ti-headset"></i></div>
-              <div class="stat-info">
-                <span class="stat-value">{{ stats.ticketsAbiertos }}</span>
-                <span class="stat-label">Tickets abiertos</span>
-              </div>
-            </RouterLink>
-          </div>
-        </div>
-      </template>
-    </main>
+        <!-- ══ Lateral: lo propio + inventario ═══════════════════════ -->
+        <aside class="min-w-0 space-y-6 lg:sticky lg:top-6">
+          <!-- "Mis tickets" reemplaza a "Últimos empleados" (2026-09-02):
+               lo que un técnico abre la app para ver es lo suyo. El feed
+               cubre lo que NADIE tomó todavía. -->
+          <AppSeccion titulo="Mis tickets" :conteo="misTickets.total" sin-padding>
+            <AppVacio
+              v-if="misTickets.total === 0"
+              variante="seccion"
+              titulo="Sin tickets asignados"
+              mensaje="Los tickets que se le asignen aparecerán acá."
+            />
+            <template v-else>
+              <ul class="divide-y divide-gray-100">
+                <li v-for="t in misTickets.lista" :key="t.id">
+                  <RouterLink
+                    :to="`/tickets/${t.id}`"
+                    class="block px-4 py-3 transition-colors duration-150 hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+                  >
+                    <div class="flex items-center gap-2 text-xs">
+                      <span class="font-medium text-gray-500 tabular-nums">{{ t.codigo }}</span>
+                      <AppTag v-if="t.prioridad === 'alta' || t.prioridad === 'urgente'" :tono="tonoPrioridad(t.prioridad)">{{ prioridadInfo(t.prioridad).label }}</AppTag>
+                      <BadgeEstado class="ml-auto" tipo="ticket" :valor="t.estado" status />
+                    </div>
+                    <p class="mt-1 line-clamp-2 text-sm text-gray-900">{{ t.titulo }}</p>
+                  </RouterLink>
+                </li>
+              </ul>
+              <!-- El total es de todos los asignados, no de los mostrados:
+                   el enlace tiene que decir la verdad. -->
+              <RouterLink
+                v-if="misTickets.total > misTickets.lista.length"
+                to="/tickets"
+                class="flex items-center justify-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+              >
+                Ver mis {{ misTickets.total }} tickets
+                <i class="ti ti-arrow-right" aria-hidden="true"></i>
+              </RouterLink>
+            </template>
+          </AppSeccion>
+
+          <AppSeccion titulo="Inventario" sin-padding>
+            <p v-if="!stats" class="px-4 py-6 text-center text-sm text-gray-500">No se pudo cargar el resumen.</p>
+            <ul v-else class="divide-y divide-gray-100">
+              <li v-for="f in inventario" :key="f.label">
+                <component
+                  :is="f.to ? RouterLink : 'div'"
+                  :to="f.to || undefined"
+                  class="flex items-center gap-3 px-4 py-2.5 text-sm"
+                  :class="f.to ? 'group transition-colors duration-150 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500' : ''"
+                >
+                  <i :class="f.icono" class="text-base text-gray-400" aria-hidden="true"></i>
+                  <span class="min-w-0 flex-1 truncate text-gray-600">{{ f.label }}</span>
+                  <span class="font-semibold text-gray-900 tabular-nums">{{ f.valor }}</span>
+                  <i v-if="f.to" class="ti ti-chevron-right text-gray-300 group-hover:text-gray-500" aria-hidden="true"></i>
+                  <span v-else class="w-4" aria-hidden="true"></span>
+                </component>
+              </li>
+            </ul>
+          </AppSeccion>
+        </aside>
+      </div>
+    </template>
   </div>
 </template>
-
-

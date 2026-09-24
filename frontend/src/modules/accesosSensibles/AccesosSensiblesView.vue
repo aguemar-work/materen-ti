@@ -1,23 +1,30 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAccesosSensiblesStore } from '../../stores/accesosSensibles.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { revelarAccesoSensible } from '../../api/passwords.js';
 import { showToast } from '../../core/toast.js';
 import { badgeInfo } from '../../core/badges.js';
-import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
+import { CATEGORIAS_ACCESO_SENSIBLE } from '../../core/dominio-accesos-sensibles.js';
 import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppTag from '../../components/ui/AppTag.vue';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
 import AccesoSensibleForm from './AccesoSensibleForm.vue';
 
 const auth = useAuthStore();
 const store = useAccesosSensiblesStore();
 const { lista, cargando, error } = storeToRefs(store);
+const { esMovil } = useEsMovil();
 
 // El revelado (petición a la edge function `credenciales` con la clave
 // aislada CRED_KEY_SENSIBLE, auditoría en accesos_log con el motivo, cuenta
@@ -55,6 +62,29 @@ onBeforeUnmount(() => {
   revelados.forEach((r) => r.ocultar());
 });
 
+// ── Filtros (solo presentación, sobre la lista ya cargada) ─────────────
+// El listado es corto y se carga completo (sin paginación server-side): la
+// búsqueda y la categoría filtran en el cliente, no piden nada nuevo.
+const busqueda = ref('');
+const filtroCategoria = ref('');
+const CATEGORIAS_SEGMENTO = [
+  { valor: '', label: 'Todas' },
+  ...Object.entries(CATEGORIAS_ACCESO_SENSIBLE).map(([valor, c]) => ({ valor, label: c.label })),
+];
+
+const listaFiltrada = computed(() => {
+  const q = busqueda.value.trim().toLowerCase();
+  return lista.value.filter((fila) => {
+    if (filtroCategoria.value && fila.categoria !== filtroCategoria.value) return false;
+    if (!q) return true;
+    return [fila.nombre, fila.usuario, fila.notas].some((v) => (v || '').toLowerCase().includes(q));
+  });
+});
+
+const sinPermiso = computed(() => lista.value.filter((f) => !f.puedeRevelar).length);
+
+const ICONO_CATEGORIA = { equipos: 'ti ti-router', correos: 'ti ti-mail', otro: 'ti ti-shield-lock' };
+
 const mostrarForm = ref(false);
 const accesoEditar = ref(null);
 
@@ -81,18 +111,27 @@ const porEliminar = ref(null);
 const eliminando = ref(false);
 const dialogoEliminar = ref(null);
 
-// Definición de columnas: sin orden (esta vista nunca ordenó por columna).
-// "Contraseña" es sintética (no hay campo crudo, la celda siempre monta el
-// revelado auditado) y "Nombre" es la elástica.
-const columnas = [
-  { clave: 'nombre', label: 'Nombre', elastica: true, movil: 'principal' },
-  { clave: 'usuario', label: 'Usuario', movil: 'sec' },
-  { clave: 'contrasena', label: 'Contraseña', movil: 'sec' },
-  { clave: 'notas', label: 'Notas', movil: 'pie' },
-  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
-];
-const columnasVisiblesLista = columnasVisibles(columnas);
-const totalColumnas = columnasVisiblesLista.length;
+// Acciones por fila en el menú ⋮ (rediseño 2026-09-22). Mismas reglas que
+// los íconos anteriores: sin permiso sobre la credencial, Editar y Eliminar
+// quedan deshabilitados (la RLS lo exige igual del lado del servidor).
+function accionesDe(fila) {
+  return [
+    {
+      icono: 'ti-pencil',
+      label: fila.puedeRevelar ? 'Editar' : 'Editar (sin permiso)',
+      disabled: !fila.puedeRevelar,
+      onClick: () => abrirEditar(fila),
+    },
+    { separador: true },
+    {
+      icono: 'ti-trash',
+      label: fila.puedeRevelar ? 'Eliminar' : 'Eliminar (sin permiso)',
+      danger: true,
+      disabled: !fila.puedeRevelar,
+      onClick: () => { porEliminar.value = fila; },
+    },
+  ];
+}
 
 async function confirmarEliminar() {
   const a = porEliminar.value;
@@ -119,60 +158,86 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="accesos-sensibles-page vista-modulo">
-    <PageHeader titulo="Accesos sensibles" icono="ti ti-shield-lock" :conteo="lista.length">
-      <template #acciones>
-        <button type="button" class="btn btn--primary" @click="abrirNuevo">
-          Nuevo acceso
-          <i class="ti ti-plus" aria-hidden="true"></i>
-        </button>
+  <div class="flex h-full min-h-0 flex-col">
+    <AppEncabezado titulo="Accesos sensibles">
+      <template #subtitulo>
+        {{ lista.length }} {{ lista.length === 1 ? 'credencial' : 'credenciales' }} de alta sensibilidad
+        <template v-if="sinPermiso"> · <span class="font-medium text-gray-700">{{ sinPermiso }} sin permiso para usted</span></template>
+        · cada una la revelan solo los JEFE autorizados y queda registrada en Actividad
       </template>
-    </PageHeader>
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nuevo acceso" @click="abrirNuevo" />
+      </template>
+    </AppEncabezado>
 
-    <main class="page">
-      <div class="card card--fill">
-        <div v-if="error" class="no-results acc-error">{{ error }}</div>
+    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
+    <div v-if="lista.length" class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+      <AppBuscador v-model="busqueda" label="Buscar accesos sensibles" placeholder="Buscar por nombre, usuario o nota" />
+      <AppSegmentado v-model="filtroCategoria" :opciones="CATEGORIAS_SEGMENTO" label="Filtrar por categoría" />
+    </div>
 
-        <template v-else>
+    <!-- ══ Contenido ═══════════════════════════════════════════════ -->
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <div v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
+      </div>
+
+      <AppVacio
+        v-else-if="!cargando && !lista.length"
+        icono="ti ti-shield-lock"
+        titulo="Sin accesos sensibles"
+        mensaje="Registre credenciales de alta sensibilidad (equipos de red, correos de gerencia o de TI...) con visibilidad restringida a los JEFE que usted elija."
+      >
+        <AppButton variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar acceso" @click="abrirNuevo" />
+      </AppVacio>
+
+      <AppVacio
+        v-else-if="!cargando && !listaFiltrada.length"
+        icono="ti ti-search"
+        titulo="Sin resultados"
+        mensaje="No hay accesos con los filtros aplicados."
+      />
+
+      <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando accesos sensibles…</p>
 
-        <div class="tabla-envoltorio">
-          <table class="tabla" aria-label="Accesos sensibles">
-            <thead>
-              <tr>
-                <th v-for="col in columnasVisiblesLista" :key="col.clave" scope="col" :style="estiloColumna(col)">{{ col.label }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
-              <tr v-else-if="!lista.length">
-                <td :colspan="totalColumnas" class="tabla__vacio">
-                  <EmptyState
-                    icono="ti ti-shield-lock"
-                    titulo="Sin accesos sensibles"
-                    mensaje="Registra credenciales de alta sensibilidad (equipos, correos de gerencia/TI...) con visibilidad restringida por JEFE."
-                  >
-                    <button type="button" class="btn btn--secondary" @click="abrirNuevo">
-                      Nuevo acceso
-                      <i class="ti ti-plus" aria-hidden="true"></i>
-                    </button>
-                  </EmptyState>
-                </td>
-              </tr>
-              <template v-else>
-                <tr v-for="fila in lista" :key="fila.id">
-                  <td>
-                    <!-- Categoría + Nombre colapsan (mismo criterio que Tickets):
-                         Categoría es metadato de clasificación fijo, baja de badge
-                         a texto. -->
-                    <div class="celda-apilada">
-                      <span class="celda-apilada__meta">{{ badgeInfo('categoria_acceso_sensible', fila.categoria).label }}</span>
-                      <span class="celda-apilada__principal">{{ fila.nombre }}</span>
+        <!-- ── Tabla (escritorio) ── -->
+        <div v-if="!esMovil" class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div class="min-h-0 flex-1 overflow-auto">
+            <AppTable
+              :value="listaFiltrada"
+              :loading="cargando"
+              :lazy="false"
+              aria-label="Accesos sensibles"
+            >
+              <AppColumn field="nombre" header="Acceso">
+                <template #body="{ data: fila }">
+                  <div class="flex min-w-0 max-w-96 items-center gap-3">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-400">
+                      <i :class="ICONO_CATEGORIA[fila.categoria] || 'ti ti-shield-lock'" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="truncate font-medium text-gray-900">{{ fila.nombre }}</span>
+                      </div>
+                      <div class="truncate text-xs text-gray-500">{{ badgeInfo('categoria_acceso_sensible', fila.categoria).label }}</div>
                     </div>
-                  </td>
-                  <td>{{ fila.usuario }}</td>
-                  <td>
-                    <div class="cred">
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="usuario" header="Usuario">
+                <template #body="{ data: fila }">
+                  <span class="block max-w-60 truncate font-mono text-xs text-gray-700" :title="fila.usuario">{{ fila.usuario }}</span>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="contrasena" header="Contraseña">
+                <template #body="{ data: fila }">
+                  <!-- Revelado auditado (useRevelado): marcado .cred* intacto -->
+                  <div class="flex items-center gap-2">
+                    <div class="cred w-40">
                       <span v-if="revelarDe(fila).valor.value" class="cred__valor">{{ revelarDe(fila).valor.value }}</span>
                       <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
                       <template v-if="fila.puedeRevelar">
@@ -202,104 +267,90 @@ onMounted(async () => {
                         <i class="ti ti-lock" aria-hidden="true"></i>
                       </span>
                     </div>
-                  </td>
-                  <td><TextoVacio :valor="fila.notas" placeholder="Sin notas" /></td>
-                  <td>
-                    <div class="actions">
-                      <button
-                        class="icon-btn fila-accion"
-                        type="button"
-                        :disabled="!fila.puedeRevelar"
-                        :title="fila.puedeRevelar ? 'Editar' : 'No tienes permiso para editar esta credencial'"
-                        :aria-label="fila.puedeRevelar ? 'Editar' : 'No tienes permiso para editar esta credencial'"
-                        @click="abrirEditar(fila)"
-                      >
-                        <i class="ti ti-pencil"></i>
-                      </button>
-                      <button
-                        class="icon-btn danger fila-accion"
-                        type="button"
-                        :disabled="!fila.puedeRevelar"
-                        :title="fila.puedeRevelar ? 'Eliminar' : 'No tienes permiso para eliminar esta credencial'"
-                        :aria-label="fila.puedeRevelar ? 'Eliminar' : 'No tienes permiso para eliminar esta credencial'"
-                        @click="porEliminar = fila"
-                      >
-                        <i class="ti ti-trash"></i>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
+                    <AppTag v-if="!fila.puedeRevelar">Sin permiso</AppTag>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="notas" header="Notas">
+                <template #body="{ data: fila }">
+                  <p v-if="fila.notas" class="max-w-72 truncate text-sm text-gray-600" :title="fila.notas">{{ fila.notas }}</p>
+                  <span v-else class="text-sm text-gray-400">Sin notas</span>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+                <template #body="{ data: fila }">
+                  <div class="flex justify-end">
+                    <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+                  </div>
+                </template>
+              </AppColumn>
+            </AppTable>
+          </div>
         </div>
 
-        <ul v-if="!cargando && lista.length" class="lista-tarjetas solo-movil" aria-label="Accesos sensibles">
-          <li v-for="fila in lista" :key="fila.id" class="tarjeta-fila">
-            <div class="tarjeta-fila__principal">
-              <div class="celda-apilada">
-                <span class="celda-apilada__meta">{{ badgeInfo('categoria_acceso_sensible', fila.categoria).label }}</span>
-                <span class="celda-apilada__principal">{{ fila.nombre }}</span>
-              </div>
-            </div>
-            <div class="tarjeta-fila__sec">{{ fila.usuario }}</div>
-            <div class="tarjeta-fila__sec">
-              <div class="cred">
-                <span v-if="revelarDe(fila).valor.value" class="cred__valor">{{ revelarDe(fila).valor.value }}</span>
-                <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
-                <template v-if="fila.puedeRevelar">
-                  <button
-                    type="button"
-                    class="cred__accion"
-                    :disabled="revelarDe(fila).pidiendo.value"
-                    :aria-label="revelarDe(fila).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'"
-                    @click="revelarDe(fila).mostrar()"
-                  >
-                    <i :class="revelarDe(fila).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
-                  </button>
-                  <button
-                    type="button"
-                    class="cred__accion"
-                    :disabled="revelarDe(fila).pidiendo.value"
-                    aria-label="Copiar contraseña"
-                    @click="revelarDe(fila).copiar()"
-                  >
-                    <i class="ti ti-copy" aria-hidden="true"></i>
-                  </button>
-                </template>
-                <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver esta credencial">
-                  <i class="ti ti-lock" aria-hidden="true"></i>
+        <!-- ── Tarjetas (móvil) ── -->
+        <div v-else class="min-h-0 flex-1 overflow-y-auto">
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando accesos sensibles...</p>
+          <ul v-else class="grid gap-3 sm:grid-cols-2" aria-label="Accesos sensibles">
+            <li v-for="fila in listaFiltrada" :key="fila.id" class="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
+              <div class="flex items-start gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-400">
+                  <i :class="ICONO_CATEGORIA[fila.categoria] || 'ti ti-shield-lock'" aria-hidden="true"></i>
                 </span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-medium text-gray-900">{{ fila.nombre }}</div>
+                  <div class="truncate text-xs text-gray-500">{{ badgeInfo('categoria_acceso_sensible', fila.categoria).label }}</div>
+                </div>
+                <div class="-mr-1 -mt-1">
+                  <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+                </div>
               </div>
-            </div>
-            <div class="tarjeta-fila__pie">
-              <TextoVacio :valor="fila.notas" placeholder="Sin notas" />
-              <div class="actions">
-                <button
-                  class="icon-btn fila-accion"
-                  type="button"
-                  :disabled="!fila.puedeRevelar"
-                  :aria-label="fila.puedeRevelar ? 'Editar' : 'No tienes permiso para editar esta credencial'"
-                  @click="abrirEditar(fila)"
-                >
-                  <i class="ti ti-pencil"></i>
-                </button>
-                <button
-                  class="icon-btn danger fila-accion"
-                  type="button"
-                  :disabled="!fila.puedeRevelar"
-                  :aria-label="fila.puedeRevelar ? 'Eliminar' : 'No tienes permiso para eliminar esta credencial'"
-                  @click="porEliminar = fila"
-                >
-                  <i class="ti ti-trash"></i>
-                </button>
-              </div>
-            </div>
-          </li>
-        </ul>
-        </template>
-      </div>
-    </main>
+
+              <dl class="mt-3 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-sm">
+                <dt class="text-xs text-gray-500">Usuario</dt>
+                <dd class="truncate font-mono text-xs text-gray-700">{{ fila.usuario }}</dd>
+                <dt class="text-xs text-gray-500">Contraseña</dt>
+                <dd class="flex items-center gap-2">
+                  <div class="cred">
+                    <span v-if="revelarDe(fila).valor.value" class="cred__valor">{{ revelarDe(fila).valor.value }}</span>
+                    <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                    <template v-if="fila.puedeRevelar">
+                      <button
+                        type="button"
+                        class="cred__accion"
+                        :disabled="revelarDe(fila).pidiendo.value"
+                        :aria-label="revelarDe(fila).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                        @click="revelarDe(fila).mostrar()"
+                      >
+                        <i :class="revelarDe(fila).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="cred__accion"
+                        :disabled="revelarDe(fila).pidiendo.value"
+                        aria-label="Copiar contraseña"
+                        @click="revelarDe(fila).copiar()"
+                      >
+                        <i class="ti ti-copy" aria-hidden="true"></i>
+                      </button>
+                      <span v-if="revelarDe(fila).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(fila).restante.value }}s</span>
+                    </template>
+                    <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver esta credencial">
+                      <i class="ti ti-lock" aria-hidden="true"></i>
+                    </span>
+                  </div>
+                  <AppTag v-if="!fila.puedeRevelar">Sin permiso</AppTag>
+                </dd>
+              </dl>
+
+              <p v-if="fila.notas" class="mt-3 border-t border-gray-100 pt-3 text-sm text-gray-600">{{ fila.notas }}</p>
+            </li>
+          </ul>
+        </div>
+      </template>
+    </div>
 
     <AccesoSensibleForm
       v-if="mostrarForm"
@@ -322,5 +373,3 @@ onMounted(async () => {
     />
   </div>
 </template>
-
-

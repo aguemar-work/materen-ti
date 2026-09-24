@@ -24,8 +24,12 @@ sección "UI/UX" — leerla antes de tocar UI. En resumen:
 - **Todavía NO decidido** (preguntar, no completar solo): tema oscuro (hoy
   sin estilos), tonos de avatar, colores de estado propios más allá de la
   paleta estándar de Tailwind.
-- Migrados hoy: shell, Licencias, Equipos, Tickets, `MenuAcciones`,
-  `ConfirmDialog`. El resto sigue en HTML nativo sin estilos hasta migrarse.
+- Guía visual completa (tokens, componentes, recetas de página, copy):
+  [`docs/SISTEMA-DISENO.md`](../../../docs/SISTEMA-DISENO.md). Referencia
+  de implementación: módulo Empleados.
+- Migrado todo (2026-09-23) salvo el portal público/sin sesión
+  (`auth/LoginView`, `entregas/EntregaView`, `soporte/SoporteView`) y las
+  páginas de `errores/` — receta 4.5 de la guía, pendientes.
 - Antes de tocar algo visual, leer también
   [`docs/NOTAS-DISENO-ANTERIOR.md`](../../../docs/NOTAS-DISENO-ANTERIOR.md):
   identidad de marca, principios de diseño puestos por el JEFE (minimalista,

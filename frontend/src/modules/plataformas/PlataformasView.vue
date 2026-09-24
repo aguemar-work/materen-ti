@@ -5,18 +5,20 @@ import { usePlataformasStore } from '../../stores/plataformas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import { columnasVisibles, estiloColumna, agruparParaTarjeta } from '../../core/tablaColumnas.js';
-import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import Modal from '../../components/shared/Modal.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import EncabezadoCatalogo from '../configuracion/EncabezadoCatalogo.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
-import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 
 const store = usePlataformasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -45,27 +47,19 @@ const listaFiltrada = computed(() => {
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
 const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
 
-// Definición de columnas de la tabla: "Nombre" es la elástica; "Slug" e
-// "Ícono" van al renglón superior de la tarjeta móvil, igual que la
-// cabecera de la tarjeta vieja.
-const columnas = [
-  { clave: 'id', label: 'Slug', ordenable: true, movil: 'cab' },
-  { clave: 'nombre', label: 'Nombre', ordenable: true, elastica: true, movil: 'principal' },
-  { clave: 'icono', label: 'Ícono', movil: 'cab' },
-  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
-];
+const { esMovil } = useEsMovil();
 
-const columnasVisiblesLista = computed(() => columnasVisibles(columnas));
-const totalColumnas = computed(() => columnasVisiblesLista.value.length);
-const enTarjeta = computed(() => agruparParaTarjeta(columnasVisiblesLista.value));
+// Puente de orden para AppTable (1 asc | -1 desc | null), mismo patrón que
+// EmpleadosView (sortFieldTabla/sortOrderTabla).
+const sortFieldTabla = computed(() => columna.value || null);
+const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
 
-const totalPaginas = computed(() => totalPaginasDe(totalItems.value, tamPagina.value));
-const paginas = computed(() => paginasDe(totalPaginas.value));
-const desde = computed(() => rangoDe(paginaActual.value, tamPagina.value, totalItems.value).desde);
-const hasta = computed(() => rangoDe(paginaActual.value, tamPagina.value, totalItems.value).hasta);
-function irA(pagina) {
-  const destino = clampPagina(pagina, totalPaginas.value);
-  if (destino !== paginaActual.value) paginaActual.value = destino;
+// Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
+function accionesDe(fila) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(fila) },
+    { icono: 'ti-trash', label: 'Dar de baja', danger: true, onClick: () => { porDarDeBaja.value = fila; } },
+  ];
 }
 
 const esEdicion = computed(() => !!plataformaEditar.value?.id);
@@ -143,181 +137,127 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
-  <div class="plataformas-page vista-modulo">
-    <main class="page">
-      <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Plataformas registradas
-            <span class="badge-count">{{ listaFiltrada.length }} plataformas</span>
-          </div>
-          <button type="button" class="btn btn--primary" @click="abrirNueva">
-            Nueva plataforma
-            <i class="ti ti-plus" aria-hidden="true"></i>
-          </button>
-        </div>
+  <!-- Panel embebido en Configuración (la cabecera de página la pone ConfiguracionView) -->
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Plataformas"
+      :conteo="listaFiltrada.length"
+      descripcion="Servicios donde el personal tiene cuentas de acceso: Gmail, Bitrix24, VPN, ERP."
+    >
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nueva plataforma" @click="abrirNueva" />
+      </template>
+    </EncabezadoCatalogo>
 
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input
-              v-model="busqueda"
-              type="text"
-              placeholder="Buscar por nombre o slug..."
-            >
-          </div>
-        </div>
+    <!-- Filtro (fuera de la tabla) -->
+    <div class="flex flex-wrap items-center gap-3">
+      <AppBuscador v-model="busqueda" label="Buscar plataformas" placeholder="Buscar por nombre o slug" />
+    </div>
 
-        <div v-if="error" class="no-results plataformas-error">{{ error }}</div>
+    <div v-if="error" class="notif notif--danger" role="alert">
+      <i class="ti ti-alert-circle" aria-hidden="true"></i>
+      <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
+    </div>
 
-        <template v-else>
+    <AppVacio
+      v-else-if="!cargando && totalItems === 0"
+      icono="ti ti-apps"
+      :titulo="busqueda ? 'Sin resultados' : 'Sin plataformas todavía'"
+      :mensaje="busqueda ? 'No hay plataformas que coincidan con la búsqueda.' : 'Agregue la primera plataforma (Gmail, Bitrix24, VPN...) para registrar cuentas de acceso en ella.'"
+    >
+      <AppButton v-if="!busqueda" variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar plataforma" @click="abrirNueva" />
+    </AppVacio>
+
+    <template v-else>
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
         <p v-if="cargando" class="sr-only" role="status">Cargando plataformas…</p>
 
-        <div class="tabla-envoltorio">
-          <table class="tabla" aria-label="Plataformas registradas">
-            <thead>
-              <tr>
-                <template v-for="col in columnasVisiblesLista" :key="col.clave">
-                  <ThOrdenable
-                    v-if="col.ordenable"
-                    :clave="col.clave"
-                    :columna="columna"
-                    :direccion="direccion"
-                    :style="estiloColumna(col)"
-                    @ordenar="ordenarPor(col.clave)"
-                  >{{ col.label }}</ThOrdenable>
-                  <th v-else scope="col" :style="estiloColumna(col)">{{ col.label }}</th>
-                </template>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
-              <tr v-else-if="!listaPaginada.length">
-                <td :colspan="totalColumnas" class="tabla__vacio">
-                  <EmptyState
-                    icono="ti ti-apps"
-                    titulo="Sin plataformas"
-                    :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera plataforma.'"
-                  >
-                    <button v-if="!busqueda" type="button" class="btn btn--secondary" @click="abrirNueva">
-                      Agregar plataforma
-                      <i class="ti ti-plus" aria-hidden="true"></i>
-                    </button>
-                  </EmptyState>
-                </td>
-              </tr>
-              <template v-else>
-                <tr v-for="fila in listaPaginada" :key="fila.id">
-                  <td><code class="slug">{{ fila.id }}</code></td>
-                  <td><div class="user-name">{{ fila.nombre }}</div></td>
-                  <td>
-                    <span v-if="fila.icono" class="icono-preview">
-                      <i :class="fila.icono" aria-hidden="true"></i>
-                      <span>{{ fila.icono }}</span>
-                    </span>
-                    <TextoVacio v-else />
-                  </td>
-                  <td>
-                    <div class="actions">
-                      <button
-                        class="icon-btn fila-accion"
-                        type="button"
-                        title="Editar"
-                        aria-label="Editar"
-                        @click="abrirEditar(fila)"
-                      >
-                        <i class="ti ti-pencil"></i>
-                      </button>
-                      <button
-                        class="icon-btn danger fila-accion"
-                        type="button"
-                        title="Dar de baja"
-                        aria-label="Dar de baja"
-                        @click="porDarDeBaja = fila"
-                      >
-                        <i class="ti ti-trash"></i>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-
-        <ul v-if="!cargando && listaPaginada.length" class="lista-tarjetas solo-movil" aria-label="Plataformas registradas">
-          <li v-for="fila in listaPaginada" :key="fila.id" class="tarjeta-fila">
-            <div v-if="enTarjeta.cab.length" class="tarjeta-fila__cab">
-              <code class="slug">{{ fila.id }}</code>
-              <span v-if="fila.icono" class="icono-preview">
-                <i :class="fila.icono" aria-hidden="true"></i>
-                <span>{{ fila.icono }}</span>
-              </span>
-              <TextoVacio v-else />
-            </div>
-            <div v-for="col in enTarjeta.principal" :key="col.clave" class="tarjeta-fila__principal">
-              <div class="user-name">{{ fila.nombre }}</div>
-            </div>
-            <div v-if="enTarjeta.pie.length" class="tarjeta-fila__pie">
-              <div class="actions">
-                <button
-                  class="icon-btn fila-accion"
-                  type="button"
-                  title="Editar"
-                  aria-label="Editar"
-                  @click="abrirEditar(fila)"
+        <!-- ── Tabla (escritorio) ── -->
+        <AppTable
+          v-if="!esMovil"
+          :value="listaPaginada"
+          :loading="cargando"
+          :total-records="totalItems"
+          :rows="tamPagina"
+          :sort-field="sortFieldTabla"
+          :sort-order="sortOrderTabla"
+          aria-label="Plataformas registradas"
+          @ordenar="ordenarPor"
+        >
+          <AppColumn field="nombre" header="Plataforma" sortable>
+            <template #body="{ data: fila }">
+              <div class="flex min-w-0 items-center gap-3">
+                <span
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base"
+                  :class="fila.icono ? 'text-gray-600' : 'text-gray-300'"
+                  :title="fila.icono || 'Sin ícono'"
                 >
-                  <i class="ti ti-pencil"></i>
-                </button>
-                <button
-                  class="icon-btn danger fila-accion"
-                  type="button"
-                  title="Dar de baja"
-                  aria-label="Dar de baja"
-                  @click="porDarDeBaja = fila"
-                >
-                  <i class="ti ti-trash"></i>
-                </button>
+                  <i :class="fila.icono ? ['ti', fila.icono] : 'ti ti-apps'" aria-hidden="true"></i>
+                </span>
+                <span class="truncate font-medium text-gray-900">{{ fila.nombre }}</span>
               </div>
-            </div>
-          </li>
-        </ul>
+            </template>
+          </AppColumn>
+          <AppColumn field="id" header="Slug" sortable>
+            <template #body="{ data: fila }">
+              <code class="font-mono text-xs text-gray-600">{{ fila.id }}</code>
+            </template>
+          </AppColumn>
+          <AppColumn field="icono" header="Ícono">
+            <template #body="{ data: fila }">
+              <code v-if="fila.icono" class="font-mono text-xs text-gray-500">{{ fila.icono }}</code>
+              <span v-else class="text-gray-400">Sin ícono</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+            <template #body="{ data: fila }">
+              <div class="flex justify-end" @click.stop>
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </template>
+          </AppColumn>
+        </AppTable>
+
+        <!-- ── Lista (móvil) ── -->
+        <template v-else>
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando plataformas...</p>
+          <ul v-else class="divide-y divide-gray-100" aria-label="Plataformas registradas">
+            <li v-for="fila in listaPaginada" :key="fila.id" class="flex items-start gap-3 px-4 py-3">
+              <span
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg"
+                :class="fila.icono ? 'text-gray-600' : 'text-gray-300'"
+              >
+                <i :class="fila.icono ? ['ti', fila.icono] : 'ti ti-apps'" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
+                <code class="block truncate font-mono text-xs text-gray-500">{{ fila.id }}</code>
+              </div>
+              <div class="-mr-1">
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </li>
+          </ul>
         </template>
 
-        <nav v-if="!cargando && totalItems > 0" class="paginacion" aria-label="Paginación">
-          <div class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span>Filas por página:</span>
-              <select
-                class="paginacion__select"
-                :value="tamPagina"
-                @change="cambiarTamPagina(Number($event.target.value))"
-              >
-                <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </label>
-            <span class="paginacion__rango">{{ desde }}–{{ hasta }} de {{ totalItems }} plataformas</span>
-          </div>
-
-          <div v-if="totalPaginas > 1" class="paginacion__lado">
-            <label class="paginacion__campo">
-              <span class="sr-only">Ir a la página</span>
-              <select class="paginacion__select" :value="paginaActual" @change="irA(Number($event.target.value))">
-                <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
-              </select>
-              <span>de {{ totalPaginas }}</span>
-            </label>
-            <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
-              <i class="ti ti-chevron-left" aria-hidden="true"></i>
-            </button>
-            <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
-              <i class="ti ti-chevron-right" aria-hidden="true"></i>
-            </button>
-          </div>
-        </nav>
+        <AppPaginacion
+          v-if="!esMovil && !cargando && totalItems > 0"
+          :pagina="paginaActual"
+          :tam-pagina="tamPagina"
+          :total="totalItems"
+          @update:pagina="paginaActual = $event"
+          @update:tam-pagina="cambiarTamPagina"
+        />
       </div>
-    </main>
+      <AppPaginacion
+        v-if="esMovil && !cargando"
+        variante="compacta"
+        :pagina="paginaActual"
+        :tam-pagina="tamPagina"
+        :total="totalItems"
+        @update:pagina="paginaActual = $event"
+      />
+    </template>
 
     <!-- Modal plataforma (Modal accesible compartido) -->
     <Modal
@@ -366,8 +306,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="icono-field">
-          <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <div class="full flex items-start gap-3">
+          <div class="campo min-w-0 flex-1" :class="{ 'campo--inerte': guardando }">
             <label class="campo__etiqueta" :for="campoIcono.id">Ícono</label>
             <div class="campo__caja">
               <input
@@ -382,8 +322,12 @@ onMounted(async () => {
             </div>
             <p :id="campoIcono.idAyuda" class="campo__pie">Clase CSS, ej: ti ti-brand-google</p>
           </div>
-          <span v-if="form.icono" class="icono-preview-sm">
-            <i :class="form.icono"></i>
+          <span
+            v-if="form.icono"
+            class="mt-7 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-600"
+            title="Vista previa del ícono"
+          >
+            <i :class="['ti', form.icono]" aria-hidden="true"></i>
           </span>
         </div>
 
@@ -397,11 +341,8 @@ onMounted(async () => {
         </div>
       </form>
       <template #acciones>
-        <button type="button" class="btn btn--secondary" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
-        <button type="submit" form="plat-form" class="btn btn--primary" :disabled="guardando">
-          {{ guardando ? 'Guardando...' : 'Guardar' }}
-          <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
-        </button>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
+        <AppButton type="submit" form="plat-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
     </Modal>
 

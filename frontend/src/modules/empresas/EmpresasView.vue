@@ -4,20 +4,21 @@ import { storeToRefs } from 'pinia';
 import { useEmpresasStore } from '../../stores/empresas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
-import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import Modal from '../../components/shared/Modal.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import EncabezadoCatalogo from '../configuracion/EncabezadoCatalogo.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
-import { rolDeTag } from '../../core/tagRol.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
-import { columnasVisibles, estiloColumna } from '../../core/tablaColumnas.js';
-import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 
 const infoError = infoNotificacion('error');
 
@@ -44,24 +45,19 @@ const listaFiltrada = computed(() => {
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
 const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
 
-// Definición de columnas de CarbonDataTable: una sola vez, la tabla de
-// escritorio y la tarjeta móvil salen de acá (ver la cabecera del
-// componente). "Nombre" es la elástica porque es la única columna de largo
-// variable; "Acciones" no es ordenable ni tiene sentido de orden.
-const columnas = [
-  { clave: 'nombre', label: 'Nombre', ordenable: true, elastica: true, movil: 'principal' },
-  { clave: 'ruc', label: 'RUC', ordenable: true, movil: 'sec' },
-  { clave: 'acciones', label: 'Acciones', ancho: '96px', movil: 'pie' },
-];
-const columnasVisiblesLista = computed(() => columnasVisibles(columnas));
-const totalColumnas = computed(() => columnasVisiblesLista.value.length);
+const { esMovil } = useEsMovil();
 
-const totalPaginas = computed(() => totalPaginasDe(totalItems.value, tamPagina.value));
-const paginas = computed(() => paginasDe(totalPaginas.value));
-const desde = computed(() => rangoDe(paginaActual.value, tamPagina.value, totalItems.value).desde);
-const hasta = computed(() => rangoDe(paginaActual.value, tamPagina.value, totalItems.value).hasta);
-function irA(pagina) {
-  paginaActual.value = clampPagina(pagina, totalPaginas.value);
+// Puente de orden para AppTable (1 asc | -1 desc | null), mismo patrón que
+// EmpleadosView (sortFieldTabla/sortOrderTabla).
+const sortFieldTabla = computed(() => columna.value || null);
+const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
+
+// Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
+function accionesDe(fila) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(fila) },
+    { icono: 'ti-building-off', label: 'Dar de baja', danger: true, onClick: () => { porDarDeBaja.value = fila; } },
+  ];
 }
 
 const campoNombre = useCampoAccesible();
@@ -138,181 +134,117 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
-  <div class="empresas-page vista-modulo">
-    <main class="page">
-      <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Empresas registradas
-            <span class="tag" :class="`tag--${rolDeTag('accent')}`">{{ listaFiltrada.length }} empresas</span>
-          </div>
-          <button type="button" class="btn btn--primary" @click="abrirNueva">
-            Nueva empresa
-            <i class="ti ti-plus" aria-hidden="true"></i>
-          </button>
-        </div>
+  <!-- Panel embebido en Configuración (la cabecera de página la pone ConfiguracionView) -->
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Empresas"
+      :conteo="listaFiltrada.length"
+      descripcion="Razones sociales a las que pertenecen los empleados, las licencias y los correos."
+    >
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nueva empresa" @click="abrirNueva" />
+      </template>
+    </EncabezadoCatalogo>
 
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input
-              v-model="busqueda"
-              type="text"
-              placeholder="Buscar por nombre o RUC..."
-            >
-          </div>
-        </div>
+    <!-- Filtro (fuera de la tabla) -->
+    <div class="flex flex-wrap items-center gap-3">
+      <AppBuscador v-model="busqueda" label="Buscar empresas" placeholder="Buscar por nombre o RUC" />
+    </div>
 
-        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
-          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
-          <div class="notif__texto">
-            <p class="notif__detalle">{{ error }}</p>
-          </div>
-        </div>
+    <div v-if="error" class="notif" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
+      <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+      <div class="notif__texto">
+        <p class="notif__detalle">{{ error }}</p>
+      </div>
+    </div>
 
+    <AppVacio
+      v-else-if="!cargando && totalItems === 0"
+      icono="ti ti-building"
+      :titulo="busqueda ? 'Sin resultados' : 'Sin empresas todavía'"
+      :mensaje="busqueda ? 'No hay empresas que coincidan con la búsqueda.' : 'Agregue la primera empresa para asociarle empleados, licencias y correos.'"
+    >
+      <AppButton v-if="!busqueda" variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar empresa" @click="abrirNueva" />
+    </AppVacio>
+
+    <template v-else>
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <p v-if="cargando" class="sr-only" role="status">Cargando empresas…</p>
+
+        <!-- ── Tabla (escritorio) ── -->
+        <AppTable
+          v-if="!esMovil"
+          :value="listaPaginada"
+          :loading="cargando"
+          :total-records="totalItems"
+          :rows="tamPagina"
+          :sort-field="sortFieldTabla"
+          :sort-order="sortOrderTabla"
+          aria-label="Empresas registradas"
+          @ordenar="ordenarPor"
+        >
+          <AppColumn field="nombre" header="Empresa" sortable>
+            <template #body="{ data: fila }">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                  <i class="ti ti-building" aria-hidden="true"></i>
+                </span>
+                <span class="truncate font-medium text-gray-900">{{ fila.nombre }}</span>
+              </div>
+            </template>
+          </AppColumn>
+          <AppColumn field="ruc" header="RUC" sortable>
+            <template #body="{ data: fila }">
+              <span class="tabular-nums" :class="fila.ruc ? 'text-gray-700' : 'text-gray-400'">{{ fila.ruc || 'Sin RUC' }}</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+            <template #body="{ data: fila }">
+              <div class="flex justify-end" @click.stop>
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </template>
+          </AppColumn>
+        </AppTable>
+
+        <!-- ── Lista (móvil) ── -->
         <template v-else>
-          <p v-if="cargando" class="sr-only" role="status">Cargando empresas…</p>
-
-          <div class="tabla-envoltorio">
-            <table class="tabla" aria-label="Empresas registradas">
-              <thead>
-                <tr>
-                  <template v-for="col in columnasVisiblesLista" :key="col.clave">
-                    <ThOrdenable
-                      v-if="col.ordenable"
-                      :clave="col.clave"
-                      :columna="columna"
-                      :direccion="direccion"
-                      :class="{ 'col-num': col.num }"
-                      :style="estiloColumna(col)"
-                      @ordenar="ordenarPor(col.clave)"
-                    >{{ col.label }}</ThOrdenable>
-                    <th v-else scope="col" :class="{ 'col-num': col.num }" :style="estiloColumna(col)">{{ col.label }}</th>
-                  </template>
-                </tr>
-              </thead>
-              <tbody>
-                <SkeletonTabla v-if="cargando" :columnas="totalColumnas" />
-                <tr v-else-if="!listaPaginada.length">
-                  <td :colspan="totalColumnas" class="tabla__vacio">
-                    <EmptyState
-                      icono="ti ti-building"
-                      titulo="Sin empresas"
-                      :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera empresa.'"
-                    >
-                      <button v-if="!busqueda" type="button" class="btn btn--secondary" @click="abrirNueva">
-                        Agregar empresa
-                        <i class="ti ti-plus" aria-hidden="true"></i>
-                      </button>
-                    </EmptyState>
-                  </td>
-                </tr>
-                <template v-else>
-                  <tr v-for="fila in listaPaginada" :key="fila.id">
-                    <td>
-                      <div class="user-name">{{ fila.nombre }}</div>
-                    </td>
-                    <td>
-                      <TextoVacio :valor="fila.ruc" placeholder="Sin RUC" />
-                    </td>
-                    <td>
-                      <div class="actions">
-                        <button
-                          class="icon-btn fila-accion"
-                          type="button"
-                          title="Editar"
-                          aria-label="Editar"
-                          @click="abrirEditar(fila)"
-                        >
-                          <i class="ti ti-pencil"></i>
-                        </button>
-                        <button
-                          class="icon-btn danger fila-accion"
-                          type="button"
-                          title="Dar de baja"
-                          aria-label="Dar de baja"
-                          @click="porDarDeBaja = fila"
-                        >
-                          <i class="ti ti-building-off"></i>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-
-          <ul v-if="!cargando && listaPaginada.length" class="lista-tarjetas solo-movil" aria-label="Empresas registradas">
-            <li v-for="fila in listaPaginada" :key="fila.id" class="tarjeta-fila">
-              <div class="tarjeta-fila__principal">
-                <div class="user-name">{{ fila.nombre }}</div>
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando empresas...</p>
+          <ul v-else class="divide-y divide-gray-100" aria-label="Empresas registradas">
+            <li v-for="fila in listaPaginada" :key="fila.id" class="flex items-start gap-3 px-4 py-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                <i class="ti ti-building" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
+                <div class="text-xs tabular-nums" :class="fila.ruc ? 'text-gray-500' : 'text-gray-400'">{{ fila.ruc ? `RUC ${fila.ruc}` : 'Sin RUC' }}</div>
               </div>
-              <div class="tarjeta-fila__sec">
-                <TextoVacio :valor="fila.ruc" placeholder="Sin RUC" />
-              </div>
-              <div class="tarjeta-fila__pie">
-                <div class="actions">
-                  <button
-                    class="icon-btn fila-accion"
-                    type="button"
-                    title="Editar"
-                    aria-label="Editar"
-                    @click="abrirEditar(fila)"
-                  >
-                    <i class="ti ti-pencil"></i>
-                  </button>
-                  <button
-                    class="icon-btn danger fila-accion"
-                    type="button"
-                    title="Dar de baja"
-                    aria-label="Dar de baja"
-                    @click="porDarDeBaja = fila"
-                  >
-                    <i class="ti ti-building-off"></i>
-                  </button>
-                </div>
+              <div class="-mr-1">
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
               </div>
             </li>
           </ul>
-
-          <nav v-if="!cargando && totalItems > 0" class="paginacion" aria-label="Paginación">
-            <div class="paginacion__lado">
-              <label class="paginacion__campo">
-                <span>Filas por página:</span>
-                <select
-                  class="paginacion__select"
-                  :value="tamPagina"
-                  @change="cambiarTamPagina(Number($event.target.value))"
-                >
-                  <option v-for="t in TAMANOS_PAGINA" :key="t" :value="t">{{ t }}</option>
-                </select>
-              </label>
-              <span class="paginacion__rango">{{ desde }}–{{ hasta }} de {{ totalItems }} empresas</span>
-            </div>
-
-            <div v-if="totalPaginas > 1" class="paginacion__lado">
-              <label class="paginacion__campo">
-                <span class="sr-only">Ir a la página</span>
-                <select class="paginacion__select" :value="paginaActual" @change="irA(Number($event.target.value))">
-                  <option v-for="p in paginas" :key="p" :value="p">{{ p }}</option>
-                </select>
-                <span>de {{ totalPaginas }}</span>
-              </label>
-              <button class="paginacion__flecha" type="button" :disabled="paginaActual <= 1" aria-label="Página anterior" @click="irA(paginaActual - 1)">
-                <i class="ti ti-chevron-left" aria-hidden="true"></i>
-              </button>
-              <button class="paginacion__flecha" type="button" :disabled="paginaActual >= totalPaginas" aria-label="Página siguiente" @click="irA(paginaActual + 1)">
-                <i class="ti ti-chevron-right" aria-hidden="true"></i>
-              </button>
-            </div>
-          </nav>
         </template>
-      </div>
-    </main>
 
-    <!-- Modal empresa (Modal accesible compartido) -->
+        <AppPaginacion
+          v-if="!esMovil && !cargando && totalItems > 0"
+          :pagina="paginaActual"
+          :tam-pagina="tamPagina"
+          :total="totalItems"
+          @update:pagina="paginaActual = $event"
+          @update:tam-pagina="cambiarTamPagina"
+        />
+      </div>
+      <AppPaginacion
+        v-if="esMovil && !cargando"
+        variante="compacta"
+        :pagina="paginaActual"
+        :tam-pagina="tamPagina"
+        :total="totalItems"
+        @update:pagina="paginaActual = $event"
+      />
+    </template>
+
     <Modal
       v-if="mostrarForm"
       ref="modalForm"
@@ -359,13 +291,8 @@ onMounted(async () => {
         </div>
       </form>
       <template #acciones>
-        <button type="button" class="btn btn--secondary" :disabled="guardando" @click="modalForm?.cerrar()">
-          Cancelar
-        </button>
-        <button type="submit" form="empresa-form" class="btn btn--primary" :disabled="guardando">
-          <span class="btn__label">{{ guardando ? 'Guardando...' : 'Guardar' }}</span>
-          <i v-if="guardando" class="ti ti-loader-2 btn__icono--girando" aria-hidden="true"></i>
-        </button>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
+        <AppButton type="submit" form="empresa-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
     </Modal>
 

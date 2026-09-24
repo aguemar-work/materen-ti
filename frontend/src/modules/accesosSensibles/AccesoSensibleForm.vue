@@ -8,6 +8,8 @@ import { generarPassword } from '../../core/generarPassword.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppAvatar from '../../components/ui/AppAvatar.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -156,13 +158,18 @@ async function guardar() {
     @close="emit('cerrar', resultado)"
   >
     <form id="acceso-sensible-form" class="form-grid" @submit.prevent="guardar">
+      <!-- ── Credencial ── -->
+      <div class="section-label !mt-0 !border-t-0 !pt-0">
+        <i class="ti ti-key" aria-hidden="true"></i> Credencial
+      </div>
+
       <div class="campo" :class="{ 'campo--inerte': guardando }">
         <label class="campo__etiqueta" :for="campoNombre.id">Nombre<span aria-hidden="true"> *</span></label>
         <div class="campo__caja">
           <input
             :id="campoNombre.id"
             v-model="form.nombre"
-            class="campo__control full"
+            class="campo__control"
             type="text"
             placeholder="ej: Router principal, Correo gerencia"
             required
@@ -208,39 +215,37 @@ async function guardar() {
         </div>
       </div>
 
-      <div class="full input-with-action">
-        <div class="campo" :class="{ 'campo--inerte': guardando }">
-          <label class="campo__etiqueta" :for="campoPassword.id">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
-          <div class="campo__caja">
-            <input
-              :id="campoPassword.id"
-              v-model="form.password"
-              class="campo__control"
-              :type="passwordVisible ? 'text' : 'password'"
-              autocomplete="new-password"
-              :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-              :disabled="guardando"
-              :aria-invalid="campoPassword.invalido.value"
-              :aria-describedby="campoPassword.describedBy.value"
-            >
-          </div>
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoPassword.id">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
+        <div class="campo__caja pr-1">
+          <input
+            :id="campoPassword.id"
+            v-model="form.password"
+            class="campo__control"
+            :type="passwordVisible ? 'text' : 'password'"
+            autocomplete="new-password"
+            :placeholder="esEdicion ? 'Vacío = mantener la actual' : ''"
+            :disabled="guardando"
+            :aria-invalid="campoPassword.invalido.value"
+            :aria-describedby="campoPassword.describedBy.value"
+          >
+          <button type="button" class="icon-btn shrink-0" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+            <i class="ti ti-refresh" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="icon-btn shrink-0" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
+            <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+          </button>
         </div>
-        <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
-          <i class="ti ti-refresh" aria-hidden="true"></i>
-        </button>
-        <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
-          <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-        </button>
       </div>
 
-      <div class="campo" :class="{ 'campo--inerte': guardando }">
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
         <label class="campo__etiqueta" :for="campoNotas.id">Notas</label>
         <div class="campo__caja">
           <textarea
             :id="campoNotas.id"
             v-model="form.notas"
-            class="campo__control campo__control--area full"
-            :rows="3"
+            class="campo__control campo__control--area"
+            :rows="2"
             :disabled="guardando"
             :aria-invalid="campoNotas.invalido.value"
             :aria-describedby="campoNotas.describedBy.value"
@@ -248,30 +253,37 @@ async function guardar() {
         </div>
       </div>
 
-      <div class="form-group full section-label">
+      <!-- ── Permisos ── -->
+      <div class="section-label">
         <i class="ti ti-shield-lock" aria-hidden="true"></i> Quién puede revelar esta credencial
       </div>
 
-      <div class="form-group full">
-        <div v-if="cargandoJefes" class="loading-inline">Cargando JEFEs...</div>
-        <ul v-else class="permisos-lista">
-          <li v-for="j in jefesActivos" :key="j.user_id" class="permiso-item">
-            <label>
+      <fieldset class="full">
+        <legend class="sr-only">JEFE con permiso sobre esta credencial</legend>
+        <p v-if="cargandoJefes" class="py-3 text-sm text-gray-500" role="status">Cargando JEFEs...</p>
+        <ul v-else class="divide-y divide-gray-100 overflow-hidden rounded-md border border-gray-200">
+          <li v-for="j in jefesActivos" :key="j.user_id">
+            <label
+              class="flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-150"
+              :class="j.user_id === auth.user.id ? 'cursor-default bg-gray-50' : 'cursor-pointer hover:bg-gray-50'"
+            >
               <input
                 type="checkbox"
+                class="h-4 w-4 shrink-0 accent-primary-600"
                 :checked="permisosSeleccionados.includes(j.user_id)"
                 :disabled="guardando || j.user_id === auth.user.id"
                 @change="togglePermiso(j.user_id)"
               >
-              {{ j.nombre }}
-              <span v-if="j.user_id === auth.user.id" class="permiso-yo">(yo)</span>
+              <AppAvatar :nombre="j.nombre" />
+              <span class="min-w-0 flex-1 truncate text-gray-900">{{ j.nombre }}</span>
+              <span v-if="j.user_id === auth.user.id" class="shrink-0 text-xs text-gray-500">Usted · siempre incluido</span>
             </label>
           </li>
         </ul>
-        <p class="field-hint">
-          Solo los JEFE marcados acá van a poder revelar, editar o eliminar esta credencial. Su propio permiso queda incluido siempre.
+        <p class="mt-2 text-xs text-gray-500">
+          Solo los JEFE marcados podrán revelar, editar o eliminar esta credencial. Su propio permiso queda incluido siempre.
         </p>
-      </div>
+      </fieldset>
 
       <div v-if="error" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
         <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
@@ -282,16 +294,14 @@ async function guardar() {
     </form>
 
     <template #acciones>
-      <button type="button" class="btn btn--secondary" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton
         type="submit"
-        class="btn btn--primary"
         form="acceso-sensible-form"
-        :disabled="guardando || cargandoJefes"
-      >
-        {{ guardando ? 'Guardando...' : 'Guardar' }}
-        <i v-if="guardando" class="ti ti-loader-2" aria-hidden="true"></i>
-      </button>
+        :label="guardando ? 'Guardando...' : 'Guardar'"
+        :loading="guardando"
+        :disabled="cargandoJefes"
+      />
     </template>
   </Modal>
 
@@ -307,5 +317,3 @@ async function guardar() {
     @confirm="descartarCambios"
   />
 </template>
-
-
