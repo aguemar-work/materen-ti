@@ -213,7 +213,9 @@ export function construirFeedPendientes(pendientes, pendientesTickets, pendiente
       categoriaLabel: 'Posible problema recurrente',
       titulo: c.categoria_nombre || c.categoria_id,
       contexto: `${c.tickets.length} tickets en los últimos 30 días sin un problema abierto`,
-      destino: '/tickets',
+      // Tickets ya filtrado por esa categoría (antes llevaba a /tickets a
+      // secas y había que buscarlos a mano).
+      destino: `/tickets?categoria=${encodeURIComponent(c.categoria_id)}`,
       diasUrgencia: null,
     });
   }

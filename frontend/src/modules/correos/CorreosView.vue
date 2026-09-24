@@ -51,8 +51,26 @@ watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); }
 const filtroTipo = ref('');
 const mostrarForm = ref(false);
 const correoEditar = ref(null);
+// true = el formulario se abrió desde "Rotar contraseña": entra con el foco
+// en "Nueva contraseña" y un aviso de por qué (ver CorreoForm.vue).
+const modoRotar = ref(false);
 
 watch(filtroTipo, (tipo) => store.aplicarFiltros({ tipo }));
+
+// "Requieren rotación" (server-side, `requiere_rotacion = true`). Ref local
+// fresca en cada montaje, igual que filtroTipo: el store.resetearFiltros()
+// de onMounted la deja coherente con lo que se ve.
+const filtroRotacion = ref(false);
+watch(filtroRotacion, (soloRotacion) => store.aplicarFiltros({ soloRotacion }));
+
+const ROTACION_SEGMENTO = [
+  { valor: false, label: 'Todas' },
+  { valor: true, label: 'Requieren rotación', icono: 'ti ti-alert-triangle' },
+];
+
+const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroTipo.value || filtroRotacion.value);
+// Vacío por el filtro de rotación solo: es una buena noticia, no "sin resultados".
+const nadaPorRotar = computed(() => filtroRotacion.value && !busqueda.value.trim() && !filtroTipo.value);
 
 // Filtro de tipo como segmentado (rediseño 2026-09-22): solo hay dos tipos
 // y "todos" — verlos a la vista ahorra abrir un select. '' = todos.
@@ -113,11 +131,22 @@ onBeforeUnmount(() => {
 
 function abrirNuevo() {
   correoEditar.value = null;
+  modoRotar.value = false;
   mostrarForm.value = true;
 }
 
 function abrirEditar(correo) {
   correoEditar.value = correo;
+  modoRotar.value = false;
+  mostrarForm.value = true;
+}
+
+// Rotar = el mismo formulario de edición (la contraseña nueva viaja por el
+// mismo updateCorreo con password_cambiada, que además limpia la marca), pero
+// entrando directo al campo que importa. Nunca precarga la actual.
+function abrirRotar(correo) {
+  correoEditar.value = correo;
+  modoRotar.value = true;
   mostrarForm.value = true;
 }
 
@@ -125,6 +154,7 @@ function abrirEditar(correo) {
 // íconos sueltos). Mismas acciones que antes.
 function accionesDe(fila) {
   return [
+    { icono: 'ti-key', label: 'Rotar contraseña', visible: fila.requiere_rotacion, onClick: () => abrirRotar(fila) },
     { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(fila) },
     { separador: true },
     { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = fila; } },
@@ -140,6 +170,7 @@ function onFormCerrado(guardado) {
   const fueEdicion = !!correoEditar.value;
   mostrarForm.value = false;
   correoEditar.value = null;
+  modoRotar.value = false;
   if (guardado) showToast(fueEdicion ? 'Correo actualizado' : 'Correo compartido creado');
 }
 
@@ -182,7 +213,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Correos">
       <template #subtitulo>
-        {{ total }} {{ total === 1 ? 'cuenta' : 'cuentas' }}<template v-if="filtroTipo === 'compartida'"> compartidas</template><template v-else-if="filtroTipo === 'reutilizable'"> reutilizables</template><template v-if="busqueda.trim()"> que coinciden con “{{ busqueda.trim() }}”</template>
+        {{ total }} {{ total === 1 ? 'cuenta' : 'cuentas' }}<template v-if="filtroTipo === 'compartida'"> compartidas</template><template v-else-if="filtroTipo === 'reutilizable'"> reutilizables</template><template v-if="filtroRotacion"> que requieren rotación</template><template v-if="busqueda.trim()"> que coinciden con “{{ busqueda.trim() }}”</template>
         · buzones y usuarios que se usan entre varias personas
       </template>
       <template #acciones>
@@ -204,6 +235,7 @@ onMounted(async () => {
     <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
       <AppBuscador v-model="busqueda" label="Buscar correos" placeholder="Buscar por correo o plataforma" />
       <AppSegmentado v-model="filtroTipo" :opciones="TIPOS_SEGMENTO" label="Filtrar por tipo" />
+      <AppSegmentado v-model="filtroRotacion" :opciones="ROTACION_SEGMENTO" label="Filtrar por rotación de contraseña" />
     </div>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
@@ -216,11 +248,13 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && total === 0"
         icono="ti ti-mail-share"
-        :titulo="busqueda || filtroTipo ? 'Sin resultados' : 'Sin correos compartidos todavía'"
-        :mensaje="busqueda || filtroTipo ? 'No hay correos con los filtros aplicados.' : 'Registre un correo compartido o reutilizable para asignarlo a los empleados que lo usan.'"
+        :titulo="nadaPorRotar ? 'Nada por rotar' : hayFiltros ? 'Sin resultados' : 'Sin correos compartidos todavía'"
+        :mensaje="nadaPorRotar
+          ? 'Ninguna cuenta compartida o reutilizable tiene pendiente el cambio de contraseña.'
+          : hayFiltros ? 'No hay correos con los filtros aplicados.' : 'Registre un correo compartido o reutilizable para asignarlo a los empleados que lo usan.'"
       >
         <AppButton
-          v-if="!busqueda && !filtroTipo"
+          v-if="!hayFiltros"
           variant="outline"
           severity="secondary"
           icon="ti ti-plus"
@@ -465,6 +499,7 @@ onMounted(async () => {
     <CorreoForm
       v-if="mostrarForm"
       :correo="correoEditar"
+      :rotar="modoRotar"
       @cerrar="onFormCerrado"
     />
 

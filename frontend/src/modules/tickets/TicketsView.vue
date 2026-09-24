@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
@@ -34,6 +34,7 @@ import { useVistaModulo } from '../../composables/useVistaModulo.js';
 import { useAtajosLista } from '../../composables/useAtajosLista.js';
 
 const router = useRouter();
+const route = useRoute();
 const store = useTicketsStore();
 const auth = useAuthStore();
 const { lista, total, cargando, cargandoMas, error, orden, vistaActiva } = storeToRefs(store);
@@ -123,6 +124,65 @@ const subestadoActivo = computed({
   },
 });
 
+// ── Filtro por categoría (solo deep-link: /tickets?categoria=<id>) ─────
+// Lo usa el pendiente "Posible problema recurrente" del Dashboard. No es un
+// selector más de la barra (la cuarta pasada retiró Categoría como filtro
+// del listado): llega por URL, se ve como un chip y se quita desde ahí.
+// Vive en store.filtros como la fecha, así que sobrevive a abrir un ticket y
+// volver, y el chip (atado al store) siempre dice la verdad.
+//
+// Al llegar por el enlace se pasa a la bandeja "Todos" sin sub-estado: el
+// pendiente cuenta TODOS los tickets de la categoría, y quedarse en "Sin
+// asignar" mostraría solo una parte sin avisar. Se hace ANTES del watch de
+// vista (immediate) de más abajo para que la primera carga ya salga
+// filtrada, sin una consulta de más.
+function tomarCategoriaDeUrl(valor) {
+  const categoriaId = typeof valor === 'string' ? valor.trim() : '';
+  if (!categoriaId) return false;
+  store.filtros = { ...store.filtros, categoriaId };
+  store.pagina = 1;
+  store.vistaActiva = 'equipo';
+  store.estadoEquipo = 'todos';
+  return true;
+}
+tomarCategoriaDeUrl(route.query.categoria);
+
+// Nombre para el chip: el catálogo de categorías es chico y ya existe; si
+// falla, el chip muestra el id tal cual (el filtro funciona igual).
+const categoriasTicket = ref([]);
+const categoriaFiltrada = computed(() => {
+  const id = store.filtros.categoriaId;
+  if (!id) return null;
+  return categoriasTicket.value.find((c) => c.id === id)?.nombre || id;
+});
+
+async function cargarCategorias() {
+  try {
+    categoriasTicket.value = await insforgeApi.listCategoriasTicket();
+  } catch {
+    /* el chip cae al id, no bloquea nada */
+  }
+}
+
+function quitarFiltroCategoria() {
+  store.aplicarFiltros({ categoriaId: '' });
+  // Sin esto, recargar la página volvería a aplicar el filtro recién quitado.
+  if (route.query.categoria != null) {
+    const { categoria: _categoria, ...resto } = route.query;
+    router.replace({ query: resto });
+  }
+}
+
+// Mismo componente, otra categoría en la URL (ej. otro enlace con la vista
+// ya abierta): se aplica sin esperar a un remontaje.
+watch(() => route.query.categoria, (valor, anterior) => {
+  if (valor === anterior || !valor || valor === store.filtros.categoriaId) return;
+  if (tomarCategoriaDeUrl(valor)) {
+    if (!categoriasTicket.value.length) cargarCategorias();
+    store.cargar().catch(() => {});
+  }
+});
+
 // vistaActiva/estadoMisTickets/estadoEquipo viven en el STORE: sobreviven a
 // navegar a /tickets/:id y volver (ver stores/tickets.js).
 function aplicarVista() {
@@ -154,6 +214,8 @@ const fechaHasta = computed({
 });
 
 const cantidadFiltrosActivos = computed(() => (fechaDesde.value ? 1 : 0) + (fechaHasta.value ? 1 : 0));
+// Para los estados vacíos: cualquier filtro secundario (fecha o categoría).
+const hayFiltrosSecundarios = computed(() => cantidadFiltrosActivos.value > 0 || !!store.filtros.categoriaId);
 
 function limpiarFiltrosSecundarios() {
   store.aplicarFiltros({ fechaDesde: '', fechaHasta: '' });
@@ -267,7 +329,12 @@ let peticionConteos = 0;
 
 async function cargarConteos() {
   const peticion = ++peticionConteos;
-  const secundarios = { q: store.filtros.q, fechaDesde: store.filtros.fechaDesde, fechaHasta: store.filtros.fechaHasta };
+  const secundarios = {
+    q: store.filtros.q,
+    fechaDesde: store.filtros.fechaDesde,
+    fechaHasta: store.filtros.fechaHasta,
+    categoriaId: store.filtros.categoriaId,
+  };
   try {
     const yo = auth.user?.id || '';
     const [sinAsignarTotal, sinVincularTotal, ...resto] = await Promise.all([
@@ -290,7 +357,10 @@ async function cargarConteos() {
   }
 }
 
-watch([() => store.filtros.q, () => store.filtros.fechaDesde, () => store.filtros.fechaHasta], cargarConteos);
+watch(
+  [() => store.filtros.q, () => store.filtros.fechaDesde, () => store.filtros.fechaHasta, () => store.filtros.categoriaId],
+  cargarConteos,
+);
 
 // Contador de las 4 bandejas. Las 2 de trabajo usan el conteo de su
 // sub-estado `todos` (total real de la bandeja, sin recorte de estado).
@@ -334,6 +404,7 @@ const FRASE_BANDEJA = {
 const subtituloBandeja = computed(() => {
   const n = total.value;
   let texto = `${n} ${n === 1 ? 'ticket' : 'tickets'} ${FRASE_BANDEJA[bandejaActiva.value.id] || ''}`.trim();
+  if (categoriaFiltrada.value) texto += ` en la categoría “${categoriaFiltrada.value}”`;
   if (bandejaConSubestado.value && subestadoActivo.value !== 'todos') {
     const sub = ESTADOS_SUBFILTRO.find((s) => s.id === subestadoActivo.value);
     if (sub) texto += ` · ${sub.label.toLowerCase()}`;
@@ -462,6 +533,7 @@ onMounted(async () => {
   // stores/tickets.js): bandeja/sub-estado/fecha viven atados al store y
   // sobreviven a propósito a volver de /tickets/:id.
   store.resetearBusqueda();
+  if (store.filtros.categoriaId) cargarCategorias();
   try {
     const [, staff] = await Promise.all([
       store.cargar(),
@@ -532,6 +604,24 @@ onMounted(async () => {
           label="Limpiar fecha"
           @click="limpiarFiltrosSecundarios"
         />
+        <!-- Chip del filtro por categoría (solo llega por ?categoria=). -->
+        <span
+          v-if="categoriaFiltrada"
+          class="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-primary-50 pl-3 pr-1 text-sm text-primary-800"
+          data-testid="chip-categoria"
+        >
+          <i class="ti ti-filter shrink-0" aria-hidden="true"></i>
+          <span class="truncate">Filtrado por categoría: <strong class="font-medium">{{ categoriaFiltrada }}</strong></span>
+          <button
+            type="button"
+            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-primary-700 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            :aria-label="`Quitar el filtro por categoría ${categoriaFiltrada}`"
+            :title="`Quitar el filtro por categoría ${categoriaFiltrada}`"
+            @click="quitarFiltroCategoria"
+          >
+            <i class="ti ti-x text-xs" aria-hidden="true"></i>
+          </button>
+        </span>
         <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" class="ml-auto" />
       </div>
     </div>
@@ -548,8 +638,8 @@ onMounted(async () => {
         <AppVacio
           v-if="!cargando && total === 0"
           icono="ti ti-headset"
-          :titulo="busqueda || vistaActiva !== 'sin_asignar' || cantidadFiltrosActivos > 0 ? 'Sin resultados' : 'Nada sin asignar'"
-          :mensaje="busqueda || vistaActiva !== 'sin_asignar' || cantidadFiltrosActivos > 0 ? 'No hay tickets con los filtros aplicados.' : 'Todos los tickets vigentes tienen responsable. Revise las otras bandejas para ver el trabajo en curso.'"
+          :titulo="busqueda || vistaActiva !== 'sin_asignar' || hayFiltrosSecundarios ? 'Sin resultados' : 'Nada sin asignar'"
+          :mensaje="busqueda || vistaActiva !== 'sin_asignar' || hayFiltrosSecundarios ? 'No hay tickets con los filtros aplicados.' : 'Todos los tickets vigentes tienen responsable. Revise las otras bandejas para ver el trabajo en curso.'"
         />
 
         <template v-else>
@@ -767,8 +857,8 @@ onMounted(async () => {
           <AppVacio
             v-else-if="total === 0"
             variante="seccion"
-            :titulo="busqueda || vistaActiva !== 'sin_asignar' || cantidadFiltrosActivos > 0 ? 'Sin resultados' : 'Nada sin asignar'"
-            :mensaje="busqueda || vistaActiva !== 'sin_asignar' || cantidadFiltrosActivos > 0 ? 'No hay tickets con los filtros aplicados.' : 'Todos los tickets vigentes tienen responsable.'"
+            :titulo="busqueda || vistaActiva !== 'sin_asignar' || hayFiltrosSecundarios ? 'Sin resultados' : 'Nada sin asignar'"
+            :mensaje="busqueda || vistaActiva !== 'sin_asignar' || hayFiltrosSecundarios ? 'No hay tickets con los filtros aplicados.' : 'Todos los tickets vigentes tienen responsable.'"
           />
 
           <template v-else>

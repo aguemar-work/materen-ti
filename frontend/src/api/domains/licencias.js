@@ -9,6 +9,7 @@ import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { cifrarPassword } from '../passwords.js';
 import { trimText, fechaLocalISO } from '../../core/formatters.js';
+import { DIAS_POR_VENCER_LICENCIA } from '../../core/dominio-licencias.js';
 import { cuentasApi } from './cuentas.js';
 import { correosApi } from './correos.js';
 
@@ -27,11 +28,31 @@ const SELECT_LICENCIA = `
   asignaciones_licencia(id, fecha_fin, empleado_id, empleados(nombres, apellidos))
 `;
 
-async function queryLicencias({ q = '', orden } = {}, { conteo = false } = {}) {
+// Filtro de situación del listado (segmentado de LicenciasView). Mismo
+// criterio que `estadoVencimientoLicencia()` (core/dominio-licencias.js):
+// una perpetua o sin fecha nunca vence; "vencida" = antes de hoy; "por
+// vencer" = de hoy a DIAS_POR_VENCER_LICENCIA días, inclusive.
+//
+// No hay "sin cupo": "asientos usados" se cuenta sobre dos embeds distintos
+// (asignaciones_licencia activas, o asignaciones_cuenta activas del correo
+// vinculado) y PostgREST no puede comparar un conteo contra la columna
+// `cantidad` sin una vista/columna calculada en la base.
+const SITUACIONES_LICENCIA = ['vencidas', 'por_vencer'];
+
+function filtrarSituacion(query, situacion) {
+  if (!SITUACIONES_LICENCIA.includes(situacion)) return query;
+  const hoy = fechaLocalISO();
+  const base = query.neq('tipo', 'perpetua').not('fecha_vencimiento', 'is', null);
+  if (situacion === 'vencidas') return base.lt('fecha_vencimiento', hoy);
+  return base.gte('fecha_vencimiento', hoy).lte('fecha_vencimiento', fechaLocalISO(DIAS_POR_VENCER_LICENCIA));
+}
+
+async function queryLicencias({ q = '', situacion = '', orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('licencias')
     .select(SELECT_LICENCIA, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
+  query = filtrarSituacion(query, situacion);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     const db = getClient().database;
@@ -55,16 +76,16 @@ async function queryLicencias({ q = '', orden } = {}, { conteo = false } = {}) {
 // ── Licencias ────────────────────────────────────────────────────────────────
 
 export const licenciasApi = {
-  async listLicenciasPage({ pagina = 1, tamPagina = 20, q = '', orden } = {}) {
+  async listLicenciasPage({ pagina = 1, tamPagina = 20, q = '', situacion = '', orden } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryLicencias({ q, orden }, { conteo: true });
+    const { qb } = await queryLicencias({ q, situacion, orden }, { conteo: true });
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapLicencia), total: count ?? 0 };
   },
 
-  async listLicenciasFiltrados({ q = '' } = {}) {
-    const { qb } = await queryLicencias({ q });
+  async listLicenciasFiltrados({ q = '', situacion = '' } = {}) {
+    const { qb } = await queryLicencias({ q, situacion });
     const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapLicencia);

@@ -4,7 +4,9 @@ import { crearStorePaginado } from './crearStorePaginado.js';
 // Paginación server-side (el esqueleto común vive en crearStorePaginado.js).
 export const useCorreosStore = crearStorePaginado('correos', {
   listarPagina: (params) => insforgeApi.listCorreosPage(params),
-  filtrosIniciales: () => ({ q: '', tipo: '' }),
+  // soloRotacion: segmento "Requieren rotación" de CorreosView. Se resetea en
+  // cada montaje de la vista junto con el resto (gotcha de resetearFiltros()).
+  filtrosIniciales: () => ({ q: '', tipo: '', soloRotacion: false }),
   mensajeError: 'Error al cargar correos compartidos',
 
   actions: {

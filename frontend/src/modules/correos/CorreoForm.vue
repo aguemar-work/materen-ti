@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick, useTemplateRef } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useCorreosStore } from '../../stores/correos.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
@@ -12,6 +12,10 @@ import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   correo: { type: Object, default: null },
+  // Abierto desde "Rotar contraseña" (CorreosView): mismo formulario de
+  // edición, pero con el foco en "Nueva contraseña" y un aviso del motivo.
+  // Solo tiene efecto en edición.
+  rotar: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['cerrar']);
@@ -31,6 +35,8 @@ const error = ref('');
 const passwordVisible = ref(false);
 
 const esEdicion = computed(() => !!props.correo?.id);
+const modoRotar = computed(() => props.rotar && esEdicion.value);
+const refPassword = useTemplateRef('refPassword');
 
 // Opciones del tipo (tarjetas de radio, mismo patrón que el modo de acceso
 // de LicenciaForm.vue).
@@ -40,6 +46,7 @@ const TIPOS = [
 ];
 
 const infoError = infoNotificacion('error');
+const infoRotar = infoNotificacion('warning');
 const campoPlataforma = useCampoAccesible();
 const campoUsuario = useCampoAccesible();
 const campoPassword = useCampoAccesible();
@@ -81,6 +88,12 @@ function resetForm() {
 watch(() => props.correo, resetForm, { immediate: true });
 
 onMounted(async () => {
+  // Modal.vue pone el foco inicial en el primer control tras su propio
+  // nextTick (el onMounted del hijo corre antes que el de este componente),
+  // así que este nextTick llega después y lleva el foco a la contraseña.
+  if (modoRotar.value) {
+    nextTick(() => refPassword.value?.focus());
+  }
   cargandoPlataformas.value = true;
   try {
     plataformas.value = await insforgeApi.listPlataformas();
@@ -129,7 +142,7 @@ async function guardar() {
 <template>
   <Modal
     ref="modal"
-    :titulo="esEdicion ? 'Editar correo compartido' : 'Nuevo correo compartido'"
+    :titulo="modoRotar ? 'Rotar contraseña' : esEdicion ? 'Editar correo compartido' : 'Nuevo correo compartido'"
     :confirmar-cierre="confirmarCierre"
     :cerrar-en-backdrop="false"
     @close="emit('cerrar', resultado)"
@@ -200,11 +213,22 @@ async function guardar() {
         </div>
       </div>
 
+      <div v-if="modoRotar" class="notif notif--inline" :class="`notif--${infoRotar.rol}`" :role="infoRotar.rolAria">
+        <i class="ti" :class="infoRotar.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">
+            Un titular dejó esta cuenta y la contraseña no se ha cambiado. Escriba o genere una nueva,
+            actualícela también en la plataforma y guarde: el aviso se quita al guardar.
+          </p>
+        </div>
+      </div>
+
       <div class="campo full" :class="{ 'campo--inerte': guardando }">
         <label class="campo__etiqueta" :for="campoPassword.id">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
         <div class="campo__caja pr-1">
           <input
             :id="campoPassword.id"
+            ref="refPassword"
             v-model="form.password"
             :type="passwordVisible ? 'text' : 'password'"
             class="campo__control"

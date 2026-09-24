@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
@@ -244,7 +244,10 @@ async function confirmarReactivar() {
   }
 }
 
-onMounted(cargar);
+// Por id y no onMounted: al ir de una ficha a otra (/empleados/:id → otro
+// :id) Vue Router reusa el componente, y con onMounted se veían los datos
+// del empleado anterior.
+watch(() => route.params.id, (id) => { if (id) cargar(); }, { immediate: true });
 </script>
 
 <template>

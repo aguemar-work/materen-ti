@@ -173,3 +173,60 @@ describe('LicenciasView.vue — listado migrado a AppTable/AppColumn/AppButton',
     expect(w.text()).toContain('Adobe Creative Cloud');
   });
 });
+
+// Filtro de situación (2026-09-24): segmentado server-side vía el store.
+describe('LicenciasView.vue — filtro de situación', () => {
+  function segmento(w, texto) {
+    const grupo = w.find('[role="group"][aria-label="Filtrar por situación"]');
+    return grupo.findAll('button').find((b) => b.text().trim() === texto);
+  }
+
+  it('ofrece Todas / Vencidas / Por vencer, sin "Sin cupo" (no expresable sin cambio de esquema)', async () => {
+    const w = await montar();
+    const grupo = w.find('[role="group"][aria-label="Filtrar por situación"]');
+    expect(grupo.exists()).toBe(true);
+    expect(grupo.findAll('button').map((b) => b.text().trim())).toEqual(['Todas', 'Vencidas', 'Por vencer']);
+  });
+
+  it('elegir "Vencidas" recarga desde el servidor con situacion=vencidas y página 1', async () => {
+    const w = await montar();
+    await segmento(w, 'Vencidas').trigger('click');
+    await flushPromises();
+    const ultima = insforgeApi.listLicenciasPage.mock.calls.at(-1)[0];
+    expect(ultima).toMatchObject({ situacion: 'vencidas', pagina: 1 });
+    expect(segmento(w, 'Vencidas').attributes('aria-pressed')).toBe('true');
+  });
+
+  it('al montar de nuevo el filtro arranca en "Todas" (resetearFiltros, sin filtro fantasma)', async () => {
+    const w = await montar();
+    await segmento(w, 'Por vencer').trigger('click');
+    await flushPromises();
+    w.unmount();
+    insforgeApi.listLicenciasPage.mockClear();
+    await montar();
+    expect(insforgeApi.listLicenciasPage.mock.calls.at(-1)[0].situacion).toBe('');
+  });
+
+  it('sin resultados con el filtro puesto dice "Sin resultados", no "Sin licencias todavía"', async () => {
+    const w = await montar();
+    insforgeApi.listLicenciasPage.mockResolvedValue({ items: [], total: 0 });
+    await segmento(w, 'Vencidas').trigger('click');
+    await flushPromises();
+    expect(w.text()).toContain('Sin resultados');
+    expect(w.text()).not.toContain('Sin licencias todavía');
+  });
+});
+
+describe('LicenciasView.vue — /licencias?nuevo=1', () => {
+  it('abre el formulario de alta al llegar y quita el parámetro de la URL', async () => {
+    const router = crearRouter();
+    router.push('/licencias?nuevo=1');
+    await router.isReady();
+    const w = mount(LicenciasView, {
+      global: { plugins: [router], stubs: { LicenciaForm: true, Modal: true, ConfirmDialog: true } },
+    });
+    await flushPromises();
+    expect(w.findComponent({ name: 'LicenciaForm' }).exists()).toBe(true);
+    expect(router.currentRoute.value.query.nuevo).toBeUndefined();
+  });
+});

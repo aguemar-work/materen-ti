@@ -4,6 +4,8 @@ import { crearStorePaginado } from './crearStorePaginado.js';
 const FILTROS_INICIALES = () => ({
   q: '', estado: '', sinAsignar: false, sinVincular: false, asignadoA: '',
   fechaDesde: '', fechaHasta: '',
+  // Solo por deep-link (?categoria=, ver TicketsView.vue); sin selector propio.
+  categoriaId: '',
 });
 
 // Paginación server-side (el esqueleto común vive en crearStorePaginado.js):

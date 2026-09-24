@@ -189,3 +189,69 @@ describe('EquiposView.vue — listado migrado a AppTable/AppColumn/AppButton', (
     expect(w.text()).toContain('EQ-0001');
   });
 });
+
+// Acta de ENTREGA automática al entregar a un empleado (2026-09-24), mismo
+// patrón que la de devolución: ventana reservada en el clic, antes del await.
+describe('EquiposView.vue — acta de entrega al entregar', () => {
+  const EMPLEADO = {
+    id: 'emp-9', nombres: 'Rosa', apellidos: 'Quispe', dni: '45871236', cargo: 'Asistente',
+    empresa_nombre: 'Materen', estado: 'Activo',
+  };
+
+  function ventanaFalsa() {
+    return { document: { write: vi.fn(), open: vi.fn(), close: vi.fn() }, close: vi.fn() };
+  }
+
+  async function prepararEntrega(w) {
+    w.vm.equipoAsignar = { ...EQUIPOS_FIXTURE[1], id: 'eq-3', codigo: 'EQ-0003', situacion: 'disponible' };
+    w.vm.empleadosActivos = [EMPLEADO];
+    w.vm.empleadoSelId = 'emp-9';
+    w.vm.condicionEntrega = 'con cargador';
+  }
+
+  it('reserva la ventana ANTES de registrar la entrega y escribe el acta con los datos del empleado', async () => {
+    const orden = [];
+    const win = ventanaFalsa();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => { orden.push('open'); return win; });
+    insforgeApi.asignarEquipo = vi.fn(async () => { orden.push('asignar'); });
+    const w = await montar();
+    await prepararEntrega(w);
+    await w.vm.confirmarAsignar();
+    await flushPromises();
+    expect(orden).toEqual(['open', 'asignar']);
+    const html = win.document.write.mock.calls.map((c) => c[0]).join('');
+    expect(html).toContain('Acta de Entrega de Equipo');
+    expect(html).toContain('45871236');
+    expect(html).toContain('con cargador');
+    expect(win.close).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it('si la entrega falla, cierra la ventana reservada y no escribe ningún acta', async () => {
+    const win = ventanaFalsa();
+    const open = vi.spyOn(window, 'open').mockReturnValue(win);
+    insforgeApi.asignarEquipo = vi.fn().mockRejectedValue(new Error('El equipo ya tiene portador'));
+    const w = await montar();
+    await prepararEntrega(w);
+    await w.vm.confirmarAsignar();
+    await flushPromises();
+    expect(win.close).toHaveBeenCalled();
+    expect(win.document.write.mock.calls.map((c) => c[0]).join('')).not.toContain('Acta de Entrega');
+    expect(w.vm.errorAsignar).toBe('El equipo ya tiene portador');
+    open.mockRestore();
+  });
+});
+
+describe('EquiposView.vue — /equipos?nuevo=1', () => {
+  it('abre el formulario de alta al llegar y quita el parámetro de la URL', async () => {
+    const router = crearRouter();
+    router.push('/equipos?nuevo=1');
+    await router.isReady();
+    const w = mount(EquiposView, {
+      global: { plugins: [router], stubs: { EquipoForm: true, Modal: true, ConfirmDialog: true } },
+    });
+    await flushPromises();
+    expect(w.findComponent({ name: 'EquipoForm' }).exists()).toBe(true);
+    expect(router.currentRoute.value.query.nuevo).toBeUndefined();
+  });
+});

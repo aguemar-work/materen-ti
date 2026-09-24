@@ -5,10 +5,16 @@
 // propósito las licencias sanas; el listado siempre muestra la fecha).
 import { fechaLocalISO } from './formatters.js';
 
+// Ventana de "por vencer", en días. La usan el tag de cada fila (abajo) y el
+// filtro de situación del listado (api/domains/licencias.js), para que el
+// segmento "Por vencer" traiga exactamente las filas que se pintan así.
+// (El Dashboard todavía repite su propio `30` en api/domains/dashboard.js.)
+export const DIAS_POR_VENCER_LICENCIA = 30;
+
 export function estadoVencimientoLicencia(lic) {
   if (lic.tipo === 'perpetua' || !lic.fecha_vencimiento) return 'perpetua';
   if (lic.fecha_vencimiento < fechaLocalISO()) return 'vencida';
-  if (lic.fecha_vencimiento <= fechaLocalISO(30)) return 'por_vencer';
+  if (lic.fecha_vencimiento <= fechaLocalISO(DIAS_POR_VENCER_LICENCIA)) return 'por_vencer';
   return 'vigente';
 }
 

@@ -253,6 +253,11 @@ async function queryTickets(
     // vino a cerrar en ago 2026 (2 fuentes de verdad para el mismo dato) —
     // Estado sigue siendo SOLO lo que la Vista activa decide.
     fechaDesde = '', fechaHasta = '',
+    // categoriaId (2026-09-24): NO vuelve el selector de Categoría que la
+    // cuarta pasada retiró — solo llega por deep-link (/tickets?categoria=,
+    // desde el pendiente "Posible problema recurrente" del Dashboard) y se
+    // muestra como un chip quitable en TicketsView.
+    categoriaId = '',
   } = {},
   // soloConteo: para contarTickets() — misma cláusula WHERE, pero sin traer
   // los embeds de empleados/categorías que la fila necesita y el número no.
@@ -274,6 +279,7 @@ async function queryTickets(
   if (sinAsignar) query = query.is('asignado_a', null);
   else if (asignadoA) query = query.eq('asignado_a', asignadoA);
   if (sinVincular) query = query.eq('vinculado', false);
+  if (categoriaId) query = query.eq('categoria_id', categoriaId);
   if (fechaDesde) query = query.gte('created_at', fechaDesde);
   // hasta 23:59:59.999 del día elegido — un <input type="date"> entrega
   // solo la fecha (00:00:00), un .lte() literal excluiría todo ese día.

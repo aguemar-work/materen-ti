@@ -4,6 +4,7 @@ import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { fechaLocalISO } from '../../core/formatters.js';
 import { ordenarPorUrgencia } from '../../core/dominio-tickets.js';
+import { DIAS_POR_VENCER_LICENCIA } from '../../core/dominio-licencias.js';
 
 export const dashboardApi = {
   // Búsqueda global del panel: empleados, cuentas, equipos, tickets y
@@ -85,7 +86,7 @@ export const dashboardApi = {
       db.from('cuentas').select('id', CONTEO).eq('tipo_cuenta', 'compartida').is('deleted_at', null),
       db.from('cuentas').select('id', CONTEO).eq('requiere_rotacion', true).is('deleted_at', null),
       db.from('licencias').select('id', CONTEO)
-        .lte('fecha_vencimiento', fechaEnDias(30))
+        .lte('fecha_vencimiento', fechaEnDias(DIAS_POR_VENCER_LICENCIA))
         .is('deleted_at', null),
       db.from('equipos').select('id', CONTEO).is('deleted_at', null),
       db.from('tickets').select('id', CONTEO).not('estado', 'in', '("resuelto","cerrado","rechazado")'),
@@ -113,7 +114,7 @@ export const dashboardApi = {
       db.from('cuentas').select(select).is('password', null).is('deleted_at', null),
       db.from('licencias')
         .select('id, software, cantidad, fecha_vencimiento, empresas(nombre)')
-        .lte('fecha_vencimiento', fechaEnDias(30))
+        .lte('fecha_vencimiento', fechaEnDias(DIAS_POR_VENCER_LICENCIA))
         .is('deleted_at', null)
         .order('fecha_vencimiento', { ascending: true }),
       db.from('asignaciones_equipo')

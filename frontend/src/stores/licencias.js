@@ -4,7 +4,10 @@ import { crearStorePaginado } from './crearStorePaginado.js';
 // Paginación server-side (el esqueleto común vive en crearStorePaginado.js).
 export const useLicenciasStore = crearStorePaginado('licencias', {
   listarPagina: (params) => insforgeApi.listLicenciasPage(params),
-  filtrosIniciales: () => ({ q: '' }),
+  // situacion: '' | 'vencidas' | 'por_vencer' (ver SITUACIONES_LICENCIA en
+  // api/domains/licencias.js). Se resetea en cada montaje de la vista, igual
+  // que `q` (gotcha de resetearFiltros(), ver frontend/AGENTS.md).
+  filtrosIniciales: () => ({ q: '', situacion: '' }),
   mensajeError: 'Error al cargar licencias',
 
   actions: {

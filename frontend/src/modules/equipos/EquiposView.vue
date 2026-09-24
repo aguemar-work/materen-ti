@@ -275,15 +275,39 @@ async function abrirAsignar(equipo) {
   }
 }
 
+// Al entregar se abre el acta de ENTREGA sola, igual que la de devolución
+// en confirmarDevolver(): antes solo estaba en el menú de desborde y había
+// que acordarse de imprimirla. La ventana se reserva en el mismo instante
+// del clic (antes de cualquier `await`) porque el navegador bloquea
+// window.open fuera de un gesto del usuario; se cierra si algo falla.
 async function confirmarAsignar() {
   if (!empleadoSelId.value) return;
   errorAsignar.value = '';
   procesando.value = true;
+  let ventanaActa = null;
+  try { ventanaActa = reservarVentanaActa(); } catch (e) { showToast(e.message, 'error'); }
+  // Foto de lo que se entrega, tomada ANTES de recargar el listado: el
+  // empleado ya viene completo (listEmpleados → dni, cargo, empresa), así
+  // que el acta no necesita otra consulta.
+  const equipo = equipoAsignar.value;
+  const empleado = empleadosActivos.value.find((e) => e.id === empleadoSelId.value);
+  const condicion = condicionEntrega.value.trim();
   try {
-    await store.asignar(equipoAsignar.value.id, empleadoSelId.value, condicionEntrega.value);
+    await store.asignar(equipo.id, empleadoSelId.value, condicionEntrega.value);
     modalAsignar.value?.cerrar();
-    showToast(`${equipoAsignar.value.codigo} entregado`);
+    showToast(`${equipo.codigo} entregado`);
+    if (ventanaActa && empleado) {
+      try {
+        generarActa({ ...equipo, condicion_entrega: condicion, fecha_asignacion: null }, empleado, ventanaActa);
+      } catch (e) {
+        ventanaActa.close();
+        showToast(e?.message || 'No se pudo generar el acta de entrega', 'error');
+      }
+    } else {
+      ventanaActa?.close();
+    }
   } catch (e) {
+    ventanaActa?.close();
     // Rechazo del trigger de asignación (portador activo o equipo no
     // operativo): se muestra dentro del modal, no solo en el toast.
     errorAsignar.value = e?.message || 'Error al asignar';
@@ -592,6 +616,14 @@ function etiquetaCorta(accion) {
 onMounted(async () => {
   cargarKpi();
   store.resetearFiltros();
+  // /equipos?nuevo=1 — atajo desde el estado vacío de AsignarEquipoModal
+  // (ficha del empleado) cuando no hay equipos disponibles en almacén.
+  // Se quita de la URL para que recargar no vuelva a abrir el formulario.
+  if (route.query.nuevo) {
+    abrirNuevo();
+    const { nuevo: _nuevo, ...resto } = route.query;
+    router.replace({ query: resto });
+  }
   try {
     const q = busqueda.value.trim();
     if (q) {

@@ -27,6 +27,7 @@ vi.mock('../../src/api/insforge.js', () => ({
     nombresStaff: vi.fn().mockResolvedValue([]),
     cerrarTicket: vi.fn().mockResolvedValue(undefined),
     actualizarTicket: vi.fn().mockResolvedValue(undefined),
+    listCategoriasTicket: vi.fn().mockResolvedValue([]),
   },
 }));
 import { insforgeApi } from '../../src/api/insforge.js';
@@ -197,5 +198,62 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
     resolver({ items: TICKETS_FIXTURE, total: 2 });
     await flushPromises();
     expect(w.text()).toContain('TCK-0001');
+  });
+});
+
+// Filtro por categoría (2026-09-24), solo por deep-link: /tickets?categoria=
+// (lo usa el pendiente "Posible problema recurrente" del Dashboard). Tickets
+// sigue siendo la excepción del gotcha de resetearFiltros(): el filtro vive
+// en el store y el chip está atado a él.
+describe('TicketsView.vue — filtro por categoría desde la URL', () => {
+  async function montarEn(url) {
+    localStorage.setItem('sistema-ti-vista-tickets', 'tabla');
+    const router = crearRouter();
+    router.push(url);
+    await router.isReady();
+    const w = mount(TicketsView, {
+      global: {
+        plugins: [router, [PrimeVue, { unstyled: true }]],
+        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ReporteTicketsModal: true, ConfirmDialog: true },
+      },
+    });
+    await flushPromises();
+    return { w, router };
+  }
+
+  beforeEach(() => {
+    insforgeApi.listCategoriasTicket.mockResolvedValue([{ id: 'red', nombre: 'Red y Conectividad' }]);
+  });
+
+  it('?categoria= filtra desde la PRIMERA carga, en la bandeja "Todos" y sin sub-estado', async () => {
+    await montarEn('/tickets?categoria=red');
+    const llamadas = insforgeApi.listTicketsPage.mock.calls.map((c) => c[0]);
+    expect(llamadas.length).toBeGreaterThan(0);
+    expect(llamadas.every((f) => f.categoriaId === 'red')).toBe(true);
+    expect(llamadas.at(-1)).toMatchObject({ categoriaId: 'red', estado: '', sinAsignar: false, asignadoA: '' });
+  });
+
+  it('muestra el chip con el nombre de la categoría y los contadores respetan el filtro', async () => {
+    const { w } = await montarEn('/tickets?categoria=red');
+    const chip = w.find('[data-testid="chip-categoria"]');
+    expect(chip.exists()).toBe(true);
+    expect(chip.text()).toContain('Red y Conectividad');
+    expect(insforgeApi.contarTickets.mock.calls.every((c) => c[0].categoriaId === 'red')).toBe(true);
+  });
+
+  it('quitar el chip limpia el filtro, recarga sin categoría y saca el parámetro de la URL', async () => {
+    const { w, router } = await montarEn('/tickets?categoria=red');
+    await w.find('[data-testid="chip-categoria"] button').trigger('click');
+    await flushPromises();
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0].categoriaId).toBe('');
+    expect(w.find('[data-testid="chip-categoria"]').exists()).toBe(false);
+    expect(router.currentRoute.value.query.categoria).toBeUndefined();
+  });
+
+  it('sin ?categoria= no hay chip ni filtro (y no se pide el catálogo)', async () => {
+    const { w } = await montarEn('/tickets');
+    expect(w.find('[data-testid="chip-categoria"]').exists()).toBe(false);
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0].categoriaId).toBe('');
+    expect(insforgeApi.listCategoriasTicket).not.toHaveBeenCalled();
   });
 });

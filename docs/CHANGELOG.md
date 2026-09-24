@@ -23,6 +23,18 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-24** (**Flujos v2**) — DNI duplicado al crear un empleado muestra
+  quién lo tiene (enlace a su ficha; sugiere reactivar si está Inactivo).
+  Licencias filtra por situación (Vencidas / Por vencer, server-side,
+  `DIAS_POR_VENCER_LICENCIA` compartida con el Dashboard; "Sin cupo"
+  pendiente: necesita una vista o RPC con asientos usados). Correos suma
+  "Rotar contraseña" en ⋮ (formulario vacío con foco en la contraseña) y el
+  filtro "Requieren rotación". El acta de entrega se abre sola al entregar
+  un equipo. Estados vacíos de Asignar equipo/licencia con acción
+  (`?nuevo=1` abre el alta). El pendiente "Posible problema recurrente"
+  lleva a `/tickets?categoria=` (chip quitable). La ficha de empleado
+  recarga al cambiar de `:id` (antes mostraba al anterior). La maqueta
+  aplica el `unique` de `empleados.dni`.
 - **2026-09-24** (**Un solo tag y poda de CSS**) — `BadgeEstado` renderiza
   con `AppTag` (API sin cambios; fuera los tags `.tag--*` a mano y las
   clases `cds-tag` de Carbon). `styles/componentes.css`: 193 de 268

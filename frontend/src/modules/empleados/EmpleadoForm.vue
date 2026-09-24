@@ -2,7 +2,8 @@
 import { ref, computed, watch, onMounted, nextTick, useTemplateRef } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
-import { normalizarTelefono } from '../../core/formatters.js';
+import { normalizarTelefono, onlyDigits } from '../../core/formatters.js';
+import { nombreCompleto, estadoEmpleadoInfo } from '../../core/dominio-empleados.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -42,6 +43,14 @@ const error = ref('');
 // que EquipoForm.vue.
 const campoInvalido = ref('');
 const refDni = useTemplateRef('refDni');
+
+// Empleado que ya tiene el DNI que se intentó guardar (unique global de
+// `empleados.dni`, migración 002 — incluye a los dados de baja). Antes el
+// aviso solo decía "ya existe" y había que ir a buscarlo a mano; ahora dice
+// quién es y, en el alta, lleva a su ficha (si está Inactivo, ahí está
+// "Reactivar": volver a registrarlo no es el camino).
+const duplicado = ref(null);
+const duplicadoInactivo = computed(() => duplicado.value?.estado === 'Inactivo');
 
 async function enfocarCampoInvalido() {
   await nextTick();
@@ -154,9 +163,22 @@ function normalizarCampo(campo) {
 // debe perder lo escrito) pasan por acá igual que el botón "Cancelar" —
 // con cambios sin guardar se pide confirmación antes de descartar; limpio
 // cierra directo. Mismo cuerpo que AccesoSensibleForm.vue.
+// Solo se busca tras el rechazo del unique: la BD sigue siendo la que
+// decide si el DNI está tomado. Si la búsqueda falla, queda el aviso genérico.
+async function buscarDuplicado(dni) {
+  try {
+    const existente = await insforgeApi.buscarPorDni(onlyDigits(dni));
+    // En edición, el propio empleado nunca es "el otro" con ese DNI.
+    duplicado.value = existente && existente.id !== props.empleado?.id ? existente : null;
+  } catch {
+    duplicado.value = null;
+  }
+}
+
 async function guardar() {
   error.value = '';
   campoInvalido.value = '';
+  duplicado.value = null;
   guardando.value = true;
   try {
     let guardado;
@@ -175,6 +197,7 @@ async function guardar() {
     if (e?.message?.includes('empleados_dni_key') || e?.message?.includes('empleados.dni')) {
       error.value = 'Ya existe un empleado con ese DNI';
       campoInvalido.value = 'dni';
+      await buscarDuplicado(form.value.dni);
     } else {
       error.value = e?.message || 'Error al guardar empleado';
     }
@@ -447,7 +470,29 @@ async function guardar() {
       <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
         <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
         <div class="notif__texto">
-          <p class="notif__detalle">{{ error }}</p>
+          <!-- DNI tomado: quién lo tiene y qué hacer, no solo "ya existe". -->
+          <template v-if="duplicado">
+            <p class="notif__detalle">
+              El DNI {{ duplicado.dni }} ya pertenece a <strong class="font-medium">{{ nombreCompleto(duplicado) }}</strong>
+              (estado: {{ estadoEmpleadoInfo(duplicado.estado).label }}).
+              <template v-if="duplicadoInactivo">Para volver a darle acceso, reactívelo desde su ficha en lugar de registrarlo de nuevo.</template>
+              <template v-else>No se puede registrar a la misma persona dos veces: revise su ficha.</template>
+            </p>
+            <!-- Solo en el alta: en edición el formulario vive dentro de otra
+                 ficha (/empleados/:id), y EmpleadoDetalleView no recarga al
+                 cambiar solo el parámetro de la ruta. -->
+            <AppButton
+              v-if="!esEdicion"
+              class="mt-2"
+              size="sm"
+              variant="outline"
+              severity="secondary"
+              :icon="duplicadoInactivo ? 'ti ti-user-check' : 'ti ti-id'"
+              :label="duplicadoInactivo ? 'Abrir su ficha para reactivarlo' : 'Abrir su ficha'"
+              :to="`/empleados/${duplicado.id}`"
+            />
+          </template>
+          <p v-else class="notif__detalle">{{ error }}</p>
         </div>
       </div>
     </form>

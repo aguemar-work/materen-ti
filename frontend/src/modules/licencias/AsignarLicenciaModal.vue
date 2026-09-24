@@ -24,6 +24,10 @@ const emit = defineEmits(['close', 'asignado']);
 const modal = ref(null);
 const cargandoLista = ref(true);
 const conCupo = ref([]);
+// Cuántas licencias hay en total: distingue "no hay ninguna registrada"
+// (salida: registrar una) de "todas están llenas" (salida: ir a Licencias a
+// liberar un asiento o ampliar la cantidad).
+const totalLicencias = ref(0);
 const licenciaSelId = ref('');
 const procesando = ref(false);
 const error = ref('');
@@ -32,6 +36,7 @@ const infoError = infoNotificacion('error');
 onMounted(async () => {
   try {
     const todas = await insforgeApi.listLicencias();
+    totalLicencias.value = todas.length;
     conCupo.value = todas.filter((lic) => lic.usados < lic.cantidad);
   } catch (e) {
     error.value = e?.message || 'No se pudo cargar la lista de licencias';
@@ -90,9 +95,18 @@ async function confirmar() {
             <span class="combo-sec tabular-nums">{{ item.cantidad - item.usados }} de {{ item.cantidad }} libres</span>
           </template>
         </BuscadorCombo>
-        <p v-if="!cargandoLista && conCupo.length === 0" class="campo__pie">
-          No hay licencias con cupo disponible ahora mismo.
-        </p>
+        <!-- Estado vacío con salida (antes solo informaba y dejaba al
+             usuario sin paso siguiente). -->
+        <div v-if="!cargandoLista && conCupo.length === 0 && !error" class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <template v-if="totalLicencias === 0">
+            <p class="text-xs text-gray-500">Todavía no hay licencias registradas.</p>
+            <AppButton size="sm" variant="text" icon="ti ti-plus" label="Registrar una licencia" to="/licencias?nuevo=1" />
+          </template>
+          <template v-else>
+            <p class="text-xs text-gray-500">Todas las licencias tienen sus asientos ocupados. Libere un asiento o amplíe la cantidad desde Licencias.</p>
+            <AppButton size="sm" variant="text" icon="ti ti-arrow-right" icon-pos="right" label="Ir a Licencias" to="/licencias" />
+          </template>
+        </div>
       </div>
 
       <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">

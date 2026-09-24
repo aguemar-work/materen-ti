@@ -10,6 +10,9 @@
 // solo se elige uno que ya existe y está disponible.
 import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
+import { generarActa } from './acta.js';
+import { reservarVentanaActa } from './acta-base.js';
+import { showToast } from '../../core/toast.js';
 import Modal from '../../components/shared/Modal.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -51,15 +54,36 @@ function confirmarCierreProcesando() {
   return !procesando.value;
 }
 
+// Entregar abre el acta de entrega sola, igual que "Entregar" en
+// EquiposView.vue. La ventana se reserva en el mismo instante del clic
+// (antes de cualquier `await`: el navegador bloquea window.open fuera de un
+// gesto del usuario) y se cierra si la entrega o el acta fallan.
 async function confirmar() {
   if (!equipoSelId.value) return;
   error.value = '';
   procesando.value = true;
+  let ventanaActa = null;
+  try { ventanaActa = reservarVentanaActa(); } catch (e) { showToast(e.message, 'error'); }
+  const equipo = disponibles.value.find((eq) => eq.id === equipoSelId.value);
+  const condicion = condicionEntrega.value.trim();
   try {
     await insforgeApi.asignarEquipo(equipoSelId.value, props.empleadoId, condicionEntrega.value);
     emit('asignado');
     modal.value?.cerrar();
+    if (!ventanaActa) return;
+    // Este modal solo recibe id + nombre del empleado; el acta necesita DNI,
+    // cargo y empresa, así que se lee la ficha completa (ya con la ventana
+    // reservada, así que este await no la bloquea).
+    try {
+      const empleado = await insforgeApi.getEmpleado(props.empleadoId);
+      if (!empleado || !equipo) throw new Error('No se encontraron los datos para el acta');
+      generarActa({ ...equipo, condicion_entrega: condicion, fecha_asignacion: null }, empleado, ventanaActa);
+    } catch (e) {
+      ventanaActa.close();
+      showToast(e?.message || 'No se pudo generar el acta de entrega', 'error');
+    }
   } catch (e) {
+    ventanaActa?.close();
     // Rechazo del trigger de asignación (portador activo o equipo no
     // operativo, mismo candado que en EquiposView): se muestra en el modal.
     error.value = e?.message || 'Error al asignar';
@@ -96,9 +120,13 @@ async function confirmar() {
             <span class="combo-sec">{{ item.serie }}</span>
           </template>
         </BuscadorCombo>
-        <p v-if="!cargandoLista && disponibles.length === 0" class="campo__pie">
-          No hay equipos disponibles en almacén ahora mismo.
-        </p>
+        <!-- Estado vacío con salida: sin equipo en almacén no hay nada que
+             elegir acá, pero sí se puede registrar uno (/equipos?nuevo=1
+             abre el formulario de alta al llegar). -->
+        <div v-if="!cargandoLista && disponibles.length === 0 && !error" class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p class="text-xs text-gray-500">No hay equipos disponibles en almacén ahora mismo.</p>
+          <AppButton size="sm" variant="text" icon="ti ti-plus" label="Registrar un equipo" to="/equipos?nuevo=1" />
+        </div>
         <p v-else-if="!cargandoLista" class="campo__pie">
           {{ disponibles.length }} {{ disponibles.length === 1 ? 'equipo disponible' : 'equipos disponibles' }} en almacén.
         </p>

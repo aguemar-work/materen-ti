@@ -42,6 +42,27 @@ const FK_DE = {
 };
 const PK = { staff: 'user_id' };
 
+// Restricciones `unique` reales que la UI necesita ver rechazadas para poder
+// probar su manejo de errores en la maqueta (ej. DNI duplicado en
+// EmpleadoForm). Mismo mensaje que devuelve PostgREST/Postgres.
+const UNICOS = {
+  empleados: [{ col: 'dni', restriccion: 'empleados_dni_key' }],
+};
+
+function violacionUnica(tabla, fila, ignorar = null) {
+  for (const { col, restriccion } of UNICOS[tabla] || []) {
+    if (fila[col] == null) continue;
+    const choca = (db[tabla] || []).some((r) => r !== ignorar && r[col] === fila[col]);
+    if (choca) {
+      return {
+        code: '23505',
+        message: `duplicate key value violates unique constraint "${restriccion}"`,
+      };
+    }
+  }
+  return null;
+}
+
 let secuencia = 0;
 const nuevoId = () => `maq-${Date.now().toString(36)}-${(secuencia += 1)}`;
 
@@ -199,6 +220,12 @@ class ConsultaFalsa {
 
     if (this.operacion === 'insert' || this.operacion === 'upsert') {
       const lista = Array.isArray(this.payload) ? this.payload : [this.payload];
+      if (this.operacion === 'insert') {
+        for (const p of lista) {
+          const error = violacionUnica(this.tabla, p);
+          if (error) return { data: null, error, count: null };
+        }
+      }
       const ahora = new Date().toISOString();
       afectadas = lista.map((p) => {
         const pk = PK[this.tabla] || 'id';
@@ -210,6 +237,10 @@ class ConsultaFalsa {
       });
     } else if (this.operacion === 'update') {
       afectadas = this.filasFiltradas();
+      for (const fila of afectadas) {
+        const error = violacionUnica(this.tabla, { ...fila, ...this.payload }, fila);
+        if (error) return { data: null, error, count: null };
+      }
       for (const fila of afectadas) Object.assign(fila, this.payload, { updated_at: new Date().toISOString() });
     } else if (this.operacion === 'delete') {
       const aBorrar = new Set(this.filtros.length ? this.filasFiltradas() : []);

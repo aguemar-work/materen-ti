@@ -16,13 +16,17 @@ const SELECT_CORREO = 'id, plataforma_id, usuario, url, notas, tipo_cuenta, last
 const ORDEN_COLUMNAS = ['usuario', 'tipo_cuenta', 'url', 'notas'];
 const ORDEN_DEFECTO = { columna: 'created_at', ascending: true };
 
-async function queryCorreos({ q = '', tipo = '', orden } = {}, { conteo = false } = {}) {
+// soloRotacion: cuentas con `requiere_rotacion` (la marca el trigger de BD
+// al cerrarse la asignación de un titular, y la limpia updateCorreo cuando
+// se escribe una contraseña nueva).
+async function queryCorreos({ q = '', tipo = '', soloRotacion = false, orden } = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('cuentas')
     .select(SELECT_CORREO, conteo ? { count: 'exact' } : undefined)
     .in('tipo_cuenta', ['reutilizable', 'compartida'])
     .is('deleted_at', null);
   if (tipo) query = query.eq('tipo_cuenta', tipo);
+  if (soloRotacion) query = query.eq('requiere_rotacion', true);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     const { data: plats } = await getClient().database
@@ -40,16 +44,16 @@ async function queryCorreos({ q = '', tipo = '', orden } = {}, { conteo = false 
 // ── Correos Compartidos ──────────────────────────────────────────────────────
 
 export const correosApi = {
-  async listCorreosPage({ pagina = 1, tamPagina = 20, q = '', tipo = '', orden } = {}) {
+  async listCorreosPage({ pagina = 1, tamPagina = 20, q = '', tipo = '', soloRotacion = false, orden } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryCorreos({ q, tipo, orden }, { conteo: true });
+    const { qb } = await queryCorreos({ q, tipo, soloRotacion, orden }, { conteo: true });
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapCorreo), total: count ?? 0 };
   },
 
-  async listCorreosFiltrados({ q = '', tipo = '' } = {}) {
-    const { qb } = await queryCorreos({ q, tipo });
+  async listCorreosFiltrados({ q = '', tipo = '', soloRotacion = false } = {}) {
+    const { qb } = await queryCorreos({ q, tipo, soloRotacion });
     const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapCorreo);
