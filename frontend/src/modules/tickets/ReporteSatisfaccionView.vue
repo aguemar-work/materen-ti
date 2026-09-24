@@ -74,10 +74,6 @@ const respuestasFiltradas = computed(() => {
 const { columna, direccion, ordenarPor, listaOrdenada: respuestasOrdenadas } = useOrdenTabla(respuestasFiltradas, 'created_at', 'desc');
 const { paginaActual, listaPaginada: respuestasPagina, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(respuestasOrdenadas);
 
-// Puente de orden para AppTable (1 asc | -1 desc), mismo patrón que los
-// listados server-side, sobre el orden client-side de useOrdenTabla.
-const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
-
 // KPIs generales del PDF (independientes del buscador/orden de la tabla:
 // siempre sobre el histórico completo, igual que "Todas las respuestas"
 // antes de filtrar).
@@ -371,8 +367,7 @@ onMounted(cargar);
                 :lazy="false"
                 :loading="cargando"
                 :rows="tamPagina"
-                :sort-field="columna || null"
-                :sort-order="sortOrderTabla"
+                :orden="{ columna, direccion }"
                 aria-label="Todas las respuestas de satisfacción"
                 @ordenar="ordenarPor"
               >

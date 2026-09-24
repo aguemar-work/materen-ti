@@ -29,14 +29,6 @@ import { useEsMovil } from '../../composables/useEsMovil.js';
 const store = useCorreosStore();
 const authStore = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-// Orden en la forma que espera AppTable (1 asc | -1 desc | null) — mismo
-// puente que EmpleadosView/LicenciasView.
-const sortFieldTabla = computed(() => ordenColumna.value || null);
-const sortOrderTabla = computed(() => {
-  if (!orden.value) return null;
-  return orden.value.direccion === 'desc' ? -1 : 1;
-});
 const { esMovil } = useEsMovil();
 
 useRealtimeRefresco('cuentas:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
@@ -274,8 +266,7 @@ onMounted(async () => {
               :loading="cargando"
               :total-records="total"
               :rows="store.tamPagina"
-              :sort-field="sortFieldTabla"
-              :sort-order="sortOrderTabla"
+              :orden="orden"
               aria-label="Correos compartidos y reutilizables"
               @ordenar="store.ordenarPor"
             >

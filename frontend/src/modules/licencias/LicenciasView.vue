@@ -34,15 +34,6 @@ import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../com
 const store = useLicenciasStore();
 const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-// Forma que espera AppTable (props nativas de PrimeVue DataTable), derivada
-// de la misma `orden` que ya expone el store — ver AppTable.vue: sortOrder
-// es 1 (asc) | -1 (desc) | null (sin orden), no el string 'asc'/'desc' que
-// usa el store puertas adentro.
-const sortFieldTabla = computed(() => orden.value?.columna ?? null);
-const sortOrderTabla = computed(() => {
-  if (!orden.value) return null;
-  return orden.value.direccion === 'desc' ? -1 : 1;
-});
 
 useRealtimeRefresco('licencias:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
@@ -467,8 +458,7 @@ onMounted(async () => {
               :loading="cargando"
               :total-records="total"
               :rows="store.tamPagina"
-              :sort-field="sortFieldTabla"
-              :sort-order="sortOrderTabla"
+              :orden="orden"
               aria-label="Licencias de software"
               @ordenar="store.ordenarPor"
             >

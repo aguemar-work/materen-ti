@@ -36,15 +36,6 @@ const route = useRoute();
 const store = useEmpleadosStore();
 const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-
-// Orden en la forma que espera AppTable (1 asc | -1 desc | null), derivada
-// de la `orden` del store — mismo puente que LicenciasView/EquiposView.
-const sortFieldTabla = computed(() => ordenColumna.value || null);
-const sortOrderTabla = computed(() => {
-  if (!orden.value) return null;
-  return orden.value.direccion === 'desc' ? -1 : 1;
-});
 
 // Filtro de estado como segmentado (rediseño 2026-09-22): con 3 estados y
 // uno de ellos por defecto, verlos todos a la vista ahorra abrir un select.
@@ -314,8 +305,7 @@ onMounted(async () => {
               :loading="cargando"
               :total-records="total"
               :rows="store.tamPagina"
-              :sort-field="sortFieldTabla"
-              :sort-order="sortOrderTabla"
+              :orden="orden"
               :row-class="() => 'cursor-pointer'"
               aria-label="Inventario de empleados"
               @ordenar="store.ordenarPor"

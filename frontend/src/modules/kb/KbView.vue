@@ -24,14 +24,6 @@ import { useEsMovil } from '../../composables/useEsMovil.js';
 const router = useRouter();
 const store = useKbStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-// Orden en la forma que espera AppTable (1 asc | -1 desc | null) — mismo
-// puente que EmpleadosView.
-const sortFieldTabla = computed(() => ordenColumna.value || null);
-const sortOrderTabla = computed(() => {
-  if (!orden.value) return null;
-  return orden.value.direccion === 'desc' ? -1 : 1;
-});
 const { esMovil } = useEsMovil();
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
@@ -137,8 +129,7 @@ onMounted(async () => {
               :loading="cargando"
               :total-records="total"
               :rows="store.tamPagina"
-              :sort-field="sortFieldTabla"
-              :sort-order="sortOrderTabla"
+              :orden="orden"
               :row-class="() => 'cursor-pointer'"
               aria-label="Artículos de la base de conocimiento"
               @ordenar="store.ordenarPor"

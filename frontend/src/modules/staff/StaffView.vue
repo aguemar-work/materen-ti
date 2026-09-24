@@ -33,11 +33,6 @@ const ROLES = ['ASISTENTE', 'JEFE'];
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
 const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
 
-// Puente de orden hacia AppTable (1 asc | -1 desc | null), mismo patrón que
-// EmpleadosView — acá el orden es client-side (useOrdenTabla).
-const sortFieldTabla = computed(() => columna.value || null);
-const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
-
 const inactivos = computed(() => lista.value.filter((s) => !s.activo).length);
 
 // ── Módulos otorgados, para mostrarlos como chips en la fila ───────────
@@ -294,8 +289,7 @@ onMounted(async () => {
               data-key="user_id"
               :total-records="totalItems"
               :rows="tamPagina"
-              :sort-field="sortFieldTabla"
-              :sort-order="sortOrderTabla"
+              :orden="{ columna, direccion }"
               aria-label="Miembros del staff"
               @ordenar="ordenarPor"
             >

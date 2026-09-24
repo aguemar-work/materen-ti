@@ -40,15 +40,6 @@ import { useVistaModulo } from '../../composables/useVistaModulo.js';
 
 const store = useEquiposStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-// Forma que espera AppTable (props nativas de PrimeVue DataTable) — ver la
-// misma traducción en LicenciasView.vue: sortOrder es 1 (asc) | -1 (desc) |
-// null (sin orden), no el string 'asc'/'desc' que usa el store puertas
-// adentro.
-const sortFieldTabla = computed(() => orden.value?.columna ?? null);
-const sortOrderTabla = computed(() => {
-  if (!orden.value) return null;
-  return orden.value.direccion === 'desc' ? -1 : 1;
-});
 
 // ── Selector Tabla/Tarjetas (FASE 4) — mismo criterio que EmpleadosView:
 // "Lista con avatar" queda pendiente, solo 2 opciones por ahora; mobile
@@ -723,8 +714,7 @@ onMounted(async () => {
               :loading="cargando"
               :total-records="total"
               :rows="store.tamPagina"
-              :sort-field="sortFieldTabla"
-              :sort-order="sortOrderTabla"
+              :orden="orden"
               :row-class="() => 'cursor-pointer'"
               aria-label="Inventario de equipos"
               @ordenar="store.ordenarPor"
@@ -870,7 +860,9 @@ onMounted(async () => {
             <li
               v-for="eq in lista"
               :key="eq.id"
-              class="flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300"
+              class="flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              tabindex="0"
+              @keydown.enter.self="verHoja(eq)"
               @click="verHoja(eq)"
             >
               <div class="flex items-start gap-3">

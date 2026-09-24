@@ -1,7 +1,6 @@
 <script setup>
 // Catálogo de tipos de equipo con sus plantillas: qué specs pide cada
 // tipo y qué accesorios sugiere al registrar/entregar un equipo.
-import { computed } from 'vue';
 import { useTiposEquipoStore } from '../../stores/catalogos.js';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { slugDe } from '../../core/utils.js';
@@ -65,11 +64,6 @@ const {
 
 const { esMovil } = useEsMovil();
 
-// Puente de orden para AppTable (1 asc | -1 desc | null), mismo patrón que
-// EmpleadosView (sortFieldTabla/sortOrderTabla).
-const sortFieldTabla = computed(() => columna.value || null);
-const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
-
 // Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
 function accionesDe(fila) {
   return [
@@ -117,8 +111,7 @@ const infoErrorForm = infoNotificacion('error');
           :loading="cargando"
           :total-records="totalItems"
           :rows="tamPagina"
-          :sort-field="sortFieldTabla"
-          :sort-order="sortOrderTabla"
+          :orden="{ columna, direccion }"
           aria-label="Tipos de equipo"
           @ordenar="ordenarPor"
         >

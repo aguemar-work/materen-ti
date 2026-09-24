@@ -3,7 +3,6 @@
 // usado por Equipos para asignar equipos y por Empleados para su ubicación
 // — independiente de areas_obras (función/asignación laboral, ver
 // AreasObrasPanel.vue), desde la migración 059.
-import { computed } from 'vue';
 import { useUbicacionesStore } from '../../stores/catalogos.js';
 import { badgeInfo } from '../../core/badges.js';
 import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
@@ -49,11 +48,6 @@ const {
 });
 
 const { esMovil } = useEsMovil();
-
-// Puente de orden para AppTable (1 asc | -1 desc | null), mismo patrón que
-// EmpleadosView (sortFieldTabla/sortOrderTabla).
-const sortFieldTabla = computed(() => columna.value || null);
-const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
 
 // Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
 function accionesDe(fila) {
@@ -101,8 +95,7 @@ const campoDescripcion = useCampoAccesible();
           :loading="cargando"
           :total-records="totalItems"
           :rows="tamPagina"
-          :sort-field="sortFieldTabla"
-          :sort-order="sortOrderTabla"
+          :orden="{ columna, direccion }"
           aria-label="Ubicaciones"
           @ordenar="ordenarPor"
         >

@@ -2,7 +2,6 @@
 // Catálogo de áreas/obras: puramente funcional (migración 059) — dónde
 // trabaja cada empleado en términos de función/asignación laboral, sin
 // relación con su ubicación física (ver UbicacionesPanel.vue, independiente).
-import { computed } from 'vue';
 import { useAreasObrasStore } from '../../stores/catalogos.js';
 import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
@@ -38,11 +37,6 @@ const {
 });
 
 const { esMovil } = useEsMovil();
-
-// Puente de orden para AppTable (1 asc | -1 desc | null), mismo patrón que
-// EmpleadosView (sortFieldTabla/sortOrderTabla).
-const sortFieldTabla = computed(() => columna.value || null);
-const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
 
 // Acciones de fila en el menú ⋮ (rediseño 2026-09-23).
 function accionesDe(fila) {
@@ -91,8 +85,7 @@ const infoErrorForm = infoNotificacion('error');
           :loading="cargando"
           :total-records="totalItems"
           :rows="tamPagina"
-          :sort-field="sortFieldTabla"
-          :sort-order="sortOrderTabla"
+          :orden="{ columna, direccion }"
           aria-label="Áreas/Obras"
           @ordenar="ordenarPor"
         >

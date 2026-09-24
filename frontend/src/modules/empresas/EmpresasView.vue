@@ -47,11 +47,6 @@ const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } =
 
 const { esMovil } = useEsMovil();
 
-// Puente de orden para AppTable (1 asc | -1 desc | null), mismo patrón que
-// EmpleadosView (sortFieldTabla/sortOrderTabla).
-const sortFieldTabla = computed(() => columna.value || null);
-const sortOrderTabla = computed(() => (columna.value ? (direccion.value === 'desc' ? -1 : 1) : null));
-
 // Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
 function accionesDe(fila) {
   return [
@@ -178,8 +173,7 @@ onMounted(async () => {
           :loading="cargando"
           :total-records="totalItems"
           :rows="tamPagina"
-          :sort-field="sortFieldTabla"
-          :sort-order="sortOrderTabla"
+          :orden="{ columna, direccion }"
           aria-label="Empresas registradas"
           @ordenar="ordenarPor"
         >

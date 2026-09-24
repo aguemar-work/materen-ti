@@ -28,14 +28,6 @@ const store = useProblemasStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const { esMovil } = useEsMovil();
 
-// Orden en la forma que espera AppTable (1 asc | -1 desc | null), derivada
-// de la `orden` del store — mismo puente que EmpleadosView.
-const sortFieldTabla = computed(() => orden.value?.columna || null);
-const sortOrderTabla = computed(() => {
-  if (!orden.value) return null;
-  return orden.value.direccion === 'desc' ? -1 : 1;
-});
-
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
 const filtroEstado = ref('');
 const filtroSeveridad = ref('');
@@ -148,8 +140,7 @@ onMounted(async () => {
               :loading="cargando"
               :total-records="total"
               :rows="store.tamPagina"
-              :sort-field="sortFieldTabla"
-              :sort-order="sortOrderTabla"
+              :orden="orden"
               :row-class="() => 'cursor-pointer'"
               aria-label="Problemas"
               @ordenar="store.ordenarPor"

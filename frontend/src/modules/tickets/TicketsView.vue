@@ -38,13 +38,6 @@ const route = useRoute();
 const store = useTicketsStore();
 const auth = useAuthStore();
 const { lista, total, cargando, cargandoMas, error, orden, vistaActiva } = storeToRefs(store);
-// Forma que espera AppTable (props nativas de PrimeVue DataTable) — misma
-// traducción que Licencias/Equipos/Empleados.
-const sortFieldTabla = computed(() => orden.value?.columna ?? null);
-const sortOrderTabla = computed(() => {
-  if (!orden.value) return null;
-  return orden.value.direccion === 'desc' ? -1 : 1;
-});
 
 const { esMovil } = useEsMovil();
 
@@ -698,8 +691,7 @@ onMounted(async () => {
                 :loading="cargando"
                 :total-records="total"
                 :rows="store.tamPagina"
-                :sort-field="sortFieldTabla"
-                :sort-order="sortOrderTabla"
+                :orden="orden"
                 :row-class="claseFilaTicket"
                 :row-attrs="filaAtributosTicket"
                 :table-props="{ 'aria-label': 'Tickets de soporte' }"
