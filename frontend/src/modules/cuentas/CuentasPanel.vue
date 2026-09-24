@@ -12,12 +12,12 @@ import { badgeInfo } from '../../core/badges.js';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppSeccion from '../../components/ui/AppSeccion.vue';
+import AppTag from '../../components/ui/AppTag.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import CuentaForm from './CuentaForm.vue';
 import Modal from '../../components/shared/Modal.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import { rolDeTag } from '../../core/tagRol.js';
 import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
 
 const props = defineProps({
@@ -120,9 +120,9 @@ const modalHistorial = ref(null);
 
 // El revelado de una credencial (petición a la edge function
 // `credenciales`, auditoría en accesos_log con el motivo, cuenta regresiva
-// de 8 segundos y ocultado automático) vive en CarbonPasswordReveal.vue
-// desde el 2026-09-02. Este panel solo declara QUÉ credencial se revela y
-// si el usuario puede (ver puedeRevelar/motivoBloqueo arriba).
+// de 8 segundos y ocultado automático) vive en composables/useRevelado.js
+// (ver revelarDe arriba). Este panel solo declara QUÉ credencial se revela
+// y si el usuario puede (ver puedeRevelar/motivoBloqueo arriba).
 
 function abrirNueva() {
   cuentaEditar.value = null;
@@ -324,14 +324,12 @@ onMounted(async () => {
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2 text-sm">
               <span class="font-medium text-gray-900">{{ cuenta.plataforma_nombre }}</span>
-              <span
+              <AppTag
                 v-if="cuenta.requiere_rotacion"
-                class="tag"
-                :class="`tag--${rolDeTag('warning')}`"
+                tono="warning"
+                icono="ti ti-alert-triangle"
                 title="Un titular anterior dejó esta cuenta y la contraseña no se ha cambiado"
-              >
-                <i class="ti ti-alert-triangle" aria-hidden="true"></i> Rotar contraseña
-              </span>
+              >Rotar contraseña</AppTag>
             </div>
             <div class="truncate text-xs text-gray-500">
               {{ cuenta.usuario }}
@@ -410,14 +408,14 @@ onMounted(async () => {
       <i class="ti ti-transfer" aria-hidden="true"></i> Traspasar cuenta
     </template>
 
-    <div class="modal-body-inner">
-      <p class="traspaso-info">
-        <strong>{{ cuentaTraspaso?.plataforma_nombre }}</strong> — {{ cuentaTraspaso?.usuario }}
+    <div class="space-y-4">
+      <p class="text-sm text-gray-600">
+        <strong class="font-semibold text-gray-900">{{ cuentaTraspaso?.plataforma_nombre }}</strong> — {{ cuentaTraspaso?.usuario }}
       </p>
-      <div v-if="cargandoTraspaso" class="no-results">Cargando empleados...</div>
+      <p v-if="cargandoTraspaso" class="py-6 text-center text-sm text-gray-500" role="status">Cargando empleados...</p>
       <template v-else>
-        <div class="form-group">
-          <label for="tr-empleado">Asignar a *</label>
+        <div class="campo">
+          <label class="campo__etiqueta" for="tr-empleado">Asignar a<span aria-hidden="true"> *</span></label>
           <BuscadorCombo
             id="tr-empleado"
             v-model="nuevoEmpleadoId"
@@ -450,11 +448,13 @@ onMounted(async () => {
     </div>
 
     <template #acciones>
-      <button type="button" class="btn btn--secondary" :disabled="guardandoTraspaso" @click="cerrarTraspaso">Cancelar</button>
-      <button type="button" class="btn btn--primary" :disabled="guardandoTraspaso || !nuevoEmpleadoId" @click="confirmarTraspaso">
-        {{ guardandoTraspaso ? 'Traspasando...' : 'Traspasar' }}
-        <i v-if="guardandoTraspaso" class="ti ti-loader-2" aria-hidden="true"></i>
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardandoTraspaso" @click="cerrarTraspaso" />
+      <AppButton
+        :label="guardandoTraspaso ? 'Traspasando...' : 'Traspasar'"
+        :loading="guardandoTraspaso"
+        :disabled="!nuevoEmpleadoId"
+        @click="confirmarTraspaso"
+      />
     </template>
   </Modal>
 
@@ -469,27 +469,42 @@ onMounted(async () => {
       <i class="ti ti-history" aria-hidden="true"></i> Historial — {{ cuentaHistorial?.plataforma_nombre }}
     </template>
 
-    <div class="modal-body-inner">
-      <p class="traspaso-info">{{ cuentaHistorial?.usuario }}</p>
-      <div v-if="cargandoHistorial" class="no-results">Cargando historial...</div>
-      <div v-else-if="historialItems.length === 0" class="no-results">Sin historial registrado.</div>
-      <div v-else class="timeline">
-        <div v-for="h in historialItems" :key="h.id" class="timeline-item">
-          <span class="timeline-dot" :class="h.activa ? 'timeline-dot--active' : 'timeline-dot--closed'"></span>
-          <div class="timeline-content">
-            <div class="timeline-title">
-              <RouterLink v-if="h.empleado_id" class="empleado-link" :to="`/empleados/${h.empleado_id}`">{{ h.empleado_nombre }}</RouterLink>
+    <div class="space-y-4">
+      <p class="text-sm text-gray-600">{{ cuentaHistorial?.usuario }}</p>
+      <p v-if="cargandoHistorial" class="py-6 text-center text-sm text-gray-500" role="status">Cargando historial...</p>
+      <p v-else-if="historialItems.length === 0" class="py-6 text-center text-sm text-gray-500">Sin historial registrado.</p>
+      <!-- Línea de tiempo: punto verde = asignación activa, gris = cerrada;
+           la línea vertical une cada punto con el siguiente. -->
+      <ol v-else class="flex flex-col" aria-label="Historial de asignaciones">
+        <li v-for="(h, i) in historialItems" :key="h.id" class="relative flex gap-3 pb-4 last:pb-0">
+          <span
+            v-if="i < historialItems.length - 1"
+            class="absolute bottom-0 left-[5px] top-5 w-px bg-gray-200"
+            aria-hidden="true"
+          ></span>
+          <span
+            class="mt-1 h-[11px] w-[11px] shrink-0 rounded-full"
+            :class="h.activa ? 'bg-green-500' : 'bg-gray-300'"
+            aria-hidden="true"
+          ></span>
+          <div class="min-w-0 flex-1 text-sm">
+            <div class="flex flex-wrap items-center gap-1.5 font-medium text-gray-900">
+              <RouterLink
+                v-if="h.empleado_id"
+                class="rounded-sm text-inherit no-underline hover:text-primary-600 hover:underline focus-visible:text-primary-600 focus-visible:underline focus-visible:outline-none"
+                :to="`/empleados/${h.empleado_id}`"
+              >{{ h.empleado_nombre }}</RouterLink>
               <template v-else>{{ h.empleado_nombre }}</template>
-              <span v-if="h.activa" class="tag badge-inline" :class="`tag--${rolDeTag('success')}`">Activa</span>
+              <AppTag v-if="h.activa" tono="success">Activa</AppTag>
             </div>
-            <div class="timeline-meta">
+            <div class="mt-0.5 text-xs text-gray-500">
               Desde {{ formatFecha(h.fecha_inicio) }}
               <template v-if="h.fecha_fin"> · hasta {{ formatFecha(h.fecha_fin) }}</template>
             </div>
-            <div v-if="h.notas" class="timeline-notas">{{ h.notas }}</div>
+            <div v-if="h.notas" class="mt-1 text-xs italic text-gray-500">{{ h.notas }}</div>
           </div>
-        </div>
-      </div>
+        </li>
+      </ol>
     </div>
   </Modal>
 

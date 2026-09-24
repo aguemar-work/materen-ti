@@ -6,8 +6,8 @@
    con @theme. */
 
 @import "tailwindcss";
-/* Vocabulario de clases compartido por las vistas (ver su cabecera) y
-   estilos propios de cada módulo. */
+/* Primitivas oficiales en CSS (campos, avisos, modal, combo, revelado):
+   ver su cabecera y docs/SISTEMA-DISENO.md §3. */
 @import "./componentes.css";
 
 @theme {
@@ -63,4 +63,53 @@
     line-height: 1;
     vertical-align: -0.125em;
   }
+
+  /* ── Elementos nativos fuera de PrimeVue ───────────────────────────
+     Se mudaron acá desde styles/componentes.css el 2026-09-24 (poda de la
+     capa provisional): son estilos de ELEMENTO, no clases de componente. */
+  h1, h2, h3, h4 { @apply text-gray-900; }
+
+  label { @apply text-sm font-medium text-gray-700; }
+
+  /* select/fecha nativos. Los de `.campo` tienen su propia caja, y los que
+     arma un wrapper de components/ui/ se marcan con `data-ui`. */
+  select:not(.campo__control):not([data-ui]),
+  input[type="date"]:not(.campo__control),
+  input[type="time"]:not(.campo__control),
+  input[type="datetime-local"]:not(.campo__control) {
+    @apply h-9 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900
+      transition-colors duration-150
+      focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500
+      disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400;
+  }
+  select:not(.campo__control):not([data-ui]) {
+    @apply cursor-pointer appearance-none pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px;
+  }
+
+  input[type="checkbox"]:not([data-pc-section]),
+  input[type="radio"]:not([data-pc-section]) {
+    @apply h-4 w-4 cursor-pointer accent-primary-500;
+  }
+
+  a:not([class]) { @apply text-primary-600 hover:text-primary-700; }
+
+  /* Tablas nativas (ej. la grilla de corrección de ImportarEquiposView).
+     La de AppTable (PrimeVue, data-pc-section) se pinta desde su preset
+     pt/ — no se toca desde acá. */
+  table:not([data-pc-section]) {
+    @apply w-full border-separate border-spacing-0 text-sm;
+  }
+  table:not([data-pc-section]) th {
+    @apply whitespace-nowrap border-b border-gray-200 bg-white px-4 py-2.5 text-left text-sm font-medium text-gray-600;
+  }
+  table:not([data-pc-section]) td {
+    @apply border-b border-gray-100 px-4 py-2.5 align-middle text-gray-800;
+  }
+  table:not([data-pc-section]) tbody tr:hover td,
+  table:not([data-pc-section]) tbody tr:focus-within td { @apply bg-slate-50; }
+  table:not([data-pc-section]) tbody tr:last-child td { @apply border-b-0; }
 }

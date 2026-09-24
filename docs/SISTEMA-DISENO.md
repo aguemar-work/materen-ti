@@ -72,32 +72,52 @@ una decisión para pedir, no para completar.
 | `AppListaDatos` | Pares etiqueta/valor | `datos` [{label,valor,mono?}], `columnas` (1/2); slot `valor-<i>` |
 | `AppKpi` | Indicador con cifra | `label`, `valor`, `detalle`, `icono`, `tono`, `to` (enlace al listado que explica la cifra) |
 | `AppVacio` | Estado vacío | `titulo`, `mensaje`, `icono`, `variante` (pagina/seccion); slot = acción |
-| `AppTag` | Tag suelto | `tono`, `icono`, `punto` |
+| `AppTag` | Todo tag/pastilla (único render de tag del sistema) | `tono` (neutral/success/warning/danger/info/purple/sky/teal), `icono`, `punto` |
 | `AppAvatar` | Iniciales con tono estable | `nombre`, `tamano` (sm/md/lg/xl) |
 | `AppDialog` | Modal de formulario sobre PrimeVue | ver su cabecera |
 | `AppMenu` (vía `components/shared/MenuAcciones.vue`) | Menú ⋮ | `acciones` [{icono,label,onClick,danger?,disabled?,visible?,separador?}] |
 
 Componentes compartidos que siguen vigentes: `BadgeEstado` (estados del
-dominio, tono desde `core/badges.js`), `MenuAcciones`, `ConfirmDialog`,
-`Modal` (formularios existentes), `SelectorVista`, `BuscadorCombo`.
+dominio: el tono sale de `core/badges.js` → `core/tagRol.js` y el render es
+`AppTag` por dentro — un solo look de tag en todo el sistema),
+`MenuAcciones`, `ConfirmDialog`, `Modal` (formularios existentes),
+`SelectorVista`, `BuscadorCombo`.
+
+Tags: un estado del dominio va con `BadgeEstado`; cualquier otro tag, con
+`AppTag` (si el tono viene de un `core/dominio-*.js`, pasarlo por
+`rolDeTag()`). No se escriben tags a mano con clases.
 
 ### Primitivas en CSS (`styles/componentes.css`, capa `components`)
-Se mantienen como **oficiales** (no se migran a componentes: ya son
-consistentes y están en ~120 lugares):
+Desde la poda del 2026-09-24 ya **no hay capa provisional**: todo lo que
+queda en `componentes.css` es oficial, y cada selector tiene consumidores
+reales. Son primitivas que no ganan nada convirtiéndose en componente
+(marcado repetido en decenas de formularios) o cuyo marcado está atado a
+otra pieza:
 - **Campos de formulario**: `.campo`, `.campo__etiqueta`, `.campo__caja`,
   `.campo__control` (`--select`, `--area`), `.campo__adorno`, `.campo__pie`,
-  `.campo--invalido`, `.campo--inerte`; grilla `.form-grid` (+ `.full`).
-- **Modal** (`components/shared/Modal.vue`): `.modal-*`.
-- **Tags de estado**: `.tag--*` / `.cds-tag--*` (los usa `BadgeEstado`).
-- **Avisos inline**: `.notif`, `.notif--{danger,success,warning,info}`.
-- **Revelado de contraseñas**: `.cred*` — su marcado NO se toca (lo audita
-  `useRevelado`).
+  `.campo--invalido`, `.campo--inerte`; grilla `.form-grid` (+ `.full`) y
+  rótulo de sección `.section-label`.
+- **Avisos inline**: `.notif`, `.notif--{danger,success,warning,info}`,
+  `.notif--inline`, `.notif__texto`/`__titulo`/`__detalle`/`__cerrar`.
 - **Botón solo-ícono**: `.icon-btn` (+ `.danger`).
+- **Atadas a un componente** (se tocan solo junto con él): `.modal-*` y las
+  transiciones `modal-anim*` (`Modal.vue`), `.combo-*` (`BuscadorCombo`,
+  que dibuja su propia caja de input), `.selector-vista*` (`SelectorVista`),
+  `.solo-escritorio` (oculta `SelectorVista` a < 768px).
+- **Revelado de contraseñas**: `.cred*` — su marcado NO se toca (lo audita
+  `useRevelado`). `.cred__segundos`/`.cred__barra` hoy no tienen marcado
+  que las use; se conservan a propósito junto al resto del bloque.
 
-El resto de `componentes.css` (`.vista-modulo`, `.page`, `.card--fill`,
-`.filters`, `.site-header`, tabla nativa, `.paginacion`, `.tarjeta-fila`,
-`.btn`...) es **provisional**: existe para que las vistas no rediseñadas no
-se vean sin estilos, y se borra cuando la última vista deja de usarlo.
+Los estilos de **elementos nativos** (`select`, inputs de fecha, checkbox,
+`label`, `a` sin clase, tabla nativa como la de `ImportarEquiposView`)
+viven en la capa `base` de `styles/main.css`, no acá.
+
+Una clase nueva en `componentes.css` es una decisión de sistema, no un
+atajo: lo propio de una vista va con utilidades de Tailwind en su
+plantilla. Todo el vocabulario heredado de Carbon (`.btn*`, `.card*`,
+`.tag*`/`.cds-tag*`, `.page`, `.filters`, `.paginacion__*`,
+`.tarjeta-fila*`, `.timeline*`, `.avatar*`, `.form-group`...) se borró: no
+reintroducirlo.
 
 ## 4. Recetas de página
 

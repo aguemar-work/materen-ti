@@ -1,24 +1,27 @@
 <script setup>
-// Badge semántico por dominio. Resuelve QUÉ color le toca a un valor
-// ("ticket cerrado" → neutral) y delega el render en CarbonTag.
+// Badge semántico por dominio. Resuelve QUÉ tono le toca a un valor
+// ("ticket cerrado" → neutral) y delega el render en components/ui/AppTag.vue.
 //
 // La división es a propósito y es la misma de toda la capa de diseño: acá
 // vive el conocimiento de DOMINIO (vía core/badges.js → core/dominio-*.js),
-// allá el de PRESENTACIÓN. Por eso este componente no tiene ni una regla de
-// estilo: si un tag tiene que verse distinto, se cambia en CarbonTag y
-// cambia en todos lados; si un estado tiene que significar otro color, se
-// cambia en su core/dominio-*.js.
+// en AppTag el de PRESENTACIÓN. Por eso este componente no tiene ni una
+// regla de estilo: si un tag tiene que verse distinto, se cambia en AppTag y
+// cambia en todos lados (BadgeEstado y los tags sueltos de cada vista); si
+// un estado tiene que significar otro color, se cambia en su
+// core/dominio-*.js.
 //
-// Delegó a CarbonTag el 2026-09-02 (antes escribía `.badge` de main.css).
-// Dos cambios que trae:
-//   · `status` pasa a ser el `punto` de CarbonTag, que usa el color SÓLIDO
-//     de soporte de Carbon en vez del `currentColor` de `.status` — el
-//     punto pesa más que el texto y se ve antes en una tabla densa.
+// Historia corta: hasta el 2026-09-24 pintaba clases heredadas de Carbon
+// (`.cds-tag--<rol>`) definidas en styles/componentes.css — un segundo
+// sistema de tags en paralelo a AppTag, con los mismos colores escritos dos
+// veces. Ahora hay uno solo. API pública sin cambios (`tipo`, `valor`,
+// `status`, fallthrough de `class`).
+//
+//   · `status` es el `punto` de AppTag (estado "vivo": Activo/Inactivo...).
 //   · Un valor que su dominio no conoce (los fallbacks `clase: ''` de
-//     dominio-equipos y dominio-accesos-sensibles) ahora cae a `neutral` en
-//     vez de renderizar un badge sin fondo. Un estado desconocido era el
-//     único que no se veía como un estado.
+//     dominio-equipos y dominio-accesos-sensibles) cae a `neutral`: un
+//     estado desconocido tiene que seguir viéndose como un estado.
 import { computed } from 'vue';
+import AppTag from '../ui/AppTag.vue';
 import { badgeInfo } from '../../core/badges.js';
 import { rolDeTag } from '../../core/tagRol.js';
 
@@ -30,16 +33,23 @@ const props = defineProps({
   valor: { type: [String, Boolean], default: '' },
   /** Punto de estado "vivo" (Activo/Inactivo/Suspendido, requiere rotación). */
   status: { type: Boolean, default: false },
-  // El prop `inline` se retiró el 2026-09-02: no lo usaba NADIE (los 8 sitios
-  // que quieren el tag dentro de una línea de texto escriben
-  // `class="badge-inline"` directo, que ahora sí existe en main.css). Un prop
-  // sin un solo consumidor es API que hay que mantener sin que nadie la pida.
 });
 
+// Rol del dominio (`badge--success` → 'success') → tono de AppTag. Los
+// nombres coinciden 1:1; `accent` era un alias histórico de `info` (mismos
+// colores) y cualquier rol que AppTag no conozca degrada a `neutral` en vez
+// de disparar el validador del prop.
+const TONOS_APPTAG = new Set(['neutral', 'success', 'warning', 'danger', 'info', 'purple', 'sky', 'teal']);
+const ALIAS = { accent: 'info' };
+
 const info = computed(() => badgeInfo(props.tipo, props.valor));
-const rol = computed(() => rolDeTag(info.value.clase));
+const tono = computed(() => {
+  const rol = rolDeTag(info.value.clase);
+  const normalizado = ALIAS[rol] ?? rol;
+  return TONOS_APPTAG.has(normalizado) ? normalizado : 'neutral';
+});
 </script>
 
 <template>
-  <span class="cds-tag" :class="[`cds-tag--${rol}`, { 'cds-tag--punto': status }]"><span v-if="status" class="cds-tag__punto" aria-hidden="true"></span>{{ info.label }}</span>
+  <AppTag :tono="tono" :punto="status">{{ info.label }}</AppTag>
 </template>

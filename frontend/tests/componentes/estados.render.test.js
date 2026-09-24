@@ -9,6 +9,7 @@ import { mount } from '@vue/test-utils';
 import BadgeEstado from '../../src/components/shared/BadgeEstado.vue';
 import AppVacio from '../../src/components/ui/AppVacio.vue';
 import AppPaginacion from '../../src/components/ui/AppPaginacion.vue';
+import AppTag from '../../src/components/ui/AppTag.vue';
 import { badgeInfo } from '../../src/core/badges.js';
 
 describe('AppVacio.vue', () => {
@@ -86,26 +87,52 @@ describe('AppPaginacion.vue', () => {
 });
 
 describe('BadgeEstado.vue', () => {
-  // Delega el render en CarbonTag desde el 2026-09-02, asi que lo que se
-  // verifica aca es el contrato de DOMINIO: que el label y el color salgan
-  // de badgeInfo() sin reinterpretarse. La presentacion (geometria, par de
-  // color, punto) se verifica en carbon.render.test.js, no dos veces.
-  it('aplica el label y la variante que devuelve badgeInfo, sin reinterpretarlos', () => {
+  // Delega el render en AppTag desde el 2026-09-24 (antes pintaba clases
+  // heredadas de Carbon), asi que lo que se verifica aca es el contrato de
+  // DOMINIO: que el label y el tono salgan de badgeInfo() sin
+  // reinterpretarse. La presentacion (par de colores de cada tono) es de
+  // AppTag, no se verifica dos veces.
+  const tagDe = (w) => w.findComponent(AppTag);
+  // El punto de AppTag: el unico hijo decorativo redondo del tag.
+  const puntoDe = (w) => w.find('span[aria-hidden="true"].rounded-full');
+
+  it('aplica el label y el tono que devuelve badgeInfo, sin reinterpretarlos', () => {
     const esperado = badgeInfo('empleado', 'Activo');
     const w = mount(BadgeEstado, { props: { tipo: 'empleado', valor: 'Activo' } });
     expect(w.text()).toBe(esperado.label);
-    expect(w.classes()).toContain('cds-tag');
-    // badgeInfo devuelve 'badge--success'; CarbonTag lo normaliza al rol.
-    expect(w.classes()).toContain(`cds-tag--${esperado.clase.replace('badge--', '')}`);
+    expect(tagDe(w).exists()).toBe(true);
+    // badgeInfo devuelve 'badge--success'; rolDeTag lo normaliza al tono.
+    expect(esperado.clase).toBe('badge--success');
+    expect(tagDe(w).props('tono')).toBe(esperado.clase.replace('badge--', ''));
+  });
+
+  it('cada rol de dominio llega a AppTag con su mismo nombre de tono', () => {
+    // Un tono por cada familia que usan los core/dominio-*.js: si un rol
+    // dejara de mapear, ese estado se veria gris sin que nada avisara.
+    const casos = [
+      ['ticket', 'cerrado'],
+      ['empleado', 'Activo'],
+      ['empleado', 'Suspendido'],
+      ['prioridad', 'urgente'],
+      ['prioridad', 'baja'],
+    ];
+    for (const [tipo, valor] of casos) {
+      const rol = badgeInfo(tipo, valor).clase.replace('badge--', '') || 'neutral';
+      const w = mount(BadgeEstado, { props: { tipo, valor } });
+      expect(tagDe(w).props('tono')).toBe(rol);
+    }
   });
 
   it('`status` es el punto de estado vivo, no un reemplazo del tag', () => {
     const w = mount(BadgeEstado, { props: { tipo: 'empleado', valor: 'Activo', status: true } });
-    expect(w.classes()).toContain('cds-tag');
-    expect(w.find('.cds-tag__punto').exists()).toBe(true);
+    expect(tagDe(w).props('punto')).toBe(true);
+    expect(puntoDe(w).exists()).toBe(true);
+    // El punto acompaña al texto, no lo reemplaza.
+    expect(w.text()).toBe(badgeInfo('empleado', 'Activo').label);
 
     const sin = mount(BadgeEstado, { props: { tipo: 'empleado', valor: 'Activo' } });
-    expect(sin.find('.cds-tag__punto').exists()).toBe(false);
+    expect(tagDe(sin).props('punto')).toBe(false);
+    expect(puntoDe(sin).exists()).toBe(false);
   });
 
   it('un valor desconocido degrada a neutral, no rompe el render', () => {
@@ -116,18 +143,19 @@ describe('BadgeEstado.vue', () => {
     const w = mount(BadgeEstado, { props: { tipo: 'situacion', valor: 'SituacionQueNoExiste' } });
     expect(w.exists()).toBe(true);
     expect(badgeInfo('situacion', 'SituacionQueNoExiste').clase).toBe('');
-    expect(w.classes()).toContain('cds-tag--neutral');
+    expect(tagDe(w).props('tono')).toBe('neutral');
     expect(w.text()).toBe('SituacionQueNoExiste');
   });
 
   it('una clase pasada desde la vista llega al tag (fallthrough de atributos)', () => {
-    // TicketDetalleView pasa `class="badge-inline"` para meterlo en una
+    // Una vista puede pasar una clase (ej. margen) para acomodarlo en una
     // linea de texto; con un solo nodo raiz eso tiene que caer en el tag.
     const w = mount(BadgeEstado, {
       props: { tipo: 'ticket', valor: 'abierto' },
-      attrs: { class: 'badge-inline' },
+      attrs: { class: 'ml-1.5' },
     });
-    expect(w.classes()).toContain('cds-tag');
-    expect(w.classes()).toContain('badge-inline');
+    expect(w.element.tagName).toBe('SPAN');
+    expect(w.classes()).toContain('ml-1.5');
+    expect(w.text()).toBe(badgeInfo('ticket', 'abierto').label);
   });
 });

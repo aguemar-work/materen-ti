@@ -23,6 +23,14 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-24** (**Un solo tag y poda de CSS**) — `BadgeEstado` renderiza
+  con `AppTag` (API sin cambios; fuera los tags `.tag--*` a mano y las
+  clases `cds-tag` de Carbon). `styles/componentes.css`: 193 de 268
+  selectores sin consumidores borrados; queda solo la capa de primitivas
+  oficiales, y los estilos de elementos nativos pasan a la capa `base` de
+  `main.css`. `CuentasPanel` migrado a `AppButton`/`AppTag`/Tailwind sin
+  cambios de lógica. `AppSeccion`: las acciones de la cabecera pasan a otra
+  línea en móvil (se salían de la card a 375px). `SISTEMA-DISENO.md` §3.
 - **2026-09-24** (**Contraste y tema**) — 137 textos informativos pasan de
   `text-gray-400` (2,5:1) a `text-gray-500` (4,6:1, cumple WCAG AA);
   `gray-400`/`gray-300` quedan solo para íconos decorativos y estados

@@ -3,6 +3,9 @@
 // Para estados de dominio con su propio mapa (empleado, ticket, situación de
 // equipo...) seguir usando components/shared/BadgeEstado.vue, que resuelve
 // el tono desde core/badges.js. Este es para tags sueltos de una vista.
+// Es además el ÚNICO render de tag del sistema: BadgeEstado se dibuja con
+// este componente por dentro (desde el 2026-09-24 no quedan clases `.tag`/
+// `.cds-tag` en styles/componentes.css). Un cambio de look va acá.
 defineProps({
   tono: {
     type: String,

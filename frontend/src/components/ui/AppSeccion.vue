@@ -28,7 +28,7 @@ const idTitulo = useId();
         </h2>
         <p v-if="descripcion" class="mt-0.5 text-xs text-gray-500">{{ descripcion }}</p>
       </div>
-      <div v-if="$slots.acciones" class="flex items-center gap-1">
+      <div v-if="$slots.acciones" class="flex min-w-0 flex-wrap items-center gap-1">
         <slot name="acciones" />
       </div>
     </div>

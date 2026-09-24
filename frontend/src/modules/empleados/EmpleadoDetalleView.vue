@@ -17,6 +17,7 @@ import { formatFecha, formatTelefono, fechaLocalISO } from '../../core/formatter
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import { rolDeTag } from '../../core/tagRol.js';
 import AppButton from '../../components/ui/AppButton.vue';
+import AppTag from '../../components/ui/AppTag.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppSeccion from '../../components/ui/AppSeccion.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
@@ -428,11 +429,10 @@ onMounted(cargar);
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2 text-sm">
                     <span class="font-medium text-gray-900">{{ lic.software }}</span>
-                    <span
+                    <AppTag
                       v-if="vencimientoLicencia(lic)"
-                      class="tag"
-                      :class="`tag--${rolDeTag(vencimientoLicencia(lic).clase)}`"
-                    >{{ vencimientoLicencia(lic).texto }}</span>
+                      :tono="rolDeTag(vencimientoLicencia(lic).clase)"
+                    >{{ vencimientoLicencia(lic).texto }}</AppTag>
                   </div>
                   <div class="text-xs text-gray-500">
                     Desde {{ formatFecha(lic.fecha_inicio) }}
