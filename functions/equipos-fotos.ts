@@ -33,8 +33,10 @@ const ORIGENES_PERMITIDOS = new Set([
   'http://localhost:4173',
 ]);
 
-let CORS: Record<string, string> = {};
-
+// Cabeceras CORS calculadas POR PETICIÓN (Ciclo 20): antes vivían en un
+// `let CORS` global de módulo, reasignado al entrar cada petición — con
+// peticiones concurrentes en el mismo isolate, una podía pisar el valor de
+// otra entre dos `await`. Mismo cambio en las 4 edge functions.
 function corsPara(origin: string | null): Record<string, string> {
   if (!origin || !ORIGENES_PERMITIDOS.has(origin)) return {};
   return {
@@ -45,10 +47,10 @@ function corsPara(origin: string | null): Record<string, string> {
   };
 }
 
-function json(body: unknown, status = 200): Response {
+function respuesta(cors: Record<string, string>, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
 
@@ -84,9 +86,23 @@ const MIME_POR_EXT: Record<string, string> = {
   jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
 };
 
+// Envoltorio de primer nivel (Ciclo 20): toda excepción no controlada
+// termina en { ok:false, code:'error_interno' } (500) con las cabeceras CORS
+// de esta petición, en vez de un 500 opaco sin CORS. Al log solo va el
+// mensaje, nunca el contenido base64 de la foto.
 export default async function (req: Request): Promise<Response> {
-  CORS = corsPara(req.headers.get('Origin'));
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  const cors = corsPara(req.headers.get('Origin'));
+  try {
+    return await manejar(req, cors);
+  } catch (e) {
+    console.error('[equipos-fotos] error no controlado:', e instanceof Error ? e.message : String(e));
+    return respuesta(cors, { ok: false, code: 'error_interno' }, 500);
+  }
+}
+
+async function manejar(req: Request, cors: Record<string, string>): Promise<Response> {
+  const json = (body: unknown, status = 200) => respuesta(cors, body, status);
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ ok: false, code: 'metodo_invalido' }, 405);
 
   let body: Record<string, unknown>;

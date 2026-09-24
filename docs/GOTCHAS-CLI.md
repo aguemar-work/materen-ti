@@ -40,15 +40,22 @@ caso antes de elegir el workaround:
 | Gotcha | Cuándo aparece | Workaround |
 | --- | --- | --- |
 | Límite de línea de comandos (031, jul 2026) | DDL rechazado con `Query could not be parsed...` | `db import <archivo.sql>`, partido por concepto |
-| Dollar-quoting (038, 2026-08-05) | `create function` / `do $$ ... $$` → `{"error":"no language specified"}` | `db import`, nunca `db query` ni `apply-migration.mjs` |
-| `ENAMETOOLONG` de PowerShell (062, 2026-08-17) | Archivos de varios KB vía `apply-migration.mjs` | `db query "<sql>"` directo, en lotes, cada SQL en una línea |
+| Dollar-quoting (038, 2026-08-05) | `create function` / `do $ ... $` → `{"error":"no language specified"}` | `db import` o `apply-migration.mjs` (que usa `db import` desde 2026-08-18); nunca `db query` |
+| `ENAMETOOLONG` de PowerShell (062, 2026-08-17) | **Ya no aplica**: la versión del script que lo causaba se retiró el 2026-08-18 | — (histórico, ver abajo) |
 
 Detalle de cada uno:
 
 - **Windows + `db query`**: límite de línea de comandos ~8 KB y ejecución poco
  fiable de múltiples statements DML en una llamada. Para updates masivos:
  un solo `UPDATE ... FROM (VALUES ...)` por lote.
-- **Gotcha distinto en `scripts/apply-migration.mjs` con archivos grandes
+- **Estado actual de `scripts/apply-migration.mjs` (desde 2026-08-18,
+ migración 073)**: escribe el SQL a un archivo temporal y lo aplica con
+ `db import <ruta>`; solo sus dos consultas de control de una línea van por
+ `db query`. Por eso ya no sufre ni el truncamiento de cmd.exe, ni el
+ dollar-quoting, ni el `ENAMETOOLONG` de los dos párrafos siguientes, que
+ quedan como historia. Sigue valiendo el crash de `db import` y la
+ verificación posterior obligatoria.
+- **(Histórico) Gotcha distinto en `scripts/apply-migration.mjs` con archivos grandes
  (verificado 2026-08-17, migración 062)**: el script evita el límite de
  `cmd.exe` de arriba con un here-string de PowerShell (`-EncodedCommand`),
  pero ese mismo mecanismo falla con `ENAMETOOLONG` en archivos de varios KB
@@ -83,8 +90,8 @@ Detalle de cada uno:
  (`$$ ... $$`)**: falla con `{"error":"no language specified"}` incluso en un
  `CREATE FUNCTION` de una sola línea sin ningún `;` interno. Cualquier
  migración con `create function`/`do $$ ... end $$` (la mayoría desde la 008)
- debe aplicarse con `db import <archivo.sql>`, nunca con `db query` ni con
- `apply-migration.mjs` (usa `db query` por dentro). `db import` puede seguir
+ debe aplicarse con `db import <archivo.sql>` (o `apply-migration.mjs`, que
+ usa `db import` desde 2026-08-18), nunca con `db query`. `db import` puede seguir
  reportando el crash de cliente (`Assertion failed ... src\win\async.c`) de
  arriba aun cuando el statement se ejecutó bien en el servidor — la
  verificación posterior sigue siendo obligatoria en ambos casos.

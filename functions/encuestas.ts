@@ -24,8 +24,10 @@ const ORIGENES_PERMITIDOS = new Set([
   'http://localhost:4173',
 ]);
 
-let CORS: Record<string, string> = {};
-
+// Cabeceras CORS calculadas POR PETICIÓN (Ciclo 20): antes vivían en un
+// `let CORS` global de módulo, reasignado al entrar cada petición — con
+// peticiones concurrentes en el mismo isolate, una podía pisar el valor de
+// otra entre dos `await`. Mismo cambio en las 4 edge functions.
 function corsPara(origin: string | null): Record<string, string> {
   if (!origin || !ORIGENES_PERMITIDOS.has(origin)) return {};
   return {
@@ -36,10 +38,13 @@ function corsPara(origin: string | null): Record<string, string> {
   };
 }
 
-function json(body: unknown, status = 200): Response {
+function respuesta(cors: Record<string, string>, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
+    // no-store (Ciclo 20): era la única de las edge functions sin esta
+    // cabecera (pendiente del Ciclo 13). La plantilla de una encuesta y la
+    // respuesta de `version` no tienen por qué quedar en caché de un proxy.
+    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
 
@@ -101,9 +106,23 @@ function respuestaValida(pregunta: Pregunta, valor: unknown): boolean {
   }
 }
 
+// Envoltorio de primer nivel (Ciclo 20): toda excepción no controlada — o la
+// falla fail-closed del rate-limit — termina en
+// { ok:false, code:'error_interno' } (500) con las cabeceras CORS de esta
+// petición, en vez de un 500 opaco sin CORS. Al log solo va el mensaje.
 export default async function (req: Request): Promise<Response> {
-  CORS = corsPara(req.headers.get('Origin'));
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  const cors = corsPara(req.headers.get('Origin'));
+  try {
+    return await manejar(req, cors);
+  } catch (e) {
+    console.error('[encuestas] error no controlado:', e instanceof Error ? e.message : String(e));
+    return respuesta(cors, { ok: false, code: 'error_interno' }, 500);
+  }
+}
+
+async function manejar(req: Request, cors: Record<string, string>): Promise<Response> {
+  const json = (body: unknown, status = 200) => respuesta(cors, body, status);
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ ok: false, code: 'metodo_invalido' }, 405);
 
   let body: Record<string, unknown>;
@@ -144,16 +163,21 @@ export default async function (req: Request): Promise<Response> {
     });
   }
 
+  // Fail-closed (Ciclo 20): si no se puede contar ni registrar el intento se
+  // LANZA (→ error_interno). Antes un error de BD daba data=null → "0
+  // intentos" y el tope quedaba desactivado justo cuando la BD fallaba.
   async function bajoLimite(): Promise<boolean> {
     const ip = ipDesdeHeaders(req.headers);
     const desde = new Date(Date.now() - INTENTOS_VENTANA_MIN * 60 * 1000).toISOString();
-    const { data: intentos } = await admin.database
+    const { data: intentos, error: eIntentos } = await admin.database
       .from('encuesta_respuesta_intentos')
       .select('id')
       .eq('ip', ip)
       .gte('created_at', desde);
+    if (eIntentos) throw new Error(`No se pudo contar encuesta_respuesta_intentos: ${eIntentos.message}`);
     if ((intentos?.length || 0) >= INTENTOS_MAX_IP) return false;
-    await admin.database.from('encuesta_respuesta_intentos').insert([{ ip }]);
+    const { error: eRegistro } = await admin.database.from('encuesta_respuesta_intentos').insert([{ ip }]);
+    if (eRegistro) throw new Error(`No se pudo registrar el intento: ${eRegistro.message}`);
     return true;
   }
 

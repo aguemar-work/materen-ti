@@ -36,8 +36,11 @@ const ORIGENES_PERMITIDOS = new Set([
   'http://localhost:4173',
 ]);
 
-let CORS: Record<string, string> = {};
-
+// Cabeceras CORS calculadas POR PETICIÓN (Ciclo 20): antes vivían en un
+// `let CORS` global de módulo, reasignado al entrar cada petición — con
+// peticiones concurrentes en el mismo isolate, una podía pisar el valor de
+// otra entre dos `await`. Mismo cambio en las 4 edge functions (helpers
+// duplicados a propósito, cada function se despliega como un único archivo).
 function corsPara(origin: string | null): Record<string, string> {
   if (!origin || !ORIGENES_PERMITIDOS.has(origin)) return {};
   return {
@@ -48,12 +51,12 @@ function corsPara(origin: string | null): Record<string, string> {
   };
 }
 
-function json(body: unknown, status = 200): Response {
+function respuesta(cors: Record<string, string>, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     // no-store: buscarPorDni devuelve tokens de ticket y datos de contacto,
     // no debe quedar cacheado en el navegador/proxy.
-    headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
 
@@ -134,9 +137,24 @@ export function ipDesdeHeaders(headers: Headers): string {
   );
 }
 
+// Envoltorio de primer nivel (Ciclo 20): toda excepción no controlada — o
+// una falla fail-closed de un rate-limit que no se pudo contar/registrar —
+// termina en { ok:false, code:'error_interno' } (500) con las cabeceras CORS
+// de esta petición, en vez de un 500 opaco sin CORS de la plataforma. Al log
+// solo va el mensaje, nunca el body (puede traer DNI/contacto).
 export default async function (req: Request): Promise<Response> {
-  CORS = corsPara(req.headers.get('Origin'));
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  const cors = corsPara(req.headers.get('Origin'));
+  try {
+    return await manejar(req, cors);
+  } catch (e) {
+    console.error('[tickets] error no controlado:', e instanceof Error ? e.message : String(e));
+    return respuesta(cors, { ok: false, code: 'error_interno' }, 500);
+  }
+}
+
+async function manejar(req: Request, cors: Record<string, string>): Promise<Response> {
+  const json = (body: unknown, status = 200) => respuesta(cors, body, status);
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ ok: false, code: 'metodo_invalido' }, 405);
 
   let body: Record<string, unknown>;
@@ -221,18 +239,23 @@ export default async function (req: Request): Promise<Response> {
     // Rate-limit por IP, solo para creación pública (sin sesión de staff):
     // mismo patrón que buscarPorDni (migración 017), tabla propia
     // (migración 037) para no mezclar el conteo con la búsqueda por DNI.
+    // Fail-closed (Ciclo 20): si no se puede contar ni registrar el intento,
+    // se bloquea (error_interno) — antes un error de BD daba data=null →
+    // "0 intentos" y el tope quedaba desactivado justo cuando la BD fallaba.
     if (!staff) {
       const ip = ipDesdeHeaders(req.headers);
       const desde = new Date(Date.now() - CREACION_VENTANA_MIN * 60 * 1000).toISOString();
-      const { data: intentos } = await admin.database
+      const { data: intentos, error: eIntentos } = await admin.database
         .from('ticket_creacion_intentos')
         .select('id')
         .eq('ip', ip)
         .gte('created_at', desde);
+      if (eIntentos) throw new Error(`No se pudo contar ticket_creacion_intentos: ${eIntentos.message}`);
       if ((intentos?.length || 0) >= CREACION_MAX_IP) {
         return json({ ok: false, code: 'demasiados_intentos' }, 429);
       }
-      await admin.database.from('ticket_creacion_intentos').insert([{ ip }]);
+      const { error: eRegistro } = await admin.database.from('ticket_creacion_intentos').insert([{ ip }]);
+      if (eRegistro) throw new Error(`No se pudo registrar el intento de creación: ${eRegistro.message}`);
     }
 
     let empleadoId: string | null = null;
@@ -397,28 +420,34 @@ export default async function (req: Request): Promise<Response> {
     const ip = ipDesdeHeaders(req.headers);
     const desde = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
+    // Fail-closed en los dos límites y en el registro del intento (Ciclo 20):
+    // un error de BD bloquea (error_interno) en vez de contarse como "0".
+
     // Límite por IP: frena barridos desde una sola fuente.
-    const { data: porIp } = await admin.database
+    const { data: porIp, error: ePorIp } = await admin.database
       .from('ticket_busqueda_intentos')
       .select('id')
       .eq('ip', ip)
       .gte('created_at', desde);
+    if (ePorIp) throw new Error(`No se pudo contar ticket_busqueda_intentos por IP: ${ePorIp.message}`);
     if ((porIp?.length || 0) >= 15) {
       return json({ ok: false, code: 'demasiados_intentos' }, 429);
     }
 
     // Límite por DNI: frena la extracción de tickets de una persona concreta
     // aunque el atacante rote IPs (cierra la evasión del rate-limit, H-02).
-    const { data: porDni } = await admin.database
+    const { data: porDni, error: ePorDni } = await admin.database
       .from('ticket_busqueda_intentos')
       .select('id')
       .eq('dni', dni)
       .gte('created_at', desde);
+    if (ePorDni) throw new Error(`No se pudo contar ticket_busqueda_intentos por DNI: ${ePorDni.message}`);
     if ((porDni?.length || 0) >= 10) {
       return json({ ok: false, code: 'demasiados_intentos' }, 429);
     }
 
-    await admin.database.from('ticket_busqueda_intentos').insert([{ ip, dni }]);
+    const { error: eRegistro } = await admin.database.from('ticket_busqueda_intentos').insert([{ ip, dni }]);
+    if (eRegistro) throw new Error(`No se pudo registrar el intento de búsqueda: ${eRegistro.message}`);
 
     const { data: empleado } = await admin.database
       .from('empleados').select('id').eq('dni', dni).is('deleted_at', null).maybeSingle();

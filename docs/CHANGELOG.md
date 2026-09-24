@@ -27,6 +27,19 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-24** (**Endurecimiento de backend v2 — escrito, NO aplicado**)
+  — `credenciales.ts`: el tope de revelados cuenta también las entregas,
+  la auditoría falla cerrada (sin log no hay secreto), no revela filas con
+  soft-delete, no entrega a empleados inactivos (`empleado_inactivo`), y
+  un contenido ilegible ya no quema el enlace. Las 4 functions: try/catch
+  de primer nivel con CORS y cabeceras CORS por petición; rate-limits
+  fallan cerrado; `encuestas` con `no-store`. Migración 086: gate de módulo
+  en `dar_baja_empleado`/`cerrar_ticket`/`reporte_*`, realtime solo para
+  staff activo, `siguiente_codigo_ticket` sin EXECUTE público, fecha de
+  Lima en `revocar_cuenta_personal`, CHECK de formato cifrado (NOT VALID).
+  La 075 (rollback de la 074) pasa a `migrations/rollback/`. Pasos para
+  aplicar y redesplegar: `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 20.
+  `GOTCHAS-CLI.md`: `apply-migration.mjs` usa `db import` desde 2026-08-18.
 - **2026-09-24** (**Correcciones de flujo v2**) — `ConfirmDialog` emite
   `cerrado` en todo cierre y las ~39 confirmaciones lo usan para desmontar:
   antes, tras confirmar una acción, la siguiente confirmación de la misma
