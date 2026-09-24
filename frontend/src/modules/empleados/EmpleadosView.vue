@@ -405,7 +405,9 @@ onMounted(async () => {
             <li
               v-for="emp in lista"
               :key="emp.id"
-              class="group flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300"
+              class="group flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              tabindex="0"
+              @keydown.enter.self="verFicha(emp)"
               @click="verFicha(emp)"
             >
               <div class="flex items-start gap-3">

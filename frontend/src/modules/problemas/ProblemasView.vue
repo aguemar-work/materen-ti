@@ -217,7 +217,9 @@ onMounted(async () => {
             <li
               v-for="fila in lista"
               :key="fila.id"
-              class="flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300"
+              class="flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              tabindex="0"
+              @keydown.enter.self="verProblema(fila)"
               @click="verProblema(fila)"
             >
               <div class="flex items-start justify-between gap-3">
