@@ -8,16 +8,6 @@ export function esc(str) {
     .replace(/'/g, '&#39;');
 }
 
-export function getInitials(name) {
-  return (name || '')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0])
-    .join('')
-    .toUpperCase();
-}
-
 // "Cámara de seguridad" → "camara_de_seguridad" (ids-slug de catálogos)
 export function slugDe(nombre) {
   return nombre

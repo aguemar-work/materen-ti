@@ -5,7 +5,7 @@
 // core/paginacionRender.js (compartida con los tests).
 //   completa  — pie de tabla: filas por página + rango + salto + flechas.
 //   compacta  — debajo de una grilla de tarjetas: flechas + "Página X de Y".
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { TAMANOS_PAGINA } from '../../constants/paginacion.js';
 import { totalPaginasDe, paginasDe, rangoDe, clampPagina } from '../../core/paginacionRender.js';
 
@@ -21,6 +21,13 @@ const emit = defineEmits(['update:pagina', 'update:tamPagina']);
 const totalPaginas = computed(() => totalPaginasDe(props.total, props.tamPagina));
 const paginas = computed(() => paginasDe(totalPaginas.value));
 const rango = computed(() => rangoDe(props.pagina, props.tamPagina, props.total));
+
+// Si el total encoge por debajo de la página actual (p.ej. se borró la última
+// fila de la última página), se repliega a la última válida: quedarse en una
+// página que ya no existe muestra la tabla vacía sin motivo aparente.
+watch(totalPaginas, (n) => {
+  if (props.total > 0 && props.pagina > n) emit('update:pagina', n);
+});
 
 function irA(p) {
   const destino = clampPagina(p, totalPaginas.value);
@@ -49,7 +56,7 @@ const SELECT =
           <option v-for="t in tamanos" :key="t" :value="t">{{ t }}</option>
         </select>
       </label>
-      <span class="tabular-nums">{{ rango.desde }}–{{ rango.hasta }} de {{ total }}</span>
+      <span class="tabular-nums" aria-live="polite">{{ rango.desde }}–{{ rango.hasta }} de {{ total }}</span>
     </div>
     <div v-if="totalPaginas > 1" class="flex items-center gap-1">
       <label class="inline-flex items-center gap-1.5 font-normal text-gray-500">
@@ -72,7 +79,7 @@ const SELECT =
     <button :class="FLECHA" type="button" :disabled="pagina <= 1" aria-label="Página anterior" @click="irA(pagina - 1)">
       <i class="ti ti-chevron-left" aria-hidden="true"></i>
     </button>
-    <span class="tabular-nums">Página {{ pagina }} de {{ totalPaginas }}</span>
+    <span class="tabular-nums" aria-live="polite">Página {{ pagina }} de {{ totalPaginas }}</span>
     <button :class="FLECHA" type="button" :disabled="pagina >= totalPaginas" aria-label="Página siguiente" @click="irA(pagina + 1)">
       <i class="ti ti-chevron-right" aria-hidden="true"></i>
     </button>

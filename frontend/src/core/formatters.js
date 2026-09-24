@@ -22,12 +22,6 @@ export function toLower(val) {
 }
 
 // "+51 999 888 777" → "+51999888777"
-export function stripSpaces(val) {
-  if (val == null || val === '') return null;
-  const s = String(val).replace(/\s/g, '');
-  return s || null;
-}
-
 // "20 123-456-789" → "20123456789"  (DNI, RUC)
 export function onlyDigits(val) {
   if (val == null || val === '') return null;

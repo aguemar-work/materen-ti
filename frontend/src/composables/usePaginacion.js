@@ -1,7 +1,7 @@
 // Paginación client-side sobre una lista reactiva (normalmente la lista
 // filtrada). Replica el patrón que vivía copiado en 12 vistas:
 // página actual + reset al cambiar la lista + slice de la página.
-// El control visual es el <nav> de cada vista (matemática en core/paginacionRender.js).
+// El control visual es components/ui/AppPaginacion.vue.
 import { ref, computed, watch, unref } from 'vue';
 import { TAM_PAGINA_DEFECTO } from '../constants/paginacion.js';
 

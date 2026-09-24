@@ -20,11 +20,10 @@
 // DataTable pagine en el cliente sobre una `value` que ya es solo la página
 // actual) y quedan preparados por si algún listado futuro prefiere paginador
 // inline; `pagina-cambiada`/`tam-pagina-cambiada` se emiten para ese caso,
-// pero el patrón recomendado sigue siendo <Pagination> como hermano (ver
-// demo en StyleLabView.vue).
+// pero el patrón recomendado sigue siendo <AppPaginacion> como hermano.
 import { computed, useAttrs } from 'vue';
 import DataTable from 'primevue/datatable';
-import EmptyState from '../shared/EmptyState.vue';
+import AppVacio from './AppVacio.vue';
 import { buildTablePT } from './pt/table.pt.js';
 
 defineOptions({ inheritAttrs: false });
@@ -117,7 +116,7 @@ function onPage(event) {
     <slot />
     <template #empty>
       <slot name="empty">
-        <EmptyState icono="ti ti-inbox" titulo="Sin resultados" mensaje="No hay datos que coincidan con la búsqueda o los filtros aplicados." />
+        <AppVacio variante="seccion" titulo="Sin resultados" mensaje="No hay datos que coincidan con la búsqueda o los filtros aplicados." />
       </slot>
     </template>
   </DataTable>

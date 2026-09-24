@@ -90,7 +90,7 @@ describe('construirReporteTickets', () => {
     expect(nombre).toBe('ReporteMensual_2026-08.pdf');
 
     const bytes = bytesDe(doc);
-    const crudo = new TextDecoder('latin1').decode(bytes);
+    const crudo = Buffer.from(bytes).toString('latin1');
     expect(crudo.startsWith('%PDF-')).toBe(true);   // es un PDF, no HTML
     expect(crudo).toContain('%%EOF');
     expect(bytes.byteLength).toBeGreaterThan(2000);
@@ -98,10 +98,12 @@ describe('construirReporteTickets', () => {
 
   it('no destroza los acentos ni el guión largo del castellano', async () => {
     const { doc } = await construirReporteTickets(DATOS, OPCIONES);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
 
     // jsPDF escribe los textos con WinAnsi, que para estos caracteres coincide
     // con latin1: la é va como 0xE9 y el guión largo como 0x97.
+    // Buffer y no TextDecoder('latin1'): ese alias WHATWG es windows-1252 y
+    // convierte 0x97 en '—', así que el test dependía de la versión de Node.
     expect(crudo).toContain('Ana P\xE9rez');
     expect(crudo).toContain('Atenci\xF3n r\xE1pida');
     expect(crudo).toContain('\x97');
@@ -133,7 +135,7 @@ describe('construirReporteTickets', () => {
     const paginas = doc.getNumberOfPages();
     expect(paginas).toBeGreaterThan(1);
 
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain(`de ${paginas}`);
   });
 
@@ -145,7 +147,7 @@ describe('construirReporteTickets', () => {
         etiqueta: 'Julio 2026',
       },
     });
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
 
     expect(crudo).toContain('TIEMPOS Y CALIDAD DE LA ATENCI');
     expect(crudo).toContain('Julio 2026');

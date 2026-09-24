@@ -32,20 +32,6 @@ const EXCEPCIONES = [
     alcance: 'El componente compartido.',
     impacto: 'Ninguno: es la fuente de la regla, no su excepción.',
   },
-  {
-    archivo: 'modules/styleLab/StyleLabView.vue',
-    reglas: ['modal-a-mano', 'img-sin-alt', 'boton-icono-sin-nombre'],
-    motivo: 'Vitrina del Design System: muestra el marcado crudo de los patrones como ejemplo.',
-    alcance: 'Archivo completo. Ruta dev-only, fuera del router de producción.',
-    impacto: 'Ninguno en producción.',
-  },
-  {
-    archivo: 'modules/designSystem/DesignSystemView.vue',
-    reglas: ['modal-a-mano', 'img-sin-alt', 'boton-icono-sin-nombre'],
-    motivo: 'Misma razón que el Style Lab: documenta patrones mostrando su marcado.',
-    alcance: 'Archivo completo. Ruta dev-only.',
-    impacto: 'Ninguno en producción.',
-  },
 ];
 
 function archivos(dir, acc = []) {

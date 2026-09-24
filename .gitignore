@@ -6,3 +6,13 @@ dist/
 .env.*.local
 .insforge/
 .DS_Store
+
+# Artefactos locales
+__pycache__/
+*.pyc
+.tmp*
+.claude/settings.local.json
+
+# Datos reales de la empresa (inventario de activos con nombres de personas):
+# nunca al repo. El importador de Equipos los recibe pegados, no como archivo.
+*.xlsx

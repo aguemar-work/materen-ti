@@ -26,7 +26,10 @@
 name: CI
 
 on:
+  # push solo a main + todo PR: antes cada PR corría el pipeline dos veces
+  # (una por el push a la rama y otra por el pull_request).
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -54,6 +57,13 @@ on:
     # `secrets-smoke-pendientes` más abajo.
     - cron: '0 8 * * 1'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint-y-typecheck:
     # ESLint (frontend/src + functions) y type-check de las 4 edge functions
@@ -69,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Instalar dependencias de lint
@@ -91,7 +101,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Instalar dependencias
@@ -109,16 +119,6 @@ jobs:
       # la estructura del template.
       - name: Invariantes de estructura y accesibilidad del marcado
         run: node ../scripts/patrones-ui.mjs
-      # Los otros 4 guardrails de Design System (contraste WCAG, deriva de
-      # tokens vs. docs/GUIA-UX-UI.md, literales vs. tokens, clases huérfanas)
-      # se retiraron de CI en el mismo reinicio: 2 crasheaban/fallaban de
-      # inmediato (la guía ya no existe; sin CSS, todas las clases del
-      # markup son "huérfanas") y los otros 2 pasaban en verde sin verificar
-      # nada real (contraste contra una paleta hardcodeada en el propio
-      # script; 0 literales porque no queda CSS que escanear) — el
-      # antipatrón que el propio proyecto documentó como Q-01. Los 5 scripts
-      # siguen en `scripts/` sin invocarse, listos para revivirse si el
-      # próximo sistema de diseño quiere el mismo mecanismo.
       - name: Vulnerabilidades conocidas en dependencias de producción
         run: npm audit --omit=dev --audit-level=high
 
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Instalar dependencias
@@ -176,7 +176,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
       - name: Tests de triggers (se omiten con warning si faltan secrets)
         id: smoke
         run: |
@@ -252,7 +252,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
       - name: Verificar credenciales
         run: |
           if [ -z "$INSFORGE_ACCESS_TOKEN" ] || [ -z "$INSFORGE_PROJECT_ID" ]; then
@@ -261,15 +261,23 @@ jobs:
           fi
       - name: Aplicar migración (db import)
         if: inputs.migracion != ''
-        run: npx @insforge/cli db import "${{ inputs.migracion }}"
+        env:
+          MIGRACION: ${{ inputs.migracion }}
+        run: |
+          case "$MIGRACION" in migrations/[0-9]*.sql) ;; *) echo "::error::Ruta de migración no permitida: $MIGRACION"; exit 1 ;; esac
+          npx @insforge/cli db import "$MIGRACION"
       - name: Recordatorio de verificación posterior
         if: inputs.migracion != ''
         run: |
           echo "::notice::Migración enviada — VERIFICAR MANUALMENTE contra la tabla/función afectada antes de darla por buena. db import puede reportar error de cliente aunque el statement ya se haya ejecutado en el servidor (ver AGENTS.md)."
       - name: Registrar en schema_migrations (migración 069)
         if: inputs.migracion != ''
+        env:
+          MIGRACION: ${{ inputs.migracion }}
+          ACTOR: ${{ github.actor }}
         run: |
-          archivo="${{ inputs.migracion }}"
+          archivo="$MIGRACION"
+          case "$archivo" in migrations/[0-9]*.sql) ;; *) echo "::error::Ruta de migración no permitida: $archivo"; exit 1 ;; esac
           nombre="$(basename "$archivo")"
           version="$(echo "$nombre" | grep -oE '^[0-9]{3,}' || true)"
           if [ -z "$version" ]; then
@@ -277,7 +285,7 @@ jobs:
             exit 0
           fi
           checksum="$(sha256sum "$archivo" | cut -d' ' -f1)"
-          npx @insforge/cli db query -- "insert into public.schema_migrations (version, nombre_archivo, checksum, aplicada_por) values ('$version', '$nombre', '$checksum', '${{ github.actor }}') on conflict (version) do update set nombre_archivo = excluded.nombre_archivo, checksum = excluded.checksum, aplicada_por = excluded.aplicada_por, aplicada_en = now();" \
+          npx @insforge/cli db query -- "insert into public.schema_migrations (version, nombre_archivo, checksum, aplicada_por) values ('$version', '$nombre', '$checksum', '$ACTOR') on conflict (version) do update set nombre_archivo = excluded.nombre_archivo, checksum = excluded.checksum, aplicada_por = excluded.aplicada_por, aplicada_en = now();" \
             || echo "::warning::La migración se aplicó pero no se pudo registrar en schema_migrations (¿todavía no existe la tabla? ver migración 069, o el archivo requería db import por dollar-quoting — ver AGENTS.md)."
       - name: Redesplegar edge functions
         if: inputs.desplegar_functions

@@ -9,10 +9,8 @@ import { useAuthStore } from './stores/auth.js';
 // Fuente e íconos servidos desde el propio bundle (sin Google Fonts ni CDN,
 // así la CSP no necesita abrirse): Inter Variable y el webfont de Tabler
 // (outline + filled, las clases `ti ti-*` que usa todo el marcado).
-// carbon-theme.css sigue vacío a propósito; los tokens viven en main.css.
 import '@fontsource-variable/inter';
 import '@tabler/icons-webfont/dist/tabler-icons.min.css';
-import './styles/carbon-theme.css';
 import './styles/main.css';
 import { initTema } from './core/tema.js';
 

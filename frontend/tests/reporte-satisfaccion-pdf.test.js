@@ -48,7 +48,7 @@ describe('construirReporteSatisfaccion', () => {
     expect(nombre).toMatch(/^Satisfaccion_\d{4}-\d{2}-\d{2}\.pdf$/);
 
     const bytes = bytesDe(doc);
-    const crudo = new TextDecoder('latin1').decode(bytes);
+    const crudo = Buffer.from(bytes).toString('latin1');
     expect(crudo.startsWith('%PDF-')).toBe(true);
     expect(crudo).toContain('%%EOF');
     expect(bytes.byteLength).toBeGreaterThan(1500);
@@ -61,7 +61,7 @@ describe('construirReporteSatisfaccion', () => {
 
   it('no destroza los acentos ni el guión largo del castellano', async () => {
     const { doc } = await construirReporteSatisfaccion(DATOS);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Ana P\xE9rez');
     expect(crudo).toContain('Atenci\xF3n r\xE1pida');
     expect(crudo).toContain('\x97'); // Materen — Sistema TI, en el pie
@@ -69,7 +69,7 @@ describe('construirReporteSatisfaccion', () => {
 
   it('marca con asterisco el promedio con muestra baja (Bruno Díaz, muestra 1)', async () => {
     const { doc } = await construirReporteSatisfaccion(DATOS);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('2.0/5 *');
     expect(crudo).toContain('4.8/5'); // muestra suficiente: sin asterisco
     expect(crudo).not.toContain('4.8/5 *');
@@ -77,13 +77,13 @@ describe('construirReporteSatisfaccion', () => {
 
   it('avisa cuando "Todas las respuestas" viene recortada', async () => {
     const { doc } = await construirReporteSatisfaccion({ ...DATOS, respuestasTotal: 500 });
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Se muestran las 2 m\xE1s recientes de 500');
   });
 
   it('incluye las columnas Respondidas/Pendientes (solicitante) y Total/Respondidas (técnico)', async () => {
     const { doc } = await construirReporteSatisfaccion(DATOS);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Respondidas');
     expect(crudo).toContain('Pendientes');
     expect(crudo).toContain('Total');
@@ -91,7 +91,7 @@ describe('construirReporteSatisfaccion', () => {
 
   it('incluye la sección "Respuestas con baja satisfacción" con sus filas', async () => {
     const { doc } = await construirReporteSatisfaccion(DATOS);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('BAJA SATISFACCI');
     expect(crudo).toContain('TCK-0003');
     expect(crudo).toContain('Tard\xF3 demasiado');
@@ -99,7 +99,7 @@ describe('construirReporteSatisfaccion', () => {
 
   it('avisa cuando "Respuestas con baja satisfacción" viene recortada', async () => {
     const { doc } = await construirReporteSatisfaccion({ ...DATOS, respuestasBajasTotal: 200 });
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Se muestran las 1 m\xE1s recientes de 200');
   });
 
@@ -107,7 +107,7 @@ describe('construirReporteSatisfaccion', () => {
     const { doc, nombre } = await construirReporteSatisfaccion(VACIO, { nombreArchivo: 'x' });
     expect(nombre).toBe('x.pdf');
     expect(bytesDe(doc).byteLength).toBeGreaterThan(1000);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Sin encuestas todav');
     expect(crudo).toContain('Sin respuestas con nivel 3 o menos');
   });

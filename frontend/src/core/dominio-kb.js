@@ -11,10 +11,6 @@ export const ESTADOS_KB = {
 export const OPCIONES_ESTADO_KB = Object.entries(ESTADOS_KB)
   .map(([valor, v]) => ({ valor, label: v.label }));
 
-// Estados visibles para cualquier staff sin importar autoría (ver RLS de
-// kb_articulos, migración 031): el resto solo lo ve el autor o el JEFE.
-export const ESTADOS_KB_PUBLICOS = ['publicado', 'obsoleto'];
-
 export function estadoKbInfo(e) {
   return ESTADOS_KB[e] || { label: e, clase: 'badge--neutral' };
 }

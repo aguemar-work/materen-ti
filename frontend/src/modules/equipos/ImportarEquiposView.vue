@@ -21,7 +21,6 @@ import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import AppTag from '../../components/ui/AppTag.vue';
 import { totalPaginasDe, clampPagina } from '../../core/paginacionRender.js';
-import { columnasVisibles } from '../../core/tablaColumnas.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { TAM_PAGINA_DEFECTO } from '../../constants/paginacion.js';
 import {
@@ -339,7 +338,7 @@ const columnasImportar = [
   { clave: 'notas', label: 'Notas', elastica: true },
   { clave: 'migrar', label: 'Migrar' },
 ];
-const columnasImportarVisibles = computed(() => columnasVisibles(columnasImportar));
+const columnasImportarVisibles = computed(() => columnasImportar.filter((c) => !c.oculta));
 const totalColumnasImportar = computed(() => columnasImportarVisibles.value.length);
 
 // Fila con error de migración resaltada (caso de uso real para `claseFila`):
