@@ -294,7 +294,7 @@ onUnmounted(() => store.limpiar());
             <li class="inline-flex items-center gap-1.5"><span class="sr-only">Severidad:</span><SeveridadProblema :valor="problema.severidad" /></li>
             <li class="inline-flex items-center gap-1.5">
               <i class="ti ti-user" aria-hidden="true"></i>
-              <span :class="nombreResponsable ? 'text-gray-700' : 'text-gray-400'">{{ nombreResponsable || 'Sin responsable' }}</span>
+              <span :class="nombreResponsable ? 'text-gray-700' : 'text-gray-500'">{{ nombreResponsable || 'Sin responsable' }}</span>
             </li>
             <li class="inline-flex items-center gap-1.5 tabular-nums">
               <i class="ti ti-clock" aria-hidden="true"></i>Actualizado {{ formatFechaHora(problema.updated_at) }}
@@ -339,7 +339,7 @@ onUnmounted(() => store.limpiar());
           v-for="(paso, i) in OPCIONES_ESTADO_PROBLEMA"
           :key="paso.valor"
           class="flex items-center gap-2 rounded-md px-3 py-2 text-sm"
-          :class="i === indiceEstado ? 'bg-primary-50 font-medium text-primary-700' : i < indiceEstado ? 'text-gray-600' : 'text-gray-400'"
+          :class="i === indiceEstado ? 'bg-primary-50 font-medium text-primary-700' : i < indiceEstado ? 'text-gray-600' : 'text-gray-500'"
           :aria-current="i === indiceEstado ? 'step' : undefined"
         >
           <i
@@ -415,7 +415,7 @@ onUnmounted(() => store.limpiar());
               <div>
                 <h3 class="text-xs font-medium text-gray-500">Causa raíz</h3>
                 <p v-if="problema.causa_raiz" class="mt-1 max-w-prose whitespace-pre-line text-sm leading-relaxed text-gray-900">{{ problema.causa_raiz }}</p>
-                <p v-else class="mt-1 text-sm text-gray-400">Todavía sin diagnosticar.</p>
+                <p v-else class="mt-1 text-sm text-gray-500">Todavía sin diagnosticar.</p>
               </div>
             </div>
           </AppSeccion>
@@ -443,7 +443,7 @@ onUnmounted(() => store.limpiar());
                 <div class="min-w-0 flex-1">
                   <p class="text-sm" :class="a.estado === 'completada' ? 'text-gray-500 line-through decoration-gray-300' : 'text-gray-900'">{{ a.descripcion }}</p>
                   <p class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-                    <span :class="a.responsable_id ? '' : 'text-gray-400'">{{ a.responsable_id ? staffPorId[a.responsable_id] || 'Staff' : 'Sin responsable' }}</span>
+                    <span :class="a.responsable_id ? '' : 'text-gray-500'">{{ a.responsable_id ? staffPorId[a.responsable_id] || 'Staff' : 'Sin responsable' }}</span>
                     <span aria-hidden="true">·</span>
                     <span class="tabular-nums">Vence {{ formatFecha(a.fecha_limite) }}</span>
                     <AppTag v-if="accionVencida(a)" tono="danger">Vencida</AppTag>

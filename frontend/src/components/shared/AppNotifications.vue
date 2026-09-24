@@ -31,7 +31,7 @@ const COLOR_ICONO = {
   info: 'text-primary-500',
 };
 const BOTON_CERRAR =
-  '-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 ' +
+  '-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 ' +
   'hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
 // Transición compartida (entrada desde la derecha, salida con fade).
 const TRANSICION = {

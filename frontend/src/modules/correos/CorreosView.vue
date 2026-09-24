@@ -249,7 +249,7 @@ onMounted(async () => {
                 <template #body="{ data: fila }">
                   <div class="flex min-w-0 max-w-80 items-center gap-3">
                     <span
-                      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-400"
+                      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500"
                       :title="badgeInfo('tipo_cuenta', fila.tipo_cuenta).label"
                     >
                       <i :class="fila.tipo_cuenta === 'reutilizable' ? 'ti ti-transfer' : 'ti ti-users'" aria-hidden="true"></i>
@@ -292,7 +292,7 @@ onMounted(async () => {
                           {{ fila.asignados.length }} {{ fila.asignados.length === 1 ? 'usuario' : 'usuarios' }}
                         </span>
                       </div>
-                      <span v-else class="text-sm text-gray-400">Sin usuarios</span>
+                      <span v-else class="text-sm text-gray-500">Sin usuarios</span>
                     </template>
                     <AppTag
                       v-if="fila.requiere_rotacion"
@@ -341,7 +341,7 @@ onMounted(async () => {
               <AppColumn field="notas" header="Notas" sortable>
                 <template #body="{ data: fila }">
                   <p v-if="fila.notas" class="max-w-64 truncate text-sm text-gray-600" :title="fila.notas">{{ fila.notas }}</p>
-                  <span v-else class="text-sm text-gray-400">Sin notas</span>
+                  <span v-else class="text-sm text-gray-500">Sin notas</span>
                 </template>
               </AppColumn>
 
@@ -383,7 +383,7 @@ onMounted(async () => {
           <ul v-else class="grid gap-3 sm:grid-cols-2" aria-label="Correos compartidos y reutilizables">
             <li v-for="fila in lista" :key="fila.id" class="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
               <div class="flex items-start gap-3">
-                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-400">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-500">
                   <i :class="fila.tipo_cuenta === 'reutilizable' ? 'ti ti-transfer' : 'ti ti-users'" aria-hidden="true"></i>
                 </span>
                 <div class="min-w-0 flex-1">
@@ -424,7 +424,7 @@ onMounted(async () => {
                   <span v-if="fila.asignados?.length" class="text-gray-700 tabular-nums" :title="nombresAsignados(fila)">
                     {{ fila.asignados.length }} {{ fila.asignados.length === 1 ? 'usuario' : 'usuarios' }}
                   </span>
-                  <span v-else class="text-gray-400">Sin usuarios</span>
+                  <span v-else class="text-gray-500">Sin usuarios</span>
                 </template>
                 <AppTag v-if="fila.requiere_rotacion" tono="warning" icono="ti ti-alert-triangle">Rotar contraseña</AppTag>
               </div>

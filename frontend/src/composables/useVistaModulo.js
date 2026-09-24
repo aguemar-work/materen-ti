@@ -1,6 +1,6 @@
 // Preferencia de vista (Tabla/Lista/Tarjetas/Triage, según el módulo),
-// guardada por navegador en localStorage — mismo patrón que el tema
-// claro/oscuro (core/tema.js) y el colapso del sidebar (AppLayout.vue).
+// guardada por navegador en localStorage — mismo patrón que el colapso del
+// sidebar (AppLayout.vue).
 // Arranca en `defecto` (default 'tabla') salvo que el usuario ya haya
 // elegido otra cosa antes PARA ESE módulo — quien ya tiene una preferencia
 // guardada la conserva siempre, sin importar cuál sea `defecto`.

@@ -18,7 +18,7 @@ defineExpose({ focus: () => input.value?.focus() });
 <template>
   <label class="relative block min-w-60 flex-1 sm:max-w-sm">
     <span class="sr-only">{{ label }}</span>
-    <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+    <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
     <input
       ref="input"
       :value="modelValue"

@@ -306,7 +306,7 @@ onMounted(async () => {
                     <div class="min-w-0">
                       <div class="flex items-center gap-1.5">
                         <span class="truncate font-medium" :class="fila.activo ? 'text-gray-900' : 'text-gray-500'">{{ fila.nombre }}</span>
-                        <span v-if="fila.user_id === authStore.user?.id" class="shrink-0 text-xs text-gray-400">(usted)</span>
+                        <span v-if="fila.user_id === authStore.user?.id" class="shrink-0 text-xs text-gray-500">(usted)</span>
                       </div>
                       <div class="text-xs text-gray-500">{{ fila.rol === 'JEFE' ? 'Administra el sistema completo' : 'Opera los módulos otorgados' }}</div>
                     </div>
@@ -327,7 +327,7 @@ onMounted(async () => {
                     >
                       <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
                     </select>
-                    <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+                    <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
                   </label>
                   <span v-else class="text-sm text-gray-700">{{ fila.rol }}</span>
                 </template>
@@ -336,8 +336,8 @@ onMounted(async () => {
               <AppColumn field="modulos" header="Módulos">
                 <template #body="{ data: fila }">
                   <AppTag v-if="fila.rol === 'JEFE'" tono="info" icono="ti ti-layout-grid">Todos los módulos</AppTag>
-                  <span v-else-if="modulosPor[fila.user_id] === undefined" class="text-sm text-gray-400">Cargando…</span>
-                  <span v-else-if="modulosPor[fila.user_id] === null" class="text-sm text-gray-400">No disponible</span>
+                  <span v-else-if="modulosPor[fila.user_id] === undefined" class="text-sm text-gray-500">Cargando…</span>
+                  <span v-else-if="modulosPor[fila.user_id] === null" class="text-sm text-gray-500">No disponible</span>
                   <span v-else-if="!modulosPor[fila.user_id].length" class="text-sm text-amber-700">Sin módulos</span>
                   <ul
                     v-else
@@ -438,7 +438,7 @@ onMounted(async () => {
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-1.5">
                     <span class="truncate font-medium" :class="fila.activo ? 'text-gray-900' : 'text-gray-500'">{{ fila.nombre }}</span>
-                    <span v-if="fila.user_id === authStore.user?.id" class="shrink-0 text-xs text-gray-400">(usted)</span>
+                    <span v-if="fila.user_id === authStore.user?.id" class="shrink-0 text-xs text-gray-500">(usted)</span>
                   </div>
                   <div class="mt-1"><BadgeEstado tipo="activo_staff" :valor="fila.activo" status /></div>
                 </div>
@@ -461,7 +461,7 @@ onMounted(async () => {
                     >
                       <option v-for="r in ROLES" :key="r" :value="r">{{ r }}</option>
                     </select>
-                    <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+                    <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
                   </label>
                   <span v-else class="text-gray-700">{{ fila.rol }}</span>
                 </dd>
@@ -469,8 +469,8 @@ onMounted(async () => {
                 <dt class="text-xs text-gray-500">Módulos</dt>
                 <dd class="min-w-0">
                   <AppTag v-if="fila.rol === 'JEFE'" tono="info" icono="ti ti-layout-grid">Todos los módulos</AppTag>
-                  <span v-else-if="modulosPor[fila.user_id] === undefined" class="text-gray-400">Cargando…</span>
-                  <span v-else-if="modulosPor[fila.user_id] === null" class="text-gray-400">No disponible</span>
+                  <span v-else-if="modulosPor[fila.user_id] === undefined" class="text-gray-500">Cargando…</span>
+                  <span v-else-if="modulosPor[fila.user_id] === null" class="text-gray-500">No disponible</span>
                   <span v-else-if="!modulosPor[fila.user_id].length" class="text-amber-700">Sin módulos</span>
                   <ul v-else class="flex flex-wrap gap-1" :aria-label="`Módulos de ${fila.nombre}`">
                     <li v-for="id in modulosPor[fila.user_id]" :key="id"><AppTag>{{ LABEL_MODULO[id] || id }}</AppTag></li>

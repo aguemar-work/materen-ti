@@ -273,7 +273,7 @@ onMounted(async () => {
             <div class="max-w-[70ch] space-y-8">
               <section v-if="articulo.sintoma" aria-labelledby="kb-sintoma">
                 <h2 id="kb-sintoma" class="flex items-center gap-2 text-base font-semibold text-gray-900">
-                  <i class="ti ti-alert-circle text-gray-400" aria-hidden="true"></i>
+                  <i class="ti ti-alert-circle text-gray-500" aria-hidden="true"></i>
                   Síntoma
                 </h2>
                 <p class="mt-2 whitespace-pre-line text-[15px] leading-7 text-gray-700">{{ articulo.sintoma }}</p>
@@ -281,7 +281,7 @@ onMounted(async () => {
 
               <section aria-labelledby="kb-solucion">
                 <h2 id="kb-solucion" class="flex items-center gap-2 text-base font-semibold text-gray-900">
-                  <i class="ti ti-tool text-gray-400" aria-hidden="true"></i>
+                  <i class="ti ti-tool text-gray-500" aria-hidden="true"></i>
                   Solución
                 </h2>
                 <!-- pre-wrap: conserva sangrías y saltos de los pasos y
@@ -377,7 +377,7 @@ onMounted(async () => {
               </div>
               <p class="mt-2 text-xs text-gray-500 tabular-nums">{{ articulo.util_si }} de {{ totalVotos }} {{ totalVotos === 1 ? 'voto' : 'votos' }}</p>
             </template>
-            <p v-else class="text-sm text-gray-400">Todavía sin votos.</p>
+            <p v-else class="text-sm text-gray-500">Todavía sin votos.</p>
           </AppSeccion>
 
           <AppSeccion titulo="Detalle">
@@ -393,7 +393,7 @@ onMounted(async () => {
                 <i class="ti ti-ticket" aria-hidden="true"></i>
               </span>
               <span class="flex-1">Ver ticket de origen</span>
-              <i class="ti ti-arrow-up-right text-gray-400" aria-hidden="true"></i>
+              <i class="ti ti-arrow-up-right text-gray-500" aria-hidden="true"></i>
             </RouterLink>
           </AppSeccion>
         </aside>

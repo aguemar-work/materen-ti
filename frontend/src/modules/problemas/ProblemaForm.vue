@@ -90,7 +90,7 @@ onMounted(async () => {
   <Modal ref="modal" titulo="Nuevo problema" :confirmar-cierre="confirmarCierre" @close="emit('cerrar', resultado)">
     <form id="problema-form" class="form-grid" @submit.prevent="guardar">
       <p v-if="ticketDisparador" class="full flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
-        <i class="ti ti-ticket text-gray-400" aria-hidden="true"></i>
+        <i class="ti ti-ticket text-gray-500" aria-hidden="true"></i>
         Originado en el ticket <span class="font-medium text-gray-900 tabular-nums">{{ ticketDisparador.codigo || ticketDisparador.id }}</span>
       </p>
 

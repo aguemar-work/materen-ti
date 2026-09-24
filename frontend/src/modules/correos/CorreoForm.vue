@@ -146,7 +146,7 @@ async function guardar() {
             :class="form.tipo_cuenta === op.valor ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white hover:bg-gray-50'"
           >
             <input v-model="form.tipo_cuenta" type="radio" :value="op.valor" class="sr-only" :disabled="guardando">
-            <i class="mt-0.5 text-lg" :class="[op.icono, form.tipo_cuenta === op.valor ? 'text-primary-600' : 'text-gray-400']" aria-hidden="true"></i>
+            <i class="mt-0.5 text-lg" :class="[op.icono, form.tipo_cuenta === op.valor ? 'text-primary-600' : 'text-gray-500']" aria-hidden="true"></i>
             <span class="min-w-0">
               <span class="block text-sm font-medium" :class="form.tipo_cuenta === op.valor ? 'text-primary-700' : 'text-gray-900'">{{ op.label }}</span>
               <span class="mt-0.5 block text-xs text-gray-500">{{ op.desc }}</span>

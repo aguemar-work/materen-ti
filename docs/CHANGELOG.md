@@ -27,6 +27,14 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-24** (**Contraste y tema**) — 137 textos informativos pasan de
+  `text-gray-400` (2,5:1) a `text-gray-500` (4,6:1, cumple WCAG AA);
+  `gray-400`/`gray-300` quedan solo para íconos decorativos y estados
+  `disabled:`/`placeholder:` (`SISTEMA-DISENO.md` §2). Se retira el
+  interruptor de tema oscuro (header + menú de usuario) y `core/tema.js`:
+  no había ni una regla de estilos para el oscuro, y `initTema` lo activaba
+  solo si el sistema operativo lo prefería. Queda como decisión pendiente,
+  con tokens semánticos como requisito previo.
 - **2026-09-24** (**Endurecimiento de backend v2 — escrito, NO aplicado**)
   — `credenciales.ts`: el tope de revelados cuenta también las entregas,
   la auditoría falla cerrada (sin log no hay secreto), no revela filas con

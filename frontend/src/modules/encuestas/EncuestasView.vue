@@ -106,7 +106,7 @@ function accionesDe(encuesta) {
     <!-- Aclaración de alcance: se confunde seguido con la encuesta de tickets -->
     <div class="px-4 pb-4 sm:px-6">
       <p class="flex items-start gap-2 text-sm text-gray-500">
-        <i class="ti ti-info-circle mt-0.5 text-gray-400" aria-hidden="true"></i>
+        <i class="ti ti-info-circle mt-0.5 text-gray-500" aria-hidden="true"></i>
         <span>
           ¿Busca la satisfacción de un ticket puntual? Eso vive en
           <RouterLink class="font-medium text-primary-700 hover:underline" to="/tickets/satisfaccion">Tickets → Satisfacción</RouterLink>.

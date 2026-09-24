@@ -108,7 +108,7 @@ const infoErrorForm = infoNotificacion('error');
           </AppColumn>
           <AppColumn field="descripcion" header="Descripción" sortable>
             <template #body="{ data: fila }">
-              <span :class="fila.descripcion ? 'text-gray-700' : 'text-gray-400'">{{ fila.descripcion || 'Sin descripción' }}</span>
+              <span :class="fila.descripcion ? 'text-gray-700' : 'text-gray-500'">{{ fila.descripcion || 'Sin descripción' }}</span>
             </template>
           </AppColumn>
           <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
@@ -130,7 +130,7 @@ const infoErrorForm = infoNotificacion('error');
               </span>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
-                <div class="text-xs" :class="fila.descripcion ? 'text-gray-500' : 'text-gray-400'">{{ fila.descripcion || 'Sin descripción' }}</div>
+                <div class="text-xs" :class="fila.descripcion ? 'text-gray-500' : 'text-gray-500'">{{ fila.descripcion || 'Sin descripción' }}</div>
               </div>
               <div class="-mr-1">
                 <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />

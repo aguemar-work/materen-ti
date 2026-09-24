@@ -84,7 +84,7 @@ async function enviar() {
     <p v-if="estado === 'cargando'" class="py-6 text-center text-sm text-gray-500">Cargando...</p>
 
     <div v-else-if="estado === 'error'" class="py-2 text-center">
-      <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400">
+      <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-500">
         <i class="ti ti-link-off" aria-hidden="true"></i>
       </span>
       <h2 class="mt-3 text-lg font-semibold text-gray-900">No disponible</h2>

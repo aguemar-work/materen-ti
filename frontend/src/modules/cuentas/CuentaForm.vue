@@ -180,7 +180,7 @@ async function guardar() {
           :disabled="guardando"
           @click="modoCompartido = false; error = ''"
         >
-          <i class="ti ti-user mt-0.5 text-lg" :class="!modoCompartido ? 'text-primary-600' : 'text-gray-400'" aria-hidden="true"></i>
+          <i class="ti ti-user mt-0.5 text-lg" :class="!modoCompartido ? 'text-primary-600' : 'text-gray-500'" aria-hidden="true"></i>
           <span class="min-w-0">
             <span class="block text-sm font-medium" :class="!modoCompartido ? 'text-primary-700' : 'text-gray-900'">Cuenta personal</span>
             <span class="mt-0.5 block text-xs text-gray-500">Usuario propio del empleado en una plataforma</span>
@@ -194,7 +194,7 @@ async function guardar() {
           :disabled="guardando"
           @click="activarModoCompartido"
         >
-          <i class="ti ti-users mt-0.5 text-lg" :class="modoCompartido ? 'text-primary-600' : 'text-gray-400'" aria-hidden="true"></i>
+          <i class="ti ti-users mt-0.5 text-lg" :class="modoCompartido ? 'text-primary-600' : 'text-gray-500'" aria-hidden="true"></i>
           <span class="min-w-0">
             <span class="block text-sm font-medium" :class="modoCompartido ? 'text-primary-700' : 'text-gray-900'">Correo compartido</span>
             <span class="mt-0.5 block text-xs text-gray-500">Asignar uno que ya existe en el módulo Correos</span>

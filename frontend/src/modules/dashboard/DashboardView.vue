@@ -319,7 +319,7 @@ onMounted(async () => {
                   class="flex items-center gap-3 px-4 py-2.5 text-sm"
                   :class="f.to ? 'group transition-colors duration-150 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500' : ''"
                 >
-                  <i :class="f.icono" class="text-base text-gray-400" aria-hidden="true"></i>
+                  <i :class="f.icono" class="text-base text-gray-500" aria-hidden="true"></i>
                   <span class="min-w-0 flex-1 truncate text-gray-600">{{ f.label }}</span>
                   <span class="font-semibold text-gray-900 tabular-nums">{{ f.valor }}</span>
                   <i v-if="f.to" class="ti ti-chevron-right text-gray-300 group-hover:text-gray-500" aria-hidden="true"></i>

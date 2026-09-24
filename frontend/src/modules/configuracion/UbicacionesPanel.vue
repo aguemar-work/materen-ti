@@ -123,7 +123,7 @@ const campoDescripcion = useCampoAccesible();
           </AppColumn>
           <AppColumn field="descripcion" header="Descripción" sortable>
             <template #body="{ data: fila }">
-              <span :class="fila.descripcion ? 'text-gray-700' : 'text-gray-400'">{{ fila.descripcion || 'Sin descripción' }}</span>
+              <span :class="fila.descripcion ? 'text-gray-700' : 'text-gray-500'">{{ fila.descripcion || 'Sin descripción' }}</span>
             </template>
           </AppColumn>
           <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">

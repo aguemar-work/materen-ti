@@ -17,7 +17,7 @@ defineProps({
     v-if="variante === 'pagina'"
     class="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white px-6 py-16 text-center"
   >
-    <span class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-400">
+    <span class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-500">
       <i :class="icono" aria-hidden="true"></i>
     </span>
     <h2 class="text-base font-semibold text-gray-900">{{ titulo }}</h2>

@@ -226,7 +226,7 @@ onMounted(async () => {
                     >{{ horaDe(fila.created_at) }}</time>
                   </div>
                   <p v-if="fila.cuenta_usuario || fila.plataforma" class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-gray-500">
-                    <i class="ti ti-key text-gray-400" aria-hidden="true"></i>
+                    <i class="ti ti-key text-gray-500" aria-hidden="true"></i>
                     <span v-if="fila.cuenta_usuario" class="break-all font-medium text-gray-700">{{ fila.cuenta_usuario }}</span>
                     <span v-if="fila.cuenta_usuario && fila.plataforma" aria-hidden="true">·</span>
                     <span v-if="fila.plataforma">{{ fila.plataforma }}</span>

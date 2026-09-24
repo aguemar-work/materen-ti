@@ -218,13 +218,13 @@ onMounted(async () => {
             @click="toggleExpandir(cat.id)"
           >
             <i
-              class="ti text-base text-gray-400"
+              class="ti text-base text-gray-500"
               :class="expandidoId === cat.id ? 'ti-chevron-down' : 'ti-chevron-right'"
               aria-hidden="true"
             ></i>
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium text-gray-900">{{ cat.nombre }}</span>
-              <span class="block text-xs tabular-nums" :class="subsDe(cat.id).length ? 'text-gray-500' : 'text-gray-400'">
+              <span class="block text-xs tabular-nums" :class="subsDe(cat.id).length ? 'text-gray-500' : 'text-gray-500'">
                 {{ subsDe(cat.id).length }} {{ subsDe(cat.id).length === 1 ? 'subcategoría' : 'subcategorías' }}
               </span>
             </span>

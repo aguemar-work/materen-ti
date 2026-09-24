@@ -168,7 +168,7 @@ async function confirmarBaja() {
             aria-hidden="true"
           ></i>
           <i v-else class="ti ti-circle-dashed text-lg text-gray-300" aria-hidden="true"></i>
-          <span :class="idx > pasoActivo ? 'text-gray-400' : 'text-gray-900'">{{ paso.label }}</span>
+          <span :class="idx > pasoActivo ? 'text-gray-500' : 'text-gray-900'">{{ paso.label }}</span>
         </li>
       </ol>
     </div>

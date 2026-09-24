@@ -52,7 +52,7 @@ const ROTULO = 'mb-1.5 flex items-center gap-1.5 text-xs font-medium text-gray-5
           <RouterLink class="text-sm text-primary-700 hover:underline" :to="`/base-conocimiento/${a.id}`">{{ a.titulo }}</RouterLink>
         </li>
       </ul>
-      <p v-else class="text-sm text-gray-400">Sin artículos publicados en esta categoría todavía.</p>
+      <p v-else class="text-sm text-gray-500">Sin artículos publicados en esta categoría todavía.</p>
     </div>
   </div>
 </template>

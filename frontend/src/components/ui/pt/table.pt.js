@@ -85,7 +85,7 @@ export function buildTablePT(props, attrClass) {
       columnHeaderContent: { class: 'inline-flex items-center gap-1.5' },
       columnTitle: { class: 'font-medium' },
       sort: { class: 'inline-flex shrink-0' },
-      sorticon: { class: 'w-3.5 h-3.5 text-gray-400' },
+      sorticon: { class: 'w-3.5 h-3.5 text-gray-500' },
       bodyCell: {
         class: 'border-b border-gray-100 px-4 py-2.5 align-middle text-gray-800',
       },

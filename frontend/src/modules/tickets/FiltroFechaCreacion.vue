@@ -35,7 +35,7 @@ const CAMPO =
       title="Desde"
       @input="$emit('update:desde', $event.target.value)"
     >
-    <span class="text-gray-400" aria-hidden="true">–</span>
+    <span class="text-gray-500" aria-hidden="true">–</span>
     <label :for="`${idPrefijo}-hasta`" class="sr-only">Hasta</label>
     <input
       :id="`${idPrefijo}-hasta`"

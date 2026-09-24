@@ -437,7 +437,7 @@ onMounted(async () => {
               <AppColumn field="software" header="Software" sortable>
                 <template #body="{ data: lic }">
                   <div class="flex min-w-0 max-w-56 items-center gap-3 2xl:max-w-72">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-400">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
                       <i class="ti ti-license" aria-hidden="true"></i>
                     </span>
                     <div class="min-w-0">
@@ -455,7 +455,7 @@ onMounted(async () => {
                   <!-- Revelado auditado (useRevelado): marcado .cred* intacto -->
                   <div v-if="lic.cuenta_id" class="min-w-0 max-w-52 2xl:max-w-64">
                     <div class="flex min-w-0 items-center gap-1.5 text-sm text-gray-700" :title="lic.cuenta_usuario">
-                      <i class="ti ti-mail shrink-0 text-gray-400" aria-hidden="true"></i>
+                      <i class="ti ti-mail shrink-0 text-gray-500" aria-hidden="true"></i>
                       <span class="truncate">{{ lic.cuenta_usuario }}</span>
                     </div>
                     <div class="mt-1 flex items-center gap-2">
@@ -473,12 +473,12 @@ onMounted(async () => {
                         </template>
                         <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
                       </div>
-                      <span class="text-xs text-gray-400">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
+                      <span class="text-xs text-gray-500">{{ lic.tiene_clave ? 'propia' : 'del correo' }}</span>
                     </div>
                   </div>
                   <div v-else-if="lic.tiene_clave" class="min-w-0">
                     <div class="flex items-center gap-1.5 text-sm text-gray-700">
-                      <i class="ti ti-key text-gray-400" aria-hidden="true"></i>Clave / serial
+                      <i class="ti ti-key text-gray-500" aria-hidden="true"></i>Clave / serial
                     </div>
                     <div class="mt-1">
                       <div class="cred">
@@ -497,7 +497,7 @@ onMounted(async () => {
                       </div>
                     </div>
                   </div>
-                  <span v-else class="text-gray-400">Sin credencial</span>
+                  <span v-else class="text-gray-500">Sin credencial</span>
                 </template>
               </AppColumn>
 
@@ -533,7 +533,7 @@ onMounted(async () => {
                       <span v-else class="truncate">{{ u.nombre }}</span>
                       <button
                         v-if="u.asignacion_id"
-                        class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-200 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                         type="button"
                         :title="`Liberar asiento de ${u.nombre}`"
                         :aria-label="`Liberar asiento de ${u.nombre}`"
@@ -551,7 +551,7 @@ onMounted(async () => {
                       >+{{ lic.usuarios.length - usuariosVisibles(lic).length }}</button>
                     </li>
                   </ul>
-                  <span v-else class="text-gray-400">Sin usuarios</span>
+                  <span v-else class="text-gray-500">Sin usuarios</span>
                 </template>
               </AppColumn>
 
@@ -594,7 +594,7 @@ onMounted(async () => {
           <ul v-else class="grid gap-3 sm:grid-cols-2" aria-label="Licencias de software">
             <li v-for="lic in lista" :key="lic.id" class="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
               <div class="flex items-start gap-3">
-                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-400">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-500">
                   <i class="ti ti-license" aria-hidden="true"></i>
                 </span>
                 <div class="min-w-0 flex-1">
@@ -628,7 +628,7 @@ onMounted(async () => {
                   <span v-else class="truncate">{{ u.nombre }}</span>
                   <button
                     v-if="u.asignacion_id"
-                    class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-200 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                     type="button"
                     :title="`Liberar asiento de ${u.nombre}`"
                     :aria-label="`Liberar asiento de ${u.nombre}`"

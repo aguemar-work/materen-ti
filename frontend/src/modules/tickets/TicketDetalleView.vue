@@ -104,7 +104,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
             <li class="inline-flex items-center gap-1.5">
               <i class="ti ti-user-check" aria-hidden="true"></i>
               <span v-if="ticket.asignado_a" class="text-gray-700">{{ staffPorId[ticket.asignado_a] || 'Staff' }}</span>
-              <span v-else :class="esTerminal ? 'text-gray-400' : 'text-amber-700'">Sin asignar</span>
+              <span v-else :class="esTerminal ? 'text-gray-500' : 'text-amber-700'">Sin asignar</span>
             </li>
             <li v-if="ticket.created_at" class="inline-flex items-center gap-1.5 tabular-nums" :title="formatFechaHora(ticket.created_at)">
               <i class="ti ti-clock" aria-hidden="true"></i>Creado {{ formatAntiguedad(ticket.created_at) }}

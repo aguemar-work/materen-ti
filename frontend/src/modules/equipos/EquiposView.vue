@@ -712,7 +712,7 @@ onMounted(async () => {
                     >
                       <img :src="eq.fotos[0].url" alt="" class="h-full w-full object-cover">
                     </a>
-                    <span v-else class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-400">
+                    <span v-else class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
                       <i class="ti ti-devices" aria-hidden="true"></i>
                     </span>
                     <div class="min-w-0">
@@ -729,7 +729,7 @@ onMounted(async () => {
 
               <AppColumn field="serie" header="Serie" sortable>
                 <template #body="{ data: eq }">
-                  <span class="tabular-nums" :class="eq.serie ? 'text-gray-700' : 'text-gray-400'">{{ eq.serie || 'Sin serie' }}</span>
+                  <span class="tabular-nums" :class="eq.serie ? 'text-gray-700' : 'text-gray-500'">{{ eq.serie || 'Sin serie' }}</span>
                 </template>
               </AppColumn>
 
@@ -779,10 +779,10 @@ onMounted(async () => {
                   </div>
                   <label v-else-if="enAlmacen(eq)" class="relative inline-flex items-center" @click.stop>
                     <span class="sr-only">Ubicación de {{ eq.codigo }}</span>
-                    <i class="ti ti-map-pin pointer-events-none absolute left-2 text-gray-400" aria-hidden="true"></i>
+                    <i class="ti ti-map-pin pointer-events-none absolute left-2 text-gray-500" aria-hidden="true"></i>
                     <select
                       class="h-8 max-w-48 cursor-pointer appearance-none truncate rounded-md border border-transparent bg-transparent pl-7 pr-7 text-sm hover:bg-gray-100 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      :class="eq.ubicacion_id ? 'text-gray-700' : 'text-gray-400'"
+                      :class="eq.ubicacion_id ? 'text-gray-700' : 'text-gray-500'"
                       data-ui
                       :value="eq.ubicacion_id || ''"
                       :disabled="moviendoId === eq.id"
@@ -792,12 +792,12 @@ onMounted(async () => {
                       <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
                       <option value="__nueva__">+ Crear nueva ubicación…</option>
                     </select>
-                    <i class="ti ti-chevron-down pointer-events-none absolute right-2 text-xs text-gray-400" aria-hidden="true"></i>
+                    <i class="ti ti-chevron-down pointer-events-none absolute right-2 text-xs text-gray-500" aria-hidden="true"></i>
                   </label>
                   <span v-else-if="eq.ubicacion_nombre" class="inline-flex items-center gap-1.5 text-gray-700">
-                    <i class="ti ti-map-pin text-gray-400" aria-hidden="true"></i>{{ eq.ubicacion_nombre }}
+                    <i class="ti ti-map-pin text-gray-500" aria-hidden="true"></i>{{ eq.ubicacion_nombre }}
                   </span>
-                  <span v-else class="text-gray-400">Sin asignar</span>
+                  <span v-else class="text-gray-500">Sin asignar</span>
                 </template>
               </AppColumn>
 
@@ -853,7 +853,7 @@ onMounted(async () => {
                 >
                   <img :src="eq.fotos[0].url" alt="" class="h-full w-full object-cover">
                 </a>
-                <span v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gray-50 text-2xl text-gray-400">
+                <span v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gray-50 text-2xl text-gray-500">
                   <i class="ti ti-devices" aria-hidden="true"></i>
                 </span>
                 <div class="min-w-0 flex-1">
@@ -899,10 +899,10 @@ onMounted(async () => {
                 </div>
                 <label v-else-if="enAlmacen(eq)" class="relative inline-flex min-w-0 items-center">
                   <span class="sr-only">Ubicación de {{ eq.codigo }}</span>
-                  <i class="ti ti-map-pin pointer-events-none absolute left-2 text-gray-400" aria-hidden="true"></i>
+                  <i class="ti ti-map-pin pointer-events-none absolute left-2 text-gray-500" aria-hidden="true"></i>
                   <select
                     class="h-8 max-w-full cursor-pointer appearance-none truncate rounded-md border border-gray-200 bg-white pl-7 pr-7 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    :class="eq.ubicacion_id ? 'text-gray-700' : 'text-gray-400'"
+                    :class="eq.ubicacion_id ? 'text-gray-700' : 'text-gray-500'"
                     data-ui
                     :value="eq.ubicacion_id || ''"
                     :disabled="moviendoId === eq.id"
@@ -912,12 +912,12 @@ onMounted(async () => {
                     <option v-for="u in store.ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
                     <option value="__nueva__">+ Crear nueva ubicación…</option>
                   </select>
-                  <i class="ti ti-chevron-down pointer-events-none absolute right-2 text-xs text-gray-400" aria-hidden="true"></i>
+                  <i class="ti ti-chevron-down pointer-events-none absolute right-2 text-xs text-gray-500" aria-hidden="true"></i>
                 </label>
                 <span v-else-if="eq.ubicacion_nombre" class="inline-flex items-center gap-1.5 text-gray-700">
-                  <i class="ti ti-map-pin text-gray-400" aria-hidden="true"></i>{{ eq.ubicacion_nombre }}
+                  <i class="ti ti-map-pin text-gray-500" aria-hidden="true"></i>{{ eq.ubicacion_nombre }}
                 </span>
-                <span v-else class="text-gray-400">Sin asignar</span>
+                <span v-else class="text-gray-500">Sin asignar</span>
               </div>
 
               <div class="mt-3 flex min-h-8 items-center justify-between gap-2 border-t border-gray-100 pt-3">
@@ -963,7 +963,7 @@ onMounted(async () => {
       <template #titulo>Entregar {{ equipoAsignar?.codigo }}</template>
       <div class="space-y-4">
         <div class="flex items-center gap-3 rounded-md bg-gray-50 px-3 py-2.5">
-          <i class="ti ti-devices text-lg text-gray-400" aria-hidden="true"></i>
+          <i class="ti ti-devices text-lg text-gray-500" aria-hidden="true"></i>
           <div class="min-w-0 text-sm">
             <div class="truncate font-medium text-gray-900">{{ equipoAsignar ? nombreEquipo(equipoAsignar) : '' }}</div>
             <div class="text-xs text-gray-500 tabular-nums">{{ equipoAsignar?.codigo }}<template v-if="equipoAsignar?.serie"> · S/N {{ equipoAsignar.serie }}</template></div>
@@ -1071,7 +1071,7 @@ onMounted(async () => {
         <div>
           <label
             class="flex items-start gap-2.5 text-sm"
-            :class="motivoCierre === 'perdida' ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer text-gray-700'"
+            :class="motivoCierre === 'perdida' ? 'cursor-not-allowed text-gray-500' : 'cursor-pointer text-gray-700'"
           >
             <input
               v-model="aReparacion"
@@ -1103,7 +1103,7 @@ onMounted(async () => {
       <template #titulo>Hoja de vida</template>
       <div v-if="equipoHoja" class="space-y-6">
         <header class="flex items-start gap-4">
-          <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-2xl text-gray-400">
+          <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-2xl text-gray-500">
             <i class="ti ti-devices" aria-hidden="true"></i>
           </span>
           <div class="min-w-0 flex-1">
@@ -1155,7 +1155,7 @@ onMounted(async () => {
         <section aria-labelledby="hoja-historial">
           <h4 id="hoja-historial" class="mb-3 text-sm font-semibold text-gray-900">Historial</h4>
           <p v-if="cargandoEventos" class="py-4 text-sm text-gray-500" role="status">Cargando historial...</p>
-          <p v-else-if="!eventos.length" class="py-4 text-sm text-gray-400">Sin movimientos registrados.</p>
+          <p v-else-if="!eventos.length" class="py-4 text-sm text-gray-500">Sin movimientos registrados.</p>
           <ol v-else class="space-y-4">
             <li v-for="ev in eventos" :key="ev.id" class="flex gap-3">
               <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm text-gray-500">

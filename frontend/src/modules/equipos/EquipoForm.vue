@@ -515,7 +515,7 @@ async function guardar() {
         <div class="full space-y-3">
           <div class="relative">
             <label for="ef-acc-buscar" class="sr-only">Buscar en almacén</label>
-            <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+            <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
             <input
               id="ef-acc-buscar"
               v-model="busquedaAcc"
@@ -595,7 +595,7 @@ async function guardar() {
                 <i class="ti ti-trash" aria-hidden="true"></i>
               </button>
             </div>
-            <p v-if="!form.accesorios_lineas.length" class="border-b border-gray-100 px-3 py-3 text-sm text-gray-400">
+            <p v-if="!form.accesorios_lineas.length" class="border-b border-gray-100 px-3 py-3 text-sm text-gray-500">
               Sin accesorios. Busque en el almacén o agregue uno abajo.
             </p>
 

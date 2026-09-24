@@ -137,7 +137,7 @@ const infoErrorForm = infoNotificacion('error');
               <div v-if="fila.campos_spec?.length" class="flex flex-wrap gap-1">
                 <AppTag v-for="c in fila.campos_spec" :key="c">{{ c }}</AppTag>
               </div>
-              <span v-else class="text-gray-400">Sin specs</span>
+              <span v-else class="text-gray-500">Sin specs</span>
             </template>
           </AppColumn>
           <AppColumn field="accesorios_sugeridos" header="Accesorios sugeridos">
@@ -145,7 +145,7 @@ const infoErrorForm = infoNotificacion('error');
               <div v-if="fila.accesorios_sugeridos?.length" class="flex flex-wrap gap-1">
                 <AppTag v-for="a in fila.accesorios_sugeridos" :key="a">{{ a }}</AppTag>
               </div>
-              <span v-else class="text-gray-400">Sin accesorios</span>
+              <span v-else class="text-gray-500">Sin accesorios</span>
             </template>
           </AppColumn>
           <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
@@ -167,11 +167,11 @@ const infoErrorForm = infoNotificacion('error');
               </span>
               <div class="min-w-0 flex-1 space-y-0.5">
                 <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
-                <p class="text-xs" :class="fila.campos_spec?.length ? 'text-gray-500' : 'text-gray-400'">
-                  <span class="text-gray-400">Specs:</span> {{ fila.campos_spec?.length ? fila.campos_spec.join(', ') : 'Sin specs' }}
+                <p class="text-xs" :class="fila.campos_spec?.length ? 'text-gray-500' : 'text-gray-500'">
+                  <span class="text-gray-500">Specs:</span> {{ fila.campos_spec?.length ? fila.campos_spec.join(', ') : 'Sin specs' }}
                 </p>
-                <p class="text-xs" :class="fila.accesorios_sugeridos?.length ? 'text-gray-500' : 'text-gray-400'">
-                  <span class="text-gray-400">Accesorios:</span> {{ fila.accesorios_sugeridos?.length ? fila.accesorios_sugeridos.join(', ') : 'Sin accesorios' }}
+                <p class="text-xs" :class="fila.accesorios_sugeridos?.length ? 'text-gray-500' : 'text-gray-500'">
+                  <span class="text-gray-500">Accesorios:</span> {{ fila.accesorios_sugeridos?.length ? fila.accesorios_sugeridos.join(', ') : 'Sin accesorios' }}
                 </p>
               </div>
               <div class="-mr-1">

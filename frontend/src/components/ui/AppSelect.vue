@@ -20,6 +20,6 @@ defineEmits(['update:modelValue']);
     >
       <slot />
     </select>
-    <i class="ti ti-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+    <i class="ti ti-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
   </label>
 </template>

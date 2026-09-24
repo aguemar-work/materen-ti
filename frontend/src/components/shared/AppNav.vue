@@ -185,7 +185,7 @@ const CLASE_LINK_ACTIVO =
              una sola área (hoy) esto no renderiza nada. -->
         <div
           v-if="navAreas.length > 1"
-          class="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
+          class="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-gray-500"
           :class="{ 'md:hidden': navEnRiel }"
         >{{ area.label }}</div>
 

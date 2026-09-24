@@ -188,7 +188,7 @@ onMounted(async () => {
                     <AppAvatar :nombre="nombreResponsable(fila)" />
                     <span class="truncate text-gray-900">{{ nombreResponsable(fila) }}</span>
                   </div>
-                  <span v-else class="text-gray-400">Sin asignar</span>
+                  <span v-else class="text-gray-500">Sin asignar</span>
                 </template>
               </AppColumn>
 
@@ -228,7 +228,7 @@ onMounted(async () => {
                 >{{ fila.titulo }}</RouterLink>
                 <BadgeEstado tipo="problema_estado" :valor="fila.estado" />
               </div>
-              <p class="mt-2 text-sm" :class="fila.responsable_id ? 'text-gray-600' : 'text-gray-400'">
+              <p class="mt-2 text-sm" :class="fila.responsable_id ? 'text-gray-600' : 'text-gray-500'">
                 {{ fila.responsable_id ? nombreResponsable(fila) : 'Sin asignar' }}
               </p>
               <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">

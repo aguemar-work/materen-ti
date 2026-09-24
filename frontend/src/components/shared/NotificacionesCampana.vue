@@ -105,7 +105,7 @@ async function marcarTodas() {
         role="menuitem"
         @click="abrirNotificacion(n)"
       >
-        <i class="ti mt-0.5 shrink-0 text-base text-gray-400" :class="icono(n.tipo)" aria-hidden="true"></i>
+        <i class="ti mt-0.5 shrink-0 text-base text-gray-500" :class="icono(n.tipo)" aria-hidden="true"></i>
         <span class="flex min-w-0 flex-1 flex-col">
           <span class="text-sm text-gray-800">{{ n.titulo }}</span>
           <span class="text-xs text-gray-500">{{ formatAntiguedad(n.creado_en) }}</span>

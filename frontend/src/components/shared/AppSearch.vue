@@ -220,7 +220,7 @@ function irALicencia(lic) {
               role="option"
               @click="irAEmpleado(e)"
             >
-              <i class="ti ti-user shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <i class="ti ti-user shrink-0 text-base text-gray-500" aria-hidden="true"></i>
               <span class="min-w-0 flex-1 truncate">{{ e.nombres }} {{ e.apellidos }}</span>
               <span class="shrink-0 truncate text-xs text-gray-500">{{ e.dni }}</span>
             </button>
@@ -235,7 +235,7 @@ function irALicencia(lic) {
               role="option"
               @click="irACuenta(c)"
             >
-              <i class="ti ti-key shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <i class="ti ti-key shrink-0 text-base text-gray-500" aria-hidden="true"></i>
               <span class="min-w-0 flex-1 truncate">{{ c.usuario }}</span>
               <span class="shrink-0 truncate text-xs text-gray-500">{{ c.plataforma_nombre }}</span>
             </button>
@@ -250,7 +250,7 @@ function irALicencia(lic) {
               role="option"
               @click="irAEquipo(eq)"
             >
-              <i class="ti ti-devices shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <i class="ti ti-devices shrink-0 text-base text-gray-500" aria-hidden="true"></i>
               <span class="min-w-0 flex-1 truncate">{{ eq.codigo }}</span>
               <span class="shrink-0 truncate text-xs text-gray-500">{{ eq.descripcion }}</span>
             </button>
@@ -265,7 +265,7 @@ function irALicencia(lic) {
               role="option"
               @click="irATicket(t)"
             >
-              <i class="ti ti-headset shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <i class="ti ti-headset shrink-0 text-base text-gray-500" aria-hidden="true"></i>
               <span class="min-w-0 flex-1 truncate">{{ t.titulo }}</span>
               <span class="shrink-0 truncate text-xs text-gray-500">{{ t.codigo }} · {{ estadoInfo(t.estado).label }}</span>
             </button>
@@ -280,7 +280,7 @@ function irALicencia(lic) {
               role="option"
               @click="irALicencia(lic)"
             >
-              <i class="ti ti-license shrink-0 text-base text-gray-400" aria-hidden="true"></i>
+              <i class="ti ti-license shrink-0 text-base text-gray-500" aria-hidden="true"></i>
               <span class="min-w-0 flex-1 truncate">{{ lic.software }}</span>
               <span class="shrink-0 truncate text-xs text-gray-500">{{ lic.proveedor }}</span>
             </button>

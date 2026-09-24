@@ -386,7 +386,7 @@ onMounted(cargar);
                     :disabled="anioElegido === hoyAnio && i > hoyMes"
                   >{{ nombre }}</option>
                 </select>
-                <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+                <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
               </label>
               <label class="relative inline-block">
                 <span class="sr-only">Año del reporte</span>
@@ -398,7 +398,7 @@ onMounted(cargar);
                 >
                   <option v-for="a in anios" :key="a" :value="a">{{ a }}</option>
                 </select>
-                <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+                <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
               </label>
             </template>
             <input
@@ -495,7 +495,7 @@ onMounted(cargar);
                   <span class="font-medium tabular-nums text-gray-900">{{ c.cantidad }}</span>
                 </li>
               </ul>
-              <p v-else class="px-3 py-3 text-sm text-gray-400">Sin datos</p>
+              <p v-else class="px-3 py-3 text-sm text-gray-500">Sin datos</p>
             </div>
           </div>
         </section>
@@ -526,7 +526,7 @@ onMounted(cargar);
               <AppColumn field="mediana" header="Mediana">
                 <template #body="{ data: f }"><span class="tabular-nums">{{ formatHoras(f.mediana) }}</span></template>
               </AppColumn>
-              <template #empty><p class="py-6 text-center text-sm text-gray-400">Sin tickets resueltos en el periodo.</p></template>
+              <template #empty><p class="py-6 text-center text-sm text-gray-500">Sin tickets resueltos en el periodo.</p></template>
             </AppTable>
           </div>
         </section>
@@ -554,7 +554,7 @@ onMounted(cargar);
               <AppColumn field="mediana" header="Mediana">
                 <template #body="{ data: f }"><span class="tabular-nums">{{ formatHoras(f.mediana) }}</span></template>
               </AppColumn>
-              <template #empty><p class="py-6 text-center text-sm text-gray-400">Sin tickets resueltos en el periodo.</p></template>
+              <template #empty><p class="py-6 text-center text-sm text-gray-500">Sin tickets resueltos en el periodo.</p></template>
             </AppTable>
           </div>
         </section>
@@ -579,7 +579,7 @@ onMounted(cargar);
               <AppColumn field="diasAbierto" header="Días abierto">
                 <template #body="{ data: f }"><span class="tabular-nums">{{ f.diasAbierto }}</span></template>
               </AppColumn>
-              <template #empty><p class="py-6 text-center text-sm text-gray-400">Sin tickets arrastrados resueltos en el periodo.</p></template>
+              <template #empty><p class="py-6 text-center text-sm text-gray-500">Sin tickets arrastrados resueltos en el periodo.</p></template>
             </AppTable>
           </div>
         </section>
@@ -594,7 +594,7 @@ onMounted(cargar);
             <AppTable :value="datos.porSolicitante" :lazy="false" data-key="solicitante" aria-label="Tickets del periodo por solicitante">
               <AppColumn field="solicitante" header="Usuario">
                 <template #body="{ data: f }">
-                  <span :class="f.solicitante ? 'text-gray-900' : 'text-gray-400'">{{ f.solicitante || 'Sin registrar' }}</span>
+                  <span :class="f.solicitante ? 'text-gray-900' : 'text-gray-500'">{{ f.solicitante || 'Sin registrar' }}</span>
                 </template>
               </AppColumn>
               <AppColumn field="total" header="Histórico">
@@ -612,11 +612,11 @@ onMounted(cargar);
               <AppColumn field="encuestasContestadas" header="Encuestas">
                 <template #body="{ data: f }">
                   <span class="whitespace-nowrap tabular-nums" :title="`${f.encuestasContestadas} contestadas, ${f.encuestasPendientes} pendientes`">
-                    {{ f.encuestasContestadas }} <span class="text-gray-400">/ {{ f.encuestasContestadas + f.encuestasPendientes }}</span>
+                    {{ f.encuestasContestadas }} <span class="text-gray-500">/ {{ f.encuestasContestadas + f.encuestasPendientes }}</span>
                   </span>
                 </template>
               </AppColumn>
-              <template #empty><p class="py-6 text-center text-sm text-gray-400">Sin tickets creados en el periodo.</p></template>
+              <template #empty><p class="py-6 text-center text-sm text-gray-500">Sin tickets creados en el periodo.</p></template>
             </AppTable>
           </div>
         </section>
@@ -639,7 +639,7 @@ onMounted(cargar);
               </div>
             </li>
           </ul>
-          <p v-else class="text-sm text-gray-400">Sin comentarios en el periodo.</p>
+          <p v-else class="text-sm text-gray-500">Sin comentarios en el periodo.</p>
         </section>
       </template>
     </div>

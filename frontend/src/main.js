@@ -12,9 +12,6 @@ import { useAuthStore } from './stores/auth.js';
 import '@fontsource-variable/inter';
 import '@tabler/icons-webfont/dist/tabler-icons.min.css';
 import './styles/main.css';
-import { initTema } from './core/tema.js';
-
-initTema();
 
 // Observabilidad (D-01): solo en build de producción y con DSN configurado
 // — `npm run dev` sin la variable no inicializa nada, cero ruido ni costo

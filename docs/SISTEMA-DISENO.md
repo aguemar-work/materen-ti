@@ -45,7 +45,7 @@
 | --- | --- |
 | Acento | `primary-50…950` (500 = `#0064E0`, único color de marca) |
 | Neutros | `gray-*` de Tailwind (workspace `gray-50`, bordes `gray-200`/`gray-100`) |
-| Texto | primario `gray-900` · secundario `gray-600` · terciario `gray-500` · apagado `gray-400` |
+| Texto | primario `gray-900` · secundario `gray-600` · terciario `gray-500` (mínimo para cualquier texto que informe: 4,5:1 sobre blanco). `gray-400`/`gray-300` solo en íconos decorativos, estados `disabled:` y `placeholder:` |
 | Estados | `green` (ok) · `amber` (atención) · `red` (error/vencido) — tonos 50 de fondo, 700/800 de texto |
 | Categorías del dominio | `sky` · `violet` · `teal` (prioridades, tipos) — mismos tonos |
 | Tipografía | Inter Variable, `tabular-nums` en códigos, DNI, cifras y fechas |
@@ -117,7 +117,7 @@ se vean sin estilos, y se borra cuando la última vista deja de usarlo.
   en `text-xs`) primero; datos relacionados apilados (principal arriba,
   secundario abajo en `text-xs text-gray-500`); estado con `BadgeEstado`;
   acciones al final en ⋮ (`<div class="flex justify-end" @click.stop>`).
-- Contadores compactos: ícono + número `tabular-nums`; en cero, `text-gray-300`.
+- Contadores compactos: ícono + número `tabular-nums`; en cero, `text-gray-400` (el valor real viaja en `aria-label`).
 - Móvil (`useEsMovil`): grilla de tarjetas (`grid gap-3 sm:grid-cols-2
   xl:grid-cols-3`), cada tarjeta `rounded-lg border bg-white p-4`, mismo ⋮.
 

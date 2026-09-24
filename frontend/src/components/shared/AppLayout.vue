@@ -27,7 +27,6 @@ import { useAuthStore } from '../../stores/auth.js';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { getClient } from '../../api/client.js';
-import { temaActual, alternarTema } from '../../core/tema.js';
 // El nombre del header es marca + descriptor, y marca.js ya tiene las dos
 // piezas por separado (NOMBRE_MARCA sobrevive al crecimiento fuera de TI,
 // NOMBRE_CORTO no). Se consumen las tres: las dos piezas para el título
@@ -171,17 +170,6 @@ function cerrarNav() {
   navAbierto.value = false;
 }
 
-// ── Tema claro/oscuro ─────────────────────────────────────────
-// ⚠️ Hoy el tema oscuro no tiene estilos: la base Tailwind solo define el
-// tema claro. El toggle sigue alternando `data-theme` (y recordándolo) para
-// no perder la preferencia guardada de nadie, pero visualmente no cambia
-// nada hasta que se diseñe el oscuro.
-const tema = ref(temaActual());
-
-function toggleTema() {
-  tema.value = alternarTema();
-}
-
 const nombreUsuario = computed(() => auth.nombre || auth.user?.email || '');
 // inicialesDe() y no `nombre[0]`: es la misma función que usa cualquier otro
 // avatar del sistema, así el del header muestra dos letras como el de la
@@ -212,12 +200,6 @@ function onNombreGuardado(actualizado) {
 const accionesUsuario = computed(() => [
   { icono: 'ti-pencil', label: 'Editar mi nombre', onClick: () => { mostrarEditarNombre.value = true; } },
   { icono: 'ti-settings', label: 'Configuración', onClick: () => router.push('/configuracion') },
-  { separador: true },
-  {
-    icono: tema.value === 'dark' ? 'ti-sun' : 'ti-moon',
-    label: tema.value === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro',
-    onClick: toggleTema,
-  },
   { separador: true },
   { icono: 'ti-logout', label: 'Cerrar sesión', onClick: cerrarSesion },
 ]);
@@ -260,15 +242,6 @@ async function cerrarSesion() {
       <div class="ml-auto flex items-center gap-1">
         <AppSearch ref="appSearchRef" @navegado="cerrarNav" />
         <NotificacionesCampana />
-        <button
-          :class="ACCION_HEADER"
-          type="button"
-          :title="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
-          :aria-label="tema === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
-          @click="toggleTema"
-        >
-          <i :class="tema === 'dark' ? 'ti ti-sun' : 'ti ti-moon'" aria-hidden="true"></i>
-        </button>
         <MenuAcciones
           :class="ACCION_HEADER"
           :acciones="accionesUsuario"

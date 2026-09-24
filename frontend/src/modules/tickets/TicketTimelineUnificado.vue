@@ -83,6 +83,6 @@ const PUNTO = {
         </div>
       </li>
     </ol>
-    <p v-else class="mt-4 text-center text-sm text-gray-400">Sin actividad todavía.</p>
+    <p v-else class="mt-4 text-center text-sm text-gray-500">Sin actividad todavía.</p>
   </div>
 </template>

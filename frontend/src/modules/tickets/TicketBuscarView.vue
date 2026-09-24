@@ -129,7 +129,7 @@ async function buscar() {
               <span class="text-sm font-medium text-gray-900 [overflow-wrap:anywhere]">{{ t.titulo }}</span>
               <span class="text-xs text-gray-500">Creado el {{ formatFecha(t.creado) }}</span>
             </span>
-            <i class="ti ti-chevron-right shrink-0 text-lg text-gray-400" aria-hidden="true"></i>
+            <i class="ti ti-chevron-right shrink-0 text-lg text-gray-500" aria-hidden="true"></i>
           </RouterLink>
         </li>
       </ul>

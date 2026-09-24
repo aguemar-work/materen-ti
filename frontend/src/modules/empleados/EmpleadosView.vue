@@ -336,7 +336,7 @@ onMounted(async () => {
               <AppColumn field="cargo" header="Cargo" sortable>
                 <template #body="{ data: emp }">
                   <div class="min-w-0">
-                    <div class="truncate" :class="emp.cargo ? 'text-gray-900' : 'text-gray-400'">{{ emp.cargo || 'Sin cargo' }}</div>
+                    <div class="truncate" :class="emp.cargo ? 'text-gray-900' : 'text-gray-500'">{{ emp.cargo || 'Sin cargo' }}</div>
                     <div v-if="emp.empresa_nombre" class="truncate text-xs text-gray-500">{{ emp.empresa_nombre }}</div>
                   </div>
                 </template>
@@ -347,24 +347,24 @@ onMounted(async () => {
                   <div v-if="emp.n_cuentas != null" class="flex items-center gap-4 text-sm tabular-nums">
                     <span
                       class="inline-flex items-center gap-1"
-                      :class="altaPendiente(emp) ? 'text-amber-700' : emp.n_cuentas ? 'text-gray-700' : 'text-gray-300'"
+                      :class="altaPendiente(emp) ? 'text-amber-700' : emp.n_cuentas ? 'text-gray-700' : 'text-gray-400'"
                       :title="tituloCuentas(emp)"
                       :aria-label="tituloCuentas(emp)"
                     ><i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}</span>
                     <span
                       class="inline-flex items-center gap-1"
-                      :class="emp.n_equipos ? 'text-gray-700' : 'text-gray-300'"
+                      :class="emp.n_equipos ? 'text-gray-700' : 'text-gray-400'"
                       :title="`${emp.n_equipos} equipo(s) asignado(s)`"
                       :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"
                     ><i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}</span>
                     <span
                       class="inline-flex items-center gap-1"
-                      :class="emp.n_licencias ? 'text-gray-700' : 'text-gray-300'"
+                      :class="emp.n_licencias ? 'text-gray-700' : 'text-gray-400'"
                       :title="`${emp.n_licencias} licencia(s) directa(s)`"
                       :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"
                     ><i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}</span>
                   </div>
-                  <span v-else class="text-gray-300">—</span>
+                  <span v-else class="text-xs text-gray-500">Sin asignaciones</span>
                 </template>
               </AppColumn>
 
@@ -424,9 +424,9 @@ onMounted(async () => {
               <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
                 <BadgeEstado tipo="empleado" :valor="emp.estado" status />
                 <div v-if="emp.n_cuentas != null" class="flex items-center gap-3 text-xs tabular-nums">
-                  <span :class="altaPendiente(emp) ? 'text-amber-700' : emp.n_cuentas ? 'text-gray-600' : 'text-gray-300'" :title="tituloCuentas(emp)" :aria-label="tituloCuentas(emp)"><i class="ti ti-key" aria-hidden="true"></i> {{ emp.n_cuentas }}</span>
-                  <span :class="emp.n_equipos ? 'text-gray-600' : 'text-gray-300'" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"><i class="ti ti-devices" aria-hidden="true"></i> {{ emp.n_equipos }}</span>
-                  <span :class="emp.n_licencias ? 'text-gray-600' : 'text-gray-300'" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"><i class="ti ti-license" aria-hidden="true"></i> {{ emp.n_licencias }}</span>
+                  <span :class="altaPendiente(emp) ? 'text-amber-700' : emp.n_cuentas ? 'text-gray-600' : 'text-gray-400'" :title="tituloCuentas(emp)" :aria-label="tituloCuentas(emp)"><i class="ti ti-key" aria-hidden="true"></i> {{ emp.n_cuentas }}</span>
+                  <span :class="emp.n_equipos ? 'text-gray-600' : 'text-gray-400'" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"><i class="ti ti-devices" aria-hidden="true"></i> {{ emp.n_equipos }}</span>
+                  <span :class="emp.n_licencias ? 'text-gray-600' : 'text-gray-400'" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"><i class="ti ti-license" aria-hidden="true"></i> {{ emp.n_licencias }}</span>
                 </div>
               </div>
             </li>

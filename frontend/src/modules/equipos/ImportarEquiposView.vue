@@ -564,7 +564,7 @@ onMounted(async () => {
               :key="i"
               class="grid grid-cols-[minmax(0,1fr)_1.5rem_minmax(0,1fr)] items-center gap-3 px-5 py-2"
             >
-              <span class="truncate text-sm" :class="h.original ? 'text-gray-900' : 'text-gray-400'">{{ h.original || `(columna ${i + 1})` }}</span>
+              <span class="truncate text-sm" :class="h.original ? 'text-gray-900' : 'text-gray-500'">{{ h.original || `(columna ${i + 1})` }}</span>
               <i class="ti ti-arrow-right text-center text-gray-300" aria-hidden="true"></i>
               <label class="relative block">
                 <span class="sr-only">Campo del sistema para {{ h.original || `columna ${i + 1}` }}</span>
@@ -572,11 +572,11 @@ onMounted(async () => {
                   v-model="h.campo"
                   data-ui
                   class="h-9 w-full cursor-pointer appearance-none rounded-md border bg-white pl-3 pr-9 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  :class="h.campo === 'ignorar' ? 'border-gray-200 text-gray-400' : 'border-gray-300 text-gray-900'"
+                  :class="h.campo === 'ignorar' ? 'border-gray-200 text-gray-500' : 'border-gray-300 text-gray-900'"
                 >
                   <option v-for="c in CAMPOS_SISTEMA" :key="c.clave" :value="c.clave">{{ c.label }}</option>
                 </select>
-                <i class="ti ti-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+                <i class="ti ti-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
               </label>
             </li>
           </ul>
@@ -643,7 +643,7 @@ onMounted(async () => {
                         <td class="border-b border-gray-100 px-3 py-2.5">
                           <div class="flex flex-col items-start gap-1">
                             <span class="text-xs text-gray-500">{{ fila.raw.categoria }}<template v-if="fila.raw.tipo"> / {{ fila.raw.tipo }}</template></span>
-                            <span v-if="fila.raw.usuario" class="text-xs text-gray-400">{{ fila.raw.usuario }}</span>
+                            <span v-if="fila.raw.usuario" class="text-xs text-gray-500">{{ fila.raw.usuario }}</span>
                             <AppTag v-if="fila.duplicadoKapo" tono="warning" icono="ti ti-alert-triangle" title="El Excel marca esta fila como duplicada (columna SUBIDO A KAPO)">
                               Duplicado en Excel
                             </AppTag>

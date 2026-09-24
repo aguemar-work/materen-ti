@@ -28,7 +28,7 @@ const TEXTO_PUNTO = {
 </script>
 
 <template>
-  <span v-if="!valor" class="text-xs text-gray-400">Sin severidad</span>
+  <span v-if="!valor" class="text-xs text-gray-500">Sin severidad</span>
   <AppTag v-else-if="conFondo" :tono="tono" :icono="valor === 'critica' ? 'ti ti-alert-triangle' : ''">{{ info.label }}</AppTag>
   <span
     v-else

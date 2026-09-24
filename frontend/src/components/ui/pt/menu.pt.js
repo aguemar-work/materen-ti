@@ -38,7 +38,7 @@ export function buildMenuPT() {
       class: `${ITEM_LINK_BASE} ${context.item?.danger ? ITEM_LINK_DANGER : ITEM_LINK_NORMAL}`,
     }),
     itemIcon: ({ context }) => ({
-      class: `w-4 shrink-0 text-base ${context.item?.danger ? 'text-red-500' : 'text-gray-400'}`,
+      class: `w-4 shrink-0 text-base ${context.item?.danger ? 'text-red-500' : 'text-gray-500'}`,
     }),
     itemLabel: { class: 'truncate' },
     separator: { class: 'my-1 border-t border-gray-100' },

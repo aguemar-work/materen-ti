@@ -195,7 +195,7 @@ onMounted(async () => {
           </AppColumn>
           <AppColumn field="ruc" header="RUC" sortable>
             <template #body="{ data: fila }">
-              <span class="tabular-nums" :class="fila.ruc ? 'text-gray-700' : 'text-gray-400'">{{ fila.ruc || 'Sin RUC' }}</span>
+              <span class="tabular-nums" :class="fila.ruc ? 'text-gray-700' : 'text-gray-500'">{{ fila.ruc || 'Sin RUC' }}</span>
             </template>
           </AppColumn>
           <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
@@ -217,7 +217,7 @@ onMounted(async () => {
               </span>
               <div class="min-w-0 flex-1">
                 <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
-                <div class="text-xs tabular-nums" :class="fila.ruc ? 'text-gray-500' : 'text-gray-400'">{{ fila.ruc ? `RUC ${fila.ruc}` : 'Sin RUC' }}</div>
+                <div class="text-xs tabular-nums" :class="fila.ruc ? 'text-gray-500' : 'text-gray-500'">{{ fila.ruc ? `RUC ${fila.ruc}` : 'Sin RUC' }}</div>
               </div>
               <div class="-mr-1">
                 <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />

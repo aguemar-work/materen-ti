@@ -25,7 +25,7 @@ const FOOTER = 'flex justify-end gap-2 px-5 pb-5 pt-4';
 const CLOSE_BUTTON = {
   root: {
     class:
-      'inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 ' +
+      'inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-500 ' +
       'hover:bg-slate-50 hover:text-gray-600 focus-visible:outline-none ' +
       'focus-visible:ring-2 focus-visible:ring-primary-500',
   },

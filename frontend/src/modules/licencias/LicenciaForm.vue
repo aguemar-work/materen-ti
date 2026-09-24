@@ -396,7 +396,7 @@ async function guardar() {
         </div>
       </template>
       <p v-else class="full -mt-1 flex items-center gap-2 text-sm text-gray-500">
-        <i class="ti ti-infinity text-gray-400" aria-hidden="true"></i> Licencia perpetua: no tiene vencimiento ni renovación.
+        <i class="ti ti-infinity text-gray-500" aria-hidden="true"></i> Licencia perpetua: no tiene vencimiento ni renovación.
       </p>
 
       <div class="campo" :class="{ 'campo--inerte': guardando }">
@@ -443,7 +443,7 @@ async function guardar() {
             :class="modoAcceso === op.valor ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white hover:bg-gray-50'"
           >
             <input v-model="modoAcceso" type="radio" :value="op.valor" class="sr-only" :disabled="guardando">
-            <i class="mt-0.5 text-lg" :class="[op.icono, modoAcceso === op.valor ? 'text-primary-600' : 'text-gray-400']" aria-hidden="true"></i>
+            <i class="mt-0.5 text-lg" :class="[op.icono, modoAcceso === op.valor ? 'text-primary-600' : 'text-gray-500']" aria-hidden="true"></i>
             <span class="min-w-0">
               <span class="block text-sm font-medium" :class="modoAcceso === op.valor ? 'text-primary-700' : 'text-gray-900'">{{ op.label }}</span>
               <span class="mt-0.5 block text-xs text-gray-500">{{ op.desc }}</span>

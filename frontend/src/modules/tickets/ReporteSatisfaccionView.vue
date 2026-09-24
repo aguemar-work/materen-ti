@@ -302,11 +302,11 @@ onMounted(cargar);
               </AppColumn>
               <AppColumn field="promedio" header="Promedio">
                 <template #body="{ data: f }">
-                  <span v-if="f.promedio === null" class="text-gray-400">Sin respuestas</span>
-                  <span v-else class="font-medium tabular-nums" :class="f.muestra < MIN_MUESTRA_PROMEDIO ? 'text-gray-400' : 'text-gray-900'">{{ f.promedio.toFixed(1) }}/5</span>
+                  <span v-if="f.promedio === null" class="text-gray-500">Sin respuestas</span>
+                  <span v-else class="font-medium tabular-nums" :class="f.muestra < MIN_MUESTRA_PROMEDIO ? 'text-gray-500' : 'text-gray-900'">{{ f.promedio.toFixed(1) }}/5</span>
                 </template>
               </AppColumn>
-              <template #empty><p class="py-6 text-center text-sm text-gray-400">Todavía no hay encuestas generadas.</p></template>
+              <template #empty><p class="py-6 text-center text-sm text-gray-500">Todavía no hay encuestas generadas.</p></template>
             </AppTable>
             </div>
           </AppSeccion>
@@ -334,11 +334,11 @@ onMounted(cargar);
               </AppColumn>
               <AppColumn field="promedio" header="Promedio">
                 <template #body="{ data: f }">
-                  <span v-if="f.promedio === null" class="text-gray-400">Sin respuestas</span>
-                  <span v-else class="font-medium tabular-nums" :class="f.muestra < MIN_MUESTRA_PROMEDIO ? 'text-gray-400' : 'text-gray-900'">{{ f.promedio.toFixed(1) }}/5</span>
+                  <span v-if="f.promedio === null" class="text-gray-500">Sin respuestas</span>
+                  <span v-else class="font-medium tabular-nums" :class="f.muestra < MIN_MUESTRA_PROMEDIO ? 'text-gray-500' : 'text-gray-900'">{{ f.promedio.toFixed(1) }}/5</span>
                 </template>
               </AppColumn>
-              <template #empty><p class="py-6 text-center text-sm text-gray-400">Todavía no hay encuestas generadas.</p></template>
+              <template #empty><p class="py-6 text-center text-sm text-gray-500">Todavía no hay encuestas generadas.</p></template>
             </AppTable>
             </div>
           </AppSeccion>
@@ -393,14 +393,14 @@ onMounted(cargar);
                 <AppColumn field="nivel" header="Nivel" sortable :header-style="{ width: '110px' }">
                   <template #body="{ data: f }">
                     <AppTag v-if="f.nivel !== null" :tono="tonoNivel(f.nivel)" class="tabular-nums">{{ f.nivel }}/5</AppTag>
-                    <span v-else-if="!f.respondida" class="text-gray-400">Pendiente</span>
-                    <span v-else class="text-gray-400">Sin nivel</span>
+                    <span v-else-if="!f.respondida" class="text-gray-500">Pendiente</span>
+                    <span v-else class="text-gray-500">Sin nivel</span>
                   </template>
                 </AppColumn>
                 <AppColumn field="comentario" header="Comentario">
                   <template #body="{ data: f }">
                     <p v-if="f.comentario" class="line-clamp-2 max-w-md text-gray-700" :title="f.comentario">{{ f.comentario }}</p>
-                    <span v-else class="text-gray-400">Sin comentario</span>
+                    <span v-else class="text-gray-500">Sin comentario</span>
                   </template>
                 </AppColumn>
                 <AppColumn field="created_at" header="Fecha" sortable :header-style="{ width: '150px' }">
@@ -429,7 +429,7 @@ onMounted(cargar);
                       <div class="text-xs text-gray-500">Atendió {{ nombreTecnico(f.tecnico_id) }}</div>
                     </div>
                     <AppTag v-if="f.nivel !== null" :tono="tonoNivel(f.nivel)" class="tabular-nums">{{ f.nivel }}/5</AppTag>
-                    <span v-else class="text-xs text-gray-400">{{ f.respondida ? 'Sin nivel' : 'Pendiente' }}</span>
+                    <span v-else class="text-xs text-gray-500">{{ f.respondida ? 'Sin nivel' : 'Pendiente' }}</span>
                   </div>
                   <p v-if="f.comentario" class="mt-2 text-sm text-gray-700">{{ f.comentario }}</p>
                   <p class="mt-2 text-xs tabular-nums text-gray-500">{{ formatFechaHora(f.fecha_envio || f.created_at) }}</p>

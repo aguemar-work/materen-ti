@@ -206,7 +206,7 @@ onMounted(async () => {
           <AppColumn field="icono" header="Ícono">
             <template #body="{ data: fila }">
               <code v-if="fila.icono" class="font-mono text-xs text-gray-500">{{ fila.icono }}</code>
-              <span v-else class="text-gray-400">Sin ícono</span>
+              <span v-else class="text-gray-500">Sin ícono</span>
             </template>
           </AppColumn>
           <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">

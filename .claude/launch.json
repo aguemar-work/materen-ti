@@ -10,8 +10,8 @@
     {
       "name": "frontend-maqueta",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:maqueta", "--prefix", "frontend"],
-      "port": 5173
+      "runtimeArgs": ["run", "dev:maqueta", "--prefix", "frontend", "--", "--port", "5174", "--strictPort"],
+      "port": 5174
     }
   ]
 }

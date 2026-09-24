@@ -578,7 +578,7 @@ onMounted(async () => {
                     <option value="" disabled>Reasignar a...</option>
                     <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
                   </select>
-                  <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
+                  <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
                 </label>
                 <AppButton
                   size="sm"
@@ -656,7 +656,7 @@ onMounted(async () => {
                         :to="`/empleados/${fila.solicitante_id}`"
                         @click.stop
                       >{{ fila.solicitante }}</RouterLink>
-                      <span v-else class="truncate" :class="fila.solicitante ? 'text-gray-900' : 'text-gray-400'">{{ fila.solicitante || 'Sin registrar' }}</span>
+                      <span v-else class="truncate" :class="fila.solicitante ? 'text-gray-900' : 'text-gray-500'">{{ fila.solicitante || 'Sin registrar' }}</span>
                     </div>
                   </template>
                 </AppColumn>
@@ -671,7 +671,7 @@ onMounted(async () => {
                     <span v-else-if="sinAsignarVigente(fila)" class="inline-flex items-center gap-1.5 text-amber-700">
                       <i class="ti ti-user-off" aria-hidden="true"></i>Sin asignar
                     </span>
-                    <span v-else class="text-gray-400">Sin asignar</span>
+                    <span v-else class="text-gray-500">Sin asignar</span>
                   </template>
                 </AppColumn>
 
@@ -740,7 +740,7 @@ onMounted(async () => {
                     <PrioridadTicket :valor="fila.prioridad" />
                   </div>
                   <span v-if="fila.asignado_a" class="truncate text-xs text-gray-600">{{ nombreStaff(fila.asignado_a) }}</span>
-                  <span v-else class="text-xs" :class="sinAsignarVigente(fila) ? 'text-amber-700' : 'text-gray-400'">Sin asignar</span>
+                  <span v-else class="text-xs" :class="sinAsignarVigente(fila) ? 'text-amber-700' : 'text-gray-500'">Sin asignar</span>
                 </div>
               </li>
             </ul>
@@ -824,7 +824,7 @@ onMounted(async () => {
                   <span
                     v-else
                     class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed"
-                    :class="sinAsignarVigente(t) ? 'border-amber-300 text-amber-600' : 'border-gray-300 text-gray-400'"
+                    :class="sinAsignarVigente(t) ? 'border-amber-300 text-amber-600' : 'border-gray-300 text-gray-500'"
                     title="Sin asignar"
                   >
                     <i class="ti ti-user" aria-hidden="true"></i>

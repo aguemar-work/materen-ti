@@ -292,7 +292,7 @@ onMounted(async () => {
             <li v-for="({ pregunta, resumen }, idx) in resumenes" :key="pregunta.id" class="px-4 py-5 sm:px-5">
               <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
                 <h3 class="min-w-0 flex-1 text-sm font-semibold text-gray-900">
-                  <span class="mr-1 text-gray-400 tabular-nums">{{ idx + 1 }}.</span>{{ pregunta.etiqueta }}
+                  <span class="mr-1 text-gray-500 tabular-nums">{{ idx + 1 }}.</span>{{ pregunta.etiqueta }}
                 </h3>
                 <span class="text-xs text-gray-500">{{ tipoPreguntaInfo(pregunta.tipo).label }}</span>
               </div>
@@ -327,7 +327,7 @@ onMounted(async () => {
 
               <!-- Preguntas abiertas: las respuestas tal cual -->
               <template v-else>
-                <p v-if="!resumen.textos.length" class="mt-3 text-sm text-gray-400">Nadie respondió esta pregunta.</p>
+                <p v-if="!resumen.textos.length" class="mt-3 text-sm text-gray-500">Nadie respondió esta pregunta.</p>
                 <ul v-else class="mt-3 max-w-prose space-y-2">
                   <li
                     v-for="(t, i) in resumen.textos"

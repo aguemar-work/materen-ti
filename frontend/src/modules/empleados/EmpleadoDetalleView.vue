@@ -348,12 +348,12 @@ onMounted(cargar);
           >
             <i
               class="text-base"
-              :class="paso.hecho ? 'ti ti-circle-check text-green-600' : 'ti ti-circle-dashed text-gray-400'"
+              :class="paso.hecho ? 'ti ti-circle-check text-green-600' : 'ti ti-circle-dashed text-gray-500'"
               aria-hidden="true"
             ></i>
             <span class="min-w-0 flex-1 text-sm" :class="paso.hecho ? 'line-through decoration-gray-300' : 'text-gray-900'">
               {{ paso.label }}
-              <span v-if="!paso.requisito && !paso.hecho" class="ml-1 text-xs text-gray-400">opcional</span>
+              <span v-if="!paso.requisito && !paso.hecho" class="ml-1 text-xs text-gray-500">opcional</span>
             </span>
             <AppButton
               v-if="!paso.hecho && paso.ejecutar"
