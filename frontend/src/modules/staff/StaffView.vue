@@ -50,21 +50,27 @@ const modulosPor = ref({});
 const LABEL_MODULO = Object.fromEntries(MODULOS_CONFIGURABLES.map((m) => [m.id, m.label]));
 const MAX_CHIPS = 3;
 
+// Orden estable: el de MODULOS_CONFIGURABLES (igual que el checklist).
+const ordenarModulos = (ids) => MODULOS_CONFIGURABLES.filter((m) => ids.includes(m.id)).map((m) => m.id);
+
 async function cargarModulosDe(userId) {
   try {
     const ids = await insforgeApi.modulosDeStaff(userId);
-    // Orden estable: el de MODULOS_CONFIGURABLES (igual que el checklist).
-    modulosPor.value = {
-      ...modulosPor.value,
-      [userId]: MODULOS_CONFIGURABLES.filter((m) => ids.includes(m.id)).map((m) => m.id),
-    };
+    modulosPor.value = { ...modulosPor.value, [userId]: ordenarModulos(ids) };
   } catch {
     modulosPor.value = { ...modulosPor.value, [userId]: null };
   }
 }
 
-function cargarModulos() {
-  return Promise.all(lista.value.filter((s) => s.rol !== 'JEFE').map((s) => cargarModulosDe(s.user_id)));
+// Una sola consulta para todo el listado (antes, una por integrante).
+async function cargarModulos() {
+  const asistentes = lista.value.filter((m) => m.rol !== 'JEFE');
+  try {
+    const porUsuario = await insforgeApi.modulosPorStaff();
+    modulosPor.value = Object.fromEntries(asistentes.map((m) => [m.user_id, ordenarModulos(porUsuario[m.user_id] || [])]));
+  } catch {
+    modulosPor.value = Object.fromEntries(asistentes.map((m) => [m.user_id, null]));
+  }
 }
 
 function nombresModulos(ids) {
@@ -74,28 +80,42 @@ function nombresModulos(ids) {
 // Fila en curso (controles deshabilitados mientras dura la petición)
 const procesandoId = ref(null);
 
-// Confirmación (ConfirmDialog compartido): solo desactivar es destructiva;
-// activar no necesita confirmación.
+// Desactivar es destructivo. Activar también se confirma: el trigger de alta
+// (migración 076) siembra por defecto los 8 módulos y "ver contraseñas", así
+// que activar sin mirar da acceso total. El diálogo dice qué va a poder hacer.
 const pendienteDesactivar = ref(null);
 const desactivando = ref(false);
 const dialogoDesactivar = ref(null);
+const pendienteActivar = ref(null);
+const activando = ref(false);
+const dialogoActivar = ref(null);
 
 function toggleActivo(miembro) {
-  if (miembro.activo) {
-    pendienteDesactivar.value = miembro;
-    return;
-  }
-  activar(miembro);
+  if (miembro.activo) pendienteDesactivar.value = miembro;
+  else pendienteActivar.value = miembro;
 }
 
-async function activar(miembro) {
+function resumenPermisos(miembro) {
+  if (miembro.rol === 'JEFE') return 'Como JEFE, tendrá acceso a todo el sistema, contraseñas incluidas.';
+  const ids = modulosPor.value[miembro.user_id];
+  const modulos = ids == null ? 'los módulos que tenga otorgados' : ids.length ? nombresModulos(ids) : 'ningún módulo';
+  const pw = miembro.credenciales_ver ? 'Podrá ver contraseñas.' : 'No podrá ver contraseñas.';
+  return `Podrá entrar al panel con acceso a: ${modulos}. ${pw} Si no corresponde, ajuste sus módulos o el permiso de contraseñas antes de activarlo.`;
+}
+
+async function confirmarActivar() {
+  const miembro = pendienteActivar.value;
+  if (!miembro) return;
+  activando.value = true;
   procesandoId.value = miembro.user_id;
   try {
     await store.actualizar(miembro.user_id, { rol: miembro.rol, activo: true });
     showToast(`${miembro.nombre} activado`);
+    dialogoActivar.value?.cerrar();
   } catch (e) {
     showToast(e?.message || 'Error al activar', 'error');
   } finally {
+    activando.value = false;
     procesandoId.value = null;
   }
 }
@@ -522,8 +542,20 @@ onMounted(async () => {
       :mensaje="`¿Desactivar a ${pendienteDesactivar.nombre}? No podrá entrar al panel hasta que se lo vuelva a activar.`"
       confirmar-label="Desactivar"
       :cargando="desactivando"
-      @cancel="pendienteDesactivar = null"
+      @cerrado="pendienteDesactivar = null"
       @confirm="confirmarDesactivar"
+    />
+
+    <ConfirmDialog
+      v-if="pendienteActivar"
+      ref="dialogoActivar"
+      icono="ti-user-check"
+      :titulo="`Activar a ${pendienteActivar.nombre}`"
+      :mensaje="resumenPermisos(pendienteActivar)"
+      confirmar-label="Activar"
+      :cargando="activando"
+      @cerrado="pendienteActivar = null"
+      @confirm="confirmarActivar"
     />
 
     <StaffModulosForm

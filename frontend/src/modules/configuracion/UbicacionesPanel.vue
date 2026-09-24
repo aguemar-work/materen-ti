@@ -261,7 +261,7 @@ const campoDescripcion = useCampoAccesible();
       :mensaje="`¿Eliminar la ubicación “${porEliminar.nombre}”? Los equipos que estuvieron ahí conservan su historial.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="porEliminar = null"
+      @cerrado="porEliminar = null"
       @confirm="confirmarEliminar"
     />
   </div>

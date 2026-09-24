@@ -19,7 +19,7 @@ const CLAUSULA = `Declaro haber devuelto el equipo descrito en la presente acta,
     en este documento, se reserva el derecho de determinar la responsabilidad
     correspondiente.`;
 
-export function generarActaDevolucion(equipo, empleado, datosDevolucion) {
+export function generarActaDevolucion(equipo, empleado, datosDevolucion, win) {
   const fechaDevolucion = datosDevolucion.fecha ? formatFecha(datosDevolucion.fecha) : fechaHoy();
   const motivoLabel = MOTIVO_LABELS[datosDevolucion.motivo] || datosDevolucion.motivo || '—';
 
@@ -61,5 +61,5 @@ export function generarActaDevolucion(equipo, empleado, datosDevolucion) {
     ],
     clausula: CLAUSULA,
     firmas: [firma('Entrega conforme', firmanteEmpleado(empleado)), firma('Recibe — Área de TI')],
-  });
+  }, win);
 }

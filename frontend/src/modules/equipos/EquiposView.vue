@@ -11,6 +11,7 @@ import { formatFechaHora } from '../../core/formatters.js';
 import { SITUACIONES_EQUIPO, situacionInfo } from '../../core/dominio-equipos.js';
 import { generarActa } from './acta.js';
 import { generarActaDevolucion } from './acta-devolucion.js';
+import { reservarVentanaActa } from './acta-base.js';
 import { construirDatosReporteEquipos, generarReporteEquipos, LIMITE_MOVIMIENTOS_PDF } from './reporteEquipos.js';
 import EquipoForm from './EquipoForm.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
@@ -318,6 +319,11 @@ function abrirDevolver(equipo) {
 
 async function confirmarDevolver() {
   procesando.value = true;
+  // Solo hay acta cuando el portador es una persona (no una ubicación).
+  let ventanaActa = null;
+  if (equipoDevolver.value?.empleado_id) {
+    try { ventanaActa = reservarVentanaActa(); } catch (e) { showToast(e.message, 'error'); }
+  }
   try {
     const datosDevolucion = {
       condicion: condicionDevolucion.value,
@@ -335,11 +341,14 @@ async function confirmarDevolver() {
     showToast(`${equipoDevuelto.codigo} devuelto${aReparacion.value ? ' — enviado a reparación' : ''}`);
     try {
       const empleado = await insforgeApi.getEmpleado(equipoDevuelto.empleado_id);
-      if (empleado) generarActaDevolucion(equipoDevuelto, empleado, datosDevolucion);
+      if (empleado && ventanaActa) generarActaDevolucion(equipoDevuelto, empleado, datosDevolucion, ventanaActa);
+      else ventanaActa?.close();
     } catch (e) {
+      ventanaActa?.close();
       showToast(e?.message || 'No se pudo generar el acta de devolución', 'error');
     }
   } catch (e) {
+    ventanaActa?.close();
     showToast(e?.message || 'Error al registrar devolución', 'error');
   } finally {
     procesando.value = false;
@@ -473,11 +482,14 @@ async function confirmarAccionPendiente() {
 
 // ── Acta de entrega imprimible ────────────────────────────────
 async function imprimirActa(equipo) {
+  let ventana = null;
   try {
+    ventana = reservarVentanaActa();
     const empleado = await insforgeApi.getEmpleado(equipo.empleado_id);
     if (!empleado) throw new Error('No se encontró al empleado');
-    generarActa(equipo, empleado);
+    generarActa(equipo, empleado, ventana);
   } catch (e) {
+    ventana?.close();
     showToast(e?.message || 'Error al generar el acta', 'error');
   }
 }
@@ -1177,7 +1189,7 @@ onMounted(async () => {
       :mensaje="mensajeAccion"
       :confirmar-label="confirmarLabelAccion"
       :cargando="procesandoAccion"
-      @cancel="accionPendiente = null"
+      @cerrado="accionPendiente = null"
       @confirm="confirmarAccionPendiente"
     />
   </div>

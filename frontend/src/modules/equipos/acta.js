@@ -13,7 +13,7 @@ const CLAUSULA = `Declaro haber recibido el equipo descrito en la presente acta,
     cuando el área de TI lo requiera. Asumo responsabilidad por los daños o
     pérdidas atribuibles a negligencia en su uso o custodia.`;
 
-export function generarActa(equipo, empleado) {
+export function generarActa(equipo, empleado, win) {
   const fechaEntrega = equipo.fecha_asignacion ? formatFecha(equipo.fecha_asignacion) : fechaHoy();
 
   abrirActa({
@@ -47,5 +47,5 @@ export function generarActa(equipo, empleado) {
     ],
     clausula: CLAUSULA,
     firmas: [firma('Entrega — Área de TI'), firma('Recibe conforme', firmanteEmpleado(empleado))],
-  });
+  }, win);
 }

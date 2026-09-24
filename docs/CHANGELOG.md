@@ -27,6 +27,17 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-24** (**Correcciones de flujo v2**) — `ConfirmDialog` emite
+  `cerrado` en todo cierre y las ~39 confirmaciones lo usan para desmontar:
+  antes, tras confirmar una acción, la siguiente confirmación de la misma
+  pantalla (otro correo a eliminar, otro lote a cerrar) no aparecía. Actas
+  de entrega/devolución: la ventana se reserva en el clic
+  (`reservarVentanaActa`), porque abrirla después de un `await` la
+  bloqueaba el navegador. Staff: activar pide confirmación y dice qué
+  módulos y permiso de contraseñas tendrá la persona; los módulos del
+  listado salen de una sola consulta (`modulosPorStaff`). Tickets: bandeja
+  "Equipo" → "Todos" y etiqueta del evento `tipo_cambiado`. Tuteo corregido
+  en toasts, validaciones y el mensaje de WhatsApp de la entrega.
 - **2026-09-24** (**Portal público y páginas de error**) — migrados a la
   receta 4.5 con el componente nuevo `components/ui/AppPortal.vue`
   (reemplaza a `PublicBrand.vue`, retirado): Login, Entrega, Soporte, las 4

@@ -27,6 +27,13 @@
 // backdrop siguen cerrando libremente incluso con `cargando` (igual que
 // antes: ese guard nunca existió, solo los botones del footer se
 // deshabilitaban).
+//
+// 'cerrado' (2026-09-24): se emite SIEMPRE que el diálogo deja de verse, por
+// cualquier camino (cancelar o cerrar() tras un éxito). Es el evento con el
+// que el padre debe desmontar (`@cerrado="pendiente = null"`). Antes los
+// padres solo escuchaban 'cancel': tras un cerrar() exitoso su estado quedaba
+// asignado con el diálogo oculto, y la SIGUIENTE confirmación de la misma
+// pantalla (otro correo a eliminar, otro lote a cerrar) nunca aparecía.
 import { ref } from 'vue';
 import Dialog from 'primevue/dialog';
 import AppButton from '../ui/AppButton.vue';
@@ -45,7 +52,7 @@ const props = defineProps({
   motivoLabel: { type: String, default: 'Motivo' },
   cargando: { type: Boolean, default: false },
 });
-const emit = defineEmits(['confirm', 'cancel']);
+const emit = defineEmits(['confirm', 'cancel', 'cerrado']);
 
 const motivo = ref('');
 const error = ref('');
@@ -56,17 +63,21 @@ const pt = buildDialogPT();
 
 // cerrar() != cancelar(): el padre llama cerrar() tras un confirm exitoso
 // (no es un cancel); Escape/X/backdrop/botón Cancelar sí cancelan.
-defineExpose({ cerrar: () => { visible.value = false; } });
+function ocultar() {
+  visible.value = false;
+  emit('cerrado');
+}
+defineExpose({ cerrar: ocultar });
 
 function cancelar() {
-  visible.value = false;
   emit('cancel');
+  ocultar();
 }
 
 function confirmar() {
   if (props.requiereMotivo) {
     if (motivo.value.trim().length < props.motivoMin) {
-      error.value = `Escribe al menos ${props.motivoMin} caracteres.`;
+      error.value = `Escriba al menos ${props.motivoMin} caracteres.`;
       return;
     }
     emit('confirm', motivo.value.trim());
@@ -82,7 +93,7 @@ function confirmar() {
     modal
     dismissable-mask
     :pt="pt"
-    @update:visible="(v) => { if (!v) emit('cancel'); }"
+    @update:visible="(v) => { if (!v) cancelar(); }"
   >
     <template #header>
       <span v-if="destructivo" class="flex items-center gap-2">

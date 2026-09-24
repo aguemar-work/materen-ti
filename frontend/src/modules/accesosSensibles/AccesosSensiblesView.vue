@@ -368,7 +368,7 @@ onMounted(async () => {
       :mensaje="`¿Eliminar “${porEliminar.nombre}”? Esta acción no se puede deshacer.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="porEliminar = null"
+      @cerrado="porEliminar = null"
       @confirm="confirmarEliminar"
     />
   </div>

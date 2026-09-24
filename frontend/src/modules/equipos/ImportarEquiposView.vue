@@ -767,7 +767,7 @@ onMounted(async () => {
       mensaje="Se borrarán todas las filas pendientes de la bandeja (no afecta lo que ya se migró a Equipos). Úselo si pegó el lote equivocado."
       confirmar-label="Vaciar bandeja"
       :cargando="vaciando"
-      @cancel="confirmarVaciar = false"
+      @cerrado="confirmarVaciar = false"
       @confirm="confirmarVaciarBandeja"
     />
 
@@ -777,7 +777,7 @@ onMounted(async () => {
       titulo="Migrar todas las filas listas"
       :mensaje="`Se crearán ${cantidadParaMigrar} equipos nuevos en el sistema (con su asignación/ubicación indicada). Esta acción no se puede deshacer desde acá.`"
       confirmar-label="Migrar"
-      @cancel="confirmarMigrarTodas = false"
+      @cerrado="confirmarMigrarTodas = false"
       @confirm="migrarTodasListas"
     />
   </div>

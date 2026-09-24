@@ -356,7 +356,7 @@ onMounted(async () => {
       :mensaje="`¿Dar de baja a “${porDarDeBaja.nombre}”? El registro se eliminará lógicamente.`"
       confirmar-label="Dar de baja"
       :cargando="dandoDeBaja"
-      @cancel="porDarDeBaja = null"
+      @cerrado="porDarDeBaja = null"
       @confirm="confirmarBaja"
     />
   </div>

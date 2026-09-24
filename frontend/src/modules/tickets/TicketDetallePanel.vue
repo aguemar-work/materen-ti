@@ -315,7 +315,7 @@ function onConfirmarReabrir(motivo) {
       mensaje="¿Quitar la asignación de este ticket en curso? Quedará sin responsable hasta que alguien lo tome."
       confirmar-label="Quitar asignación"
       :cargando="desasignando"
-      @cancel="cancelarDesasignar"
+      @cerrado="cancelarDesasignar"
       @confirm="confirmarDesasignar"
     />
 
@@ -326,7 +326,7 @@ function onConfirmarReabrir(motivo) {
       mensaje="Esto cierra el ticket de inmediato — no hay un paso intermedio para revisar antes de cerrar. ¿Confirma que el problema quedó resuelto?"
       confirmar-label="Marcar como resuelto"
       :cargando="resolviendo"
-      @cancel="cancelarResolver"
+      @cerrado="cancelarResolver"
       @confirm="confirmarResolver"
     />
 
@@ -343,7 +343,7 @@ function onConfirmarReabrir(motivo) {
       confirmar-label="Confirmar rechazo"
       destructivo
       :cargando="rechazando"
-      @cancel="mostrarRechazar = false"
+      @cerrado="mostrarRechazar = false"
       @confirm="onConfirmarRechazo"
     />
 
@@ -356,7 +356,7 @@ function onConfirmarReabrir(motivo) {
       motivo-label="Motivo para reabrir"
       confirmar-label="Confirmar reabrir"
       :cargando="reabriendo"
-      @cancel="mostrarReabrir = false"
+      @cerrado="mostrarReabrir = false"
       @confirm="onConfirmarReabrir"
     />
   </aside>

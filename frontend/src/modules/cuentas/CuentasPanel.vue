@@ -92,7 +92,7 @@ function puedeRevelar(cuenta) {
 // dos reglas de arriba en vez de un mensaje genérico.
 function motivoBloqueo() {
   if (!auth.puedeVerCredenciales) return 'Sin permiso para ver contraseñas.';
-  return 'Solo un JEFE puede ver esta contraseña. Usa "Enviar por WhatsApp" para entregarla al empleado.';
+  return 'Solo un JEFE puede ver esta contraseña. Use "Enviar por WhatsApp" para entregarla al empleado.';
 }
 
 const mostrarForm = ref(false);
@@ -503,7 +503,7 @@ onMounted(async () => {
     :mensaje="mensajeRevocar"
     :confirmar-label="porRevocar?.tipo_cuenta === 'personal' ? 'Eliminar' : 'Revocar'"
     :cargando="revocando"
-    @cancel="porRevocar = null"
+    @cerrado="porRevocar = null"
     @confirm="confirmarRevocar"
   />
 </template>

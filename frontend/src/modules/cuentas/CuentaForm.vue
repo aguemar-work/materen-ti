@@ -134,7 +134,7 @@ async function guardar() {
   try {
     if (modoCompartido.value) {
       if (!cuentaCompartidaId.value) {
-        error.value = 'Selecciona un correo compartido';
+        error.value = 'Seleccione un correo compartido';
         guardando.value = false;
         return;
       }
@@ -370,7 +370,7 @@ async function guardar() {
     mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
-    @cancel="confirmarDescarte = false"
+    @cerrado="confirmarDescarte = false"
     @confirm="descartarCambios"
   />
 </template>

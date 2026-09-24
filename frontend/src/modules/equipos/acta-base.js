@@ -133,9 +133,19 @@ export function construirActa({ titulo, encabezado, fecha, equipo, secciones, cl
 </html>`;
 }
 
-export function abrirActa(acta) {
+// Abre la ventana en el MISMO instante del clic. Los navegadores solo dejan
+// abrir ventanas desde un gesto del usuario: si se abre después de un
+// `await` (traer al empleado, registrar la devolución), la bloquean. El
+// flujo es: reservar al clic → pedir los datos → escribir el acta en ella.
+export function reservarVentanaActa() {
   const win = window.open('', '_blank', 'width=800,height=900');
-  if (!win) throw new Error('El navegador bloqueó la ventana de impresión. Permite ventanas emergentes.');
+  if (!win) throw new Error('El navegador bloqueó la ventana de impresión. Permita las ventanas emergentes para este sitio.');
+  win.document.write('<p style="font-family:sans-serif;padding:2rem;color:#555">Preparando el acta…</p>');
+  return win;
+}
+
+export function abrirActa(acta, win = reservarVentanaActa()) {
+  win.document.open();
   win.document.write(construirActa(acta));
   win.document.close();
 }

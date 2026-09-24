@@ -251,7 +251,7 @@ function accionesDe(encuesta) {
       :mensaje="`¿Eliminar la encuesta “${porEliminar.titulo}”? Sus rondas y respuestas quedan fuera del listado.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="porEliminar = null"
+      @cerrado="porEliminar = null"
       @confirm="confirmarEliminar"
     />
   </div>

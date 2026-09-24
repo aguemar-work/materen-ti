@@ -358,7 +358,7 @@ onMounted(async () => {
       mensaje="¿Cerrar esta ronda? Deja de recibir respuestas y no se puede reabrir desde la interfaz."
       confirmar-label="Cerrar ronda"
       :cargando="cerrandoId === rondaPorCerrar?.id"
-      @cancel="rondaPorCerrar = null"
+      @cerrado="rondaPorCerrar = null"
       @confirm="cerrarRonda"
     />
   </div>

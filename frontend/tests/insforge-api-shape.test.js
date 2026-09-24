@@ -67,7 +67,7 @@ const METODOS = [
   // notificaciones
   'listNotificaciones', 'listLecturas', 'marcarLeida', 'marcarVariasLeidas',
   // permisos de módulo (migración 056)
-  'misModulos', 'modulosDeStaff', 'guardarModulos',
+  'misModulos', 'modulosDeStaff', 'modulosPorStaff', 'guardarModulos',
   // permisos individuales (migración 060)
   'misPermisos', 'setCredencialesVer',
 ];

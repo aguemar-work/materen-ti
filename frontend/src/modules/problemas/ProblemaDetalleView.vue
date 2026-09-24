@@ -633,7 +633,7 @@ onUnmounted(() => store.limpiar());
       :mensaje="`¿Eliminar el problema “${problema?.titulo}”? No se podrá deshacer desde la interfaz.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="confirmarEliminar = false"
+      @cerrado="confirmarEliminar = false"
       @confirm="eliminar"
     />
   </div>

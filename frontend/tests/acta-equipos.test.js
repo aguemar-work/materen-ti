@@ -35,6 +35,7 @@ beforeEach(() => {
   globalThis.window = {
     open: () => ({
       document: {
+        open: () => {},
         write: (html) => {
           escrito = html;
         },

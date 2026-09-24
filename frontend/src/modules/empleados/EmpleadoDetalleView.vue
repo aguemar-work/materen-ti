@@ -529,7 +529,7 @@ onMounted(cargar);
       :mensaje="`¿Liberar el asiento de “${porLiberarLicencia.software}” de este empleado?`"
       confirmar-label="Liberar"
       :cargando="liberandoLicencia"
-      @cancel="porLiberarLicencia = null"
+      @cerrado="porLiberarLicencia = null"
       @confirm="confirmarLiberarLicencia"
     />
 
@@ -540,7 +540,7 @@ onMounted(cargar);
       :mensaje="`¿Reactivar a ${nombreCompleto}? Volverá al estado Activo.`"
       confirmar-label="Reactivar"
       :cargando="procesando"
-      @cancel="mostrarReactivar = false"
+      @cerrado="mostrarReactivar = false"
       @confirm="confirmarReactivar"
     />
   </div>

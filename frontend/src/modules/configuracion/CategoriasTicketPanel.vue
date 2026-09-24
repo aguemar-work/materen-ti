@@ -117,7 +117,7 @@ async function agregarSubcategoria(categoriaId) {
   if (!nombre) return;
   const tipoSugerido = nuevoTipoPorCategoria.value[categoriaId] || '';
   if (!tipoSugerido) {
-    showToast('Selecciona si es Incidente o Solicitud', 'error');
+    showToast('Seleccione si es Incidente o Solicitud', 'error');
     return;
   }
   try {
@@ -327,7 +327,7 @@ onMounted(async () => {
       :mensaje="mensajeEliminar"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="pendienteEliminar = null"
+      @cerrado="pendienteEliminar = null"
       @confirm="confirmarEliminarPendiente"
     />
   </div>

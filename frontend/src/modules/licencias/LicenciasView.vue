@@ -741,7 +741,7 @@ onMounted(async () => {
       :mensaje="mensajeAccion"
       :confirmar-label="confirmarLabelAccion"
       :cargando="procesandoAccion"
-      @cancel="accionPendiente = null"
+      @cerrado="accionPendiente = null"
       @confirm="confirmarAccionPendiente"
     />
   </div>

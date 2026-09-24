@@ -9,7 +9,7 @@
 // se busca con querySelector sobre el documento real.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, defineComponent, ref, h } from 'vue';
 import PrimeVue from 'primevue/config';
 import ConfirmDialog from '../../src/components/shared/ConfirmDialog.vue';
 
@@ -75,7 +75,7 @@ describe('ConfirmDialog.vue — reescrito sobre primevue/dialog + AppButton', ()
     botonPorTexto('Rechazar').click();
     await w.vm.$nextTick();
     expect(w.emitted('confirm')).toBeFalsy();
-    expect(document.body.textContent).toContain('Escribe al menos 10 caracteres');
+    expect(document.body.textContent).toContain('Escriba al menos 10 caracteres');
   });
 
   it('requiereMotivo: confirmar con motivo válido emite "confirm" con el texto recortado', async () => {
@@ -99,12 +99,53 @@ describe('ConfirmDialog.vue — reescrito sobre primevue/dialog + AppButton', ()
     expect(procesando.disabled).toBe(true);
   });
 
-  it('cerrar() expuesto oculta el diálogo SIN emitir "cancel" (camino de éxito)', async () => {
+  it('cerrar() expuesto oculta el diálogo SIN emitir "cancel" (camino de éxito), pero sí "cerrado"', async () => {
     const w = await montar();
     expect(document.body.textContent).toContain('Eliminar licencia');
     w.vm.cerrar();
     await w.vm.$nextTick();
     expect(w.emitted('cancel')).toBeFalsy();
+    expect(w.emitted('cerrado')).toHaveLength(1);
+  });
+
+  it('cancelar emite "cancel" y "cerrado"', async () => {
+    const w = await montar({ cancelarLabel: 'No, volver' });
+    botonPorTexto('No, volver').click();
+    await w.vm.$nextTick();
+    expect(w.emitted('cancel')).toHaveLength(1);
+    expect(w.emitted('cerrado')).toHaveLength(1);
+  });
+
+  it('con @cerrado, una segunda confirmación en la misma pantalla vuelve a aparecer', async () => {
+    // Regresión real (2026-09-24): los padres desmontaban solo en 'cancel';
+    // tras un cerrar() exitoso el estado quedaba asignado con el diálogo
+    // oculto, y la siguiente confirmación (otro ítem) nunca se mostraba.
+    const Padre = defineComponent({
+      setup() {
+        const pendiente = ref(null);
+        return { pendiente };
+      },
+      render() {
+        return this.pendiente
+          ? h(ConfirmDialog, {
+              ref: 'dlg',
+              titulo: `Eliminar ${this.pendiente}`,
+              onCerrado: () => { this.pendiente = null; },
+              onConfirm: () => this.$refs.dlg.cerrar(),
+            })
+          : null;
+      },
+    });
+    const w = mount(Padre, { global: { plugins: [[PrimeVue, { unstyled: true }]] } });
+    w.vm.pendiente = 'correo A';
+    await nextTick(); await nextTick();
+    expect(document.body.textContent).toContain('Eliminar correo A');
+    w.vm.$refs.dlg.cerrar();
+    await nextTick();
+    expect(w.vm.pendiente).toBeNull();
+    w.vm.pendiente = 'correo B';
+    await nextTick(); await nextTick();
+    expect(document.body.textContent).toContain('Eliminar correo B');
   });
 
   it('slot por defecto se renderiza dentro del diálogo', async () => {

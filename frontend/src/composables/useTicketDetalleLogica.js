@@ -149,11 +149,11 @@ export function useTicketDetalleLogica() {
 
   async function confirmarIniciar() {
     if (!atencionForm.value.asignadoA) {
-      showToast('Selecciona a quién se asigna el ticket', 'error');
+      showToast('Seleccione a quién se asigna el ticket', 'error');
       return;
     }
     if (!atencionForm.value.tipo) {
-      showToast('Selecciona si es un incidente o una solicitud', 'error');
+      showToast('Seleccione si es un incidente o una solicitud', 'error');
       return;
     }
     iniciando.value = true;
@@ -189,7 +189,7 @@ export function useTicketDetalleLogica() {
   async function confirmarRechazar() {
     const motivo = motivoRechazo.value.trim();
     if (!motivo) {
-      showToast('Escribe el motivo del rechazo', 'error');
+      showToast('Escriba el motivo del rechazo', 'error');
       return;
     }
     rechazando.value = true;
@@ -257,7 +257,7 @@ export function useTicketDetalleLogica() {
   async function confirmarReabrir() {
     const motivo = motivoReabrir.value.trim();
     if (!motivo) {
-      showToast('Escribe el motivo para reabrir', 'error');
+      showToast('Escriba el motivo para reabrir', 'error');
       return;
     }
     reabriendo.value = true;
@@ -390,7 +390,7 @@ export function useTicketDetalleLogica() {
       await navigator.clipboard.writeText(texto);
       showToast('Mensaje de calificación copiado');
     } catch {
-      showToast('No se pudo copiar. Copia manualmente: ' + link, 'error');
+      showToast('No se pudo copiar. Cópielo manualmente: ' + link, 'error');
     }
   }
 
@@ -403,7 +403,7 @@ export function useTicketDetalleLogica() {
       await navigator.clipboard.writeText(link);
       showToast('Link de encuesta copiado');
     } catch {
-      showToast('No se pudo copiar. Copia manualmente: ' + link, 'error');
+      showToast('No se pudo copiar. Cópielo manualmente: ' + link, 'error');
     }
   }
 
@@ -433,7 +433,7 @@ export function useTicketDetalleLogica() {
       await navigator.clipboard.writeText(texto);
       showToast('Mensaje copiado');
     } catch {
-      showToast('No se pudo copiar. Copia manualmente: ' + link, 'error');
+      showToast('No se pudo copiar. Cópielo manualmente: ' + link, 'error');
     }
   }
 

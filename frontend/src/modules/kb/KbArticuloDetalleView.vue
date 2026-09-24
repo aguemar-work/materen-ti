@@ -409,7 +409,7 @@ onMounted(async () => {
       :mensaje="`¿Eliminar el artículo “${articulo?.titulo}”? No se podrá deshacer desde la interfaz.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="confirmarEliminar = false"
+      @cerrado="confirmarEliminar = false"
       @confirm="eliminar"
     />
   </div>

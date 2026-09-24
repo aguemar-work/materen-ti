@@ -93,7 +93,7 @@ const BANDEJAS_REVISION = [
 
 const BANDEJAS_TRABAJO = [
   { id: 'mis_tickets', label: 'Mis tickets', icono: 'ti-user' },
-  { id: 'equipo', label: 'Equipo', icono: 'ti-users' },
+  { id: 'equipo', label: 'Todos', icono: 'ti-users' },
 ];
 
 // `todos: estado ''` es a propósito SIN restricción de estado —
@@ -876,7 +876,7 @@ onMounted(async () => {
       titulo="Reasignar tickets"
       confirmar-label="Reasignar"
       :cargando="procesandoLote"
-      @cancel="mostrarConfirmarReasignarLote = false"
+      @cerrado="mostrarConfirmarReasignarLote = false"
       @confirm="confirmarReasignarLote"
     >
       <p>Reasignar {{ ticketsSeleccionados.length }} ticket(s) a <strong>{{ staffPorId[reasignarLoteA] || 'Staff' }}</strong>:</p>
@@ -890,7 +890,7 @@ onMounted(async () => {
       titulo="Cerrar tickets"
       confirmar-label="Cerrar"
       :cargando="procesandoLote"
-      @cancel="mostrarConfirmarCerrarLote = false"
+      @cerrado="mostrarConfirmarCerrarLote = false"
       @confirm="confirmarCerrarLote"
     >
       <p>Cerrar {{ ticketsSeleccionados.length }} ticket(s) resuelto(s), con su encuesta de satisfacción de siempre:</p>
