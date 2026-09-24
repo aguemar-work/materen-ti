@@ -116,4 +116,37 @@ describe('AppTable.vue + AppColumn.js — wrapper de primevue/datatable', () => 
     expect(w.emitted('tam-pagina-cambiada')).toEqual([[50]]);
     expect(w.emitted('pagina-cambiada')).toBeFalsy();
   });
+
+  it("sin @row-click las filas no entran en el orden de Tab (no se inventa una interacción)", () => {
+    const w = montar();
+    // PrimeVue pone tabindex="-1" (fuera del orden de Tab); no debe ser "0".
+    expect(w.find("tbody tr").attributes("tabindex")).not.toBe("0");
+  });
+
+  it("con @row-click cada fila es enfocable y Enter la abre como un clic", async () => {
+    const abiertas = [];
+    const w = montar({ onRowClick: (e) => abiertas.push(e.data.id) });
+    const fila = w.findAll("tbody tr")[1];
+    expect(fila.attributes("tabindex")).toBe("0");
+    await fila.trigger("keydown", { key: "Enter" });
+    expect(abiertas).toEqual(["TCK-0002"]);
+  });
+
+  it("Enter sobre un control dentro de la fila no abre la fila", async () => {
+    const abiertas = [];
+    const w = montar(
+      { onRowClick: (e) => abiertas.push(e.data.id) },
+      { default: '<AppColumn field="id" header="Ticket"><template #body><button type="button">Acción</button></template></AppColumn>' },
+    );
+    await w.find("tbody tr button").trigger("keydown", { key: "Enter" });
+    expect(abiertas).toEqual([]);
+  });
+
+  it("orden={columna,direccion} marca la columna ordenada igual que sortField/sortOrder", () => {
+    const conOrden = montar({ orden: { columna: "titulo", direccion: "desc" } });
+    const conSort = montar({ sortField: "titulo", sortOrder: -1 });
+    const ariaSort = (w) => w.findAll("th")[1].attributes("aria-sort");
+    expect(ariaSort(conOrden)).toBe(ariaSort(conSort));
+    expect(ariaSort(conOrden)).toBe("descending");
+  });
 });

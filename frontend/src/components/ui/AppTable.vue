@@ -12,11 +12,8 @@
 // válida). Todo el estilo de columna (headerCell/bodyCell/hover/tipografía)
 // sale de acá, de pt.column.*, aplicado por igual a cada <AppColumn>.
 //
-// Paginación: a propósito NO trae el paginador propio de PrimeVue. El
-// sistema ya tiene components/shared/Pagination.vue conectado 1:1 al mismo
-// store (`v-model="store.pagina"` + `total-items="store.total"`) en los 7
-// listados existentes — reinventar un segundo paginador acá duplicaría UI y
-// preset sin necesidad. `lazy`/`totalRecords` SÍ se exponen (evitan que
+// Paginación: a propósito NO trae el paginador propio de PrimeVue: la
+// paginación es <AppPaginacion> como hermano, conectada al mismo store. `lazy`/`totalRecords` SÍ se exponen (evitan que
 // DataTable pagine en el cliente sobre una `value` que ya es solo la página
 // actual) y quedan preparados por si algún listado futuro prefiere paginador
 // inline; `pagina-cambiada`/`tam-pagina-cambiada` se emiten para ese caso,
@@ -43,6 +40,10 @@ const props = defineProps({
   // realmente aplicó.
   sortField: { type: String, default: null },
   sortOrder: { type: Number, default: null }, // 1 asc | -1 desc
+  // Atajo: el orden tal como lo guardan crearStorePaginado/useOrdenTabla
+  // ({ columna, direccion: 'asc'|'desc' }). Si viene, manda sobre
+  // sortField/sortOrder — evita repetir el mismo puente en cada vista.
+  orden: { type: Object, default: null },
   // El store (crearStorePaginado.ordenarPor) solo alterna asc/desc, no tiene
   // un tercer estado "sin orden" — con esto en false, un tercer click en el
   // header no lo introduce (mismo comportamiento que la tabla ya tiene hoy).
@@ -75,7 +76,16 @@ const restAttrs = computed(() => {
   const { class: _class, ...resto } = attrs;
   return resto;
 });
-const pt = computed(() => buildTablePT(props, attrs.class));
+// Filas navegables con teclado cuando la vista escucha @row-click: foco con
+// Tab y Enter abre el detalle, igual que el clic (antes solo mouse).
+const pt = computed(() => buildTablePT(props, attrs.class, attrs.onRowClick));
+
+const campoOrden = computed(() => (props.orden ? props.orden.columna || null : props.sortField));
+const sentidoOrden = computed(() => {
+  if (!props.orden) return props.sortOrder;
+  if (!props.orden.columna) return null;
+  return props.orden.direccion === 'desc' ? -1 : 1;
+});
 
 // El store expone ordenarPor(columna) — ya decide él mismo si toca alternar
 // asc/desc (mismo click sobre la misma columna) o empezar en asc (columna
@@ -100,8 +110,8 @@ function onPage(event) {
     :total-records="totalRecords"
     :rows="rows"
     :first="first"
-    :sort-field="sortField"
-    :sort-order="sortOrder"
+    :sort-field="campoOrden"
+    :sort-order="sentidoOrden"
     :removable-sort="removableSort"
     :paginator="paginator"
     :selection="selection"

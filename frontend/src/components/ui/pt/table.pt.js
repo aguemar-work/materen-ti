@@ -48,8 +48,13 @@ const CHECKBOX_PT = {
  *   opcional) se lee acá para fundirse en `bodyRow`; el resto hoy solo se
  *   usa para fundir la `class` externa.
  * @param {unknown} attrClass - `class` que el consumidor pasó a <AppTable>.
+ * @param {Function} [onRowClick] - listener de @row-click del consumidor; si
+ *   existe, cada fila es enfocable y Enter la abre como un clic.
  */
-export function buildTablePT(props, attrClass) {
+export function buildTablePT(props, attrClass, onRowClick) {
+  const claseFila = onRowClick
+    ? 'bg-white hover:bg-slate-50 transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:bg-primary-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500'
+    : 'bg-white hover:bg-slate-50 transition-colors duration-100';
   return {
     root: { class: twMerge('w-full text-sm', attrClass) },
     tableContainer: { class: 'w-full overflow-x-auto' },
@@ -70,12 +75,23 @@ export function buildTablePT(props, attrClass) {
     // `aria-current` en la fila actualmente abierta (TicketsView.vue). PT
     // por fila recibe `context.index`, no la fila entera — se resuelve
     // acá con `props.value[index]`, el mismo array que ya tiene AppTable.
-    bodyRow: props.rowAttrs
-      ? ({ context }) => ({
-        class: 'bg-white hover:bg-slate-50 transition-colors duration-100',
-        ...(props.value?.[context.index] ? props.rowAttrs(props.value[context.index]) : null),
-      })
-      : { class: 'bg-white hover:bg-slate-50 transition-colors duration-100' },
+    bodyRow: ({ context }) => {
+      const fila = props.value?.[context.index];
+      return {
+        class: claseFila,
+        ...(onRowClick && fila
+          ? {
+            tabindex: 0,
+            // Solo si el foco está en la fila misma: Enter sobre un botón o
+            // enlace de la celda sigue haciendo lo suyo.
+            onKeydown: (e) => {
+              if (e.key === 'Enter' && e.target === e.currentTarget) onRowClick({ originalEvent: e, data: fila, index: context.index });
+            },
+          }
+          : null),
+        ...(props.rowAttrs && fila ? props.rowAttrs(fila) : null),
+      };
+    },
     column: {
       headerCell: {
         class:
