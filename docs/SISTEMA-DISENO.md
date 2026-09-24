@@ -61,7 +61,8 @@ una decisión para pedir, no para completar.
 | Componente | Para qué | Props clave |
 | --- | --- | --- |
 | `AppEncabezado` | Encabezado de página | `titulo`, `subtitulo`, `volver-label` (+ `@volver`), slots `acciones`, `junto-titulo`, `subtitulo` |
-| `AppButton` | Toda acción | `label`, `icon`, `severity` (primary/secondary/danger), `variant` (solid/outline/text), `size` (sm/md/lg), `loading` |
+| `AppButton` | Toda acción | `label`, `icon`, `severity` (primary/secondary/danger), `variant` (solid/outline/text), `size` (sm/md/lg), `loading`; `to` (renderiza `RouterLink`) o `href` (renderiza `<a>`) para un botón que navega |
+| `AppPortal` | Layout del portal público y de las páginas de error (4.5) | `titulo` (el `<h1>`), `descripcion`, `seccion`, `icono` + `tono`, `centrado`, `superpuesto`; slots `antetitulo`, `pie` |
 | `AppBuscador` | Búsqueda de la barra de filtros | `v-model`, `label` (sr-only), `placeholder` |
 | `AppSegmentado` | Elegir 1 de 2–5 opciones visibles (estado, pestañas) | `v-model`, `opciones` [{valor,label,conteo?,icono?}], `label` |
 | `AppSelect` | Filtro con muchas opciones | `v-model`, `label`; `<option>` en el slot |
@@ -159,6 +160,17 @@ se vean sin estilos, y se borra cuando la última vista deja de usarlo.
 - Centrado, `max-w-lg`, logo arriba, una sola card blanca, textos cortos,
   controles grandes (`AppButton size="lg"` en la acción principal), mucho
   aire. Debe verse impecable a 360–600px.
+- Siempre sobre `components/ui/AppPortal.vue` (referencia:
+  `modules/soporte/SoporteView.vue`, `modules/entregas/EntregaView.vue`).
+  Cada página tiene su `<h1>` (prop `titulo`); las pantallas de resultado
+  (éxito, enlace vencido, 404) llevan `icono` y se centran solas.
+- Campos: primitivas `.campo*` con el control a `h-11 text-base sm:text-sm`
+  (44px táctiles; 16px en móvil para que iOS no haga zoom al enfocar).
+- "Volver a soporte" y similares: `AppButton variant="text"
+  severity="secondary" to="..."` en el slot `pie`, fuera de la card.
+- Un enlace que saca al usuario de una página con datos que no se pueden
+  recuperar (credenciales ya reveladas en la entrega) abre en pestaña nueva
+  (`target="_blank" rel="noopener noreferrer"`).
 
 ### 4.6 Formularios
 - En modal (`Modal`/`AppDialog`): título que nombra la acción ("Editar

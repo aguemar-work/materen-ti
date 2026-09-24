@@ -1,7 +1,8 @@
 // Nombre canónico del producto en UI, documentos y páginas públicas.
 //
 // ÚNICO lugar donde se escribe el nombre. Consumidores: AppLayout (logo +
-// título de topbar), LoginView, PublicBrand, pdfReporte (pie de los PDFs),
+// título de topbar), AppPortal (portal público y páginas de error: alt del
+// logo), pdfReporte (pie de los PDFs),
 // acta-base (actas imprimibles de equipos), DesignSystem y StyleLab.
 //
 // EXCEPCIÓN CONOCIDA — `frontend/index.html` (`<title>`): es HTML estático

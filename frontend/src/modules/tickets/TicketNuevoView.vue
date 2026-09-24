@@ -15,7 +15,8 @@ import { ref, computed, onMounted } from 'vue';
 import { catalogoTickets, crearTicket, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { comprimirImagen, archivoABase64 } from '../../core/imagenes.js';
 import { esDniValido } from '../../core/utils.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -70,7 +71,7 @@ async function onArchivoSeleccionado(e) {
     archivo.value = await comprimirImagen(file);
     previewUrl.value = URL.createObjectURL(archivo.value);
   } catch {
-    error.value = 'No se pudo procesar la imagen. Intenta con otra captura.';
+    error.value = 'No se pudo procesar la imagen. Intente con otra captura.';
   }
 }
 
@@ -82,7 +83,7 @@ function quitarArchivo() {
 async function enviar() {
   error.value = '';
   if (!form.value.categoriaId) {
-    error.value = 'Selecciona el tipo de solicitud';
+    error.value = 'Seleccione el tipo de solicitud';
     return;
   }
   if (!dniValido.value) {
@@ -129,184 +130,243 @@ async function cargarCatalogo() {
 }
 
 onMounted(cargarCatalogo);
+
+// ── Solo presentación (rediseño 2026-09-24, receta 4.5) ──────────────────
+// Controles del portal: 44px de alto (objetivo táctil) y 16px en móvil para
+// que iOS no haga zoom al enfocar.
+const CLASE_CONTROL = 'campo__control h-11 text-base sm:text-sm';
+
+const encabezado = computed(() => {
+  if (estado.value === 'error_catalogo') {
+    return { titulo: 'No se pudo cargar el formulario', icono: 'ti ti-plug-connected-x', tono: 'neutral' };
+  }
+  if (estado.value === 'confirmacion') {
+    return { titulo: 'Solicitud registrada', icono: 'ti ti-circle-check', tono: 'success' };
+  }
+  return {
+    titulo: 'Nuevo ticket',
+    icono: '',
+    tono: 'neutral',
+    descripcion: 'Complete los datos para registrar su solicitud de soporte.',
+  };
+});
 </script>
 
 <template>
-  <div class="public-page">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Soporte técnico" />
+  <AppPortal
+    seccion="Soporte técnico"
+    :titulo="encabezado.titulo"
+    :descripcion="encabezado.descripcion || ''"
+    :icono="encabezado.icono"
+    :tono="encabezado.tono"
+  >
+    <p v-if="estado === 'cargando_catalogo'" class="py-4 text-center text-sm text-gray-500" role="status">
+      Cargando formulario...
+    </p>
 
-      <template v-if="estado === 'cargando_catalogo'">
-        <p class="ticket-texto">Cargando formulario...</p>
-      </template>
+    <template v-else-if="estado === 'error_catalogo'">
+      <p class="text-center text-sm text-gray-600">{{ error }}</p>
+      <AppButton
+        class="mt-6"
+        size="lg"
+        block
+        label="Reintentar"
+        icon="ti ti-refresh"
+        icon-pos="right"
+        @click="cargarCatalogo"
+      />
+    </template>
 
-      <template v-else-if="estado === 'error_catalogo'">
-        <div class="ticket-error-icon"><i class="ti ti-plug-connected-x" aria-hidden="true"></i></div>
-        <h2 class="ticket-title">No se pudo cargar el formulario</h2>
-        <p class="ticket-texto">{{ error }}</p>
-        <button type="button" class="btn btn--primary btn--ancho ticket-submit" @click="cargarCatalogo">
-          Reintentar
-          <i class="ti ti-refresh" aria-hidden="true"></i>
-        </button>
-      </template>
+    <form v-else-if="estado === 'formulario' || estado === 'enviando'" class="flex flex-col gap-5" @submit.prevent="enviar">
+      <div class="campo" :class="{ 'campo--invalido': campoDni.invalido.value, 'campo--inerte': estado === 'enviando' }">
+        <label class="campo__etiqueta" :for="campoDni.id">
+          DNI<span aria-hidden="true"> *</span>
+        </label>
+        <div class="campo__caja">
+          <input
+            :id="campoDni.id"
+            :class="[CLASE_CONTROL, 'tabular-nums']"
+            type="text"
+            :value="form.contacto"
+            inputmode="numeric"
+            maxlength="8"
+            placeholder="8 dígitos"
+            required
+            :disabled="estado === 'enviando'"
+            :aria-invalid="campoDni.invalido.value"
+            :aria-describedby="campoDni.describedBy.value"
+            @input="onDniInput($event.target.value)"
+            @blur="dniTocado = true"
+          >
+          <i v-if="campoDni.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
+        </div>
+        <p
+          v-if="errorDni"
+          :id="campoDni.idAyuda"
+          class="campo__pie campo__pie--error"
+          role="alert"
+        >{{ errorDni }}</p>
+      </div>
 
-      <template v-else-if="estado === 'formulario' || estado === 'enviando'">
-        <h2 class="ticket-title">Nuevo ticket</h2>
+      <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+        <label class="campo__etiqueta" :for="campoCategoria.id">
+          Tipo de solicitud<span aria-hidden="true"> *</span>
+        </label>
+        <div class="campo__caja">
+          <select
+            :id="campoCategoria.id"
+            :class="[CLASE_CONTROL, 'campo__control--select']"
+            :value="form.categoriaId"
+            required
+            :disabled="estado === 'enviando'"
+            @change="form.categoriaId = $event.target.value"
+          >
+            <option value="" disabled>Seleccionar</option>
+            <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
 
-        <form class="ticket-form" @submit.prevent="enviar">
-          <div class="campo" :class="{ 'campo--invalido': campoDni.invalido.value, 'campo--inerte': estado === 'enviando' }">
-            <label class="campo__etiqueta" :for="campoDni.id">
-              DNI<span aria-hidden="true"> *</span>
-            </label>
-            <div class="campo__caja">
-              <input
-                :id="campoDni.id"
-                class="campo__control"
-                type="text"
-                :value="form.contacto"
-                inputmode="numeric"
-                maxlength="8"
-                placeholder="8 dígitos"
-                required
-                :disabled="estado === 'enviando'"
-                :aria-invalid="campoDni.invalido.value"
-                :aria-describedby="campoDni.describedBy.value"
-                @input="onDniInput($event.target.value)"
-                @blur="dniTocado = true"
-              >
-              <i v-if="campoDni.invalido.value" class="ti ti-alert-circle campo__adorno" aria-hidden="true"></i>
-            </div>
-            <p
-              v-if="errorDni"
-              :id="campoDni.idAyuda"
-              class="campo__pie campo__pie--error"
-              role="alert"
-            >{{ errorDni }}</p>
-          </div>
+      <div v-if="subcategoriasFiltradas.length" class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+        <label class="campo__etiqueta" :for="campoSubcategoria.id">Subcategoría</label>
+        <div class="campo__caja">
+          <select
+            :id="campoSubcategoria.id"
+            :class="[CLASE_CONTROL, 'campo__control--select']"
+            :value="form.subcategoriaId"
+            :disabled="estado === 'enviando'"
+            @change="form.subcategoriaId = $event.target.value"
+          >
+            <option value="">Seleccionar (opcional)</option>
+            <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
 
-          <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
-            <label class="campo__etiqueta" :for="campoCategoria.id">
-              Tipo de solicitud<span aria-hidden="true"> *</span>
-            </label>
-            <div class="campo__caja">
-              <select
-                :id="campoCategoria.id"
-                class="campo__control campo__control--select"
-                :value="form.categoriaId"
-                required
-                :disabled="estado === 'enviando'"
-                @change="form.categoriaId = $event.target.value"
-              >
-                <option value="" disabled>Seleccionar</option>
-                <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-              </select>
-              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-            </div>
-          </div>
+      <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+        <label class="campo__etiqueta" :for="campoTitulo.id">
+          Resumen breve<span aria-hidden="true"> *</span>
+        </label>
+        <div class="campo__caja">
+          <input
+            :id="campoTitulo.id"
+            v-model="form.titulo"
+            :class="CLASE_CONTROL"
+            type="text"
+            maxlength="200"
+            placeholder="Ej.: sin acceso al correo institucional"
+            required
+            :disabled="estado === 'enviando'"
+          >
+        </div>
+      </div>
 
-          <div v-if="subcategoriasFiltradas.length" class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
-            <label class="campo__etiqueta" :for="campoSubcategoria.id">Subcategoría</label>
-            <div class="campo__caja">
-              <select
-                :id="campoSubcategoria.id"
-                class="campo__control campo__control--select"
-                :value="form.subcategoriaId"
-                :disabled="estado === 'enviando'"
-                @change="form.subcategoriaId = $event.target.value"
-              >
-                <option value="">Seleccionar (opcional)</option>
-                <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
-              </select>
-              <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-            </div>
-          </div>
+      <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
+        <label class="campo__etiqueta" :for="campoDescripcion.id">
+          Detalle de la solicitud<span aria-hidden="true"> *</span>
+        </label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoDescripcion.id"
+            v-model="form.descripcion"
+            class="campo__control campo__control--area text-base sm:text-sm"
+            :rows="4"
+            maxlength="5000"
+            placeholder="Indique el problema, fecha de inicio y detalles relevantes"
+            required
+            :disabled="estado === 'enviando'"
+          ></textarea>
+        </div>
+      </div>
 
-          <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
-            <label class="campo__etiqueta" :for="campoTitulo.id">
-              Resumen breve<span aria-hidden="true"> *</span>
-            </label>
-            <div class="campo__caja">
-              <input
-                :id="campoTitulo.id"
-                v-model="form.titulo"
-                class="campo__control"
-                type="text"
-                maxlength="200"
-                placeholder="Ej.: sin acceso al correo institucional"
-                required
-                :disabled="estado === 'enviando'"
-              >
-            </div>
-          </div>
+      <!-- Adjunto: el <input type=file> real queda oculto; el botón lo abre. -->
+      <div class="campo">
+        <span id="ticket-adjunto-etiqueta" class="campo__etiqueta">Captura de pantalla (opcional)</span>
+        <div v-if="!archivo">
+          <AppButton
+            variant="outline"
+            severity="secondary"
+            icon="ti ti-camera-plus"
+            label="Adjuntar captura"
+            aria-describedby="ticket-adjunto-etiqueta"
+            :disabled="estado === 'enviando'"
+            @click="inputArchivo?.click()"
+          />
+        </div>
+        <div v-else class="flex items-center gap-3 rounded-md border border-gray-200 p-2">
+          <img :src="previewUrl" alt="Captura adjunta" class="h-20 w-auto max-w-[60%] rounded object-contain">
+          <span class="min-w-0 flex-1 truncate text-sm text-gray-600">{{ archivo.name }}</span>
+          <AppButton
+            class="w-10 shrink-0 px-0"
+            variant="text"
+            severity="secondary"
+            icon="ti ti-x"
+            title="Quitar"
+            aria-label="Quitar la captura adjunta"
+            :disabled="estado === 'enviando'"
+            @click="quitarArchivo"
+          />
+        </div>
+        <input
+          ref="inputArchivo"
+          class="hidden"
+          type="file"
+          accept="image/*"
+          aria-labelledby="ticket-adjunto-etiqueta"
+          @change="onArchivoSeleccionado"
+        >
+      </div>
 
-          <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
-            <label class="campo__etiqueta" :for="campoDescripcion.id">
-              Detalle de la solicitud<span aria-hidden="true"> *</span>
-            </label>
-            <div class="campo__caja">
-              <textarea
-                :id="campoDescripcion.id"
-                v-model="form.descripcion"
-                class="campo__control campo__control--area"
-                :rows="4"
-                maxlength="5000"
-                placeholder="Indique el problema, fecha de inicio y detalles relevantes"
-                required
-                :disabled="estado === 'enviando'"
-              ></textarea>
-            </div>
-          </div>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
 
-          <div class="form-group full">
-            <label>Captura de pantalla (opcional)</label>
-            <div v-if="!archivo" class="ticket-adjuntar">
-              <button type="button" class="btn btn--secondary" :disabled="estado === 'enviando'" @click="inputArchivo?.click()">
-                Adjuntar captura
-                <i class="ti ti-camera-plus" aria-hidden="true"></i>
-              </button>
-            </div>
-            <div v-else class="ticket-preview">
-              <img :src="previewUrl" alt="Captura adjunta">
-              <button type="button" class="icon-btn" title="Quitar" aria-label="Quitar la captura adjunta" :disabled="estado === 'enviando'" @click="quitarArchivo">
-                <i class="ti ti-x" aria-hidden="true"></i>
-              </button>
-            </div>
-            <input ref="inputArchivo" type="file" accept="image/*" style="display: none" @change="onArchivoSeleccionado">
-          </div>
+      <AppButton
+        type="submit"
+        size="lg"
+        block
+        :label="estado === 'enviando' ? 'Enviando...' : 'Enviar solicitud'"
+        :loading="estado === 'enviando'"
+        :disabled="!dniValido"
+      />
+    </form>
 
-          <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
-            <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
-            <div class="notif__texto">
-              <p class="notif__detalle">{{ error }}</p>
-            </div>
-          </div>
+    <template v-else-if="estado === 'confirmacion'">
+      <p class="text-center text-sm text-gray-600">Código de seguimiento</p>
+      <p class="mt-1 text-center font-mono text-2xl font-semibold tracking-tight text-gray-900 tabular-nums">
+        {{ resultado.codigo }}
+      </p>
+      <AppButton
+        class="mt-6"
+        size="lg"
+        block
+        label="Ver seguimiento"
+        icon="ti ti-arrow-right"
+        icon-pos="right"
+        :to="{ name: 'ticket-seguimiento', params: { token: resultado.token } }"
+      />
+      <p class="mt-4 text-center text-sm text-gray-500">
+        Si el enlace se pierde, el ticket puede
+        <RouterLink
+          class="text-primary-600 underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          :to="{ name: 'ticket-buscar' }"
+        >recuperarse con el DNI</RouterLink>.
+      </p>
+    </template>
 
-          <button type="submit" class="btn btn--primary btn--ancho ticket-submit" :disabled="estado === 'enviando' || !dniValido">
-            {{ estado === 'enviando' ? 'Enviando...' : 'Enviar solicitud' }}
-            <i v-if="estado === 'enviando'" class="ti ti-loader-2" aria-hidden="true"></i>
-          </button>
-        </form>
-      </template>
-
-      <template v-else-if="estado === 'confirmacion'">
-        <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
-        <h2 class="ticket-title">Solicitud registrada</h2>
-        <p class="ticket-texto">
-          Código: <strong>{{ resultado.codigo }}</strong>
-        </p>
-        <RouterLink class="ticket-link" :to="{ name: 'ticket-seguimiento', params: { token: resultado.token } }">
-          Ver seguimiento
-        </RouterLink>
-        <p class="ticket-texto ticket-nota">
-          Si el enlace se pierde, el ticket puede <RouterLink :to="{ name: 'ticket-buscar' }">recuperarse con el DNI</RouterLink>.
-        </p>
-      </template>
-
-      <RouterLink class="public-volver" to="/soporte">
-        <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
-      </RouterLink>
-    </div>
-  </div>
+    <template #pie>
+      <AppButton
+        variant="text"
+        severity="secondary"
+        icon="ti ti-arrow-left"
+        label="Volver a soporte"
+        to="/soporte"
+      />
+    </template>
+  </AppPortal>
 </template>
-
-

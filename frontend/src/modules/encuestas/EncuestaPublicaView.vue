@@ -6,7 +6,8 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { abrirEncuesta, responderEncuesta, MENSAJES_ERROR_ENCUESTA } from '../../api/encuestaPublica.js';
 import { respuestaValida } from '../../core/dominio-encuestas.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import PreguntaCampo from './PreguntaCampo.vue';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -67,66 +68,82 @@ onMounted(async () => {
     estado.value = 'error';
   }
 });
+
+// ── Solo presentación (rediseño 2026-09-24, receta 4.5) ──────────────────
+const encabezado = computed(() => {
+  if (estado.value === 'cargando') return { titulo: 'Encuesta', icono: '', tono: 'neutral' };
+  if (estado.value === 'error') {
+    return { titulo: 'No se pudo abrir la encuesta', icono: 'ti ti-plug-connected-x', tono: 'neutral' };
+  }
+  if (estado.value === 'confirmacion') {
+    return { titulo: '¡Gracias por su respuesta!', icono: 'ti ti-circle-check', tono: 'success' };
+  }
+  return { titulo: titulo.value, icono: '', tono: 'neutral', descripcion: descripcion.value };
+});
+const porcentajeRespondido = computed(() =>
+  totalPreguntas.value ? Math.round((preguntasRespondidas.value / totalPreguntas.value) * 100) : 0
+);
 </script>
 
 <template>
-  <div class="public-page">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Encuesta" />
+  <AppPortal
+    seccion="Encuesta"
+    :titulo="encabezado.titulo"
+    :descripcion="encabezado.descripcion || ''"
+    :icono="encabezado.icono"
+    :tono="encabezado.tono"
+  >
+    <p v-if="estado === 'cargando'" class="py-4 text-center text-sm text-gray-500" role="status">Cargando encuesta...</p>
 
-      <template v-if="estado === 'cargando'">
-        <p class="ticket-texto">Cargando encuesta...</p>
-      </template>
+    <p v-else-if="estado === 'error'" class="text-center text-sm text-gray-600">{{ error }}</p>
 
-      <template v-else-if="estado === 'error'">
-        <div class="ticket-error-icon"><i class="ti ti-plug-connected-x" aria-hidden="true"></i></div>
-        <h2 class="ticket-title">No se pudo abrir la encuesta</h2>
-        <p class="ticket-texto">{{ error }}</p>
-        <RouterLink class="public-volver" to="/soporte">
-          <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
-        </RouterLink>
-      </template>
+    <p v-else-if="estado === 'confirmacion'" class="text-center text-sm text-gray-600">
+      Su respuesta quedó registrada de forma anónima.
+    </p>
 
-      <template v-else-if="estado === 'confirmacion'">
-        <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
-        <h2 class="ticket-title">¡Gracias por su respuesta!</h2>
-        <p class="ticket-texto">Su respuesta quedó registrada de forma anónima.</p>
-      </template>
+    <template v-else>
+      <div v-if="totalPreguntas" class="mb-6">
+        <p class="text-xs text-gray-500 tabular-nums">{{ preguntasRespondidas }} de {{ totalPreguntas }} preguntas respondidas</p>
+        <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+          <div class="h-full rounded-full bg-primary-500 transition-[width] duration-300" :style="{ width: `${porcentajeRespondido}%` }"></div>
+        </div>
+      </div>
 
-      <template v-else>
-        <h2 class="ticket-title">{{ titulo }}</h2>
-        <p v-if="descripcion" class="ticket-texto">{{ descripcion }}</p>
-        <p v-if="totalPreguntas" class="encuesta-progreso">{{ preguntasRespondidas }} de {{ totalPreguntas }} preguntas respondidas</p>
+      <form class="flex flex-col gap-6" @submit.prevent="enviar">
+        <PreguntaCampo
+          v-for="p in preguntas"
+          :key="p.id"
+          :pregunta="p"
+          :model-value="respuestas[p.id]"
+          :disabled="estado === 'enviando'"
+          @update:model-value="(v) => (respuestas[p.id] = v)"
+        />
 
-        <form class="ticket-form" @submit.prevent="enviar">
-          <PreguntaCampo
-            v-for="p in preguntas"
-            :key="p.id"
-            :pregunta="p"
-            :model-value="respuestas[p.id]"
-            :disabled="estado === 'enviando'"
-            @update:model-value="(v) => (respuestas[p.id] = v)"
-          />
-
-          <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
-            <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
-            <div class="notif__texto">
-              <p class="notif__detalle">{{ error }}</p>
-            </div>
+        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ error }}</p>
           </div>
+        </div>
 
-          <button
-            type="submit"
-            class="btn btn--primary btn--ancho ticket-submit"
-            :disabled="estado === 'enviando'"
-          >
-            <span class="btn__label">{{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}</span>
-            <i v-if="estado === 'enviando'" class="ti ti-loader-2 btn__icono--girando" aria-hidden="true"></i>
-          </button>
-        </form>
-      </template>
-    </div>
-  </div>
+        <AppButton
+          type="submit"
+          size="lg"
+          block
+          :label="estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta'"
+          :loading="estado === 'enviando'"
+        />
+      </form>
+    </template>
+
+    <template v-if="estado === 'error'" #pie>
+      <AppButton
+        variant="text"
+        severity="secondary"
+        icon="ti ti-arrow-left"
+        label="Volver a soporte"
+        to="/soporte"
+      />
+    </template>
+  </AppPortal>
 </template>
-
-

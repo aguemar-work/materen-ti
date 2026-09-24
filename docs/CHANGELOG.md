@@ -27,6 +27,16 @@
 > estado actual, sin historia mezclada). Las entradas de abajo son la
 > versión condensada de los mismos eventos.
 
+- **2026-09-24** (**Portal público y páginas de error**) — migrados a la
+  receta 4.5 con el componente nuevo `components/ui/AppPortal.vue`
+  (reemplaza a `PublicBrand.vue`, retirado): Login, Entrega, Soporte, las 4
+  páginas públicas de tickets (nuevo/buscar/seguimiento/encuesta de
+  satisfacción), Encuesta pública (+ `PreguntaCampo`), 404 y Sin conexión.
+  `AppButton` suma modo enlace (`to` → `RouterLink`, `href` → `<a>`). Cada
+  página con `<h1>`; copy sin tuteo. Entrega: credenciales en `font-mono`
+  con copiar accesible por dato, y "Crear ticket" abre en pestaña nueva para
+  no perder lo revelado. Arregla la 404 sin botón (`<CarbonButton>`
+  inexistente). `docs/SISTEMA-DISENO.md` §3 y §4.5 actualizados.
 - **2026-09-23** (**Rediseño del resto de módulos**) — con el sistema de
   `docs/SISTEMA-DISENO.md`: Configuración (4 catálogos + Empresas +
   Plataformas, con `EncabezadoCatalogo.vue` nuevo), Correos, Cuentas,

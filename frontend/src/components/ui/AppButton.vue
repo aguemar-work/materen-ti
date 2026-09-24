@@ -9,7 +9,15 @@
 // "botón primario", "botón de peligro", etc. — si esa decisión cambia
 // (nuevo tamaño, nueva severidad), cambia acá una sola vez y toda la app la
 // hereda, en vez de buscar cada `<Button>` suelto.
+//
+// "Botón que navega" (2026-09-24): con `to` renderiza un `RouterLink` y con
+// `href` un `<a>` nativo, con las MISMAS clases del preset (pt/button.pt.js)
+// — la semántica correcta de algo que lleva a otra página es un enlace
+// (clic medio, "abrir en pestaña nueva", lector de pantalla), no un
+// `<button>` con `router.push`. Sin `to`/`href` el componente es idéntico
+// al de antes: `primevue/button`, misma API.
 import { computed, useAttrs } from 'vue';
+import { RouterLink } from 'vue-router';
 import PrimeButton from 'primevue/button';
 import { buildButtonPT } from './pt/button.pt.js';
 
@@ -31,6 +39,10 @@ const props = defineProps({
   // Ancho completo del contenedor — para botones de acción única en
   // formularios angostos o modales.
   block: { type: Boolean, default: false },
+  // Destino de vue-router (string o objeto de ruta): renderiza RouterLink.
+  to: { type: [String, Object], default: undefined },
+  // URL externa/absoluta: renderiza <a href>. `target`/`rel` pasan por $attrs.
+  href: { type: String, default: undefined },
 });
 
 const attrs = useAttrs();
@@ -46,10 +58,42 @@ const restAttrs = computed(() => {
 });
 
 const pt = computed(() => buildButtonPT(props, attrs.class));
+
+// Modo enlace. Un <a> no tiene `disabled` nativo: se marca aria-disabled,
+// se saca del orden de tabulación y se anula el puntero (el preset ya trae
+// `disabled:*`, que en un <a> no aplica — por eso el estilo va explícito).
+const esEnlace = computed(() => props.to !== undefined || props.href !== undefined);
+const inhabilitado = computed(() => props.disabled || props.loading);
+const claseEnlace = computed(() => [
+  pt.value.root.class,
+  'no-underline',
+  inhabilitado.value ? 'pointer-events-none opacity-50' : '',
+]);
+const claseIcono = computed(() => [
+  props.loading ? 'ti ti-loader-2' : props.icon,
+  pt.value.icon.class,
+]);
+// `to` solo para RouterLink y `href` solo para <a>: un `href: undefined`
+// que cae a RouterLink por fallthrough pisaría el href que él calcula.
+const attrsEnlace = computed(() => ({
+  ...restAttrs.value,
+  ...(props.to !== undefined ? { to: props.to } : { href: props.href }),
+  ...(inhabilitado.value ? { 'aria-disabled': 'true', tabindex: '-1' } : {}),
+}));
 </script>
 
 <template>
+  <component
+    :is="to !== undefined ? RouterLink : 'a'"
+    v-if="esEnlace"
+    v-bind="attrsEnlace"
+    :class="claseEnlace"
+  >
+    <i v-if="icon || loading" :class="claseIcono" aria-hidden="true"></i>
+    <slot><span v-if="label" :class="pt.label.class">{{ label }}</span></slot>
+  </component>
   <PrimeButton
+    v-else
     :label="label"
     :icon="icon"
     :icon-pos="iconPos"

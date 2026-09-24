@@ -3,28 +3,31 @@
 // App.vue la superpone a la vista actual cuando una petición no llegó al
 // servidor, y "Reintentar" repite esa misma petición sin perder el estado
 // de la vista que quedó debajo (ej. un formulario ya completado).
+// Por eso AppPortal va `superpuesto` (capa fija), no como página propia.
 import { reintentarErrorRed } from '../../core/error-red.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 </script>
 
 <template>
-  <div class="public-page error-red">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Sin conexión" />
+  <AppPortal
+    superpuesto
+    titulo="Sin conexión con el servidor"
+    icono="ti ti-wifi-off"
+  >
+    <p class="text-center text-sm text-gray-600">
+      No se pudo conectar con el servidor. Verifique su conexión e intente
+      nuevamente.
+    </p>
 
-      <div class="error-red-icon"><i class="ti ti-wifi-off" aria-hidden="true"></i></div>
-      <h2 class="error-red-title">Sin conexión con el servidor</h2>
-      <p class="error-red-texto">
-        No se pudo conectar con el servidor. Verifique su conexión e intente
-        nuevamente.
-      </p>
-
-      <button type="button" class="btn btn--primary btn--ancho" @click="reintentarErrorRed">
-        Reintentar
-        <i class="ti ti-refresh" aria-hidden="true"></i>
-      </button>
-    </div>
-  </div>
+    <AppButton
+      class="mt-6"
+      size="lg"
+      block
+      label="Reintentar"
+      icon="ti ti-refresh"
+      icon-pos="right"
+      @click="reintentarErrorRed"
+    />
+  </AppPortal>
 </template>
-
-

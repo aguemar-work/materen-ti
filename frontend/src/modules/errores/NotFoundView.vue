@@ -6,7 +6,8 @@
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -31,22 +32,25 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="public-page">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Página no encontrada" />
+  <AppPortal
+    titulo="Página no encontrada"
+    icono="ti ti-error-404"
+  >
+    <p class="text-center text-sm text-gray-600">
+      La dirección ingresada no existe o dejó de estar disponible.
+      Verifique el enlace e intente nuevamente.
+    </p>
 
-      <div class="notfound-icon"><i class="ti ti-error-404" aria-hidden="true"></i></div>
-      <h2 class="notfound-title">Página no encontrada</h2>
-      <p class="notfound-texto">
-        La dirección ingresada no existe o dejó de estar disponible.
-        Verifique el enlace e intente nuevamente.
-      </p>
-
-      <CarbonButton v-if="destino" variante="primary" icono="ti-arrow-left" ancho :to="destino.to">
-        {{ destino.label }}
-      </CarbonButton>
-    </div>
-  </div>
+    <!-- Hasta el 2026-09-24 esto era un <CarbonButton> — componente que ya
+         no existía: la 404 se quedaba sin ninguna salida. -->
+    <AppButton
+      v-if="destino"
+      class="mt-6"
+      size="lg"
+      block
+      icon="ti ti-arrow-left"
+      :label="destino.label"
+      :to="destino.to"
+    />
+  </AppPortal>
 </template>
-
-

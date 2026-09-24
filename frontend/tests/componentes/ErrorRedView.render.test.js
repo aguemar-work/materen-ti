@@ -21,11 +21,15 @@ describe('ErrorRedView.vue — pantalla de sin conexión', () => {
     expect(w.text()).toContain('Verifique su conexión');
   });
 
+  it('la pantalla se identifica con un <h1>', () => {
+    const w = mount(ErrorRedView);
+    expect(w.find('h1').text()).toContain('Sin conexión con el servidor');
+  });
+
   it('ofrece una salida: el botón de reintentar', () => {
     const w = mount(ErrorRedView);
-    // Por rol/texto, no por clase CSS: el botón es CarbonButton desde la
-    // migración a componentes Carbon (Modern Clean Enterprise), y su clase
-    // interna (`cds-btn--primary`) es un detalle de implementación.
+    // Por rol/texto, no por clase CSS: el botón es AppButton (PrimeVue
+    // Unstyled + Tailwind) y sus clases son un detalle de implementación.
     const btn = w.findAll('button').find((b) => b.text().includes('Reintentar'));
     expect(btn).toBeTruthy();
   });

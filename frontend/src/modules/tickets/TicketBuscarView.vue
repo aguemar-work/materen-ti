@@ -9,7 +9,9 @@ import { buscarTicketsPorDni, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPu
 import { formatFecha } from '../../core/formatters.js';
 import { esDniValido } from '../../core/utils.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTag from '../../components/ui/AppTag.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 
 const dni = ref('');
@@ -56,83 +58,91 @@ async function buscar() {
 </script>
 
 <template>
-  <div class="public-page">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Buscar tickets" />
-
-      <h2 class="ticket-title">Consulta de tickets</h2>
-      <p class="ticket-subtitulo">
-        Ingrese su número de DNI para consultar tickets activos y encuestas
-        de satisfacción pendientes.
-      </p>
-
-      <form class="ticket-form" @submit.prevent="buscar">
-        <div class="campo" :class="{ 'campo--invalido': campoDni.invalido.value, 'campo--inerte': buscando }">
-          <label class="campo__etiqueta" :for="campoDni.id">
-            DNI<span aria-hidden="true"> *</span>
-          </label>
-          <div class="campo__caja">
-            <input
-              :id="campoDni.id"
-              class="campo__control"
-              type="text"
-              inputmode="numeric"
-              maxlength="8"
-              placeholder="8 dígitos"
-              :value="dni"
-              required
-              :disabled="buscando"
-              :aria-invalid="campoDni.invalido.value"
-              :aria-describedby="campoDni.describedBy.value"
-              @input="onDniInput($event.target.value)"
-              @blur="dniTocado = true"
-            >
-            <i v-if="campoDni.invalido.value" class="ti ti-alert-circle campo__adorno" aria-hidden="true"></i>
-          </div>
-          <p
-            v-if="errorDni || error"
-            :id="campoDni.idAyuda"
-            class="campo__pie"
-            :class="{ 'campo__pie--error': campoDni.invalido.value }"
-            :role="campoDni.invalido.value ? 'alert' : undefined"
-          >{{ errorDni || error }}</p>
+  <AppPortal
+    seccion="Buscar tickets"
+    titulo="Consulta de tickets"
+    descripcion="Ingrese su número de DNI para consultar tickets activos y encuestas de satisfacción pendientes."
+  >
+    <form class="flex flex-col gap-5" @submit.prevent="buscar">
+      <div class="campo" :class="{ 'campo--invalido': campoDni.invalido.value, 'campo--inerte': buscando }">
+        <label class="campo__etiqueta" :for="campoDni.id">
+          DNI<span aria-hidden="true"> *</span>
+        </label>
+        <div class="campo__caja">
+          <input
+            :id="campoDni.id"
+            class="campo__control h-11 text-base tabular-nums sm:text-sm"
+            type="text"
+            inputmode="numeric"
+            maxlength="8"
+            placeholder="8 dígitos"
+            :value="dni"
+            required
+            :disabled="buscando"
+            :aria-invalid="campoDni.invalido.value"
+            :aria-describedby="campoDni.describedBy.value"
+            @input="onDniInput($event.target.value)"
+            @blur="dniTocado = true"
+          >
+          <i v-if="campoDni.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
         </div>
-        <button type="submit" class="btn btn--primary btn--ancho ticket-submit" :disabled="buscando || !dniValido">
-          {{ buscando ? 'Buscando...' : 'Buscar' }}
-          <i v-if="buscando" class="ti ti-loader-2" aria-hidden="true"></i>
-        </button>
-      </form>
+        <p
+          v-if="errorDni || error"
+          :id="campoDni.idAyuda"
+          class="campo__pie"
+          :class="{ 'campo__pie--error': campoDni.invalido.value }"
+          :role="campoDni.invalido.value ? 'alert' : undefined"
+        >{{ errorDni || error }}</p>
+      </div>
+      <AppButton
+        type="submit"
+        size="lg"
+        block
+        icon="ti ti-search"
+        :label="buscando ? 'Buscando...' : 'Buscar'"
+        :loading="buscando"
+        :disabled="!dniValido"
+      />
+    </form>
 
-      <div v-if="resultados !== null" class="buscar-resultados">
-        <p v-if="!resultados.length" class="ticket-texto ticket-nota">
-          No se encontraron solicitudes activas ni encuestas pendientes para
-          ese DNI.
-        </p>
-        <div v-else class="buscar-lista">
+    <section v-if="resultados !== null" class="mt-6 border-t border-gray-100 pt-5" aria-labelledby="buscar-resultados-titulo">
+      <h2 id="buscar-resultados-titulo" class="text-sm font-semibold text-gray-900">
+        Resultados
+        <span v-if="resultados.length" class="font-normal text-gray-500 tabular-nums">· {{ resultados.length }}</span>
+      </h2>
+      <p v-if="!resultados.length" class="mt-2 text-sm text-gray-500" role="status">
+        No se encontraron solicitudes activas ni encuestas pendientes para
+        ese DNI.
+      </p>
+      <ul v-else class="mt-3 flex flex-col gap-2">
+        <li v-for="t in resultados" :key="t.token">
           <RouterLink
-            v-for="t in resultados"
-            :key="t.token"
-            class="buscar-item"
+            class="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 no-underline transition-colors duration-150 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             :to="{ name: t.encuestaPendiente ? 'ticket-satisfaccion' : 'ticket-seguimiento', params: { token: t.token } }"
           >
-            <div class="buscar-item-head">
-              <span class="segui-codigo">{{ t.codigo }}</span>
-              <span v-if="t.encuestaPendiente" class="tag tag--accent">
-                <i class="ti ti-mood-smile" aria-hidden="true"></i> Encuesta pendiente
+            <span class="flex min-w-0 flex-1 flex-col gap-1">
+              <span class="flex flex-wrap items-center gap-2">
+                <span class="font-mono text-xs font-medium text-gray-500 tabular-nums">{{ t.codigo }}</span>
+                <AppTag v-if="t.encuestaPendiente" tono="info" icono="ti ti-mood-smile">Encuesta pendiente</AppTag>
+                <BadgeEstado v-else tipo="ticket" :valor="t.estado" />
               </span>
-              <BadgeEstado v-else tipo="ticket" :valor="t.estado" />
-            </div>
-            <div class="buscar-item-titulo">{{ t.titulo }}</div>
-            <div class="buscar-item-fecha">Creado el {{ formatFecha(t.creado) }}</div>
+              <span class="text-sm font-medium text-gray-900 [overflow-wrap:anywhere]">{{ t.titulo }}</span>
+              <span class="text-xs text-gray-500">Creado el {{ formatFecha(t.creado) }}</span>
+            </span>
+            <i class="ti ti-chevron-right shrink-0 text-lg text-gray-400" aria-hidden="true"></i>
           </RouterLink>
-        </div>
-      </div>
+        </li>
+      </ul>
+    </section>
 
-      <RouterLink class="public-volver" to="/soporte">
-        <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
-      </RouterLink>
-    </div>
-  </div>
+    <template #pie>
+      <AppButton
+        variant="text"
+        severity="secondary"
+        icon="ti ti-arrow-left"
+        label="Volver a soporte"
+        to="/soporte"
+      />
+    </template>
+  </AppPortal>
 </template>
-
-

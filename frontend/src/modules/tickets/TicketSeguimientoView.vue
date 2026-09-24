@@ -2,12 +2,13 @@
 // Página PÚBLICA (sin sesión): seguimiento de UN ticket, dado su token.
 // Token de TICKET — distinto del token de entrega. Solo lectura acotada
 // a este ticket (estado + comentarios visibles), nunca el resto del sistema.
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { seguimientoTicket } from '../../api/ticketsPublicos.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import EncuestaSatisfaccionForm from './EncuestaSatisfaccionForm.vue';
 
@@ -50,69 +51,99 @@ async function copiar(texto, id) {
 function enlaceSeguimiento() {
   return `${window.location.origin}/soporte/${route.params.token}`;
 }
+
+// ── Solo presentación (rediseño 2026-09-24, receta 4.5) ──────────────────
+const titulo = computed(() => {
+  if (estado.value === 'error') return 'No disponible';
+  if (estado.value === 'listo') return ticket.value.titulo;
+  return 'Seguimiento de solicitud';
+});
+
+// El ícono/texto del botón cambia al copiar; esto lo confirma también a un
+// lector de pantalla (región aria-live).
+const mensajeCopiado = computed(() => {
+  if (copiado.value === 'link') return 'Enlace copiado';
+  if (copiado.value === 'codigo') return 'Código copiado';
+  return '';
+});
 </script>
 
 <template>
-  <div class="public-page">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Seguimiento de solicitud" />
+  <AppPortal
+    seccion="Seguimiento de solicitud"
+    :titulo="titulo"
+    :icono="estado === 'error' ? 'ti ti-link-off' : ''"
+  >
+    <template v-if="estado === 'listo'" #antetitulo>
+      <span class="font-mono text-sm font-medium text-gray-500 tabular-nums">{{ ticket.codigo }}</span>
+      <BadgeEstado tipo="ticket" :valor="ticket.estado" />
+    </template>
+    <template v-if="estado === 'listo'" #descripcion>
+      {{ ticket.categoria }}{{ ticket.subcategoria ? ` · ${ticket.subcategoria}` : '' }}
+      · Creado el {{ formatFecha(ticket.creado) }}
+    </template>
 
-      <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
+    <p v-if="estado === 'cargando'" class="py-4 text-center text-sm text-gray-500" role="status">Cargando...</p>
 
-      <template v-else-if="estado === 'error'">
-        <div class="ticket-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
-        <h2 class="ticket-title">No disponible</h2>
-        <p class="ticket-texto">{{ error }}</p>
-        <RouterLink class="ticket-link" :to="{ name: 'ticket-buscar' }">
-          <i class="ti ti-search" aria-hidden="true"></i> Buscar tickets por DNI
-        </RouterLink>
-        <RouterLink class="public-volver" to="/soporte">
-          <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
-        </RouterLink>
-      </template>
+    <template v-else-if="estado === 'error'">
+      <p class="text-center text-sm text-gray-600">{{ error }}</p>
+      <AppButton
+        class="mt-6"
+        size="lg"
+        block
+        icon="ti ti-search"
+        label="Buscar tickets por DNI"
+        :to="{ name: 'ticket-buscar' }"
+      />
+    </template>
 
-      <template v-else>
-        <div class="segui-header">
-          <span class="segui-codigo">{{ ticket.codigo }}</span>
-          <BadgeEstado tipo="ticket" :valor="ticket.estado" />
-        </div>
+    <template v-else>
+      <p class="whitespace-pre-line text-sm leading-relaxed text-gray-700 [overflow-wrap:anywhere]">{{ ticket.descripcion }}</p>
 
-        <div class="segui-copiar">
-          <button type="button" class="btn btn--secondary btn--ancho btn--sm" @click="copiar(enlaceSeguimiento(), 'link')">
-            {{ copiado === 'link' ? 'Enlace copiado' : 'Copiar enlace' }}
-            <i class="ti" :class="copiado === 'link' ? 'ti-check' : 'ti-link'" aria-hidden="true"></i>
-          </button>
-          <button type="button" class="btn btn--secondary btn--ancho btn--sm" @click="copiar(ticket.codigo, 'codigo')">
-            {{ copiado === 'codigo' ? 'Código copiado' : 'Copiar código' }}
-            <i class="ti" :class="copiado === 'codigo' ? 'ti-check' : 'ti-copy'" aria-hidden="true"></i>
-          </button>
-        </div>
+      <div class="mt-5 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+        <AppButton
+          variant="outline"
+          severity="secondary"
+          :icon="copiado === 'link' ? 'ti ti-check' : 'ti ti-link'"
+          :label="copiado === 'link' ? 'Enlace copiado' : 'Copiar enlace'"
+          @click="copiar(enlaceSeguimiento(), 'link')"
+        />
+        <AppButton
+          variant="outline"
+          severity="secondary"
+          :icon="copiado === 'codigo' ? 'ti ti-check' : 'ti ti-copy'"
+          :label="copiado === 'codigo' ? 'Código copiado' : 'Copiar código'"
+          @click="copiar(ticket.codigo, 'codigo')"
+        />
+      </div>
+      <p class="sr-only" role="status" aria-live="polite">{{ mensajeCopiado }}</p>
 
-        <h2 class="ticket-title">{{ ticket.titulo }}</h2>
-        <p class="ticket-texto">{{ ticket.descripcion }}</p>
-
-        <p class="segui-meta">
-          {{ ticket.categoria }}{{ ticket.subcategoria ? ` · ${ticket.subcategoria}` : '' }}
-          · Creado el {{ formatFecha(ticket.creado) }}
-        </p>
-
-        <div v-if="ticket.comentarios.length" class="segui-comentarios">
-          <h3 class="segui-subtitulo">Actualizaciones</h3>
-          <div v-for="(c, i) in ticket.comentarios" :key="i" class="segui-comentario">
-            <div class="segui-comentario-head">
-              <span class="segui-autor">{{ c.autor }}</span>
-              <span class="segui-fecha">{{ formatFechaHora(c.fecha) }}</span>
+      <section v-if="ticket.comentarios.length" class="mt-6 border-t border-gray-100 pt-5" aria-labelledby="segui-actualizaciones">
+        <h2 id="segui-actualizaciones" class="text-sm font-semibold text-gray-900">Actualizaciones</h2>
+        <ol class="mt-3 flex flex-col gap-3">
+          <li v-for="(c, i) in ticket.comentarios" :key="i" class="rounded-md bg-gray-50 px-4 py-3">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="text-sm font-medium text-gray-900">{{ c.autor }}</span>
+              <span class="text-xs text-gray-500 tabular-nums">{{ formatFechaHora(c.fecha) }}</span>
             </div>
-            <p>{{ c.mensaje }}</p>
-          </div>
-        </div>
+            <p class="mt-1 whitespace-pre-line text-sm text-gray-700 [overflow-wrap:anywhere]">{{ c.mensaje }}</p>
+          </li>
+        </ol>
+      </section>
 
-        <div v-if="ticket.estado === 'cerrado'" class="segui-encuesta">
-          <EncuestaSatisfaccionForm :token="route.params.token" embebido />
-        </div>
-      </template>
-    </div>
-  </div>
+      <div v-if="ticket.estado === 'cerrado'" class="mt-6 border-t border-gray-100 pt-5 empty:hidden">
+        <EncuestaSatisfaccionForm :token="route.params.token" embebido />
+      </div>
+    </template>
+
+    <template v-if="estado === 'error'" #pie>
+      <AppButton
+        variant="text"
+        severity="secondary"
+        icon="ti ti-arrow-left"
+        label="Volver a soporte"
+        to="/soporte"
+      />
+    </template>
+  </AppPortal>
 </template>
-
-

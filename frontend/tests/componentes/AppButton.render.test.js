@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import PrimeVue from 'primevue/config';
+import { createRouter, createMemoryHistory } from 'vue-router';
 import AppButton from '../../src/components/ui/AppButton.vue';
 
 function montar(props = {}, slots = {}) {
@@ -81,5 +82,62 @@ describe('AppButton.vue — wrapper de primevue/button', () => {
     const w = montar({ label: 'Ignorado' }, { default: 'Contenido custom' });
     expect(w.text()).toContain('Contenido custom');
     expect(w.text()).not.toContain('Ignorado');
+  });
+});
+
+describe('AppButton.vue — modo enlace (to / href)', () => {
+  function montarConRouter(props, attrs = {}) {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        { path: '/soporte', name: 'soporte', component: { template: '<div />' } },
+      ],
+    });
+    return mount(AppButton, {
+      props,
+      attrs,
+      global: { plugins: [router, [PrimeVue, { unstyled: true }]] },
+    });
+  }
+
+  it('con `to` renderiza un enlace de vue-router (no un <button>)', () => {
+    const w = montarConRouter({ label: 'Volver a soporte', to: { name: 'soporte' } });
+    expect(w.find('button').exists()).toBe(false);
+    const a = w.find('a');
+    expect(a.exists()).toBe(true);
+    expect(a.attributes('href')).toBe('/soporte');
+    expect(a.text()).toContain('Volver a soporte');
+  });
+
+  it('con `href` renderiza un <a> nativo y reenvía target/rel', () => {
+    const w = mount(AppButton, {
+      props: { label: 'Abrir', href: 'https://ejemplo.test' },
+      attrs: { target: '_blank', rel: 'noopener noreferrer' },
+      global: { plugins: [[PrimeVue, { unstyled: true }]] },
+    });
+    const a = w.find('a');
+    expect(a.attributes('href')).toBe('https://ejemplo.test');
+    expect(a.attributes('target')).toBe('_blank');
+    expect(a.attributes('rel')).toBe('noopener noreferrer');
+  });
+
+  it('el enlace lleva las mismas clases del preset que el botón', () => {
+    const w = montarConRouter({ label: 'Ir', to: '/soporte', size: 'lg' }, { class: 'mt-4' });
+    const clase = w.find('a').attributes('class') || '';
+    expect(clase).toContain('rounded-md');
+    expect(clase).toContain('mt-4');
+  });
+
+  it('un enlace deshabilitado queda fuera del orden de tabulación y marcado aria-disabled', () => {
+    const w = montarConRouter({ label: 'Ir', to: '/soporte', disabled: true });
+    const a = w.find('a');
+    expect(a.attributes('aria-disabled')).toBe('true');
+    expect(a.attributes('tabindex')).toBe('-1');
+  });
+
+  it('el ícono del enlace es decorativo', () => {
+    const w = montarConRouter({ label: 'Ir', to: '/soporte', icon: 'ti ti-arrow-left' });
+    expect(w.find('i').attributes('aria-hidden')).toBe('true');
   });
 });
