@@ -16,6 +16,10 @@
     DataTable identifica columnas por la referencia exacta del componente; un
     wrapper se ignora en silencio). Su estilo sale de `pt.column.*` de
     `AppTable`.
+  - `AppTable` recibe el orden con `:orden` (sin puentes `sortField`/`sortOrder`
+    en la vista) y, si la vista escucha `@row-click`, sus filas son operables
+    con teclado. Las tarjetas móviles clicables llevan `tabindex="0"` y
+    `@keydown.enter.self`.
   - `AppTable` no trae paginador: la paginación es `AppPaginacion` como
     hermano, conectada a `irAPagina`/`cambiarTamPagina` del store.
 - **Tokens solo en el `@theme` de `styles/main.css`** (rampa `primary-*`
@@ -49,6 +53,14 @@
 - **Shell** (`AppLayout`/`AppNav`/`AppSearch`/`NotificacionesCampana`): HTML
   nativo con Tailwind; clases repetidas en `components/shared/shellClases.js`.
   El SideNav refleja los guards del router y la RLS, nunca es la barrera.
+
+## Deep-links y filtros
+
+- `?categoria=<id>` en Tickets aplica `categoriaId` (vive en el store como la
+  fecha, se muestra como chip; Tickets sigue sin `resetearFiltros()`).
+- `?nuevo=1` abre el alta en Equipos y Licencias (y se quita de la URL).
+- `situacion` (Licencias) y `soloRotacion` (Correos) son refs locales: se
+  reinician en cada montaje con `resetearFiltros()`, como el resto.
 
 ## Accesibilidad y copy
 

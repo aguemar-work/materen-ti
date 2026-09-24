@@ -66,7 +66,7 @@ una decisión para pedir, no para completar.
 | `AppBuscador` | Búsqueda de la barra de filtros | `v-model`, `label` (sr-only), `placeholder` |
 | `AppSegmentado` | Elegir 1 de 2–5 opciones visibles (estado, pestañas) | `v-model`, `opciones` [{valor,label,conteo?,icono?}], `label` |
 | `AppSelect` | Filtro con muchas opciones | `v-model`, `label`; `<option>` en el slot |
-| `AppTable` + `AppColumn` | Tablas de listados | ver `frontend/AGENTS.md`; `@ordenar`, `@row-click`, `row-class` |
+| `AppTable` + `AppColumn` | Tablas de listados | `orden` (el `{columna, direccion}` del store o de `useOrdenTabla`), `@ordenar`, `@row-click` (la fila entra en el orden de Tab y Enter la abre), `row-class` |
 | `AppPaginacion` | Paginación server-side | `pagina`, `tam-pagina`, `total`, `variante` (completa/compacta); `@update:pagina`, `@update:tam-pagina` |
 | `AppSeccion` | Unidad de contenido de fichas y tableros | `titulo`, `conteo`, `descripcion`, `sin-padding`; slot `acciones` |
 | `AppListaDatos` | Pares etiqueta/valor | `datos` [{label,valor,mono?}], `columnas` (1/2); slot `valor-<i>` |
