@@ -53,7 +53,7 @@ describe('ProblemasView — filtros V2', () => {
     const { w } = await montar(ProblemasView, '/problemas', RUTAS_PROBLEMAS);
     expect(insforgeApi.listProblemasPage.mock.calls.at(-1)[0].estados).toEqual(['abierto', 'diagnostico', 'acciones']);
     const vistas = w.find('[role="group"][aria-label="Vista de problemas"]').findAll('button');
-    expect(vistas.map((b) => b.text().replace(/\d+/g, '').trim())).toEqual(['Abiertos', 'Cerrados', 'Todos']);
+    expect(vistas.map((b) => b.text().replace(/\d+/g, '').trim())).toEqual(['Todos', 'Abiertos', 'Cerrados']);
     // Vacío en "Abiertos" con problemas en otras vistas: buena noticia.
     expect(w.text()).toContain('Nada abierto');
   });

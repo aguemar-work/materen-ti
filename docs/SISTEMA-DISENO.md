@@ -169,6 +169,12 @@ Plataformas) solo tiene buscador: no hay nada que filtrar.
   elegida: dice cuántas filas va a mostrar esa pestaña). Reemplazan al
   segmentado de estado y a los KPI que filtraban. Indicador de la activa:
   marca horizontal de 2px debajo del texto (no es un borde, nunca lateral).
+  **Coherencia (regla del dueño):** una fila de vistas responde UNA sola
+  pregunta (casi siempre el estado del registro), nunca mezcla criterios
+  (estado + responsable), y **"Todos" va siempre primero**. La vista por
+  defecto puede ser otra (Empleados: Activos; Tickets: Pendientes;
+  Problemas: Abiertos). Lo que no es estado — responsable, empresa… — es
+  un chip.
 - **Chips bajo demanda** (`AppFiltros`): "+ Filtro" abre las dimensiones
   del listado; cada dimensión elegida queda como chip con **selección
   múltiple**. O dentro de una dimensión, Y entre dimensiones. Chip
@@ -200,13 +206,13 @@ Vistas y chips de cada módulo:
 
 | Módulo | Vistas (con conteo) | Chips |
 | --- | --- | --- |
-| Empleados | Activos (defecto) · Inactivos · Suspendidos · Todos | Empresa, Área/Obra, Ubicación |
+| Empleados | Todos · Activos (defecto) · Inactivos · Suspendidos | Empresa, Área/Obra, Ubicación |
 | Equipos | Todos · Libres · Con personas · En ubicaciones · En reparación · Fuera de servicio | Tipo, Empresa |
-| Tickets | ver abajo | ver abajo |
+| Tickets | Todos · Pendientes (defecto) · Resueltos · Rechazados | Estado (dentro de Pendientes/Todos), Asignado a (Usted · Sin asignar · técnicos), Prioridad, Categoría, Tipo, Nivel, Solicitante, Creado |
 | Licencias | Todas · Por vencer · Vencidas · Perpetuas | Empresa, Acceso (correo / clave / sin credencial) |
 | Correos | Todos · Compartidos · Reutilizables · Por rotar | Plataforma |
 | Base de conocimiento | Todos · Publicados · En revisión · Borradores · Obsoletos | Categoría, Autor |
-| Problemas | Abiertos (defecto) · Cerrados · Todos | Etapa (no en Cerrados), Severidad, Responsable |
+| Problemas | Todos · Abiertos (defecto) · Cerrados | Etapa (no en Cerrados), Severidad, Responsable |
 | Actividad | Todo · Contraseñas · Entregas · Denegados | Quién, Plataforma, Fecha (rango) |
 | Accesos sensibles | Todas · Equipos · Correos · Otros | Permiso |
 
@@ -214,13 +220,16 @@ Actividad y Accesos sensibles filtran en el cliente (lista completa ya
 cargada); el resto, en el servidor, con un `conteos…` por módulo en su
 `api/domains/*`.
 
-**Tickets** (`modules/tickets/filtrosTickets.js`): vistas *Nuevos* (vigentes
-sin técnico, por defecto) · *Mis tickets* (vigentes míos) · *Pendientes*
-(vigentes de todo el equipo) · *Resueltos* · *Todos* (incluye rechazados);
-chips Estado (solo los que caben en la vista), Asignado a (usted primero,
-"Sin asignar" como opción), Prioridad, Categoría, Tipo, Nivel, Solicitante
-(vinculado / sin vincular) y Creado. El subtítulo ofrece el atajo "N sin
-vincular" (la antigua bandeja de limpieza).
+**Tickets** (`modules/tickets/filtrosTickets.js`): "Usted" viaja como
+`?asignado=yo` (el mismo enlace sirve a cualquier técnico: Inicio → "Ver mis
+tickets" = `?asignado=yo`). El subtítulo ofrece dos atajos a Pendientes con
+su chip puesto: "N sin asignar" y "N sin vincular". Los enlaces de la
+primera versión (`?vista=nuevos|mios`) se traducen a Pendientes + chip.
+
+**Selección múltiple** (Tickets, en Tabla y en Triage): con filas marcadas,
+la barra de acciones en lote **se sobrepone a la fila de búsqueda** (misma
+altura, `absolute`), que queda `inert`. Nunca se inserta encima de la
+tabla: empujarla hace perder de vista la fila que se estaba marcando.
 
 ### 3.3 Tablas (preset `pt/table.pt.js`)
 - Cabecera: banda `gray-50/80`, texto `text-xs font-medium text-gray-500`,

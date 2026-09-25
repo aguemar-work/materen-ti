@@ -226,15 +226,15 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     insforgeApi.listCategoriasTicket.mockResolvedValue([{ id: 'red', nombre: 'Red y Conectividad' }]);
   });
 
-  it('muestra las 5 vistas fijas y arranca en "Nuevos": vigentes sin técnico', async () => {
+  it('las vistas son un solo criterio (estado), "Todos" primero, y arranca en "Pendientes"', async () => {
     const { w } = await montarEn('/tickets');
     const botones = vistas(w).findAll('button');
     expect(botones.map((b) => b.text().replace(/\d+/g, '').trim()))
-      .toEqual(['Nuevos', 'Mis tickets', 'Pendientes', 'Resueltos', 'Todos']);
-    expect(botones[0].attributes('aria-pressed')).toBe('true');
+      .toEqual(['Todos', 'Pendientes', 'Resueltos', 'Rechazados']);
+    expect(botones[1].attributes('aria-pressed')).toBe('true');
     expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({
       estados: ['abierto', 'en_progreso', 'reabierto'],
-      asignados: ['sin_asignar'],
+      asignados: [],
     });
   });
 
@@ -254,7 +254,7 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     expect(router.currentRoute.value.query.vista).toBe('resueltos');
   });
 
-  it('pide un conteo por vista (+ el atajo "sin vincular")', async () => {
+  it('pide un conteo por vista (+ los atajos "sin asignar" y "sin vincular")', async () => {
     await montarEn('/tickets');
     expect(insforgeApi.contarTickets).toHaveBeenCalledTimes(6);
   });
@@ -276,11 +276,46 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     expect(router.currentRoute.value.query.categoria).toBeUndefined();
   });
 
-  it('una vista que fija el responsable poda el chip "Asignado a" (nunca una combinación imposible)', async () => {
-    const { w, router } = await montarEn('/tickets?vista=mios&asignado=staff-1');
+  it('un enlace viejo (?vista=mios) se traduce a Pendientes + chip "Asignado a: Usted"', async () => {
+    const { w, router } = await montarEn('/tickets?vista=mios');
     await flushPromises();
-    expect(w.find('button[aria-label^="Filtro Asignado a"]').exists()).toBe(false);
-    expect(router.currentRoute.value.query.asignado).toBeUndefined();
+    expect(router.currentRoute.value.query).toMatchObject({ asignado: 'yo' });
+    expect(router.currentRoute.value.query.vista).toBeUndefined(); // pendientes = por defecto
+    expect(w.find('button[aria-label^="Filtro Asignado a"]').text()).toContain('Usted');
+  });
+
+  it('la barra de acciones en lote se sobrepone a la fila de búsqueda (no empuja la tabla)', async () => {
+    const { w } = await montarEn('/tickets');
+    await w.findAll('input[type="checkbox"]')[1].setValue(true);
+    const barra = w.find('[role="toolbar"]');
+    expect(barra.exists()).toBe(true);
+    // Vive junto a la fila de búsqueda, no dentro del marco de la tabla…
+    expect(barra.element.parentElement.querySelector('input[type="search"], input[placeholder^="Buscar por código"]')).toBeTruthy();
+    expect(barra.element.closest('table')).toBeNull();
+    expect(barra.classes()).toContain('absolute');
+    // …y la fila de abajo queda inerte mientras tanto.
+    expect(barra.element.parentElement.querySelector('[inert]')).toBeTruthy();
+  });
+
+  it('en Triage cada ticket de la cola también tiene checkbox y abre la misma barra', async () => {
+    localStorage.setItem('sistema-ti-vista-tickets', 'triage');
+    const router = crearRouter();
+    router.push('/tickets');
+    await router.isReady();
+    const w = mount(TicketsView, {
+      global: {
+        plugins: [router, [PrimeVue, { unstyled: true }]],
+        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ReporteTicketsModal: true, ConfirmDialog: true },
+      },
+    });
+    await flushPromises();
+    const check = w.find('input[aria-label="Seleccionar TCK-0002"]');
+    expect(check.exists()).toBe(true);
+    await check.setValue(true);
+    expect(w.find('[role="toolbar"]').text()).toContain('1 seleccionado');
+    // "Seleccionar todos" de la cola marca las dos.
+    await w.find('section[aria-label="Cola de tickets"] label input[type="checkbox"]').setValue(true);
+    expect(w.find('[role="toolbar"]').text()).toContain('2 seleccionados');
   });
 
   it('recuerda la última combinación al volver al listado sin filtros en la URL', async () => {

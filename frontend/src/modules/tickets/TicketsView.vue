@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
+import { ESTADOS_TERMINALES, SIN_ASIGNAR } from '../../core/dominio-tickets.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import { exportarCSV } from '../../core/exportar.js';
@@ -33,7 +33,7 @@ import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import {
-  VISTAS_TICKETS, VISTA_DEFECTO, CLAVES_CHIPS, vistaDe, dimensionesDe, podarChips, paramsServidor,
+  VISTAS_TICKETS, VISTA_DEFECTO, VISTAS_ANTERIORES, CLAVES_CHIPS, vistaDe, dimensionesDe, podarChips, paramsServidor,
 } from './filtrosTickets.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
@@ -99,10 +99,17 @@ const filtrosServidor = computed(() => paramsServidor(
   yo.value,
 ));
 
-// Cambiar de vista (o llegar por un enlace) poda los chips que la vista ya
-// decide: "Asignado a" dentro de "Mis tickets", "Estado: Resuelto" dentro
-// de "Pendientes". Nunca queda puesto un chip que no se puede ver ni quitar.
+// Cambiar de vista (o llegar por un enlace) poda los estados que no caben
+// en la vista ("Estado: Resuelto" dentro de "Pendientes"). Nunca queda puesto
+// un chip que no se puede ver ni quitar. Un enlace viejo (?vista=nuevos|mios)
+// se traduce a su vista + chip equivalentes.
 watch(() => filtros.vista, (vista) => {
+  const anterior = VISTAS_ANTERIORES[vista];
+  if (anterior) {
+    filtros.vista = anterior.vista;
+    filtros.asignado = [...new Set([...filtros.asignado, ...anterior.asignado])];
+    return;
+  }
   const podados = podarChips(vista, chipsActuales());
   for (const k of CLAVES_CHIPS) if (podados[k].length !== filtros[k].length) filtros[k] = podados[k];
 }, { immediate: true });
@@ -165,6 +172,17 @@ function limpiarSeleccion() {
   seleccionados.value = new Set();
 }
 const ticketsSeleccionados = computed(() => lista.value.filter((t) => seleccionados.value.has(t.id)));
+// Selección desde la cola de Triage (misma selección que la tabla).
+function alternarSeleccion(id) {
+  const nuevo = new Set(seleccionados.value);
+  if (nuevo.has(id)) nuevo.delete(id);
+  else nuevo.add(id);
+  seleccionados.value = nuevo;
+}
+const todaLaColaSeleccionada = computed(() => lista.value.length > 0 && lista.value.every((t) => seleccionados.value.has(t.id)));
+function alternarTodaLaCola() {
+  seleccionados.value = todaLaColaSeleccionada.value ? new Set() : new Set(lista.value.map((t) => t.id));
+}
 const seleccionParaTabla = computed({
   get: () => ticketsSeleccionados.value,
   set: (filas) => { seleccionados.value = new Set(filas.map((t) => t.id)); },
@@ -242,9 +260,10 @@ async function confirmarCerrarLote() {
 // ── Conteos por vista ───────────────────────────────────────────────────
 // Un count por vista (insforgeApi.contarTickets: sin traer filas), con los
 // chips/búsqueda/fecha activos podados para CADA vista: el número es el que
-// se va a ver al hacer clic. Cambiar de vista no mueve ningún conteo. El
-// último es el atajo "N sin vincular" del subtítulo (pendientes cuyo
-// solicitante no se pudo identificar: la antigua bandeja de limpieza).
+// se va a ver al hacer clic. Cambiar de vista no mueve ningún conteo. Los
+// dos últimos son los atajos del subtítulo: pendientes sin técnico ("N sin
+// asignar") y pendientes cuyo solicitante no se pudo identificar ("N sin
+// vincular").
 const conteos = ref(null);
 let peticionConteos = 0;
 
@@ -254,12 +273,14 @@ async function cargarConteos() {
   try {
     const numeros = await Promise.all([
       ...VISTAS_TICKETS.map((v) => insforgeApi.contarTickets(paramsServidor({ ...base, vista: v.valor }, yo.value))),
+      insforgeApi.contarTickets(paramsServidor({ ...base, vista: 'pendientes', chips: { ...base.chips, asignado: [SIN_ASIGNAR] } }, yo.value)),
       insforgeApi.contarTickets(paramsServidor({ ...base, vista: 'pendientes', chips: { ...base.chips, solicitante: ['no'] } }, yo.value)),
     ]);
     if (peticion !== peticionConteos) return; // respuesta obsoleta, mismo guard que store.cargar()
     conteos.value = {
       ...Object.fromEntries(VISTAS_TICKETS.map((v, i) => [v.valor, numeros[i]])),
-      sinVincular: numeros[VISTAS_TICKETS.length],
+      sinAsignar: numeros[VISTAS_TICKETS.length],
+      sinVincular: numeros[VISTAS_TICKETS.length + 1],
     };
   } catch {
     // Best-effort: sin conteos las pestañas no muestran número y ya.
@@ -274,17 +295,24 @@ const opcionesVistas = computed(() => VISTAS_TICKETS.map((v) => ({
   valor: v.valor, label: v.label, titulo: v.titulo, conteo: conteos.value?.[v.valor],
 })));
 
-// La página dice qué se está viendo: "8 tickets pendientes de todo el equipo".
+// La página dice qué se está viendo: "8 tickets pendientes".
 const subtituloVista = computed(() => {
   const n = total.value;
   const texto = `${n} ${n === 1 ? 'ticket' : 'tickets'} ${vistaActual.value.frase}`;
   return hayFiltros.value ? `${texto}, con los filtros aplicados` : texto;
 });
 
-// Atajo a la limpieza de solicitantes sin identificar, visible desde
-// cualquier vista mientras haya alguno y no esté ya filtrado.
+// Atajos del subtítulo, visibles desde cualquier vista mientras haya alguno
+// y no estén ya filtrados: lo que nadie tomó y los solicitantes sin
+// identificar. Cada uno lleva a Pendientes con su chip puesto.
+const pendientesSinAsignar = computed(() =>
+  (filtros.asignado.includes(SIN_ASIGNAR) ? 0 : conteos.value?.sinAsignar || 0));
 const pendientesSinVincular = computed(() =>
   (filtros.solicitante.includes('no') ? 0 : conteos.value?.sinVincular || 0));
+function verSinAsignar() {
+  filtros.vista = 'pendientes';
+  filtros.asignado = [SIN_ASIGNAR];
+}
 function verSinVincular() {
   filtros.vista = 'pendientes';
   filtros.solicitante = ['no'];
@@ -293,11 +321,10 @@ function verSinVincular() {
 // Estado vacío: con filtros es "sin resultados"; sin filtros, cada vista
 // explica por qué está vacía (una cola en cero es una buena noticia).
 const VACIO_POR_VISTA = {
-  nuevos: { titulo: 'Nada nuevo', mensaje: 'Todos los tickets vigentes tienen técnico asignado.' },
-  mios: { titulo: 'Sin tickets a su nombre', mensaje: 'No tiene tickets vigentes asignados. Revise "Nuevos" para tomar uno.' },
-  pendientes: { titulo: 'Nada pendiente', mensaje: 'No hay tickets vigentes en todo el equipo.' },
-  resueltos: { titulo: 'Sin tickets resueltos', mensaje: 'Todavía no se resolvió ningún ticket.' },
   todos: { titulo: 'Sin tickets', mensaje: 'Todavía no se registró ningún ticket.' },
+  pendientes: { titulo: 'Nada pendiente', mensaje: 'No hay tickets abiertos, en progreso ni reabiertos.' },
+  resueltos: { titulo: 'Sin tickets resueltos', mensaje: 'Todavía no se resolvió ningún ticket.' },
+  rechazados: { titulo: 'Sin tickets rechazados', mensaje: 'No se descartó ningún ticket.' },
 };
 const vacio = computed(() => (hayFiltros.value
   ? { titulo: 'Sin resultados', mensaje: 'No hay tickets con los filtros aplicados.', conLimpiar: true }
@@ -439,6 +466,15 @@ onMounted(async () => {
     <AppEncabezado titulo="Tickets">
       <template #subtitulo>
         {{ subtituloVista }}
+        <template v-if="pendientesSinAsignar > 0">
+          ·
+          <button
+            type="button"
+            class="rounded font-medium text-amber-700 tabular-nums hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            title="Pendientes que ningún técnico tomó todavía"
+            @click="verSinAsignar"
+          >{{ pendientesSinAsignar }} sin asignar</button>
+        </template>
         <template v-if="pendientesSinVincular > 0">
           ·
           <button
@@ -468,7 +504,12 @@ onMounted(async () => {
          suman solo cuando hacen falta (ver filtrosTickets.js). -->
     <AppVistas v-model="filtros.vista" :opciones="opcionesVistas" label="Vista de tickets" />
 
-    <AppBarraFiltros class="pt-3">
+    <!-- La barra de acciones en lote SE SOBREPONE a la fila de búsqueda
+         (misma altura, sin mover la tabla ni la cola): con filas marcadas,
+         buscar o filtrar no es lo que se está haciendo. La fila de abajo
+         queda `inert` para que el foco no caiga debajo de la barra. -->
+    <div class="relative">
+    <AppBarraFiltros class="pt-3" :inert="seleccionados.size > 0 || undefined">
       <AppBuscador
         ref="refBuscador"
         v-model="busqueda"
@@ -480,6 +521,49 @@ onMounted(async () => {
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
       <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" class="ml-auto" />
     </AppBarraFiltros>
+    <div
+      v-if="seleccionados.size > 0"
+      class="absolute inset-x-4 bottom-4 top-3 z-10 flex flex-wrap items-center gap-3 rounded-md bg-primary-50 px-3 ring-1 ring-inset ring-primary-200 sm:inset-x-6"
+      role="toolbar"
+      aria-label="Acciones sobre los tickets seleccionados"
+    >
+      <span class="text-sm font-medium text-primary-800 tabular-nums">
+        {{ seleccionados.size }} seleccionado{{ seleccionados.size === 1 ? '' : 's' }}
+      </span>
+      <div class="ml-auto flex flex-wrap items-center gap-2">
+        <label class="relative inline-block">
+          <span class="sr-only">Reasignar seleccionados a</span>
+          <select
+            v-model="reasignarLoteA"
+            class="h-8 max-w-56 cursor-pointer appearance-none truncate rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            :disabled="procesandoLote"
+          >
+            <option value="" disabled>Reasignar a...</option>
+            <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+          </select>
+          <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
+        </label>
+        <AppButton
+          size="sm"
+          variant="outline"
+          severity="secondary"
+          label="Reasignar"
+          :disabled="!reasignarLoteA || procesandoLote"
+          @click="pedirReasignarLote"
+        />
+        <AppButton
+          size="sm"
+          variant="outline"
+          severity="secondary"
+          label="Cerrar seleccionados"
+          :disabled="!todosResueltos || procesandoLote"
+          :title="todosResueltos ? 'Cerrar los tickets seleccionados' : 'Solo se pueden cerrar en lote tickets ya resueltos'"
+          @click="pedirCerrarLote"
+        />
+        <AppButton size="sm" variant="text" severity="secondary" label="Cancelar" :disabled="procesandoLote" @click="limpiarSeleccion" />
+      </div>
+    </div>
+    </div>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
@@ -505,51 +589,6 @@ onMounted(async () => {
           <p v-if="cargando" class="sr-only" role="status">Cargando tickets…</p>
 
           <AppMarcoTabla v-if="!esMovil">
-            <!-- Selección múltiple: la barra reemplaza a la cabecera de la
-                 card mientras hay filas marcadas (fondo tenue = selección). -->
-            <div
-              v-if="seleccionados.size > 0"
-              class="flex flex-wrap items-center gap-3 border-b border-primary-100 bg-primary-50 px-4 py-2"
-              role="toolbar"
-              aria-label="Acciones sobre los tickets seleccionados"
-            >
-              <span class="text-sm font-medium text-primary-800 tabular-nums">
-                {{ seleccionados.size }} seleccionado{{ seleccionados.size === 1 ? '' : 's' }}
-              </span>
-              <div class="ml-auto flex flex-wrap items-center gap-2">
-                <label class="relative inline-block">
-                  <span class="sr-only">Reasignar seleccionados a</span>
-                  <select
-                    v-model="reasignarLoteA"
-                    class="h-8 max-w-56 cursor-pointer appearance-none truncate rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    :disabled="procesandoLote"
-                  >
-                    <option value="" disabled>Reasignar a...</option>
-                    <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-                  </select>
-                  <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
-                </label>
-                <AppButton
-                  size="sm"
-                  variant="outline"
-                  severity="secondary"
-                  label="Reasignar"
-                  :disabled="!reasignarLoteA || procesandoLote"
-                  @click="pedirReasignarLote"
-                />
-                <AppButton
-                  size="sm"
-                  variant="outline"
-                  severity="secondary"
-                  label="Cerrar seleccionados"
-                  :disabled="!todosResueltos || procesandoLote"
-                  :title="todosResueltos ? 'Cerrar los tickets seleccionados' : 'Solo se pueden cerrar en lote tickets ya resueltos'"
-                  @click="pedirCerrarLote"
-                />
-                <AppButton size="sm" variant="text" severity="secondary" label="Cancelar" :disabled="procesandoLote" @click="limpiarSeleccion" />
-              </div>
-            </div>
-
             <div class="min-h-0 flex-1 overflow-auto">
               <AppTable
                 v-model:selection="seleccionParaTabla"
@@ -724,19 +763,32 @@ onMounted(async () => {
           </AppVacio>
 
           <template v-else>
+            <label class="flex shrink-0 cursor-pointer items-center gap-2.5 border-b border-gray-100 bg-gray-50/80 px-4 py-2 text-xs font-medium text-gray-500">
+              <input type="checkbox" :checked="todaLaColaSeleccionada" @change="alternarTodaLaCola">
+              Seleccionar {{ lista.length === total ? 'todos' : `los ${lista.length} cargados` }}
+            </label>
             <ul class="min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto" aria-label="Tickets de soporte">
               <li
                 v-for="t in lista"
                 :key="t.id"
                 tabindex="0"
-                class="cursor-pointer px-4 py-3 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+                class="flex cursor-pointer gap-3 px-4 py-3 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
                 :class="t.id === ticketSeleccionado
                   ? 'bg-primary-50/70'
-                  : 'hover:bg-gray-50'"
+                  : estaSeleccionado(t.id) ? 'bg-primary-50/40' : 'hover:bg-gray-50'"
                 :aria-current="t.id === ticketSeleccionado ? 'true' : undefined"
                 @click="verTicket(t)"
                 @keydown.enter.self="verTicket(t)"
               >
+                <input
+                  type="checkbox"
+                  class="mt-0.5 shrink-0"
+                  :checked="estaSeleccionado(t.id)"
+                  :aria-label="`Seleccionar ${t.codigo}`"
+                  @click.stop
+                  @change="alternarSeleccion(t.id)"
+                >
+                <div class="min-w-0 flex-1">
                 <div class="flex items-center justify-between gap-2 text-xs text-gray-500">
                   <span class="flex min-w-0 items-center gap-1.5">
                     <RouterLink
@@ -782,6 +834,7 @@ onMounted(async () => {
                     <i class="ti ti-user" aria-hidden="true"></i>
                     <span class="sr-only">Sin asignar</span>
                   </span>
+                </div>
                 </div>
               </li>
             </ul>

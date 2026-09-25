@@ -78,9 +78,9 @@ async function refrescarConteos() {
   }
 }
 const VISTAS = computed(() => [
+  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
   { valor: 'abiertos', label: 'Abiertos', conteo: conteos.value?.abiertos, titulo: 'Abiertos, en diagnóstico o con acciones en curso' },
   { valor: 'cerrados', label: 'Cerrados', conteo: conteos.value?.cerrados },
-  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
 ]);
 
 const DIMENSIONES = computed(() => [

@@ -309,7 +309,7 @@ onMounted(async () => {
                    el enlace tiene que decir la verdad. -->
               <RouterLink
                 v-if="misTickets.total > misTickets.lista.length"
-                to="/tickets?vista=mios"
+                to="/tickets?vista=pendientes&asignado=yo"
                 class="flex items-center justify-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
               >
                 Ver mis {{ misTickets.total }} tickets

@@ -85,10 +85,10 @@ async function refrescarConteos() {
 }
 
 const VISTAS = computed(() => [
+  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
   { valor: 'Activo', label: 'Activos', conteo: conteos.value?.Activo },
   { valor: 'Inactivo', label: 'Inactivos', conteo: conteos.value?.Inactivo, titulo: 'Dados de baja' },
   { valor: 'Suspendido', label: 'Suspendidos', conteo: conteos.value?.Suspendido },
-  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
 ]);
 
 // Dimensiones de los chips: las tres son columnas propias del empleado.

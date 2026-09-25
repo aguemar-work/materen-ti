@@ -2,37 +2,44 @@
 // vistas hay, qué chips admite cada una y cómo se traduce todo a los
 // parámetros de queryTickets() (api/domains/tickets.js).
 //
-// Modelo anterior (retirado): 4 "bandejas" y, según la bandeja, un segundo
-// segmentado de estado (Todos · En progreso · Resuelto · Rechazados) y a
-// veces un select de técnico. Los controles aparecían y desaparecían al
-// cambiar de bandeja, "Todos" significaba dos cosas en la misma fila y no
-// había forma de filtrar por prioridad, categoría, tipo o nivel.
+// Regla de coherencia (pedido del dueño, 2026-09-25): las pestañas responden
+// UNA sola pregunta — en qué estado está el ticket — y "Todos" va primero,
+// igual que en el resto de los módulos. La primera versión mezclaba dos
+// criterios en la misma fila (responsable: "Nuevos", "Mis tickets"; estado:
+// "Pendientes", "Resueltos") con "Todos" al final; eso se retiró. El
+// responsable es un chip ("Asignado a": Usted · Sin asignar · técnicos).
 //
-// Modelo V2, el mismo que Empleados y Equipos:
-//   - VISTAS: una sola fila fija de pestañas exclusivas con conteo. Cada una
-//     responde una pregunta de trabajo ("¿qué entró sin dueño?", "¿qué tengo
-//     yo?", "¿qué sigue pendiente?", "¿qué se resolvió?").
-//   - CHIPS: dimensiones independientes que se suman bajo demanda. La vista
-//     fija parte del filtro (estado y/o responsable); un chip que choque con
-//     ella no se ofrece (`dimensionesDe`) y, si ya estaba puesto, se poda al
-//     cambiar de vista (`podarChips`) — nunca queda una combinación imposible
-//     que devuelva cero filas sin explicación.
+//   - VISTAS: Todos · Pendientes (por defecto) · Resueltos · Rechazados.
+//   - CHIPS: dimensiones independientes que se suman bajo demanda. El chip
+//     de Estado solo ofrece lo que cabe en la vista (`dimensionesDe`) y, si
+//     ya estaba puesto, se poda al cambiar de vista (`podarChips`) — nunca
+//     queda una combinación imposible que devuelva cero filas sin explicación.
 import { ESTADOS_VIGENTES, SIN_ASIGNAR, OPCIONES_TIPO, NIVELES_ATENCION } from '../../core/dominio-tickets.js';
 
-export const VISTA_DEFECTO = 'nuevos';
+export const VISTA_DEFECTO = 'pendientes';
+
+// Valor del chip "Asignado a" para el usuario en sesión: en la URL queda
+// `?asignado=yo`, así el mismo enlace sirve a cualquier técnico ("lo mío").
+export const ASIGNADO_YO = 'yo';
 
 export const VISTAS_TICKETS = [
-  { valor: 'nuevos', label: 'Nuevos', titulo: 'Vigentes sin técnico asignado', frase: 'nuevos, sin técnico asignado', estados: ESTADOS_VIGENTES, asignado: 'sin' },
-  { valor: 'mios', label: 'Mis tickets', titulo: 'Vigentes asignados a usted', frase: 'vigentes asignados a usted', estados: ESTADOS_VIGENTES, asignado: 'yo' },
-  { valor: 'pendientes', label: 'Pendientes', titulo: 'Todo lo vigente, de cualquier técnico', frase: 'pendientes de todo el equipo', estados: ESTADOS_VIGENTES },
+  { valor: 'todos', label: 'Todos', titulo: 'Cualquier estado', frase: 'en total', estados: null },
+  { valor: 'pendientes', label: 'Pendientes', titulo: 'Abiertos, en progreso o reabiertos', frase: 'pendientes', estados: ESTADOS_VIGENTES },
   { valor: 'resueltos', label: 'Resueltos', titulo: 'Resueltos y cerrados', frase: 'resueltos', estados: ['resuelto'] },
-  { valor: 'todos', label: 'Todos', titulo: 'Cualquier estado, incluidos los rechazados', frase: 'en total', estados: null },
+  { valor: 'rechazados', label: 'Rechazados', titulo: 'Descartados sin atención', frase: 'rechazados', estados: ['rechazado'] },
 ];
 
-const vistaDe = (valor) => VISTAS_TICKETS.find((v) => v.valor === valor) || VISTAS_TICKETS[0];
+// Enlaces y recuerdos de la primera versión (?vista=nuevos|mios): se
+// traducen a la vista + chip equivalentes en vez de caer en "Todos".
+export const VISTAS_ANTERIORES = {
+  nuevos: { vista: 'pendientes', asignado: [SIN_ASIGNAR] },
+  mios: { vista: 'pendientes', asignado: [ASIGNADO_YO] },
+};
 
-// Estado: solo los que caben dentro de la vista. En "Nuevos" (un ticket sin
-// técnico solo puede estar abierto) y "Resueltos" no hay nada que refinar.
+const vistaDe = (valor) => VISTAS_TICKETS.find((v) => v.valor === valor) || vistaDe(VISTA_DEFECTO);
+
+// Estado: solo los que caben dentro de la vista. En "Resueltos" y
+// "Rechazados" (un solo estado) no hay nada que refinar.
 const OPCIONES_ESTADO = [
   { valor: 'abierto', label: 'Abierto' },
   { valor: 'en_progreso', label: 'En progreso' },
@@ -59,7 +66,7 @@ export const CLAVES_CHIPS = ['estado', 'asignado', 'prioridad', 'categoria', 'ti
 function opcionesEstado(vista) {
   const { estados } = vistaDe(vista);
   if (!estados) return OPCIONES_ESTADO;
-  if (vistaDe(vista).asignado === 'sin' || estados.length < 2) return [];
+  if (estados.length < 2) return [];
   return OPCIONES_ESTADO.filter((o) => estados.includes(o.valor));
 }
 
@@ -69,21 +76,20 @@ function opcionesEstado(vista) {
  * @param {{ staff: {user_id:string,nombre:string}[], categorias: {id:string,nombre:string}[], yo: string }} catalogos
  */
 export function dimensionesDe(vista, { staff = [], categorias = [], yo = '' } = {}) {
-  const def = vistaDe(vista);
   const dims = [];
   const estados = opcionesEstado(vista);
   if (estados.length) dims.push({ id: 'estado', label: 'Estado', icono: 'ti ti-progress', opciones: estados });
-  if (!def.asignado) {
-    // El propio usuario primero: "lo mío dentro de Resueltos" es el filtro
-    // más común de esta dimensión.
-    const propios = staff.filter((s) => s.user_id === yo).map((s) => ({ valor: s.user_id, label: `${s.nombre} (usted)` }));
-    const resto = staff.filter((s) => s.user_id !== yo).map((s) => ({ valor: s.user_id, label: s.nombre }));
-    dims.push({
-      id: 'asignado', label: 'Asignado a', icono: 'ti ti-user',
-      opciones: [...propios, { valor: SIN_ASIGNAR, label: 'Sin asignar' }, ...resto],
-    });
-  }
+  // "Usted" primero y "Sin asignar" después: son las dos preguntas diarias
+  // (lo mío, lo que nadie tomó); luego el resto del equipo.
   dims.push(
+    {
+      id: 'asignado', label: 'Asignado a', icono: 'ti ti-user',
+      opciones: [
+        { valor: ASIGNADO_YO, label: 'Usted' },
+        { valor: SIN_ASIGNAR, label: 'Sin asignar' },
+        ...staff.filter((s) => s.user_id !== yo).map((s) => ({ valor: s.user_id, label: s.nombre })),
+      ],
+    },
     { id: 'prioridad', label: 'Prioridad', icono: 'ti ti-flag', opciones: OPCIONES_PRIORIDAD },
     { id: 'categoria', label: 'Categoría', icono: 'ti ti-category', opciones: categorias.map((c) => ({ valor: c.id, label: c.nombre })) },
     { id: 'tipo', label: 'Tipo', icono: 'ti ti-tag', opciones: OPCIONES_TIPO },
@@ -96,15 +102,13 @@ export function dimensionesDe(vista, { staff = [], categorias = [], yo = '' } = 
 }
 
 /**
- * Quita de los chips lo que la vista ya decide o no admite.
- * Devuelve un objeto nuevo solo con las claves de CLAVES_CHIPS.
+ * Quita de los chips lo que la vista no admite (hoy, solo estados fuera de
+ * la vista). Devuelve un objeto nuevo solo con las claves de CLAVES_CHIPS.
  */
 export function podarChips(vista, chips) {
-  const def = vistaDe(vista);
   const salida = Object.fromEntries(CLAVES_CHIPS.map((k) => [k, [...(chips[k] || [])]]));
   const permitidos = opcionesEstado(vista).map((o) => o.valor);
   salida.estado = salida.estado.filter((e) => permitidos.includes(e));
-  if (def.asignado) salida.asignado = [];
   return salida;
 }
 
@@ -117,11 +121,9 @@ export function paramsServidor({ vista, chips, q = '', desde = '', hasta = '' },
   const def = vistaDe(vista);
   const c = podarChips(vista, chips);
   const estados = c.estado.length ? c.estado : (def.estados || []);
-  let asignados = c.asignado;
-  if (def.asignado === 'sin') asignados = [SIN_ASIGNAR];
-  // Sin sesión resuelta no hay "mío": un id imposible devuelve cero filas en
-  // vez de caer en "todos los técnicos".
-  else if (def.asignado === 'yo') asignados = [yo || '00000000-0000-0000-0000-000000000000'];
+  // "Usted" sin sesión resuelta: un id imposible devuelve cero filas en vez
+  // de caer en "todos los técnicos".
+  const asignados = c.asignado.map((a) => (a === ASIGNADO_YO ? yo || '00000000-0000-0000-0000-000000000000' : a));
   const solicitante = c.solicitante;
   return {
     q,

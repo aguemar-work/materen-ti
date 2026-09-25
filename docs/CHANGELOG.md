@@ -23,6 +23,17 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Tickets: vistas coherentes + selección en ambas vistas**) —
+  revisión del dueño: las pestañas mezclaban responsable (Nuevos, Mis
+  tickets) y estado (Pendientes, Resueltos) con "Todos" al final. Ahora:
+  Todos · Pendientes (defecto) · Resueltos · Rechazados; el responsable es el
+  chip "Asignado a" (Usted = `?asignado=yo` · Sin asignar · técnicos), con
+  atajos "N sin asignar" / "N sin vincular" en el subtítulo. "Todos" pasa a
+  ir primero también en Empleados y Problemas (regla en SISTEMA-DISENO
+  §3.2.1). La barra de acciones en lote se sobrepone a la fila de búsqueda
+  (antes empujaba la tabla) y los checkbox llegan también a Triage, con
+  "Seleccionar todos" de la cola. Inicio: "Ver mis tickets" →
+  `?asignado=yo`; `?vista=nuevos|mios` viejos se traducen.
 - **2026-09-25** (**Filtros V2 en todos los listados — cierre**) — pedido del
   dueño: llevar el modelo a todos los módulos para cerrar la V2. Licencias
   (vistas Todas · Por vencer · Vencidas · Perpetuas; chips Empresa, Acceso),
