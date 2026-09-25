@@ -23,6 +23,11 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Fix: scroll general en la vista doble columna**) — el
+  documento medía 1800px en cualquier pantalla: los `sr-only` de cada
+  `TarjetaTicket` (absolutos, sin ancestro posicionado) escapaban del recorte
+  de la cola con scroll. `relative` en la tarjeta y en la cola; barrido de 15
+  rutas en tabla y doble columna sin otro caso. Regla en SISTEMA-DISENO §3.3.
 - **2026-09-25** (**Tickets: encabezado con íconos + satisfacción arriba**) —
   revisión del dueño: el encabezado repetía con rótulos lo que ya está en
   Gestión. `TicketResumen` pasa a íconos con guía y solo lo que no está en

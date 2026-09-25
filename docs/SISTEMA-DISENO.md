@@ -240,6 +240,11 @@ tabla: empujarla hace perder de vista la fila que se estaba marcando.
   verticales), hover `gray-50`.
 - Dentro de `AppMarcoTabla`, la primera y la última columna recuperan el
   padding de la página (`pl-4 sm:pl-6`) para alinearse con el título.
+- **Todo contenedor con scroll interno** (`overflow-y-auto`) o su contenido
+  lleva `relative`: un `sr-only` (`position: absolute`) sin ancestro
+  posicionado escapa del recorte y estira el documento — la cola de Triage
+  medía 1800px en cualquier pantalla ("scroll general que lleva a un
+  vacío", 2026-09-25). `TarjetaTicket` ya es `relative`.
 - Una tabla nunca desborda la hoja: si una columna de texto libre (título,
   nombre) puede crecer, la tabla va con `table-layout: fixed` (vía
   `table-props`), todas las columnas menos una con ancho, y la de texto

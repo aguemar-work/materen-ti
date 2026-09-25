@@ -29,7 +29,11 @@ defineProps({
 </script>
 
 <template>
-  <div class="flex min-w-0 gap-3">
+  <!-- relative: los textos sr-only (position: absolute) quedan contenidos en
+       la tarjeta. Sin esto escapaban del recorte de la cola con scroll y
+       estiraban el documento ("scroll general" que llevaba a un vacío,
+       reportado 2026-09-25). -->
+  <div class="relative flex min-w-0 gap-3">
     <slot name="inicio" />
     <div class="min-w-0 flex-1">
       <!-- 1 · número + prioridad + nivel + estado -->

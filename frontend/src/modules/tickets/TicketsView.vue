@@ -767,7 +767,7 @@ onMounted(async () => {
               <input type="checkbox" :checked="todaLaColaSeleccionada" @change="alternarTodaLaCola">
               Seleccionar {{ lista.length === total ? 'todos' : `los ${lista.length} cargados` }}
             </label>
-            <ul class="min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto" aria-label="Tickets de soporte">
+            <ul class="relative min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto" aria-label="Tickets de soporte">
               <li
                 v-for="t in lista"
                 :key="t.id"
