@@ -140,7 +140,7 @@ const inventario = computed(() => {
     { label: 'Dados de baja', icono: 'ti ti-users-minus', valor: s.empleadosTotal - s.empleadosActivos, to: '/empleados?estado=Inactivo', visible: auth.puedeVerModulo('empleados') },
     // Sin enlace: no existe una vista global de cuentas (viven en la ficha del empleado)
     { label: 'Cuentas asignadas', icono: 'ti ti-key', valor: s.cuentasAsignadas, to: null, visible: true },
-    { label: 'Correos compartidos', icono: 'ti ti-mail-share', valor: s.correosCompartidos, to: '/correos', visible: auth.puedeVerModulo('correos') },
+    { label: 'Correos compartidos', icono: 'ti ti-mail-share', valor: s.correosCompartidos, to: '/correos?vista=compartida', visible: auth.puedeVerModulo('correos') },
     { label: 'Equipos', icono: 'ti ti-devices', valor: s.equiposTotal, to: '/equipos', visible: auth.puedeVerModulo('equipos') },
   ].filter((f) => f.visible);
 });

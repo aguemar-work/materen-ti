@@ -14,8 +14,10 @@ import AppTable from '../../components/ui/AppTable.vue';
 import AppColumn from '../../components/ui/AppColumn.js';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
-import AppSegmentado from '../../components/ui/AppSegmentado.vue';
-import AppSelect from '../../components/ui/AppSelect.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
+import { useAuthStore } from '../../stores/auth.js';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
@@ -28,39 +30,83 @@ const store = useKbStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const { esMovil } = useEsMovil();
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
-const filtroCategoria = ref('');
-const filtroEstado = ref('');
+const auth = useAuthStore();
 const mostrarForm = ref(false);
-const categorias = ref([]);
 
-watch(
-  [filtroCategoria, filtroEstado],
-  ([categoriaId, estado]) => store.aplicarFiltros({ categoriaId, estado }),
-);
+// ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
+// Estado del artículo = VISTA (pestañas con conteo); categoría y autor, chips.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  estado: { tipo: 'valor', defecto: '' },
+  q: { tipo: 'texto' },
+  categoria: { tipo: 'lista' },
+  autor: { tipo: 'lista' },
+});
+const CLAVES_FILTRO = ['q', 'categoria', 'autor'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
+const filtrosSinVista = computed(() => ({ q: filtros.q, categoriaIds: filtros.categoria, autorIds: filtros.autor }));
+const filtrosServidor = computed(() => ({ ...filtrosSinVista.value, estado: filtros.estado }));
+
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
+  try {
+    conteos.value = await insforgeApi.conteosKbPorEstado(filtrosSinVista.value);
+  } catch {
+    // Sin conteos, las pestañas se muestran igual (sin número).
+  }
+}
+// Orden de lectura: lo que se consulta (publicados) primero.
+const VISTAS = computed(() => [
+  { valor: '', label: 'Todos', conteo: conteos.value?.todos },
+  { valor: 'publicado', label: 'Publicados', conteo: conteos.value?.publicado },
+  { valor: 'en_revision', label: 'En revisión', conteo: conteos.value?.en_revision },
+  { valor: 'borrador', label: 'Borradores', conteo: conteos.value?.borrador },
+  { valor: 'obsoleto', label: 'Obsoletos', conteo: conteos.value?.obsoleto },
+]);
+
+const categorias = ref([]);
+const staff = ref([]);
+const DIMENSIONES = computed(() => {
+  const yo = auth.user?.id;
+  const autores = [
+    ...staff.value.filter((s) => s.user_id === yo).map((s) => ({ valor: s.user_id, label: `${s.nombre} (usted)` })),
+    ...staff.value.filter((s) => s.user_id !== yo).map((s) => ({ valor: s.user_id, label: s.nombre })),
+  ];
+  return [
+    { id: 'categoria', label: 'Categoría', icono: 'ti ti-category', opciones: categorias.value.map((c) => ({ valor: c.id, label: c.nombre })) },
+    { id: 'autor', label: 'Autor', icono: 'ti ti-user-edit', opciones: autores },
+  ];
+});
+const chips = computed({
+  get: () => ({ categoria: filtros.categoria, autor: filtros.autor }),
+  set: (v) => { filtros.categoria = v.categoria; filtros.autor = v.autor; },
+});
+
+function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
+  busqueda.value = '';
+}
+
+watch(filtrosServidor, (f) => { store.aplicarFiltros(f).catch(() => {}); }, { deep: true });
+watch(filtrosSinVista, refrescarConteos, { deep: true });
 
 function verArticulo(articulo) {
   router.push(`/base-conocimiento/${articulo.id}`);
 }
 
-// Estado como segmentado: son 4 y conviene verlos a la vista. '' = todos,
-// mismo valor que la opción "Todos los estados" anterior.
-const ESTADOS_SEGMENTO = [
-  ...OPCIONES_ESTADO_KB,
-  { valor: '', label: 'Todos' },
-];
-const hayFiltros = computed(() => !!(busqueda.value || filtroCategoria.value || filtroEstado.value));
-function limpiarFiltros() {
-  busqueda.value = '';
-  filtroCategoria.value = '';
-  filtroEstado.value = '';
-}
 const subtitulo = computed(() => {
   const n = total.value;
   const base = `${n} ${n === 1 ? 'artículo' : 'artículos'}`;
-  const est = OPCIONES_ESTADO_KB.find((e) => e.valor === filtroEstado.value);
-  return `${base}${est ? ` en estado ${est.label.toLowerCase()}` : ''} · soluciones reutilizables para tickets recurrentes`;
+  const est = OPCIONES_ESTADO_KB.find((e) => e.valor === filtros.estado);
+  const detalle = `${est ? ` en estado ${est.label.toLowerCase()}` : ''}${hayFiltros.value ? ', con los filtros aplicados' : ''}`;
+  return `${base}${detalle} · soluciones reutilizables para tickets recurrentes`;
 });
+
+// Una vista vacía con artículos en otras pestañas no es "Sin artículos todavía".
+const vistaVacia = computed(() => !hayFiltros.value && !!filtros.estado && conteos.value?.todos > 0);
 
 function onFormCerrado(creado) {
   mostrarForm.value = false;
@@ -72,8 +118,10 @@ function onFormCerrado(creado) {
 
 onMounted(async () => {
   store.resetearFiltros();
+  refrescarConteos();
+  insforgeApi.nombresStaff().then((s) => { staff.value = s; }).catch(() => {});
   try {
-    const [, cats] = await Promise.all([store.cargar(), insforgeApi.listCategoriasTicket()]);
+    const [, cats] = await Promise.all([store.aplicarFiltros(filtrosServidor.value), insforgeApi.listCategoriasTicket()]);
     categorias.value = cats;
   } catch {
     showToast(error.value || 'Error al cargar la base de conocimiento', 'error');
@@ -89,14 +137,11 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <AppBarraFiltros>
+    <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
+    <AppVistas v-model="filtros.estado" :opciones="VISTAS" label="Vista de artículos" />
+    <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar artículos" placeholder="Buscar por título o síntoma" />
-      <AppSegmentado v-model="filtroEstado" :opciones="ESTADOS_SEGMENTO" label="Filtrar por estado" />
-      <AppSelect v-model="filtroCategoria" label="Filtrar por categoría">
-        <option value="">Todas las categorías</option>
-        <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-      </AppSelect>
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 
@@ -110,11 +155,11 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && total === 0"
         icono="ti ti-books"
-        :titulo="hayFiltros ? 'Sin resultados' : 'Sin artículos todavía'"
-        :mensaje="hayFiltros ? 'No hay artículos con los filtros aplicados.' : 'Registre la primera solución reutilizable de la base de conocimiento.'"
+        :titulo="hayFiltros ? 'Sin resultados' : vistaVacia ? 'Sin artículos en esta vista' : 'Sin artículos todavía'"
+        :mensaje="hayFiltros ? 'No hay artículos con los filtros aplicados.' : vistaVacia ? 'Las demás pestañas muestran el resto de la base de conocimiento.' : 'Registre la primera solución reutilizable de la base de conocimiento.'"
       >
         <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
-        <AppButton v-else variant="outline" severity="secondary" icon="ti ti-plus" label="Nuevo artículo" @click="mostrarForm = true" />
+        <AppButton v-else-if="!vistaVacia" variant="outline" severity="secondary" icon="ti ti-plus" label="Nuevo artículo" @click="mostrarForm = true" />
       </AppVacio>
 
       <template v-else>

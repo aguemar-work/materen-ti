@@ -23,6 +23,20 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Filtros V2 en todos los listados — cierre**) — pedido del
+  dueño: llevar el modelo a todos los módulos para cerrar la V2. Licencias
+  (vistas Todas · Por vencer · Vencidas · Perpetuas; chips Empresa, Acceso),
+  Correos (Todos · Compartidos · Reutilizables · Por rotar; chip Plataforma),
+  KB (vistas por estado; chips Categoría, Autor), Problemas (Abiertos por
+  defecto · Cerrados · Todos; chips Etapa, Severidad, Responsable), Actividad
+  (Todo · Contraseñas · Entregas · Denegados; chips Quién, Plataforma,
+  Fecha) y Accesos sensibles (vistas por categoría; chip Permiso). API:
+  `conteosLicenciasPorSituacion`, `conteosCorreosPorVista`,
+  `conteosKbPorEstado`, `conteosProblemasPorVista` y filtros por lista. El
+  subtítulo de Licencias deja los atajos vencidas/por vencer (ahora son
+  pestañas con conteo). La maqueta entiende `or()` con eq/is/in/and.
+  Inicio enlaza "Correos compartidos" a `?vista=compartida`. Docs:
+  SISTEMA-DISENO §3.2.1 (tabla por módulo), AGENTS.md, frontend/AGENTS.md.
 - **2026-09-25** (**Filtros V2 en Tickets**) — reclamo del dueño: las
   bandejas eran deficientes ("Mis tickets" abría otro segmentado Todos · En
   progreso · Resuelto · Rechazados, "Todos" repetía lo mismo más un select

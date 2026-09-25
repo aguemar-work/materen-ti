@@ -17,7 +17,9 @@ import AppColumn from '../../components/ui/AppColumn.js';
 import AppTag from '../../components/ui/AppTag.vue';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
-import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
 import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
@@ -64,30 +66,49 @@ onBeforeUnmount(() => {
   revelados.forEach((r) => r.ocultar());
 });
 
-// ── Filtros (solo presentación, sobre la lista ya cargada) ─────────────
+// ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
 // El listado es corto y se carga completo (sin paginación server-side): la
-// búsqueda y la categoría filtran en el cliente, no piden nada nuevo.
-const busqueda = ref('');
-const filtroCategoria = ref('');
-const CATEGORIAS_SEGMENTO = [
-  { valor: '', label: 'Todas' },
-  ...Object.entries(CATEGORIAS_ACCESO_SENSIBLE).map(([valor, c]) => ({ valor, label: c.label })),
-];
-
-const listaFiltrada = computed(() => {
-  const q = busqueda.value.trim().toLowerCase();
-  return lista.value.filter((fila) => {
-    if (filtroCategoria.value && fila.categoria !== filtroCategoria.value) return false;
-    if (!q) return true;
-    return [fila.nombre, fila.usuario, fila.notas].some((v) => (v || '').toLowerCase().includes(q));
-  });
+// búsqueda, la vista (categoría) y el chip de permiso filtran en el cliente.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  categoria: { tipo: 'valor', defecto: '' },
+  q: { tipo: 'texto' },
+  permiso: { tipo: 'lista' },
 });
-// Mismo patrón de "Limpiar filtros" que ya usan KB/Problemas/Equipos/
-// Correos/Licencias/Empleados — acá faltaba (propuesta UX/UI V2).
-const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroCategoria.value);
+const CLAVES_FILTRO = ['q', 'permiso'];
+const busqueda = computed({ get: () => filtros.q, set: (v) => { filtros.q = v; } });
+
+function pasaChips(fila) {
+  const q = filtros.q.trim().toLowerCase();
+  if (filtros.permiso.length && !filtros.permiso.includes(fila.puedeRevelar ? 'si' : 'no')) return false;
+  if (!q) return true;
+  return [fila.nombre, fila.usuario, fila.notas].some((v) => (v || '').toLowerCase().includes(q));
+}
+const filtradosPorChips = computed(() => lista.value.filter(pasaChips));
+const listaFiltrada = computed(() =>
+  filtradosPorChips.value.filter((f) => !filtros.categoria || f.categoria === filtros.categoria));
+
+const VISTAS = computed(() => [
+  { valor: '', label: 'Todas', conteo: filtradosPorChips.value.length },
+  ...Object.entries(CATEGORIAS_ACCESO_SENSIBLE).map(([valor, c]) => ({
+    valor, label: valor === 'otro' ? 'Otros' : c.label, conteo: filtradosPorChips.value.filter((f) => f.categoria === valor).length,
+  })),
+]);
+const DIMENSIONES = [
+  {
+    id: 'permiso', label: 'Permiso', icono: 'ti ti-lock-access', opciones: [
+      { valor: 'si', label: 'Puede revelarla' },
+      { valor: 'no', label: 'Sin permiso para usted' },
+    ],
+  },
+];
+const chips = computed({
+  get: () => ({ permiso: filtros.permiso }),
+  set: (v) => { filtros.permiso = v.permiso; },
+});
+
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
 function limpiarFiltros() {
-  busqueda.value = '';
-  filtroCategoria.value = '';
+  limpiar(CLAVES_FILTRO);
 }
 
 const sinPermiso = computed(() => lista.value.filter((f) => !f.puedeRevelar).length);
@@ -179,10 +200,11 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <AppBarraFiltros v-if="lista.length">
+    <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
+    <AppVistas v-if="lista.length" v-model="filtros.categoria" :opciones="VISTAS" label="Vista de accesos sensibles" />
+    <AppBarraFiltros v-if="lista.length" class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar accesos sensibles" placeholder="Buscar por nombre, usuario o nota" />
-      <AppSegmentado v-model="filtroCategoria" :opciones="CATEGORIAS_SEGMENTO" label="Filtrar por categoría" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 
@@ -205,10 +227,10 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && !listaFiltrada.length"
         icono="ti ti-search"
-        titulo="Sin resultados"
-        mensaje="No hay accesos con los filtros aplicados."
+        :titulo="hayFiltros ? 'Sin resultados' : 'Sin accesos en esta categoría'"
+        :mensaje="hayFiltros ? 'No hay accesos con los filtros aplicados.' : 'Las demás pestañas muestran el resto de las credenciales.'"
       >
-        <AppButton variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
+        <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
       </AppVacio>
 
       <template v-else>

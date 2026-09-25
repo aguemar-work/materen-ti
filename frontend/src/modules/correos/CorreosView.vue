@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useRoute } from 'vue-router';
 import { useCorreosStore } from '../../stores/correos.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { revelarPassword } from '../../api/passwords.js';
@@ -20,7 +19,10 @@ import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppTag from '../../components/ui/AppTag.vue';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
-import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
+import { insforgeApi } from '../../api/insforge.js';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
@@ -33,53 +35,76 @@ const authStore = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const { esMovil } = useEsMovil();
 
-useRealtimeRefresco('cuentas:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+useRealtimeRefresco('cuentas:list', () => Promise.all([store.cargar(), refrescarConteos()]), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
+// ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
+// La VISTA reúne los dos segmentados que había (tipo y "requieren
+// rotación"): son las 4 preguntas del módulo. Plataforma es un chip.
+// La búsqueda global enlaza con /correos?q=usuario@dominio.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  vista: { tipo: 'valor', defecto: 'todos' },
+  q: { tipo: 'texto' },
+  plataforma: { tipo: 'lista' },
+});
+const CLAVES_FILTRO = ['q', 'plataforma'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
 
-// Deep-link desde la búsqueda global: /correos?q=usuario@dominio
-const route = useRoute();
-busqueda.value = String(route.query.q ?? '');
-watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
+const PARAMS_VISTA = {
+  todos: {},
+  compartida: { tipo: 'compartida' },
+  reutilizable: { tipo: 'reutilizable' },
+  rotar: { soloRotacion: true },
+};
+const filtrosSinVista = computed(() => ({ q: filtros.q, plataformaIds: filtros.plataforma }));
+const filtrosServidor = computed(() => ({
+  ...filtrosSinVista.value, tipo: '', soloRotacion: false, ...(PARAMS_VISTA[filtros.vista] || {}),
+}));
 
-const filtroTipo = ref('');
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
+  try {
+    conteos.value = await insforgeApi.conteosCorreosPorVista(filtrosSinVista.value);
+  } catch {
+    // Sin conteos, las pestañas se muestran igual (sin número).
+  }
+}
+
+const VISTAS = computed(() => [
+  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
+  { valor: 'compartida', label: 'Compartidos', conteo: conteos.value?.compartida, titulo: 'Los usan varias personas a la vez' },
+  { valor: 'reutilizable', label: 'Reutilizables', conteo: conteos.value?.reutilizable, titulo: 'Pasan de una persona a otra' },
+  { valor: 'rotar', label: 'Por rotar', conteo: conteos.value?.rotar, titulo: 'Requieren cambio de contraseña' },
+]);
+const FRASE_VISTA = { compartida: ' compartidas', reutilizable: ' reutilizables', rotar: ' que requieren rotación' };
+
+const plataformas = ref([]);
+const DIMENSIONES = computed(() => [
+  { id: 'plataforma', label: 'Plataforma', icono: 'ti ti-apps', opciones: plataformas.value.map((p) => ({ valor: p.id, label: p.nombre })) },
+]);
+const chips = computed({
+  get: () => ({ plataforma: filtros.plataforma }),
+  set: (v) => { filtros.plataforma = v.plataforma; },
+});
+
+// "Por rotar" vacío y sin filtros: es una buena noticia, no "sin resultados".
+const nadaPorRotar = computed(() => filtros.vista === 'rotar' && !hayFiltros.value);
+function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
+  busqueda.value = '';
+}
+
+watch(filtrosServidor, (f) => { store.aplicarFiltros(f).catch(() => {}); }, { deep: true });
+watch(filtrosSinVista, refrescarConteos, { deep: true });
+
 const mostrarForm = ref(false);
 const correoEditar = ref(null);
 // true = el formulario se abrió desde "Rotar contraseña": entra con el foco
 // en "Nueva contraseña" y un aviso de por qué (ver CorreoForm.vue).
 const modoRotar = ref(false);
-
-watch(filtroTipo, (tipo) => store.aplicarFiltros({ tipo }));
-
-// "Requieren rotación" (server-side, `requiere_rotacion = true`). Ref local
-// fresca en cada montaje, igual que filtroTipo: el store.resetearFiltros()
-// de onMounted la deja coherente con lo que se ve.
-const filtroRotacion = ref(false);
-watch(filtroRotacion, (soloRotacion) => store.aplicarFiltros({ soloRotacion }));
-
-const ROTACION_SEGMENTO = [
-  { valor: false, label: 'Todas' },
-  { valor: true, label: 'Requieren rotación', icono: 'ti ti-alert-triangle' },
-];
-
-const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroTipo.value || filtroRotacion.value);
-// Vacío por el filtro de rotación solo: es una buena noticia, no "sin resultados".
-const nadaPorRotar = computed(() => filtroRotacion.value && !busqueda.value.trim() && !filtroTipo.value);
-// Mismo patrón de "Limpiar filtros" que ya usan KB/Problemas/Equipos — acá
-// faltaba (diagnóstico UX 2026-09-25, propuesta V2).
-function limpiarFiltros() {
-  busqueda.value = '';
-  filtroTipo.value = '';
-  filtroRotacion.value = false;
-}
-
-// Filtro de tipo como segmentado (rediseño 2026-09-22): solo hay dos tipos
-// y "todos" — verlos a la vista ahorra abrir un select. '' = todos.
-const TIPOS_SEGMENTO = [
-  { valor: '', label: 'Todos' },
-  { valor: 'compartida', label: 'Compartidos', icono: 'ti ti-users' },
-  { valor: 'reutilizable', label: 'Reutilizables', icono: 'ti ti-transfer' },
-];
 
 const exportando = ref(false);
 async function exportar() {
@@ -197,12 +222,10 @@ async function confirmarEliminar() {
 
 onMounted(async () => {
   store.resetearFiltros();
+  insforgeApi.listPlataformas().then((p) => { plataformas.value = p; }).catch(() => {});
+  refrescarConteos();
   try {
-    if (busqueda.value.trim()) {
-      await store.aplicarFiltros({ q: busqueda.value.trim() });
-    } else {
-      await store.cargar();
-    }
+    await store.aplicarFiltros(filtrosServidor.value);
   } catch {
     showToast(error.value || 'Error al cargar correos compartidos', 'error');
   }
@@ -214,7 +237,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Correos">
       <template #subtitulo>
-        {{ total }} {{ total === 1 ? 'cuenta' : 'cuentas' }}<template v-if="filtroTipo === 'compartida'"> compartidas</template><template v-else-if="filtroTipo === 'reutilizable'"> reutilizables</template><template v-if="filtroRotacion"> que requieren rotación</template><template v-if="busqueda.trim()"> que coinciden con “{{ busqueda.trim() }}”</template>
+        {{ total }} {{ total === 1 ? 'cuenta' : 'cuentas' }}{{ FRASE_VISTA[filtros.vista] || '' }}{{ hayFiltros ? ', con los filtros aplicados' : '' }}
         · buzones y usuarios que se usan entre varias personas
       </template>
       <template #acciones>
@@ -232,11 +255,11 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <AppBarraFiltros>
+    <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
+    <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de correos" />
+    <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar correos" placeholder="Buscar por correo o plataforma" />
-      <AppSegmentado v-model="filtroTipo" :opciones="TIPOS_SEGMENTO" label="Filtrar por tipo" />
-      <AppSegmentado v-model="filtroRotacion" :opciones="ROTACION_SEGMENTO" label="Filtrar por rotación de contraseña" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 

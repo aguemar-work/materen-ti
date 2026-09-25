@@ -21,7 +21,9 @@ import AppColumn from '../../components/ui/AppColumn.js';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
-import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import AppTag from '../../components/ui/AppTag.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
@@ -37,66 +39,100 @@ const store = useLicenciasStore();
 const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 
-useRealtimeRefresco('licencias:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+useRealtimeRefresco('licencias:list', () => Promise.all([store.cargar(), refrescarConteos()]), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
-
-// Deep-link desde la búsqueda global: /licencias?q=SOFTWARE
 const route = useRoute();
 const router = useRouter();
-busqueda.value = String(route.query.q ?? '');
-watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
 
-const mostrarForm = ref(false);
-const licenciaEditar = ref(null);
+// ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
+// `situacion` es la VISTA (pestañas con conteo); empresa y acceso, chips.
+// La búsqueda global enlaza con /licencias?q=SOFTWARE: mismo parámetro.
+// No hay vista "Sin cupo": comparar asientos usados contra `cantidad` no se
+// puede expresar en la query sin un cambio de esquema (api/domains/licencias.js).
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  situacion: { tipo: 'valor', defecto: '' },
+  q: { tipo: 'texto' },
+  empresa: { tipo: 'lista' },
+  acceso: { tipo: 'lista' },
+});
+const CLAVES_FILTRO = ['q', 'empresa', 'acceso'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
 
-// ── Filtro de situación (server-side, vía el store) ────────────
-// Ref LOCAL fresca en cada montaje + store.resetearFiltros() en onMounted
-// (gotcha de resetearFiltros(), ver frontend/AGENTS.md): los dos arrancan
-// en "Todas", así la UI y el filtro aplicado nunca divergen.
-// No hay segmento "Sin cupo": comparar asientos usados contra `cantidad`
-// no se puede expresar en la query sin un cambio de esquema (ver
-// api/domains/licencias.js). '' = todas.
-const filtroSituacion = ref('');
-watch(filtroSituacion, (situacion) => store.aplicarFiltros({ situacion }));
+const filtrosSinVista = computed(() => ({ q: filtros.q, empresaIds: filtros.empresa, accesos: filtros.acceso }));
+const filtrosServidor = computed(() => ({ ...filtrosSinVista.value, situacion: filtros.situacion }));
 
-const SITUACIONES_SEGMENTO = [
-  { valor: '', label: 'Todas' },
-  { valor: 'vencidas', label: 'Vencidas', icono: 'ti ti-alert-circle' },
-  { valor: 'por_vencer', label: 'Por vencer', icono: 'ti ti-clock' },
-];
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
+  try {
+    conteos.value = await insforgeApi.conteosLicenciasPorSituacion(filtrosSinVista.value);
+  } catch {
+    // Sin conteos, las pestañas se muestran igual (sin número).
+  }
+}
+
+const VISTAS = computed(() => [
+  { valor: '', label: 'Todas', conteo: conteos.value?.todas },
+  { valor: 'por_vencer', label: 'Por vencer', conteo: conteos.value?.por_vencer, titulo: `Vencen en los próximos ${DIAS_POR_VENCER_LICENCIA} días` },
+  { valor: 'vencidas', label: 'Vencidas', conteo: conteos.value?.vencidas },
+  { valor: 'perpetuas', label: 'Perpetuas', conteo: conteos.value?.perpetuas, titulo: 'Sin fecha de vencimiento' },
+]);
 
 const FRASE_SITUACION = {
   vencidas: ' vencidas',
   por_vencer: ` por vencer en ${DIAS_POR_VENCER_LICENCIA} días`,
+  perpetuas: ' perpetuas',
 };
 
-const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroSituacion.value);
-// Mismo patrón de "Limpiar filtros" que ya usan KB/Problemas/Equipos — acá
-// faltaba (diagnóstico UX 2026-09-25, propuesta V2).
+const empresas = ref([]);
+const DIMENSIONES = computed(() => [
+  { id: 'empresa', label: 'Empresa', icono: 'ti ti-building', opciones: empresas.value.map((e) => ({ valor: e.id, label: e.nombre })) },
+  {
+    id: 'acceso', label: 'Acceso', icono: 'ti ti-key', opciones: [
+      { valor: 'correo', label: 'Con correo compartido' },
+      { valor: 'clave', label: 'Con clave de producto' },
+      { valor: 'ninguno', label: 'Sin credencial' },
+    ],
+  },
+]);
+const chips = computed({
+  get: () => ({ empresa: filtros.empresa, acceso: filtros.acceso }),
+  set: (v) => { filtros.empresa = v.empresa; filtros.acceso = v.acceso; },
+});
+
 function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
   busqueda.value = '';
-  filtroSituacion.value = '';
 }
+
+// Una vista vacía en un inventario que sí tiene licencias ("Vencidas: 0") no
+// es "Sin licencias todavía": es una buena noticia de esa vista.
+const VACIO_VISTA = {
+  por_vencer: { titulo: 'Nada por vencer', mensaje: `Ninguna licencia vence en los próximos ${DIAS_POR_VENCER_LICENCIA} días.` },
+  vencidas: { titulo: 'Sin licencias vencidas', mensaje: 'Todas las suscripciones están al día.' },
+  perpetuas: { titulo: 'Sin licencias perpetuas', mensaje: 'Todas las licencias registradas tienen fecha de vencimiento.' },
+};
+const vistaVacia = computed(() => (!hayFiltros.value && conteos.value?.todas > 0 ? VACIO_VISTA[filtros.situacion] || null : null));
+
+watch(filtrosServidor, (f) => { store.aplicarFiltros(f).catch(() => {}); }, { deep: true });
+watch(filtrosSinVista, refrescarConteos, { deep: true });
+
+const mostrarForm = ref(false);
+const licenciaEditar = ref(null);
 
 const { esMovil } = useEsMovil();
 
 // ── Presentación (rediseño 2026-09-23) ─────────────────────────
-// Resumen de "qué requiere atención" (vencidas / por vencer / sin cupo).
-// Solo se calcula cuando la página trae TODAS las licencias: el servidor no
-// expone conteos agregados, y contar sobre una página parcial mentiría.
-const resumen = computed(() => {
-  if (!lista.value.length || lista.value.length < total.value) return null;
-  let vencidas = 0;
-  let porVencer = 0;
-  let sinCupo = 0;
-  for (const l of lista.value) {
-    const estado = estadoVencimientoLicencia(l);
-    if (estado === 'vencida') vencidas += 1;
-    else if (estado === 'por_vencer') porVencer += 1;
-    if (l.cantidad > 0 && l.usados >= l.cantidad) sinCupo += 1;
-  }
-  return { vencidas, porVencer, sinCupo };
+// Vencidas y por vencer ya las cuentan las vistas; "sin asientos libres" no
+// se puede filtrar en el servidor, así que se informa en el subtítulo, y solo
+// cuando la página trae TODAS las filas (contar sobre una página parcial
+// mentiría).
+const sinCupo = computed(() => {
+  if (!lista.value.length || lista.value.length < total.value) return 0;
+  return lista.value.filter((l) => l.cantidad > 0 && l.usados >= l.cantidad).length;
 });
 
 function tonoVencimiento(l) {
@@ -390,12 +426,10 @@ onMounted(async () => {
     const { nuevo: _nuevo, ...resto } = route.query;
     router.replace({ query: resto });
   }
+  insforgeApi.listEmpresas().then((e) => { empresas.value = e; }).catch(() => {});
+  refrescarConteos();
   try {
-    if (busqueda.value.trim()) {
-      await store.aplicarFiltros({ q: busqueda.value.trim() });
-    } else {
-      await store.cargar();
-    }
+    await store.aplicarFiltros(filtrosServidor.value);
   } catch {
     showToast(error.value || 'Error al cargar licencias', 'error');
   }
@@ -406,17 +440,8 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Licencias">
       <template #subtitulo>
-        {{ total }} {{ total === 1 ? 'licencia' : 'licencias' }}{{ FRASE_SITUACION[filtroSituacion] || '' }}{{ busqueda.trim() ? ` que coinciden con “${busqueda.trim()}”` : '' }}
-        <!-- El resumen solo tiene sentido sobre el listado completo: con un
-             filtro de situación puesto, repetiría lo que ya dice el filtro. -->
-        <template v-if="!filtroSituacion">
-          <template v-if="resumen && (resumen.vencidas || resumen.porVencer || resumen.sinCupo)">
-            <template v-if="resumen.vencidas"> · <button type="button" class="rounded font-medium text-red-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="filtroSituacion = 'vencidas'">{{ resumen.vencidas }} {{ resumen.vencidas === 1 ? 'vencida' : 'vencidas' }}</button></template>
-            <template v-if="resumen.porVencer"> · <button type="button" class="rounded font-medium text-amber-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="filtroSituacion = 'por_vencer'">{{ resumen.porVencer }} por vencer en {{ DIAS_POR_VENCER_LICENCIA }} días</button></template>
-            <template v-if="resumen.sinCupo"> · {{ resumen.sinCupo }} sin asientos libres</template>
-          </template>
-          <template v-else-if="resumen"> · todas vigentes y con cupo</template>
-        </template>
+        {{ total }} {{ total === 1 ? 'licencia' : 'licencias' }}{{ FRASE_SITUACION[filtros.situacion] || '' }}{{ hayFiltros ? ', con los filtros aplicados' : '' }}
+        <template v-if="sinCupo"> · {{ sinCupo }} sin asientos libres</template>
       </template>
       <template #acciones>
         <AppButton
@@ -433,10 +458,11 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <AppBarraFiltros>
+    <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
+    <AppVistas v-model="filtros.situacion" :opciones="VISTAS" label="Vista de licencias" />
+    <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar licencias" placeholder="Buscar por software, empresa o correo" />
-      <AppSegmentado v-model="filtroSituacion" :opciones="SITUACIONES_SEGMENTO" label="Filtrar por situación" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 
@@ -450,10 +476,10 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && total === 0"
         icono="ti ti-license"
-        :titulo="hayFiltros ? 'Sin resultados' : 'Sin licencias todavía'"
-        :mensaje="hayFiltros ? 'No hay licencias con los filtros aplicados.' : 'Registre la primera licencia para controlar asientos, accesos y vencimientos del software que se paga.'"
+        :titulo="hayFiltros ? 'Sin resultados' : vistaVacia?.titulo || 'Sin licencias todavía'"
+        :mensaje="hayFiltros ? 'No hay licencias con los filtros aplicados.' : vistaVacia?.mensaje || 'Registre la primera licencia para controlar asientos, accesos y vencimientos del software que se paga.'"
       >
-        <AppButton v-if="!hayFiltros" variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar licencia" @click="abrirNueva" />
+        <AppButton v-if="!hayFiltros && !vistaVacia" variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar licencia" @click="abrirNueva" />
         <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
       </AppVacio>
 

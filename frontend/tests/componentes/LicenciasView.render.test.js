@@ -21,6 +21,8 @@ vi.mock('../../src/api/insforge.js', () => ({
   insforgeApi: {
     listLicenciasPage: vi.fn(),
     listEmpleados: vi.fn().mockResolvedValue([]),
+    listEmpresas: vi.fn().mockResolvedValue([{ id: 'emp-1', nombre: 'Materen' }]),
+    conteosLicenciasPorSituacion: vi.fn().mockResolvedValue({ todas: 2, por_vencer: 0, vencidas: 0, perpetuas: 1 }),
   },
 }));
 import { insforgeApi } from '../../src/api/insforge.js';
@@ -175,31 +177,34 @@ describe('LicenciasView.vue — listado migrado a AppTable/AppColumn/AppButton',
 });
 
 // Filtro de situación (2026-09-24): segmentado server-side vía el store.
-describe('LicenciasView.vue — filtro de situación', () => {
-  function segmento(w, texto) {
-    const grupo = w.find('[role="group"][aria-label="Filtrar por situación"]');
-    return grupo.findAll('button').find((b) => b.text().trim() === texto);
+// Filtros V2 (2026-09-25): la situación pasa a ser la VISTA (pestañas con
+// conteo) y empresa/acceso, chips; todo vive en la URL.
+describe('LicenciasView.vue — filtros V2 (vistas + chips + URL)', () => {
+  function vista(w, texto) {
+    const grupo = w.find('[role="group"][aria-label="Vista de licencias"]');
+    return grupo.findAll('button').find((b) => b.text().replace(/\d+/g, '').trim() === texto);
   }
 
-  it('ofrece Todas / Vencidas / Por vencer, sin "Sin cupo" (no expresable sin cambio de esquema)', async () => {
+  it('ofrece Todas / Por vencer / Vencidas / Perpetuas con su conteo, sin "Sin cupo"', async () => {
     const w = await montar();
-    const grupo = w.find('[role="group"][aria-label="Filtrar por situación"]');
-    expect(grupo.exists()).toBe(true);
-    expect(grupo.findAll('button').map((b) => b.text().trim())).toEqual(['Todas', 'Vencidas', 'Por vencer']);
+    const grupo = w.find('[role="group"][aria-label="Vista de licencias"]');
+    expect(grupo.findAll('button').map((b) => b.text().replace(/\d+/g, '').trim()))
+      .toEqual(['Todas', 'Por vencer', 'Vencidas', 'Perpetuas']);
+    expect(vista(w, 'Todas').text()).toContain('2');
   });
 
-  it('elegir "Vencidas" recarga desde el servidor con situacion=vencidas y página 1', async () => {
+  it('elegir "Vencidas" recarga desde el servidor con situacion=vencidas, página 1, y queda en la URL', async () => {
     const w = await montar();
-    await segmento(w, 'Vencidas').trigger('click');
+    await vista(w, 'Vencidas').trigger('click');
     await flushPromises();
     const ultima = insforgeApi.listLicenciasPage.mock.calls.at(-1)[0];
     expect(ultima).toMatchObject({ situacion: 'vencidas', pagina: 1 });
-    expect(segmento(w, 'Vencidas').attributes('aria-pressed')).toBe('true');
+    expect(vista(w, 'Vencidas').attributes('aria-pressed')).toBe('true');
   });
 
-  it('al montar de nuevo el filtro arranca en "Todas" (resetearFiltros, sin filtro fantasma)', async () => {
+  it('al montar de nuevo sin filtros en la URL arranca en "Todas" (sin filtro fantasma)', async () => {
     const w = await montar();
-    await segmento(w, 'Por vencer').trigger('click');
+    await vista(w, 'Por vencer').trigger('click');
     await flushPromises();
     w.unmount();
     insforgeApi.listLicenciasPage.mockClear();
@@ -207,13 +212,24 @@ describe('LicenciasView.vue — filtro de situación', () => {
     expect(insforgeApi.listLicenciasPage.mock.calls.at(-1)[0].situacion).toBe('');
   });
 
-  it('sin resultados con el filtro puesto dice "Sin resultados", no "Sin licencias todavía"', async () => {
+  it('una vista vacía sin filtros es una buena noticia, no "Sin licencias todavía"', async () => {
     const w = await montar();
     insforgeApi.listLicenciasPage.mockResolvedValue({ items: [], total: 0 });
-    await segmento(w, 'Vencidas').trigger('click');
+    await vista(w, 'Vencidas').trigger('click');
     await flushPromises();
-    expect(w.text()).toContain('Sin resultados');
+    expect(w.text()).toContain('Sin licencias vencidas');
     expect(w.text()).not.toContain('Sin licencias todavía');
+  });
+
+  it('el enlace ?empresa= aplica el chip y los conteos lo respetan', async () => {
+    const router = crearRouter();
+    router.push('/licencias?empresa=emp-1');
+    await router.isReady();
+    const w = mount(LicenciasView, { global: { plugins: [router], stubs: { LicenciaForm: true, Modal: true, ConfirmDialog: true } } });
+    await flushPromises();
+    expect(insforgeApi.listLicenciasPage.mock.calls.at(-1)[0].empresaIds).toEqual(['emp-1']);
+    expect(insforgeApi.conteosLicenciasPorSituacion.mock.calls.at(-1)[0].empresaIds).toEqual(['emp-1']);
+    expect(w.find('button[aria-label^="Filtro Empresa"]').text()).toContain('Materen');
   });
 });
 

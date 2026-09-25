@@ -25,11 +25,11 @@ const METODOS = [
   // dashboard / actividad
   'getEstadisticas', 'listPendientes', 'pendientesTickets', 'listActividad',
   // correos
-  'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados',
+  'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados', 'conteosCorreosPorVista',
   'createCorreo', 'updateCorreo',
   'softDeleteCorreo', 'asignarCuentaExistente',
   // licencias
-  'listLicencias', 'listLicenciasPage', 'listLicenciasFiltrados', 'createLicencia', 'updateLicencia', 'renovarLicencia',
+  'listLicencias', 'listLicenciasPage', 'listLicenciasFiltrados', 'conteosLicenciasPorSituacion', 'createLicencia', 'updateLicencia', 'renovarLicencia',
   'softDeleteLicencia', 'asignarLicencia', 'cerrarAsignacionLicencia', 'licenciasPorEmpleado',
   'asignarUsuario', 'liberarUsuario',
   // equipos
@@ -54,10 +54,10 @@ const METODOS = [
   'listAccesosSensibles', 'permisosDeAcceso', 'crearAccesoSensible',
   'actualizarAccesoSensible', 'eliminarAccesoSensible',
   // base de conocimiento
-  'listKbPage', 'getKbArticulo', 'listArticulosRelacionados',
+  'listKbPage', 'getKbArticulo', 'listArticulosRelacionados', 'conteosKbPorEstado',
   'crearKbArticulo', 'actualizarKbArticulo', 'softDeleteKbArticulo', 'votarKbArticulo',
   // gestión de problemas
-  'listProblemasPage', 'getProblema', 'crearProblema', 'actualizarProblema', 'softDeleteProblema',
+  'listProblemasPage', 'conteosProblemasPorVista', 'getProblema', 'crearProblema', 'actualizarProblema', 'softDeleteProblema',
   'listTicketsVinculados', 'vincularTicket', 'desvincularTicket',
   'listAccionesCorrectivas', 'crearAccionCorrectiva', 'actualizarAccionCorrectiva', 'softDeleteAccionCorrectiva',
   'getProblemaAbiertoDeTicket', 'listCategoriasRecurrentes', 'listAccionesCorrectivasVencidas', 'pendientesProblemas',

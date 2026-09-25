@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useProblemasStore } from '../../stores/problemas.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { OPCIONES_ESTADO_PROBLEMA, OPCIONES_SEVERIDAD_PROBLEMA, estadoProblemaInfo } from '../../core/dominio-problemas.js';
+import { OPCIONES_SEVERIDAD_PROBLEMA, ESTADOS_PROBLEMA_ABIERTOS, estadoProblemaInfo } from '../../core/dominio-problemas.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import ProblemaForm from './ProblemaForm.vue';
@@ -16,8 +16,9 @@ import AppColumn from '../../components/ui/AppColumn.js';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
-import AppSegmentado from '../../components/ui/AppSegmentado.vue';
-import AppSelect from '../../components/ui/AppSelect.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
@@ -30,39 +31,90 @@ const store = useProblemasStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const { esMovil } = useEsMovil();
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
-const filtroEstado = ref('');
-const filtroSeveridad = ref('');
 const mostrarForm = ref(false);
 const staffLista = ref([]);
 
 const staffPorId = computed(() => Object.fromEntries(staffLista.value.map((s) => [s.user_id, s.nombre])));
 
-// Estado como segmentado (rediseño 2026-09-23): son 4 estados del ciclo de
-// vida y se leen de un vistazo; '' = todos, mismo valor que la opción
-// "Todos los estados" del select anterior.
-const ESTADOS_SEGMENTO = [
-  ...OPCIONES_ESTADO_PROBLEMA.map((e) => ({ valor: e.valor, label: e.label })),
-  { valor: '', label: 'Todos' },
-];
+// ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
+// VISTA = la pregunta del día: ¿qué sigue abierto? (por defecto) · ¿qué se
+// cerró? · todo. La etapa del ciclo (abierto/diagnóstico/acciones) pasa a
+// ser un chip que refina "Abiertos" — en "Cerrados" no se ofrece.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  vista: { tipo: 'valor', defecto: 'abiertos' },
+  q: { tipo: 'texto' },
+  etapa: { tipo: 'lista' },
+  severidad: { tipo: 'lista' },
+  responsable: { tipo: 'lista' },
+});
+const CLAVES_FILTRO = ['q', 'etapa', 'severidad', 'responsable'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
 
-const hayFiltros = computed(() => !!(busqueda.value || filtroEstado.value || filtroSeveridad.value));
+// Cambiar a "Cerrados" poda el chip Etapa (nunca una combinación imposible).
+watch(() => filtros.vista, (vista) => {
+  if (vista === 'cerrados' && filtros.etapa.length) filtros.etapa = [];
+}, { immediate: true });
 
-const subtitulo = computed(() => {
-  const base = `${total.value} ${total.value === 1 ? 'problema' : 'problemas'}`;
-  const estado = filtroEstado.value ? ` en estado ${estadoProblemaInfo(filtroEstado.value).label.toLowerCase()}` : '';
-  return `${base}${estado} · causa raíz y acciones correctivas de incidentes recurrentes`;
+const filtrosSinVista = computed(() => ({
+  q: filtros.q, severidades: filtros.severidad, responsables: filtros.responsable,
+}));
+const filtrosServidor = computed(() => {
+  let estados = filtros.etapa;
+  if (filtros.vista === 'cerrados') estados = ['cerrado'];
+  else if (filtros.vista === 'abiertos' && !estados.length) estados = ESTADOS_PROBLEMA_ABIERTOS;
+  return { ...filtrosSinVista.value, estados };
 });
 
-watch(
-  [filtroEstado, filtroSeveridad],
-  ([estado, severidad]) => store.aplicarFiltros({ estado, severidad }),
-);
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
+  try {
+    conteos.value = await insforgeApi.conteosProblemasPorVista({ ...filtrosSinVista.value, etapas: filtros.etapa });
+  } catch {
+    // Sin conteos, las pestañas se muestran igual (sin número).
+  }
+}
+const VISTAS = computed(() => [
+  { valor: 'abiertos', label: 'Abiertos', conteo: conteos.value?.abiertos, titulo: 'Abiertos, en diagnóstico o con acciones en curso' },
+  { valor: 'cerrados', label: 'Cerrados', conteo: conteos.value?.cerrados },
+  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
+]);
+
+const DIMENSIONES = computed(() => [
+  ...(filtros.vista === 'cerrados' ? [] : [{
+    id: 'etapa', label: 'Etapa', icono: 'ti ti-progress',
+    opciones: ESTADOS_PROBLEMA_ABIERTOS.map((e) => ({ valor: e, label: estadoProblemaInfo(e).label })),
+  }]),
+  { id: 'severidad', label: 'Severidad', icono: 'ti ti-flag', opciones: [...OPCIONES_SEVERIDAD_PROBLEMA].reverse() },
+  {
+    id: 'responsable', label: 'Responsable', icono: 'ti ti-user',
+    opciones: [{ valor: 'sin', label: 'Sin responsable' }, ...staffLista.value.map((s) => ({ valor: s.user_id, label: s.nombre }))],
+  },
+]);
+const chips = computed({
+  get: () => Object.fromEntries(DIMENSIONES.value.map((d) => [d.id, filtros[d.id]])),
+  set: (v) => { for (const k of Object.keys(v)) filtros[k] = v[k]; },
+});
+
+const FRASE_VISTA = { abiertos: ' abiertos', cerrados: ' cerrados', todos: '' };
+const subtitulo = computed(() => {
+  const n = total.value;
+  const base = `${n} ${n === 1 ? 'problema' : 'problemas'}${FRASE_VISTA[filtros.vista] ?? ''}`;
+  return `${base}${hayFiltros.value ? ', con los filtros aplicados' : ''} · causa raíz y acciones correctivas de incidentes recurrentes`;
+});
+
+// "Abiertos: 0" sin filtros es una buena noticia, no "Sin problemas registrados".
+const vistaVacia = computed(() => !hayFiltros.value && filtros.vista !== 'todos' && conteos.value?.todos > 0);
+
+watch(filtrosServidor, (f) => { store.aplicarFiltros(f).catch(() => {}); }, { deep: true });
+watch([filtrosSinVista, () => filtros.etapa], refrescarConteos, { deep: true });
 
 function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
   busqueda.value = '';
-  filtroEstado.value = '';
-  filtroSeveridad.value = '';
 }
 
 function verProblema(problema) {
@@ -83,8 +135,9 @@ function onFormCerrado(creado) {
 
 onMounted(async () => {
   store.resetearFiltros();
+  refrescarConteos();
   try {
-    const [, staff] = await Promise.all([store.cargar(), insforgeApi.nombresStaff()]);
+    const [, staff] = await Promise.all([store.aplicarFiltros(filtrosServidor.value), insforgeApi.nombresStaff()]);
     staffLista.value = staff;
   } catch {
     showToast(error.value || 'Error al cargar los problemas', 'error');
@@ -100,14 +153,11 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <AppBarraFiltros>
+    <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
+    <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de problemas" />
+    <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar problemas" placeholder="Buscar por título" />
-      <AppSegmentado v-model="filtroEstado" :opciones="ESTADOS_SEGMENTO" label="Filtrar por estado" />
-      <AppSelect v-model="filtroSeveridad" label="Filtrar por severidad">
-        <option value="">Todas las severidades</option>
-        <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
-      </AppSelect>
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 
@@ -121,11 +171,11 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && total === 0"
         icono="ti ti-alert-hexagon"
-        :titulo="hayFiltros ? 'Sin resultados' : 'Sin problemas registrados'"
-        :mensaje="hayFiltros ? 'No hay problemas con los filtros aplicados.' : 'Registre el primer problema con su causa raíz y sus acciones correctivas.'"
+        :titulo="hayFiltros ? 'Sin resultados' : vistaVacia ? (filtros.vista === 'abiertos' ? 'Nada abierto' : 'Sin problemas cerrados') : 'Sin problemas registrados'"
+        :mensaje="hayFiltros ? 'No hay problemas con los filtros aplicados.' : vistaVacia ? 'Las demás pestañas muestran el resto de los problemas.' : 'Registre el primer problema con su causa raíz y sus acciones correctivas.'"
       >
         <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
-        <AppButton v-else variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar problema" @click="mostrarForm = true" />
+        <AppButton v-else-if="!vistaVacia" variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar problema" @click="mostrarForm = true" />
       </AppVacio>
 
       <template v-else>

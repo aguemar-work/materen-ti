@@ -21,12 +21,18 @@ const SELECT_DETALLE = `${SELECT_RESUMEN}, solucion`;
 const ORDEN_COLUMNAS = ['titulo', 'estado', 'created_at', 'updated_at'];
 const ORDEN_DEFECTO = { columna: 'updated_at', ascending: false };
 
-async function queryKb({ q = '', categoriaId = '', estado = '', orden } = {}, { conteo = false } = {}) {
+// categoriaIds / autorIds: chips de los filtros V2 (2026-09-25).
+async function queryKb(
+  { q = '', categoriaId = '', categoriaIds = [], autorIds = [], estado = '', orden } = {},
+  { conteo = false, soloConteo = false } = {},
+) {
   let query = getClient().database
     .from('kb_articulos')
-    .select(SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined)
+    .select(soloConteo ? 'id' : SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
   if (categoriaId) query = query.eq('categoria_id', categoriaId);
+  if (categoriaIds.length) query = query.in('categoria_id', categoriaIds);
+  if (autorIds.length) query = query.in('created_by', autorIds);
   if (estado) query = query.eq('estado', estado);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
@@ -43,6 +49,19 @@ export const kbApi = {
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapKbResumen), total: count ?? 0 };
+  },
+
+  // Conteo de cada vista (estado) con la misma búsqueda y chips. RLS decide
+  // qué borradores ajenos se cuentan, igual que en el listado.
+  async conteosKbPorEstado(filtros = {}) {
+    const estados = ['', 'publicado', 'en_revision', 'borrador', 'obsoleto'];
+    const resultados = await Promise.all(estados.map(async (estado) => {
+      const { qb } = await queryKb({ ...filtros, estado }, { conteo: true, soloConteo: true });
+      const { count, error } = await qb.range(0, 0);
+      if (error) throw error;
+      return [estado || 'todos', count ?? 0];
+    }));
+    return Object.fromEntries(resultados);
   },
 
   async getKbArticulo(id) {

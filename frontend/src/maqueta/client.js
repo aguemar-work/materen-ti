@@ -139,14 +139,29 @@ function listaDeTextoIn(valor) {
     .filter(Boolean);
 }
 
-function aplicarFiltro(filas, { tipo, col, valor, op, terminos }) {
-  if (tipo === 'or') {
-    return filas.filter((f) => terminos.some((t) => {
-      const [c, operador] = t.split('.');
-      if (operador === 'is') return f[c] == null;
-      return listaDeTextoIn(t.slice(c.length + 4)).includes(f[c]);
-    }));
+// Un término de or()/and() de PostgREST → predicado, o null si no se entiende.
+function compilarTermino(texto) {
+  const y = /^and\((.*)\)$/s.exec(texto);
+  if (y) {
+    const partes = partirNivelSuperior(y[1]).map(compilarTermino);
+    return partes.every(Boolean) ? (f) => partes.every((p) => p(f)) : null;
   }
+  const m = /^([a-z_]+)\.(not\.)?(is|eq|neq|in|gte|lte)\.(.*)$/s.exec(texto);
+  if (!m) return null;
+  const [, col, neg, op, crudo] = m;
+  const literal = (v) => (v === 'null' ? null : v === 'true' ? true : v === 'false' ? false : v);
+  let pred;
+  if (op === 'is') pred = (f) => (literal(crudo) === null ? f[col] == null : f[col] === literal(crudo));
+  else if (op === 'eq') pred = (f) => String(f[col]) === crudo;
+  else if (op === 'neq') pred = (f) => String(f[col]) !== crudo;
+  else if (op === 'in') pred = (f) => listaDeTextoIn(crudo).includes(f[col]);
+  else if (op === 'gte') pred = (f) => f[col] != null && String(f[col]) >= crudo;
+  else pred = (f) => f[col] != null && String(f[col]) <= crudo;
+  return neg ? (f) => !pred(f) : pred;
+}
+
+function aplicarFiltro(filas, { tipo, col, valor, op, terminos }) {
+  if (tipo === 'or') return filas.filter((f) => terminos.some((t) => t(f)));
   if (!tieneColumna(filas, col)) return filas;
   switch (tipo) {
     case 'eq': return filas.filter((f) => f[col] === valor);
@@ -200,14 +215,13 @@ class ConsultaFalsa {
   lte(col, valor) { this.filtros.push({ tipo: 'lte', col, valor }); return this; }
   gt(col, valor) { this.filtros.push({ tipo: 'gt', col, valor }); return this; }
   lt(col, valor) { this.filtros.push({ tipo: 'lt', col, valor }); return this; }
-  // or() mínimo: solo términos `col.is.null` y `col.in.(a,b)` (el chip
-  // "Asignado a" de Tickets con "Sin asignar" + técnicos). Si aparece
-  // cualquier otro término (la búsqueda por ilike), se ignora entero como
+  // or() de los chips V2: términos `col.is.null|true|false`, `col.not.is.*`,
+  // `col.eq.x`, `col.neq.x`, `col.in.(a,b)`, `col.gte/lte.x` y `and(...)`.
+  // Si aparece cualquier otro (la búsqueda por ilike), se ignora entero como
   // antes: la maqueta no filtra texto.
   or(expr) {
-    const terminos = String(expr || '').match(/[a-z_]+\.(?:is\.null|in\.\([^)]*\))/g) || [];
-    const reconstruido = terminos.join(',');
-    if (!terminos.length || reconstruido !== String(expr)) return this;
+    const terminos = partirNivelSuperior(String(expr || '')).map(compilarTermino);
+    if (!terminos.length || terminos.some((t) => !t)) return this;
     this.filtros.push({ tipo: 'or', terminos });
     return this;
   }

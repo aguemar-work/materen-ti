@@ -152,9 +152,12 @@ Tags: un estado del dominio va con `BadgeEstado`; cualquier otro tag, con
 `rolDeTag()`). No se escriben tags a mano con clases.
 
 ### 3.2.1 Filtros V2: vistas + chips + URL (2026-09-25)
-Modelo de filtrado de los listados (**Empleados**, **Equipos** y
-**Tickets**; el resto de los listados sigue con segmentados/selects hasta
-migrarse):
+Modelo de filtrado de **todos** los listados (cerrado el 2026-09-25: no
+queda ningún listado con segmentados o selects de filtro). Excepciones
+deliberadas, que no son listados: el paso de revisión de
+`ImportarEquiposView` y la tabla de respuestas de `ReporteSatisfaccionView`
+(un solo interruptor dentro de un reporte). Configuración (Empresas,
+Plataformas) solo tiene buscador: no hay nada que filtrar.
 
 ```
  Activos 9   Inactivos 3   Suspendidos 0   Todos 12          ← AppVistas
@@ -192,6 +195,24 @@ migrarse):
   al listado sin filtros en la URL (menú, migas, atrás desde el detalle) se
   restaura la última combinación de la sesión (sessionStorage). Hoy solo
   Tickets, donde se entra y sale del detalle todo el día.
+
+Vistas y chips de cada módulo:
+
+| Módulo | Vistas (con conteo) | Chips |
+| --- | --- | --- |
+| Empleados | Activos (defecto) · Inactivos · Suspendidos · Todos | Empresa, Área/Obra, Ubicación |
+| Equipos | Todos · Libres · Con personas · En ubicaciones · En reparación · Fuera de servicio | Tipo, Empresa |
+| Tickets | ver abajo | ver abajo |
+| Licencias | Todas · Por vencer · Vencidas · Perpetuas | Empresa, Acceso (correo / clave / sin credencial) |
+| Correos | Todos · Compartidos · Reutilizables · Por rotar | Plataforma |
+| Base de conocimiento | Todos · Publicados · En revisión · Borradores · Obsoletos | Categoría, Autor |
+| Problemas | Abiertos (defecto) · Cerrados · Todos | Etapa (no en Cerrados), Severidad, Responsable |
+| Actividad | Todo · Contraseñas · Entregas · Denegados | Quién, Plataforma, Fecha (rango) |
+| Accesos sensibles | Todas · Equipos · Correos · Otros | Permiso |
+
+Actividad y Accesos sensibles filtran en el cliente (lista completa ya
+cargada); el resto, en el servidor, con un `conteos…` por módulo en su
+`api/domains/*`.
 
 **Tickets** (`modules/tickets/filtrosTickets.js`): vistas *Nuevos* (vigentes
 sin técnico, por defecto) · *Mis tickets* (vigentes míos) · *Pendientes*
@@ -251,7 +272,6 @@ no reintroducirlo.
   <AppBarraFiltros class="pt-3">
     AppBuscador · AppFiltros (chips) · [Limpiar] · [SelectorVista ml-auto]
   </AppBarraFiltros>
-  (listados aún sin migrar: AppBuscador · AppSegmentado · AppSelect(s) · [Limpiar])
   <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">   ← contenedor de contenido
     error → .notif--danger · vacío → AppVacio (pagina)
     <AppMarcoTabla>

@@ -20,13 +20,28 @@ const SELECT_DETALLE = `${SELECT_RESUMEN}, descripcion, causa_raiz, created_by`;
 const ORDEN_COLUMNAS = ['titulo', 'severidad', 'estado', 'created_at', 'updated_at'];
 const ORDEN_DEFECTO = { columna: 'updated_at', ascending: false };
 
-async function queryProblemas({ q = '', estado = '', severidad = '', orden } = {}, { conteo = false } = {}) {
+// Filtros V2 (2026-09-25): `estados` (vista ∩ chip Etapa), `severidades` y
+// `responsables` (acepta 'sin' = sin responsable) como listas; O dentro de
+// cada lista, Y entre listas. `estado`/`severidad` escalares se conservan.
+async function queryProblemas(
+  { q = '', estado = '', severidad = '', estados = [], severidades = [], responsables = [], orden } = {},
+  { conteo = false, soloConteo = false } = {},
+) {
   let query = getClient().database
     .from('problemas')
-    .select(SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined)
+    .select(soloConteo ? 'id' : SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
   if (estado) query = query.eq('estado', estado);
   if (severidad) query = query.eq('severidad', severidad);
+  if (estados.length) query = query.in('estado', estados);
+  if (severidades.length) query = query.in('severidad', severidades);
+  if (responsables.length) {
+    const ids = responsables.filter((x) => x && x !== 'sin');
+    const sin = responsables.includes('sin');
+    if (sin && ids.length) query = query.or(`responsable_id.is.null,responsable_id.in.(${ids.join(',')})`);
+    else if (sin) query = query.is('responsable_id', null);
+    else query = query.in('responsable_id', ids);
+  }
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) query = query.ilike('titulo', `%${qSafe}%`);
   const { columna, ascending } = ordenValido(orden, ORDEN_COLUMNAS, ORDEN_DEFECTO);
@@ -46,6 +61,23 @@ export const problemasApi = {
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapProblemaResumen), total: count ?? 0 };
+  },
+
+  // Conteo de las 3 vistas con la misma búsqueda y chips (Etapa solo aplica
+  // a "Abiertos" y "Todos": en "Cerrados" no hay etapas que refinar).
+  async conteosProblemasPorVista({ etapas = [], ...filtros } = {}) {
+    const vistas = [
+      ['abiertos', etapas.length ? etapas : ESTADOS_PROBLEMA_ABIERTOS],
+      ['cerrados', ['cerrado']],
+      ['todos', etapas],
+    ];
+    const resultados = await Promise.all(vistas.map(async ([clave, estados]) => {
+      const { qb } = await queryProblemas({ ...filtros, estados }, { conteo: true, soloConteo: true });
+      const { count, error } = await qb.range(0, 0);
+      if (error) throw error;
+      return [clave, count ?? 0];
+    }));
+    return Object.fromEntries(resultados);
   },
 
   async getProblema(id) {

@@ -31,6 +31,7 @@ vi.mock('../../src/api/insforge.js', () => ({
     buscarPorDni: vi.fn(),
     getEmpleado: vi.fn(),
     listCorreosPage: vi.fn(),
+    conteosCorreosPorVista: vi.fn().mockResolvedValue({ todos: 2, compartida: 1, reutilizable: 1, rotar: 1 }),
     updateCorreo: vi.fn(),
     listEquipos: vi.fn(),
     asignarEquipo: vi.fn(),
@@ -201,10 +202,10 @@ describe('CorreosView — acción y filtro de rotación', () => {
     expect(form.props('correo')).toMatchObject({ id: 'c12' });
   });
 
-  it('el segmento "Requieren rotación" recarga desde el servidor con soloRotacion=true', async () => {
+  it('la vista "Por rotar" recarga desde el servidor con soloRotacion=true', async () => {
     await montar(CorreosView, { url: '/correos', stubs: { CorreoForm: true, ConfirmDialog: true } });
-    const grupo = document.querySelector('[role="group"][aria-label="Filtrar por rotación de contraseña"]');
-    [...grupo.querySelectorAll('button')].find((b) => b.textContent.includes('Requieren rotación')).click();
+    const grupo = document.querySelector('[role="group"][aria-label="Vista de correos"]');
+    [...grupo.querySelectorAll('button')].find((b) => b.textContent.includes('Por rotar')).click();
     await flushPromises();
     expect(insforgeApi.listCorreosPage.mock.calls.at(-1)[0]).toMatchObject({ soloRotacion: true, pagina: 1 });
   });

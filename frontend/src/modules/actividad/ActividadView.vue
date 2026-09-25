@@ -2,7 +2,7 @@
 // Auditoría de accesos a contraseñas — solo visible para el JEFE.
 // Los registros los escribe la edge function; nadie puede crearlos
 // ni borrarlos desde el cliente.
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
@@ -11,7 +11,9 @@ import { usePaginacion } from '../../composables/usePaginacion.js';
 import { rolDeTag } from '../../core/tagRol.js';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppButton from '../../components/ui/AppButton.vue';
-import AppSelect from '../../components/ui/AppSelect.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
@@ -19,7 +21,6 @@ import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 
 const registros = ref([]);
 const cargando = ref(true);
-const filtroAccion = ref('');
 
 const ACCIONES = {
   ver:             { label: 'Vio la contraseña',   icon: 'ti ti-eye',              clase: 'badge--info' },
@@ -30,17 +31,86 @@ const ACCIONES = {
   acceso_denegado: { label: 'Acceso denegado',     icon: 'ti ti-shield-x',        clase: 'badge--danger' },
 };
 
-const listaFiltrada = computed(() =>
-  filtroAccion.value
-    ? registros.value.filter((r) => r.accion === filtroAccion.value)
-    : registros.value
-);
+// ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
+// Filtran en el cliente: la vista trae los últimos 200 registros de una vez.
+// VISTA = qué tipo de movimiento (las preguntas del JEFE: ¿quién vio o copió
+// contraseñas?, ¿qué entregas salieron?, ¿hubo accesos denegados?); quién,
+// plataforma y fecha son chips.
+const VISTAS_ACCION = {
+  todo: null,
+  contrasenas: ['ver', 'copiar'],
+  entregas: ['enviar', 'entrega_creada', 'entrega_abierta'],
+  denegados: ['acceso_denegado'],
+};
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  vista: { tipo: 'valor', defecto: 'todo' },
+  quien: { tipo: 'lista' },
+  plataforma: { tipo: 'lista' },
+  desde: { tipo: 'texto' },
+  hasta: { tipo: 'texto' },
+});
+const CLAVES_FILTRO = ['quien', 'plataforma', 'desde', 'hasta'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
+// El empleado que abre una entrega no tiene sesión: su "quién" es este valor.
+const SIN_SESION = 'enlace';
+
+function fechaLocal(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function pasaChips(r) {
+  if (filtros.quien.length && !filtros.quien.includes(r.user_email || SIN_SESION)) return false;
+  if (filtros.plataforma.length && !filtros.plataforma.includes(r.plataforma || '')) return false;
+  const dia = fechaLocal(r.created_at);
+  if (filtros.desde && dia < filtros.desde) return false;
+  if (filtros.hasta && dia > filtros.hasta) return false;
+  return true;
+}
+const filtradosPorChips = computed(() => registros.value.filter(pasaChips));
+const deVista = (vista, lista) => (VISTAS_ACCION[vista] ? lista.filter((r) => VISTAS_ACCION[vista].includes(r.accion)) : lista);
+const listaFiltrada = computed(() => deVista(filtros.vista, filtradosPorChips.value));
+
+const VISTAS = computed(() => [
+  { valor: 'todo', label: 'Todo', conteo: cargando.value ? null : filtradosPorChips.value.length },
+  { valor: 'contrasenas', label: 'Contraseñas', titulo: 'Vio o copió una contraseña', conteo: cargando.value ? null : deVista('contrasenas', filtradosPorChips.value).length },
+  { valor: 'entregas', label: 'Entregas', titulo: 'Entregas creadas y abiertas', conteo: cargando.value ? null : deVista('entregas', filtradosPorChips.value).length },
+  { valor: 'denegados', label: 'Denegados', titulo: 'Intentos sin permiso', conteo: cargando.value ? null : deVista('denegados', filtradosPorChips.value).length },
+]);
+
+// Opciones de los chips: salen de los propios registros (quién aparece de
+// verdad en la auditoría), más frecuentes primero.
+function opcionesPorFrecuencia(valorDe, etiquetaDe) {
+  const conteo = new Map();
+  for (const r of registros.value) {
+    const v = valorDe(r);
+    if (v) conteo.set(v, (conteo.get(v) || 0) + 1);
+  }
+  return [...conteo.entries()].sort((a, b) => b[1] - a[1]).map(([valor]) => ({ valor, label: etiquetaDe(valor) }));
+}
+const DIMENSIONES = computed(() => [
+  {
+    id: 'quien', label: 'Quién', icono: 'ti ti-user',
+    opciones: opcionesPorFrecuencia((r) => r.user_email || SIN_SESION, (v) => (v === SIN_SESION ? 'Empleado, vía enlace' : v)),
+  },
+  { id: 'plataforma', label: 'Plataforma', icono: 'ti ti-apps', opciones: opcionesPorFrecuencia((r) => r.plataforma, (v) => v) },
+  { id: 'creado', label: 'Fecha', icono: 'ti ti-calendar', tipo: 'rango' },
+]);
+const chips = computed({
+  get: () => ({ quien: filtros.quien, plataforma: filtros.plataforma, creado: [filtros.desde, filtros.hasta] }),
+  set: (v) => {
+    filtros.quien = v.quien;
+    filtros.plataforma = v.plataforma;
+    [filtros.desde, filtros.hasta] = v.creado;
+  },
+});
 
 // Rediseño 2026-09-23: la auditoría se lee como una línea de tiempo
 // (más reciente primero, agrupada por día), no como una tabla ordenable —
 // la pregunta del JEFE es "qué pasó y cuándo", y el orden cronológico es
 // el único que responde eso.
 const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaFiltrada);
+// Otro filtro, otra lista: vuelve a la primera página.
+watch(() => JSON.stringify(filtros), () => { paginaActual.value = 1; });
 
 function infoAccion(accion) {
   return ACCIONES[accion] || { label: accion, icon: 'ti ti-activity', clase: '' };
@@ -60,22 +130,6 @@ function exportar() {
     ]),
   );
 }
-
-// Opciones del filtro con su conteo: el JEFE ve de un vistazo si hubo
-// accesos denegados sin tener que filtrar para descubrirlo.
-const OPCIONES_ACCION = [
-  { valor: 'ver', label: 'Vio contraseña' },
-  { valor: 'copiar', label: 'Copió contraseña' },
-  { valor: 'enviar', label: 'Creó entrega' },
-  { valor: 'entrega_abierta', label: 'Entrega abierta' },
-  { valor: 'acceso_denegado', label: 'Acceso denegado' },
-];
-const conteoPorAccion = computed(() => {
-  const c = {};
-  for (const r of registros.value) c[r.accion] = (c[r.accion] || 0) + 1;
-  return c;
-});
-const denegados = computed(() => conteoPorAccion.value.acceso_denegado || 0);
 
 const CIRCULO = {
   info: 'bg-primary-50 text-primary-600',
@@ -124,8 +178,7 @@ const dias = computed(() => {
 const subtitulo = computed(() => {
   const n = listaFiltrada.value.length;
   const base = `${n} ${n === 1 ? 'movimiento' : 'movimientos'}`;
-  const accion = OPCIONES_ACCION.find((o) => o.valor === filtroAccion.value);
-  return `${base}${accion ? ` · ${accion.label.toLowerCase()}` : ''} · quién vio, copió o entregó contraseñas`;
+  return `${base}${hayFiltros.value ? ', con los filtros aplicados' : ''} · quién vio, copió o entregó contraseñas`;
 });
 
 onMounted(async () => {
@@ -155,24 +208,11 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <AppBarraFiltros>
-      <AppSelect v-model="filtroAccion" label="Filtrar por acción">
-        <option value="">Todas las acciones</option>
-        <option v-for="o in OPCIONES_ACCION" :key="o.valor" :value="o.valor">
-          {{ o.label }}{{ conteoPorAccion[o.valor] ? ` (${conteoPorAccion[o.valor]})` : '' }}
-        </option>
-      </AppSelect>
-      <AppButton
-        v-if="denegados && filtroAccion !== 'acceso_denegado'"
-        size="sm"
-        variant="text"
-        severity="danger"
-        icon="ti ti-shield-x"
-        :label="`${denegados} ${denegados === 1 ? 'acceso denegado' : 'accesos denegados'}`"
-        @click="filtroAccion = 'acceso_denegado'"
-      />
-      <AppButton v-if="filtroAccion" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="filtroAccion = ''" />
+    <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
+    <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de actividad" />
+    <AppBarraFiltros class="pt-3">
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiar(CLAVES_FILTRO)" />
       <span class="ml-auto hidden text-xs text-gray-500 sm:inline">Últimos 200 registros</span>
     </AppBarraFiltros>
 
@@ -189,10 +229,10 @@ onMounted(async () => {
       <AppVacio
         v-else-if="totalItems === 0"
         icono="ti ti-activity"
-        :titulo="filtroAccion ? 'Sin resultados' : 'Sin actividad registrada'"
-        :mensaje="filtroAccion ? 'No hay movimientos de ese tipo en los últimos registros.' : 'Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña.'"
+        :titulo="hayFiltros ? 'Sin resultados' : filtros.vista === 'denegados' ? 'Sin accesos denegados' : filtros.vista !== 'todo' ? 'Sin movimientos de este tipo' : 'Sin actividad registrada'"
+        :mensaje="hayFiltros ? 'No hay movimientos con los filtros aplicados.' : filtros.vista !== 'todo' ? 'Nada de este tipo en los últimos 200 registros.' : 'Aquí aparecerá cada vez que alguien vea, copie o envíe una contraseña.'"
       >
-        <AppButton v-if="filtroAccion" variant="outline" severity="secondary" icon="ti ti-x" label="Ver todas las acciones" @click="filtroAccion = ''" />
+        <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiar(CLAVES_FILTRO)" />
       </AppVacio>
 
       <AppMarcoTabla v-else>
