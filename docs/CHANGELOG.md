@@ -23,6 +23,32 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**"Limpiar filtros" en Correos, Licencias y Empleados**) —
+  la propuesta UX/UI V2 (canvas de diseño de la sesión anterior) diagnosticó
+  "ocho maneras distintas de filtrar" entre módulos; al revisar el código
+  real antes de tocar nada, la brecha era mucho más chica de lo que ese
+  diagnóstico sugería: los 8 listados principales ya comparten exactamente
+  el mismo contenedor de barra de filtros (`flex flex-wrap items-center
+  gap-3 px-4 pb-4 sm:px-6`, comentario `<!-- Barra de filtros -->`) y el
+  mismo criterio `AppBuscador` + `AppSegmentado` (2-5 opciones) o `AppSelect`
+  (más opciones) — ver el propio comentario de cabecera de `AppSegmentado`.
+  La inconsistencia real, encontrada recién al leer el código de los 8: KB,
+  Problemas y Equipos ya tenían un botón "Limpiar filtros" (`hayFiltros` +
+  `limpiarFiltros()`) tanto en la barra como en el estado vacío; Correos,
+  Licencias y Empleados no. Se agregó el mismo patrón exacto a los 3 que
+  faltaban — ninguna clase ni componente nuevo. De paso, `EmpleadosView.vue`
+  corrige un `hayFiltros` implícito con un bug latente: la condición vieja
+  (`busqueda || filtroEstado`) contaba el estado por defecto (`'Activo'`,
+  no vacío) como "filtro aplicado", así que el estado vacío casi nunca
+  mostraba "Sin empleados todavía"; el nuevo `hayFiltros` excluye
+  `filtroEstado === 'Activo'` a propósito, y `limpiarFiltros()` vuelve a ese
+  default (no a "Todos"). Queda fuera de esta pasada, sin urgencia (pantallas
+  de JEFE, bajo tráfico): `ActividadView`/`AccesosSensiblesView` podrían
+  sumar el mismo botón si se retoma. Tickets sigue con su propia barra
+  (bandeja + sub-estado + técnico + fecha), a propósito fuera de este
+  patrón — excepción ya documentada en `frontend/AGENTS.md`. Verificado:
+  `npm run lint` (0 errores), `npm test` (475 passed, 0 failed),
+  `npx vite build` sin error, `scripts/patrones-ui.mjs` (0 fallas).
 - **2026-09-25** (**Ficha de empleado: "Actividad reciente" unificada**) —
   diagnóstico UX (propuesta V2, ver el canvas de diseño de esa sesión):
   saber "todo lo que tiene esta persona, en orden" exigía leer Cuentas,

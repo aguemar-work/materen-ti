@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouter, useRoute } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
@@ -96,6 +96,17 @@ const empleadoEditar = ref(null);
 // la búsqueda con debounce, los selects al instante.
 watch(filtroEstado, (estado) => store.aplicarFiltros({ estado }));
 watch(filtroUbicacion, (ubicacionId) => store.aplicarFiltros({ ubicacionId }));
+
+// 'Activo' es el estado por defecto de esta vista (no un filtro que el
+// usuario haya elegido), así que no cuenta para "hay filtros aplicados" —
+// mismo patrón de "Limpiar filtros" que ya usan KB/Problemas/Equipos, acá
+// faltaba (diagnóstico UX 2026-09-25, propuesta V2).
+const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroUbicacion.value || filtroEstado.value !== 'Activo');
+function limpiarFiltros() {
+  busqueda.value = '';
+  filtroUbicacion.value = '';
+  filtroEstado.value = 'Activo';
+}
 
 
 // Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
@@ -265,6 +276,7 @@ onMounted(async () => {
         <option value="">Todas las ubicaciones</option>
         <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
       </AppSelect>
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
       <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio ml-auto" />
     </div>
 
@@ -278,16 +290,24 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && total === 0"
         icono="ti ti-users"
-        :titulo="busqueda || filtroEstado ? 'Sin resultados' : 'Sin empleados todavía'"
-        :mensaje="busqueda || filtroEstado ? 'No hay empleados con los filtros aplicados.' : 'Agregue el primer empleado al inventario para asignarle accesos y equipos.'"
+        :titulo="hayFiltros ? 'Sin resultados' : 'Sin empleados todavía'"
+        :mensaje="hayFiltros ? 'No hay empleados con los filtros aplicados.' : 'Agregue el primer empleado al inventario para asignarle accesos y equipos.'"
       >
         <AppButton
-          v-if="!busqueda && !filtroEstado"
+          v-if="!hayFiltros"
           variant="outline"
           severity="secondary"
           icon="ti ti-plus"
           label="Agregar empleado"
           @click="abrirNuevo"
+        />
+        <AppButton
+          v-if="hayFiltros"
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-x"
+          label="Limpiar filtros"
+          @click="limpiarFiltros"
         />
       </AppVacio>
 

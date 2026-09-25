@@ -63,6 +63,13 @@ const ROTACION_SEGMENTO = [
 const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroTipo.value || filtroRotacion.value);
 // Vacío por el filtro de rotación solo: es una buena noticia, no "sin resultados".
 const nadaPorRotar = computed(() => filtroRotacion.value && !busqueda.value.trim() && !filtroTipo.value);
+// Mismo patrón de "Limpiar filtros" que ya usan KB/Problemas/Equipos — acá
+// faltaba (diagnóstico UX 2026-09-25, propuesta V2).
+function limpiarFiltros() {
+  busqueda.value = '';
+  filtroTipo.value = '';
+  filtroRotacion.value = false;
+}
 
 // Filtro de tipo como segmentado (rediseño 2026-09-22): solo hay dos tipos
 // y "todos" — verlos a la vista ahorra abrir un select. '' = todos.
@@ -228,6 +235,7 @@ onMounted(async () => {
       <AppBuscador v-model="busqueda" label="Buscar correos" placeholder="Buscar por correo o plataforma" />
       <AppSegmentado v-model="filtroTipo" :opciones="TIPOS_SEGMENTO" label="Filtrar por tipo" />
       <AppSegmentado v-model="filtroRotacion" :opciones="ROTACION_SEGMENTO" label="Filtrar por rotación de contraseña" />
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </div>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
@@ -252,6 +260,14 @@ onMounted(async () => {
           icon="ti ti-plus"
           label="Registrar correo"
           @click="abrirNuevo"
+        />
+        <AppButton
+          v-if="hayFiltros"
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-x"
+          label="Limpiar filtros"
+          @click="limpiarFiltros"
         />
       </AppVacio>
 

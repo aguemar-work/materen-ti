@@ -70,6 +70,12 @@ const FRASE_SITUACION = {
 };
 
 const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroSituacion.value);
+// Mismo patrón de "Limpiar filtros" que ya usan KB/Problemas/Equipos — acá
+// faltaba (diagnóstico UX 2026-09-25, propuesta V2).
+function limpiarFiltros() {
+  busqueda.value = '';
+  filtroSituacion.value = '';
+}
 
 const { esMovil } = useEsMovil();
 
@@ -429,6 +435,7 @@ onMounted(async () => {
     <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
       <AppBuscador v-model="busqueda" label="Buscar licencias" placeholder="Buscar por software, empresa o correo" />
       <AppSegmentado v-model="filtroSituacion" :opciones="SITUACIONES_SEGMENTO" label="Filtrar por situación" />
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </div>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
@@ -445,6 +452,7 @@ onMounted(async () => {
         :mensaje="hayFiltros ? 'No hay licencias con los filtros aplicados.' : 'Registre la primera licencia para controlar asientos, accesos y vencimientos del software que se paga.'"
       >
         <AppButton v-if="!hayFiltros" variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar licencia" @click="abrirNueva" />
+        <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
       </AppVacio>
 
       <template v-else>
