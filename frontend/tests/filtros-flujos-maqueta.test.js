@@ -79,7 +79,7 @@ describe('Dashboard — "Posible problema recurrente" lleva a Tickets filtrado',
       { categoriasRecurrentes: [{ categoria_id: 'red', categoria_nombre: 'Redes', tickets: [{}, {}, {}] }] },
     );
     expect(item.categoriaLabel).toBe('Posible problema recurrente');
-    expect(item.destino).toBe('/tickets?categoria=red');
+    expect(item.destino).toBe('/tickets?vista=todos&categoria=red');
   });
 });
 

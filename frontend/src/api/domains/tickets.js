@@ -5,7 +5,7 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { trimText } from '../../core/formatters.js';
-import { ESTADO_FILTRO_VIGENTES } from '../../core/dominio-tickets.js';
+import { ESTADO_FILTRO_VIGENTES, SIN_ASIGNAR } from '../../core/dominio-tickets.js';
 
 // Columnas de "tickets" ordenables desde la tabla (excluye solicitante y
 // asignado_a: el primero viene de un join y el segundo es un UUID sin
@@ -245,19 +245,18 @@ const SELECT_RESUMEN = `
 async function queryTickets(
   {
     q = '', estado = '', sinAsignar = false, sinVincular = false, asignadoA = '', orden,
-    // fechaDesde/fechaHasta: único filtro secundario que queda, eje
-    // INDEPENDIENTE de la Vista activa (ago 2026, cuarta pasada retiró
-    // Prioridad/Nivel/Tipo/Categoría como filtros de este listado — ver
-    // GUIA-UX-UI.md). Deliberadamente NO hay un filtro de "Estado" acá: eso
-    // fue justo el origen del bug de sincronización que el modelo de Vistas
-    // vino a cerrar en ago 2026 (2 fuentes de verdad para el mismo dato) —
-    // Estado sigue siendo SOLO lo que la Vista activa decide.
+    // `estado`/`sinAsignar`/`sinVincular`/`asignadoA`/`categoriaId`: forma
+    // escalar previa a los filtros V2; la conservan otros llamadores
+    // (ProblemaDetalleView, tests de maqueta). El listado usa las listas.
     fechaDesde = '', fechaHasta = '',
-    // categoriaId (2026-09-24): NO vuelve el selector de Categoría que la
-    // cuarta pasada retiró — solo llega por deep-link (/tickets?categoria=,
-    // desde el pendiente "Posible problema recurrente" del Dashboard) y se
-    // muestra como un chip quitable en TicketsView.
     categoriaId = '',
+    // Filtros V2 (2026-09-25): listas de los chips de TicketsView. Dentro de
+    // una lista es O (`.in()`), entre listas Y. La vista y el chip de Estado
+    // ya llegan intersectados desde la vista (modules/tickets/filtrosTickets.js).
+    // `asignados` acepta SIN_ASIGNAR junto a ids de staff; `vinculado` es
+    // 'si' | 'no' | '' (sin filtro).
+    estados = [], asignados = [], prioridades = [], categoriaIds = [], tipos = [], niveles = [],
+    vinculado = '',
   } = {},
   // soloConteo: para contarTickets() — misma cláusula WHERE, pero sin traer
   // los embeds de empleados/categorías que la fila necesita y el número no.
@@ -280,6 +279,24 @@ async function queryTickets(
   else if (asignadoA) query = query.eq('asignado_a', asignadoA);
   if (sinVincular) query = query.eq('vinculado', false);
   if (categoriaId) query = query.eq('categoria_id', categoriaId);
+  if (estados.length) {
+    // 'resuelto' es la fachada de los 2 valores reales (ver arriba).
+    const reales = estados.flatMap((e) => (e === 'resuelto' ? ['resuelto', 'cerrado'] : [e]));
+    query = query.in('estado', reales);
+  }
+  if (asignados.length) {
+    const sinAsignar = asignados.includes(SIN_ASIGNAR);
+    const ids = asignados.filter((a) => a && a !== SIN_ASIGNAR);
+    if (sinAsignar && ids.length) query = query.or(`asignado_a.is.null,asignado_a.in.(${ids.join(',')})`);
+    else if (sinAsignar) query = query.is('asignado_a', null);
+    else if (ids.length) query = query.in('asignado_a', ids);
+  }
+  if (prioridades.length) query = query.in('prioridad', prioridades);
+  if (categoriaIds.length) query = query.in('categoria_id', categoriaIds);
+  if (tipos.length) query = query.in('tipo', tipos);
+  if (niveles.length) query = query.in('nivel_atencion', niveles);
+  if (vinculado === 'si') query = query.eq('vinculado', true);
+  else if (vinculado === 'no') query = query.eq('vinculado', false);
   if (fechaDesde) query = query.gte('created_at', fechaDesde);
   // hasta 23:59:59.999 del día elegido — un <input type="date"> entrega
   // solo la fecha (00:00:00), un .lte() literal excluiría todo ese día.

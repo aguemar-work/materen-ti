@@ -63,8 +63,11 @@
 
 ## Deep-links y filtros
 
-- `?categoria=<id>` en Tickets aplica `categoriaId` (vive en el store como la
-  fecha, se muestra como chip; Tickets sigue sin `resetearFiltros()`).
+- Empleados, Equipos y Tickets filtran por URL (`useFiltrosUrl`, SISTEMA-DISENO
+  §3.2.1): cualquier enlace puede abrir una vista filtrada, p. ej.
+  `/tickets?vista=todos&categoria=<id>` (pendiente del Dashboard),
+  `/tickets?vista=mios`, `/empleados?estado=Inactivo`. Un filtro nuevo es una
+  clave del esquema, no un `route.query` leído a mano en la vista.
 - `?nuevo=1` abre el alta en Equipos y Licencias (y se quita de la URL).
 - `situacion` (Licencias) y `soloRotacion` (Correos) son refs locales: se
   reinician en cada montaje con `resetearFiltros()`, como el resto.

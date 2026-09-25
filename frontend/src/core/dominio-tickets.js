@@ -86,6 +86,15 @@ export const ESTADOS_TERMINALES = ['cerrado', 'rechazado'];
 // (api/domains/tickets.js) — acá solo el nombre del valor de filtro.
 export const ESTADO_FILTRO_VIGENTES = 'vigentes';
 
+// Los mismos "vigentes" como lista explícita de estados reales: los filtros
+// V2 del listado (2026-09-25) combinan la vista con el chip de Estado por
+// intersección, y para eso hace falta el conjunto, no el nombre del filtro.
+export const ESTADOS_VIGENTES = ['abierto', 'en_progreso', 'reabierto'];
+
+// Valor centinela del chip "Asignado a" para "Sin asignar" (no es un id de
+// staff): queryTickets() lo traduce a `asignado_a IS NULL`.
+export const SIN_ASIGNAR = 'sin_asignar';
+
 // Opciones del <select> de estado en la Lista de Tickets: DISTINTO de
 // iterar ESTADOS_TICKET directamente, porque ese mapa tiene 'resuelto' Y
 // 'cerrado' como dos claves con el mismo label ahora ("Resuelto") — un

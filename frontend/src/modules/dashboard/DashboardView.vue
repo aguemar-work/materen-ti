@@ -135,7 +135,7 @@ const inventario = computed(() => {
   if (!stats.value) return [];
   const s = stats.value;
   return [
-    { label: 'Tickets abiertos', icono: 'ti ti-headset', valor: s.ticketsAbiertos, to: '/tickets', visible: auth.puedeVerModulo('tickets') },
+    { label: 'Tickets abiertos', icono: 'ti ti-headset', valor: s.ticketsAbiertos, to: '/tickets?vista=pendientes', visible: auth.puedeVerModulo('tickets') },
     { label: 'Empleados activos', icono: 'ti ti-users', valor: s.empleadosActivos, to: '/empleados?estado=Activo', visible: auth.puedeVerModulo('empleados') },
     { label: 'Dados de baja', icono: 'ti ti-users-minus', valor: s.empleadosTotal - s.empleadosActivos, to: '/empleados?estado=Inactivo', visible: auth.puedeVerModulo('empleados') },
     // Sin enlace: no existe una vista global de cuentas (viven en la ficha del empleado)
@@ -309,7 +309,7 @@ onMounted(async () => {
                    el enlace tiene que decir la verdad. -->
               <RouterLink
                 v-if="misTickets.total > misTickets.lista.length"
-                to="/tickets"
+                to="/tickets?vista=mios"
                 class="flex items-center justify-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
               >
                 Ver mis {{ misTickets.total }} tickets

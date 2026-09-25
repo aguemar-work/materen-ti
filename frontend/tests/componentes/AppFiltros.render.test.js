@@ -69,6 +69,29 @@ describe('AppFiltros.vue', () => {
     expect(w.find('button[aria-label^="Filtro Empresa"]').text()).toContain('Materen y 2 más');
   });
 
+  it('dimensión de rango: el atajo fija [desde, hasta] y el chip lo resume como fechas', async () => {
+    const dims = [{ id: 'creado', label: 'Creado', icono: 'ti ti-calendar', tipo: 'rango' }];
+    w = mount(AppFiltros, {
+      props: { dimensiones: dims, modelValue: { creado: ['', ''] }, 'onUpdate:modelValue': (v) => w.setProps({ modelValue: v }) },
+      attachTo: document.body,
+    });
+    // Sin fechas, el rango no cuenta como filtro puesto.
+    expect(w.findAll('button[aria-label^="Quitar filtro"]')).toHaveLength(0);
+    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
+    await flush();
+    [...document.body.querySelectorAll('button')].find((b) => b.textContent.includes('Creado')).click();
+    await flush();
+    [...document.body.querySelectorAll('button')].find((b) => b.textContent.includes('Hoy')).click();
+    await flush();
+    const [desde, hasta] = w.emitted('update:modelValue').at(-1)[0].creado;
+    expect(desde).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(hasta).toBe(desde);
+    await w.setProps({ modelValue: { creado: ['2026-09-01', '2026-09-20'] } });
+    expect(w.find('button[aria-label^="Filtro Creado"]').text()).toContain('01/09 – 20/09');
+    await w.find('button[aria-label="Quitar filtro Creado"]').trigger('click');
+    expect(w.emitted('update:modelValue').at(-1)[0]).toEqual({ creado: ['', ''] });
+  });
+
   it('cuando todas las dimensiones están en uso, "+ Filtro" desaparece', () => {
     w = montar({ empresa: ['e1'], area: ['a1'] });
     expect(w.find('button[aria-label="Agregar filtro"]').exists()).toBe(false);

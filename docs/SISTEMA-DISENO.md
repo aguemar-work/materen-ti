@@ -123,7 +123,7 @@ una decisión para pedir, no para completar.
 | `AppEncabezado` | Encabezado de página | `titulo`, `subtitulo`, slots `acciones`, `junto-titulo`, `subtitulo` |
 | `AppBarraFiltros` | Fila de controles de 32px entre el encabezado y la tabla de un listado | slot (el selector de vista lleva `ml-auto`); con `AppVistas` arriba, `class="pt-3"` |
 | `AppVistas` | Pestañas de vista de un listado, con conteo (§3.2.1) | `v-model`, `opciones` [{valor,label,conteo?,icono?,titulo?}], `label` |
-| `AppFiltros` | Chips de filtro bajo demanda con selección múltiple (§3.2.1) | `v-model` ({[id]: valores[]}), `dimensiones` [{id,label,icono,opciones:[{valor,label}]}] |
+| `AppFiltros` | Chips de filtro bajo demanda con selección múltiple (§3.2.1) | `v-model` ({[id]: valores[]}), `dimensiones` [{id,label,icono,opciones:[{valor,label}]}] o [{id,label,icono,tipo:'rango'}] (valor `[desde,hasta]`) |
 | `AppMarcoTabla` | Tabla a sangre dentro de la hoja (sin card), no se estira: con pocas filas la paginación queda pegada a la última | slot (tabla con scroll + `AppPaginacion`) |
 | `AppButton` | Toda acción | `label`, `icon`, `severity` (primary/secondary/danger), `variant` (solid/outline/text), `size` (sm 32 / md 36 / lg 44), `loading`; `to` (renderiza `RouterLink`) o `href` (renderiza `<a>`) para un botón que navega |
 | `AppPortal` | Layout del portal público y de las páginas de error (4.5) | `titulo` (el `<h1>`), `descripcion`, `seccion`, `icono` + `tono`, `centrado`, `superpuesto`; slots `antetitulo`, `pie` |
@@ -152,8 +152,9 @@ Tags: un estado del dominio va con `BadgeEstado`; cualquier otro tag, con
 `rolDeTag()`). No se escriben tags a mano con clases.
 
 ### 3.2.1 Filtros V2: vistas + chips + URL (2026-09-25)
-Modelo de filtrado de los listados (piloto en **Empleados** y **Equipos**;
-el resto de los listados sigue con segmentados/selects hasta migrarse):
+Modelo de filtrado de los listados (**Empleados**, **Equipos** y
+**Tickets**; el resto de los listados sigue con segmentados/selects hasta
+migrarse):
 
 ```
  Activos 9   Inactivos 3   Suspendidos 0   Todos 12          ← AppVistas
@@ -179,6 +180,26 @@ el resto de los listados sigue con segmentados/selects hasta migrarse):
   (no la apila).
 - **La columna que la vista ya fija no se repite** (Empleados: "Estado" solo
   se ve en la vista "Todos").
+- **Una vista nunca cambia la forma de la barra.** Prohibido el patrón
+  "según la pestaña aparece otro segmentado o un select" (lo que tenía
+  Tickets: bandeja → sub-estado → técnico). Si una vista ya decide una
+  dimensión, esa dimensión sale del menú "+ Filtro" y su chip se poda al
+  cambiar de vista — nunca queda una combinación imposible.
+- **Rangos de fecha**: dimensión `tipo: 'rango'` de `AppFiltros` (atajos Hoy
+  / 7 / 30 días + desde/hasta), chip "Creado: 27/08 – 25/09". En la URL
+  viaja como `desde`/`hasta`. No se usan cajas de fecha fijas en la barra.
+- **Recordar** (`useFiltrosUrl(esquema, { recordar: 'clave' })`): al volver
+  al listado sin filtros en la URL (menú, migas, atrás desde el detalle) se
+  restaura la última combinación de la sesión (sessionStorage). Hoy solo
+  Tickets, donde se entra y sale del detalle todo el día.
+
+**Tickets** (`modules/tickets/filtrosTickets.js`): vistas *Nuevos* (vigentes
+sin técnico, por defecto) · *Mis tickets* (vigentes míos) · *Pendientes*
+(vigentes de todo el equipo) · *Resueltos* · *Todos* (incluye rechazados);
+chips Estado (solo los que caben en la vista), Asignado a (usted primero,
+"Sin asignar" como opción), Prioridad, Categoría, Tipo, Nivel, Solicitante
+(vinculado / sin vincular) y Creado. El subtítulo ofrece el atajo "N sin
+vincular" (la antigua bandeja de limpieza).
 
 ### 3.3 Tablas (preset `pt/table.pt.js`)
 - Cabecera: banda `gray-50/80`, texto `text-xs font-medium text-gray-500`,

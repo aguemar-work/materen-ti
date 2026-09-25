@@ -1,11 +1,11 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { ESTADO_FILTRO_VIGENTES, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
+import { ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import { exportarCSV } from '../../core/exportar.js';
@@ -13,7 +13,6 @@ import { CABECERA_CSV_TICKETS, filaCsvTicket } from '../../core/exportar-tickets
 import TicketInternoForm from './TicketInternoForm.vue';
 import ReporteTicketsModal from './ReporteTicketsModal.vue';
 import TicketDetallePanel from './TicketDetallePanel.vue';
-import FiltroFechaCreacion from './FiltroFechaCreacion.vue';
 import PrioridadTicket from './PrioridadTicket.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -24,22 +23,26 @@ import AppColumn from '../../components/ui/AppColumn.js';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
-import AppSegmentado from '../../components/ui/AppSegmentado.vue';
-import AppSelect from '../../components/ui/AppSelect.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
+import {
+  VISTAS_TICKETS, VISTA_DEFECTO, CLAVES_CHIPS, vistaDe, dimensionesDe, podarChips, paramsServidor,
+} from './filtrosTickets.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
 import { useAtajosLista } from '../../composables/useAtajosLista.js';
 
 const router = useRouter();
-const route = useRoute();
 const store = useTicketsStore();
 const auth = useAuthStore();
-const { lista, total, cargando, cargandoMas, error, orden, vistaActiva } = storeToRefs(store);
+const { lista, total, cargando, cargandoMas, error, orden } = storeToRefs(store);
 
 const { esMovil } = useEsMovil();
 
@@ -64,179 +67,85 @@ const ticketSeleccionado = ref(store.ultimoAbierto);
 // El auto-refresco de tickets:list vive en AppLayout.vue (suscripción
 // única, así el sonido de "ticket nuevo" suena en cualquier pantalla).
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
+// ── Filtros V2: vistas + chips + URL (2026-09-25) ──────────────────────
+// Qué vistas hay, qué chips admite cada una y por qué se retiraron las
+// bandejas con sub-filtros: modules/tickets/filtrosTickets.js. La URL es la
+// fuente de verdad (`?vista=pendientes&prioridad=urgente,alta`) y `recordar`
+// devuelve la última combinación al volver del detalle o desde el menú —
+// lo que antes hacía el store con vistaActiva/estadoEquipo/tecnicoEquipo.
+// El pendiente "Posible problema recurrente" del Dashboard llega con
+// `?vista=todos&categoria=<id>`: el mismo chip de Categoría que cualquier otro.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  vista: { tipo: 'valor', defecto: VISTA_DEFECTO },
+  q: { tipo: 'texto' },
+  ...Object.fromEntries(CLAVES_CHIPS.map((k) => [k, { tipo: 'lista' }])),
+  desde: { tipo: 'texto' },
+  hasta: { tipo: 'texto' },
+}, { recordar: 'tickets' });
 
-// ── Bandejas (modelo de 4 bandejas exclusivas, ago 2026) ────────────────
-// - `sin_asignar` / `sin_vincular`: qué necesita revisión/limpieza.
-// - `mis_tickets` / `equipo`: bandejas de trabajo HERMANAS, cada una con su
-//   propio sub-filtro de estado (ESTADOS_SUBFILTRO). La diferencia es solo
-//   el alcance de `asignadoA` (yo vs. todos los técnicos). Cada bandeja
-//   guarda su sub-estado en su propio campo del store
-//   (estadoMisTickets/estadoEquipo) para que cambiar de una a otra no pise
-//   el de la anterior.
-// No hay bandeja "Cerrados" separada de "Resuelto": sería deshacer la
-// fusión resuelto+cerrado del 2026-08-21 (ver dominio-tickets.js).
-//
-// Rediseño 2026-09-23: las bandejas dejan el riel lateral y pasan a un
-// control segmentado en la barra de filtros, igual en escritorio y móvil.
-// El riel le quitaba ~220px a la lista y al panel de detalle en Triage —
-// justo el ancho que necesita la conversación — y en móvil ya eran una
-// fila horizontal. Mismos datos, mismo v-model, un solo control.
-// "Sin asignar" se muestra como "Nuevos" (2026-09-24): un ticket sin
-// asignado solo puede estar en `abierto` (check_iniciar_completo() exige
-// asignado_a antes de pasar a en_progreso, y reabrir conserva el asignado
-// previo) — "sin asignar" describía el filtro técnico, no lo que el
-// usuario ve: un ticket recién creado, todavía sin triar. El id interno
-// (`sin_asignar`, en el store/filtros) no cambia, solo la etiqueta.
-const BANDEJAS_REVISION = [
-  { id: 'sin_asignar', label: 'Nuevos', icono: 'ti-user-off' },
-  { id: 'sin_vincular', label: 'Sin vincular', icono: 'ti-alert-triangle' },
-];
+const CLAVES_FILTRO = ['q', ...CLAVES_CHIPS, 'desde', 'hasta'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
 
-const BANDEJAS_TRABAJO = [
-  { id: 'mis_tickets', label: 'Mis tickets', icono: 'ti-user' },
-  { id: 'equipo', label: 'Todos', icono: 'ti-users' },
-];
+// Búsqueda: el campo responde al instante; a la URL (y al servidor) llega
+// con el debounce de useBusqueda.
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
 
-// `todos: estado ''` es a propósito SIN restricción de estado —
-// `queryTickets()` (api/domains/tickets.js) trata `estado: ''` como "sin
-// filtro". Ver el bug de "Todos (vigentes)" en el historial.
-const ESTADOS_SUBFILTRO = [
-  { id: 'todos', label: 'Todos', estado: '' },
-  { id: 'en_progreso', label: 'En progreso', estado: 'en_progreso' },
-  { id: 'resuelto', label: 'Resuelto', estado: 'resuelto' },
-  { id: 'rechazado', label: 'Rechazados', estado: 'rechazado' },
-];
+const yo = computed(() => auth.user?.id || '');
+const chipsActuales = () => Object.fromEntries(CLAVES_CHIPS.map((k) => [k, filtros[k]]));
+const filtrosServidor = computed(() => paramsServidor(
+  { vista: filtros.vista, chips: chipsActuales(), q: filtros.q, desde: filtros.desde, hasta: filtros.hasta },
+  yo.value,
+));
 
-const misTicketsActivo = computed(() => vistaActiva.value === 'mis_tickets');
-const equipoActivo = computed(() => vistaActiva.value === 'equipo');
+// Cambiar de vista (o llegar por un enlace) poda los chips que la vista ya
+// decide: "Asignado a" dentro de "Mis tickets", "Estado: Resuelto" dentro
+// de "Pendientes". Nunca queda puesto un chip que no se puede ver ni quitar.
+watch(() => filtros.vista, (vista) => {
+  const podados = podarChips(vista, chipsActuales());
+  for (const k of CLAVES_CHIPS) if (podados[k].length !== filtros[k].length) filtros[k] = podados[k];
+}, { immediate: true });
 
-// El sub-estado solo existe para las 2 bandejas de trabajo: en
-// sin_asignar/sin_vincular el control no se renderiza.
-const bandejaConSubestado = computed(() => misTicketsActivo.value || equipoActivo.value);
+const vistaActual = computed(() => vistaDe(filtros.vista));
 
-// Una sola superficie escribiendo en el campo de la bandeja activa. Los dos
-// campos del store siguen separados a propósito.
-const subestadoActivo = computed({
-  get: () => (misTicketsActivo.value ? store.estadoMisTickets : store.estadoEquipo),
-  set: (v) => {
-    if (misTicketsActivo.value) store.estadoMisTickets = v;
-    else store.estadoEquipo = v;
-  },
-});
-
-// Filtro por técnico, solo dentro de "Todos" (Equipo): "Mis tickets" ya está
-// fijo al propio usuario, no necesita el selector. '' = todos los técnicos.
-const tecnicoActivo = computed({
-  get: () => store.tecnicoEquipo,
-  set: (v) => { store.tecnicoEquipo = v; },
-});
-
-// ── Filtro por categoría (solo deep-link: /tickets?categoria=<id>) ─────
-// Lo usa el pendiente "Posible problema recurrente" del Dashboard. No es un
-// selector más de la barra (la cuarta pasada retiró Categoría como filtro
-// del listado): llega por URL, se ve como un chip y se quita desde ahí.
-// Vive en store.filtros como la fecha, así que sobrevive a abrir un ticket y
-// volver, y el chip (atado al store) siempre dice la verdad.
-//
-// Al llegar por el enlace se pasa a la bandeja "Todos" sin sub-estado: el
-// pendiente cuenta TODOS los tickets de la categoría, y quedarse en "Sin
-// asignar" mostraría solo una parte sin avisar. Se hace ANTES del watch de
-// vista (immediate) de más abajo para que la primera carga ya salga
-// filtrada, sin una consulta de más.
-function tomarCategoriaDeUrl(valor) {
-  const categoriaId = typeof valor === 'string' ? valor.trim() : '';
-  if (!categoriaId) return false;
-  store.filtros = { ...store.filtros, categoriaId };
-  store.pagina = 1;
-  store.vistaActiva = 'equipo';
-  store.estadoEquipo = 'todos';
-  return true;
-}
-tomarCategoriaDeUrl(route.query.categoria);
-
-// Nombre para el chip: el catálogo de categorías es chico y ya existe; si
-// falla, el chip muestra el id tal cual (el filtro funciona igual).
+// Catálogos de las dimensiones: técnicos (también para "Asignado a" en la
+// tabla y la reasignación en lote) y categorías. Si fallan, la dimensión
+// sale sin opciones y el resto del listado funciona igual.
+const staffLista = ref([]);
 const categoriasTicket = ref([]);
-const categoriaFiltrada = computed(() => {
-  const id = store.filtros.categoriaId;
-  if (!id) return null;
-  return categoriasTicket.value.find((c) => c.id === id)?.nombre || id;
-});
-
 async function cargarCategorias() {
   try {
     categoriasTicket.value = await insforgeApi.listCategoriasTicket();
   } catch {
-    /* el chip cae al id, no bloquea nada */
+    /* sin catálogo, el chip de Categoría no ofrece opciones */
   }
 }
 
-function quitarFiltroCategoria() {
-  store.aplicarFiltros({ categoriaId: '' });
-  // Sin esto, recargar la página volvería a aplicar el filtro recién quitado.
-  if (route.query.categoria != null) {
-    const { categoria: _categoria, ...resto } = route.query;
-    router.replace({ query: resto });
-  }
-}
-
-// Mismo componente, otra categoría en la URL (ej. otro enlace con la vista
-// ya abierta): se aplica sin esperar a un remontaje.
-watch(() => route.query.categoria, (valor, anterior) => {
-  if (valor === anterior || !valor || valor === store.filtros.categoriaId) return;
-  if (tomarCategoriaDeUrl(valor)) {
-    if (!categoriasTicket.value.length) cargarCategorias();
-    store.cargar().catch(() => {});
-  }
+const dimensiones = computed(() =>
+  dimensionesDe(filtros.vista, { staff: staffLista.value, categorias: categoriasTicket.value, yo: yo.value }));
+const chips = computed({
+  // 'creado' es un rango: en la URL viaja como desde/hasta, acá como par.
+  get: () => Object.fromEntries(dimensiones.value.map((d) =>
+    [d.id, d.id === 'creado' ? [filtros.desde, filtros.hasta] : filtros[d.id]])),
+  set: (v) => {
+    for (const k of Object.keys(v)) {
+      if (k === 'creado') [filtros.desde, filtros.hasta] = v.creado;
+      else filtros[k] = v[k];
+    }
+  },
 });
 
-// vistaActiva/estadoMisTickets/estadoEquipo viven en el STORE: sobreviven a
-// navegar a /tickets/:id y volver (ver stores/tickets.js).
-function aplicarVista() {
-  if (vistaActiva.value === 'sin_asignar') {
-    store.aplicarFiltros({ estado: ESTADO_FILTRO_VIGENTES, asignadoA: '', sinAsignar: true, sinVincular: false });
-  } else if (vistaActiva.value === 'sin_vincular') {
-    store.aplicarFiltros({ estado: ESTADO_FILTRO_VIGENTES, asignadoA: '', sinAsignar: false, sinVincular: true });
-  } else if (vistaActiva.value === 'mis_tickets') {
-    const sub = ESTADOS_SUBFILTRO.find((s) => s.id === store.estadoMisTickets) || ESTADOS_SUBFILTRO[0];
-    store.aplicarFiltros({ estado: sub.estado, asignadoA: auth.user?.id || '', sinAsignar: false, sinVincular: false });
-  } else { // 'equipo'
-    const sub = ESTADOS_SUBFILTRO.find((s) => s.id === store.estadoEquipo) || ESTADOS_SUBFILTRO[0];
-    store.aplicarFiltros({ estado: sub.estado, asignadoA: store.tecnicoEquipo, sinAsignar: false, sinVincular: false });
-  }
+function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
+  busqueda.value = '';
 }
-watch(
-  [vistaActiva, () => store.estadoMisTickets, () => store.estadoEquipo, () => store.tecnicoEquipo],
-  aplicarVista,
-  { immediate: true },
-);
 
-// ── Filtro secundario: Fecha de creación ────────────────────────────────
-// Eje INDEPENDIENTE de la bandeja activa (aplicarFiltros() solo mergea).
-// `computed` con get/set atado DIRECTO a `store.filtros`: sobrevive a
-// navegar a /tickets/:id y volver, igual que vistaActiva.
-const fechaDesde = computed({
-  get: () => store.filtros.fechaDesde,
-  set: (v) => store.aplicarFiltros({ fechaDesde: v }),
-});
-const fechaHasta = computed({
-  get: () => store.filtros.fechaHasta,
-  set: (v) => store.aplicarFiltros({ fechaHasta: v }),
-});
-
-const cantidadFiltrosActivos = computed(() => (fechaDesde.value ? 1 : 0) + (fechaHasta.value ? 1 : 0));
-// Para los estados vacíos: cualquier filtro secundario (fecha o categoría).
-const hayFiltrosSecundarios = computed(() => cantidadFiltrosActivos.value > 0 || !!store.filtros.categoriaId);
-
-function limpiarFiltrosSecundarios() {
-  store.aplicarFiltros({ fechaDesde: '', fechaHasta: '' });
-}
+// Cualquier cambio de vista o de filtro recarga la página 1.
+watch(filtrosServidor, (f) => { store.aplicarFiltros(f).catch(() => {}); }, { deep: true });
 
 const mostrarNuevo = ref(false);
 const mostrarReporte = ref(false);
-const staffLista = ref([]);
-
 const staffPorId = computed(() => {
   const mapa = {};
   for (const s of staffLista.value) mapa[s.user_id] = s.nombre;
@@ -266,8 +175,8 @@ const todosResueltos = computed(() =>
   ticketsSeleccionados.value.length > 0 && ticketsSeleccionados.value.every((t) => t.estado === 'resuelto')
 );
 
-// Una selección de otra bandeja/búsqueda no sobrevive al cambio de contexto.
-watch([vistaActiva, busqueda, () => store.pagina], limpiarSeleccion);
+// Una selección de otra vista/filtro no sobrevive al cambio de contexto.
+watch([filtrosServidor, () => store.pagina], limpiarSeleccion);
 
 const reasignarLoteA = ref('');
 const mostrarConfirmarReasignarLote = ref(false);
@@ -330,107 +239,69 @@ async function confirmarCerrarLote() {
   );
 }
 
-// ── Contadores por bandeja (rediseño ago 2026) ──────────────────────────
-// Las 2 bandejas planas + los 4 sub-estados de "Mis tickets" (asignadoA=yo)
-// + los 4 de "Equipo" (asignadoA=''), de una (insforgeApi.contarTickets:
-// un count por bandeja, sin traer filas). Respetan el filtro SECUNDARIO
-// activo (búsqueda + fecha): el número tiene que ser el que se va a ver al
-// hacer clic. Cambiar de bandeja no mueve ningún contador.
-const conteosVistas = ref(null);
+// ── Conteos por vista ───────────────────────────────────────────────────
+// Un count por vista (insforgeApi.contarTickets: sin traer filas), con los
+// chips/búsqueda/fecha activos podados para CADA vista: el número es el que
+// se va a ver al hacer clic. Cambiar de vista no mueve ningún conteo. El
+// último es el atajo "N sin vincular" del subtítulo (pendientes cuyo
+// solicitante no se pudo identificar: la antigua bandeja de limpieza).
+const conteos = ref(null);
 let peticionConteos = 0;
 
 async function cargarConteos() {
   const peticion = ++peticionConteos;
-  const secundarios = {
-    q: store.filtros.q,
-    fechaDesde: store.filtros.fechaDesde,
-    fechaHasta: store.filtros.fechaHasta,
-    categoriaId: store.filtros.categoriaId,
-  };
+  const base = { chips: chipsActuales(), q: filtros.q, desde: filtros.desde, hasta: filtros.hasta };
   try {
-    const yo = auth.user?.id || '';
-    const [sinAsignarTotal, sinVincularTotal, ...resto] = await Promise.all([
-      insforgeApi.contarTickets({ ...secundarios, estado: ESTADO_FILTRO_VIGENTES, sinAsignar: true, sinVincular: false, asignadoA: '' }),
-      insforgeApi.contarTickets({ ...secundarios, estado: ESTADO_FILTRO_VIGENTES, sinAsignar: false, sinVincular: true, asignadoA: '' }),
-      ...ESTADOS_SUBFILTRO.map((s) => insforgeApi.contarTickets({ ...secundarios, estado: s.estado, sinAsignar: false, sinVincular: false, asignadoA: yo })),
-      ...ESTADOS_SUBFILTRO.map((s) => insforgeApi.contarTickets({ ...secundarios, estado: s.estado, sinAsignar: false, sinVincular: false, asignadoA: '' })),
+    const numeros = await Promise.all([
+      ...VISTAS_TICKETS.map((v) => insforgeApi.contarTickets(paramsServidor({ ...base, vista: v.valor }, yo.value))),
+      insforgeApi.contarTickets(paramsServidor({ ...base, vista: 'pendientes', chips: { ...base.chips, solicitante: ['no'] } }, yo.value)),
     ]);
     if (peticion !== peticionConteos) return; // respuesta obsoleta, mismo guard que store.cargar()
-    const n = ESTADOS_SUBFILTRO.length;
-    conteosVistas.value = {
-      sin_asignar: sinAsignarTotal,
-      sin_vincular: sinVincularTotal,
-      misTickets: Object.fromEntries(ESTADOS_SUBFILTRO.map((s, i) => [s.id, resto[i]])),
-      equipo: Object.fromEntries(ESTADOS_SUBFILTRO.map((s, i) => [s.id, resto[n + i]])),
+    conteos.value = {
+      ...Object.fromEntries(VISTAS_TICKETS.map((v, i) => [v.valor, numeros[i]])),
+      sinVincular: numeros[VISTAS_TICKETS.length],
     };
   } catch {
-    // Best-effort: sin contadores las bandejas no muestran número y ya.
-    if (peticion === peticionConteos) conteosVistas.value = null;
+    // Best-effort: sin conteos las pestañas no muestran número y ya.
+    if (peticion === peticionConteos) conteos.value = null;
   }
 }
 
-watch(
-  [() => store.filtros.q, () => store.filtros.fechaDesde, () => store.filtros.fechaHasta, () => store.filtros.categoriaId],
-  cargarConteos,
-);
+const firmaConteos = computed(() => JSON.stringify([chipsActuales(), filtros.q, filtros.desde, filtros.hasta]));
+watch(firmaConteos, cargarConteos);
 
-// Contador de las 4 bandejas. Las 2 de trabajo usan el conteo de su
-// sub-estado `todos` (total real de la bandeja, sin recorte de estado).
-const conteosBandejas = computed(() => {
-  const c = conteosVistas.value;
-  if (!c) return null;
-  return {
-    sin_asignar: c.sin_asignar,
-    sin_vincular: c.sin_vincular,
-    mis_tickets: c.misTickets?.todos,
-    equipo: c.equipo?.todos,
-  };
-});
+const opcionesVistas = computed(() => VISTAS_TICKETS.map((v) => ({
+  valor: v.valor, label: v.label, titulo: v.titulo, conteo: conteos.value?.[v.valor],
+})));
 
-const conteosSubestado = computed(() =>
-  (misTicketsActivo.value ? conteosVistas.value?.misTickets : conteosVistas.value?.equipo) || null);
-
-// ── Presentación (rediseño 2026-09-23) ──────────────────────────────────
-// Opciones de AppSegmentado derivadas de las mismas listas de bandejas y
-// sub-estados, con su contador.
-const opcionesBandejas = computed(() =>
-  [...BANDEJAS_REVISION, ...BANDEJAS_TRABAJO].map((b) => ({
-    valor: b.id,
-    label: b.label,
-    icono: `ti ${b.icono}`,
-    conteo: conteosBandejas.value?.[b.id] ?? null,
-  })));
-const opcionesSubestado = computed(() =>
-  ESTADOS_SUBFILTRO.map((s) => ({ valor: s.id, label: s.label, conteo: conteosSubestado.value?.[s.id] ?? null })));
-
-const bandejaActiva = computed(() =>
-  [...BANDEJAS_REVISION, ...BANDEJAS_TRABAJO].find((b) => b.id === vistaActiva.value) || BANDEJAS_REVISION[0]);
-
-// La página dice qué se está viendo: bandeja + sub-estado.
-const FRASE_BANDEJA = {
-  sin_asignar: 'vigentes sin asignar',
-  sin_vincular: 'vigentes sin vincular a un empleado',
-  mis_tickets: 'asignados a usted',
-  equipo: 'de todo el equipo',
-};
-const subtituloBandeja = computed(() => {
+// La página dice qué se está viendo: "8 tickets pendientes de todo el equipo".
+const subtituloVista = computed(() => {
   const n = total.value;
-  const frase = bandejaActiva.value.id === 'equipo' && store.tecnicoEquipo
-    ? `asignados a ${nombreStaff(store.tecnicoEquipo)}`
-    : FRASE_BANDEJA[bandejaActiva.value.id] || '';
-  let texto = `${n} ${n === 1 ? 'ticket' : 'tickets'} ${frase}`.trim();
-  if (categoriaFiltrada.value) texto += ` en la categoría “${categoriaFiltrada.value}”`;
-  if (bandejaConSubestado.value && subestadoActivo.value !== 'todos') {
-    const sub = ESTADOS_SUBFILTRO.find((s) => s.id === subestadoActivo.value);
-    if (sub) texto += ` · ${sub.label.toLowerCase()}`;
-  }
-  return texto;
+  const texto = `${n} ${n === 1 ? 'ticket' : 'tickets'} ${vistaActual.value.frase}`;
+  return hayFiltros.value ? `${texto}, con los filtros aplicados` : texto;
 });
 
-// Lo que requiere atención ahora, visible desde cualquier bandeja: cuántos
-// tickets vigentes siguen sin responsable. Es un atajo a esa bandeja.
-const pendientesSinAsignar = computed(() =>
-  (vistaActiva.value !== 'sin_asignar' ? conteosBandejas.value?.sin_asignar || 0 : 0));
+// Atajo a la limpieza de solicitantes sin identificar, visible desde
+// cualquier vista mientras haya alguno y no esté ya filtrado.
+const pendientesSinVincular = computed(() =>
+  (filtros.solicitante.includes('no') ? 0 : conteos.value?.sinVincular || 0));
+function verSinVincular() {
+  filtros.vista = 'pendientes';
+  filtros.solicitante = ['no'];
+}
+
+// Estado vacío: con filtros es "sin resultados"; sin filtros, cada vista
+// explica por qué está vacía (una cola en cero es una buena noticia).
+const VACIO_POR_VISTA = {
+  nuevos: { titulo: 'Nada nuevo', mensaje: 'Todos los tickets vigentes tienen técnico asignado.' },
+  mios: { titulo: 'Sin tickets a su nombre', mensaje: 'No tiene tickets vigentes asignados. Revise "Nuevos" para tomar uno.' },
+  pendientes: { titulo: 'Nada pendiente', mensaje: 'No hay tickets vigentes en todo el equipo.' },
+  resueltos: { titulo: 'Sin tickets resueltos', mensaje: 'Todavía no se resolvió ningún ticket.' },
+  todos: { titulo: 'Sin tickets', mensaje: 'Todavía no se registró ningún ticket.' },
+};
+const vacio = computed(() => (hayFiltros.value
+  ? { titulo: 'Sin resultados', mensaje: 'No hay tickets con los filtros aplicados.', conLimpiar: true }
+  : VACIO_POR_VISTA[filtros.vista] || VACIO_POR_VISTA.todos));
 
 function nombreStaff(id) {
   return staffPorId.value[id] || 'Staff';
@@ -487,7 +358,7 @@ function verTicket(ticket) {
   router.push(`/tickets/${ticket.id}`);
 }
 
-// ── Exportar la bandeja ─────────────────────────────────────────────────
+// ── Exportar la vista ─────────────────────────────────────────────────
 // Los mismos filtros que están puestos en pantalla, sin página.
 const exportando = ref(false);
 async function exportarBandeja() {
@@ -541,23 +412,21 @@ function onNuevoCerrado(creado) {
   if (creado) {
     showToast('Ticket interno creado');
     store.cargar();
-    cargarConteos(); // el ticket nuevo entra en "Sin asignar": el contador tiene que moverse con él
+    cargarConteos(); // el ticket nuevo entra en "Nuevos": el conteo tiene que moverse con él
   }
 }
 
 onMounted(async () => {
-  // Solo el buscador se resetea acá (ver resetearBusqueda() en
-  // stores/tickets.js): bandeja/sub-estado/fecha viven atados al store y
-  // sobreviven a propósito a volver de /tickets/:id.
-  store.resetearBusqueda();
-  if (store.filtros.categoriaId) cargarCategorias();
+  // Sin resetearFiltros(): filtrosServidor lleva TODAS las claves, así que lo
+  // aplicado es exactamente lo que dice la URL (no queda filtro fantasma).
+  cargarCategorias();
   try {
     const [, staff] = await Promise.all([
-      store.cargar(),
+      store.aplicarFiltros(filtrosServidor.value),
       insforgeApi.nombresStaff(),
     ]);
     staffLista.value = staff;
-    // Sin await: los contadores no deben retrasar la primera pintada.
+    // Sin await: los conteos no deben retrasar la primera pintada.
     cargarConteos();
   } catch {
     showToast(error.value || 'Error al cargar tickets', 'error');
@@ -569,14 +438,15 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Tickets">
       <template #subtitulo>
-        {{ subtituloBandeja }}
-        <template v-if="pendientesSinAsignar > 0">
+        {{ subtituloVista }}
+        <template v-if="pendientesSinVincular > 0">
           ·
           <button
             type="button"
             class="rounded font-medium text-amber-700 tabular-nums hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-            @click="vistaActiva = 'sin_asignar'"
-          >{{ pendientesSinAsignar }} sin asignar</button>
+            title="Pendientes cuyo solicitante no se pudo identificar"
+            @click="verSinVincular"
+          >{{ pendientesSinVincular }} sin vincular</button>
         </template>
       </template>
       <template #acciones>
@@ -593,56 +463,23 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros: bandeja (qué cola) → estado (refina la cola) →
-         búsqueda y fecha. Fuera de la lista: filtra, no es parte del dato. -->
-    <div class="flex flex-col gap-2 px-4 pb-4 sm:px-6">
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <AppSegmentado v-model="vistaActiva" :opciones="opcionesBandejas" label="Bandeja de tickets" />
-        <AppSegmentado v-if="bandejaConSubestado" v-model="subestadoActivo" :opciones="opcionesSubestado" label="Filtrar por estado" />
-        <AppSelect v-if="equipoActivo" v-model="tecnicoActivo" label="Filtrar por técnico" class="w-48">
-          <option value="">Todos los técnicos</option>
-          <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-        </AppSelect>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <AppBuscador
-          ref="refBuscador"
-          v-model="busqueda"
-          label="Buscar tickets"
-          placeholder="Buscar por código, título o solicitante"
-          title="Atajo: /"
-        />
-        <FiltroFechaCreacion v-model:desde="fechaDesde" v-model:hasta="fechaHasta" id-prefijo="tk-filtro-fecha" />
-        <AppButton
-          v-if="cantidadFiltrosActivos > 0"
-          size="sm"
-          variant="text"
-          severity="secondary"
-          icon="ti ti-x"
-          label="Limpiar fecha"
-          @click="limpiarFiltrosSecundarios"
-        />
-        <!-- Chip del filtro por categoría (solo llega por ?categoria=). -->
-        <span
-          v-if="categoriaFiltrada"
-          class="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-primary-50 pl-3 pr-1 text-sm text-primary-800"
-          data-testid="chip-categoria"
-        >
-          <i class="ti ti-filter shrink-0" aria-hidden="true"></i>
-          <span class="truncate">Filtrado por categoría: <strong class="font-medium">{{ categoriaFiltrada }}</strong></span>
-          <button
-            type="button"
-            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-primary-700 hover:bg-primary-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-            :aria-label="`Quitar el filtro por categoría ${categoriaFiltrada}`"
-            :title="`Quitar el filtro por categoría ${categoriaFiltrada}`"
-            @click="quitarFiltroCategoria"
-          >
-            <i class="ti ti-x text-xs" aria-hidden="true"></i>
-          </button>
-        </span>
-        <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" class="ml-auto" />
-      </div>
-    </div>
+    <!-- ══ Vistas (qué cola) y filtros bajo demanda (cómo recortarla) ══
+         Una sola fila de vistas que nunca cambia de forma, y chips que se
+         suman solo cuando hacen falta (ver filtrosTickets.js). -->
+    <AppVistas v-model="filtros.vista" :opciones="opcionesVistas" label="Vista de tickets" />
+
+    <AppBarraFiltros class="pt-3">
+      <AppBuscador
+        ref="refBuscador"
+        v-model="busqueda"
+        label="Buscar tickets"
+        placeholder="Buscar por código, título o solicitante"
+        title="Atajo: /"
+      />
+      <AppFiltros v-model="chips" :dimensiones="dimensiones" />
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" class="ml-auto" />
+    </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
@@ -656,9 +493,13 @@ onMounted(async () => {
         <AppVacio
           v-if="!cargando && total === 0"
           icono="ti ti-headset"
-          :titulo="busqueda || vistaActiva !== 'sin_asignar' || hayFiltrosSecundarios ? 'Sin resultados' : 'Nada sin asignar'"
-          :mensaje="busqueda || vistaActiva !== 'sin_asignar' || hayFiltrosSecundarios ? 'No hay tickets con los filtros aplicados.' : 'Todos los tickets vigentes tienen responsable. Revise las otras bandejas para ver el trabajo en curso.'"
-        />
+          :titulo="vacio.titulo"
+          :mensaje="vacio.mensaje"
+        >
+          <template v-if="vacio.conLimpiar" #default>
+            <AppButton size="sm" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
+          </template>
+        </AppVacio>
 
         <template v-else>
           <p v-if="cargando" class="sr-only" role="status">Cargando tickets…</p>
@@ -874,9 +715,13 @@ onMounted(async () => {
           <AppVacio
             v-else-if="total === 0"
             variante="seccion"
-            :titulo="busqueda || vistaActiva !== 'sin_asignar' || hayFiltrosSecundarios ? 'Sin resultados' : 'Nada sin asignar'"
-            :mensaje="busqueda || vistaActiva !== 'sin_asignar' || hayFiltrosSecundarios ? 'No hay tickets con los filtros aplicados.' : 'Todos los tickets vigentes tienen responsable.'"
-          />
+            :titulo="vacio.titulo"
+            :mensaje="vacio.mensaje"
+          >
+            <template v-if="vacio.conLimpiar" #default>
+              <AppButton size="sm" variant="outline" severity="secondary" label="Limpiar filtros" @click="limpiarFiltros" />
+            </template>
+          </AppVacio>
 
           <template v-else>
             <ul class="min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto" aria-label="Tickets de soporte">
@@ -968,7 +813,7 @@ onMounted(async () => {
           v-else
           icono="ti ti-message-2"
           titulo="Ningún ticket abierto"
-          mensaje="Seleccione un ticket de la cola para leer la conversación, responder y gestionarlo sin salir de la bandeja."
+          mensaje="Seleccione un ticket de la cola para leer la conversación, responder y gestionarlo sin salir de la lista."
         />
       </div>
     </div>

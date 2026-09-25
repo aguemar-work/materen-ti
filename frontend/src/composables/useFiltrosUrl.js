@@ -21,7 +21,28 @@
 import { reactive, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-export function useFiltrosUrl(esquema) {
+//
+// opciones.recordar (clave de sessionStorage): al volver al listado SIN
+// ningún filtro en la URL (migas, SideNav, "atrás" desde una ficha abierta
+// por router.push), se restauran los últimos filtros de la sesión. Un enlace
+// que trae aunque sea un filtro manda sobre lo recordado. Es comodidad por
+// pestaña; si el storage no está disponible, simplemente no recuerda.
+function leerRecordado(clave) {
+  try {
+    return JSON.parse(sessionStorage.getItem(`sistema-ti-filtros-${clave}`) || 'null');
+  } catch {
+    return null;
+  }
+}
+function guardarRecordado(clave, valor) {
+  try {
+    sessionStorage.setItem(`sistema-ti-filtros-${clave}`, JSON.stringify(valor));
+  } catch {
+    /* sin storage: no recuerda y ya */
+  }
+}
+
+export function useFiltrosUrl(esquema, { recordar = '' } = {}) {
   const route = useRoute();
   const router = useRouter();
   // Los watchers solo actúan sobre la ruta donde se montó el listado: al
@@ -58,11 +79,24 @@ export function useFiltrosUrl(esquema) {
 
   const firma = (q) => JSON.stringify(claves.map((k) => q[k] ?? null));
 
-  const filtros = reactive(leer(route.query));
+  const subconjunto = (q) => Object.fromEntries(claves.filter((k) => q[k] != null).map((k) => [k, q[k]]));
+
+  let queryInicial = route.query;
+  if (recordar && !claves.some((k) => route.query[k] != null)) {
+    const recordado = leerRecordado(recordar);
+    if (recordado && Object.keys(recordado).length) {
+      queryInicial = { ...route.query, ...recordado };
+      router.replace({ query: queryInicial });
+    }
+  }
+  const filtros = reactive(leer(queryInicial));
+  // También lo que llegó por enlace: es la combinación que se está viendo.
+  if (recordar) guardarRecordado(recordar, subconjunto(aQuery(filtros)));
 
   watch(filtros, () => {
     if (route.path !== rutaPropia) return;
     const query = aQuery(filtros);
+    if (recordar) guardarRecordado(recordar, subconjunto(query));
     if (firma(query) !== firma(route.query)) router.replace({ query });
   }, { deep: true });
 

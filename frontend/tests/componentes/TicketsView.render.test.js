@@ -98,6 +98,7 @@ beforeEach(() => {
   setActivePinia(createPinia());
   vi.clearAllMocks();
   localStorage.clear();
+  sessionStorage.clear();
   insforgeApi.listTicketsPage.mockResolvedValue({ items: TICKETS_FIXTURE, total: 2 });
   insforgeApi.contarTickets.mockResolvedValue(0);
   insforgeApi.nombresStaff.mockResolvedValue([{ user_id: 'staff-1', nombre: 'Sofía Medina' }]);
@@ -106,11 +107,9 @@ beforeEach(() => {
 describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fase 1)', () => {
   it('carga la página inicial vía el store real y pinta las filas', async () => {
     const w = await montar();
-    // 2, no 1: el watcher de vistaActiva (immediate:true) dispara su propio
-    // aplicarFiltros()/cargar() antes de que onMounted haga el suyo — mismo
-    // comportamiento que ya tenía la vista, no algo que introdujo esta
-    // migración.
-    expect(insforgeApi.listTicketsPage).toHaveBeenCalledTimes(2);
+    // Una sola carga al montar: los filtros V2 salen de la URL y se aplican
+    // una vez en onMounted (antes eran 2: watcher immediate + onMounted).
+    expect(insforgeApi.listTicketsPage).toHaveBeenCalledTimes(1);
     expect(w.text()).toContain('TCK-0001');
     expect(w.text()).toContain('TCK-0002');
     expect(w.text()).toContain('No enciende el monitor');
@@ -131,9 +130,9 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
     const th = w.findAll('th').find((t) => t.text() === 'Ticket');
     await th.trigger('click');
     await flushPromises();
-    // Línea base de montaje ya es 2 (ver el test anterior) + 1 por el click.
-    expect(insforgeApi.listTicketsPage).toHaveBeenCalledTimes(3);
-    const [, , ultimaLlamada] = insforgeApi.listTicketsPage.mock.calls;
+    // Línea base de montaje es 1 (ver el test anterior) + 1 por el click.
+    expect(insforgeApi.listTicketsPage).toHaveBeenCalledTimes(2);
+    const ultimaLlamada = insforgeApi.listTicketsPage.mock.calls.at(-1);
     expect(ultimaLlamada[0].orden).toEqual({ columna: 'codigo', direccion: 'asc' });
   });
 
@@ -201,11 +200,11 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
   });
 });
 
-// Filtro por categoría (2026-09-24), solo por deep-link: /tickets?categoria=
-// (lo usa el pendiente "Posible problema recurrente" del Dashboard). Tickets
-// sigue siendo la excepción del gotcha de resetearFiltros(): el filtro vive
-// en el store y el chip está atado a él.
-describe('TicketsView.vue — filtro por categoría desde la URL', () => {
+// Filtros V2 (2026-09-25): una fila fija de vistas con conteo + chips bajo
+// demanda + URL como fuente de verdad. Reemplaza las 4 bandejas con
+// sub-segmentado de estado y select de técnico que aparecían y
+// desaparecían según la bandeja (el reclamo del dueño).
+describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
   async function montarEn(url) {
     localStorage.setItem('sistema-ti-vista-tickets', 'tabla');
     const router = crearRouter();
@@ -221,93 +220,75 @@ describe('TicketsView.vue — filtro por categoría desde la URL', () => {
     return { w, router };
   }
 
+  const vistas = (w) => w.find('[role="group"][aria-label="Vista de tickets"]');
+
   beforeEach(() => {
     insforgeApi.listCategoriasTicket.mockResolvedValue([{ id: 'red', nombre: 'Red y Conectividad' }]);
   });
 
-  it('?categoria= filtra desde la PRIMERA carga, en la bandeja "Todos" y sin sub-estado', async () => {
-    await montarEn('/tickets?categoria=red');
-    const llamadas = insforgeApi.listTicketsPage.mock.calls.map((c) => c[0]);
-    expect(llamadas.length).toBeGreaterThan(0);
-    expect(llamadas.every((f) => f.categoriaId === 'red')).toBe(true);
-    expect(llamadas.at(-1)).toMatchObject({ categoriaId: 'red', estado: '', sinAsignar: false, asignadoA: '' });
+  it('muestra las 5 vistas fijas y arranca en "Nuevos": vigentes sin técnico', async () => {
+    const { w } = await montarEn('/tickets');
+    const botones = vistas(w).findAll('button');
+    expect(botones.map((b) => b.text().replace(/\d+/g, '').trim()))
+      .toEqual(['Nuevos', 'Mis tickets', 'Pendientes', 'Resueltos', 'Todos']);
+    expect(botones[0].attributes('aria-pressed')).toBe('true');
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({
+      estados: ['abierto', 'en_progreso', 'reabierto'],
+      asignados: ['sin_asignar'],
+    });
   });
 
-  it('muestra el chip con el nombre de la categoría y los contadores respetan el filtro', async () => {
-    const { w } = await montarEn('/tickets?categoria=red');
-    const chip = w.find('[data-testid="chip-categoria"]');
-    expect(chip.exists()).toBe(true);
-    expect(chip.text()).toContain('Red y Conectividad');
-    expect(insforgeApi.contarTickets.mock.calls.every((c) => c[0].categoriaId === 'red')).toBe(true);
+  it('no quedan los controles anidados del modelo anterior', async () => {
+    const { w } = await montarEn('/tickets?vista=pendientes');
+    expect(w.text()).not.toContain('Filtrar por técnico');
+    expect(w.find('[aria-label="Filtrar por estado"]').exists()).toBe(false);
+    expect(w.find('[aria-label="Bandeja de tickets"]').exists()).toBe(false);
   });
 
-  it('quitar el chip limpia el filtro, recarga sin categoría y saca el parámetro de la URL', async () => {
-    const { w, router } = await montarEn('/tickets?categoria=red');
-    await w.find('[data-testid="chip-categoria"] button').trigger('click');
+  it('cambiar de vista recarga con su alcance y lo deja en la URL', async () => {
+    const { w, router } = await montarEn('/tickets');
+    const resueltos = vistas(w).findAll('button').find((b) => b.text().includes('Resueltos'));
+    await resueltos.trigger('click');
     await flushPromises();
-    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0].categoriaId).toBe('');
-    expect(w.find('[data-testid="chip-categoria"]').exists()).toBe(false);
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({ estados: ['resuelto'], asignados: [] });
+    expect(router.currentRoute.value.query.vista).toBe('resueltos');
+  });
+
+  it('pide un conteo por vista (+ el atajo "sin vincular")', async () => {
+    await montarEn('/tickets');
+    expect(insforgeApi.contarTickets).toHaveBeenCalledTimes(6);
+  });
+
+  it('el enlace del Dashboard (?vista=todos&categoria=) filtra desde la primera carga y muestra el chip', async () => {
+    const { w } = await montarEn('/tickets?vista=todos&categoria=red');
+    const llamadas = insforgeApi.listTicketsPage.mock.calls.map((c) => c[0]);
+    expect(llamadas.every((f) => f.categoriaIds.includes('red'))).toBe(true);
+    expect(llamadas.at(-1)).toMatchObject({ estados: [], asignados: [] });
+    expect(w.find('button[aria-label^="Filtro Categoría"]').text()).toContain('Red y Conectividad');
+    expect(insforgeApi.contarTickets.mock.calls.every((c) => c[0].categoriaIds.includes('red'))).toBe(true);
+  });
+
+  it('quitar el chip limpia el filtro y saca el parámetro de la URL', async () => {
+    const { w, router } = await montarEn('/tickets?vista=todos&categoria=red');
+    await w.find('button[aria-label="Quitar filtro Categoría"]').trigger('click');
+    await flushPromises();
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0].categoriaIds).toEqual([]);
     expect(router.currentRoute.value.query.categoria).toBeUndefined();
   });
 
-  it('sin ?categoria= no hay chip ni filtro (y no se pide el catálogo)', async () => {
-    const { w } = await montarEn('/tickets');
-    expect(w.find('[data-testid="chip-categoria"]').exists()).toBe(false);
-    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0].categoriaId).toBe('');
-    expect(insforgeApi.listCategoriasTicket).not.toHaveBeenCalled();
-  });
-});
-
-// Filtro "por técnico" dentro de la bandeja "Todos"/Equipo (2026-09-24):
-// antes no había forma de ver solo los tickets de un técnico puntual — la
-// bandeja "Todos" mezclaba a todo el equipo sin poder recortar por persona.
-describe('TicketsView.vue — filtro por técnico (bandeja "Todos")', () => {
-  async function montarEnEquipo() {
-    localStorage.setItem('sistema-ti-vista-tickets', 'tabla');
-    const router = crearRouter();
-    // Mismo atajo que el filtro de categoría: entra directo a la bandeja
-    // "Todos" sin tener que simular el clic del segmentado.
-    router.push('/tickets?categoria=red');
-    await router.isReady();
-    const w = mount(TicketsView, {
-      global: {
-        plugins: [router, [PrimeVue, { unstyled: true }]],
-        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ReporteTicketsModal: true, ConfirmDialog: true },
-      },
-    });
+  it('una vista que fija el responsable poda el chip "Asignado a" (nunca una combinación imposible)', async () => {
+    const { w, router } = await montarEn('/tickets?vista=mios&asignado=staff-1');
     await flushPromises();
-    return w;
-  }
-
-  it('no aparece fuera de la bandeja "Todos"', async () => {
-    const w = await montar(); // arranca en 'sin_asignar'
-    expect(w.findAll('label').some((l) => l.text().includes('Filtrar por técnico'))).toBe(false);
+    expect(w.find('button[aria-label^="Filtro Asignado a"]').exists()).toBe(false);
+    expect(router.currentRoute.value.query.asignado).toBeUndefined();
   });
 
-  it('lista los técnicos activos y filtra la consulta por el elegido', async () => {
-    const w = await montarEnEquipo();
-    const etiqueta = w.findAll('label').find((l) => l.text().includes('Filtrar por técnico'));
-    expect(etiqueta).toBeTruthy();
-    const select = etiqueta.find('select');
-    expect(select.text()).toContain('Sofía Medina');
-
-    await select.setValue('staff-1');
-    await flushPromises();
-
-    const ultima = insforgeApi.listTicketsPage.mock.calls.at(-1)[0];
-    expect(ultima.asignadoA).toBe('staff-1');
-    expect(w.text()).toContain('Sofía Medina');
-  });
-
-  it('"Todos los técnicos" vuelve a quitar el filtro', async () => {
-    const w = await montarEnEquipo();
-    const select = w.findAll('label').find((l) => l.text().includes('Filtrar por técnico')).find('select');
-
-    await select.setValue('staff-1');
-    await flushPromises();
-    await select.setValue('');
-    await flushPromises();
-
-    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0].asignadoA).toBe('');
+  it('recuerda la última combinación al volver al listado sin filtros en la URL', async () => {
+    const primera = await montarEn('/tickets?vista=resueltos&prioridad=alta');
+    primera.w.unmount();
+    insforgeApi.listTicketsPage.mockClear();
+    const { router } = await montarEn('/tickets');
+    expect(router.currentRoute.value.query).toMatchObject({ vista: 'resueltos', prioridad: 'alta' });
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({ estados: ['resuelto'], prioridades: ['alta'] });
   });
 });

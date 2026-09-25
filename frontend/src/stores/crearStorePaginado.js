@@ -127,8 +127,9 @@ export function crearStorePaginado(id, {
       // en el store (no en el componente) y sobreviven a la navegación — sin
       // este reset, al volver a entrar la caja de búsqueda se ve vacía pero
       // el filtro anterior sigue aplicado (bug reportado jul 2026).
-      // Tickets es la excepción deliberada: ver `resetearBusqueda()` en
-      // stores/tickets.js y la nota de AGENTS.md.
+      // Tickets no lo llama: sus filtros V2 salen enteros de la URL y se
+      // aplican con TODAS las claves en cada montaje (no puede quedar un
+      // filtro fantasma), y el orden elegido sobrevive a abrir un ticket.
       resetearFiltros() {
         this.filtros = filtrosIniciales();
         this.orden = null;

@@ -23,6 +23,22 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Filtros V2 en Tickets**) — reclamo del dueño: las
+  bandejas eran deficientes ("Mis tickets" abría otro segmentado Todos · En
+  progreso · Resuelto · Rechazados, "Todos" repetía lo mismo más un select
+  de técnico). Reemplazo: 5 vistas fijas con conteo (Nuevos · Mis tickets ·
+  Pendientes · Resueltos · Todos) y chips Estado, Asignado a, Prioridad,
+  Categoría, Tipo, Nivel, Solicitante y Creado (rango, nuevo `tipo: 'rango'`
+  de `AppFiltros`; se retira `FiltroFechaCreacion.vue`). Vuelven a poder
+  filtrarse prioridad/categoría/tipo/nivel. Lógica pura en
+  `modules/tickets/filtrosTickets.js`; `queryTickets()` acepta listas
+  (`estados`, `asignados` con centinela `SIN_ASIGNAR`, …). El store deja de
+  guardar bandeja/sub-estado/técnico: `useFiltrosUrl` gana la opción
+  `recordar` (sessionStorage) para volver del detalle con los filtros.
+  Enlaces del Dashboard: `?vista=pendientes`, `?vista=mios`,
+  `?vista=todos&categoria=`. La maqueta entiende `or()` de `is.null`/`in`.
+  Docs: SISTEMA-DISENO §3.2.1, AGENTS.md (gotcha de `resetearFiltros()`),
+  frontend/AGENTS.md (deep-links).
 - **2026-09-25** (**Filtros V2 — piloto Empleados y Equipos**) — pedido del
   dueño: repensar los filtros desde cero. Modelo nuevo: *vistas* con conteo
   (`AppVistas`: estado del empleado / situación del equipo), *chips bajo

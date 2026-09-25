@@ -115,15 +115,16 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   6. `composables/usePopoverFlotante.js` — popovers teletransportados
      (`NotificacionesCampana`, `AppFiltros`).
   7. `composables/useFiltrosUrl.js` — filtros V2 (vistas + chips) con la URL
-     como fuente de verdad; hoy Empleados y Equipos (piloto 2026-09-25).
+     como fuente de verdad; hoy Empleados, Equipos y Tickets (2026-09-25).
      Componentes: `AppVistas` + `AppFiltros` (`docs/SISTEMA-DISENO.md` §3.2.1).
-- **Gotcha de `resetearFiltros()`**: Empleados/Correos/Equipos/KB/Licencias/
-  Problemas lo llaman en su `onMounted` a propósito (sus filtros son refs
-  locales; sin el reset, el store queda con un filtro viejo invisible — bug de
-  jul 2026). En Empleados y Equipos el reset sigue, pero justo después se
-  aplican los filtros leídos de la URL (`useFiltrosUrl`): la URL manda.
-  Tickets es la única excepción (`resetearBusqueda()`, filtros atados al
-  store). No copiar la excepción sin migrar también los filtros.
+     La lógica vista ∩ chips de Tickets vive en `modules/tickets/filtrosTickets.js`.
+- **Gotcha de `resetearFiltros()`**: Correos/KB/Licencias/Problemas lo llaman
+  en su `onMounted` a propósito (sus filtros son refs locales; sin el reset,
+  el store queda con un filtro viejo invisible — bug de jul 2026). En
+  Empleados y Equipos el reset sigue, pero justo después se aplican los
+  filtros leídos de la URL (`useFiltrosUrl`): la URL manda. Tickets ya no es
+  excepción ni lo llama: aplica en cada montaje TODAS las claves que salen
+  de la URL (no puede quedar filtro fantasma) y conserva el orden elegido.
 
 ## Backend
 
