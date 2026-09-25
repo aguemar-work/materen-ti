@@ -206,14 +206,21 @@ describe('TicketDetalleView.vue — encabezado y feed V2', () => {
       { id: 'e1', evento: 'estado_cambiado', detalle: 'De "en_progreso" a "resuelto"', user_id: 'staff-2', created_at: hace(3) },
       { id: 'e2', evento: 'estado_cambiado', detalle: 'De "resuelto" a "cerrado"', user_id: 'staff-9', created_at: hace(3) },
     ]);
+    insforgeApi.getSatisfaccionTicket.mockResolvedValue({ nivel: 4, comentario: 'Rápido', fecha_envio: hace(2) });
     const w = await montar();
-    const resumen = w.find('dl').text();
-    expect(resumen).toContain('Solicitante');
-    expect(resumen).toContain('Juan Pérez');
-    expect(resumen).toContain('Responsable');
-    expect(resumen).toContain('Resuelto');
-    expect(resumen).toContain('por Diego Huamán');
-    expect(resumen).toContain('tardó 2 d');
+    const resumen = w.find('ul[aria-label="Resumen del ticket"]');
+    const texto = resumen.text();
+    expect(texto).toContain('Juan Pérez');
+    expect(texto).toContain('Diego Huamán');
+    expect(texto).toContain('2 d');
+    expect(texto).toContain('4/5');
+    // Prioridad/nivel/tipo/responsable ya están en Gestión: no se repiten.
+    expect(texto).not.toContain('Media');
+    expect(texto).not.toContain('Incidente');
+    // Íconos con guía: cada dato explica qué es al pasar el mouse.
+    expect(resumen.findAll('li').every((li) => li.attributes('title') || li.find('button[title]').exists())).toBe(true);
+    // La satisfacción ya no ocupa una sección abajo en la columna.
+    expect(w.findAll('h2').some((h) => h.text() === 'Satisfacción')).toBe(false);
   });
 
   it('"Mensajes" oculta los hitos del sistema y el mensaje sin autor lleva el nombre del solicitante', async () => {

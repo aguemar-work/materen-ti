@@ -1,7 +1,8 @@
 <script setup>
 // Control segmentado: elegir UNA opción de pocas (2–5) siempre visibles —
 // filtros de estado, pestañas de una vista. Con más opciones, o cuando no
-// caben, usar AppSelect. `opciones`: [{ valor, label, conteo?, icono? }].
+// caben, usar AppSelect. `opciones`: [{ valor, label, conteo?, icono?, titulo? }]
+// (`titulo` = guía al pasar el mouse).
 // V2: 32px de alto en total (misma línea que el buscador); la opción activa
 // es una pastilla blanca con sombra mínima — el mismo lenguaje que el ítem
 // activo del menú lateral, "un pedazo de hoja".
@@ -22,6 +23,7 @@ defineEmits(['update:modelValue']);
       class="inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[5px] px-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
       :class="modelValue === op.valor ? 'bg-white text-gray-900 shadow-xs ring-1 ring-gray-900/5' : 'text-gray-500 hover:text-gray-900'"
       :aria-pressed="modelValue === op.valor"
+      :title="op.titulo || undefined"
       @click="$emit('update:modelValue', op.valor)"
     >
       <i v-if="op.icono" :class="op.icono" aria-hidden="true"></i>

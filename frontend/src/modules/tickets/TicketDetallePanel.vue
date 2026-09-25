@@ -61,8 +61,8 @@ const filasFeed = computed(() => (verFeed.value === 'mensajes'
   ? timelineUnificado.value.filter((f) => f.tipo === 'comentario')
   : timelineUnificado.value));
 const OPCIONES_FEED = computed(() => [
-  { valor: 'todo', label: 'Todo' },
-  { valor: 'mensajes', label: 'Mensajes', conteo: timelineUnificado.value.filter((f) => f.tipo === 'comentario').length },
+  { valor: 'todo', label: 'Todo', titulo: 'Mensajes y cambios del ticket (asignación, estado, prioridad…) en orden' },
+  { valor: 'mensajes', label: 'Mensajes', titulo: 'Solo lo que escribieron el equipo y el solicitante', conteo: timelineUnificado.value.filter((f) => f.tipo === 'comentario').length },
 ]);
 const refFeed = ref(null);
 watch(() => [cargando.value, filasFeed.value.length], async () => {
@@ -133,10 +133,11 @@ function onConfirmarReabrir(motivo) {
             <BadgeEstado tipo="ticket" :valor="ticket.estado" />
           </div>
           <TicketResumen
-            class="mt-2 text-xs"
+            class="mt-2"
             :ticket="ticket"
-            :responsable="ticket.asignado_a ? (staffPorId[ticket.asignado_a] || 'Staff') : ''"
             :resolucion="resolucion"
+            :satisfaccion="satisfaccion"
+            @copiar-encuesta="copiarMensajeSatisfaccion"
           />
         </div>
         <h2 v-else class="min-w-0 flex-1 text-lg font-semibold text-gray-900">Detalle del ticket</h2>
@@ -171,7 +172,7 @@ function onConfirmarReabrir(motivo) {
         >
           <i class="ti ti-alert-hexagon" aria-hidden="true"></i> Problema
         </RouterLink>
-        <AppButton v-else size="sm" variant="outline" severity="secondary" icon="ti ti-alert-hexagon" label="Problema" @click="mostrarProblemaForm = true" />
+        <AppButton v-else size="sm" variant="outline" severity="secondary" icon="ti ti-alert-hexagon" label="Problema" title="Agrupar este ticket en un problema: registrar la causa raíz cuando el mismo incidente se repite" @click="mostrarProblemaForm = true" />
 
         <!-- Toggle "guardar en KB al resolver": el estado activo se expresa
              con la severidad de AppButton (outline primario = ON, outline
@@ -194,11 +195,12 @@ function onConfirmarReabrir(motivo) {
 
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <template v-if="ticket.estado === 'abierto'">
-            <AppButton size="sm" variant="outline" severity="danger" icon="ti ti-x" label="Rechazar" :disabled="iniciando" @click="abrirRechazar" />
+            <AppButton size="sm" variant="outline" severity="danger" icon="ti ti-x" label="Rechazar" title="Descartar el ticket sin atenderlo. El empleado verá el motivo en su seguimiento" :disabled="iniciando" @click="abrirRechazar" />
             <AppButton
               size="sm"
               icon="ti ti-player-play"
               :label="iniciando ? 'Iniciando...' : 'Iniciar atención'"
+              title="Tomar el ticket: pasa a En progreso con la prioridad, el nivel y el responsable elegidos"
               :loading="iniciando"
               @click="confirmarIniciar"
             />
@@ -209,6 +211,7 @@ function onConfirmarReabrir(motivo) {
             size="sm"
             icon="ti ti-circle-check"
             label="Marcar resuelto"
+            title="Cerrar el ticket como resuelto y enviar la encuesta de satisfacción al empleado"
             @click="mostrarConfirmarResolver = true"
           />
 
@@ -219,6 +222,7 @@ function onConfirmarReabrir(motivo) {
             severity="secondary"
             icon="ti ti-refresh"
             :label="reabriendo ? 'Reabriendo...' : 'Reabrir'"
+            title="Volver a abrir el ticket (solo jefe): el motivo queda como nota interna"
             :loading="reabriendo"
             @click="abrirReabrir"
           />
@@ -301,7 +305,7 @@ function onConfirmarReabrir(motivo) {
         <!-- Macros de WhatsApp: clipboard + toast, sin abrir wa.me — el staff
              decide por qué canal reenviarlo. -->
         <section
-          v-if="!ESTADOS_TERMINALES.includes(ticket.estado) || (satisfaccion && !satisfaccion.fecha_envio)"
+          v-if="!ESTADOS_TERMINALES.includes(ticket.estado)"
           aria-labelledby="pnl-rapidas"
         >
           <h3 id="pnl-rapidas" class="mb-1 text-sm font-semibold text-gray-900">Mensajes rápidos</h3>
@@ -315,16 +319,6 @@ function onConfirmarReabrir(motivo) {
               label="Pedir más información"
               title="Copia un mensaje de WhatsApp para el solicitante"
               @click="copiarMensajeSolicitarInfo"
-            />
-            <AppButton
-              v-if="satisfaccion && !satisfaccion.fecha_envio"
-              size="sm"
-              variant="text"
-              severity="secondary"
-              icon="ti ti-brand-whatsapp"
-              label="Resuelto + encuesta"
-              title="Copia un mensaje de WhatsApp con el enlace de la encuesta"
-              @click="copiarMensajeSatisfaccion"
             />
           </div>
         </section>

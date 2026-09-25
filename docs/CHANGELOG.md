@@ -23,6 +23,13 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Tickets: encabezado con íconos + satisfacción arriba**) —
+  revisión del dueño: el encabezado repetía con rótulos lo que ya está en
+  Gestión. `TicketResumen` pasa a íconos con guía y solo lo que no está en
+  Gestión (solicitante, recibido, resuelto por, tiempo, satisfacción). La
+  sección "Satisfacción" de la columna sube al encabezado; el macro
+  "Resuelto + encuesta" del panel pasa a "Encuesta sin responder". Guías
+  (`title`) en todas las acciones del detalle y del panel.
 - **2026-09-25** (**Tickets: detalle a pantalla completa**) — revisión del dueño.
   Página de detalle y panel de Triage: encabezado con `TicketResumen.vue`
   (solicitante, responsable, recibido hace…, resuelto hace… por X · tardó N);

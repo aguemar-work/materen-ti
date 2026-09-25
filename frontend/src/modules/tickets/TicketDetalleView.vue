@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { formatFecha } from '../../core/formatters.js';
 import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
 import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -69,8 +68,8 @@ const filasFeed = computed(() => (verFeed.value === 'mensajes'
   ? timelineUnificado.value.filter((f) => f.tipo === 'comentario')
   : timelineUnificado.value));
 const OPCIONES_FEED = computed(() => [
-  { valor: 'todo', label: 'Todo' },
-  { valor: 'mensajes', label: 'Mensajes', conteo: comentariosTotal.value },
+  { valor: 'todo', label: 'Todo', titulo: 'Mensajes y cambios del ticket (asignación, estado, prioridad…) en orden' },
+  { valor: 'mensajes', label: 'Mensajes', titulo: 'Solo lo que escribieron el equipo y el solicitante', conteo: comentariosTotal.value },
 ]);
 
 // Pantalla completa (lg+): el encabezado queda fijo y cada columna tiene su
@@ -110,8 +109,9 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
           <TicketResumen
             class="mt-3"
             :ticket="ticket"
-            :responsable="ticket.asignado_a ? (staffPorId[ticket.asignado_a] || 'Staff') : ''"
             :resolucion="resolucion"
+            :satisfaccion="satisfaccion"
+            @copiar-encuesta="copiarMensajeSatisfaccion"
           />
           <RouterLink
             v-if="problemaVinculado"
@@ -129,14 +129,16 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
             severity="secondary"
             icon="ti ti-alert-hexagon"
             label="Marcar como problema"
+            title="Agrupar este ticket en un problema: registrar la causa raíz cuando el mismo incidente se repite"
             @click="mostrarProblemaForm = true"
           />
 
           <template v-if="ticket.estado === 'abierto' && !mostrarRechazar">
-            <AppButton variant="outline" severity="danger" icon="ti ti-x" label="Rechazar" :disabled="iniciando" @click="abrirRechazar" />
+            <AppButton variant="outline" severity="danger" icon="ti ti-x" label="Rechazar" title="Descartar el ticket sin atenderlo. El empleado verá el motivo en su seguimiento" :disabled="iniciando" @click="abrirRechazar" />
             <AppButton
               icon="ti ti-player-play"
               :label="iniciando ? 'Iniciando...' : 'Iniciar atención'"
+              title="Tomar el ticket: pasa a En progreso con la prioridad, el nivel y el responsable elegidos"
               :loading="iniciando"
               @click="confirmarIniciar"
             />
@@ -146,6 +148,7 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
             v-if="enCurso"
             icon="ti ti-circle-check"
             label="Marcar como resuelto"
+            title="Cerrar el ticket como resuelto y enviar la encuesta de satisfacción al empleado"
             @click="mostrarConfirmarResolver = true"
           />
 
@@ -156,6 +159,7 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
               severity="secondary"
               icon="ti ti-refresh"
               :label="reabriendo ? 'Reabriendo...' : 'Reabrir ticket'"
+              title="Volver a abrir el ticket (solo jefe): el motivo queda como nota interna"
               :loading="reabriendo"
               @click="abrirReabrir"
             />
@@ -308,27 +312,6 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
             />
           </AppSeccion>
 
-          <AppSeccion v-if="satisfaccion" titulo="Satisfacción">
-            <template v-if="satisfaccion.fecha_envio">
-              <p class="flex items-baseline gap-2">
-                <span class="text-2xl font-semibold tabular-nums text-gray-900">{{ satisfaccion.nivel }}/5</span>
-                <span class="text-xs text-gray-500">{{ formatFecha(satisfaccion.fecha_envio) }}</span>
-              </p>
-              <p v-if="satisfaccion.comentario" class="mt-2 text-sm text-gray-700">“{{ satisfaccion.comentario }}”</p>
-            </template>
-            <template v-else>
-              <p class="text-sm text-gray-500">Encuesta enviada, sin respuesta todavía.</p>
-              <AppButton
-                class="mt-3"
-                size="sm"
-                variant="outline"
-                severity="secondary"
-                icon="ti ti-brand-whatsapp"
-                label="Copiar mensaje de WhatsApp"
-                @click="copiarMensajeSatisfaccion"
-              />
-            </template>
-          </AppSeccion>
         </aside>
       </div>
     </template>

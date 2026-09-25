@@ -81,6 +81,7 @@ watch(
         severity="secondary"
         icon="ti ti-send"
         :label="enviando ? 'Enviando...' : 'Comentar'"
+        :title="interno ? 'Guardar como nota interna: solo la ve el equipo de TI' : 'Enviar al empleado: lo verá en su seguimiento'"
         :loading="enviando"
         :disabled="!mensaje.trim()"
         @click="emit('enviar')"

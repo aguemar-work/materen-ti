@@ -261,9 +261,14 @@ avatar del responsable (círculo punteado si no hay, ámbar si sigue vigente).
 ocupa exactamente la hoja, **sin scroll de página**: encabezado fijo, la
 conversación scrollea sola (arranca abajo, con el composer siempre visible
 al pie) y la columna de gestión scrollea por su cuenta. En móvil vuelve al
-scroll normal de página. Encabezado: `TicketResumen.vue` — prioridad · nivel
-· tipo · Solicitante · Responsable · Recibido hace… · Resuelto/Rechazado hace…
-por X · tardó N (del historial, `useTicketDetalleLogica().resolucion`).
+scroll normal de página. Encabezado: `TicketResumen.vue` — **con íconos, no
+rótulos** (cada dato con su nombre en `title` y en `sr-only`) y **solo lo que
+no está en Gestión**: solicitante · recibido hace… · resuelto/rechazado hace…
+· por quién · tiempo de resolución · satisfacción (★ n/5 y comentario, o
+"Encuesta sin responder" con el recordatorio de WhatsApp). Prioridad, nivel,
+tipo y responsable se editan en Gestión y no se repiten arriba. Toda acción
+del detalle lleva `title` con qué hace y su consecuencia (`AppSegmentado`
+acepta `titulo` por opción).
 Actividad y conversación van **juntas** (una sola historia cronológica) con
 "Todo · Mensajes" para leer solo lo escrito. Un comentario sin `autor_id` es
 del solicitante y lleva su nombre, nunca "Sistema". `AppSeccion llenar`:
