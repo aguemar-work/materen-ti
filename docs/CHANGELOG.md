@@ -23,6 +23,16 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Tickets: tabla y tarjetas rediseñadas + `resuelto_at`**) — revisión
+  del dueño. Tabla: Prioridad · Estado · Ticket (solo número + título) ·
+  Solicitante · Responsable (antes "Asignado a") · Fecha (reemplaza "Edad":
+  "Recibido 25/09" vigente, "Resuelto 20/09" resuelto), con `table-layout:
+  fixed` para no desbordar. Prioridad siempre como tag con fondo. Doble
+  columna y móvil: `TarjetaTicket.vue` (número · prioridad · nivel · estado /
+  título / solicitante + avatar del responsable). Migración
+  `089_tickets_resuelto_at.sql` (columna + trigger + relleno desde
+  `ticket_eventos`): **escrita, sin aplicar** — el API reintenta sin la
+  columna si falta (42703) y cae a `updated_at`. Docs: SISTEMA-DISENO §3.3.
 - **2026-09-25** (**Tickets: vistas coherentes + selección en ambas vistas**) —
   revisión del dueño: las pestañas mezclaban responsable (Nuevos, Mis
   tickets) y estado (Pendientes, Resueltos) con "Todos" al final. Ahora:

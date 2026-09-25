@@ -122,7 +122,7 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
     // La 1ra columna es la de selección (sin texto de header); las 6 con
     // label empiezan en la 2da.
     const labels = headers.slice(1).map((th) => th.text());
-    expect(labels).toEqual(['Prioridad', 'Ticket', 'Solicitante', 'Estado', 'Asignado a', 'Edad']);
+    expect(labels).toEqual(['Prioridad', 'Estado', 'Ticket', 'Solicitante', 'Responsable', 'Fecha']);
   });
 
   it('clic en el header ordenable "Ticket" llama a store.ordenarPor vía @ordenar', async () => {
@@ -325,5 +325,28 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     const { router } = await montarEn('/tickets');
     expect(router.currentRoute.value.query).toMatchObject({ vista: 'resueltos', prioridad: 'alta' });
     expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({ estados: ['resuelto'], prioridades: ['alta'] });
+  });
+});
+
+// Tabla V2 (2026-09-25): Ticket = solo número + título; "Fecha" reemplaza a
+// "Edad" (Recibido / Resuelto según el estado); prioridad siempre con fondo.
+describe('TicketsView.vue — columnas de la tabla', () => {
+  it('la celda Ticket no repite categoría ni nivel, y Fecha dice Recibido o Resuelto', async () => {
+    insforgeApi.listTicketsPage.mockResolvedValue({
+      items: [
+        TICKETS_FIXTURE[1],
+        { ...TICKETS_FIXTURE[0], id: 'tck-3', codigo: 'TCK-0003', estado: 'cerrado', resuelto_at: '2026-09-05T15:00:00.000Z' },
+      ],
+      total: 2,
+    });
+    const w = await montar();
+    const filas = w.findAll('tbody tr');
+    const celdas = (fila) => fila.findAll('td').map((td) => td.text());
+    // [selección, prioridad, estado, ticket, solicitante, responsable, fecha]
+    expect(celdas(filas[0])[3]).toContain('TCK-0002');
+    expect(celdas(filas[0])[3]).not.toContain('Accesos');
+    expect(celdas(filas[0])[6]).toContain('Recibido');
+    expect(celdas(filas[1])[6]).toContain('Resuelto');
+    expect(celdas(filas[1])[6]).toContain('05/09');
   });
 });

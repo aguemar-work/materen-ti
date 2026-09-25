@@ -14,6 +14,7 @@ import TicketInternoForm from './TicketInternoForm.vue';
 import ReporteTicketsModal from './ReporteTicketsModal.vue';
 import TicketDetallePanel from './TicketDetallePanel.vue';
 import PrioridadTicket from './PrioridadTicket.vue';
+import TarjetaTicket from './TarjetaTicket.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -348,6 +349,25 @@ function ticketEnvejecido(t) {
   return false;
 }
 
+// Columna "Fecha" de la tabla: recibido o resuelto según el estado.
+function fechaDeFila(t) {
+  if (t.resuelto_at && ['resuelto', 'cerrado'].includes(t.estado)) return { etiqueta: 'Resuelto', fecha: t.resuelto_at };
+  return { etiqueta: 'Recibido', fecha: t.created_at };
+}
+// DD/MM; con año solo si no es el actual.
+function fechaCorta(iso) {
+  const d = new Date(iso);
+  const dosDigitos = (n) => String(n).padStart(2, '0');
+  const base = `${dosDigitos(d.getDate())}/${dosDigitos(d.getMonth() + 1)}`;
+  return d.getFullYear() === new Date().getFullYear() ? base : `${base}/${String(d.getFullYear()).slice(2)}`;
+}
+function tituloFecha(t) {
+  const partes = [`Recibido el ${formatFechaHora(t.created_at)}`];
+  if (t.resuelto_at && ['resuelto', 'cerrado'].includes(t.estado)) partes.push(`resuelto el ${formatFechaHora(t.resuelto_at)}`);
+  if (ticketEnvejecido(t)) partes.push('sin novedad hace demasiado');
+  return partes.join(' · ');
+}
+
 // Fecha relativa hasta el umbral; más vieja, fecha corta (DD/MM) — pasado
 // cierto punto la fecha concreta ubica mejor. Solo la lista de Triage.
 const UMBRAL_FECHA_CORTA_DIAS = 7;
@@ -599,40 +619,39 @@ onMounted(async () => {
                 :orden="orden"
                 :row-class="claseFilaTicket"
                 :row-attrs="filaAtributosTicket"
-                :table-props="{ 'aria-label': 'Tickets de soporte' }"
+                :table-props="{ 'aria-label': 'Tickets de soporte', style: 'table-layout: fixed' }"
                 @ordenar="store.ordenarPor"
                 @row-click="({ data }) => verTicket(data)"
               >
                 <AppColumn selection-mode="multiple" :header-style="{ width: '44px' }" />
 
+                <!-- Orden de columnas (pedido del dueño, 2026-09-25): primero lo que
+                     decide qué atender (prioridad, estado), luego qué es, quién lo
+                     pide, quién lo atiende y la fecha. -->
                 <AppColumn field="prioridad" header="Prioridad" sortable :header-style="{ width: '112px' }">
                   <template #body="{ data: fila }"><PrioridadTicket :valor="fila.prioridad" /></template>
                 </AppColumn>
 
+                <AppColumn field="estado" header="Estado" sortable :header-style="{ width: '124px' }">
+                  <template #body="{ data: fila }"><BadgeEstado tipo="ticket" :valor="fila.estado" /></template>
+                </AppColumn>
+
+                <!-- Ticket = solo número y título (categoría y nivel viven en el
+                     detalle y en los filtros). -->
                 <AppColumn field="codigo" header="Ticket" sortable>
                   <template #body="{ data: fila }">
-                    <div class="min-w-0">
-                      <div class="flex min-w-0 items-center gap-1.5 text-xs text-gray-500">
-                        <RouterLink
-                          class="font-medium tabular-nums text-gray-600 hover:text-primary-700 hover:underline"
-                          :to="`/tickets/${fila.id}`"
-                          @click.stop
-                        >{{ fila.codigo }}</RouterLink>
-                        <template v-if="fila.categoria">
-                          <span aria-hidden="true">·</span>
-                          <span class="truncate">{{ fila.categoria }}</span>
-                        </template>
-                        <template v-if="fila.nivel_atencion">
-                          <span aria-hidden="true">·</span>
-                          <span :title="`Nivel de atención ${fila.nivel_atencion}`">{{ fila.nivel_atencion }}</span>
-                        </template>
-                      </div>
-                      <div class="mt-0.5 line-clamp-1 font-medium text-gray-900" :title="fila.titulo">{{ fila.titulo }}</div>
+                    <div class="flex min-w-0 items-baseline gap-2">
+                      <RouterLink
+                        class="shrink-0 text-xs font-medium tabular-nums text-gray-500 hover:text-primary-700 hover:underline"
+                        :to="`/tickets/${fila.id}`"
+                        @click.stop
+                      >{{ fila.codigo }}</RouterLink>
+                      <span class="truncate font-medium text-gray-900" :title="fila.titulo">{{ fila.titulo }}</span>
                     </div>
                   </template>
                 </AppColumn>
 
-                <AppColumn field="solicitante" header="Solicitante" :header-style="{ width: '200px' }">
+                <AppColumn field="solicitante" header="Solicitante" :header-style="{ width: '220px' }">
                   <template #body="{ data: fila }">
                     <BadgeEstado v-if="!fila.vinculado" tipo="ticket_sin_vincular" valor="sin_vincular" title="No se pudo identificar al solicitante" />
                     <div v-else class="flex min-w-0 items-center gap-2">
@@ -648,11 +667,7 @@ onMounted(async () => {
                   </template>
                 </AppColumn>
 
-                <AppColumn field="estado" header="Estado" sortable :header-style="{ width: '124px' }">
-                  <template #body="{ data: fila }"><BadgeEstado tipo="ticket" :valor="fila.estado" /></template>
-                </AppColumn>
-
-                <AppColumn field="asignado_a" header="Asignado a" :header-style="{ width: '170px' }">
+                <AppColumn field="asignado_a" header="Responsable" :header-style="{ width: '170px' }">
                   <template #body="{ data: fila }">
                     <span v-if="fila.asignado_a" class="block truncate text-gray-700">{{ nombreStaff(fila.asignado_a) }}</span>
                     <span v-else-if="sinAsignarVigente(fila)" class="inline-flex items-center gap-1.5 text-amber-700">
@@ -662,15 +677,19 @@ onMounted(async () => {
                   </template>
                 </AppColumn>
 
-                <AppColumn field="created_at" header="Edad" sortable :header-style="{ width: '104px' }">
+                <!-- Fecha: "Recibido" mientras sigue vigente (en rojo si lleva
+                     demasiado sin atención), "Resuelto" cuando ya se resolvió
+                     (resuelto_at, migración 089). -->
+                <AppColumn field="created_at" header="Fecha" sortable :header-style="{ width: '184px' }">
                   <template #body="{ data: fila }">
                     <span
-                      class="inline-flex items-center gap-1 whitespace-nowrap tabular-nums"
-                      :class="ticketEnvejecido(fila) ? 'text-red-700' : 'text-gray-500'"
-                      :title="`Creado el ${formatFechaHora(fila.created_at)}${ticketEnvejecido(fila) ? ' — sin novedad hace demasiado' : ''}`"
+                      class="inline-flex items-center gap-1 whitespace-nowrap text-sm tabular-nums"
+                      :class="ticketEnvejecido(fila) ? 'text-red-700' : 'text-gray-600'"
+                      :title="tituloFecha(fila)"
                     >
                       <i v-if="ticketEnvejecido(fila)" class="ti ti-clock-exclamation" aria-hidden="true"></i>
-                      {{ formatAntiguedad(fila.created_at) }}
+                      <span class="text-xs text-gray-500">{{ fechaDeFila(fila).etiqueta }}</span>
+                      {{ fechaCorta(fechaDeFila(fila).fecha) }}
                     </span>
                   </template>
                 </AppColumn>
@@ -702,33 +721,14 @@ onMounted(async () => {
                 :aria-current="fila.id === store.ultimoAbierto ? 'true' : undefined"
                 @click="verTicket(fila)"
               >
-                <div class="flex items-center justify-between gap-3 text-xs text-gray-500">
-                  <span class="flex min-w-0 items-center gap-1.5">
-                    <RouterLink class="font-medium tabular-nums text-gray-600" :to="`/tickets/${fila.id}`" @click.stop>{{ fila.codigo }}</RouterLink>
-                    <template v-if="fila.categoria"><span aria-hidden="true">·</span><span class="truncate">{{ fila.categoria }}</span></template>
-                  </span>
-                  <span
-                    class="inline-flex shrink-0 items-center gap-1 tabular-nums"
-                    :class="ticketEnvejecido(fila) ? 'font-medium text-red-700' : ''"
-                    :title="formatFechaHora(fila.created_at)"
-                  >
-                    <i v-if="ticketEnvejecido(fila)" class="ti ti-clock-exclamation" aria-hidden="true"></i>
-                    {{ formatAntiguedad(fila.created_at) }}
-                  </span>
-                </div>
-                <p class="mt-1.5 line-clamp-2 font-medium text-gray-900">{{ fila.titulo }}</p>
-                <p class="mt-1 truncate text-sm text-gray-600">
-                  <BadgeEstado v-if="!fila.vinculado" tipo="ticket_sin_vincular" valor="sin_vincular" />
-                  <template v-else>{{ fila.solicitante || 'Solicitante sin registrar' }}</template>
-                </p>
-                <div class="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <BadgeEstado tipo="ticket" :valor="fila.estado" />
-                    <PrioridadTicket :valor="fila.prioridad" />
-                  </div>
-                  <span v-if="fila.asignado_a" class="truncate text-xs text-gray-600">{{ nombreStaff(fila.asignado_a) }}</span>
-                  <span v-else class="text-xs" :class="sinAsignarVigente(fila) ? 'text-amber-700' : 'text-gray-500'">Sin asignar</span>
-                </div>
+                <TarjetaTicket
+                  :ticket="fila"
+                  :responsable="fila.asignado_a ? nombreStaff(fila.asignado_a) : ''"
+                  :alerta-sin-asignar="sinAsignarVigente(fila)"
+                  :envejecido="ticketEnvejecido(fila)"
+                  :edad="fechaListaAngosta(fila.created_at)"
+                  :titulo-fecha="tituloFecha(fila)"
+                />
               </li>
             </ul>
             <AppPaginacion
@@ -746,7 +746,7 @@ onMounted(async () => {
       <!-- ── Triage (escritorio): cola angosta + detalle ── -->
       <div v-else class="flex min-h-0 flex-1 gap-4">
         <section
-          class="flex min-h-0 w-80 shrink-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white 2xl:w-96"
+          class="flex min-h-0 w-96 shrink-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white 2xl:w-[26rem]"
           aria-label="Cola de tickets"
         >
           <p v-if="cargando" class="py-10 text-center text-sm text-gray-500" role="status">Cargando tickets...</p>
@@ -772,7 +772,7 @@ onMounted(async () => {
                 v-for="t in lista"
                 :key="t.id"
                 tabindex="0"
-                class="flex cursor-pointer gap-3 px-4 py-3 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+                class="cursor-pointer px-4 py-3 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
                 :class="t.id === ticketSeleccionado
                   ? 'bg-primary-50/70'
                   : estaSeleccionado(t.id) ? 'bg-primary-50/40' : 'hover:bg-gray-50'"
@@ -780,62 +780,25 @@ onMounted(async () => {
                 @click="verTicket(t)"
                 @keydown.enter.self="verTicket(t)"
               >
-                <input
-                  type="checkbox"
-                  class="mt-0.5 shrink-0"
-                  :checked="estaSeleccionado(t.id)"
-                  :aria-label="`Seleccionar ${t.codigo}`"
-                  @click.stop
-                  @change="alternarSeleccion(t.id)"
+                <TarjetaTicket
+                  :ticket="t"
+                  :responsable="t.asignado_a ? nombreStaff(t.asignado_a) : ''"
+                  :alerta-sin-asignar="sinAsignarVigente(t)"
+                  :envejecido="ticketEnvejecido(t)"
+                  :edad="fechaListaAngosta(t.created_at)"
+                  :titulo-fecha="tituloFecha(t)"
                 >
-                <div class="min-w-0 flex-1">
-                <div class="flex items-center justify-between gap-2 text-xs text-gray-500">
-                  <span class="flex min-w-0 items-center gap-1.5">
-                    <RouterLink
-                      class="shrink-0 font-medium tabular-nums text-gray-600 hover:text-primary-700 hover:underline"
-                      :to="`/tickets/${t.id}`"
+                  <template #inicio>
+                    <input
+                      type="checkbox"
+                      class="mt-0.5 shrink-0"
+                      :checked="estaSeleccionado(t.id)"
+                      :aria-label="`Seleccionar ${t.codigo}`"
                       @click.stop
-                    >{{ t.codigo }}</RouterLink>
-                    <i
-                      v-if="!t.vinculado"
-                      class="ti ti-alert-triangle shrink-0 text-red-600"
-                      title="No se pudo identificar al solicitante"
-                      aria-label="Sin vincular"
-                    ></i>
-                    <template v-if="t.solicitante">
-                      <span aria-hidden="true">·</span>
-                      <span class="truncate">{{ t.solicitante }}</span>
-                    </template>
-                  </span>
-                  <span
-                    class="inline-flex shrink-0 items-center gap-1 tabular-nums"
-                    :class="ticketEnvejecido(t) ? 'font-medium text-red-700' : ''"
-                    :title="formatFechaHora(t.created_at)"
-                  >
-                    <i v-if="ticketEnvejecido(t)" class="ti ti-clock-exclamation" aria-hidden="true"></i>
-                    {{ fechaListaAngosta(t.created_at) }}
-                  </span>
-                </div>
-                <p class="mt-1 line-clamp-2 text-sm font-medium text-gray-900" :title="t.titulo">{{ t.titulo }}</p>
-                <div class="mt-2 flex items-center justify-between gap-2">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <BadgeEstado tipo="ticket" :valor="t.estado" />
-                    <PrioridadTicket :valor="t.prioridad" />
-                  </div>
-                  <span v-if="t.asignado_a" :title="nombreStaff(t.asignado_a)">
-                    <AppAvatar :nombre="nombreStaff(t.asignado_a)" />
-                  </span>
-                  <span
-                    v-else
-                    class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed"
-                    :class="sinAsignarVigente(t) ? 'border-amber-300 text-amber-600' : 'border-gray-300 text-gray-500'"
-                    title="Sin asignar"
-                  >
-                    <i class="ti ti-user" aria-hidden="true"></i>
-                    <span class="sr-only">Sin asignar</span>
-                  </span>
-                </div>
-                </div>
+                      @change="alternarSeleccion(t.id)"
+                    >
+                  </template>
+                </TarjetaTicket>
               </li>
             </ul>
 

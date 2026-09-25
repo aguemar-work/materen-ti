@@ -240,6 +240,22 @@ tabla: empujarla hace perder de vista la fila que se estaba marcando.
   verticales), hover `gray-50`.
 - Dentro de `AppMarcoTabla`, la primera y la última columna recuperan el
   padding de la página (`pl-4 sm:pl-6`) para alinearse con el título.
+- Una tabla nunca desborda la hoja: si una columna de texto libre (título,
+  nombre) puede crecer, la tabla va con `table-layout: fixed` (vía
+  `table-props`), todas las columnas menos una con ancho, y la de texto
+  libre toma el resto y recorta con `truncate` + `title`.
+- **Fechas en columnas**: fecha concreta (`25/09`, con año solo si no es el
+  actual) y su significado en gris delante ("Recibido", "Resuelto"), nunca
+  una antigüedad relativa ("hace 3 d") como único dato. La antigüedad
+  relativa queda para alertas (rojo + `ti-clock-exclamation`).
+
+**Tickets (2026-09-25)** — Tabla: Prioridad · Estado · Ticket (número +
+título, nada más) · Solicitante · Responsable · Fecha ("Recibido" mientras
+está vigente, "Resuelto" con `resuelto_at`, migración 089). Prioridad y
+Estado son siempre tag con fondo (`PrioridadTicket` ya no usa punto + texto
+para baja/media). Doble columna y móvil comparten `TarjetaTicket.vue`, tres
+filas: número · prioridad · nivel · estado / título / solicitante ···
+avatar del responsable (círculo punteado si no hay, ámbar si sigue vigente).
 
 ### 3.4 Primitivas en CSS (`styles/componentes.css`, capa `components`)
 Todo lo que queda en `componentes.css` es oficial, y cada selector tiene

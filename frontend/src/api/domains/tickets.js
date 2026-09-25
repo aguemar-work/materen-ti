@@ -110,10 +110,10 @@ export const ticketsApi = {
   },
 
   async listTickets() {
-    const { data, error } = await getClient().database
+    const { data, error } = await conReintentoResueltoAt(() => getClient().database
       .from('tickets')
-      .select(SELECT_RESUMEN)
-      .order('created_at', { ascending: false });
+      .select(selectResumen())
+      .order('created_at', { ascending: false }));
     if (error) throw error;
     return (data || []).map(mapTicketResumen);
   },
@@ -122,8 +122,10 @@ export const ticketsApi = {
   // (`filtros` puede incluir `orden: { columna, direccion }`, ver queryTickets)
   async listTicketsPage({ pagina = 1, tamPagina = 20, ...filtros } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryTickets(filtros, { conteo: true });
-    const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
+    const { data, count, error } = await conReintentoResueltoAt(async () => {
+      const { qb } = await queryTickets(filtros, { conteo: true });
+      return qb.range(desde, desde + tamPagina - 1);
+    });
     if (error) throw error;
     return { items: (data || []).map(mapTicketResumen), total: count ?? 0 };
   },
@@ -148,8 +150,7 @@ export const ticketsApi = {
 
   // Dataset filtrado completo, sin página — para exportar CSV
   async listTicketsFiltrados(filtros = {}) {
-    const { qb } = await queryTickets(filtros);
-    const { data, error } = await qb;
+    const { data, error } = await conReintentoResueltoAt(async () => (await queryTickets(filtros)).qb);
     if (error) throw error;
     return (data || []).map(mapTicketResumen);
   },
@@ -231,12 +232,29 @@ export const ticketsApi = {
   },
 };
 
-const SELECT_RESUMEN = `
+const SELECT_BASE = `
   id, codigo, titulo, estado, prioridad, nivel_atencion, tipo, vinculado, contacto_ingresado,
   created_at, updated_at, asignado_a, empleado_id,
   empleados(nombres, apellidos),
   categorias_ticket(nombre), subcategorias_ticket(nombre)
 `;
+
+// resuelto_at (migración 089): fecha de resolución para la columna "Fecha"
+// del listado. Si el proyecto todavía no tiene la migración aplicada, la
+// primera consulta falla con 42703 (columna inexistente) y desde ahí se
+// pide el listado sin ella — la fila cae a updated_at como aproximación en
+// vez de romper la bandeja entera.
+let conResueltoAt = true;
+const selectResumen = () => (conResueltoAt ? `${SELECT_BASE}, resuelto_at` : SELECT_BASE);
+
+async function conReintentoResueltoAt(ejecutar) {
+  const res = await ejecutar();
+  if (res.error?.code === '42703' && conResueltoAt && String(res.error.message || '').includes('resuelto_at')) {
+    conResueltoAt = false;
+    return ejecutar();
+  }
+  return res;
+}
 
 // Query base del listado con filtros en servidor. El solicitante vive en
 // la tabla empleados (embed) y un .or() top-level no puede filtrar columnas
@@ -263,7 +281,7 @@ async function queryTickets(
   { conteo = false, soloConteo = false } = {},
 ) {
   const db = getClient().database;
-  const seleccion = soloConteo ? 'id' : SELECT_RESUMEN;
+  const seleccion = soloConteo ? 'id' : selectResumen();
   let query = db.from('tickets').select(seleccion, conteo ? { count: 'exact' } : undefined);
   // 'resuelto' agrupa los 2 valores reales (resuelto+cerrado, fusionados
   // en la UI — ver dominio-tickets.js) — de ahí el .in() en vez de .eq().
@@ -336,6 +354,9 @@ function mapTicketResumen(row) {
     asignado_a: row.asignado_a,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    // Sin la migración 089, un resuelto/cerrado cae a updated_at (en la
+    // práctica, el cierre): aproximado, pero nunca vacío.
+    resuelto_at: row.resuelto_at ?? (['resuelto', 'cerrado'].includes(row.estado) ? row.updated_at : null),
   };
 }
 
