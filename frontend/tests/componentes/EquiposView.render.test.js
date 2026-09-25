@@ -23,7 +23,8 @@ vi.mock('../../src/api/insforge.js', () => ({
     listEquiposPage: vi.fn(),
     listTiposEquipo: vi.fn().mockResolvedValue([]),
     listUbicaciones: vi.fn().mockResolvedValue([{ id: 'ub-1', nombre: 'Almacén TI' }]),
-    conteosDisponibilidad: vi.fn().mockResolvedValue({ disponible: 5, asignado: 3, en_reparacion: 1 }),
+    conteosEquiposPorSituacion: vi.fn(),
+    listEmpresas: vi.fn().mockResolvedValue([]),
     listEmpleados: vi.fn().mockResolvedValue([]),
   },
 }));
@@ -103,7 +104,10 @@ beforeEach(() => {
   insforgeApi.listEquiposPage.mockResolvedValue({ items: EQUIPOS_FIXTURE, total: 2 });
   insforgeApi.listTiposEquipo.mockResolvedValue([]);
   insforgeApi.listUbicaciones.mockResolvedValue([{ id: 'ub-1', nombre: 'Almacén TI' }]);
-  insforgeApi.conteosDisponibilidad.mockResolvedValue({ disponible: 5, asignado: 3, en_reparacion: 1 });
+  insforgeApi.listEmpresas.mockResolvedValue([]);
+  insforgeApi.conteosEquiposPorSituacion.mockResolvedValue({
+    todos: 2, disponible: 0, asignado: 1, en_ubicacion: 0, en_reparacion: 0, fuera: 1,
+  });
 });
 
 describe('EquiposView.vue — listado migrado a AppTable/AppColumn/AppButton', () => {
@@ -253,5 +257,48 @@ describe('EquiposView.vue — /equipos?nuevo=1', () => {
     await flushPromises();
     expect(w.findComponent({ name: 'EquipoForm' }).exists()).toBe(true);
     expect(router.currentRoute.value.query.nuevo).toBeUndefined();
+  });
+});
+
+// Filtros V2 (2026-09-25): la situación es una VISTA (pestañas con conteo)
+// y la URL es la fuente de verdad del filtro.
+describe('EquiposView.vue — vistas y filtros en la URL', () => {
+  function vista(w, texto) {
+    const grupo = w.find('[role="group"][aria-label="Vista de equipos"]');
+    return grupo.findAll('button').find((b) => b.text().startsWith(texto));
+  }
+
+  it('muestra las vistas con su conteo (reemplazan a los KPI y al select de situación)', async () => {
+    const w = await montar();
+    expect(vista(w, 'Todos').text()).toContain('2');
+    expect(vista(w, 'Fuera de servicio').text()).toContain('1');
+    expect(w.find('select[aria-label="Filtrar por situación"]').exists()).toBe(false);
+  });
+
+  it('elegir una vista recarga con esa situación y la deja en la URL', async () => {
+    const router = crearRouter();
+    router.push('/equipos');
+    await router.isReady();
+    const w = mount(EquiposView, { global: { plugins: [router], stubs: { EquipoForm: true, Modal: true, ConfirmDialog: true } } });
+    await flushPromises();
+    await vista(w, 'Libres').trigger('click');
+    await flushPromises();
+    expect(insforgeApi.listEquiposPage.mock.calls.at(-1)[0]).toMatchObject({ situacion: 'disponible', pagina: 1 });
+    expect(router.currentRoute.value.query.situacion).toBe('disponible');
+    expect(vista(w, 'Libres').attributes('aria-pressed')).toBe('true');
+  });
+
+  it('al llegar con filtros en la URL, los aplica sin que haya que tocar nada', async () => {
+    const router = crearRouter();
+    router.push('/equipos?situacion=en_reparacion&tipo=laptop,desktop');
+    await router.isReady();
+    mount(EquiposView, { global: { plugins: [router], stubs: { EquipoForm: true, Modal: true, ConfirmDialog: true } } });
+    await flushPromises();
+    expect(insforgeApi.listEquiposPage.mock.calls.at(-1)[0]).toMatchObject({
+      situacion: 'en_reparacion',
+      tipoIds: ['laptop', 'desktop'],
+    });
+    // Los conteos de las vistas respetan los chips (no la vista elegida).
+    expect(insforgeApi.conteosEquiposPorSituacion.mock.calls.at(-1)[0]).toMatchObject({ tipoIds: ['laptop', 'desktop'] });
   });
 });

@@ -54,6 +54,9 @@ function aplicarFiltroSituacion(query, situacion) {
   if (['en_reparacion', 'de_baja', 'perdido'].includes(situacion)) {
     return query.eq('estado', situacion);
   }
+  // Vista "Fuera de servicio" (V2): dados de baja + robados/perdidos juntos —
+  // los dos significan "este equipo ya no se puede entregar".
+  if (situacion === 'fuera') return query.in('estado', ['de_baja', 'perdido']);
   if (situacion === 'asignado') {
     return query
       .eq('estado', 'operativo')
@@ -69,12 +72,17 @@ function aplicarFiltroSituacion(query, situacion) {
   return null;
 }
 
-async function queryEquipos({ q = '', tipoId = '', situacion = '', orden } = {}, { conteo = false } = {}) {
+// Dimensiones (V2, chips de AppFiltros): varios valores por dimensión con
+// `.in()` — O dentro de la dimensión, Y entre dimensiones.
+async function queryEquipos({
+  q = '', tipoIds = [], empresaIds = [], situacion = '', orden,
+} = {}, { conteo = false } = {}) {
   let query = getClient().database
     .from('equipos')
     .select(SELECT_EQUIPO, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
-  if (tipoId) query = query.eq('tipo_id', tipoId);
+  if (tipoIds.length) query = query.in('tipo_id', tipoIds);
+  if (empresaIds.length) query = query.in('empresa_id', empresaIds);
   const filtrado = aplicarFiltroSituacion(query, situacion);
   if (filtrado !== null) {
     query = filtrado;
@@ -131,22 +139,29 @@ export const equiposApi = {
   // `queryEquipos()` y el mismo filtro por situación que ya arma el
   // `<select>` del toolbar; `.range(0, 0)` pide 0 filas de datos y se queda
   // solo con el `count` exacto de PostgREST.
-  async conteosDisponibilidad() {
-    const situaciones = ['disponible', 'asignado', 'en_reparacion'];
+  //
+  // V2: una cifra por VISTA de la lista (Todos, Libres, Con personas, En
+  // ubicaciones, En reparación, Fuera de servicio), con el RESTO de los
+  // filtros aplicados (búsqueda y chips) — el número de cada pestaña dice
+  // cuántas filas va a mostrar al elegirla. Reemplaza a las 3 tarjetas KPI,
+  // que filtraban la misma "situación" que el select del toolbar: ahora hay
+  // una sola forma de hacerlo.
+  async conteosEquiposPorSituacion(filtros = {}) {
+    const situaciones = ['', 'disponible', 'asignado', 'en_ubicacion', 'en_reparacion', 'fuera'];
     const resultados = await Promise.all(
       situaciones.map(async (situacion) => {
-        const { qb } = await queryEquipos({ situacion }, { conteo: true });
+        const { qb } = await queryEquipos({ ...filtros, situacion }, { conteo: true });
         const { count, error } = await qb.range(0, 0);
         if (error) throw error;
-        return [situacion, count ?? 0];
+        return [situacion || 'todos', count ?? 0];
       }),
     );
     return Object.fromEntries(resultados);
   },
 
-  async listEquiposPage({ pagina = 1, tamPagina = 20, q = '', tipoId = '', situacion = '', orden } = {}) {
+  async listEquiposPage({ pagina = 1, tamPagina = 20, orden, ...filtros } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryEquipos({ q, tipoId, situacion, orden }, { conteo: true });
+    const { qb } = await queryEquipos({ ...filtros, orden }, { conteo: true });
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapEquipo), total: count ?? 0 };

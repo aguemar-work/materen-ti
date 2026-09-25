@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
@@ -23,31 +23,106 @@ import AppColumn from '../../components/ui/AppColumn.js';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
-import AppSegmentado from '../../components/ui/AppSegmentado.vue';
-import AppSelect from '../../components/ui/AppSelect.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
 import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
 
 const router = useRouter();
-const route = useRoute();
 const store = useEmpleadosStore();
 const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 
-// Filtro de estado como segmentado (rediseño 2026-09-22): con 3 estados y
-// uno de ellos por defecto, verlos todos a la vista ahorra abrir un select.
-// '' = todos, mismo valor que tenía la opción "Todos los estados".
-const ESTADOS_SEGMENTO = [
-  { valor: 'Activo', label: 'Activos' },
-  { valor: 'Inactivo', label: 'Inactivos' },
-  { valor: 'Suspendido', label: 'Suspendidos' },
-  { valor: '', label: 'Todos' },
-];
+// ── Filtros V2: vistas + chips + URL (2026-09-25) ──────────────────────
+// La URL es la fuente de verdad: `?estado=Inactivo&empresa=a,b&q=juan`.
+// `estado` es la VISTA (pestañas con conteo); 'Activo' por defecto — ver
+// activos e inactivos mezclados era el problema reportado (ago 2026) — y
+// 'todos' la vista sin filtro de estado. Los enlaces de Inicio
+// (/empleados?estado=Inactivo) usan este mismo parámetro.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  estado: { tipo: 'valor', defecto: 'Activo' },
+  q: { tipo: 'texto' },
+  empresa: { tipo: 'lista' },
+  ubicacion: { tipo: 'lista' },
+  area: { tipo: 'lista' },
+});
+
+const CLAVES_FILTRO = ['q', 'empresa', 'ubicacion', 'area'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
+
+// Lo que viaja al servidor. `estado` se separa del resto: los conteos de las
+// vistas dependen de los filtros, no de la vista elegida.
+const filtrosSinEstado = computed(() => ({
+  q: filtros.q,
+  empresaIds: filtros.empresa,
+  ubicacionIds: filtros.ubicacion,
+  areaIds: filtros.area,
+}));
+const filtrosServidor = computed(() => ({
+  ...filtrosSinEstado.value,
+  estado: filtros.estado === 'todos' ? '' : filtros.estado,
+}));
+
+// Búsqueda: el campo responde al instante; a la URL (y al servidor) llega
+// con el debounce de useBusqueda.
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
+  try {
+    conteos.value = await insforgeApi.conteosEmpleadosPorEstado(filtrosSinEstado.value);
+  } catch {
+    // Sin conteos, las pestañas se muestran igual (sin número).
+  }
+}
+
+const VISTAS = computed(() => [
+  { valor: 'Activo', label: 'Activos', conteo: conteos.value?.Activo },
+  { valor: 'Inactivo', label: 'Inactivos', conteo: conteos.value?.Inactivo, titulo: 'Dados de baja' },
+  { valor: 'Suspendido', label: 'Suspendidos', conteo: conteos.value?.Suspendido },
+  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
+]);
+
+// Dimensiones de los chips: las tres son columnas propias del empleado.
+const ubicaciones = ref([]);
+const empresas = ref([]);
+const areas = ref([]);
+const aOpciones = (lista) => lista.map((x) => ({ valor: x.id, label: x.nombre }));
+const DIMENSIONES = computed(() => [
+  { id: 'empresa', label: 'Empresa', icono: 'ti ti-building', opciones: aOpciones(empresas.value) },
+  { id: 'area', label: 'Área/Obra', icono: 'ti ti-briefcase', opciones: aOpciones(areas.value) },
+  { id: 'ubicacion', label: 'Ubicación', icono: 'ti ti-map-pin', opciones: aOpciones(ubicaciones.value) },
+]);
+const chips = computed({
+  get: () => ({ empresa: filtros.empresa, area: filtros.area, ubicacion: filtros.ubicacion }),
+  set: (v) => { filtros.empresa = v.empresa; filtros.area = v.area; filtros.ubicacion = v.ubicacion; },
+});
+
+function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
+  busqueda.value = '';
+}
+
+// Una vista sin filas en un inventario que sí tiene gente ("Suspendidos: 0")
+// no es "Sin empleados todavía": dice que esa vista está vacía, nada más.
+const vistaVacia = computed(() => {
+  if (filtros.estado === 'todos' || !(conteos.value?.todos > 0)) return null;
+  const nombre = VISTAS.value.find((v) => v.valor === filtros.estado)?.label.toLowerCase();
+  return { titulo: `Sin empleados ${nombre}`, mensaje: 'No hay nadie en esta vista. Las demás pestañas muestran al resto del personal.' };
+});
+
+// Cualquier cambio de filtro o de vista recarga la página 1; los conteos,
+// solo si cambió algo más que la vista.
+watch(filtrosServidor, (f) => store.aplicarFiltros(f), { deep: true });
+watch(filtrosSinEstado, refrescarConteos, { deep: true });
 
 // ── Selector Tabla/Tarjetas (FASE 4) ────────────────────────────────────
 // "Lista con avatar" queda pendiente como 3ª opción (falta el mockup de
@@ -67,15 +142,8 @@ const OPCIONES_VISTA_EMPLEADOS = [
 const { esMovil } = useEsMovil();
 const { vista } = useVistaModulo('empleados', ['tabla', 'tarjetas']);
 
-useRealtimeRefresco('empleados:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+useRealtimeRefresco('empleados:list', () => Promise.all([store.cargar(), refrescarConteos()]), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
-// Precarga desde el link del Dashboard (ej. /empleados?estado=Inactivo);
-// sin query entrante arranca en Activo — ver activos e inactivos mezclados
-// por defecto era el problema reportado (ago 2026).
-const filtroEstado = ref(route.query.estado || 'Activo');
-const filtroUbicacion = ref('');
-const ubicaciones = ref([]);
 // El chip de cuentas de la fila ya distinguía "0 cuentas" con un tono
 // apagado, pero cero cuentas no significa lo mismo en todos lados: en alguien
 // que entró la semana pasada es un alta a medias, y en alguien de hace dos
@@ -93,22 +161,6 @@ function tituloCuentas(emp) {
 
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
-
-// Búsqueda y filtros viajan al servidor (paginación server-side):
-// la búsqueda con debounce, los selects al instante.
-watch(filtroEstado, (estado) => store.aplicarFiltros({ estado }));
-watch(filtroUbicacion, (ubicacionId) => store.aplicarFiltros({ ubicacionId }));
-
-// 'Activo' es el estado por defecto de esta vista (no un filtro que el
-// usuario haya elegido), así que no cuenta para "hay filtros aplicados" —
-// mismo patrón de "Limpiar filtros" que ya usan KB/Problemas/Equipos, acá
-// faltaba (diagnóstico UX 2026-09-25, propuesta V2).
-const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroUbicacion.value || filtroEstado.value !== 'Activo');
-function limpiarFiltros() {
-  busqueda.value = '';
-  filtroUbicacion.value = '';
-  filtroEstado.value = 'Activo';
-}
 
 
 // Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
@@ -224,25 +276,21 @@ function accionesDe(emp) {
 }
 
 onMounted(async () => {
+  // Catálogos de los chips, en paralelo con la página: si uno falla, esa
+  // dimensión queda sin opciones — nunca bloquea ni rompe el listado.
+  Promise.allSettled([insforgeApi.listEmpresas(), insforgeApi.listAreasObras(), insforgeApi.listUbicaciones()])
+    .then(([emps, ars, ubs]) => {
+      if (emps.status === 'fulfilled') empresas.value = emps.value;
+      if (ars.status === 'fulfilled') areas.value = ars.value;
+      if (ubs.status === 'fulfilled') ubicaciones.value = ubs.value;
+    });
+  refrescarConteos();
   try {
-    ubicaciones.value = await insforgeApi.listUbicaciones();
-  } catch {
-    // El filtro de ubicación queda vacío si falla — no rompe el listado.
-  }
-  try {
-    // route.query.estado (no filtroEstado.value: ese ref siempre trae un
-    // valor por el fallback 'Activo' de la línea de arriba, así que nunca
-    // detectaría "no hay query entrante") — condición real de si llegó un
-    // deep link del Dashboard. Sin resetear en ese caso, `q` (búsqueda de
-    // texto) quedaba pegado en el store entre montajes: la caja se veía
-    // vacía (useBusqueda nace limpio) pero el filtro seguía aplicado al
-    // volver a Empleados desde otro módulo (bug reportado ago 2026).
-    if (route.query.estado) {
-      await store.aplicarFiltros({ estado: filtroEstado.value });
-    } else {
-      store.resetearFiltros();
-      await store.cargar();
-    }
+    // Lo que se aplica es SIEMPRE lo que dice la URL: el reset limpia lo que
+    // el store pudiera traer de una visita anterior (orden, página) y los
+    // filtros se reponen desde la URL, así no queda ningún filtro invisible.
+    store.resetearFiltros();
+    await store.aplicarFiltros(filtrosServidor.value);
   } catch {
     showToast(error.value || 'Error al cargar empleados', 'error');
   }
@@ -253,7 +301,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado
       titulo="Empleados"
-      :subtitulo="`${total} ${total === 1 ? 'persona' : 'personas'}${filtroEstado ? ` en estado ${filtroEstado.toLowerCase()}` : ''} · accesos, equipos y licencias asignados`"
+      subtitulo="Personal inventariado, con sus accesos, equipos y licencias"
     >
       <template #acciones>
         <AppButton
@@ -270,14 +318,13 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <AppBarraFiltros>
+    <!-- ══ Vistas (estado) ═══════════════════════════════════════ -->
+    <AppVistas v-model="filtros.estado" :opciones="VISTAS" label="Vista de empleados" />
+
+    <!-- ══ Barra de filtros: búsqueda + chips bajo demanda ══════ -->
+    <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar empleados" placeholder="Buscar por nombre o DNI" />
-      <AppSegmentado v-model="filtroEstado" :opciones="ESTADOS_SEGMENTO" label="Filtrar por estado" />
-      <AppSelect v-model="filtroUbicacion" label="Filtrar por ubicación">
-        <option value="">Todas las ubicaciones</option>
-        <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-      </AppSelect>
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
       <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio ml-auto" />
     </AppBarraFiltros>
@@ -292,11 +339,11 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && total === 0"
         icono="ti ti-users"
-        :titulo="hayFiltros ? 'Sin resultados' : 'Sin empleados todavía'"
-        :mensaje="hayFiltros ? 'No hay empleados con los filtros aplicados.' : 'Agregue el primer empleado al inventario para asignarle accesos y equipos.'"
+        :titulo="hayFiltros ? 'Sin resultados' : vistaVacia ? vistaVacia.titulo : 'Sin empleados todavía'"
+        :mensaje="hayFiltros ? 'No hay empleados con los filtros aplicados.' : vistaVacia ? vistaVacia.mensaje : 'Agregue el primer empleado al inventario para asignarle accesos y equipos.'"
       >
         <AppButton
-          v-if="!hayFiltros"
+          v-if="!hayFiltros && !vistaVacia"
           variant="outline"
           severity="secondary"
           icon="ti ti-plus"
@@ -377,7 +424,9 @@ onMounted(async () => {
                 </template>
               </AppColumn>
 
-              <AppColumn field="estado" header="Estado" sortable>
+              <!-- Solo en "Todos": dentro de una vista de estado, la columna
+                   repetiría en cada fila lo que ya dice la pestaña. -->
+              <AppColumn v-if="filtros.estado === 'todos'" field="estado" header="Estado" sortable>
                 <template #body="{ data: emp }">
                   <BadgeEstado tipo="empleado" :valor="emp.estado" status />
                 </template>

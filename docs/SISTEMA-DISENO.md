@@ -121,7 +121,9 @@ una decisión para pedir, no para completar.
 | Componente | Para qué | Props clave |
 | --- | --- | --- |
 | `AppEncabezado` | Encabezado de página | `titulo`, `subtitulo`, slots `acciones`, `junto-titulo`, `subtitulo` |
-| `AppBarraFiltros` | Fila de controles de 32px entre el encabezado y la tabla de un listado | slot (el selector de vista lleva `ml-auto`) |
+| `AppBarraFiltros` | Fila de controles de 32px entre el encabezado y la tabla de un listado | slot (el selector de vista lleva `ml-auto`); con `AppVistas` arriba, `class="pt-3"` |
+| `AppVistas` | Pestañas de vista de un listado, con conteo (§3.2.1) | `v-model`, `opciones` [{valor,label,conteo?,icono?,titulo?}], `label` |
+| `AppFiltros` | Chips de filtro bajo demanda con selección múltiple (§3.2.1) | `v-model` ({[id]: valores[]}), `dimensiones` [{id,label,icono,opciones:[{valor,label}]}] |
 | `AppMarcoTabla` | Tabla a sangre dentro de la hoja (sin card), no se estira: con pocas filas la paginación queda pegada a la última | slot (tabla con scroll + `AppPaginacion`) |
 | `AppButton` | Toda acción | `label`, `icon`, `severity` (primary/secondary/danger), `variant` (solid/outline/text), `size` (sm 32 / md 36 / lg 44), `loading`; `to` (renderiza `RouterLink`) o `href` (renderiza `<a>`) para un botón que navega |
 | `AppPortal` | Layout del portal público y de las páginas de error (4.5) | `titulo` (el `<h1>`), `descripcion`, `seccion`, `icono` + `tono`, `centrado`, `superpuesto`; slots `antetitulo`, `pie` |
@@ -148,6 +150,35 @@ dominio: el tono sale de `core/badges.js` → `core/tagRol.js` y el render es
 Tags: un estado del dominio va con `BadgeEstado`; cualquier otro tag, con
 `AppTag` (si el tono viene de un `core/dominio-*.js`, pasarlo por
 `rolDeTag()`). No se escriben tags a mano con clases.
+
+### 3.2.1 Filtros V2: vistas + chips + URL (2026-09-25)
+Modelo de filtrado de los listados (piloto en **Empleados** y **Equipos**;
+el resto de los listados sigue con segmentados/selects hasta migrarse):
+
+```
+ Activos 9   Inactivos 3   Suspendidos 0   Todos 12          ← AppVistas
+──────────────────────────────────────────────────────────
+[🔍 Buscar…] [🏢 Empresa: Materen, Andes ⌄ ×] [⧩ Filtro] ✕ Limpiar   ← AppBarraFiltros
+```
+- **Vistas** (`AppVistas`): las 3–6 preguntas diarias de esa lista, a un
+  clic y con su conteo (el conteo respeta búsqueda y chips, no la vista
+  elegida: dice cuántas filas va a mostrar esa pestaña). Reemplazan al
+  segmentado de estado y a los KPI que filtraban. Indicador de la activa:
+  marca horizontal de 2px debajo del texto (no es un borde, nunca lateral).
+- **Chips bajo demanda** (`AppFiltros`): "+ Filtro" abre las dimensiones
+  del listado; cada dimensión elegida queda como chip con **selección
+  múltiple**. O dentro de una dimensión, Y entre dimensiones. Chip
+  aplicado = tinte `primary-50`; click lo edita, × lo quita entero. Nada
+  ocupa espacio hasta que se usa.
+- **"Limpiar"** vuelve búsqueda y chips a cero; la vista NO (una vista no
+  es un filtro).
+- **La URL es la fuente de verdad** (`useFiltrosUrl`):
+  `?estado=Inactivo&empresa=a,b&q=juan`. Recargar, atrás/adelante o
+  compartir el enlace reproduce la vista exacta; los enlaces de Inicio usan
+  el mismo parámetro. Cambiar un filtro reemplaza la entrada de historial
+  (no la apila).
+- **La columna que la vista ya fija no se repite** (Empleados: "Estado" solo
+  se ve en la vista "Todos").
 
 ### 3.3 Tablas (preset `pt/table.pt.js`)
 - Cabecera: banda `gray-50/80`, texto `text-xs font-medium text-gray-500`,
@@ -195,9 +226,11 @@ no reintroducirlo.
 ```
 <div class="flex h-full min-h-0 flex-col">
   <AppEncabezado titulo subtitulo> #acciones: [secundarias text] [principal sólida]
-  <AppBarraFiltros>
-    AppBuscador · AppSegmentado (estado) · AppSelect(s) · [Limpiar] · [SelectorVista ml-auto]
+  <AppVistas v-model="filtros.estado" :opciones="VISTAS">          ← V2 (§3.2.1)
+  <AppBarraFiltros class="pt-3">
+    AppBuscador · AppFiltros (chips) · [Limpiar] · [SelectorVista ml-auto]
   </AppBarraFiltros>
+  (listados aún sin migrar: AppBuscador · AppSegmentado · AppSelect(s) · [Limpiar])
   <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">   ← contenedor de contenido
     error → .notif--danger · vacío → AppVacio (pagina)
     <AppMarcoTabla>

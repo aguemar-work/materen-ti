@@ -11,7 +11,7 @@ const METODOS = [
   'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
   'getEmpleado', 'createEmpleado', 'buscarPorDni',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
-  'conteosVinculos', 'altasIncompletas', 'tieneEntrega',
+  'conteosVinculos', 'altasIncompletas', 'tieneEntrega', 'conteosEmpleadosPorEstado',
   // catálogos
   'listEmpresas', 'createEmpresa', 'updateEmpresa', 'softDeleteEmpresa',
   'listPlataformas', 'createPlataforma', 'updatePlataforma', 'softDeletePlataforma',
@@ -36,7 +36,7 @@ const METODOS = [
   'listEquipos', 'listEquiposPage', 'listEquiposFiltrados', 'asignacionActivaEquipo', 'moverEquipo', 'createEquipo', 'updateEquipo',
   'cambiarEstadoEquipo', 'softDeleteEquipo', 'asignarEquipo', 'devolverEquipo',
   'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado', 'ultimosMovimientos',
-  'conteosDisponibilidad',
+  'conteosEquiposPorSituacion',
   // bandeja de importación de equipos desde Excel (migración 057)
   'listImportacionPendiente', 'bulkCrearImportacion', 'updateImportacion',
   'eliminarImportacion', 'vaciarImportacion',

@@ -14,7 +14,8 @@ export const useEquiposStore = crearStorePaginado('equipos', {
     ]);
     return { ...pageRes, extra: { tipos, ubicaciones } };
   },
-  filtrosIniciales: () => ({ q: '', tipoId: '', situacion: '' }),
+  // Dimensiones como listas (V2): varios tipos / empresas a la vez.
+  filtrosIniciales: () => ({ q: '', tipoIds: [], empresaIds: [], situacion: '' }),
   mensajeError: 'Error al cargar equipos',
   state: () => ({ tipos: [], ubicaciones: [] }),
 

@@ -23,6 +23,17 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Filtros V2 — piloto Empleados y Equipos**) — pedido del
+  dueño: repensar los filtros desde cero. Modelo nuevo: *vistas* con conteo
+  (`AppVistas`: estado del empleado / situación del equipo), *chips bajo
+  demanda* multi-valor (`AppFiltros`: O dentro de una dimensión, Y entre
+  dimensiones) y la URL como fuente de verdad (`useFiltrosUrl`: recarga y
+  enlace compartido conservan el filtro). Equipos pierde las 3 tarjetas KPI y
+  los selects (las vistas las reemplazan, con "Fuera de servicio" nuevo);
+  API: `conteosEmpleadosPorEstado`, `conteosEquiposPorSituacion` (reemplaza
+  `conteosDisponibilidad`), filtros por listas con `.in()`. Documentado en
+  `SISTEMA-DISENO.md` §3.2.1 y `AGENTS.md` (helper 7). Resto de módulos:
+  pendiente de aprobación.
 - **2026-09-25** (**Rediseño V2 "marco + hoja"**) — pedido del dueño: el
   sistema "no tenía conexión ni perfil profesional"; pase libre salvo
   paleta, tipografía y bordes laterales. Diagnóstico sobre capturas reales

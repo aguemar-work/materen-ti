@@ -113,12 +113,17 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
      coherencia post-mutación antes de agregar un `crear`/`softDelete`.
   5. `composables/useFormularioModal.js` — todo formulario en modal (hoy 10).
   6. `composables/usePopoverFlotante.js` — popovers teletransportados
-     (`NotificacionesCampana`).
+     (`NotificacionesCampana`, `AppFiltros`).
+  7. `composables/useFiltrosUrl.js` — filtros V2 (vistas + chips) con la URL
+     como fuente de verdad; hoy Empleados y Equipos (piloto 2026-09-25).
+     Componentes: `AppVistas` + `AppFiltros` (`docs/SISTEMA-DISENO.md` §3.2.1).
 - **Gotcha de `resetearFiltros()`**: Empleados/Correos/Equipos/KB/Licencias/
   Problemas lo llaman en su `onMounted` a propósito (sus filtros son refs
   locales; sin el reset, el store queda con un filtro viejo invisible — bug de
-  jul 2026). Tickets es la única excepción (`resetearBusqueda()`, filtros
-  atados al store). No copiar la excepción sin migrar también los filtros.
+  jul 2026). En Empleados y Equipos el reset sigue, pero justo después se
+  aplican los filtros leídos de la URL (`useFiltrosUrl`): la URL manda.
+  Tickets es la única excepción (`resetearBusqueda()`, filtros atados al
+  store). No copiar la excepción sin migrar también los filtros.
 
 ## Backend
 

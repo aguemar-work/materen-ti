@@ -24,13 +24,21 @@ const SELECT_EMPLEADO = '*, empresas(nombre), areas_obras(nombre), ubicaciones(n
 // OJO: PostgREST NO acepta dos parámetros or= repetidos (PGRST100); el
 // AND-de-ORs va anidado en UN solo or=(and(or(...),or(...))) — verificado
 // contra el backend real.
-function queryEmpleados({ q = '', estado = '', ubicacionId = '', orden } = {}, { conteo = false } = {}) {
+//
+// Filtros por dimensión (V2, chips de AppFiltros): cada una acepta VARIOS
+// valores — `.in()`, O entre valores de la misma dimensión, Y entre
+// dimensiones. Todas son columnas propias de `empleados` (sin joins).
+function queryEmpleados({
+  q = '', estado = '', empresaIds = [], ubicacionIds = [], areaIds = [], orden,
+} = {}, { conteo = false, soloConteo = false } = {}) {
   let query = getClient().database
     .from('empleados')
-    .select(SELECT_EMPLEADO, conteo ? { count: 'exact' } : undefined)
+    .select(soloConteo ? 'id' : SELECT_EMPLEADO, conteo || soloConteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
   if (estado) query = query.eq('estado', estado);
-  if (ubicacionId) query = query.eq('ubicacion_id', ubicacionId);
+  if (empresaIds.length) query = query.in('empresa_id', empresaIds);
+  if (ubicacionIds.length) query = query.in('ubicacion_id', ubicacionIds);
+  if (areaIds.length) query = query.in('area_obra_id', areaIds);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     const tokens = qSafe.split(' ');
@@ -48,19 +56,33 @@ function queryEmpleados({ q = '', estado = '', ubicacionId = '', orden } = {}, {
 export const empleadosApi = {
   // ── Listado paginado en servidor (la tabla principal) ─────────
   // listEmpleados() (completo) sigue existiendo para selects de formularios.
-  async listEmpleadosPage({ pagina = 1, tamPagina = 20, q = '', estado = '', ubicacionId = '', orden } = {}) {
+  async listEmpleadosPage({ pagina = 1, tamPagina = 20, orden, ...filtros } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { data, count, error } = await queryEmpleados({ q, estado, ubicacionId, orden }, { conteo: true })
+    const { data, count, error } = await queryEmpleados({ ...filtros, orden }, { conteo: true })
       .range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapEmpleado), total: count ?? 0 };
   },
 
   // Dataset filtrado completo, sin página — para exportar CSV
-  async listEmpleadosFiltrados({ q = '', estado = '', ubicacionId = '' } = {}) {
-    const { data, error } = await queryEmpleados({ q, estado, ubicacionId });
+  async listEmpleadosFiltrados(filtros = {}) {
+    const { data, error } = await queryEmpleados(filtros);
     if (error) throw error;
     return (data || []).map(mapEmpleado);
+  },
+
+  // Conteo de cada vista (Activos/Inactivos/Suspendidos/Todos) con el RESTO
+  // de los filtros aplicados (búsqueda y chips): el número de cada pestaña
+  // dice exactamente cuántas filas va a mostrar al elegirla. Solo `count`
+  // exacto, cero filas de datos.
+  async conteosEmpleadosPorEstado(filtros = {}) {
+    const estados = ['Activo', 'Inactivo', 'Suspendido', ''];
+    const counts = await Promise.all(estados.map(async (estado) => {
+      const { count, error } = await queryEmpleados({ ...filtros, estado }, { soloConteo: true }).range(0, 0);
+      if (error) throw error;
+      return count ?? 0;
+    }));
+    return { Activo: counts[0], Inactivo: counts[1], Suspendido: counts[2], todos: counts[3] };
   },
 
   async listEmpleados() {

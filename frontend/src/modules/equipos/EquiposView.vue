@@ -8,7 +8,7 @@ import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composabl
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
-import { SITUACIONES_EQUIPO, situacionInfo } from '../../core/dominio-equipos.js';
+import { situacionInfo } from '../../core/dominio-equipos.js';
 import { generarActa } from './acta.js';
 import { generarActaDevolucion } from './acta-devolucion.js';
 import { reservarVentanaActa } from './acta-base.js';
@@ -24,8 +24,8 @@ import AppColumn from '../../components/ui/AppColumn.js';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
-import AppSelect from '../../components/ui/AppSelect.vue';
-import AppKpi from '../../components/ui/AppKpi.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
 import AppTag from '../../components/ui/AppTag.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
@@ -37,6 +37,7 @@ import { rolDeTag } from '../../core/tagRol.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
 
@@ -53,73 +54,72 @@ const OPCIONES_VISTA_EQUIPOS = [
 const { esMovil } = useEsMovil();
 const { vista } = useVistaModulo('equipos', ['tabla', 'tarjetas']);
 
-// ── KPI de disponibilidad (Plan Maestro v2, Frente 4) ──────────
-// Sobre TODO el inventario, no sobre la página/filtro actual — "¿qué tengo
-// listo para entregar ahora mismo?" es una pregunta del parque completo.
-const kpi = ref({ disponible: 0, asignado: 0, en_reparacion: 0 });
-const cargandoKpi = ref(true);
+// ── Filtros V2: vistas + chips + URL (2026-09-25) ──────────────────────
+// La URL es la fuente de verdad (`?situacion=disponible&tipo=laptop&q=LAP`).
+// La SITUACIÓN es la vista (pestañas con conteo): reemplaza a las 3 tarjetas
+// KPI y al select "Situación", que filtraban exactamente lo mismo por dos
+// caminos. Tipo y Empresa son chips con selección múltiple.
+// `q` también es el deep-link de la búsqueda global (/equipos?q=CODIGO).
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  situacion: { tipo: 'valor', defecto: '' },
+  q: { tipo: 'texto' },
+  tipo: { tipo: 'lista' },
+  empresa: { tipo: 'lista' },
+});
+const CLAVES_FILTRO = ['q', 'tipo', 'empresa'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
 
-async function cargarKpi() {
+const filtrosSinSituacion = computed(() => ({ q: filtros.q, tipoIds: filtros.tipo, empresaIds: filtros.empresa }));
+const filtrosServidor = computed(() => ({ ...filtrosSinSituacion.value, situacion: filtros.situacion }));
+
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
   try {
-    kpi.value = await insforgeApi.conteosDisponibilidad();
+    conteos.value = await insforgeApi.conteosEquiposPorSituacion(filtrosSinSituacion.value);
   } catch {
-    // Silencioso a propósito: es un resumen, no una carga bloqueante — un
-    // fallo acá no debe tapar la tabla con un error que no es el suyo.
-  } finally {
-    cargandoKpi.value = false;
+    // Sin conteos, las pestañas se muestran igual (sin número).
   }
 }
 
-useRealtimeRefresco('equipos:list', () => { store.cargar(); cargarKpi(); }, { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+const VISTAS = computed(() => [
+  { valor: '', label: 'Todos', conteo: conteos.value?.todos },
+  { valor: 'disponible', label: 'Libres', conteo: conteos.value?.disponible, titulo: 'Operativos y sin asignación: listos para entregar' },
+  { valor: 'asignado', label: 'Con personas', conteo: conteos.value?.asignado, titulo: 'En manos de un empleado' },
+  { valor: 'en_ubicacion', label: 'En ubicaciones', conteo: conteos.value?.en_ubicacion, titulo: 'Asignados a un almacén, sede u obra' },
+  { valor: 'en_reparacion', label: 'En reparación', conteo: conteos.value?.en_reparacion },
+  { valor: 'fuera', label: 'Fuera de servicio', conteo: conteos.value?.fuera, titulo: 'Dados de baja o robados/perdidos' },
+]);
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
+const empresas = ref([]);
+const DIMENSIONES = computed(() => [
+  { id: 'tipo', label: 'Tipo', icono: 'ti ti-devices', opciones: store.tipos.map((t) => ({ valor: t.id, label: t.nombre })) },
+  { id: 'empresa', label: 'Empresa', icono: 'ti ti-building', opciones: empresas.value.map((e) => ({ valor: e.id, label: e.nombre })) },
+]);
+const chips = computed({
+  get: () => ({ tipo: filtros.tipo, empresa: filtros.empresa }),
+  set: (v) => { filtros.tipo = v.tipo; filtros.empresa = v.empresa; },
+});
 
-// Deep-link desde la búsqueda global: /equipos?q=CODIGO precarga el buscador.
+function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
+  busqueda.value = '';
+}
+
+watch(filtrosServidor, (f) => store.aplicarFiltros(f), { deep: true });
+watch(filtrosSinSituacion, refrescarConteos, { deep: true });
+
+useRealtimeRefresco('equipos:list', () => { store.cargar(); refrescarConteos(); }, { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+
 const route = useRoute();
 const router = useRouter();
-busqueda.value = String(route.query.q ?? '');
-watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
-
-const filtroTipo = ref('');
-const filtroSituacion = ref('');
 const mostrarForm = ref(false);
 const equipoEditar = ref(null);
 
-watch(filtroTipo, (tipoId) => store.aplicarFiltros({ tipoId }));
-watch(filtroSituacion, (situacion) => store.aplicarFiltros({ situacion }));
-
-// Clic en una tarjeta KPI = mismo filtro que el <select> "Situación" de
-// abajo, no una ruta nueva: ya estamos en Equipos, así que filtra in-place.
-function filtrarPorSituacion(situacion) {
-  filtroSituacion.value = filtroSituacion.value === situacion ? '' : situacion;
-}
-
-// ── Presentación (rediseño 2026-09-23) ─────────────────────────
-// KPI de la franja superior: misma pregunta "¿qué tengo y dónde está?" que
-// el filtro de Situación — cada tarjeta ES ese filtro (clic = filtrar, otro
-// clic = quitar), no una ruta nueva.
-const KPIS = [
-  { situacion: 'disponible', label: 'Libres para entregar', icono: 'ti ti-circle-check', tono: 'success', detalle: 'Listos en almacén o ubicación' },
-  { situacion: 'asignado', label: 'Ocupados', icono: 'ti ti-user-check', tono: 'primary', detalle: 'En manos de un empleado' },
-  { situacion: 'en_reparacion', label: 'En reparación', icono: 'ti ti-tool', tono: 'warning', detalle: 'Fuera de servicio temporal' },
-];
-
-const hayFiltros = computed(() => !!(busqueda.value.trim() || filtroTipo.value || filtroSituacion.value));
-
-function limpiarFiltros() {
-  busqueda.value = '';
-  filtroTipo.value = '';
-  filtroSituacion.value = '';
-}
-
-const subtitulo = computed(() => {
-  const partes = [`${total.value} ${total.value === 1 ? 'equipo' : 'equipos'}`];
-  if (filtroSituacion.value) partes.push(`situación ${situacionInfo(filtroSituacion.value).label.toLowerCase()}`);
-  const tipo = store.tipos.find((t) => t.id === filtroTipo.value);
-  if (tipo) partes.push(tipo.nombre.toLowerCase());
-  if (partes.length === 1) partes.push('quién tiene cada equipo, dónde está y en qué estado');
-  return partes.join(' · ');
-});
+const subtitulo = 'Quién tiene cada equipo, dónde está y en qué estado';
 
 // Tono de AppTag desde la clase de dominio (badge--success → success).
 function tonoEstado(eq) {
@@ -607,7 +607,10 @@ function etiquetaCorta(accion) {
 }
 
 onMounted(async () => {
-  cargarKpi();
+  insforgeApi.listEmpresas().then((e) => { empresas.value = e; }).catch(() => {
+    // Sin empresas, el chip "Empresa" queda sin opciones; el listado sigue.
+  });
+  refrescarConteos();
   store.resetearFiltros();
   // /equipos?nuevo=1 — atajo desde el estado vacío de AsignarEquipoModal
   // (ficha del empleado) cuando no hay equipos disponibles en almacén.
@@ -618,12 +621,8 @@ onMounted(async () => {
     router.replace({ query: resto });
   }
   try {
-    const q = busqueda.value.trim();
-    if (q) {
-      await store.aplicarFiltros({ q });
-    } else {
-      await store.cargar();
-    }
+    // Lo que se aplica es siempre lo que dice la URL (sin filtros invisibles).
+    await store.aplicarFiltros(filtrosServidor.value);
   } catch {
     showToast(error.value || 'Error al cargar equipos', 'error');
   }
@@ -637,7 +636,7 @@ onMounted(async () => {
         <MenuAcciones
           label="Más acciones"
           :acciones="accionesMas"
-          class="inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          class="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         >
           <template #trigger>
             <i class="ti ti-dots" aria-hidden="true"></i>
@@ -648,39 +647,13 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Disponibilidad: cada KPI filtra la lista por su situación ══ -->
-    <div class="grid grid-cols-3 gap-3 px-4 pb-4 sm:px-6" role="group" aria-label="Disponibilidad del inventario">
-      <button
-        v-for="k in KPIS"
-        :key="k.situacion"
-        type="button"
-        class="min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-        :aria-pressed="filtroSituacion === k.situacion"
-        @click="filtrarPorSituacion(k.situacion)"
-      >
-        <AppKpi
-          :label="k.label"
-          :valor="cargandoKpi ? '…' : kpi[k.situacion]"
-          :icono="esMovil ? '' : k.icono"
-          :tono="k.tono"
-          :detalle="esMovil ? '' : filtroSituacion === k.situacion ? 'Filtro aplicado · clic para quitar' : k.detalle"
-          class="h-full transition-colors duration-150"
-          :class="filtroSituacion === k.situacion ? 'border-primary-300 bg-primary-50/50' : 'hover:border-gray-300 hover:bg-gray-50/60'"
-        />
-      </button>
-    </div>
+    <!-- ══ Vistas (situación) — reemplazan a los KPI y al select ══ -->
+    <AppVistas v-model="filtros.situacion" :opciones="VISTAS" label="Vista de equipos" />
 
-    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <AppBarraFiltros>
+    <!-- ══ Barra de filtros: búsqueda + chips bajo demanda ══════ -->
+    <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar equipos" placeholder="Buscar por código, marca, serie o portador" />
-      <AppSelect v-model="filtroSituacion" label="Filtrar por situación">
-        <option value="">Todas las situaciones</option>
-        <option v-for="(s, k) in SITUACIONES_EQUIPO" :key="k" :value="k">{{ s.label }}</option>
-      </AppSelect>
-      <AppSelect v-model="filtroTipo" label="Filtrar por tipo">
-        <option value="">Todos los tipos</option>
-        <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
-      </AppSelect>
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
       <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EQUIPOS" class="solo-escritorio ml-auto" />
     </AppBarraFiltros>

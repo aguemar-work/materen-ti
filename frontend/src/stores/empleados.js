@@ -9,9 +9,9 @@ import { crearStorePaginado } from './crearStorePaginado.js';
 export const useEmpleadosStore = crearStorePaginado('empleados', {
   listarPagina: (params) => insforgeApi.listEmpleadosPage(params),
   // estado: 'Activo' por defecto (ago 2026) — activos e inactivos mezclados
-  // en la lista era el problema reportado; "Todos los estados" sigue
-  // disponible en el selector.
-  filtrosIniciales: () => ({ q: '', estado: 'Activo', ubicacionId: '' }),
+  // en la lista era el problema reportado; la vista "Todos" sigue a un clic.
+  // Las dimensiones (V2) son listas: varios valores por dimensión.
+  filtrosIniciales: () => ({ q: '', estado: 'Activo', empresaIds: [], ubicacionIds: [], areaIds: [] }),
   mensajeError: 'Error al cargar empleados',
 
   // Conteos de cuentas/equipos/licencias vinculados de la página; si fallan,
