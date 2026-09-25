@@ -23,6 +23,23 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Ficha de empleado: "Actividad reciente" unificada**) —
+  diagnóstico UX (propuesta V2, ver el canvas de diseño de esa sesión):
+  saber "todo lo que tiene esta persona, en orden" exigía leer Cuentas,
+  Equipos y Licencias por separado, cada una en su propia sección apilada.
+  `EmpleadoDetalleView.vue` gana una sección "Actividad reciente" al principio
+  de la columna principal: una sola línea de tiempo que mezcla cuenta
+  asignada, equipo entregado, licencia asignada y el registro inicial,
+  ordenada por fecha descendente, con un `AppSegmentado` (Todo/Accesos/
+  Equipos/Licencias) para acotarla — mismo componente que ya usan Empleados/
+  Correos para sus propios filtros, no uno nuevo. Se arma en el cliente con
+  datos que la vista ya carga (`cuentasStore.lista`, `equipos`, `licencias`);
+  no pide nada nuevo al servidor. No reemplaza los paneles de gestión de
+  abajo (`CuentasPanel`, Equipos, Licencias) — esos siguen siendo la
+  superficie para editar/traspasar/liberar; esto es solo el resumen
+  cronológico que antes no existía. Verificado: `npm run lint` (0 errores),
+  `npm test` (475 passed, 0 failed), `npx vite build` sin error,
+  `node scripts/patrones-ui.mjs` (0 fallas).
 - **2026-09-24** (**Resto del borde de acento + filtro por técnico en
   Tickets**) — la pasada anterior de "sin borde de acento" se había hecho
   buscando la clase Tailwind `border-l-*`, pero 6 lugares lo dibujaban con

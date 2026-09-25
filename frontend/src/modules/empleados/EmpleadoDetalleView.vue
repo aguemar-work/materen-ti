@@ -22,6 +22,7 @@ import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppSeccion from '../../components/ui/AppSeccion.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppListaDatos from '../../components/ui/AppListaDatos.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import CuentasPanel from '../cuentas/CuentasPanel.vue';
@@ -148,6 +149,70 @@ const datosOrganizacion = computed(() => {
     { label: 'Fecha de alta', valor: e.fecha_alta ? formatFecha(e.fecha_alta) : '' },
   ];
 });
+
+// ── Actividad reciente: una sola línea de tiempo ──────────────────────
+// Antes había que leer Cuentas, Equipos y Licencias por separado para saber
+// "todo lo que tiene esta persona, en orden" (diagnóstico UX 2026-09-25). Se
+// arma en el cliente con datos que esta vista ya carga — sin pedir nada
+// nuevo al servidor. No reemplaza los paneles de gestión de abajo (esos
+// siguen siendo la superficie para editar/traspasar/liberar); es solo el
+// resumen cronológico que antes no existía.
+const FILTROS_HISTORIAL = [
+  { valor: '', label: 'Todo' },
+  { valor: 'accesos', label: 'Accesos' },
+  { valor: 'equipos', label: 'Equipos' },
+  { valor: 'licencias', label: 'Licencias' },
+];
+const filtroHistorial = ref('');
+const historialUnificado = computed(() => {
+  const items = [];
+  for (const c of cuentasStore.lista) {
+    items.push({
+      key: `cuenta-${c.asignacion_id}`,
+      tipo: 'accesos',
+      icono: 'ti ti-key',
+      titulo: `Cuenta asignada — ${c.plataforma_nombre}`,
+      detalle: c.usuario,
+      fecha: c.fecha_inicio,
+    });
+  }
+  for (const e of equipos.value) {
+    items.push({
+      key: `equipo-${e.asignacion_id}`,
+      tipo: 'equipos',
+      icono: 'ti ti-device-laptop',
+      titulo: `Equipo entregado — ${e.codigo}`,
+      detalle: [e.tipo, e.marca, e.modelo].filter(Boolean).join(' '),
+      fecha: e.fecha_inicio,
+    });
+  }
+  for (const l of licencias.value) {
+    items.push({
+      key: `licencia-${l.asignacion_id}`,
+      tipo: 'licencias',
+      icono: 'ti ti-license',
+      titulo: `Licencia asignada — ${l.software}`,
+      detalle: l.tipo === 'perpetua' ? 'Perpetua' : (l.fecha_vencimiento ? `Vence ${formatFecha(l.fecha_vencimiento)}` : ''),
+      fecha: l.fecha_inicio,
+    });
+  }
+  // Tipo 'registro' a propósito: no matchea ningún chip de filtro (siempre
+  // visible en "Todo", nunca en "Accesos"), porque no es un acceso.
+  if (empleado.value?.fecha_alta) {
+    items.push({
+      key: 'registro',
+      tipo: 'registro',
+      icono: 'ti ti-user-plus',
+      titulo: 'Registrado en el sistema',
+      detalle: '',
+      fecha: empleado.value.fecha_alta,
+    });
+  }
+  return items.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+});
+const historialFiltrado = computed(() =>
+  filtroHistorial.value ? historialUnificado.value.filter((i) => i.tipo === filtroHistorial.value) : historialUnificado.value
+);
 
 async function cargar() {
   cargando.value = true;
@@ -373,6 +438,31 @@ watch(() => route.params.id, (id) => { if (id) cargar(); }, { immediate: true })
       <!-- ══ Cuerpo: vínculos (principal) + datos (lateral) ══════════ -->
       <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div class="min-w-0 space-y-6">
+          <!-- ══ Actividad reciente: cuentas + equipos + licencias en una sola línea de tiempo ══ -->
+          <AppSeccion titulo="Actividad reciente" :conteo="historialFiltrado.length" sin-padding>
+            <template #acciones>
+              <AppSegmentado v-model="filtroHistorial" label="Filtrar actividad" :opciones="FILTROS_HISTORIAL" />
+            </template>
+            <AppVacio
+              v-if="historialFiltrado.length === 0"
+              variante="seccion"
+              titulo="Sin actividad todavía"
+              mensaje="Los accesos, equipos y licencias que se le asignen van a aparecer acá."
+            />
+            <ul v-else class="divide-y divide-gray-100">
+              <li v-for="item in historialFiltrado" :key="item.key" class="flex items-center gap-3 px-4 py-3">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-lg text-primary-600">
+                  <i :class="item.icono" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium text-gray-900">{{ item.titulo }}</p>
+                  <p v-if="item.detalle" class="truncate text-xs text-gray-500">{{ item.detalle }}</p>
+                </div>
+                <span class="shrink-0 text-xs text-gray-400 tabular-nums">{{ formatFecha(item.fecha) }}</span>
+              </li>
+            </ul>
+          </AppSeccion>
+
           <CuentasPanel
             ref="cuentasPanel"
             :key="empleado.id"
