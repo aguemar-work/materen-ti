@@ -80,6 +80,13 @@ const listaFiltrada = computed(() => {
     return [fila.nombre, fila.usuario, fila.notas].some((v) => (v || '').toLowerCase().includes(q));
   });
 });
+// Mismo patrón de "Limpiar filtros" que ya usan KB/Problemas/Equipos/
+// Correos/Licencias/Empleados — acá faltaba (propuesta UX/UI V2).
+const hayFiltros = computed(() => !!busqueda.value.trim() || !!filtroCategoria.value);
+function limpiarFiltros() {
+  busqueda.value = '';
+  filtroCategoria.value = '';
+}
 
 const sinPermiso = computed(() => lista.value.filter((f) => !f.puedeRevelar).length);
 
@@ -174,6 +181,7 @@ onMounted(async () => {
     <div v-if="lista.length" class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
       <AppBuscador v-model="busqueda" label="Buscar accesos sensibles" placeholder="Buscar por nombre, usuario o nota" />
       <AppSegmentado v-model="filtroCategoria" :opciones="CATEGORIAS_SEGMENTO" label="Filtrar por categoría" />
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </div>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
@@ -197,7 +205,9 @@ onMounted(async () => {
         icono="ti ti-search"
         titulo="Sin resultados"
         mensaje="No hay accesos con los filtros aplicados."
-      />
+      >
+        <AppButton variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
+      </AppVacio>
 
       <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando accesos sensibles…</p>

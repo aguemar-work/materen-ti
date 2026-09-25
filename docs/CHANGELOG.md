@@ -23,6 +23,14 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**"Limpiar filtros" en Accesos Sensibles**) — último módulo
+  que le faltaba el patrón que ya tienen KB/Problemas/Equipos/Correos/
+  Licencias/Empleados (propuesta UX/UI V2, Frente A). `ActividadView.vue` se
+  revisó de nuevo y **ya lo tenía** (no le faltaba, corrige un supuesto
+  anterior). Con esto, los 9 listados con filtros del sistema comparten el
+  mismo patrón completo — no queda ningún módulo con la barra de filtros a
+  medias. Verificado: `npm run lint` (0 errores), `npm test` (480 passed,
+  0 failed).
 - **2026-09-25** (**Cierre del Ciclo 20: redeploy + `VALIDATE CONSTRAINT`,
   y prueba de la "Actividad reciente"**) — dos pendientes de producción que
   venían solo "resueltos en código" desde el 2026-09-24 (ver
