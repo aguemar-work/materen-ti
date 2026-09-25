@@ -23,6 +23,27 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Cierre del Ciclo 20: redeploy + `VALIDATE CONSTRAINT`,
+  y prueba de la "Actividad reciente"**) — dos pendientes de producción que
+  venían solo "resueltos en código" desde el 2026-09-24 (ver
+  `docs/HISTORIAL-AUDITORIAS.md`, Ciclo 20), autorizados y ejecutados hoy:
+  (1) `VALIDATE CONSTRAINT` de los 3 CHECK de formato de contraseña cifrada
+  (V2-12) — el conteo previo dio 0 filas fuera de formato en `cuentas`,
+  `licencias` y `accesos_sensibles`, condición que la propia migración 086
+  exige antes de validar; confirmado `convalidated=true` en las 3 vía
+  `pg_constraint`. (2) Redeploy de las 4 edge functions
+  (`credenciales`/`tickets`/`encuestas`/`equipos-fotos`) con el código ya
+  commiteado del fix V2-15 y el resto del Ciclo 20 — verificado en caliente
+  contra la función real: una acción sin sesión de `credenciales` ahora
+  devuelve `{"ok":false,"code":"no_autenticado","error":"no_autenticado"}`
+  (antes solo traía `code`, sin `error`, que es exactamente lo que V2-15
+  corrige). Además, ante la duda de si los chips Todo/Accesos/Equipos/
+  Licencias de "Actividad reciente" (entrada de ayer) realmente filtraban
+  distinto o eran decorativos, se agregó
+  `frontend/tests/componentes/EmpleadoDetalleView.render.test.js` (5 casos,
+  con el mismo mix de datos que el empleado `e01` de la maqueta: 2 cuentas,
+  1 equipo, 1 licencia) que prueba que cada chip muestra un subconjunto
+  distinto — confirma que sí filtran, no es cosmético.
 - **2026-09-25** (**"Limpiar filtros" en Correos, Licencias y Empleados**) —
   la propuesta UX/UI V2 (canvas de diseño de la sesión anterior) diagnosticó
   "ocho maneras distintas de filtrar" entre módulos; al revisar el código
