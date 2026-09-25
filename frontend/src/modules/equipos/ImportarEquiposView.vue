@@ -364,7 +364,7 @@ const indicePaso = computed(() => PASOS.findIndex((p) => p.id === paso.value));
 // Ancho de cada columna de la grilla (la de Notas toma el resto).
 const ANCHOS_IMPORTAR = {
   excel: '11rem', codigo: '8rem', tipo: '10rem', marca_modelo: '11rem', serie: '9rem', costo: '7rem',
-  fecha_compra: '9.5rem', estado_fisico: '9.5rem', asignacion: '14rem', notas: null, migrar: '9rem',
+  fecha_compra: '10.5rem', estado_fisico: '9.5rem', asignacion: '14rem', notas: null, migrar: '9rem',
 };
 
 // Clases compartidas de los controles de la grilla de edición.
@@ -615,13 +615,13 @@ onMounted(async () => {
                    horizontal dentro de la card a propósito, también en móvil. -->
               <div class="min-h-0 flex-1 overflow-auto">
                 <table class="w-full min-w-[1400px] border-collapse text-sm" aria-label="Grilla de corrección de equipos importados">
-                  <thead class="sticky top-0 z-[1] bg-white">
+                  <thead class="sticky top-0 z-[1] bg-gray-50">
                     <tr>
                       <th
                         v-for="col in columnasImportarVisibles"
                         :key="col.clave"
                         scope="col"
-                        class="whitespace-nowrap border-b border-gray-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-gray-600"
+                        class="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-3 py-2.5 text-left text-xs font-medium text-gray-500"
                         :class="col.clave === 'migrar' ? 'sticky right-0 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gray-200' : ''"
                         :style="ANCHOS_IMPORTAR[col.clave] ? { width: ANCHOS_IMPORTAR[col.clave], minWidth: ANCHOS_IMPORTAR[col.clave] } : null"
                       >{{ col.label }}</th>

@@ -240,6 +240,11 @@ tabla: empujarla hace perder de vista la fila que se estaba marcando.
   verticales), hover `gray-50`.
 - Dentro de `AppMarcoTabla`, la primera y la última columna recuperan el
   padding de la página (`pl-4 sm:pl-6`) para alinearse con el título.
+- **Listados en escritorio = tabla.** Las tarjetas son solo el formato móvil
+  (lista de una columna, `grid-cols-1`: sin columna explícita, la grilla se
+  estira al contenido y corta la tarjeta a la derecha). La vista "Tarjetas"
+  de escritorio de Empleados y Equipos se retiró el 2026-09-25; el único
+  selector de vista que queda es el de Tickets (Tabla / Doble columna).
 - **Todo contenedor con scroll interno** (`overflow-y-auto`) o su contenido
   lleva `relative`: un `sr-only` (`position: absolute`) sin ancestro
   posicionado escapa del recorte y estira el documento — la cola de Triage
@@ -317,7 +322,7 @@ no reintroducirlo.
   <AppEncabezado titulo subtitulo> #acciones: [secundarias text] [principal sólida]
   <AppVistas v-model="filtros.estado" :opciones="VISTAS">          ← V2 (§3.2.1)
   <AppBarraFiltros class="pt-3">
-    AppBuscador · AppFiltros (chips) · [Limpiar] · [SelectorVista ml-auto]
+    AppBuscador · AppFiltros (chips) · [Limpiar] · [SelectorVista ml-auto — solo Tickets: Tabla / Doble columna]
   </AppBarraFiltros>
   <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">   ← contenedor de contenido
     error → .notif--danger · vacío → AppVacio (pagina)

@@ -17,7 +17,6 @@ import EquipoForm from './EquipoForm.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
-import SelectorVista from '../../components/shared/SelectorVista.vue';
 import Modal from '../../components/shared/Modal.vue';
 import AppTable from '../../components/ui/AppTable.vue';
 import AppColumn from '../../components/ui/AppColumn.js';
@@ -39,20 +38,13 @@ import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
-import { useVistaModulo } from '../../composables/useVistaModulo.js';
 
 const store = useEquiposStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 
-// ── Selector Tabla/Tarjetas (FASE 4) — mismo criterio que EmpleadosView:
-// "Lista con avatar" queda pendiente, solo 2 opciones por ahora; mobile
-// siempre tarjetas sin importar la preferencia. ──────────────────────────
-const OPCIONES_VISTA_EQUIPOS = [
-  { valor: 'tabla', icono: 'ti-table', label: 'Tabla' },
-  { valor: 'tarjetas', icono: 'ti-id', label: 'Tarjetas' },
-];
+// Escritorio: siempre tabla (la vista "Tarjetas" se retiró el 2026-09-25 a
+// pedido del dueño: no aportaba sobre la tabla). Móvil: tarjetas apiladas.
 const { esMovil } = useEsMovil();
-const { vista } = useVistaModulo('equipos', ['tabla', 'tarjetas']);
 
 // ── Filtros V2: vistas + chips + URL (2026-09-25) ──────────────────────
 // La URL es la fuente de verdad (`?situacion=disponible&tipo=laptop&q=LAP`).
@@ -655,7 +647,6 @@ onMounted(async () => {
       <AppBuscador v-model="busqueda" label="Buscar equipos" placeholder="Buscar por código, marca, serie o portador" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
-      <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EQUIPOS" class="solo-escritorio ml-auto" />
     </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
@@ -679,7 +670,7 @@ onMounted(async () => {
         <p v-if="cargando" class="sr-only" role="status">Cargando equipos…</p>
 
         <!-- ── Tabla (escritorio): la fila abre la hoja de vida ── -->
-        <AppMarcoTabla v-if="vista === 'tabla' && !esMovil">
+        <AppMarcoTabla v-if="!esMovil">
           <div class="min-h-0 flex-1 overflow-auto">
             <AppTable
               :value="lista"
@@ -825,10 +816,10 @@ onMounted(async () => {
           />
         </AppMarcoTabla>
 
-        <!-- ── Tarjetas (vista elegida en escritorio, o siempre en móvil) ── -->
+        <!-- ── Tarjetas (solo móvil) ── -->
         <div v-else class="min-h-0 flex-1 overflow-y-auto">
           <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando equipos...</p>
-          <ul v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" aria-label="Inventario de equipos">
+          <ul v-else class="grid grid-cols-1 gap-3" aria-label="Inventario de equipos">
             <li
               v-for="eq in lista"
               :key="eq.id"

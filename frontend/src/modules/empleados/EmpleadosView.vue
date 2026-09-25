@@ -16,7 +16,6 @@ import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import SelectorVista from '../../components/shared/SelectorVista.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppTable from '../../components/ui/AppTable.vue';
 import AppColumn from '../../components/ui/AppColumn.js';
@@ -32,7 +31,6 @@ import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
-import { useVistaModulo } from '../../composables/useVistaModulo.js';
 
 const router = useRouter();
 const store = useEmpleadosStore();
@@ -124,23 +122,9 @@ const vistaVacia = computed(() => {
 watch(filtrosServidor, (f) => store.aplicarFiltros(f), { deep: true });
 watch(filtrosSinEstado, refrescarConteos, { deep: true });
 
-// ── Selector Tabla/Tarjetas (FASE 4) ────────────────────────────────────
-// "Lista con avatar" queda pendiente como 3ª opción (falta el mockup de
-// proporciones) — sigue siendo distinta de "Tarjetas": esa sería una lista
-// angosta de una columna (como la tarjeta angosta de Triage en Tickets),
-// "Tarjetas" es una grilla de tarjetas reales (ver más abajo, corregido en
-// esta pasada — antes reusaba el mismo `.tarjeta-fila` de fila compacta que
-// el fallback móvil, así que en escritorio se veía como una lista de filas
-// angosta, no como tarjetas). Mobile siempre muestra tarjetas sin importar
-// la preferencia (ya era así antes de que este selector existiera) — ver
-// el v-if de las tarjetas y de la tabla más abajo, que se resuelven contra
-// `esMovil` además de contra `vista`.
-const OPCIONES_VISTA_EMPLEADOS = [
-  { valor: 'tabla', icono: 'ti-table', label: 'Tabla' },
-  { valor: 'tarjetas', icono: 'ti-id', label: 'Tarjetas' },
-];
+// Escritorio: siempre tabla (la vista "Tarjetas" se retiró el 2026-09-25 a
+// pedido del dueño: no aportaba sobre la tabla). Móvil: tarjetas apiladas.
 const { esMovil } = useEsMovil();
-const { vista } = useVistaModulo('empleados', ['tabla', 'tarjetas']);
 
 useRealtimeRefresco('empleados:list', () => Promise.all([store.cargar(), refrescarConteos()]), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
@@ -326,7 +310,6 @@ onMounted(async () => {
       <AppBuscador v-model="busqueda" label="Buscar empleados" placeholder="Buscar por nombre o DNI" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
-      <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio ml-auto" />
     </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
@@ -364,7 +347,7 @@ onMounted(async () => {
         <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
 
         <!-- ── Tabla (escritorio) ── -->
-        <AppMarcoTabla v-if="vista === 'tabla' && !esMovil">
+        <AppMarcoTabla v-if="!esMovil">
           <div class="min-h-0 flex-1 overflow-auto">
             <AppTable
               :value="lista"
@@ -452,12 +435,12 @@ onMounted(async () => {
           />
         </AppMarcoTabla>
 
-        <!-- ── Tarjetas (vista elegida en escritorio, o siempre en móvil) ── -->
+        <!-- ── Tarjetas (solo móvil) ── -->
         <div v-else class="min-h-0 flex-1 overflow-y-auto">
           <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando empleados...</p>
           <ul
             v-else
-            class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+            class="grid grid-cols-1 gap-3"
             aria-label="Inventario de empleados"
           >
             <li

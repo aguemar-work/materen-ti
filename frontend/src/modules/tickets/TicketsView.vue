@@ -709,7 +709,7 @@ onMounted(async () => {
           <!-- ── Tarjetas (móvil): mismas señales, apiladas ── -->
           <div v-else class="min-h-0 flex-1 overflow-y-auto">
             <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando tickets...</p>
-            <ul v-else class="grid gap-3" aria-label="Tickets de soporte">
+            <ul v-else class="grid grid-cols-1 gap-3" aria-label="Tickets de soporte">
               <li
                 v-for="fila in lista"
                 :key="fila.id"

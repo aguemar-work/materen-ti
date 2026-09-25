@@ -291,6 +291,7 @@ onMounted(async () => {
               :rows="tamPagina"
               :orden="{ columna, direccion }"
               aria-label="Miembros del staff"
+              :table-props="{ style: 'table-layout: fixed; min-width: 52rem' }"
               @ordenar="ordenarPor"
             >
               <AppColumn field="nombre" header="Miembro" sortable>
@@ -299,16 +300,15 @@ onMounted(async () => {
                     <AppAvatar :nombre="fila.nombre" />
                     <div class="min-w-0">
                       <div class="flex items-center gap-1.5">
-                        <span class="truncate font-medium" :class="fila.activo ? 'text-gray-900' : 'text-gray-500'">{{ fila.nombre }}</span>
+                        <span class="truncate font-medium" :class="fila.activo ? 'text-gray-900' : 'text-gray-500'" :title="fila.nombre">{{ fila.nombre }}</span>
                         <span v-if="fila.user_id === authStore.user?.id" class="shrink-0 text-xs text-gray-500">(usted)</span>
                       </div>
-                      <div class="text-xs text-gray-500">{{ fila.rol === 'JEFE' ? 'Administra el sistema completo' : 'Opera los módulos otorgados' }}</div>
                     </div>
                   </div>
                 </template>
               </AppColumn>
 
-              <AppColumn field="rol" header="Rol" sortable>
+              <AppColumn field="rol" header="Rol" sortable :header-style="{ width: '130px' }">
                 <template #body="{ data: fila }">
                   <label v-if="authStore.esJefe" class="relative inline-block">
                     <span class="sr-only">Rol de {{ fila.nombre }}</span>
@@ -327,7 +327,7 @@ onMounted(async () => {
                 </template>
               </AppColumn>
 
-              <AppColumn field="modulos" header="Módulos">
+              <AppColumn field="modulos" header="Módulos" :header-style="{ width: '180px' }">
                 <template #body="{ data: fila }">
                   <AppTag v-if="fila.rol === 'JEFE'" tono="info" icono="ti ti-layout-grid">Todos los módulos</AppTag>
                   <span v-else-if="modulosPor[fila.user_id] === undefined" class="text-sm text-gray-500">Cargando…</span>
@@ -335,7 +335,7 @@ onMounted(async () => {
                   <span v-else-if="!modulosPor[fila.user_id].length" class="text-sm text-amber-700">Sin módulos</span>
                   <ul
                     v-else
-                    class="flex max-w-80 flex-wrap items-center gap-1"
+                    class="flex max-w-56 flex-wrap items-center gap-1"
                     :title="nombresModulos(modulosPor[fila.user_id])"
                     :aria-label="`Módulos de ${fila.nombre}: ${nombresModulos(modulosPor[fila.user_id])}`"
                   >
@@ -349,7 +349,7 @@ onMounted(async () => {
                 </template>
               </AppColumn>
 
-              <AppColumn field="credenciales_ver" header="Contraseñas">
+              <AppColumn field="credenciales_ver" header="Contraseñas" :header-style="{ width: '150px' }">
                 <template #body="{ data: fila }">
                   <!-- Interruptor cosmético: la barrera real es functions/credenciales.ts -->
                   <button
@@ -383,9 +383,9 @@ onMounted(async () => {
                 </template>
               </AppColumn>
 
-              <AppColumn field="activo" header="Estado" sortable>
+              <AppColumn field="activo" header="Estado" sortable :header-style="{ width: '120px' }">
                 <template #body="{ data: fila }">
-                  <div class="flex items-center gap-2">
+                  <div class="flex flex-col items-start gap-1.5">
                     <BadgeEstado tipo="activo_staff" :valor="fila.activo" status />
                     <AppButton
                       v-if="!fila.activo"
@@ -402,7 +402,7 @@ onMounted(async () => {
                 </template>
               </AppColumn>
 
-              <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+              <AppColumn field="acciones" header="Acciones" :header-style="{ width: '88px', textAlign: 'right' }">
                 <template #body="{ data: fila }">
                   <div class="flex justify-end">
                     <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />

@@ -249,7 +249,7 @@ onMounted(async () => {
         <!-- ── Lista (móvil) ── -->
         <div v-else class="min-h-0 flex-1 overflow-y-auto">
           <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando artículos...</p>
-          <ul v-else class="grid gap-3" aria-label="Artículos de la base de conocimiento">
+          <ul v-else class="grid grid-cols-1 gap-3" aria-label="Artículos de la base de conocimiento">
             <li
               v-for="fila in lista"
               :key="fila.id"

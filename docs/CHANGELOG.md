@@ -23,6 +23,15 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Auditoría V2 de todos los módulos**) — pedido del dueño:
+  verificar que todo esté en V2 y quitar la vista de tarjetas de escritorio
+  en Empleados y Equipos (se retiran `SelectorVista` y `useVistaModulo` de
+  ambos; en móvil siguen las tarjetas). Recorrido de todas las rutas en la
+  maqueta; corregido: tarjetas móviles cortadas a la derecha (Equipos,
+  Empleados, Tickets, KB, Satisfacción: `grid-cols-1`), tabla de Staff que
+  desbordaba (anchos fijos, sin el subtítulo que repetía el rol) y cabecera
+  de la grilla de Importar equipos con el estilo V2. Docs: SISTEMA-DISENO §3.3
+  y receta 4.1.
 - **2026-09-25** (**Fix: scroll general en la vista doble columna**) — el
   documento medía 1800px en cualquier pantalla: los `sr-only` de cada
   `TarjetaTicket` (absolutos, sin ancestro posicionado) escapaban del recorte

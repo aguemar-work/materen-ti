@@ -411,7 +411,7 @@ onMounted(cargar);
             <!-- Móvil: una tarjeta por respuesta -->
             <div v-else>
               <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando respuestas...</p>
-              <ul v-else class="grid gap-3" aria-label="Todas las respuestas de satisfacción">
+              <ul v-else class="grid grid-cols-1 gap-3" aria-label="Todas las respuestas de satisfacción">
                 <li v-for="f in respuestasPagina" :key="f.id" class="rounded-lg border border-gray-200 bg-white p-4">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
