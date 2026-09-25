@@ -10,14 +10,22 @@ defineProps({
   conteo: { type: [Number, String], default: null },
   descripcion: { type: String, default: '' },
   sinPadding: { type: Boolean, default: false },
+  // Llena el alto de su contenedor: la cabecera queda fija y el cuerpo es una
+  // columna flex que el consumidor reparte (ej. conversación con scroll
+  // propio + composer abajo en el detalle de un ticket).
+  llenar: { type: Boolean, default: false },
 });
 
 const idTitulo = useId();
 </script>
 
 <template>
-  <section class="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xs" :aria-labelledby="idTitulo">
-    <div class="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-2.5">
+  <section
+    class="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xs"
+    :class="llenar ? 'flex min-h-0 flex-col' : ''"
+    :aria-labelledby="idTitulo"
+  >
+    <div class="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-2.5">
       <div class="min-w-0">
         <h2 :id="idTitulo" class="flex items-center gap-2 text-sm font-semibold text-gray-900">
           {{ titulo }}
@@ -32,7 +40,7 @@ const idTitulo = useId();
         <slot name="acciones" />
       </div>
     </div>
-    <div :class="sinPadding ? '' : 'p-4'">
+    <div :class="[sinPadding ? '' : 'p-4', llenar ? 'flex min-h-0 flex-1 flex-col' : '']">
       <slot />
     </div>
   </section>

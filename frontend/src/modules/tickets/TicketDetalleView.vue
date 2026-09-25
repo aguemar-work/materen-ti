@@ -1,8 +1,8 @@
 <script setup>
-import { computed, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { formatFecha, formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
-import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
+import { formatFecha } from '../../core/formatters.js';
+import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
 import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -14,7 +14,8 @@ import TicketComposer from './TicketComposer.vue';
 import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
 import TicketSolicitante from './TicketSolicitante.vue';
 import TicketContexto from './TicketContexto.vue';
-import PrioridadTicket from './PrioridadTicket.vue';
+import TicketResumen from './TicketResumen.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const route = useRoute();
@@ -30,7 +31,7 @@ const {
   ticket, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId,
   guardandoCampo,
   nuevoComentario, comentarioInterno, enviandoComentario,
-  autorDe, timelineUnificado,
+  autorDe, timelineUnificado, resolucion,
   atencionForm, iniciando, tipoAmbiguoSinClasificar,
   cargar: cargarTicket, confirmarIniciar,
   mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
@@ -57,12 +58,34 @@ const campoMotivoReabrir = useCampoAccesible();
 // ── Presentación (rediseño 2026-09-23) ──
 const esTerminal = computed(() => !!ticket.value && ESTADOS_TERMINALES.includes(ticket.value.estado));
 const enCurso = computed(() => !!ticket.value && ESTADOS_EN_CURSO.includes(ticket.value.estado));
-const tipoLabel = computed(() => OPCIONES_TIPO.find((t) => t.valor === ticket.value?.tipo)?.label || '');
 const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.tipo === 'comentario').length);
+
+// Actividad y conversación van juntas a propósito: es UNA historia en orden
+// ("se asignó → se escribió al empleado → respondió → se resolvió"), y
+// separarlas obliga a cruzar dos listas para reconstruirla. Para leer solo
+// lo que escribieron las personas, "Mensajes" oculta los hitos del sistema.
+const verFeed = ref('todo');
+const filasFeed = computed(() => (verFeed.value === 'mensajes'
+  ? timelineUnificado.value.filter((f) => f.tipo === 'comentario')
+  : timelineUnificado.value));
+const OPCIONES_FEED = computed(() => [
+  { valor: 'todo', label: 'Todo' },
+  { valor: 'mensajes', label: 'Mensajes', conteo: comentariosTotal.value },
+]);
+
+// Pantalla completa (lg+): el encabezado queda fijo y cada columna tiene su
+// propio scroll. La conversación arranca abajo — lo último que pasó es lo
+// que se viene a ver — y vuelve abajo con cada mensaje nuevo.
+const refFeed = ref(null);
+async function bajarAlFinal() {
+  await nextTick();
+  if (refFeed.value) refFeed.value.scrollTop = refFeed.value.scrollHeight;
+}
+watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
 </script>
 
 <template>
-  <div class="w-full px-4 pb-10 pt-6 sm:px-6">
+  <div class="flex w-full flex-col px-4 pb-6 pt-6 sm:px-6 lg:h-full lg:min-h-0 lg:overflow-hidden">
     <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando ticket...</p>
 
     <p v-else-if="!ticket" class="py-16 text-center text-sm text-gray-500">No se encontró el ticket.</p>
@@ -70,7 +93,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
     <template v-else>
       <!-- ══ Encabezado: qué se pidió, en qué estado está, quién lo tiene y
            la acción que corresponde ahora (una sola sólida por estado). -->
-      <header class="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start">
+      <header class="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-start">
         <div class="min-w-0 flex-1">
           <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-gray-500">
             <span class="font-medium tabular-nums text-gray-600">{{ ticket.codigo }}</span>
@@ -83,33 +106,20 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
             <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ ticket.titulo }}</h1>
             <BadgeEstado tipo="ticket" :valor="ticket.estado" />
           </div>
-          <ul class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-gray-500">
-            <li><PrioridadTicket :valor="ticket.prioridad" /></li>
-            <li class="inline-flex items-center gap-1.5">
-              <i class="ti ti-user" aria-hidden="true"></i>
-              <span v-if="ticket.vinculado && ticket.empleado_nombre" class="text-gray-700">{{ ticket.empleado_nombre }}</span>
-              <span v-else class="text-red-700">Solicitante sin vincular</span>
-            </li>
-            <li class="inline-flex items-center gap-1.5">
-              <i class="ti ti-user-check" aria-hidden="true"></i>
-              <span v-if="ticket.asignado_a" class="text-gray-700">{{ staffPorId[ticket.asignado_a] || 'Staff' }}</span>
-              <span v-else :class="esTerminal ? 'text-gray-500' : 'text-amber-700'">Sin asignar</span>
-            </li>
-            <li v-if="ticket.created_at" class="inline-flex items-center gap-1.5 tabular-nums" :title="formatFechaHora(ticket.created_at)">
-              <i class="ti ti-clock" aria-hidden="true"></i>Creado {{ formatAntiguedad(ticket.created_at) }}
-            </li>
-            <li v-if="tipoLabel" class="inline-flex items-center gap-1.5">
-              <i class="ti ti-tag" aria-hidden="true"></i>{{ tipoLabel }}<template v-if="ticket.nivel_atencion"> · {{ ticket.nivel_atencion }}</template>
-            </li>
-            <li v-if="problemaVinculado">
-              <RouterLink
-                :to="`/problemas/${problemaVinculado.id}`"
-                class="inline-flex items-center gap-1.5 rounded text-red-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-              >
-                <i class="ti ti-alert-hexagon" aria-hidden="true"></i>Problema abierto: {{ problemaVinculado.titulo }}
-              </RouterLink>
-            </li>
-          </ul>
+          <!-- De quién es, quién lo atiende, cuándo llegó y cómo terminó. -->
+          <TicketResumen
+            class="mt-3"
+            :ticket="ticket"
+            :responsable="ticket.asignado_a ? (staffPorId[ticket.asignado_a] || 'Staff') : ''"
+            :resolucion="resolucion"
+          />
+          <RouterLink
+            v-if="problemaVinculado"
+            :to="`/problemas/${problemaVinculado.id}`"
+            class="mt-2 inline-flex items-center gap-1.5 rounded text-sm text-red-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          >
+            <i class="ti ti-alert-hexagon" aria-hidden="true"></i>Problema abierto: {{ problemaVinculado.titulo }}
+          </RouterLink>
         </div>
 
         <div class="flex shrink-0 flex-wrap items-center gap-2">
@@ -158,7 +168,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
            decidió la acción, antes de la conversación. -->
       <section
         v-if="mostrarRechazar"
-        class="mt-6 rounded-lg border border-gray-200 bg-white p-4"
+        class="mt-6 shrink-0 rounded-lg border border-gray-200 bg-white p-4"
         aria-labelledby="rechazo-titulo"
       >
         <h2 id="rechazo-titulo" class="text-sm font-semibold text-gray-900">Rechazar ticket</h2>
@@ -192,7 +202,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
 
       <section
         v-if="mostrarReabrir"
-        class="mt-6 rounded-lg border border-gray-200 bg-white p-4"
+        class="mt-6 shrink-0 rounded-lg border border-gray-200 bg-white p-4"
         aria-labelledby="reabrir-titulo"
       >
         <h2 id="reabrir-titulo" class="text-sm font-semibold text-gray-900">Reabrir ticket</h2>
@@ -225,12 +235,15 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
 
       <!-- ══ Cuerpo: conversación (principal) + gestión y contexto (lateral).
            Mismo feed y mismo composer que el panel del split-view. -->
-      <div class="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <AppSeccion titulo="Actividad y conversación" :conteo="comentariosTotal || null" sin-padding>
-          <div class="px-5 py-5">
-            <TicketTimelineUnificado :descripcion="ticket.descripcion" :filas="timelineUnificado" :autor-de="autorDe" />
+      <div class="mt-6 grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <AppSeccion titulo="Actividad y conversación" sin-padding llenar>
+          <template #acciones>
+            <AppSegmentado v-model="verFeed" :opciones="OPCIONES_FEED" label="Qué mostrar en la conversación" />
+          </template>
+          <div ref="refFeed" class="px-5 py-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            <TicketTimelineUnificado :descripcion="ticket.descripcion" :filas="filasFeed" :autor-de="autorDe" />
           </div>
-          <div class="border-t border-gray-100 px-5 py-4">
+          <div class="shrink-0 border-t border-gray-100 px-5 py-4">
             <TicketComposer
               v-if="!esTerminal"
               v-model:mensaje="nuevoComentario"
@@ -247,7 +260,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
 
         <!-- En abierto, lo primero es triar (prioridad, responsable): en móvil
              la gestión sube antes de la conversación. -->
-        <aside class="space-y-6 lg:sticky lg:top-6" :class="{ 'order-first lg:order-none': ticket.estado === 'abierto' }">
+        <aside class="space-y-6 lg:min-h-0 lg:overflow-y-auto" :class="{ 'order-first lg:order-none': ticket.estado === 'abierto' }">
           <!-- Campos según el estado (abierto / en curso / terminal) —
                compartidos con TicketDetallePanel.vue. Se ocultan mientras un
                formulario inline está abierto: rechazar solo ocurre en

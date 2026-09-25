@@ -195,7 +195,7 @@ export const ticketsApi = {
   async listEventosTicket(ticketId) {
     const { data, error } = await getClient().database
       .from('ticket_eventos')
-      .select('id, evento, detalle, user_email, created_at')
+      .select('id, evento, detalle, user_id, user_email, created_at')
       .eq('ticket_id', ticketId)
       .order('created_at', { ascending: false });
     if (error) throw error;

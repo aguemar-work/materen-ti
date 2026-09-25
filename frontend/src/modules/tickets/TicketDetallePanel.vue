@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
 import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -11,6 +11,8 @@ import TicketComposer from './TicketComposer.vue';
 import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
 import TicketSolicitante from './TicketSolicitante.vue';
 import TicketContexto from './TicketContexto.vue';
+import TicketResumen from './TicketResumen.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 
 // Panel de detalle para el split-view de Tickets — montado por
 // TicketsView.vue (y por TicketPanelPreviewView.vue, preview aislado
@@ -37,7 +39,7 @@ const {
   ticket, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId,
   guardandoCampo,
   nuevoComentario, comentarioInterno, enviandoComentario,
-  autorDe, timelineUnificado,
+  autorDe, timelineUnificado, resolucion,
   atencionForm, iniciando, tipoAmbiguoSinClasificar,
   cargar: cargarTicket, confirmarIniciar,
   mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
@@ -50,6 +52,23 @@ const {
   copiarMensajeSatisfaccion, copiarMensajeSolicitarInfo,
   enviarComentario,
 } = useTicketDetalleLogica();
+
+// Mismo feed que la página completa (ver TicketDetalleView.vue): actividad
+// y conversación juntas, con "Mensajes" para leer solo lo escrito. Arranca
+// abajo (lo último que pasó) y vuelve abajo con cada mensaje nuevo.
+const verFeed = ref('todo');
+const filasFeed = computed(() => (verFeed.value === 'mensajes'
+  ? timelineUnificado.value.filter((f) => f.tipo === 'comentario')
+  : timelineUnificado.value));
+const OPCIONES_FEED = computed(() => [
+  { valor: 'todo', label: 'Todo' },
+  { valor: 'mensajes', label: 'Mensajes', conteo: timelineUnificado.value.filter((f) => f.tipo === 'comentario').length },
+]);
+const refFeed = ref(null);
+watch(() => [cargando.value, filasFeed.value.length], async () => {
+  await nextTick();
+  if (refFeed.value) refFeed.value.scrollTop = refFeed.value.scrollHeight;
+});
 
 // ── Columna de contexto (Plan Maestro v2, Frente 2, 2026-09-04) ──
 // Equipos/KB/Problema vinculado tenían solo un conteo en la banda de
@@ -113,6 +132,12 @@ function onConfirmarReabrir(motivo) {
             <h2 class="text-lg font-semibold leading-snug tracking-tight text-gray-900">{{ ticket.titulo }}</h2>
             <BadgeEstado tipo="ticket" :valor="ticket.estado" />
           </div>
+          <TicketResumen
+            class="mt-2 text-xs"
+            :ticket="ticket"
+            :responsable="ticket.asignado_a ? (staffPorId[ticket.asignado_a] || 'Staff') : ''"
+            :resolucion="resolucion"
+          />
         </div>
         <h2 v-else class="min-w-0 flex-1 text-lg font-semibold text-gray-900">Detalle del ticket</h2>
 
@@ -209,10 +234,14 @@ function onConfirmarReabrir(motivo) {
          por su cuenta y el composer queda fijo al pie de la conversación. -->
     <div v-else class="min-h-0 flex-1 overflow-y-auto xl:flex xl:overflow-hidden">
       <section class="flex min-w-0 flex-col xl:min-h-0 xl:flex-1" aria-label="Actividad y conversación">
-        <div class="px-5 py-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+        <div class="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 px-5 py-2">
+          <span class="text-xs font-medium text-gray-500">Actividad y conversación</span>
+          <AppSegmentado v-model="verFeed" :opciones="OPCIONES_FEED" label="Qué mostrar en la conversación" />
+        </div>
+        <div ref="refFeed" class="px-5 py-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
           <TicketTimelineUnificado
             :descripcion="ticket.descripcion"
-            :filas="timelineUnificado"
+            :filas="filasFeed"
             :autor-de="autorDe"
             fecha-inline
           />

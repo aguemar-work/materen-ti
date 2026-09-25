@@ -257,6 +257,18 @@ para baja/media). Doble columna y móvil comparten `TarjetaTicket.vue`, tres
 filas: número · prioridad · nivel · estado / título / solicitante ···
 avatar del responsable (círculo punteado si no hay, ámbar si sigue vigente).
 
+**Detalle del ticket (página y panel de Triage, 2026-09-25)** — En escritorio
+ocupa exactamente la hoja, **sin scroll de página**: encabezado fijo, la
+conversación scrollea sola (arranca abajo, con el composer siempre visible
+al pie) y la columna de gestión scrollea por su cuenta. En móvil vuelve al
+scroll normal de página. Encabezado: `TicketResumen.vue` — prioridad · nivel
+· tipo · Solicitante · Responsable · Recibido hace… · Resuelto/Rechazado hace…
+por X · tardó N (del historial, `useTicketDetalleLogica().resolucion`).
+Actividad y conversación van **juntas** (una sola historia cronológica) con
+"Todo · Mensajes" para leer solo lo escrito. Un comentario sin `autor_id` es
+del solicitante y lleva su nombre, nunca "Sistema". `AppSeccion llenar`:
+sección que ocupa el alto disponible con el cuerpo en columna flex.
+
 ### 3.4 Primitivas en CSS (`styles/componentes.css`, capa `components`)
 Todo lo que queda en `componentes.css` es oficial, y cada selector tiene
 consumidores reales. Son primitivas que no ganan nada convirtiéndose en

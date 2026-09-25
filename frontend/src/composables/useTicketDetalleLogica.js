@@ -28,9 +28,34 @@ export function useTicketDetalleLogica() {
   // El auto-crecimiento del textarea vive en TicketComposer.vue: es
   // comportamiento del control, no lógica de negocio del ticket.
 
+  // Un comentario sin autor_id lo escribió el SOLICITANTE desde el
+  // seguimiento público (la edge function `tickets` inserta sin sesión) —
+  // no "Sistema", que es como se veía hasta el 2026-09-25.
   function autorDe(autorId) {
-    return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
+    if (autorId) return staffPorId.value[autorId] || 'Staff';
+    const t = ticket.value;
+    return t?.empleado_nombre || t?.contacto_ingresado || 'Solicitante';
   }
+
+  // Cómo terminó el ticket, para el encabezado ("Resuelto hace 1 d por X ·
+  // tardó 2 d"). Sale del historial: el último cambio a "resuelto" (el
+  // cierre que encadena cerrar_ticket() no cuenta como quien resolvió) o, si
+  // nunca pasó por ahí, a "cerrado"/"rechazado". Solo con el ticket en un
+  // estado final: un ticket reabierto ya no "está resuelto".
+  const resolucion = computed(() => {
+    const t = ticket.value;
+    if (!t || !['resuelto', 'cerrado', 'rechazado'].includes(t.estado)) return null;
+    const cambios = eventos.value
+      .filter((e) => e.evento === 'estado_cambiado')
+      .map((e) => ({ ...e, destino: destinoDeCambio(e.detalle) }))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const buscado = t.estado === 'rechazado' ? ['rechazado'] : ['resuelto', 'cerrado'];
+    const ev = cambios.find((e) => e.destino === buscado[0]) || cambios.find((e) => buscado.includes(e.destino));
+    const fecha = ev?.created_at || t.resuelto_at || null;
+    if (!fecha) return null;
+    const por = ev ? (staffPorId.value[ev.user_id] || ev.user_email || '') : '';
+    return { tipo: t.estado === 'rechazado' ? 'rechazado' : 'resuelto', fecha, por };
+  });
 
   // El color de cada hito viene del MISMO estadoInfo() que pintan los badges
   // de estado en el resto de la app — un estado siempre significa el mismo
@@ -463,7 +488,7 @@ export function useTicketDetalleLogica() {
     ticket, comentarios, eventos, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId,
     guardandoCampo,
     nuevoComentario, comentarioInterno, enviandoComentario,
-    autorDe, colorDeEstado, historialEsencial, timelineUnificado,
+    autorDe, colorDeEstado, historialEsencial, timelineUnificado, resolucion,
     atencionForm, iniciando, tipoAmbiguoSinClasificar,
     cargar, confirmarIniciar,
     mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,

@@ -192,3 +192,44 @@ describe('TicketDetalleView.vue — botones migrados a AppButton (Fase 2)', () =
     expect(insforgeApi.crearComentarioTicket).toHaveBeenCalledWith('tck-1', 'Ya llegó el técnico', true);
   });
 });
+
+// Detalle V2 (2026-09-25): encabezado con quién lo pide / atiende / resolvió
+// y cuánto tardó; feed "Todo · Mensajes"; los mensajes sin autor son del
+// solicitante (no "Sistema").
+describe('TicketDetalleView.vue — encabezado y feed V2', () => {
+  const hace = (dias) => new Date(Date.now() - dias * 86400000).toISOString();
+
+  it('un ticket resuelto dice quién lo resolvió, hace cuánto y cuánto tardó', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'cerrado', asignado_a: 'staff-2', created_at: hace(5) }));
+    insforgeApi.nombresStaff.mockResolvedValue([{ user_id: 'staff-2', nombre: 'Diego Huamán' }]);
+    insforgeApi.listEventosTicket.mockResolvedValue([
+      { id: 'e1', evento: 'estado_cambiado', detalle: 'De "en_progreso" a "resuelto"', user_id: 'staff-2', created_at: hace(3) },
+      { id: 'e2', evento: 'estado_cambiado', detalle: 'De "resuelto" a "cerrado"', user_id: 'staff-9', created_at: hace(3) },
+    ]);
+    const w = await montar();
+    const resumen = w.find('dl').text();
+    expect(resumen).toContain('Solicitante');
+    expect(resumen).toContain('Juan Pérez');
+    expect(resumen).toContain('Responsable');
+    expect(resumen).toContain('Resuelto');
+    expect(resumen).toContain('por Diego Huamán');
+    expect(resumen).toContain('tardó 2 d');
+  });
+
+  it('"Mensajes" oculta los hitos del sistema y el mensaje sin autor lleva el nombre del solicitante', async () => {
+    insforgeApi.listEventosTicket.mockResolvedValue([
+      { id: 'e1', evento: 'creado', detalle: '', user_id: null, created_at: hace(2) },
+    ]);
+    insforgeApi.listComentariosTicket.mockResolvedValue([
+      { id: 'c1', mensaje: 'Gracias', interno: false, autor_id: null, created_at: hace(1) },
+    ]);
+    const w = await montar();
+    expect(w.findAll('[data-tipo="evento"]').length).toBe(1);
+    expect(w.find('[data-tipo="comentario"]').text()).toContain('Juan Pérez');
+    expect(w.find('[data-tipo="comentario"]').text()).not.toContain('Sistema');
+    const mensajes = w.find('[role="group"][aria-label="Qué mostrar en la conversación"]').findAll('button').find((b) => b.text().includes('Mensajes'));
+    await mensajes.trigger('click');
+    expect(w.findAll('[data-tipo="evento"]').length).toBe(0);
+    expect(w.findAll('[data-tipo="comentario"]').length).toBe(1);
+  });
+});

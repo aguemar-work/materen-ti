@@ -23,6 +23,13 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Tickets: detalle a pantalla completa**) — revisión del dueño.
+  Página de detalle y panel de Triage: encabezado con `TicketResumen.vue`
+  (solicitante, responsable, recibido hace…, resuelto hace… por X · tardó N);
+  en escritorio sin scroll de página (conversación y columna lateral con
+  scroll propio, conversación anclada abajo); feed "Todo · Mensajes"; los
+  mensajes del solicitante ya no firman como "Sistema". `listEventosTicket`
+  trae `user_id`; `AppSeccion` gana `llenar`. Docs: SISTEMA-DISENO §3.3.
 - **2026-09-25** (**Tickets: tabla y tarjetas rediseñadas + `resuelto_at`**) — revisión
   del dueño. Tabla: Prioridad · Estado · Ticket (solo número + título) ·
   Solicitante · Responsable (antes "Asignado a") · Fecha (reemplaza "Edad":
