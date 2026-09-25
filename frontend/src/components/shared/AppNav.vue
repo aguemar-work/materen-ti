@@ -6,9 +6,9 @@
 // PrimeVue/Tailwind, shell claro) solo cambió cómo se ve:
 //   · Superficie blanca, fundida con el header; se separa del workspace por
 //     un borde de 1px (ver la cabecera de AppLayout.vue).
-//   · Ítem activo: fondo azul tenue + texto azul + barra izquierda de 2px
-//     (principios del JEFE: hover/activo sin bordes, acento ≤2px y solo a
-//     la izquierda — docs/NOTAS-DISENO-ANTERIOR.md §2).
+//   · Ítem activo: fondo azul tenue + texto azul, sin borde ni barra lateral
+//     (retirada 2026-09-24: leía como un componente de librería de UI
+//     genérica, no como parte propia del sistema — ver SISTEMA-DISENO.md §1).
 //   · En el riel (solo desktop, md+) se ocultan rótulos y textos; el badge
 //     pasa a un punto sobre el ícono. En móvil el panel siempre va completo.
 import { computed } from 'vue';
@@ -173,8 +173,7 @@ const CLASE_LINK =
   'relative flex h-9 items-center gap-3 rounded-md px-3 text-sm text-gray-700 ' +
   'transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
-const CLASE_LINK_ACTIVO =
-  'bg-primary-50! text-primary-700! font-medium shadow-[inset_2px_0_0_var(--color-primary-500)]';
+const CLASE_LINK_ACTIVO = 'bg-primary-50! text-primary-700! font-medium';
 </script>
 
 <template>

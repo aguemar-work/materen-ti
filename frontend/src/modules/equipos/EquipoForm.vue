@@ -323,7 +323,7 @@ async function guardar() {
     } else if (e?.message?.includes('uq_equipos_codigo_almacen')) {
       error.value = 'Ya existe un equipo con ese código de almacén';
       campoInvalido.value = 'codigo_almacen';
-    } else if (e?.message?.includes('equipos_codigo') || e?.message?.includes('codigo')) {
+    } else if (e?.message?.includes('equipos_codigo')) {
       error.value = 'Ya existe un equipo con ese código';
       campoInvalido.value = 'codigo';
     } else {

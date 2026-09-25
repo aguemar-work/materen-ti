@@ -22,9 +22,12 @@
 
    Reglas (principios del JEFE, docs/NOTAS-DISENO-ANTERIOR.md §2):
    - Superficies fundidas (sin sombras salvo lo que flota).
-   - Hover/activo sin bordes: solo fondos muy tenues.
-   - Ningún borde supera 1px; un acento de estado va a la IZQUIERDA y
-     como máximo 2px.
+   - Hover/activo/selección sin bordes: solo fondos muy tenues — incluido
+     el aviso inline (`.notif`) y la fila seleccionada de una lista, que
+     hasta el 2026-09-24 llevaban una franja de acento a la izquierda (el
+     borde de acento se retiró del todo: leía como un componente de
+     librería de UI genérica, no como parte propia del sistema).
+   - Ningún borde supera 1px.
    - Colores: la rampa `primary-*` del @theme + la paleta estándar de
      Tailwind para estados (verde/ámbar/rojo). No hay escala propia nueva.
    ════════════════════════════════════════════════════════════════════ */
@@ -53,8 +56,11 @@
   .selector-vista__btn--activo { @apply bg-white text-primary-600 hover:bg-white hover:text-primary-600; }
 
   /* ── Avisos inline (notif) ────────────────────────────────────────── */
-  /* Único caso de borde de acento: izquierdo y de 2px (regla del JEFE). */
-  .notif { @apply flex items-start gap-3 rounded-md border-l-2 px-3 py-2.5 text-sm; }
+  /* Sin borde de acento (retirado 2026-09-24): superficie fundida lisa,
+     mismo principio que el resto del sistema — el color de fondo + el
+     ícono ya bastan para distinguir el tono, sin la franja de color que
+     hace ver la caja como un componente de librería. */
+  .notif { @apply flex items-start gap-3 rounded-md px-3 py-2.5 text-sm; }
   .notif > .ti { @apply mt-0.5 shrink-0 text-base; }
   .notif__texto { @apply flex min-w-0 flex-1 flex-col gap-0.5; }
   .notif__titulo { @apply font-semibold; }
@@ -63,10 +69,10 @@
     @apply -mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-current
       hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500;
   }
-  .notif--danger { @apply border-red-500 bg-red-50 text-red-800; }
-  .notif--success { @apply border-green-500 bg-green-50 text-green-800; }
-  .notif--warning { @apply border-amber-500 bg-amber-50 text-amber-900; }
-  .notif--info { @apply border-primary-500 bg-primary-50 text-primary-800; }
+  .notif--danger { @apply bg-red-50 text-red-800; }
+  .notif--success { @apply bg-green-50 text-green-800; }
+  .notif--warning { @apply bg-amber-50 text-amber-900; }
+  .notif--info { @apply bg-primary-50 text-primary-800; }
   .notif--inline { @apply w-full; }
   .form-grid > .notif { @apply col-span-full; }
 

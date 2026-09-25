@@ -25,6 +25,7 @@ import AppButton from '../../components/ui/AppButton.vue';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
 import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import AppSelect from '../../components/ui/AppSelect.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
@@ -80,8 +81,14 @@ const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltro
 // El riel le quitaba ~220px a la lista y al panel de detalle en Triage —
 // justo el ancho que necesita la conversación — y en móvil ya eran una
 // fila horizontal. Mismos datos, mismo v-model, un solo control.
+// "Sin asignar" se muestra como "Nuevos" (2026-09-24): un ticket sin
+// asignado solo puede estar en `abierto` (check_iniciar_completo() exige
+// asignado_a antes de pasar a en_progreso, y reabrir conserva el asignado
+// previo) — "sin asignar" describía el filtro técnico, no lo que el
+// usuario ve: un ticket recién creado, todavía sin triar. El id interno
+// (`sin_asignar`, en el store/filtros) no cambia, solo la etiqueta.
 const BANDEJAS_REVISION = [
-  { id: 'sin_asignar', label: 'Sin asignar', icono: 'ti-user-off' },
+  { id: 'sin_asignar', label: 'Nuevos', icono: 'ti-user-off' },
   { id: 'sin_vincular', label: 'Sin vincular', icono: 'ti-alert-triangle' },
 ];
 
@@ -115,6 +122,13 @@ const subestadoActivo = computed({
     if (misTicketsActivo.value) store.estadoMisTickets = v;
     else store.estadoEquipo = v;
   },
+});
+
+// Filtro por técnico, solo dentro de "Todos" (Equipo): "Mis tickets" ya está
+// fijo al propio usuario, no necesita el selector. '' = todos los técnicos.
+const tecnicoActivo = computed({
+  get: () => store.tecnicoEquipo,
+  set: (v) => { store.tecnicoEquipo = v; },
 });
 
 // ── Filtro por categoría (solo deep-link: /tickets?categoria=<id>) ─────
@@ -188,10 +202,14 @@ function aplicarVista() {
     store.aplicarFiltros({ estado: sub.estado, asignadoA: auth.user?.id || '', sinAsignar: false, sinVincular: false });
   } else { // 'equipo'
     const sub = ESTADOS_SUBFILTRO.find((s) => s.id === store.estadoEquipo) || ESTADOS_SUBFILTRO[0];
-    store.aplicarFiltros({ estado: sub.estado, asignadoA: '', sinAsignar: false, sinVincular: false });
+    store.aplicarFiltros({ estado: sub.estado, asignadoA: store.tecnicoEquipo, sinAsignar: false, sinVincular: false });
   }
 }
-watch([vistaActiva, () => store.estadoMisTickets, () => store.estadoEquipo], aplicarVista, { immediate: true });
+watch(
+  [vistaActiva, () => store.estadoMisTickets, () => store.estadoEquipo, () => store.tecnicoEquipo],
+  aplicarVista,
+  { immediate: true },
+);
 
 // ── Filtro secundario: Fecha de creación ────────────────────────────────
 // Eje INDEPENDIENTE de la bandeja activa (aplicarFiltros() solo mergea).
@@ -396,7 +414,10 @@ const FRASE_BANDEJA = {
 };
 const subtituloBandeja = computed(() => {
   const n = total.value;
-  let texto = `${n} ${n === 1 ? 'ticket' : 'tickets'} ${FRASE_BANDEJA[bandejaActiva.value.id] || ''}`.trim();
+  const frase = bandejaActiva.value.id === 'equipo' && store.tecnicoEquipo
+    ? `asignados a ${nombreStaff(store.tecnicoEquipo)}`
+    : FRASE_BANDEJA[bandejaActiva.value.id] || '';
+  let texto = `${n} ${n === 1 ? 'ticket' : 'tickets'} ${frase}`.trim();
   if (categoriaFiltrada.value) texto += ` en la categoría “${categoriaFiltrada.value}”`;
   if (bandejaConSubestado.value && subestadoActivo.value !== 'todos') {
     const sub = ESTADOS_SUBFILTRO.find((s) => s.id === subestadoActivo.value);
@@ -438,12 +459,14 @@ function fechaListaAngosta(iso) {
 }
 
 // Clases de fila (tabla de escritorio vía `:row-class` y tarjeta móvil):
-// seleccionada = fondo tenue; la abierta por última vez = acento izquierdo
-// de 2px (la única excepción de borde de la escala, ver SISTEMA-DISENO §1.7).
+// seleccionada = fondo azul tenue; la abierta por última vez = fondo gris
+// tenue (distinto del de selección, para no confundirse con ella) + `aria-
+// current`. Sin borde: se retiró la única excepción de la escala de bordes
+// (ver SISTEMA-DISENO §1.7).
 function claseFilaTicket(fila) {
   const clases = ['cursor-pointer'];
   if (estaSeleccionado(fila.id)) clases.push('bg-primary-50/70!');
-  if (fila.id === store.ultimoAbierto) clases.push('[&>td:first-child]:shadow-[inset_2px_0_0_var(--color-primary-500)]');
+  else if (fila.id === store.ultimoAbierto) clases.push('bg-gray-50');
   return clases;
 }
 
@@ -578,6 +601,10 @@ onMounted(async () => {
           <span class="hidden h-6 w-px bg-gray-200 sm:block" aria-hidden="true"></span>
           <AppSegmentado v-model="subestadoActivo" :opciones="opcionesSubestado" label="Filtrar por estado" />
         </template>
+        <AppSelect v-if="equipoActivo" v-model="tecnicoActivo" label="Filtrar por técnico" class="w-48">
+          <option value="">Todos los técnicos</option>
+          <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+        </AppSelect>
       </div>
       <div class="flex flex-wrap items-center gap-3">
         <AppBuscador
@@ -789,9 +816,9 @@ onMounted(async () => {
               <li
                 v-for="fila in lista"
                 :key="fila.id"
-                class="rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300"
+                class="rounded-lg border border-gray-200 p-4 transition-colors duration-150 hover:border-gray-300"
                 :class="[
-                  { 'shadow-[inset_2px_0_0_var(--color-primary-500)]': fila.id === store.ultimoAbierto },
+                  fila.id === store.ultimoAbierto ? 'bg-gray-50' : 'bg-white',
                   'cursor-pointer',
                 ]"
                 :aria-current="fila.id === store.ultimoAbierto ? 'true' : undefined"
@@ -861,7 +888,7 @@ onMounted(async () => {
                 tabindex="0"
                 class="cursor-pointer px-4 py-3 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
                 :class="t.id === ticketSeleccionado
-                  ? 'bg-primary-50/70 shadow-[inset_2px_0_0_var(--color-primary-500)]'
+                  ? 'bg-primary-50/70'
                   : 'hover:bg-gray-50'"
                 :aria-current="t.id === ticketSeleccionado ? 'true' : undefined"
                 @click="verTicket(t)"

@@ -38,6 +38,18 @@ export function crearInvocador(nombre, mensajeError) {
         }
         return invocar(body, opciones);
       }
+      // Error de negocio con status >= 400 (401/403/429/500...): desde que
+      // las 4 edge functions espejan `code` en `error` (Ciclo 20 bis), el SDK
+      // conserva las claves del body sobre el InsForgeError que lanza. Mismo
+      // tratamiento que el `!data?.ok` de abajo — antes de este cambio,
+      // CUALQUIER código de error no-2xx (sesión expirada, sin permiso,
+      // rate-limit, error interno) llegaba como "Request failed: <statusText>"
+      // en inglés, nunca como el mensaje en español del dominio.
+      if (error.code) {
+        const e = new Error(mensajeError(error.code));
+        e.code = error.code;
+        throw e;
+      }
       throw new Error(error.message || `Error en el servidor de ${nombre}`);
     }
     if (!data?.ok) {

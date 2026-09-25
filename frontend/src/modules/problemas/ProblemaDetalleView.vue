@@ -267,7 +267,7 @@ onUnmounted(() => store.limpiar());
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl px-4 pb-10 pt-5 sm:px-6">
+  <div class="w-full px-4 pb-10 pt-5 sm:px-6">
     <button
       type="button"
       class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"

@@ -163,7 +163,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl px-4 pb-10 pt-5 sm:px-6">
+  <div class="w-full px-4 pb-10 pt-5 sm:px-6">
     <RouterLink
       to="/encuestas"
       class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
@@ -218,8 +218,8 @@ onMounted(async () => {
             <li
               v-for="fila in rondas"
               :key="fila.id"
-              class="flex items-center gap-2 border-l-2 py-3 pl-3.5 pr-3 transition-colors duration-150"
-              :class="rondaSeleccionada?.id === fila.id ? 'border-l-primary-500 bg-primary-50/60' : 'border-l-transparent hover:bg-gray-50'"
+              class="flex items-center gap-2 px-3.5 py-3 transition-colors duration-150"
+              :class="rondaSeleccionada?.id === fila.id ? 'bg-primary-50' : 'hover:bg-gray-50'"
             >
               <button
                 type="button"

@@ -26,12 +26,15 @@
    Las acciones destructivas en una página son `outline` + `danger`; el
    rojo sólido se reserva para el botón de confirmar dentro de un
    ConfirmDialog destructivo.
-6. **Peso visual proporcional al significado** (escala del JEFE, ver
-   `docs/NOTAS-DISENO-ANTERIOR.md` §2): sin fondo → solo borde → fondo tenue
-   → fondo tenue + borde (selección) → sólido (una por vista). Ante la duda,
-   el escalón más bajo.
-7. **Hover y activo sin bordes**, solo fondos tenues. Ningún borde de más de
-   1px, salvo un acento IZQUIERDO de 2px para selección o severidad.
+6. **Peso visual proporcional al significado** (escala heredada de
+   `docs/NOTAS-DISENO-ANTERIOR.md` §2, con un escalón retirado — ver 7):
+   sin fondo → solo borde → fondo tenue (estado/categoría, también
+   selección) → sólido (una por vista). Ante la duda, el escalón más bajo.
+7. **Hover, activo y selección sin bordes**, solo fondos tenues. Ningún
+   borde de más de 1px. **Retirado (2026-09-24): el acento IZQUIERDO de 2px**
+   que marcaba selección o severidad en avisos (`.notif`) y filas de lista —
+   leía como un componente de librería de UI genérica, no como parte propia
+   del sistema. El color de fondo + el ícono ya bastan.
 8. **Acciones de fila en un menú ⋮** (`MenuAcciones`); la fila entera abre
    el detalle. Nada de íconos que aparecen al pasar el mouse.
 9. **Vacíos y cargas con intención**: `AppVacio` dice qué falta y ofrece la
@@ -143,7 +146,7 @@ reintroducirlo.
 
 ### 4.2 Detalle / ficha (referencia: `EmpleadoDetalleView.vue`)
 ```
-<div class="mx-auto w-full max-w-7xl px-4 pb-10 pt-5 sm:px-6">
+<div class="w-full px-4 pb-10 pt-5 sm:px-6">
   ← volver (texto gris)
   perfil: [avatar/ícono grande] [título + estado · línea secundaria · meta con íconos] [acciones]
   (guía/aviso contextual, si aplica)
@@ -151,6 +154,11 @@ reintroducirlo.
     principal: AppSeccion(es) con listas divide-y (fila: ícono en caja gris + título + meta + acciones)
     lateral (lg:sticky lg:top-6): AppSeccion + AppListaDatos
 ```
+Sin tope de ancho (retirado `mx-auto max-w-7xl`/`max-w-6xl` el 2026-09-24, 7
+vistas): el workspace es tan ancho como la ventana, igual que el Listado —
+una ficha no necesita quedar más angosta que su propia lista. El texto largo
+(descripción, comentarios) sigue con su propio tope de medida de lectura
+(`max-w-prose`/`max-w-[70ch]`), no el contenedor de la página entera.
 
 ### 4.3 Tablero (Dashboard, reportes)
 - Fila de `AppKpi` (`grid gap-3 sm:grid-cols-2 xl:grid-cols-4`); cada cifra

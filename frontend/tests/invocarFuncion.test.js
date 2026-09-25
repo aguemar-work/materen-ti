@@ -72,4 +72,23 @@ describe('crearInvocador', () => {
     await expect(invocar({ action: 'catalogo' })).rejects.toThrow('boom');
     expect(errorRedActivo.value).toBe(false);
   });
+
+  // Ciclo 20 bis: las 4 edge functions espejan `code` en `error` (body) en
+  // toda respuesta no-2xx para que el SDK lo conserve — @insforge/sdk arma
+  // un InsForgeError con esas claves extra (incluida `code`) en vez de
+  // descartar el body entero. Antes de esto, un 401/403/429/500 real
+  // llegaba SIEMPRE como "Request failed: <statusText>" en inglés, sin
+  // pasar nunca por `mensajeError`.
+  it('ante un error no-2xx con .code (401/403/429/500 reales) traduce igual que un { ok:false, code }', async () => {
+    invokeSdk.mockResolvedValue({
+      data: null,
+      error: { message: '', statusCode: 401, code: 'no_autenticado' },
+    });
+
+    const invocar = crearInvocador('credenciales', (code) => `traducido:${code}`);
+    await expect(invocar({ action: 'revelar' })).rejects.toMatchObject({
+      message: 'traducido:no_autenticado',
+      code: 'no_autenticado',
+    });
+  });
 });

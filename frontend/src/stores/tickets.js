@@ -52,6 +52,10 @@ export const useTicketsStore = crearStorePaginado('tickets', {
     // localStorage, mismo criterio que vistaActiva.
     estadoMisTickets: 'todos',
     estadoEquipo: 'todos',
+    // Filtro por técnico DENTRO de "Equipo" ('' = todos). Vive acá por la
+    // misma razón que estadoEquipo: sobrevive a navegar a /tickets/:id y
+    // volver. No aplica a "Mis tickets" (ya está fijo al propio usuario).
+    tecnicoEquipo: '',
     // Último ticket abierto desde el listado — la fila correspondiente se
     // resalta al volver (`.fila-ticket--activa`). Vive en el store y no en
     // TicketsView.vue a propósito: navegar a /tickets/:id desmonta la vista

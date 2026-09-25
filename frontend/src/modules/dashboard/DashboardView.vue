@@ -164,7 +164,7 @@ onMounted(async () => {
 
 
 <template>
-  <div class="mx-auto w-full max-w-7xl pb-10">
+  <div class="w-full pb-10">
     <AppEncabezado titulo="Dashboard" :subtitulo="subtitulo" />
 
     <!-- ══ Carga: esqueleto con la misma forma que la página ══════════ -->

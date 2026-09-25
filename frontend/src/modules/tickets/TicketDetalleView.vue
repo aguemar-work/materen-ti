@@ -64,7 +64,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl px-4 pb-10 pt-5 sm:px-6">
+  <div class="w-full px-4 pb-10 pt-5 sm:px-6">
     <button
       type="button"
       class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
@@ -169,7 +169,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
            decidió la acción, antes de la conversación. -->
       <section
         v-if="mostrarRechazar"
-        class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-[inset_2px_0_0_var(--color-red-500)]"
+        class="mt-6 rounded-lg border border-gray-200 bg-white p-4"
         aria-labelledby="rechazo-titulo"
       >
         <h2 id="rechazo-titulo" class="text-sm font-semibold text-gray-900">Rechazar ticket</h2>
@@ -203,7 +203,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
 
       <section
         v-if="mostrarReabrir"
-        class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-[inset_2px_0_0_var(--color-primary-500)]"
+        class="mt-6 rounded-lg border border-gray-200 bg-white p-4"
         aria-labelledby="reabrir-titulo"
       >
         <h2 id="reabrir-titulo" class="text-sm font-semibold text-gray-900">Reabrir ticket</h2>

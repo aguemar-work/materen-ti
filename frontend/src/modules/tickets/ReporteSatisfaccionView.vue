@@ -213,7 +213,7 @@ onMounted(cargar);
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-7xl pb-10">
+  <div class="w-full pb-10">
     <AppEncabezado
       titulo="Satisfacción de tickets"
       volver-label="Tickets"

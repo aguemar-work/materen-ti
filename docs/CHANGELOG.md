@@ -23,6 +23,84 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-24** (**Resto del borde de acento + filtro por técnico en
+  Tickets**) — la pasada anterior de "sin borde de acento" se había hecho
+  buscando la clase Tailwind `border-l-*`, pero 6 lugares lo dibujaban con
+  `shadow-[inset_2px_0_0_...]` (mismo efecto visual, otra técnica, invisible
+  a ese grep): el ítem activo del SideNav (`AppNav.vue`), la fila "última
+  abierta" de `TicketsView.vue` (tabla, tarjeta móvil y lista angosta de
+  Triage) y los paneles inline de rechazar/reabrir de `TicketDetalleView.vue`.
+  Todos pasan a solo fondo tenue — en el SideNav y Triage, mismo primary-50
+  de siempre; en "última abierta" (que puede coincidir con una fila
+  seleccionada) un gris neutro para no confundirse con el tinte de
+  selección; en rechazar/reabrir, sin fondo de color: el título ya dice qué
+  es. **Filtro por técnico en Tickets** (a pedido, tras revisar si las 4
+  bandejas eran funcionales): la bandeja "Todos" mezclaba a todo el equipo
+  sin forma de acotar a una sola persona — no había manera de ver cuántos
+  tickets tiene un asistente puntual salvo el reporte histórico por periodo
+  (`ReporteTicketsModal`, otro caso de uso). Nuevo `AppSelect` "Filtrar por
+  técnico" (`stores/tickets.js: tecnicoEquipo`, `asignadoA` ya existía como
+  parámetro de `queryTickets()` — sin cambios de backend), visible solo en
+  "Todos" (en "Mis tickets" ya está implícito). El subtítulo de la página
+  dice "N tickets asignados a <nombre>" en vez de "de todo el equipo" cuando
+  hay uno elegido. De paso, "Sin asignar" pasa a llamarse **"Nuevos"**: un
+  ticket sin asignado solo puede estar en `abierto` (el trigger
+  `check_iniciar_completo()` exige `asignado_a` antes de `en_progreso`, y
+  reabrir conserva el asignado previo), así que el nombre anterior describía
+  el filtro técnico, no lo que el usuario ve. 3 tests nuevos en
+  `TicketsView.render.test.js`.
+- **2026-09-24** (**Sin borde de acento, fichas a ancho completo**) — dos
+  decisiones de producto pedidas directamente por el dueño, sin pasar por un
+  ciclo de auditoría: (1) el borde de acento IZQUIERDO de 2px (`.notif` y la
+  fila seleccionada de `EncuestaDetalleView.vue`) se retira del todo — leía
+  como un componente de librería de UI genérica, no como parte propia del
+  sistema; ahora es solo fondo de color, mismo principio de "superficies
+  fundidas" que ya regía el resto. `SISTEMA-DISENO.md` §1 (principios 6/7) y
+  `componentes.css` actualizados; ver `docs/NOTAS-DISENO-ANTERIOR.md` §2 para
+  el origen de la regla que se reemplaza (queda como archivo histórico, no se
+  edita). (2) Las 7 vistas de "ficha"/detalle y tablero que tenían
+  `mx-auto max-w-7xl`/`max-w-6xl` (EmpleadoDetalleView, TicketDetalleView,
+  ProblemaDetalleView, KbArticuloDetalleView, EncuestaDetalleView,
+  ReporteSatisfaccionView, DashboardView) pasan a ancho completo, igual que
+  ya lo era el Listado — no hay motivo para que una ficha quede más angosta
+  que su propia lista. El texto largo (descripción, comentarios) sigue con
+  su propio tope de medida de lectura (`max-w-prose`/`max-w-[70ch]`, ya
+  existía por separado), así que no se vuelve menos legible en pantallas
+  anchas. `SISTEMA-DISENO.md` §4.2. Evaluado y descartado a propósito:
+  quitar el selector Tabla/Tarjetas (Empleados, Equipos) y Tabla/Triage
+  (Tickets) — a diferencia del borde de acento, es una función real y
+  distinta en cada caso (galería visual con fotos/avatares vs. bandeja de
+  trabajo), no una indecisión de UI; se mantiene.
+- **2026-09-24** (**Revisión integral, cierre de cabos sueltos**) — lint:
+  saca `computed` sin usar de `EmpleadosView.vue` (único error real de
+  `npm run lint`). RLS: migración 087 (**aplicada por el dueño el mismo
+  día**) cierra el último caso del "patrón transversal" de tablas satélite
+  sin gate de módulo (`docs/HISTORIAL-AUDITORIAS.md`, Ciclo 13) —
+  `areas_obras` (satélite de Empleados) pasa a
+  `tiene_permiso_modulo('empleados')` en los 3 comandos que seguían en
+  `es_staff()` plano, mismo patrón que 079/081/082/083. La migración 086
+  del Ciclo 20 (endurecimiento v2) también **ya fue aplicada**; sigue
+  pendiente el redeploy de las 4 edge functions con su código actual.
+  **Hallazgo V2-15** (`docs/HISTORIAL-AUDITORIAS.md`, Ciclo 20): ningún
+  código de error con status ≥400 de las 4 edge functions llegaba nunca al
+  frontend con su `code` — el SDK (`@insforge/sdk`) descarta el body entero
+  de toda respuesta no-2xx si no trae una clave `error` (string), así que
+  sesión expirada, sin permiso, rate-limit y error interno se veían siempre
+  como "Request failed: &lt;statusText&gt;" en inglés, nunca con el mensaje en
+  español ya escrito en cada dominio.
+  Detección de duplicados en 2 formularios (revisión de UX en código real):
+  `EquipoForm.vue` tenía un `e.message.includes('codigo')` de respaldo tan
+  amplio que podía atribuirle "ya existe un equipo con ese código" a
+  cualquier error no relacionado — se saca, el `includes('equipos_codigo')`
+  de al lado ya cubre el nombre real de la constraint (`equipos_codigo_key`,
+  `unique` sin nombre propio de la migración 013). `EmpleadoForm.vue` pierde
+  el `|| includes('empleados.dni')`: nunca hace match contra el mensaje real
+  de Postgres (`unique constraint "empleados_dni_key"`, confirmado en
+  `maqueta/client.js`), era rama muerta. `respuesta()` (las 4 functions,
+  **escrito, pendiente de desplegar**) ahora espeja `code` en `error` para
+  status ≥400; `invocarFuncion.js` (frontend, ya en producción en el próximo
+  deploy normal, no depende de la 086) traduce ese `.code` igual que el
+  camino `{ok:false,code}` de siempre.
 - **2026-09-24** (**Flujos v2**) — DNI duplicado al crear un empleado muestra
   quién lo tiene (enlace a su ficha; sugiere reactivar si está Inactivo).
   Licencias filtra por situación (Vencidas / Por vencer, server-side,

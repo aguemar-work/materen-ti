@@ -21,29 +21,46 @@ sección "UI/UX" — leerla antes de tocar UI. En resumen:
   Tabler (`ti ti-*`), los dos servidos desde el bundle; shell claro y
   fundido (header + SideNav blancos, workspace `gray-50`, separados por
   1px). Clases compartidas del shell: `components/shared/shellClases.js`.
-- **Todavía NO decidido** (preguntar, no completar solo): tema oscuro (hoy
-  sin estilos), tonos de avatar, colores de estado propios más allá de la
-  paleta estándar de Tailwind.
+- **Confirmaciones**: `ConfirmDialog` emite `cerrado` en todo cierre (éxito
+  o cancelación); el padre desmonta con `@cerrado`, nunca solo con
+  `@cancel` — si no, la siguiente confirmación de la misma pantalla no
+  vuelve a aparecer (bug real, 2026-09-24).
+- **Botón que navega**: `AppButton` con `to` (RouterLink) o `href` (`<a>`),
+  en vez de envolver un enlace a mano.
+- **Contraste**: texto informativo mínimo `text-gray-500` sobre blanco
+  (4,5:1). `gray-400`/`gray-300` solo en íconos decorativos, `disabled:` y
+  `placeholder:`.
+- **Sin tema oscuro** (el interruptor se retiró el 2026-09-24: no tenía
+  ninguna regla de estilos detrás). Sigue sin decidirse; diseñarlo requiere
+  antes tokens semánticos (superficie/texto/borde) en el `@theme`. Tonos de
+  avatar y colores de estado propios más allá de la paleta estándar de
+  Tailwind: tampoco decididos, preguntar antes de completar.
+- Un solo componente de tag (`BadgeEstado` renderiza con `AppTag`; no hay
+  tags `.tag--*` escritos a mano ni clases `cds-tag` de Carbon).
 - Guía visual completa (tokens, componentes, recetas de página, copy):
   [`docs/SISTEMA-DISENO.md`](../../../docs/SISTEMA-DISENO.md). Referencia
   de implementación: módulo Empleados.
-- Migrado todo (2026-09-23) salvo el portal público/sin sesión
-  (`auth/LoginView`, `entregas/EntregaView`, `soporte/SoporteView`) y las
-  páginas de `errores/` — receta 4.5 de la guía, pendientes.
+- **Migrado todo** (2026-09-24), incluido el portal público/sin sesión
+  (`auth/LoginView`, `entregas/EntregaView`, `soporte/SoporteView`, tickets
+  públicos, encuesta pública) y las páginas de `errores/` —
+  `components/ui/AppPortal.vue`, receta 4.5 de la guía.
 - Antes de tocar algo visual, leer también
   [`docs/NOTAS-DISENO-ANTERIOR.md`](../../../docs/NOTAS-DISENO-ANTERIOR.md):
   identidad de marca, principios de diseño puestos por el JEFE (minimalista,
   hover sin bordes, acento ≤2px solo a la izquierda, un acento fuerte por
   vista, peso visual proporcional) y reglas de accesibilidad verificadas
   por tests.
-- De los 5 scripts de guardrail de diseño solo `patrones-ui.mjs` corre en
-  CI; los demás dependían de tokens/CSS de Carbon.
+- De los scripts de guardrail de diseño que existieron, solo
+  `scripts/patrones-ui.mjs` sigue vigente y corre en CI; los otros 4
+  dependían de tokens/CSS de Carbon y se retiraron del repo el 2026-09-24
+  (no solo de CI).
 
 ## Qué sigue vigente (comportamiento y producto, no visual)
 
 Esto no depende de qué CSS tenga el sistema — es criterio de producto o
-contrato de accesibilidad verificado por los 40 tests de render de
-`frontend/tests/componentes/`:
+contrato de accesibilidad verificado por los tests de render de
+`frontend/tests/componentes/` (no fijar el conteo de memoria — corre
+`cd frontend && npm test` y lee su propio resumen):
 
 - **Permisos no son estética.** El SideNav (`AppNav.vue`) nunca es la
   barrera: es el reflejo del guard de `router/guards.js` y de RLS. Mostrar
@@ -55,12 +72,15 @@ contrato de accesibilidad verificado por los 40 tests de render de
   empleado"), imperativo de usted en formularios y errores ("Complete el
   campo", "Vuelva a iniciar sesión"). Un "No tienes permiso" es un bug de
   copy.
-- **Todo diálogo modal pasa por `components/shared/Modal.vue`**, nunca a
-  mano — centraliza `role="dialog"`, `aria-modal`, foco atrapado y cierre
-  con Escape.
+- **Todo diálogo modal pasa por `components/shared/Modal.vue` o
+  `components/ui/AppDialog.vue`**, nunca a mano — ambos centralizan
+  `role="dialog"`, `aria-modal`, foco atrapado y cierre con Escape. `Modal`
+  es el de casi todos los formularios (26 consumidores); `AppDialog` hoy
+  solo lo usa `TicketInternoForm` — unificar en uno de los dos es decisión
+  pendiente, no crear un tercero.
 - **Toda imagen lleva `alt`; todo botón solo-ícono tiene nombre accesible**
   (`aria-label` o equivalente) — lo verifica `scripts/patrones-ui.mjs` en
-  CI, el único de los 5 guardrails de diseño que sigue corriendo.
+  CI, el guardrail de diseño que sigue vigente.
 - **No cambies la estructura, la navegación ni el copy** salvo que el
   usuario lo pida explícitamente.
 

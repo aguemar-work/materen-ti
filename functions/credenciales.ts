@@ -73,8 +73,17 @@ function corsPara(origin: string | null): Record<string, string> {
   };
 }
 
+// Sin una clave `error` (string) en el body, el SDK del cliente descarta el
+// body completo en toda respuesta no-2xx y arma un InsForgeError genérico
+// ("Request failed: <statusText>") — `code` nunca llega al frontend
+// (`"error" in data` es el único gate que usa @insforge/sdk para conservar
+// las claves del body). Se espeja `code` en `error` solo para status >= 400.
 function respuesta(cors: Record<string, string>, body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
+  const payload =
+    status >= 400 && body && typeof body === 'object' && 'code' in body && !('error' in body)
+      ? { ...body, error: (body as { code: string }).code }
+      : body;
+  return new Response(JSON.stringify(payload), {
     status,
     // no-store: toda respuesta de esta function puede llevar una contraseña
     // o su metadata — nunca debe quedar en la caché del navegador/proxy.

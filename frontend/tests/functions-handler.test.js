@@ -91,7 +91,7 @@ describe('credenciales — revelar', () => {
     const r = await credenciales(peticion({ action: 'revelar', cuentaId: 'c-1' }));
     const texto = await r.text();
     expect(r.status).toBe(500);
-    expect(JSON.parse(texto)).toEqual({ ok: false, code: 'error_interno' });
+    expect(JSON.parse(texto)).toEqual({ ok: false, code: 'error_interno', error: 'error_interno' });
     expect(texto).not.toContain('Secreto-Real-123');
   });
 
@@ -167,7 +167,7 @@ describe('credenciales — entregaCrear', () => {
     const r = await credenciales(peticion(cuerpo));
     const texto = await r.text();
     expect(r.status).toBe(500);
-    expect(JSON.parse(texto)).toEqual({ ok: false, code: 'error_interno' });
+    expect(JSON.parse(texto)).toEqual({ ok: false, code: 'error_interno', error: 'error_interno' });
     const vencida = consultasDe('entregas', 'update')[0];
     expect(vencida.payload).toHaveProperty('expires_at');
     expect(tieneFiltro(vencida, 'eq', 'id', 'ent-1')).toBe(true);
@@ -228,7 +228,7 @@ describe('primer nivel: excepciones y CORS', () => {
     };
     const r = await credenciales(peticion({ action: 'encrypt', value: 'x' }));
     expect(r.status).toBe(500);
-    expect(await r.json()).toEqual({ ok: false, code: 'error_interno' });
+    expect(await r.json()).toEqual({ ok: false, code: 'error_interno', error: 'error_interno' });
     expect(r.headers.get('Access-Control-Allow-Origin')).toBe(ORIGEN);
   });
 

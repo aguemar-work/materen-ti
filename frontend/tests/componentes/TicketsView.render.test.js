@@ -257,3 +257,57 @@ describe('TicketsView.vue — filtro por categoría desde la URL', () => {
     expect(insforgeApi.listCategoriasTicket).not.toHaveBeenCalled();
   });
 });
+
+// Filtro "por técnico" dentro de la bandeja "Todos"/Equipo (2026-09-24):
+// antes no había forma de ver solo los tickets de un técnico puntual — la
+// bandeja "Todos" mezclaba a todo el equipo sin poder recortar por persona.
+describe('TicketsView.vue — filtro por técnico (bandeja "Todos")', () => {
+  async function montarEnEquipo() {
+    localStorage.setItem('sistema-ti-vista-tickets', 'tabla');
+    const router = crearRouter();
+    // Mismo atajo que el filtro de categoría: entra directo a la bandeja
+    // "Todos" sin tener que simular el clic del segmentado.
+    router.push('/tickets?categoria=red');
+    await router.isReady();
+    const w = mount(TicketsView, {
+      global: {
+        plugins: [router, [PrimeVue, { unstyled: true }]],
+        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ReporteTicketsModal: true, ConfirmDialog: true },
+      },
+    });
+    await flushPromises();
+    return w;
+  }
+
+  it('no aparece fuera de la bandeja "Todos"', async () => {
+    const w = await montar(); // arranca en 'sin_asignar'
+    expect(w.findAll('label').some((l) => l.text().includes('Filtrar por técnico'))).toBe(false);
+  });
+
+  it('lista los técnicos activos y filtra la consulta por el elegido', async () => {
+    const w = await montarEnEquipo();
+    const etiqueta = w.findAll('label').find((l) => l.text().includes('Filtrar por técnico'));
+    expect(etiqueta).toBeTruthy();
+    const select = etiqueta.find('select');
+    expect(select.text()).toContain('Sofía Medina');
+
+    await select.setValue('staff-1');
+    await flushPromises();
+
+    const ultima = insforgeApi.listTicketsPage.mock.calls.at(-1)[0];
+    expect(ultima.asignadoA).toBe('staff-1');
+    expect(w.text()).toContain('Sofía Medina');
+  });
+
+  it('"Todos los técnicos" vuelve a quitar el filtro', async () => {
+    const w = await montarEnEquipo();
+    const select = w.findAll('label').find((l) => l.text().includes('Filtrar por técnico')).find('select');
+
+    await select.setValue('staff-1');
+    await flushPromises();
+    await select.setValue('');
+    await flushPromises();
+
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0].asignadoA).toBe('');
+  });
+});

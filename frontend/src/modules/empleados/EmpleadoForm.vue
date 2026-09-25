@@ -194,7 +194,7 @@ async function guardar() {
     resultado = guardado;
     modal.value?.cerrar();
   } catch (e) {
-    if (e?.message?.includes('empleados_dni_key') || e?.message?.includes('empleados.dni')) {
+    if (e?.message?.includes('empleados_dni_key')) {
       error.value = 'Ya existe un empleado con ese DNI';
       campoInvalido.value = 'dni';
       await buscarDuplicado(form.value.dni);
