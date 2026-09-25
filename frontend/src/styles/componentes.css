@@ -51,9 +51,10 @@
   }
 
   /* ── SelectorVista (components/shared/SelectorVista.vue) ──────────── */
-  .selector-vista { @apply inline-flex items-center gap-0.5 rounded-md bg-gray-100 p-0.5; }
-  .selector-vista .icon-btn { @apply h-8 w-8; }
-  .selector-vista__btn--activo { @apply bg-white text-primary-600 hover:bg-white hover:text-primary-600; }
+  /* V2: mismo lenguaje que AppSegmentado (32px, pastilla blanca activa). */
+  .selector-vista { @apply inline-flex h-8 items-center gap-0.5 rounded-md bg-gray-100 p-0.5; }
+  .selector-vista .icon-btn { @apply h-7 w-7 rounded-[5px] text-base; }
+  .selector-vista__btn--activo { @apply bg-white text-primary-600 shadow-xs ring-1 ring-gray-900/5 hover:bg-white hover:text-primary-600; }
 
   /* ── Avisos inline (notif) ────────────────────────────────────────── */
   /* Sin borde de acento (retirado 2026-09-24): superficie fundida lisa,
@@ -83,12 +84,14 @@
   /* Campo (marcado heredado de CarbonCampo): etiqueta + caja + pie. */
   .campo { @apply flex min-w-0 flex-col; }
   .campo__etiqueta { @apply mb-1.5 text-sm font-medium text-gray-700; }
+  /* V2: 36px — el mismo alto que el botón md del pie del formulario, así
+     campos y acciones quedan en la misma escala. */
   .campo__caja {
-    @apply relative flex min-h-10 items-center rounded-md border border-gray-300 bg-white
-      transition-colors duration-150 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500;
+    @apply relative flex min-h-9 items-center rounded-md border border-gray-300 bg-white shadow-xs
+      transition-colors duration-150 hover:border-gray-400 focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500;
   }
   .campo__control {
-    @apply h-10 w-full min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400
+    @apply h-9 w-full min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400
       disabled:cursor-not-allowed disabled:text-gray-400;
   }
   .campo__control--area { @apply h-auto min-h-20 resize-y py-2 leading-relaxed; }
@@ -98,7 +101,7 @@
   .campo__pie { @apply mt-1.5 text-xs text-gray-500; }
   .campo__pie--error { @apply text-red-600; }
   .campo--invalido .campo__caja { @apply border-red-500 ring-1 ring-red-500; }
-  .campo--inerte .campo__caja { @apply border-gray-200 bg-gray-50; }
+  .campo--inerte .campo__caja { @apply border-gray-200 bg-gray-50 shadow-none hover:border-gray-200; }
   .campo--inerte .campo__etiqueta { @apply text-gray-400; }
 
   /* ── BuscadorCombo (components/shared/BuscadorCombo.vue) ──────────── */
@@ -107,7 +110,7 @@
      ambos lados y su lista flota teletransportada a <body>. */
   .combo-wrap { @apply relative; }
   .combo-wrap input {
-    @apply h-10 w-full rounded-md border border-gray-300 bg-white px-9 text-sm text-gray-900 placeholder:text-gray-400
+    @apply h-9 w-full rounded-md border border-gray-300 bg-white px-9 text-sm text-gray-900 shadow-xs placeholder:text-gray-400
       transition-colors duration-150 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500
       disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400;
   }

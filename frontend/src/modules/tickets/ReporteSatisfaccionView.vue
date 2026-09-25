@@ -6,7 +6,6 @@
 // principal es en el cliente: los dos resúmenes ya necesitan el histórico
 // completo, así que no tiene sentido pedirlo de nuevo por página.
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { MIN_MUESTRA_PROMEDIO } from '../../api/domains/reportesTickets.js';
 import { formatFechaHora } from '../../core/formatters.js';
@@ -29,7 +28,6 @@ import AppTag from '../../components/ui/AppTag.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import DistribucionNiveles from './DistribucionNiveles.vue';
 
-const router = useRouter();
 const { esMovil } = useEsMovil();
 
 const cargando = ref(true);
@@ -216,9 +214,7 @@ onMounted(cargar);
   <div class="w-full pb-10">
     <AppEncabezado
       titulo="Satisfacción de tickets"
-      volver-label="Tickets"
       :subtitulo="cargando ? 'Cargando encuestas…' : `${resumenGeneral.encuestasRespondidas} de ${resumenGeneral.encuestasGeneradas} encuestas respondidas · histórico completo`"
-      @volver="router.push('/tickets')"
     >
       <template #acciones>
         <AppButton

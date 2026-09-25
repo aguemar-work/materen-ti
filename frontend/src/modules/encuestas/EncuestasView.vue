@@ -16,6 +16,7 @@ import AppColumn from '../../components/ui/AppColumn.js';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import EncuestaForm from './EncuestaForm.vue';
 
 const router = useRouter();
@@ -135,10 +136,7 @@ function accionesDe(encuesta) {
         <p v-if="cargando" class="sr-only" role="status">Cargando encuestas…</p>
 
         <!-- ── Tabla (escritorio): la fila abre las rondas y resultados ── -->
-        <div
-          v-if="!esMovil"
-          class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white"
-        >
+        <AppMarcoTabla v-if="!esMovil">
           <div class="min-h-0 flex-1 overflow-auto">
             <AppTable
               :value="listaPaginada"
@@ -201,7 +199,7 @@ function accionesDe(encuesta) {
             @update:pagina="paginaActual = $event"
             @update:tam-pagina="cambiarTamPagina"
           />
-        </div>
+        </AppMarcoTabla>
 
         <!-- ── Tarjetas (móvil) ── -->
         <div v-else class="min-h-0 flex-1 overflow-y-auto">

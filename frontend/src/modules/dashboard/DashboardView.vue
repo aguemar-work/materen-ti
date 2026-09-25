@@ -106,6 +106,15 @@ function tonoPrioridad(p) {
   return rolDeTag(prioridadInfo(p).clase);
 }
 
+// V2: la portada saluda a quien entra (el menú y las migas la llaman
+// "Inicio"; el título "Dashboard" no coincidía con ninguno de los dos).
+const saludo = computed(() => {
+  const hora = new Date().getHours();
+  const tramo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const nombre = (auth.nombre || '').trim().split(/\s+/)[0];
+  return nombre ? `${tramo}, ${nombre}` : tramo;
+});
+
 const fechaHoy = computed(() => {
   const txt = new Date().toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
   return txt.charAt(0).toUpperCase() + txt.slice(1);
@@ -165,7 +174,7 @@ onMounted(async () => {
 
 <template>
   <div class="w-full pb-10">
-    <AppEncabezado titulo="Dashboard" :subtitulo="subtitulo" />
+    <AppEncabezado :titulo="saludo" :subtitulo="subtitulo" />
 
     <!-- ══ Carga: esqueleto con la misma forma que la página ══════════ -->
     <div v-if="cargando" class="px-4 sm:px-6" aria-hidden="true">

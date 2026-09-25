@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
-import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
 import { estadoVencimientoLicencia, CLASE_VENCIMIENTO_LICENCIA } from '../../core/dominio-licencias.js';
 import {
@@ -34,7 +33,6 @@ const route = useRoute();
 const router = useRouter();
 const empleadosStore = useEmpleadosStore();
 const cuentasStore = useCuentasStore();
-const { volver } = useVolverContextual();
 
 const empleado = ref(null);
 const licencias = ref([]);
@@ -316,16 +314,7 @@ watch(() => route.params.id, (id) => { if (id) cargar(); }, { immediate: true })
 </script>
 
 <template>
-  <div class="w-full px-4 pb-10 pt-5 sm:px-6">
-    <button
-      type="button"
-      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-      @click="volver('/empleados')"
-    >
-      <i class="ti ti-arrow-left" aria-hidden="true"></i>
-      Empleados
-    </button>
-
+  <div class="w-full px-4 pb-10 pt-6 sm:px-6">
     <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando empleado...</p>
 
     <p v-else-if="!empleado" class="py-16 text-center text-sm text-gray-500">No se encontró el empleado.</p>

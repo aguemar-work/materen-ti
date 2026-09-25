@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useAuthStore } from '../../stores/auth.js';
-import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -18,7 +17,6 @@ import AppTag from '../../components/ui/AppTag.vue';
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const { volver } = useVolverContextual();
 
 const cargando = ref(true);
 const articulo = ref(null);
@@ -208,16 +206,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="w-full px-4 pb-10 pt-5 sm:px-6">
-    <button
-      type="button"
-      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-      @click="volver('/base-conocimiento')"
-    >
-      <i class="ti ti-arrow-left" aria-hidden="true"></i>
-      Base de conocimiento
-    </button>
-
+  <div class="w-full px-4 pb-10 pt-6 sm:px-6">
     <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando artículo...</p>
 
     <template v-else-if="articulo">

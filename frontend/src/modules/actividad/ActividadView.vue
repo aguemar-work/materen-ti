@@ -14,6 +14,8 @@ import AppButton from '../../components/ui/AppButton.vue';
 import AppSelect from '../../components/ui/AppSelect.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 
 const registros = ref([]);
 const cargando = ref(true);
@@ -154,7 +156,7 @@ onMounted(async () => {
     </AppEncabezado>
 
     <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+    <AppBarraFiltros>
       <AppSelect v-model="filtroAccion" label="Filtrar por acción">
         <option value="">Todas las acciones</option>
         <option v-for="o in OPCIONES_ACCION" :key="o.valor" :value="o.valor">
@@ -172,7 +174,7 @@ onMounted(async () => {
       />
       <AppButton v-if="filtroAccion" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="filtroAccion = ''" />
       <span class="ml-auto hidden text-xs text-gray-500 sm:inline">Últimos 200 registros</span>
-    </div>
+    </AppBarraFiltros>
 
     <!-- ══ Línea de tiempo ════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
@@ -193,7 +195,7 @@ onMounted(async () => {
         <AppButton v-if="filtroAccion" variant="outline" severity="secondary" icon="ti ti-x" label="Ver todas las acciones" @click="filtroAccion = ''" />
       </AppVacio>
 
-      <div v-else class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <AppMarcoTabla v-else>
         <div class="min-h-0 flex-1 overflow-auto">
           <section v-for="dia in dias" :key="dia.clave" :aria-label="dia.label">
             <h2 class="sticky top-0 z-10 border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-xs font-medium text-gray-600 sm:px-5">
@@ -245,7 +247,7 @@ onMounted(async () => {
           @update:pagina="paginaActual = $event"
           @update:tam-pagina="cambiarTamPagina"
         />
-      </div>
+      </AppMarcoTabla>
     </div>
   </div>
 </template>

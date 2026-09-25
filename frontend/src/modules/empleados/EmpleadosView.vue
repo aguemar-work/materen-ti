@@ -27,6 +27,8 @@ import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 import AppSelect from '../../components/ui/AppSelect.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
@@ -268,8 +270,8 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Barra de filtros (fuera de la tabla: filtra, no es parte del dato) -->
-    <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+    <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
+    <AppBarraFiltros>
       <AppBuscador v-model="busqueda" label="Buscar empleados" placeholder="Buscar por nombre o DNI" />
       <AppSegmentado v-model="filtroEstado" :opciones="ESTADOS_SEGMENTO" label="Filtrar por estado" />
       <AppSelect v-model="filtroUbicacion" label="Filtrar por ubicación">
@@ -278,7 +280,7 @@ onMounted(async () => {
       </AppSelect>
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
       <SelectorVista v-model="vista" :opciones="OPCIONES_VISTA_EMPLEADOS" class="solo-escritorio ml-auto" />
-    </div>
+    </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
@@ -315,10 +317,7 @@ onMounted(async () => {
         <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
 
         <!-- ── Tabla (escritorio) ── -->
-        <div
-          v-if="vista === 'tabla' && !esMovil"
-          class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white"
-        >
+        <AppMarcoTabla v-if="vista === 'tabla' && !esMovil">
           <div class="min-h-0 flex-1 overflow-auto">
             <AppTable
               :value="lista"
@@ -402,7 +401,7 @@ onMounted(async () => {
             @update:pagina="store.irAPagina"
             @update:tam-pagina="store.cambiarTamPagina"
           />
-        </div>
+        </AppMarcoTabla>
 
         <!-- ── Tarjetas (vista elegida en escritorio, o siempre en móvil) ── -->
         <div v-else class="min-h-0 flex-1 overflow-y-auto">

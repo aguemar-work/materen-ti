@@ -19,9 +19,14 @@ const BASE =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ' +
   'disabled:opacity-50 disabled:pointer-events-none';
 
+// V2: md baja de 40 a 36px — el botón de la cabecera de página convive con
+// controles de 32px (búsqueda, filtros) y a 40 se veía desproporcionado.
+// sm (32px) es la altura de todo control compacto del sistema: barra de
+// filtros, acciones de sección, paginación. lg queda para el portal público
+// (objetivo táctil de 44px).
 const TAMANOS = {
   sm: 'h-8 px-3 text-sm',
-  md: 'h-10 px-4 text-sm',
+  md: 'h-9 px-3.5 text-sm',
   lg: 'h-11 px-5 text-base',
 };
 
@@ -29,14 +34,16 @@ const TAMANOS = {
 // Los tres variantes comparten esa restricción; lo que cambia es si el
 // borde es visible (outline) o transparente (solid/text), y si el estado
 // se resuelve con fondo tenue (outline/text) o con un tono más oscuro del
-// mismo acento (solid).
+// mismo acento (solid). V2: sólido y outline llevan una sombra de 1px
+// (`shadow-xs`) — les da cuerpo de "control presionable" sobre la hoja
+// blanca; el de texto no, porque no es una superficie.
 const VARIANTES = {
   solid: {
     primary:
-      'border border-transparent bg-primary-500 text-white ' +
+      'border border-transparent bg-primary-500 text-white shadow-xs ' +
       'hover:bg-primary-600 active:bg-primary-700',
     danger:
-      'border border-transparent bg-red-600 text-white ' +
+      'border border-transparent bg-red-600 text-white shadow-xs ' +
       'hover:bg-red-700 active:bg-red-800',
     secondary:
       'border border-transparent bg-gray-100 text-gray-900 ' +
@@ -44,14 +51,14 @@ const VARIANTES = {
   },
   outline: {
     primary:
-      'border border-primary-300 bg-transparent text-primary-600 ' +
+      'border border-primary-300 bg-white text-primary-600 shadow-xs ' +
       'hover:bg-primary-50 active:bg-primary-100',
     danger:
-      'border border-red-300 bg-transparent text-red-600 ' +
+      'border border-red-300 bg-white text-red-600 shadow-xs ' +
       'hover:bg-red-50 active:bg-red-100',
     secondary:
-      'border border-gray-300 bg-transparent text-gray-700 ' +
-      'hover:bg-gray-50 active:bg-gray-100',
+      'border border-gray-300 bg-white text-gray-700 shadow-xs ' +
+      'hover:bg-gray-50 hover:text-gray-900 active:bg-gray-100',
   },
   text: {
     primary:

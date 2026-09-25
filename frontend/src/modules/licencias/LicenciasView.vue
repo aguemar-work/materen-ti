@@ -25,6 +25,8 @@ import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 import AppTag from '../../components/ui/AppTag.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { rolDeTag } from '../../core/tagRol.js';
@@ -432,11 +434,11 @@ onMounted(async () => {
     </AppEncabezado>
 
     <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+    <AppBarraFiltros>
       <AppBuscador v-model="busqueda" label="Buscar licencias" placeholder="Buscar por software, empresa o correo" />
       <AppSegmentado v-model="filtroSituacion" :opciones="SITUACIONES_SEGMENTO" label="Filtrar por situación" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
-    </div>
+    </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
@@ -459,7 +461,7 @@ onMounted(async () => {
         <p v-if="cargando" class="sr-only" role="status">Cargando licencias…</p>
 
         <!-- ── Tabla (escritorio) ── -->
-        <div v-if="!esMovil" class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <AppMarcoTabla v-if="!esMovil">
           <div class="min-h-0 flex-1 overflow-auto">
             <AppTable
               :value="lista"
@@ -622,7 +624,7 @@ onMounted(async () => {
             @update:pagina="store.irAPagina"
             @update:tam-pagina="store.cambiarTamPagina"
           />
-        </div>
+        </AppMarcoTabla>
 
         <!-- ── Tarjetas (móvil) ── -->
         <div v-else class="min-h-0 flex-1 overflow-y-auto">

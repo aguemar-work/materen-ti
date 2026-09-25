@@ -23,6 +23,43 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-25** (**Rediseño V2 "marco + hoja"**) — pedido del dueño: el
+  sistema "no tenía conexión ni perfil profesional"; pase libre salvo
+  paleta, tipografía y bordes laterales. Diagnóstico sobre capturas reales
+  de la maqueta (no sobre el código): un header de 56px sin contexto, la
+  página armada como islas sueltas (título, controles flotando sobre el
+  gris, card aparte), cards que se estiraban vacías al alto de la ventana,
+  alturas mezcladas en una misma fila (36/40/32px) y ruido repetido
+  (flechas de orden en todas las columnas). Causa de fondo: no existía una
+  abstracción de página — ~20 vistas copiaban a mano las mismas cadenas de
+  clases. Cambios: **shell** nuevo (`AppLayout.vue`) — marco `gray-50` con
+  el sidebar (marca arriba, usuario con rol abajo, sin borde propio) y una
+  hoja blanca redondeada con barra de migas + búsqueda visible (Ctrl/⌘K) +
+  campana; el ítem activo del menú es un "pedazo de hoja". La estructura
+  del menú pasa a `components/shared/navegacion.js` (la comparten el
+  SideNav y las migas). **Dos componentes de página nuevos**:
+  `AppBarraFiltros` y `AppMarcoTabla` (tabla a sangre en la hoja, sin card,
+  que no se estira), aplicados a los 10 listados (Empleados, Correos,
+  Licencias, Equipos, KB, Problemas, Encuestas, Actividad, Accesos
+  sensibles y el modo Tabla de Tickets) con un transformador que respeta el
+  anidamiento — Importar equipos conserva su card a propósito (grilla de
+  edición). **Escala única de alturas**: 32px compactos (buscador, selects,
+  segmentados, fechas, botón `sm`), 36px formularios y botón `md` (antes
+  40), 44px portal. `shadow-xs` en controles, cards y hoja. **Tabla**:
+  cabecera en banda tenue `text-xs`, flecha de orden solo en la columna
+  activa (o al pasar el mouse). Tags a 20px. Rango de fechas de Tickets
+  como un solo control agrupado. **Fichas**: sin enlace "← Volver"
+  (repetía la miga del módulo); se borran `useVolverContextual.js` y la
+  prop `volverLabel` de `AppEncabezado`, que quedaron sin consumidores.
+  **Inicio**: saludo por hora del día en vez de "Dashboard" (el menú y las
+  migas ya decían "Inicio"). `docs/SISTEMA-DISENO.md` reescrito para V2
+  (se conserva la numeración de secciones: el código cita "receta 4.5",
+  "§3", "§1.6", "§1.7"); `frontend/AGENTS.md` y el skill de diseño al día.
+  Test de `AppNav` pasa a verificar la marca `nav-activo` en vez de un
+  color. Verificado: `npm run lint` (0 errores), `npm test` (480 passed,
+  0 failed), `npx vite build`, `scripts/patrones-ui.mjs` (0 fallas),
+  capturas a 1440px y 390px incluidos menú móvil, riel, menú de usuario y
+  búsqueda.
 - **2026-09-25** (**"Limpiar filtros" en Accesos Sensibles**) — último módulo
   que le faltaba el patrón que ya tienen KB/Problemas/Equipos/Correos/
   Licencias/Empleados (propuesta UX/UI V2, Frente A). `ActividadView.vue` se

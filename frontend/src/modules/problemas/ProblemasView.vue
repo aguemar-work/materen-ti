@@ -20,6 +20,8 @@ import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 import AppSelect from '../../components/ui/AppSelect.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 
@@ -99,7 +101,7 @@ onMounted(async () => {
     </AppEncabezado>
 
     <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <div class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+    <AppBarraFiltros>
       <AppBuscador v-model="busqueda" label="Buscar problemas" placeholder="Buscar por título" />
       <AppSegmentado v-model="filtroEstado" :opciones="ESTADOS_SEGMENTO" label="Filtrar por estado" />
       <AppSelect v-model="filtroSeveridad" label="Filtrar por severidad">
@@ -107,7 +109,7 @@ onMounted(async () => {
         <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
       </AppSelect>
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
-    </div>
+    </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
@@ -130,10 +132,7 @@ onMounted(async () => {
         <p v-if="cargando" class="sr-only" role="status">Cargando problemas…</p>
 
         <!-- ── Tabla (escritorio): la fila abre el detalle ── -->
-        <div
-          v-if="!esMovil"
-          class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white"
-        >
+        <AppMarcoTabla v-if="!esMovil">
           <div class="min-h-0 flex-1 overflow-auto">
             <AppTable
               :value="lista"
@@ -199,7 +198,7 @@ onMounted(async () => {
             @update:pagina="store.irAPagina"
             @update:tam-pagina="store.cambiarTamPagina"
           />
-        </div>
+        </AppMarcoTabla>
 
         <!-- ── Tarjetas (móvil) ── -->
         <div v-else class="min-h-0 flex-1 overflow-y-auto">

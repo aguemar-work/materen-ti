@@ -29,6 +29,12 @@ import { ACCION_HEADER, PANEL_FLOTANTE, ITEM_PANEL, ROTULO_GRUPO } from './shell
 
 const VACIO = 'px-3 py-6 text-center text-sm text-gray-500';
 
+// Desde sm el botón colapsado se dibuja como un campo (fondo gris tenue,
+// texto de ayuda y el atajo); por debajo sigue siendo el botón de lupa.
+const CAMPO_COLAPSADO =
+  'sm:w-56 sm:justify-start sm:gap-2 sm:bg-gray-100 sm:px-2.5 sm:text-base sm:text-gray-500 sm:hover:bg-gray-200/70';
+const atajo = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K';
+
 const emit = defineEmits(['navegado']);
 
 const router = useRouter();
@@ -163,20 +169,25 @@ function irALicencia(lic) {
 
 <template>
   <div ref="anclaPanel" class="flex items-center">
+    <!-- Colapsado: en pantallas chicas un botón de lupa; desde sm se ve como
+         un campo (con el atajo a la vista), que es lo que el usuario busca
+         con la mirada cuando quiere encontrar algo. -->
     <button
       v-if="!expandido"
-      :class="ACCION_HEADER"
+      :class="[ACCION_HEADER, CAMPO_COLAPSADO]"
       type="button"
       title="Buscar en todo (Ctrl+K)"
       aria-label="Buscar en todo"
       @click="expandir"
     >
       <i class="ti ti-search" aria-hidden="true"></i>
+      <span class="hidden flex-1 text-left text-sm sm:inline">Buscar…</span>
+      <kbd class="hidden rounded bg-white px-1.5 font-sans text-[11px] font-medium leading-5 text-gray-500 shadow-xs ring-1 ring-gray-900/10 sm:inline">{{ atajo }}</kbd>
     </button>
 
     <div
       v-else
-      class="flex h-9 w-56 items-center gap-2 rounded-md bg-gray-100 px-3 text-gray-500 focus-within:ring-2 focus-within:ring-primary-500 sm:w-72"
+      class="flex h-8 w-56 items-center gap-2 rounded-md bg-white px-2.5 text-gray-500 ring-1 ring-gray-300 focus-within:ring-2 focus-within:ring-primary-500 sm:w-72"
     >
       <i class="ti ti-search shrink-0" aria-hidden="true"></i>
       <input
@@ -189,7 +200,7 @@ function irALicencia(lic) {
         @keydown.esc="onEscape"
       >
       <button
-        class="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        class="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
         type="button"
         title="Cerrar búsqueda"
         aria-label="Cerrar búsqueda"

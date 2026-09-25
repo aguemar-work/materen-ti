@@ -31,7 +31,7 @@ const TONO_DETALLE = {
 };
 
 const clasesRaiz = computed(() => [
-  'flex min-w-0 items-start gap-3 rounded-lg border border-gray-200 bg-white p-4',
+  'flex min-w-0 items-start gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-xs',
   props.to ? 'transition-colors duration-150 hover:border-gray-300 hover:bg-gray-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500' : '',
 ]);
 </script>

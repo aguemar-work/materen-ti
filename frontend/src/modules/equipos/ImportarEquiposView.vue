@@ -9,7 +9,6 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
-import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { toTitleCase, trimText } from '../../core/formatters.js';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -36,7 +35,6 @@ import {
   consolidarNotas,
 } from './importarEquipos.js';
 
-const { volver } = useVolverContextual();
 
 // ── Paso actual: 'pegar' → 'mapeo' → 'grid' ──────────────────────
 const paso = ref('pegar');
@@ -483,11 +481,9 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado
       titulo="Importar equipos desde Excel"
-      volver-label="Equipos"
       :subtitulo="paso === 'grid'
         ? `${filas.length} ${filas.length === 1 ? 'equipo' : 'equipos'} en la bandeja · ${cantidadParaMigrar} ${cantidadParaMigrar === 1 ? 'listo' : 'listos'} para migrar`
         : 'Pegue el inventario, confirme las columnas y corrija cada equipo antes de migrarlo'"
-      @volver="volver('/equipos')"
     >
       <template v-if="paso === 'grid' && !cargandoCatalogos" #acciones>
         <AppButton variant="outline" severity="danger" icon="ti ti-trash" label="Vaciar bandeja" :disabled="migrandoLote" @click="confirmarVaciar = true" />

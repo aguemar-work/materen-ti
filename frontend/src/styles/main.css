@@ -73,12 +73,14 @@
 
   /* select/fecha nativos. Los de `.campo` tienen su propia caja, y los que
      arma un wrapper de components/ui/ se marcan con `data-ui`. */
+  /* V2: 32px + sombra mínima, misma línea que AppBuscador/AppSelect en las
+     barras de filtros (ej. el rango de fechas de Tickets). */
   select:not(.campo__control):not([data-ui]),
   input[type="date"]:not(.campo__control),
   input[type="time"]:not(.campo__control),
   input[type="datetime-local"]:not(.campo__control) {
-    @apply h-9 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900
-      transition-colors duration-150
+    @apply h-8 rounded-md border border-gray-300 bg-white px-2.5 text-sm text-gray-900 shadow-xs
+      transition-colors duration-150 hover:border-gray-400
       focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500
       disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400;
   }

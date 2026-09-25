@@ -19,6 +19,8 @@ import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
 import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import AccesoSensibleForm from './AccesoSensibleForm.vue';
 
 const auth = useAuthStore();
@@ -178,11 +180,11 @@ onMounted(async () => {
     </AppEncabezado>
 
     <!-- ══ Barra de filtros ═══════════════════════════════════════ -->
-    <div v-if="lista.length" class="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
+    <AppBarraFiltros v-if="lista.length">
       <AppBuscador v-model="busqueda" label="Buscar accesos sensibles" placeholder="Buscar por nombre, usuario o nota" />
       <AppSegmentado v-model="filtroCategoria" :opciones="CATEGORIAS_SEGMENTO" label="Filtrar por categoría" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
-    </div>
+    </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
@@ -213,7 +215,7 @@ onMounted(async () => {
         <p v-if="cargando" class="sr-only" role="status">Cargando accesos sensibles…</p>
 
         <!-- ── Tabla (escritorio) ── -->
-        <div v-if="!esMovil" class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <AppMarcoTabla v-if="!esMovil">
           <div class="min-h-0 flex-1 overflow-auto">
             <AppTable
               :value="listaFiltrada"
@@ -298,7 +300,7 @@ onMounted(async () => {
               </AppColumn>
             </AppTable>
           </div>
-        </div>
+        </AppMarcoTabla>
 
         <!-- ── Tarjetas (móvil) ── -->
         <div v-else class="min-h-0 flex-1 overflow-y-auto">

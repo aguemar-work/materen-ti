@@ -50,9 +50,16 @@
   cada página con un `<h1>`.
 - **Actas imprimibles**: `reservarVentanaActa()` en el clic, antes de
   cualquier `await` (si no, el navegador bloquea la ventana).
-- **Shell** (`AppLayout`/`AppNav`/`AppSearch`/`NotificacionesCampana`): HTML
-  nativo con Tailwind; clases repetidas en `components/shared/shellClases.js`.
-  El SideNav refleja los guards del router y la RLS, nunca es la barrera.
+- **Shell V2 "marco + hoja"** (`AppLayout`/`AppNav`/`AppSearch`/
+  `NotificacionesCampana`, SISTEMA-DISENO §3.1): marco `gray-50` con el
+  sidebar (marca · menú · usuario) y una hoja blanca con barra de migas.
+  HTML nativo con Tailwind; clases repetidas en
+  `components/shared/shellClases.js`. La estructura del menú vive SOLO en
+  `components/shared/navegacion.js` (la leen el SideNav y las migas). El
+  SideNav refleja los guards del router y la RLS, nunca es la barrera.
+- **Listados**: `AppBarraFiltros` + `AppMarcoTabla` (receta 4.1), nunca el
+  `<div>` de filtros ni la card de la tabla escritos a mano. Las fichas no
+  llevan enlace "← Volver" (las migas ya llevan al módulo).
 
 ## Deep-links y filtros
 
@@ -76,7 +83,8 @@
 
 - `npm run dev:maqueta` (o la config `frontend-maqueta` de
   `.claude/launch.json`, puerto 5174): datos inventados y JEFE ficticio, sin
-  backend. Revisar a 1440px y 375px.
+  backend. Revisar a 1440px y 390px, incluidos el menú móvil abierto, el riel
+  y el menú de usuario.
 - Tests de render (`tests/componentes/`): `@vue/test-utils` sobre `happy-dom`,
   pedido **por archivo** con `// @vitest-environment happy-dom` (no cambiar el
   `environment: 'node'` global). Verifican estructura y comportamiento, no

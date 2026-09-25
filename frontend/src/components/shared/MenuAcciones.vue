@@ -39,7 +39,7 @@ const props = defineProps({
 // Trigger con texto (toolbar): mismo aspecto que AppButton variant="text"
 // severity="secondary" — antes usaba la clase provisional `.btn`.
 const CLASE_CON_TEXTO =
-  'inline-flex h-10 items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium text-gray-600 ' +
+  'inline-flex h-9 items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium text-gray-600 ' +
   'transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
 

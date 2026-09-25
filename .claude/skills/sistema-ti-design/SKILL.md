@@ -18,9 +18,16 @@ sección "UI/UX" — leerla antes de tocar UI. En resumen:
   rampa `--color-primary-50..950` (azul `#0064E0`) y `--font-sans`. Un solo
   acento de marca; no sumar escalas success/warn/info por iniciativa propia.
 - **Decidido a pedido (2026-09-22):** tipografía Inter Variable e íconos
-  Tabler (`ti ti-*`), los dos servidos desde el bundle; shell claro y
-  fundido (header + SideNav blancos, workspace `gray-50`, separados por
-  1px). Clases compartidas del shell: `components/shared/shellClases.js`.
+  Tabler (`ti ti-*`), los dos servidos desde el bundle.
+- **V2 "marco + hoja" (2026-09-25, rediseño con pase libre salvo paleta,
+  tipografía y bordes laterales):** marco `gray-50` con el sidebar (marca
+  arriba, usuario abajo, sin borde propio) y una hoja blanca redondeada con
+  barra de migas + búsqueda + campana. Listados con `AppBarraFiltros` +
+  `AppMarcoTabla` (tabla a sangre, no card). Alturas: 32px compactos, 36px
+  formularios/botón md, 44px portal. `shadow-xs` en controles, cards y hoja.
+  Activo = "pedazo de hoja" (pastilla blanca). Estructura del menú en
+  `components/shared/navegacion.js`; clases del shell en `shellClases.js`.
+  Guía completa: `docs/SISTEMA-DISENO.md` §1 y §3.
 - **Confirmaciones**: `ConfirmDialog` emite `cerrado` en todo cierre (éxito
   o cancelación); el padre desmonta con `@cerrado`, nunca solo con
   `@cancel` — si no, la siguiente confirmación de la misma pantalla no

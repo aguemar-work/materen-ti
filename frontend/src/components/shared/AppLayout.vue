@@ -1,28 +1,32 @@
 <script setup>
-// ── Shell raíz: header + SideNav + workspace ──────────────────────────
+// ── Shell raíz V2: "marco + hoja" (2026-09-25) ────────────────────────
 //
-// ANATOMÍA (base PrimeVue/Tailwind, 2026-09-22 — ver frontend/AGENTS.md)
-//   Header  56px, blanco, borde inferior de 1px — marca + acciones globales
-//   SideNav 256px expandido / 56px en riel, blanco, borde derecho de 1px
-//   Content gris 50 — el workspace, donde vive cada módulo
+// ANATOMÍA
+//   Marco   gris 50, ocupa toda la ventana. Sobre él vive el sidebar SIN
+//           borde propio: marca arriba, navegación, usuario abajo.
+//   Hoja    superficie blanca con esquinas redondeadas, inset de 8px sobre
+//           el marco (en desktop; en móvil ocupa todo). Es "la página":
+//           barra superior de 48px (menú · migas · búsqueda · campana) y
+//           debajo el <main> con su propio scroll.
 //
-// Shell CLARO y fundido (decisión explícita, no por defecto): header y nav
-// comparten la superficie blanca y se separan del workspace solo por un
-// borde de 1px, no por una capa de color — principios del JEFE en
-// docs/NOTAS-DISENO-ANTERIOR.md §2 ("preferir fusión de superficies",
-// "minimalista"). Reemplaza al shell oscuro de Carbon (Gray 100/90).
+// Por qué así (reemplaza al header blanco de 56px + sidebar blanco con
+// borde, 2026-09-22): aquel shell eran tres franjas del mismo blanco
+// separadas por líneas, sin contexto de dónde estaba uno. Acá el marco
+// agrupa todo lo que es "el sistema" (marca, menú, usuario) y la hoja todo
+// lo que es "esta página", con las migas diciendo en qué grupo y módulo
+// se está. El ítem activo del menú se dibuja como un pedazo de la hoja
+// (ver AppNav.vue), así las dos mitades se leen como una sola pieza.
 //
-// El header sigue concentrando lo que no es navegación de módulo
-// (búsqueda global, campana, usuario); el SideNav queda SOLO para navegar.
+// Sin bordes laterales en ningún nivel (regla de producto): la hoja se
+// despega del marco con un anillo de 1px que la rodea entera y una sombra
+// mínima, no con una línea vertical.
 //
-// POR QUÉ FLEX Y NO `position: fixed`
-// El shell es un flex de dos filas (header, luego nav + contenido) y el
-// contenido es su PROPIO contenedor de scroll: el `sticky top-0` del
-// encabezado de cada vista se pega justo debajo del header del shell sin
-// necesidad de saber cuánto mide. Solo en móvil el nav pasa a `fixed`
-// (panel deslizante sobre el contenido).
+// POR QUÉ FLEX Y NO `position: fixed`: el <main> es su PROPIO contenedor de
+// scroll, así el `sticky top-0` de cada vista se pega justo debajo de la
+// barra de la hoja sin saber cuánto mide. Solo en móvil el sidebar pasa a
+// `fixed` (panel deslizante).
 import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { insforgeApi } from '../../api/insforge.js';
@@ -32,8 +36,8 @@ import { getClient } from '../../api/client.js';
 // NOMBRE_CORTO no). Se consumen las tres: las dos piezas para el título
 // visible y el nombre completo para el alt.
 import { NOMBRE_PRODUCTO, NOMBRE_MARCA, NOMBRE_CORTO } from '../../core/marca.js';
-import { inicialesDe } from '../../core/avatar.js';
 import { ACCION_HEADER } from './shellClases.js';
+import { migasDeRuta } from './navegacion.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco, crearRefrescoDebounced, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import NotificacionesCampana from './NotificacionesCampana.vue';
@@ -41,6 +45,8 @@ import AppSearch from './AppSearch.vue';
 import AppNav from './AppNav.vue';
 import AppNotifications from './AppNotifications.vue';
 import MenuAcciones from './MenuAcciones.vue';
+import AppAvatar from '../ui/AppAvatar.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
 // Única dependencia del shell hacia un módulo de dominio, y es a propósito:
 // "editar mi nombre para mostrar" se dispara desde el menú de usuario del
 // header, pero el formulario es el MISMO que usa StaffView.vue cuando el
@@ -53,7 +59,12 @@ import MenuAcciones from './MenuAcciones.vue';
 const StaffNombreForm = defineAsyncComponent(() => import('../../modules/staff/StaffNombreForm.vue'));
 
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
+
+// Migas de la barra de la hoja: grupo › módulo (› sub-página con nombre
+// propio). Salen de la misma estructura que el SideNav (navegacion.js).
+const migas = computed(() => migasDeRuta(route.path));
 
 // Conexión realtime única por sesión: las vistas solo se suscriben/
 // desuscriben a sus canales (ver useRealtimeRefresco), este layout
@@ -170,21 +181,28 @@ function cerrarNav() {
   navAbierto.value = false;
 }
 
-const nombreUsuario = computed(() => auth.nombre || auth.user?.email || '');
-// inicialesDe() y no `nombre[0]`: es la misma función que usa cualquier otro
-// avatar del sistema, así el del header muestra dos letras como el de la
-// ficha del empleado en vez de una sola. Con solo un correo cae a una letra,
-// que es lo que la función devuelve para un string de una palabra.
-const inicialesUsuario = computed(() => inicialesDe(nombreUsuario.value) || '?');
+// El mismo botón hace dos cosas según el ancho; su nombre accesible y su
+// aria-expanded tienen que decir la verdad en cada caso.
+const { esMovil } = useEsMovil();
+const etiquetaNav = computed(() => {
+  if (esMovil.value) return navAbierto.value ? 'Cerrar menú' : 'Abrir menú';
+  return navEnRiel.value ? 'Expandir navegación' : 'Contraer navegación';
+});
 
-// Móvil: panel `fixed` que entra desde la izquierda. Desktop (md+): columna
-// estática del flex, 256px o 56px en riel.
+// El avatar del bloque de usuario es AppAvatar: mismas iniciales y mismo
+// tono estable que esa persona tiene en cualquier otra pantalla.
+const nombreUsuario = computed(() => auth.nombre || auth.user?.email || '');
+const rolUsuario = computed(() => (auth.esJefe ? 'Jefe de TI' : 'Asistente de TI'));
+
+// Móvil: panel `fixed` que entra desde la izquierda, blanco y con sombra
+// (flota sobre la hoja). Desktop (md+): columna estática del marco, sin
+// fondo propio — 240px, o 64px en riel.
 const claseNav = computed(() => [
-  'z-40 flex flex-col overflow-y-auto border-r border-gray-200 bg-white',
-  'fixed bottom-0 left-0 top-14 w-64 transition-transform duration-200',
+  'z-40 flex flex-col',
+  'fixed inset-y-0 left-0 w-72 bg-white shadow-xl transition-transform duration-200',
   navAbierto.value ? 'translate-x-0' : '-translate-x-full',
-  'md:static md:translate-x-0 md:transition-[width]',
-  navEnRiel.value ? 'md:w-14' : 'md:w-64',
+  'md:static md:translate-x-0 md:bg-transparent md:shadow-none md:transition-[width]',
+  navEnRiel.value ? 'md:w-16' : 'md:w-60',
 ]);
 
 const mostrarEditarNombre = ref(false);
@@ -211,71 +229,41 @@ async function cerrarSesion() {
 </script>
 
 <template>
-  <div class="flex h-screen flex-col overflow-hidden bg-gray-50">
-    <!-- ══ Header (56px) ════════════════════════════════════════ -->
-    <header class="flex h-14 shrink-0 items-center gap-1 border-b border-gray-200 bg-white px-2 sm:px-3" role="banner">
-      <button
-        :class="ACCION_HEADER"
-        type="button"
-        :title="navEnRiel ? 'Expandir navegación' : 'Contraer navegación'"
-        :aria-label="navEnRiel ? 'Expandir navegación' : 'Contraer navegación'"
-        :aria-expanded="!navEnRiel"
-        @click="alternarNav"
-      >
-        <i class="ti ti-menu-2" aria-hidden="true"></i>
-      </button>
+  <!-- ══ Marco ══════════════════════════════════════════════════ -->
+  <div class="flex h-screen overflow-hidden bg-gray-50">
+    <!-- Velo del panel deslizante (solo móvil) -->
+    <transition
+      enter-active-class="transition-opacity duration-200"
+      leave-active-class="transition-opacity duration-200"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="navAbierto"
+        class="fixed inset-0 z-30 bg-gray-900/30 md:hidden"
+        aria-hidden="true"
+        @click="cerrarNav"
+      />
+    </transition>
 
-      <!-- Marca + descriptor. Enlaza al Dashboard, la pantalla de entrada. -->
+    <!-- ── Sidebar: marca · navegación · usuario ── -->
+    <aside :class="claseNav">
+      <!-- Marca. Mismo alto que la barra de la hoja + su margen superior,
+           para que marca y migas queden en la misma línea. -->
       <RouterLink
         to="/dashboard"
-        class="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 transition-colors duration-150 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        class="mx-2 mt-2 flex h-12 shrink-0 items-center gap-2.5 rounded-lg px-2 transition-colors duration-150 hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        :class="{ 'md:justify-center md:px-0': navEnRiel }"
         @click="cerrarNav"
       >
         <img :src="'/icon_sisti.svg'" :alt="NOMBRE_PRODUCTO" class="h-7 w-7 shrink-0">
-        <span class="hidden truncate text-sm sm:inline">
-          <span class="font-semibold text-gray-900">{{ NOMBRE_MARCA }}</span>
-          <span class="ml-1.5 text-gray-500">{{ NOMBRE_CORTO }}</span>
+        <span class="min-w-0 leading-tight" :class="{ 'md:sr-only': navEnRiel }">
+          <span class="block truncate text-sm font-semibold text-gray-900">{{ NOMBRE_MARCA }}</span>
+          <span class="block truncate text-xs text-gray-500">{{ NOMBRE_CORTO }}</span>
         </span>
       </RouterLink>
 
-      <!-- Acciones globales, alineadas a la derecha -->
-      <div class="ml-auto flex items-center gap-1">
-        <AppSearch ref="appSearchRef" @navegado="cerrarNav" />
-        <NotificacionesCampana />
-        <MenuAcciones
-          :class="ACCION_HEADER"
-          :acciones="accionesUsuario"
-          :label="`Cuenta de ${nombreUsuario}`"
-          icono=" "
-        >
-          <template #trigger>
-            <span
-              class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-700"
-              aria-hidden="true"
-            >{{ inicialesUsuario }}</span>
-          </template>
-        </MenuAcciones>
-      </div>
-    </header>
-
-    <!-- ══ Fila inferior: SideNav + workspace ═══════════════════ -->
-    <div class="relative flex min-h-0 flex-1">
-      <!-- Velo del panel deslizante (solo móvil) -->
-      <transition
-        enter-active-class="transition-opacity duration-200"
-        leave-active-class="transition-opacity duration-200"
-        enter-from-class="opacity-0"
-        leave-to-class="opacity-0"
-      >
-        <div
-          v-if="navAbierto"
-          class="fixed inset-x-0 bottom-0 top-14 z-30 bg-gray-900/30 md:hidden"
-          aria-hidden="true"
-          @click="cerrarNav"
-        />
-      </transition>
-
-      <nav :class="claseNav" aria-label="Navegación principal">
+      <nav class="min-h-0 flex-1 overflow-y-auto pb-2" aria-label="Navegación principal">
         <AppNav
           :nav-en-riel="navEnRiel"
           :tickets-sin-asignar="ticketsSinAsignar"
@@ -284,9 +272,78 @@ async function cerrarSesion() {
         />
       </nav>
 
-      <main class="min-w-0 flex-1 overflow-y-auto">
-        <slot />
-      </main>
+      <!-- Usuario: quién está trabajando y con qué rol. Abre el menú de cuenta. -->
+      <div class="shrink-0 px-2 pb-2">
+        <MenuAcciones
+          class="flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors duration-150 hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          :class="{ 'md:justify-center': navEnRiel }"
+          :acciones="accionesUsuario"
+          :label="`Cuenta de ${nombreUsuario}`"
+          icono=" "
+        >
+          <template #trigger>
+            <AppAvatar :nombre="nombreUsuario" />
+            <span class="min-w-0 flex-1" :class="{ 'md:hidden': navEnRiel }">
+              <span class="block truncate text-sm font-medium text-gray-900">{{ nombreUsuario }}</span>
+              <span class="block truncate text-xs text-gray-500">{{ rolUsuario }}</span>
+            </span>
+            <i class="ti ti-selector shrink-0 text-gray-400" :class="{ 'md:hidden': navEnRiel }" aria-hidden="true"></i>
+          </template>
+        </MenuAcciones>
+      </div>
+    </aside>
+
+    <!-- ══ Hoja ═══════════════════════════════════════════════════ -->
+    <div class="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2">
+      <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-white md:rounded-xl md:shadow-xs md:ring-1 md:ring-gray-900/[0.07]">
+        <!-- Barra de la hoja: menú · migas · acciones globales -->
+        <header class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-100 px-3 sm:px-4">
+          <button
+            :class="ACCION_HEADER"
+            type="button"
+            :title="etiquetaNav"
+            :aria-label="etiquetaNav"
+            :aria-expanded="esMovil ? navAbierto : !navEnRiel"
+            @click="alternarNav"
+          >
+            <i class="ti ti-menu-2 md:hidden" aria-hidden="true"></i>
+            <i
+              class="ti hidden md:inline"
+              :class="navEnRiel ? 'ti-layout-sidebar-left-expand' : 'ti-layout-sidebar-left-collapse'"
+              aria-hidden="true"
+            ></i>
+          </button>
+
+          <nav v-if="migas.length" class="min-w-0 flex-1" aria-label="Ubicación">
+            <ol class="flex min-w-0 items-center gap-1.5 text-sm">
+              <li v-for="(m, i) in migas" :key="i" class="flex min-w-0 items-center gap-1.5">
+                <i v-if="i > 0" class="ti ti-chevron-right shrink-0 text-xs text-gray-400" aria-hidden="true"></i>
+                <RouterLink
+                  v-if="m.to"
+                  :to="m.to"
+                  class="truncate rounded text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                >{{ m.label }}</RouterLink>
+                <span
+                  v-else
+                  class="truncate"
+                  :class="i === migas.length - 1 ? 'font-medium text-gray-900' : 'text-gray-500'"
+                  :aria-current="i === migas.length - 1 ? 'page' : undefined"
+                >{{ m.label }}</span>
+              </li>
+            </ol>
+          </nav>
+          <div v-else class="flex-1"></div>
+
+          <div class="flex shrink-0 items-center gap-1">
+            <AppSearch ref="appSearchRef" @navegado="cerrarNav" />
+            <NotificacionesCampana />
+          </div>
+        </header>
+
+        <main class="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <slot />
+        </main>
+      </div>
     </div>
 
     <AppNotifications />

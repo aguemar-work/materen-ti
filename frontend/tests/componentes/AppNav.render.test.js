@@ -63,10 +63,12 @@ describe('AppNav.vue', () => {
     expect(w.text()).not.toContain('Mesa de Ayuda');
   });
 
+  // `nav-activo` es la marca del ítem activo (V2): el look puede cambiar sin
+  // que el test dependa de un color concreto.
   it('marca el ítem de la ruta actual como activo', async () => {
     const w = await montar();
-    expect(link(w, '/tickets').classes()).toContain('bg-primary-50!');
-    expect(link(w, '/equipos').classes()).not.toContain('bg-primary-50!');
+    expect(link(w, '/tickets').classes()).toContain('nav-activo');
+    expect(link(w, '/equipos').classes()).not.toContain('nav-activo');
   });
 
   it('en el riel oculta rótulos solo en desktop y conserva el nombre de cada ítem', async () => {

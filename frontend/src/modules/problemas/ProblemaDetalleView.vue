@@ -5,7 +5,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useProblemaDetalleStore } from '../../stores/problemaDetalle.js';
-import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora, fechaLocalISO } from '../../core/formatters.js';
 import { OPCIONES_SEVERIDAD_PROBLEMA, OPCIONES_ESTADO_ACCION, OPCIONES_ESTADO_PROBLEMA } from '../../core/dominio-problemas.js';
@@ -24,7 +23,6 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const store = useProblemaDetalleStore();
-const { volver } = useVolverContextual();
 
 const { problema, ticketsVinculados, accionesCorrectivas, staffActivo, staffPorId, cargando } = storeToRefs(store);
 
@@ -267,16 +265,7 @@ onUnmounted(() => store.limpiar());
 </script>
 
 <template>
-  <div class="w-full px-4 pb-10 pt-5 sm:px-6">
-    <button
-      type="button"
-      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-      @click="volver('/problemas')"
-    >
-      <i class="ti ti-arrow-left" aria-hidden="true"></i>
-      Problemas
-    </button>
-
+  <div class="w-full px-4 pb-10 pt-6 sm:px-6">
     <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando problema...</p>
 
     <template v-else-if="problema">

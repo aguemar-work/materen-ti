@@ -53,8 +53,8 @@ const CHECKBOX_PT = {
  */
 export function buildTablePT(props, attrClass, onRowClick) {
   const claseFila = onRowClick
-    ? 'bg-white hover:bg-slate-50 transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:bg-primary-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500'
-    : 'bg-white hover:bg-slate-50 transition-colors duration-100';
+    ? 'bg-white hover:bg-gray-50 transition-colors duration-100 cursor-pointer focus-visible:outline-none focus-visible:bg-primary-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500'
+    : 'bg-white hover:bg-gray-50 transition-colors duration-100';
   return {
     root: { class: twMerge('w-full text-sm', attrClass) },
     tableContainer: { class: 'w-full overflow-x-auto' },
@@ -93,17 +93,28 @@ export function buildTablePT(props, attrClass, onRowClick) {
       };
     },
     column: {
+      // V2: cabecera como banda tenue (gris 50) con texto chico — se lee
+      // como "rótulo de columna", no compite con el dato. `group/th` +
+      // `data-p-sorted` (atributo que PrimeVue pone en el <th> ordenado):
+      // la flecha de orden solo se ve en la columna activa o al pasar el
+      // mouse por una ordenable. Antes estaba a la vista en TODAS, y
+      // una fila de flechas idénticas es ruido, no información.
       headerCell: {
         class:
-          'border-b border-gray-200 px-4 py-2.5 text-left text-sm font-medium text-gray-600 ' +
-          'whitespace-nowrap',
+          'group/th h-9 border-b border-gray-200 bg-gray-50/80 px-4 text-left text-xs font-medium text-gray-500 ' +
+          'whitespace-nowrap data-[p-sortable-column=true]:cursor-pointer ' +
+          'data-[p-sortable-column=true]:hover:text-gray-900 data-[p-sorted=true]:text-gray-900',
       },
-      columnHeaderContent: { class: 'inline-flex items-center gap-1.5' },
+      columnHeaderContent: { class: 'inline-flex items-center gap-1' },
       columnTitle: { class: 'font-medium' },
       sort: { class: 'inline-flex shrink-0' },
-      sorticon: { class: 'w-3.5 h-3.5 text-gray-500' },
+      sorticon: {
+        class:
+          'h-3.5 w-3.5 text-gray-400 opacity-0 transition-opacity group-hover/th:opacity-100 ' +
+          'group-data-[p-sorted=true]/th:text-primary-600 group-data-[p-sorted=true]/th:opacity-100',
+      },
       bodyCell: {
-        class: 'border-b border-gray-100 px-4 py-2.5 align-middle text-gray-800',
+        class: 'border-b border-gray-100 px-4 py-3 align-middle text-gray-800',
       },
       // Checkbox de selección — ver CHECKBOX_PT arriba.
       pcHeaderCheckbox: CHECKBOX_PT,

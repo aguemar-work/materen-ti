@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { formatFecha, formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
 import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
-import { useVolverContextual } from '../../composables/useVolverContextual.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -20,7 +19,6 @@ import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const route = useRoute();
 const router = useRouter();
-const { volver } = useVolverContextual();
 
 // Toda la lógica de negocio (store, transiciones de estado, historial,
 // comentarios) vive en el composable — compartida con TicketDetallePanel.vue
@@ -64,16 +62,7 @@ const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.
 </script>
 
 <template>
-  <div class="w-full px-4 pb-10 pt-5 sm:px-6">
-    <button
-      type="button"
-      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-      @click="volver('/tickets')"
-    >
-      <i class="ti ti-arrow-left" aria-hidden="true"></i>
-      Tickets
-    </button>
-
+  <div class="w-full px-4 pb-10 pt-6 sm:px-6">
     <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando ticket...</p>
 
     <p v-else-if="!ticket" class="py-16 text-center text-sm text-gray-500">No se encontró el ticket.</p>

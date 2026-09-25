@@ -29,6 +29,7 @@ import AppSelect from '../../components/ui/AppSelect.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
@@ -594,19 +595,16 @@ onMounted(async () => {
 
     <!-- ══ Barra de filtros: bandeja (qué cola) → estado (refina la cola) →
          búsqueda y fecha. Fuera de la lista: filtra, no es parte del dato. -->
-    <div class="flex flex-col gap-3 px-4 pb-4 sm:px-6">
+    <div class="flex flex-col gap-2 px-4 pb-4 sm:px-6">
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
         <AppSegmentado v-model="vistaActiva" :opciones="opcionesBandejas" label="Bandeja de tickets" />
-        <template v-if="bandejaConSubestado">
-          <span class="hidden h-6 w-px bg-gray-200 sm:block" aria-hidden="true"></span>
-          <AppSegmentado v-model="subestadoActivo" :opciones="opcionesSubestado" label="Filtrar por estado" />
-        </template>
+        <AppSegmentado v-if="bandejaConSubestado" v-model="subestadoActivo" :opciones="opcionesSubestado" label="Filtrar por estado" />
         <AppSelect v-if="equipoActivo" v-model="tecnicoActivo" label="Filtrar por técnico" class="w-48">
           <option value="">Todos los técnicos</option>
           <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
         </AppSelect>
       </div>
-      <div class="flex flex-wrap items-center gap-3">
+      <div class="flex flex-wrap items-center gap-2">
         <AppBuscador
           ref="refBuscador"
           v-model="busqueda"
@@ -665,7 +663,7 @@ onMounted(async () => {
         <template v-else>
           <p v-if="cargando" class="sr-only" role="status">Cargando tickets…</p>
 
-          <div v-if="!esMovil" class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <AppMarcoTabla v-if="!esMovil">
             <!-- Selección múltiple: la barra reemplaza a la cabecera de la
                  card mientras hay filas marcadas (fondo tenue = selección). -->
             <div
@@ -807,7 +805,7 @@ onMounted(async () => {
               @update:pagina="store.irAPagina"
               @update:tam-pagina="store.cambiarTamPagina"
             />
-          </div>
+          </AppMarcoTabla>
 
           <!-- ── Tarjetas (móvil): mismas señales, apiladas ── -->
           <div v-else class="min-h-0 flex-1 overflow-y-auto">

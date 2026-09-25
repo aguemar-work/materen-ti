@@ -4,8 +4,8 @@
 // equipo...) seguir usando components/shared/BadgeEstado.vue, que resuelve
 // el tono desde core/badges.js. Este es para tags sueltos de una vista.
 // Es además el ÚNICO render de tag del sistema: BadgeEstado se dibuja con
-// este componente por dentro (desde el 2026-09-24 no quedan clases `.tag`/
-// `.cds-tag` en styles/componentes.css). Un cambio de look va acá.
+// este componente por dentro. Un cambio de look va acá.
+// V2: 20px de alto (antes 24) — un tag acompaña al dato, no compite con él.
 defineProps({
   tono: {
     type: String,
@@ -29,7 +29,7 @@ const TONOS = {
 </script>
 
 <template>
-  <span class="inline-flex h-6 max-w-full items-center gap-1.5 whitespace-nowrap rounded px-2 text-xs font-medium leading-none" :class="TONOS[tono]">
+  <span class="inline-flex h-5 max-w-full items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-xs font-medium leading-none" :class="TONOS[tono]">
     <span v-if="punto" class="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true"></span>
     <i v-if="icono" :class="icono" aria-hidden="true"></i>
     <slot />
