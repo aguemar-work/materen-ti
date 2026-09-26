@@ -136,6 +136,14 @@ cuándo y si la contraseña se rotó después.
 
 ## Flujo de trabajo backend
 
+- **Commit antes que producción**: antes de aplicar cualquier migración o
+ redesplegar cualquier edge function contra el proyecto real de InsForge, el
+ commit correspondiente debe existir ya en `main` (mergeado, no solo en una
+ rama local) — nunca al revés. Aplicar primero y comitear "después" es
+ exactamente lo que causó que `main` quedara semanas desincronizado de
+ producción sin que nadie lo notara (ver `docs/HISTORIAL-AUDITORIAS.md`,
+ Ciclo 14, 2026-09-26). La protección de rama de GitHub no puede prevenir
+ esto: es un límite de disciplina, no de configuración.
 - **Migraciones**: archivos numerados `migrations/0XX_nombre.sql` (comentados,
  en español). Se aplican manualmente:
  `npx @insforge/cli db query --json -- "$(cat migrations/0XX_nombre.sql)"`.
