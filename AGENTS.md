@@ -107,30 +107,20 @@ cuándo y si la contraseña se rotó después.
  `tienePermisoModulo()` (consulta directa a `staff_modulos_permisos`, mismo
  motivo que abajo: `auth.uid()` sería `NULL` en ese contexto). La regla vive
  dos veces (RLS + edge function) a propósito, nada las sincroniza sola.
-- ⚠️ **Permiso `credenciales.ver` (`staff_permisos`, migración 060) — la regla
- vive en DOS lugares, a propósito, y hay que mantenerlos sincronizados a
- mano**:
-   1. `tiene_permiso_credenciales_ver(uuid)` — función SQL (`SECURITY
-      DEFINER`), pensada para RLS futuro. Hoy ninguna policy la consume.
-   2. `functions/credenciales.ts` (`tienePermisoCredenciales()`) — consulta
-      **directa** a `staff_permisos`, NO por RPC a la función de arriba. No
-      puede ir por RPC: este handler corre con `createAdminClient` (sin
-      sesión de usuario), así que `auth.uid()` sería `NULL` dentro de la
-      función SQL. Mismo motivo y mismo patrón que `revelarAccesoSensible`
-      (migración 024) con `accesos_sensibles_permisos`.
- 
-   **Hoy las dos coinciden. Nada las mantiene sincronizadas automáticamente**
-   — si cambias quién puede ver contraseñas, cambia las dos, no una. Un
-   permiso que bloquea en una y no en la otra es exactamente el tipo de bug
-   que este aviso existe para evitar. Se evaluó unificarlas (RPC vía el
-   `userClient` de sesión que ya existe en `credenciales.ts`, en vez de
-   `admin`) pero se descartó: sería el primer uso de `userClient.database`
-   para una query de negocio en todo el repo (hoy `userClient` solo resuelve
-   identidad, en las 4 edge functions por igual) — no se introdujo sin
-   probarlo aparte. La barrera real (gate del servidor) es la de
-   `credenciales.ts`; el toggle del frontend (`StaffView.vue`) y
-   `auth.puedeVerCredenciales` son **cosméticos** — si algo falla, que falle
-   bloqueando el servidor, nunca el cliente.
+- **Permiso `credenciales.ver` (`staff_permisos`, migración 060) — una sola
+ fuente de verdad desde la migración 088**: `functions/credenciales.ts`
+ (`tienePermisoCredenciales()`) consulta **directa** a `staff_permisos` (no
+ por RPC: este handler corre con `createAdminClient`, sin sesión de usuario,
+ así que `auth.uid()` sería `NULL` dentro de una función SQL). Existió un
+ gemelo SQL, `tiene_permiso_credenciales_ver(uuid)`, pensado "para RLS
+ futuro" pero sin ningún consumidor real (ninguna policy lo invocaba) — se
+ eliminó por huérfano (hallazgo CREDENCIALES-VER-DUPLICADO,
+ `docs/HISTORIAL-AUDITORIAS.md` Ciclo 14). Si algún día una policy de RLS
+ necesita este mismo chequeo, recrear la función entonces, con un consumidor
+ real desde el mismo cambio — no antes. La barrera real (gate del servidor)
+ es la de `credenciales.ts`; el toggle del frontend (`StaffView.vue`) y
+ `auth.puedeVerCredenciales` son **cosméticos** — si algo falla, que falle
+ bloqueando el servidor, nunca el cliente.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — las
  asignaciones se cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, enviar `password_cambiada: true` solo si el usuario
@@ -291,13 +281,19 @@ cuándo y si la contraseña se rotó después.
  verificado corriendo la suite el 2026-08-18 (Ciclo 11, tras endurecer los
  helpers de autorización): **148 pasan + 1 falla + 25 se saltan (174 en
  total)**.
-   - **La 1 que falla es esperada, no es una regresión, y no se corrige
-     acá a propósito**: `tests/integration/autorizacion-anonima.smoke.test.js`
-     → `"tiene_permiso_modulo — debería rechazar ejecución anónima"` —
-     hallazgo P0-05 (`tiene_permiso_modulo(text)` es la única función
-     `SECURITY DEFINER` del sistema sin `revoke ... from public`), ver
-     `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11. Sigue en rojo hasta que se
-     aplique esa migración.
+   - **La 1 que fallaba era el hallazgo P0-05 quedando visible a propósito**
+     (`tests/integration/autorizacion-anonima.smoke.test.js` →
+     `"tiene_permiso_modulo — debería rechazar ejecución anónima"`,
+     `tiene_permiso_modulo(text)` era la única función `SECURITY DEFINER`
+     del sistema sin `revoke ... from public`). **Corregido por la
+     migración 073** (aplicada en producción el 2026-08-18, verificada a
+     nivel de esquema — ver `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11/13): el
+     test debería pasar en verde desde entonces; `main` no tiene registro
+     de una corrida end-to-end que lo reconfirme explícitamente. La cifra
+     de "148 pasan + 1 falla + 25 se saltan" de más arriba queda igual de
+     desactualizada que antes por el mismo motivo de siempre — no se fija
+     de memoria (regla de este mismo párrafo), hace falta correr la suite
+     de verdad para tener un número confiable.
    - Las 25 que se saltan son los smoke de integración condicionados a
      secrets/cuentas que no existen hoy: `tickets-api.smoke.test.js` (1),
      `embeds.smoke.test.js` (11) y `autorizacion-roles.smoke.test.js`
@@ -343,10 +339,10 @@ cuándo y si la contraseña se rotó después.
  Ciclo 11, endurecidas después de la autoauditoría del mismo ciclo):
  `autorizacion-anonima` corre siempre (solo necesita
  `VITE_INSFORGE_URL`/`ANON_KEY`) y demuestra que un anónimo no lee tablas
- internas ni ejecuta RPC `SECURITY DEFINER`. **Tiene un test que falla a
- propósito** (`tiene_permiso_modulo`, hallazgo P0-05 — ver el párrafo de
- "Tests unitarios" más arriba) — no es ruido, es el hallazgo real quedando
- visible. `autorizacion-roles` cubre ASISTENTE sin módulo/sin
+ internas ni ejecuta RPC `SECURITY DEFINER`. **Tenía un test que fallaba a
+ propósito** (`tiene_permiso_modulo`, hallazgo P0-05) — corregido por la
+ migración 073, ver el párrafo de "Tests unitarios" más arriba.
+ `autorizacion-roles` cubre ASISTENTE sin módulo/sin
  `credenciales.ver`, staff inactivo y `accesos_sensibles` fila por fila,
  pero necesita hasta 4 cuentas de staff dedicadas que hoy no existen (ver
  README "Cuentas adicionales..." — cada bloque se omite por separado si
