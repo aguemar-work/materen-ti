@@ -28,6 +28,17 @@
 //      para crearla; accesoId presente = edición, exige permiso sobre esa fila)
 //   revelarAccesoSensible JEFE+permiso { accesoId, motivo } → { password }  (audita)
 //
+// Garantías transversales (Ciclo 20, revisión integral v2):
+//   - Auditoría fail-closed: toda acción que devuelve un valor sensible
+//     escribe accesos_log ANTES de responder; si esa escritura falla, se
+//     responde { ok:false, code:'error_interno' } (500) SIN el valor.
+//   - El tope de revelados (H-05) cuenta 'ver', 'copiar' y 'enviar'; si no se
+//     puede contar, bloquea (error_interno) en vez de asumir "0".
+//   - revelar/revelarClaveLicencia/entregaCrear ignoran filas con soft-delete.
+//   - entregaCrear exige empleado existente, sin soft-delete y 'Activo'
+//     (código 'empleado_inactivo' si no).
+//   - Cualquier excepción no controlada → 'error_interno' (500) con CORS.
+//
 // Formatos de cifrado:
 //   enc2:<iv>:<ct>  AES-256-GCM con CRED_KEY_V2 (actual, servidor — Cuentas/Licencias)
 //   enc:<iv>:<ct>   AES-256-GCM con CRED_KEY_LEGACY (histórico, cliente)
@@ -46,8 +57,12 @@ const ORIGENES_PERMITIDOS = new Set([
   'http://localhost:4173',
 ]);
 
-let CORS: Record<string, string> = {};
-
+// Cabeceras CORS: se calculan POR PETICIÓN y viajan como argumento (Ciclo 20,
+// revisión integral v2). Antes vivían en un `let CORS` global de módulo que
+// cada petición reasignaba al entrar: un isolate de Deno atiende peticiones
+// concurrentes, así que entre ese `CORS = ...` y un `await` posterior otra
+// petición de un origen distinto podía pisar el valor y la respuesta salía
+// con el Allow-Origin equivocado (o sin él).
 function corsPara(origin: string | null): Record<string, string> {
   if (!origin || !ORIGENES_PERMITIDOS.has(origin)) return {};
   return {
@@ -58,14 +73,44 @@ function corsPara(origin: string | null): Record<string, string> {
   };
 }
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
+// Sin una clave `error` (string) en el body, el SDK del cliente descarta el
+// body completo en toda respuesta no-2xx y arma un InsForgeError genérico
+// ("Request failed: <statusText>") — `code` nunca llega al frontend
+// (`"error" in data` es el único gate que usa @insforge/sdk para conservar
+// las claves del body). Se espeja `code` en `error` solo para status >= 400.
+function respuesta(cors: Record<string, string>, body: unknown, status = 200): Response {
+  const payload =
+    status >= 400 && body && typeof body === 'object' && 'code' in body && !('error' in body)
+      ? { ...body, error: (body as { code: string }).code }
+      : body;
+  return new Response(JSON.stringify(payload), {
     status,
     // no-store: toda respuesta de esta function puede llevar una contraseña
     // o su metadata — nunca debe quedar en la caché del navegador/proxy.
-    headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
+
+// Fila de accesos_log tal como la arma este archivo (ip/user_agent se
+// agregan al insertar, una sola vez por petición).
+type EntradaLog = {
+  user_id?: string | null;
+  user_email?: string | null;
+  cuenta_id?: string | null;
+  cuenta_usuario: string;
+  plataforma?: string | null;
+  accion: string;
+  detalle?: string | null;
+};
+
+// Ítem del payload cifrado de una entrega (lo arma entregaCrear).
+type ItemEntrega = {
+  cuenta_id?: string;
+  plataforma?: string;
+  usuario?: string;
+  password?: string;
+  url?: string;
+};
 
 // IP de confianza del cliente — mismo criterio que functions/tickets.ts
 // (auditoría H-02): cf-connecting-ip/x-real-ip los pone el edge, no el
@@ -195,6 +240,14 @@ export async function hashToken(token: string): Promise<string> {
 const REVELADO_MAX = 40;          // revelados permitidos por ventana
 const REVELADO_VENTANA_MIN = 5;   // minutos
 
+// Acciones de accesos_log que cuentan como "un revelado" para el tope de
+// arriba. 'enviar' es la que registra entregaCrear (una fila por cada cuenta
+// incluida en el enlace): hasta el Ciclo 20 no se contaba, así que encadenar
+// entregaCrear revelaba credenciales sin mover nunca el contador que sí
+// comparten revelar/revelarClaveLicencia/revelarAccesoSensible (hallazgo
+// ENTREGACREAR-RATELIMIT-BYPASS, docs/HISTORIAL-AUDITORIAS.md).
+const ACCIONES_REVELADO = ['ver', 'copiar', 'enviar'];
+
 // entregaCrear descifra una contraseña por cada cuentaId del lote — sin
 // tope, una sola llamada podía pedir el catálogo entero de una vez,
 // evadiendo por completo el límite de arriba (hallazgo 2026-08-07).
@@ -202,9 +255,28 @@ const ENTREGA_MAX_CUENTAS = 20;
 
 // ── Handler ──────────────────────────────────────────────────
 
+// Envoltorio de primer nivel (Ciclo 20): cualquier excepción no controlada
+// — una falla de red hacia la BD, un error del SDK, o una de las fallas
+// fail-closed que lanza este mismo archivo (auditoría que no se pudo
+// escribir, rate-limit que no se pudo contar) — termina en
+// { ok:false, code:'error_interno' } con status 500 y con las cabeceras
+// CORS de ESTA petición. Antes, una excepción escapaba del handler y la
+// plataforma respondía un 500 sin CORS: el navegador lo veía como un error
+// de red opaco. Al log solo va el mensaje, nunca el body ni un valor
+// descifrado.
 export default async function (req: Request): Promise<Response> {
-  CORS = corsPara(req.headers.get('Origin'));
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  const cors = corsPara(req.headers.get('Origin'));
+  try {
+    return await manejar(req, cors);
+  } catch (e) {
+    console.error('[credenciales] error no controlado:', e instanceof Error ? e.message : String(e));
+    return respuesta(cors, { ok: false, code: 'error_interno' }, 500);
+  }
+}
+
+async function manejar(req: Request, cors: Record<string, string>): Promise<Response> {
+  const json = (body: unknown, status = 200) => respuesta(cors, body, status);
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ ok: false, code: 'metodo_invalido' }, 405);
 
   let body: Record<string, unknown>;
@@ -223,27 +295,40 @@ export default async function (req: Request): Promise<Response> {
   const ip = ipDesdeHeaders(req.headers);
   const userAgent = req.headers.get('user-agent') || null;
 
-  async function log(entry: {
-    user_id?: string | null;
-    user_email?: string | null;
-    cuenta_id?: string | null;
-    cuenta_usuario: string;
-    plataforma?: string | null;
-    accion: string;
-    detalle?: string | null;
-  }) {
-    await admin.database.from('accesos_log').insert([{ ...entry, ip, user_agent: userAgent }]);
+  // Auditoría FAIL-CLOSED (Ciclo 20): si el INSERT en accesos_log falla, se
+  // LANZA — nunca se sigue como si nada. Todas las acciones que devuelven un
+  // valor sensible (revelar, revelarClaveLicencia, revelarAccesoSensible,
+  // entregaCrear, entregaAbrir) registran ANTES de armar la respuesta, así
+  // que una auditoría fallida termina en el catch de primer nivel
+  // (error_interno, 500) sin el valor. Antes el error se ignoraba en
+  // silencio: una contraseña podía salir sin rastro en accesos_log.
+  // Varias filas van en UN solo INSERT (logLote): o quedan todas o ninguna.
+  async function logLote(entradas: EntradaLog[]) {
+    if (!entradas.length) return;
+    const { error } = await admin.database
+      .from('accesos_log')
+      .insert(entradas.map((e) => ({ ...e, ip, user_agent: userAgent })));
+    if (error) throw new Error(`No se pudo registrar en accesos_log: ${error.message}`);
   }
 
-  // Cuántas contraseñas reveló este usuario en la ventana reciente.
+  async function log(entrada: EntradaLog) {
+    await logLote([entrada]);
+  }
+
+  // Cuántas contraseñas reveló este usuario en la ventana reciente
+  // (ver ACCIONES_REVELADO: incluye 'enviar' de entregaCrear). Si la
+  // consulta falla se LANZA (fail-closed, Ciclo 20): antes un error de BD
+  // devolvía data=null → "0 revelados" → el tope quedaba desactivado
+  // justo cuando la BD fallaba.
   async function reveladosRecientes(userId: string): Promise<number> {
     const desde = new Date(Date.now() - REVELADO_VENTANA_MIN * 60 * 1000).toISOString();
-    const { data } = await admin.database
+    const { data, error } = await admin.database
       .from('accesos_log')
       .select('id')
       .eq('user_id', userId)
-      .in('accion', ['ver', 'copiar'])
+      .in('accion', ACCIONES_REVELADO)
       .gte('created_at', desde);
+    if (error) throw new Error(`No se pudo contar los revelados recientes: ${error.message}`);
     return data?.length || 0;
   }
 
@@ -316,11 +401,14 @@ export default async function (req: Request): Promise<Response> {
     // persiste en BD, solo su sha256. El UPDATE atómico de más abajo sigue
     // usando el `id` ya resuelto acá, no cambia.
     const tokenHash = await hashToken(token);
-    const { data: entrega } = await admin.database
+    const { data: entrega, error: eEntrega } = await admin.database
       .from('entregas')
       .select('id, empleado_nombre, payload, expires_at, viewed_at')
       .eq('token_hash', tokenHash)
       .maybeSingle();
+    // Un error de BD no es "no existe": se responde error_interno (sin
+    // auditar un intento fallido que en realidad no se pudo evaluar).
+    if (eEntrega) throw new Error(`No se pudo leer la entrega: ${eEntrega.message}`);
 
     if (!entrega) {
       await logEntregaFallida('no_existe', token);
@@ -335,33 +423,60 @@ export default async function (req: Request): Promise<Response> {
       return json({ ok: false, code: 'expirada' });
     }
 
+    // Descifrar y parsear ANTES de consumir el token (Ciclo 20). Antes el
+    // JSON.parse corría después del UPDATE de viewed_at: un payload corrupto
+    // (o una clave rotada mal) lanzaba con el enlace ya marcado como abierto
+    // — el empleado perdía su único intento sin haber visto nada.
+    let credenciales: ItemEntrega[];
+    try {
+      const parseado = JSON.parse(await decryptAny(entrega.payload));
+      if (!Array.isArray(parseado)) throw new Error('payload no es un arreglo');
+      credenciales = parseado;
+    } catch {
+      await logEntregaFallida('payload_invalido', token);
+      return json({ ok: false, code: 'error_interno' }, 500);
+    }
+
     // Marcado atómico: si dos abren a la vez, solo el primero gana
-    const { data: marcada } = await admin.database
+    const { data: marcada, error: eMarcada } = await admin.database
       .from('entregas')
       .update({ viewed_at: new Date().toISOString() })
       .eq('id', entrega.id)
       .is('viewed_at', null)
       .select('id');
+    if (eMarcada) throw new Error(`No se pudo marcar la entrega como abierta: ${eMarcada.message}`);
     if (!marcada?.length) {
       await logEntregaFallida('ya_abierta', token);
       return json({ ok: false, code: 'ya_abierta' });
     }
 
-    const credenciales = JSON.parse(await decryptAny(entrega.payload));
-    for (const c of credenciales) {
-      await log({
+    // Auditoría ANTES de responder, en un solo INSERT. Si falla, las
+    // credenciales NO salen: se intenta devolver el enlace a "sin abrir"
+    // (el valor nunca llegó al navegador, así que el empleado puede
+    // reintentar) y se relanza → error_interno. La reversión es de mejor
+    // esfuerzo: si la BD está caída tampoco va a poder escribirla, y el
+    // enlace queda consumido — preferible a entregar sin rastro.
+    try {
+      await logLote(credenciales.map((c) => ({
         cuenta_id: c.cuenta_id || null,
         cuenta_usuario: c.usuario || '(desconocido)',
         plataforma: c.plataforma || null,
         accion: 'entrega_abierta',
         detalle: `Entrega abierta — ${entrega.empleado_nombre}`,
-      });
+      })));
+    } catch (e) {
+      try {
+        await admin.database.from('entregas').update({ viewed_at: null }).eq('id', entrega.id);
+      } catch {
+        // mejor esfuerzo, ver comentario de arriba
+      }
+      throw e;
     }
 
     return json({
       ok: true,
       empleadoNombre: entrega.empleado_nombre,
-      credenciales: credenciales.map((c: Record<string, string>) => ({
+      credenciales: credenciales.map((c) => ({
         plataforma: c.plataforma,
         usuario: c.usuario,
         password: c.password,
@@ -492,6 +607,10 @@ export default async function (req: Request): Promise<Response> {
       return json({ ok: false, code: 'demasiados_revelados' }, 429);
     }
 
+    // Sin filtro de deleted_at a propósito: accesos_sensibles no tiene esa
+    // columna (migración 024 — se borra físicamente, solo JEFE con permiso
+    // de fila, y el ON DELETE CASCADE limpia sus permisos). Una fila borrada
+    // simplemente no existe acá.
     const { data: acceso } = await admin.database
       .from('accesos_sensibles')
       .select('id, nombre, categoria, password')
@@ -532,10 +651,14 @@ export default async function (req: Request): Promise<Response> {
       return json({ ok: false, code: 'no_autorizado' }, 403);
     }
 
+    // deleted_at is null (Ciclo 20): una cuenta dada de baja (revocada,
+    // baja de empleado) no se revela — el cliente admin bypasea la RLS, así
+    // que el filtro de soft-delete tiene que estar acá.
     const { data: cuenta } = await admin.database
       .from('cuentas')
       .select('id, usuario, password, tipo_cuenta, plataformas(nombre)')
       .eq('id', cuentaId)
+      .is('deleted_at', null)
       .maybeSingle();
     if (!cuenta) return json({ ok: false, code: 'no_existe' });
 
@@ -584,6 +707,7 @@ export default async function (req: Request): Promise<Response> {
       .from('licencias')
       .select('id, software, clave')
       .eq('id', licenciaId)
+      .is('deleted_at', null) // Ciclo 20: mismo motivo que en revelar
       .maybeSingle();
     if (!licencia) return json({ ok: false, code: 'no_existe' });
 
@@ -626,29 +750,40 @@ export default async function (req: Request): Promise<Response> {
 
     const { data: empleado } = await admin.database
       .from('empleados')
-      .select('nombres, apellidos')
+      .select('nombres, apellidos, estado, deleted_at')
       .eq('id', empleadoId)
       .maybeSingle();
     if (!empleado) return json({ ok: false, code: 'empleado_no_existe' });
+    // Solo a un empleado vigente (Ciclo 20): uno dado de baja (soft-delete),
+    // 'Inactivo' o 'Suspendido' no debería recibir un enlace nuevo con
+    // credenciales — dar_baja_empleado() ya le cerró las asignaciones, pero
+    // entre la baja y ese cierre (o si alguna quedó abierta a mano) esto es
+    // lo único que lo impide del lado del servidor.
+    if (empleado.deleted_at || empleado.estado !== 'Activo') {
+      return json({ ok: false, code: 'empleado_inactivo' });
+    }
     const empleadoNombre = `${empleado.nombres} ${empleado.apellidos}`.trim();
 
     // Solo cuentas con asignación ACTIVA a este empleado — nunca las de
     // otra persona, aunque el llamador haya mandado ese id por error o
     // a propósito.
-    const { data: asignadas } = await admin.database
+    const { data: asignadas, error: eAsignadas } = await admin.database
       .from('asignaciones_cuenta')
       .select('cuenta_id')
       .eq('empleado_id', empleadoId)
       .is('fecha_fin', null)
       .in('cuenta_id', cuentaIds);
+    if (eAsignadas) throw new Error(`No se pudo leer las asignaciones: ${eAsignadas.message}`);
     const idsPermitidos = new Set((asignadas || []).map((a) => a.cuenta_id));
     const cuentaIdsValidos = cuentaIds.filter((id) => idsPermitidos.has(id));
     if (!cuentaIdsValidos.length) return json({ ok: false, code: 'cuentas_no_asignadas' });
 
+    // deleted_at is null (Ciclo 20): nunca se entrega una cuenta dada de baja.
     const { data: cuentas } = await admin.database
       .from('cuentas')
       .select('id, usuario, password, url, plataformas(nombre)')
-      .in('id', cuentaIdsValidos);
+      .in('id', cuentaIdsValidos)
+      .is('deleted_at', null);
     if (!cuentas?.length) return json({ ok: false, code: 'cuentas_no_existen' });
 
     const items = [];
@@ -669,18 +804,25 @@ export default async function (req: Request): Promise<Response> {
     // `token` en claro fue retirada de la tabla). `token` sigue existiendo
     // como variable local — hace falta para calcular el hash y para el
     // enlace que se devuelve al llamador — pero nunca se persiste en BD.
-    const { error: insErr } = await admin.database.from('entregas').insert([{
+    const { data: creada, error: insErr } = await admin.database.from('entregas').insert([{
       token_hash: await hashToken(token),
       empleado_id: empleadoId,
       empleado_nombre: empleadoNombre,
       payload: await encryptV2(JSON.stringify(items)),
       expires_at: expiresAt,
       created_by: user.id,
-    }]);
-    if (insErr) return json({ ok: false, code: 'error_guardando' }, 500);
+    }]).select('id').single();
+    if (insErr || !creada) return json({ ok: false, code: 'error_guardando' }, 500);
 
-    for (const c of items) {
-      await log({
+    // Auditoría ANTES de devolver el token, en un solo INSERT (una fila
+    // 'enviar' por cuenta — también es lo que suma al tope de revelados).
+    // Si falla, el token nunca sale (error_interno) y la entrega recién
+    // creada se deja vencida de inmediato: sin el token nadie podría abrirla
+    // igual (solo se guardó su hash), pero así su payload cifrado deja de
+    // ser utilizable aunque alguien lo reconstruyera. Se vence en vez de
+    // borrarla (softdelete en todo, AGENTS.md). Mejor esfuerzo.
+    try {
+      await logLote(items.map((c) => ({
         user_id: user.id,
         user_email: user.email || null,
         cuenta_id: c.cuenta_id,
@@ -688,7 +830,14 @@ export default async function (req: Request): Promise<Response> {
         plataforma: c.plataforma || null,
         accion: 'enviar',
         detalle: `Entrega creada para ${empleadoNombre} (expira en ${horas}h)`,
-      });
+      })));
+    } catch (e) {
+      try {
+        await admin.database.from('entregas').update({ expires_at: new Date().toISOString() }).eq('id', creada.id);
+      } catch {
+        // mejor esfuerzo, ver comentario de arriba
+      }
+      throw e;
     }
 
     return json({ ok: true, token, expiresAt });
