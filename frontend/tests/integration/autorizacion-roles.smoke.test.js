@@ -155,6 +155,66 @@ describe.skipIf(!listoRestringido)('autorización — ASISTENTE sin permiso de m
   });
 });
 
+// ── Objetivo adicional — ASISTENTE con módulo revocado PERO credenciales.ver
+// intacto, para aislar tienePermisoModulo() de tienePermisoCredenciales()
+// en functions/credenciales.ts (hallazgo TIENE-PERMISO-MODULO-COBERTURA,
+// ver docs/HISTORIAL-AUDITORIAS.md) ──────────────────────────────────────
+// La cuenta de arriba (INSFORGE_TEST_ASISTENTE_SIN_MODULO) tiene el módulo
+// Y credenciales.ver revocados A LA VEZ: como tienePermisoCredenciales() se
+// evalúa antes que tienePermisoModulo() en revelar/revelarClaveLicencia/
+// entregaCrear (functions/credenciales.ts:647→650, 695→698, 740→743), esas
+// 3 pruebas de arriba se rechazan siempre en el primer gate — nunca llegan
+// a ejercitar tienePermisoModulo() de verdad. Esta cuenta separa las dos
+// causas: credenciales.ver SIGUE otorgado, así que si la petición se
+// rechaza, el único gate que pudo haberla parado es tienePermisoModulo().
+//
+// Provisión requerida (cuenta nueva y distinta de todas las de arriba):
+//   1. Crear el usuario desde el dashboard de InsForge (nunca por registro
+//      público) y activarlo.
+//   2. Con una sesión JEFE, en Configuración → Staff: revocar el módulo
+//      "Licencias" y el módulo "Correos" de esta cuenta. NO tocar "Ver
+//      contraseñas" — nace otorgado (migración 060) y debe quedar así.
+const EMAIL_SIN_MODULO_CON_VER = process.env.INSFORGE_TEST_ASISTENTE_SIN_MODULO_CON_CREDENCIALES_EMAIL;
+const PASSWORD_SIN_MODULO_CON_VER = process.env.INSFORGE_TEST_ASISTENTE_SIN_MODULO_CON_CREDENCIALES_PASSWORD;
+const listoModuloAislado = Boolean(EMAIL_SIN_MODULO_CON_VER && PASSWORD_SIN_MODULO_CON_VER && BASE_URL && ANON_KEY);
+
+if (!listoModuloAislado) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[integración] Falta INSFORGE_TEST_ASISTENTE_SIN_MODULO_CON_CREDENCIALES_EMAIL/PASSWORD (cuenta dedicada, con los módulos "Licencias"/"Correos" revocados pero "Ver contraseñas" intacto): se omiten las pruebas de aislamiento de tienePermisoModulo() en credenciales.ts.',
+  );
+}
+
+describe.skipIf(!listoModuloAislado)('autorización — ASISTENTE sin módulo pero con credenciales.ver (aísla tienePermisoModulo)', () => {
+  beforeAll(() => iniciarSesion(EMAIL_SIN_MODULO_CON_VER, PASSWORD_SIN_MODULO_CON_VER, 'ASISTENTE sin módulo, con credenciales.ver'));
+  afterAll(cerrarSesion);
+
+  it('revelarClaveLicencia (módulo "licencias" ausente, credenciales.ver presente) — rechazada por tienePermisoModulo', async () => {
+    await esperarAccionRechazada('credenciales', {
+      action: 'revelarClaveLicencia',
+      licenciaId: '00000000-0000-4000-8000-000000000000',
+      motivo: 'ver',
+    });
+  });
+
+  it('revelar (módulo "correos" ausente, credenciales.ver presente) — rechazada por tienePermisoModulo', async () => {
+    await esperarAccionRechazada('credenciales', {
+      action: 'revelar',
+      cuentaId: '00000000-0000-4000-8000-000000000000',
+      motivo: 'ver',
+    });
+  });
+
+  it('entregaCrear (módulo "correos" ausente, credenciales.ver presente) — rechazada por tienePermisoModulo', async () => {
+    await esperarAccionRechazada('credenciales', {
+      action: 'entregaCrear',
+      empleadoId: '00000000-0000-4000-8000-000000000000',
+      cuentaIds: ['00000000-0000-4000-8000-000000000000'],
+      horas: 1,
+    });
+  });
+});
+
 // ── Objetivo 2 — staff inactivo (login válido, pero sin operar nada) ────
 // Provisión requerida: crear el usuario desde el dashboard de InsForge y
 // NO activarlo (es el estado por defecto — migración 018 — así que este

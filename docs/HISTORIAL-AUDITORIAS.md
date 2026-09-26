@@ -789,6 +789,26 @@ hoy) trae, entre otras cosas, el fix de `ENTREGACREAR-RATELIMIT-BYPASS`
 (`ACCIONES_REVELADO` ya incluye `'enviar'`) — ver el ítem 24 de "Pendientes"
 más abajo, ya corregido.
 
+## Ciclo 15 — Cobertura de test para tiene_permiso_modulo() (2026-09-26)
+
+Alcance: auditoría del mismo patrón de doble-implementación que
+CREDENCIALES-VER-DUPLICADO (Ciclo 14), aplicado a `tiene_permiso_modulo()`
+— a diferencia de aquel caso, esta función sí gatea RLS real en ~10 tablas
+y 2 copias TS (`functions/credenciales.ts`, `functions/equipos-fotos.ts`).
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| TIENE-PERMISO-MODULO-COBERTURA | Las 3 implementaciones (SQL `tiene_permiso_modulo()`, y sus 2 copias TS) se verificaron **equivalentes hoy**, línea por línea y en 4 escenarios de permisos — no es un bug de código. Pero la copia de `functions/credenciales.ts` nunca se ejercita en CI: `tienePermisoCredenciales()` se evalúa antes que `tienePermisoModulo()` en `revelar`/`revelarClaveLicencia`/`entregaCrear`, y la única cuenta de prueba existente (`INSFORGE_TEST_ASISTENTE_SIN_MODULO`) tiene ambos permisos revocados a la vez, así que esas 3 pruebas siempre se rechazan en el primer gate | Baja (deuda de cobertura, no vulnerabilidad) | **Resuelto** | Cuenta nueva `INSFORGE_TEST_ASISTENTE_SIN_MODULO_CON_CREDENCIALES` (módulos "Licencias"/"Correos" revocados, `credenciales.ver` intacto) + 3 tests nuevos en `autorizacion-roles.smoke.test.js` que aíslan el gate de módulo de verdad |
+
+**Nota**: la copia de `tienePermisoModulo()` en `functions/equipos-fotos.ts`
+ya estaba bien cubierta (`subirFoto`/`eliminarFoto` no tienen ningún gate
+previo) — este hallazgo es específico de `credenciales.ts`.
+
+**Pendiente de activación**: la cuenta de prueba y sus 2 secrets
+(`INSFORGE_TEST_ASISTENTE_SIN_MODULO_CON_CREDENCIALES_EMAIL`/`_PASSWORD`)
+todavía no existen — los 3 tests nuevos se saltan hasta que se provisionen
+(mismo patrón que las 4 cuentas opcionales de P0-04, Ciclo 10/14).
+
 ## Pendientes
 
 Consolidado de todo lo que sigue abierto a esta fecha (2026-08-20), no solo
