@@ -760,6 +760,35 @@ del dominio, comparado contra sus FKs (`information_schema.
 table_constraints`) — no confiar en que "ya se cubrió todo" solo porque
 la migración que gateó la tabla principal lo dice en el nombre.
 
+## Ciclo 14 — Cierre de CREDENCIALES-VER-DUPLICADO y P0-04 (2026-09-26)
+
+Alcance: cierre del hallazgo de arquitectura sobre la duplicidad de
+`credenciales.ver` (documentado en `AGENTS.md` desde la migración 060) y del
+bloqueador P0-04 (cuentas de staff dedicadas a CI, ver Ciclo 10) — las 5
+cuentas ya existen y `test-integration` corrió por primera vez contra el
+backend real, revelando 2 bugs de test ya documentados que llevaban desde
+agosto sin ejecutarse nunca en CI.
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| CREDENCIALES-VER-DUPLICADO | `tiene_permiso_credenciales_ver()` (SQL, migración 060) y `tienePermisoCredenciales()` (`functions/credenciales.ts`) codificaban la misma regla en dos lugares, con una asimetría real (el atajo `rol === 'JEFE'` solo existía en la versión TS) y sin nada que las mantuviera sincronizadas | Media (deuda de arquitectura, no vulnerabilidad activa) | **Resuelto** — migración 088 elimina la función SQL huérfana, verificada en la base real (`select ... from pg_proc` → 0 filas) | La función SQL nunca tuvo consumidor de policy RLS (a diferencia de `tiene_permiso_modulo()`, que sí gatea RLS real). El único código que decide si se revela una contraseña siempre fue `tienePermisoCredenciales()` |
+| ENTREGACREAR-TEST-BUG | `entregaCrear (credenciales.ver ausente) — rechazada` (`autorizacion-roles.smoke.test.js`) llamaba con `cuentaIds: []`; el handler cortaba antes por `datos_requeridos` (200), sin llegar nunca al gate `tienePermisoCredenciales` que el test quiere ejercitar | Baja | **Resuelto** | `cuentaIds: ['00000000-0000-4000-8000-000000000000']` en vez de `[]` — llega de verdad al gate |
+| ACCESOS-SENSIBLES-UPDATE-DELETE-TEST | Los tests "JEFE sin permiso de fila no puede editar/eliminar" esperaban `error` en la respuesta, pero un `UPDATE`/`DELETE` bloqueado por la policy `USING` de RLS no lanza error — solo afecta 0 filas en silencio | Baja | **Resuelto** | Reemplazado `expect(error).toBeTruthy()` por una re-`SELECT` con la sesión de `JEFE_CON_FILA` que confirma que la fila no cambió |
+
+**P0-04 (Ciclo 10) — resuelto**: las 5 cuentas de staff de CI (genérica +
+4 de pruebas negativas de autorización) están creadas, correctamente
+configuradas y sus secrets cargados en GitHub Actions. `test-integration`
+pasó de fallar por secrets faltantes a ejecutar de verdad — los 2 hallazgos
+de la tabla de arriba son justamente lo que esa primera corrida real dejó
+visible.
+
+**Nota aparte, cerrada en el mismo cambio**: el PR de sincronización de las
+4 edge functions a `main` (código real desplegado desde el Ciclo 20 de
+`rediseno/sistema-visual`, nunca reflejado en el historial de `main` hasta
+hoy) trae, entre otras cosas, el fix de `ENTREGACREAR-RATELIMIT-BYPASS`
+(`ACCIONES_REVELADO` ya incluye `'enviar'`) — ver el ítem 24 de "Pendientes"
+más abajo, ya corregido.
+
 ## Pendientes
 
 Consolidado de todo lo que sigue abierto a esta fecha (2026-08-20), no solo
@@ -977,9 +1006,13 @@ con fila propia en algún ciclo, esa fila también.
 23. Alta, edición, traspaso, cierre de asignación y revocación de una
     cuenta no dejan ningún rastro en `accesos_log` — solo revelado y
     entrega quedan auditados. Ver CUENTAS-SIN-AUDITORIA-CRUD (Ciclo 13).
-24. `entregaCrear` no suma al pool de rate-limit de revelado (solo cuenta
+24. ~~`entregaCrear` no suma al pool de rate-limit de revelado (solo cuenta
     `ver`/`copiar`, no `enviar`) — se puede encadenar para revelar
-    credenciales sin activar el bloqueo de 40/5min. Ver
+    credenciales sin activar el bloqueo de 40/5min.~~ **Resuelto
+    (2026-09-26)**: cerrado junto con la sincronización de las 4 edge
+    functions a `main` (`ACCIONES_REVELADO` ya incluye `'enviar'`, código
+    real desplegado desde el Ciclo 20 de `rediseno/sistema-visual`, nunca
+    reflejado en el historial de `main` hasta hoy). Ver
     ENTREGACREAR-RATELIMIT-BYPASS (Ciclo 13).
 25. `dar_baja_empleado()` y `revocar_cuenta_personal()` implementan la
     misma lógica de cierre+soft-delete de forma independiente, sin que

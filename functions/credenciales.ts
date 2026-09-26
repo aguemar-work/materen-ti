@@ -336,15 +336,15 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
   // Gate de quién puede revelar/enviar contraseñas de Cuentas y Licencias
   // (no accesos_sensibles, que ya tiene su propio candado desde la 024).
   // JEFE lo tiene siempre, sin consultar la tabla — mismo criterio que
-  // staff_modulos_permisos. Consulta DIRECTA a staff_permisos, NO RPC a
-  // tiene_permiso_credenciales_ver(): este handler corre con el cliente
-  // admin, sin sesión de usuario — auth.uid() sería NULL dentro de esa
-  // función SQL. Mismo patrón ya usado para accesos_sensibles_permisos más
-  // abajo (revelarAccesoSensible).
-  // ⚠️ Esta regla existe DOS VECES (acá y en tiene_permiso_credenciales_ver,
-  // SQL) — ver la advertencia completa en AGENTS.md antes de cambiar
-  // cualquiera de las dos: hoy coinciden, pero nada las mantiene
-  // sincronizadas automáticamente.
+  // staff_modulos_permisos. Consulta DIRECTA a staff_permisos (no por RPC:
+  // este handler corre con el cliente admin, sin sesión de usuario —
+  // auth.uid() sería NULL dentro de una función SQL). Mismo patrón ya usado
+  // para accesos_sensibles_permisos más abajo (revelarAccesoSensible).
+  // Única fuente de verdad de esta regla desde la migración 088: existió un
+  // gemelo SQL (tiene_permiso_credenciales_ver()) que nunca tuvo consumidor
+  // real (ninguna policy de RLS la invocaba) y se eliminó por huérfano —
+  // ver docs/HISTORIAL-AUDITORIAS.md, Ciclo 14 (hallazgo
+  // CREDENCIALES-VER-DUPLICADO).
   async function tienePermisoCredenciales(rol: string, userId: string): Promise<boolean> {
     if (rol === 'JEFE') return true;
     const { data } = await admin.database
