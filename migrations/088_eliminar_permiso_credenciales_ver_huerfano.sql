@@ -1,0 +1,61 @@
+-- ============================================================
+-- MIGRACIÓN 088 — Eliminar tiene_permiso_credenciales_ver() (huérfana)
+-- Depende de: 060 (la crea), 062 (le revoca EXECUTE de public y se lo
+--             otorga a authenticated), 063 (la nombra en un comentario de
+--             contexto, sin ningún GRANT/REVOKE propio sobre ella — ver
+--             nota de alcance más abajo)
+--
+-- CONTEXTO (hallazgo de arquitectura CREDENCIALES-VER-DUPLICADO, auditoría
+-- 2026-09-25, ver docs/HISTORIAL-AUDITORIAS.md Ciclo 21): la migración 060
+-- dejó escrita la regla "quién puede ver contraseñas" en dos lugares —
+--   1. tiene_permiso_credenciales_ver(uuid), esta función, SQL SECURITY
+--      DEFINER, "para RLS futuro... por paralelismo con
+--      tiene_permiso_acceso_sensible" (comentario original de la 060).
+--   2. tienePermisoCredenciales() en functions/credenciales.ts, consulta
+--      DIRECTA a staff_permisos (no puede ir por RPC a la función de
+--      arriba: credenciales.ts corre con cliente admin, sin sesión de
+--      usuario, así que auth.uid() sería NULL dentro de una función SQL).
+-- Confirmado por auditoría, con grep fresco de todo el repo (migrations/,
+-- functions/, frontend/, tests/) inmediatamente antes de escribir esta
+-- migración: tiene_permiso_credenciales_ver() JAMÁS tuvo un consumidor
+-- real. Ninguna policy de RLS la invoca — a diferencia de
+-- tiene_permiso_modulo() (068), que sí gatea RLS real en varias tablas y
+-- por eso NO se toca acá. El único código que efectivamente decide si se
+-- revela una contraseña es tienePermisoCredenciales() en credenciales.ts
+-- (usada en revelar/revelarClaveLicencia/entregaCrear), consistente con el
+-- atajo `rol === 'JEFE'` que la función SQL nunca tuvo (mismo patrón que
+-- tiene_permiso_modulo: el bypass de JEFE es responsabilidad de quien
+-- consume el helper, no del helper — pero acá nadie la consumía para
+-- aplicar ese patrón).
+--
+-- Sin un plan concreto de política de RLS que vaya a usarla, mantener esta
+-- función es superficie sin beneficio: cada cambio a la regla de
+-- credenciales.ver obliga a recordar un segundo lugar que en la práctica
+-- nadie ejercita, y el test que debía vigilar que las dos no divergieran
+-- (tests/integration/permisos-credenciales-sincronizados.smoke.test.js)
+-- está deshabilitado desde que se escribió, por falta de las cuentas de
+-- staff de prueba en CI (P0-04 — bloqueador de infraestructura de CI
+-- aparte, sin relación con esta migración, sigue abierto).
+--
+-- Si en el futuro hace falta de verdad una policy de RLS que dependa de
+-- credenciales.ver, recrear la función entonces — con el contexto de ese
+-- momento y, esta vez, con un consumidor real desde el mismo cambio.
+--
+-- ALCANCE (verificado leyendo 062 y 063 completas antes de escribir esto,
+-- no solo sus líneas de GRANT/REVOKE): 062 también reindexa 61 columnas FK,
+-- ajusta autovacuum de 3 tablas y elimina 3 funciones _test_reporte_*
+-- huérfanas; 063 también aplica ALTER POLICY de performance a 9 políticas
+-- RLS y un GRANT/REVOKE a staff_nombres(). NADA de eso se toca acá.
+--
+-- Sobre el "revertir GRANT/REVOKE": no hace falta un REVOKE explícito antes
+-- del DROP — al eliminar una función, PostgreSQL elimina con ella todos los
+-- privilegios ACL asociados (el REVOKE FROM public y el GRANT TO
+-- authenticated de la 062 dejan de existir junto con la función, no hay
+-- estado intermedio que revertir a mano).
+-- ============================================================
+
+drop function if exists public.tiene_permiso_credenciales_ver(uuid);
+
+-- ============================================================
+-- FIN DE MIGRACIÓN 088
+-- ============================================================
