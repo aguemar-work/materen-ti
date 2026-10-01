@@ -40,7 +40,9 @@ function botonPorTexto(texto) {
 
 async function montar() {
   const w = mount(TicketInternoForm, {
-    global: { plugins: [[PrimeVue, { unstyled: true }]] },
+    // Transition real (no el stub de test-utils): AppDialog emite `cerrar` al
+    // terminar la animación de salida, no al instante.
+    global: { plugins: [[PrimeVue, { unstyled: true }]], stubs: { transition: false } },
   });
   await flushPromises(); // onMounted: catálogos
   await nextTick(); // Portal de Dialog
@@ -106,14 +108,13 @@ describe('TicketInternoForm.vue — modal migrado a AppDialog (primevue/dialog)'
       categoriaId: 'cat-1',
       origen: 'staff_interno',
     }));
-    expect(w.emitted('cerrar')).toEqual([[true]]);
+    await vi.waitFor(() => expect(w.emitted('cerrar')).toEqual([[true]]));
   });
 
   it('sin tocar el form, Cancelar cierra directo (sin cambios sin guardar) y emite "cerrar"', async () => {
     const w = await montar();
     botonPorTexto('Cancelar').click();
-    await flushPromises();
-    expect(w.emitted('cerrar')).toBeTruthy();
+    await vi.waitFor(() => expect(w.emitted('cerrar')).toBeTruthy());
     expect(crearTicket).not.toHaveBeenCalled();
   });
 
@@ -131,7 +132,20 @@ describe('TicketInternoForm.vue — modal migrado a AppDialog (primevue/dialog)'
     expect(w.emitted('cerrar')).toBeFalsy(); // no cerró todavía, está preguntando
 
     botonPorTexto('Descartar y salir').click();
+    await vi.waitFor(() => expect(w.emitted('cerrar')).toBeTruthy());
+  });
+  it('con cambios sin guardar, Escape NO cierra: abre el descarte (el veto de AppDialog funciona)', async () => {
+    const w = await montar();
+    const titulo = document.querySelector('input[type="text"]');
+    titulo.value = 'Algo que no se guardó';
+    titulo.dispatchEvent(new Event('input'));
+    await nextTick();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
     await flushPromises();
-    expect(w.emitted('cerrar')).toBeTruthy();
+
+    expect(document.body.textContent).toContain('Cambios sin guardar');
+    expect(document.querySelector('[aria-labelledby$="-titulo"]')).toBeTruthy(); // el formulario sigue abierto
+    expect(w.emitted('cerrar')).toBeFalsy();
   });
 });

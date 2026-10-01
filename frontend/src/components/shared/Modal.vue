@@ -1,4 +1,11 @@
 <script setup>
+// EN DESUSO: usar components/ui/AppDialog.vue (decisión del dueño, 2026-10-01);
+// se elimina cuando migren los últimos consumidores. AppDialog es un
+// superconjunto de esta API (mismas props titulo/size/lateral/confirmarCierre/
+// cerrarEnBackdrop/mostrarCerrar/transicion, mismos slots titulo/default/
+// acciones, mismo cerrar() expuesto); migrar = cambiar la etiqueta y
+// `@close` por `@cerrado`. No agregar funciones nuevas acá.
+//
 // Modal accesible reutilizable (auditoría UX/UI, hallazgo MOD-1).
 // Reemplaza los ~21 modales hand-rolled: centraliza role=dialog + aria-modal,
 // atrapamiento de foco (Tab/Shift+Tab), cierre con Escape, foco inicial y

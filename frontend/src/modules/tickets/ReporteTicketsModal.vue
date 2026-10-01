@@ -16,7 +16,7 @@ import { prioridadInfo, OPCIONES_TIPO } from '../../core/dominio-tickets.js';
 import { formatFecha, formatFechaHora, formatHoras, formatDelta, fechaISO as aISO } from '../../core/formatters.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { CABECERA_CSV_TICKETS, filaCsvTicket } from '../../core/exportar-tickets.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import { showToast } from '../../core/toast.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -350,7 +350,7 @@ onMounted(cargar);
 
 
 <template>
-  <Modal ref="modal" size="lg" titulo="Reporte de tickets" @close="emit('cerrar')">
+  <AppDialog ref="modal" size="lg" titulo="Reporte de tickets" @cerrado="emit('cerrar')">
     <div class="space-y-6">
       <!-- ══ Qué periodo y de quién: granularidad, navegación y alcance ══ -->
       <div class="space-y-3">
@@ -674,5 +674,5 @@ onMounted(cargar);
         @click="descargar"
       />
     </template>
-  </Modal>
+  </AppDialog>
 </template>

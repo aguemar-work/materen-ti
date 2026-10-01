@@ -17,15 +17,11 @@ import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const emit = defineEmits(['cerrar']);
 
-// Migrado a AppDialog.vue (2026-09-08, Fase 3 de Tickets — primevue/dialog
-// Unstyled + Tailwind, ver components/ui/AppDialog.vue): Teleport, foco
-// atrapado, Escape, aria-modal y backdrop los resuelve PrimeVue Dialog por
-// dentro. Sigue siendo el único formulario migrado a AppDialog — el resto
-// de los ~21 formularios sobre <Modal> (EmpleadoForm.vue,
-// AccesoSensibleForm.vue, etc.) no se tocaron, fuera de alcance de esta
-// fase. useFormularioModal.js no supo nada de este cambio: su contrato
-// (`modal.value?.cerrar()` incondicional + `:confirmar-cierre` como veto)
-// es el mismo que ya exponía Modal.vue.
+// Sobre AppDialog.vue (PrimeVue Dialog; desde el 2026-10-01 el diálogo único
+// del sistema, que reemplaza a Modal.vue): Teleport, foco atrapado, Escape,
+// aria-modal y backdrop los resuelve AppDialog. El contrato con
+// useFormularioModal.js es el de siempre: `modal.value?.cerrar()`
+// incondicional + `:confirmar-cierre` como veto de Escape/X/fondo.
 let resultado = false;
 
 const cargandoCatalogo = ref(true);
@@ -56,7 +52,7 @@ const infoError = infoNotificacion('error');
 
 // Solo creación: el snapshot inicial es el form en blanco. El buscador de
 // empleado es transitorio; la selección (empleadoSelId) sí cuenta.
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => ({
     form: form.value,
     esParaEmpleado: esParaEmpleado.value,
@@ -98,7 +94,7 @@ async function guardar() {
     resultado = true;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al crear el ticket';
+    error.value = mensajeError(e, { porDefecto: 'Error al crear el ticket' });
   } finally {
     guardando.value = false;
   }
@@ -128,7 +124,7 @@ onMounted(async () => {
     titulo="Nuevo ticket interno"
     :confirmar-cierre="confirmarCierre"
     :cerrar-en-backdrop="false"
-    @close="emit('cerrar', resultado)"
+    @cerrado="emit('cerrar', resultado)"
   >
     <form id="ti-form" class="form-grid" @submit.prevent="guardar">
         <!-- Para quién es: interno de TI (por defecto) o a nombre de un
