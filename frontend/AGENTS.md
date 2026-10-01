@@ -38,10 +38,18 @@
   significa "el usuario desistió". Tras un éxito, el padre llama `cerrar()`.
   Escuchar solo `cancel` deja el estado asignado y la siguiente confirmación
   de la pantalla nunca aparece (bug real, test en `ConfirmDialog.render.test.js`).
-- **Modales de formulario**: `components/shared/Modal.vue` (26 consumidores) +
-  `useFormularioModal`. `AppDialog.vue` (PrimeVue) tiene un solo consumidor
-  (`TicketInternoForm`); unificar en uno de los dos es decisión pendiente —
-  no crear un tercero.
+- **Diálogos de formulario**: `components/ui/AppDialog.vue` (PrimeVue) es el
+  diálogo único (decisión del dueño, 2026-10-01): superconjunto de la API del
+  antiguo `Modal` (`lateral`, `confirmarCierre`, `size`, slots `titulo`/`acciones`)
+  y emite `cerrado` en todo cierre. Migrar es cambiar `<Modal>` por `<AppDialog>` y
+  `@close` por `@cerrado`. Tickets ya migró; `components/shared/Modal.vue` queda
+  en desuso mientras queden consumidores en otros módulos (23 al 2026-10-01);
+  se migra cada módulo junto con su rediseño y no se crea un tercero.
+- **Tonos de estado**: salen de `core/tonos.js`; un estado nuevo se agrega ahí y
+  en su `core/dominio-*.js` (`tests/tonos.test.js` lo exige).
+- **Errores de base**: `api/erroresDb.js` (`traducirErrorDb`) traduce 42501, P0001,
+  23505/23503/23514 y red; los stores paginados y `useFormularioModal` ya lo usan.
+  No mostrar `e.message` crudo en vistas nuevas (regla `error-crudo`).
 - **Menú ⋮**: `MenuAcciones.vue` (sobre `AppMenu`). `aria-expanded` se
   actualiza en `alternar()`, no en `@show/@hide` (en happy-dom la transición
   no completa).

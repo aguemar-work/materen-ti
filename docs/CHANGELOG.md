@@ -23,6 +23,50 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-01** (**Ciclo 21 · H1 — Auditoría integral y primer horizonte del plan de mejora**) —
+  Fase 0 de la auditoría (`docs/auditorias/ciclo-21/`: reconocimiento, hallazgos,
+  anexos A–E) y `PLAN-DE-MEJORA.md` ("Expediente", migraciones 099–110, hoja de
+  ruta en tres horizontes). Se ejecuta el Horizonte 1 en la rama
+  `mejora/h1-estabilizar`: (1) `origin/main` mezclado en la rama del rediseño
+  (secuencia 001–089 única; se elimina el smoke test de sincronía de la función SQL
+  borrada; invariantes 4 y 12 de `AGENTS.md`). (2) Migraciones **099** (permisos
+  unificados `puede`/`puede_actual`/`exigir_permiso` y cierre de huecos), **100**
+  (integridad concurrente, CHECK, trazabilidad de despliegue) y **104**
+  (`intentos_publicos`), con rollbacks y bloques en `tests/db/triggers.test.sql`:
+  **escritas y sin aplicar**. (3) Edge functions: permisos por RPC `puede` con
+  fallo cerrado, la sesión distingue "sin usuario" de "falló la consulta",
+  `decryptAny` ya no devuelve texto plano ni `(error al descifrar)` con `ok:true`
+  (responde 500 `error_descifrado` y audita `revelado_fallido`), los 403 de
+  revelado se auditan como `revelado_denegado`, rate-limits nuevos sobre
+  `intentos_publicos` (`entregaAbrir`, `seguimiento`, `catalogo`,
+  `encuestaEstado`, `encuesta`, `subirFoto`, `eliminarFoto`), `crear` público
+  ignora `equipoId`/`cuentaId`/`licenciaId` y acción pública `ping` en las 4
+  functions: **no desplegadas**; orden de despliegue 104 → 099 → 100 → functions →
+  frontend. (4) Frontend: `api/erroresDb.js` con `traducirErrorDb` integrada en
+  los stores paginados y `useFormularioModal`; registro único de módulos
+  `core/modulos.js`; menú renombrado (Mesa de ayuda · Personas · Custodia ·
+  Administración); `AppDialog` pasa a ser el diálogo único (Tickets migrado,
+  `Modal` en desuso); el motivo de cierre de una entrega de equipo se escribe
+  `entrega_a_empleado`. (5) Diseño "Expediente", fundación: `core/tonos.js` como
+  mapa único de tonos (abierto/reabierto/"Sin vincular" pasan a ámbar,
+  en_progreso a celeste, resuelto a violeta; prioridades baja/media/alta en gris y
+  solo urgente en rojo; equipos asignado/en_ubicacion en gris), componentes
+  `AppCodigo`, `AppSello`, `AppCaratula` y `AppLibro` (aún sin adoptar por las
+  pantallas), `styles/impresion.css`, 15 reglas nuevas en
+  `scripts/patrones-ui.mjs` con línea base que solo se encoge (115 pares heredados) y
+  retiro de tres bordes verticales (selector de prefijo de `EquipoForm` y
+  `LicenciaForm`, columna lateral de `TicketDetallePanel`). (6) Operación:
+  `scripts/deploy.mjs` (pre-chequeos de la invariante 12, verificación posterior y
+  registro con checksum real; `apply-migration.mjs` queda como alias en desuso),
+  `scripts/snapshot-esquema.mjs` + `docs/esquema/snapshot.json` (`npm run
+  verify:db`), job `drift-esquema` y `healthcheck.yml` (sin ejecutar en GitHub),
+  `docs/CONTINUIDAD.md`, `test-db.mjs` a prueba de CRLF y el job
+  `secrets-smoke-pendientes` acotado a su cron semanal. Verificado en local: 799
+  pruebas de Vitest, 51 de scripts, lint sin errores y `patrones-ui` sin fallas; el
+  type-check de las functions (Deno) y los workflows no se pudieron ejecutar.
+  Actualizado en el mismo cambio: `README.md` (historial de migraciones 085–089,
+  099, 100, 104 y checklist de deploy), `AGENTS.md`, `frontend/AGENTS.md`,
+  `docs/GOTCHAS-CLI.md`, `docs/SISTEMA-DISENO.md` y `docs/PANORAMA-SISTEMA.md`.
 - **2026-09-26** (**P0-04 resuelto: cuentas de CI provisionadas, 2 bugs de
   test corregidos**) — las 5 cuentas de staff dedicadas a CI ya existen,
   están correctamente configuradas y sus secrets cargados en GitHub Actions;

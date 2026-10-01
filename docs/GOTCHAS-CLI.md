@@ -23,10 +23,12 @@ npx @insforge/cli db query --json -- "$(cat migrations/0XX_nombre.sql)"
 incompatibles con el formato timestamp que exige ese subsistema, y su historial
 remoto está vacío a propósito por no haberse usado nunca.
 
-Desde la migración 069, `scripts/apply-migration.mjs` registra en
-`public.schema_migrations` qué versión quedó aplicada (verifica antes de
-reaplicar por error, salvo `--force`) — no reemplaza el CLI nativo, es tracking
-propio.
+Desde la migración 069 se registra en `public.schema_migrations` qué versión
+quedó aplicada, y desde el Ciclo 21 lo hace `scripts/deploy.mjs migracion`
+(verifica antes de reaplicar por error, salvo `--forzar`; exige árbol limpio y
+HEAD en `origin/main`; guarda checksum, `commit_sha` y entorno).
+`apply-migration.mjs` es un alias en desuso que delega ahí. No reemplaza el CLI
+nativo, es tracking propio.
 
 **Verificar siempre después de aplicar** (`db query "select ..."` sobre la
 tabla/columna afectada): tanto `db query` como `db import` pueden reportar un

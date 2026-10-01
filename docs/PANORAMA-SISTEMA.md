@@ -8,6 +8,8 @@
 
 **Actualización estructural (sin nueva consulta en vivo):** 2026-08-16 — cerrada la falta de canal de entrega de la encuesta de satisfacción que dejó la nota anterior (sin tocar esquema ni el trigger `crear_encuesta_al_cerrar()`, ambos siguen igual). Dos canales nuevos, ninguno por correo: (1) `EncuestaSatisfaccionForm.vue` (extraído de `ResponderEncuestaView.vue`, reusado sin duplicar lógica) se embebe en `/soporte/:token` en cuanto `notify_ticket_estado()` avisa por realtime que el ticket pasó a `cerrado` — el empleado ya tenía ese enlace de seguimiento desde que creó el ticket; (2) botón "Copiar mensaje de WhatsApp" en `/tickets/:id`, visible junto al resumen de Satisfacción mientras la encuesta siga sin `fecha_envio`, que copia al portapapeles (mismo patrón que `copiarEnlaceSoporte()` de `TicketsView.vue`, sin abrir `wa.me`). Requirió agregar `token` al `select()`/mapper de `getTicket()` (`api/domains/tickets.js`) — no existía en el detalle de staff hasta ahora.
 
+**Actualización estructural (Ciclo 21, 2026-10-01, con consulta de catálogo en vivo):** producción tiene 44 tablas (42 con RLS), 126 policies, 80 triggers y 72 funciones propias; las migraciones 086, 087 y 088 están aplicadas sin registro en `schema_migrations` (última registrada: 085) y la 089 no está aplicada. `tiene_permiso_credenciales_ver()` ya no existe (088). Las notificaciones tienen 8 tipos (no 4, ver 048/049). Escritas y sin aplicar: 099 (permisos unificados), 100 (integridad) y 104 (`intentos_publicos`). Las discrepancias entre este documento y el esquema real están catalogadas en `docs/auditorias/ciclo-21/00-reconocimiento.md` §0.4 y se reconcilian en una pasada propia; el esquema vivo de referencia es `docs/esquema/snapshot.json`.
+
 ---
 
 ## 1. Arquitectura general

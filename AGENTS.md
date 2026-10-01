@@ -12,6 +12,8 @@
 | Qué | Dónde |
 | --- | --- |
 | Migraciones aplicadas | `public.schema_migrations` + último número en `migrations/` |
+| Esquema vivo (policies, triggers, funciones, índices) | `docs/esquema/snapshot.json` (`npm run verify:db`) |
+| Continuidad y recuperación | `docs/CONTINUIDAD.md` |
 | Qué cambió y cuándo | `docs/CHANGELOG.md` |
 | Hallazgos abiertos/cerrados y pendientes de despliegue | `docs/HISTORIAL-AUDITORIAS.md` |
 | Esquema real y decisiones | `docs/PANORAMA-SISTEMA.md` + `migrations/*.sql` |
@@ -135,13 +137,17 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
 
 - **Migraciones**: `migrations/0XX_nombre.sql`, comentadas en español, una por
   archivo como fuente de verdad. Los rollbacks van en `migrations/rollback/`
-  (fuera de la secuencia lineal). Aplicar con `scripts/apply-migration.mjs`
-  (archivo temporal + `db import`; registra en `schema_migrations`) o
-  `db import`; nunca `db query` con cuerpos `$$`. Verificar siempre después.
+  (fuera de la secuencia lineal). Aplicar con
+  `node scripts/deploy.mjs migracion migrations/0XX_x.sql` (`--dry-run` primero:
+  exige árbol limpio y HEAD en `origin/main`, ejecuta el bloque
+  `-- Verificación` y registra checksum, `commit_sha` y entorno en
+  `schema_migrations`); `apply-migration.mjs` es un alias en desuso. Nunca
+  `db query` con cuerpos `$$`. Verificar siempre después.
 - **Updates masivos en Windows**: un solo `UPDATE ... FROM (VALUES ...)` por lote.
 - **Edge functions** (4; un archivo cada una, sin imports entre ellas — por eso
   los helpers se repiten a propósito). Deploy:
-  `npx @insforge/cli functions deploy <nombre> --file functions/<nombre>.ts`.
+  `node scripts/deploy.mjs function <nombre>` (compara el código desplegado con
+  el archivo y registra en `function_deploys`).
 
   | Function | Qué hace | Notas |
   | --- | --- | --- |
@@ -162,12 +168,20 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
 ## Verificación
 
 - `npm run lint` (raíz; cubre `frontend/src` y `functions/`).
+- `npm run test:scripts` (raíz; pruebas de `deploy.mjs`, `snapshot-esquema.mjs`
+  y el transporte SQL).
+- `npm run verify:db` (raíz; snapshot de esquema contra producción, 0
+  diferencias; cada cambio de esquema regenera `docs/esquema/snapshot.json`
+  con `npm run snapshot` en el mismo PR).
 - `npm run typecheck:functions` (raíz; requiere Deno — no usar `tsc`).
 - `cd frontend && npm test` — 0 fallas. Los smoke de integración que se saltan
   lo hacen por secrets/cuentas que no existen (P0-04), no por estar rotos.
 - `cd frontend && npx vite build`.
 - `node scripts/patrones-ui.mjs` (raíz): modal a mano, `<img>` sin `alt`,
-  botón solo-ícono sin nombre accesible.
+  botón solo-ícono sin nombre accesible y las reglas de la versión "Expediente"
+  (`docs/SISTEMA-DISENO.md`). Los incumplimientos heredados viven en
+  `scripts/patrones-ui.baseline.json`, que solo puede encogerse
+  (`--actualizar-baseline`); no se agregan entradas a mano.
 - `npm run test:integration` (frontend) contra el backend real: requiere los
   secrets `VITE_INSFORGE_URL`, `VITE_INSFORGE_ANON_KEY`,
   `INSFORGE_TEST_STAFF_EMAIL/PASSWORD` (cuenta dedicada a CI). En CI, el job
