@@ -12,6 +12,15 @@
 //   - entregaAbrir no consume el token si el payload no se puede leer
 //   - try/catch de primer nivel → error_interno con CORS
 //   - CORS calculado por petición (sin estado global compartido)
+// Y lo del Ciclo 21 (plan de mejora, §4-099/104 y §5):
+//   - permisos por RPC `puede` (fail-closed; error de BD = 500, `false` = 403)
+//   - getCurrentUser()/staff: "sin usuario" (401) distinto de "falló" (500);
+//     tickets.staffDeSesion ya no degrada a público ante un error de BD
+//   - descifrado fallido = 500 error_descifrado + fila 'revelado_fallido'
+//   - 403 de revelado auditados ('revelado_denegado'), best-effort
+//   - rate-limits nuevos sobre intentos_publicos (429 demasiados_intentos)
+//   - tickets.crear público ignora equipoId/cuentaId/licenciaId
+//   - acción pública `ping` en las 4 functions
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { sdk, reiniciarSdk, tieneFiltro, consultasDe } from './stubs/sdk-falso.js';
 
@@ -26,9 +35,10 @@ const ORIGEN = 'http://localhost:5173';
 const ORIGEN_PROD = 'https://materen-ti.vercel.app';
 const FALLA_BD = { data: null, error: { message: 'falla simulada de BD' } };
 
-function peticion(body, { origin = ORIGEN, token = 'token-de-prueba' } = {}) {
+function peticion(body, { origin = ORIGEN, token = 'token-de-prueba', ip = null } = {}) {
   const headers = { 'Content-Type': 'application/json', Origin: origin };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (ip) headers['cf-connecting-ip'] = ip;
   return new Request('https://funciones.test/fn', { method: 'POST', headers, body: JSON.stringify(body) });
 }
 
@@ -183,11 +193,27 @@ describe('credenciales — entregaAbrir (pública)', () => {
     viewed_at: null,
   });
 
-  it('payload ilegible: responde error_interno SIN consumir el token', async () => {
+  it('payload ilegible (no descifra): error_descifrado 500, audita revelado_fallido y NO consume el token', async () => {
+    // Ciclo 21: antes respondía error_interno + entrega_fallida; ahora el
+    // descifrado fallido tiene su propio código y su propia fila de auditoría.
     sdk.responder = responderCon({ 'entregas:select': () => ({ data: vigente('enc2:###:###'), error: null }) });
     const r = await credenciales(peticion({ action: 'entregaAbrir', token: 'abc' }, { token: null }));
     expect(r.status).toBe(500);
+    expect((await r.json()).code).toBe('error_descifrado');
+    expect(consultasDe('entregas', 'update')).toHaveLength(0);
+    const filas = consultasDe('accesos_log', 'insert').flatMap((q) => q.payload);
+    expect(filas).toHaveLength(1);
+    expect(filas[0].accion).toBe('revelado_fallido');
+    expect(JSON.stringify(filas)).not.toContain('###');
+  });
+
+  it('payload que descifra pero no es un arreglo: sigue siendo error_interno + entrega_fallida', async () => {
+    const payload = await encryptV2(JSON.stringify({ no: 'arreglo' }));
+    sdk.responder = responderCon({ 'entregas:select': () => ({ data: vigente(payload), error: null }) });
+    const r = await credenciales(peticion({ action: 'entregaAbrir', token: 'abc' }, { token: null }));
+    expect(r.status).toBe(500);
     expect((await r.json()).code).toBe('error_interno');
+    expect(consultasDe('accesos_log', 'insert')[0].payload[0].accion).toBe('entrega_fallida');
     expect(consultasDe('entregas', 'update')).toHaveLength(0);
   });
 

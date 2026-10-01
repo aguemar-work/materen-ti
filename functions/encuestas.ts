@@ -13,6 +13,7 @@
 //   abrir     público { slug }               → { titulo, descripcion, preguntas }
 //   responder público { slug, respuestas }    → { ok }
 //   version   staff   {}                     → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
+//   ping      público {}                     → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
 // ============================================================
 
 import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
@@ -61,6 +62,24 @@ function respuesta(cors: Record<string, string>, body: unknown, status = 200): R
 // acciones no lo evada.
 const INTENTOS_MAX_IP = 20;
 const INTENTOS_VENTANA_MIN = 10;
+
+// Usuario dueño del token de sesión (Ciclo 21). Distingue "no hay usuario"
+// (token inválido/expirado/anónimo → null → 401) de "falló la consulta"
+// (caída de red, 5xx, 408/429 → LANZA → error_interno 500). Antes se ignoraba
+// el `error`. Copia a propósito en cada function.
+async function usuarioDeToken(
+  userClient: ReturnType<typeof createClient>,
+): Promise<{ id: string; email: string | null } | null> {
+  const { data, error } = await userClient.auth.getCurrentUser();
+  if (error) {
+    const sc = (error as { statusCode?: number }).statusCode;
+    if (typeof sc === 'number' && sc >= 400 && sc < 500 && sc !== 408 && sc !== 429) return null;
+    throw new Error(`No se pudo verificar la sesión: ${error.message}`);
+  }
+  const user = data?.user;
+  if (!user?.id) return null;
+  return { id: user.id, email: user.email || null };
+}
 
 // El SDK (postgrest-js sin Database schema generado) tipa toda relación
 // embebida en un select() como arreglo, aunque en runtime sea un solo
@@ -141,6 +160,11 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     return json({ ok: false, code: 'body_invalido' }, 400);
   }
 
+  // ping: healthcheck público (Ciclo 21). Sin sesión y SIN tocar la BD.
+  if (body.action === 'ping') {
+    return json({ ok: true, funcion: 'encuestas', hora: new Date().toISOString() });
+  }
+
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
 
@@ -151,10 +175,11 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
     if (!userToken) return json({ ok: false, code: 'no_autenticado' }, 401);
     const userClient = createClient({ baseUrl, accessToken: userToken });
-    const { data: userData } = await userClient.auth.getCurrentUser();
-    if (!userData?.user?.id) return json({ ok: false, code: 'no_autenticado' }, 401);
-    const { data: staffRow } = await admin.database
-      .from('staff').select('activo').eq('user_id', userData.user.id).maybeSingle();
+    const usuario = await usuarioDeToken(userClient);
+    if (!usuario) return json({ ok: false, code: 'no_autenticado' }, 401);
+    const { data: staffRow, error: eStaff } = await admin.database
+      .from('staff').select('activo').eq('user_id', usuario.id).maybeSingle();
+    if (eStaff) throw new Error(`No se pudo leer la fila de staff: ${eStaff.message}`);
     if (!staffRow?.activo) return json({ ok: false, code: 'no_es_staff' }, 403);
 
     const [{ data: migracion }, { data: deploy }] = await Promise.all([

@@ -1,10 +1,11 @@
 // Tests del cifrado de credenciales (functions/credenciales.ts).
-// Cubre: roundtrip enc2, IV aleatorio, formato legacy enc:, texto plano
-// histórico y payloads corruptos.
+// Cubre: roundtrip enc2, IV aleatorio, formato legacy enc:, y (Ciclo 21) que un
+// valor sin prefijo conocido o ilegible LANZA ErrorDescifrado tipado en vez de
+// devolverse como texto plano / como el literal '(error al descifrar)'.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { encryptV2, decryptAny, hashToken } from '../../functions/credenciales.ts';
+import { encryptV2, decryptAny, decryptSensible, hashToken, ErrorDescifrado } from '../../functions/credenciales.ts';
 
 // Réplica mínima del cifrado legacy (enc:) para fabricar un valor histórico
 // con la clave CRED_KEY_LEGACY del setup y verificar que decryptAny lo lee.
@@ -38,25 +39,56 @@ describe('cifrado de credenciales', () => {
     expect(await decryptAny(cifrado)).toBe('clave-historica');
   });
 
-  it('texto plano histórico se devuelve tal cual', async () => {
-    expect(await decryptAny('sin-prefijo')).toBe('sin-prefijo');
+  // Lanza ErrorDescifrado con el motivo esperado, sin filtrar el valor.
+  async function motivoDe(valor, fn = decryptAny) {
+    try {
+      await fn(valor);
+    } catch (e) {
+      expect(e).toBeInstanceOf(ErrorDescifrado);
+      expect(e.message).not.toContain(valor);
+      return e.motivo;
+    }
+    throw new Error('debía lanzar ErrorDescifrado');
+  }
+
+  it('un valor sin prefijo conocido ya NO se devuelve como texto plano (formato_desconocido)', async () => {
+    expect(await motivoDe('sin-prefijo')).toBe('formato_desconocido');
+    expect(await motivoDe('(error al descifrar)')).toBe('formato_desconocido');
   });
 
   it('vacío devuelve vacío', async () => {
     expect(await decryptAny('')).toBe('');
   });
 
-  it('payload corrupto no lanza: devuelve el marcador de error', async () => {
-    expect(await decryptAny('enc2:###:###')).toBe('(error al descifrar)');
-    expect(await decryptAny('enc2:QUJD')).toBe('(error al descifrar)');
+  it('payload corrupto lanza ErrorDescifrado (datos_invalidos), no un marcador', async () => {
+    expect(await motivoDe('enc2:###:###')).toBe('datos_invalidos');
+    expect(await motivoDe('enc2:QUJD')).toBe('datos_invalidos');
   });
 
-  it('enc2 manipulado (ciphertext alterado) no descifra', async () => {
+  it('enc2 manipulado (ciphertext alterado) lanza fallo_descifrado', async () => {
     const cifrado = await encryptV2('integridad');
     const partes = cifrado.split(':');
     // Se corrompe el ciphertext: GCM debe rechazarlo (autenticado)
     const corrupto = `${partes[0]}:${partes[1]}:${partes[2].slice(0, -4)}AAAA`;
-    expect(await decryptAny(corrupto)).toBe('(error al descifrar)');
+    expect(await motivoDe(corrupto)).toBe('fallo_descifrado');
+  });
+
+  it('clave ausente (secret sin configurar) lanza clave_ausente', async () => {
+    const original = globalThis.Deno.env.get;
+    const cifrado = await encryptV2('x');
+    globalThis.Deno.env.get = (k) => (k === 'CRED_KEY_V2' ? undefined : original(k));
+    try {
+      expect(await motivoDe(cifrado)).toBe('clave_ausente');
+    } finally {
+      globalThis.Deno.env.get = original;
+    }
+  });
+
+  it('decryptSensible: sin prefijo sens1: o con clave ausente lanza, no devuelve literales', async () => {
+    expect(await motivoDe('texto-plano', decryptSensible)).toBe('formato_desconocido');
+    // CRED_KEY_SENSIBLE no existe en tests/setup.js
+    expect(await motivoDe('sens1:QUJD:QUJD', decryptSensible)).toBe('clave_ausente');
+    expect(await decryptSensible('')).toBe('');
   });
 });
 

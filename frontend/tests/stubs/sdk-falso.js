@@ -9,16 +9,24 @@
 // Cada consulta encadenada (`from(t).select().eq().is()...`) se registra en
 // `sdk.consultas` al resolverse, y su resultado lo decide `sdk.responder(q)`,
 // que cada test programa. `q` tiene: tabla, op ('select'|'insert'|'update'|
-// 'delete'|'rpc'), cols, payload, filtros ([tipo, columna, valor]).
+// 'delete'|'rpc'), cols, payload, filtros ([tipo, columna, valor]). En una
+// RPC (`database.rpc(nombre, args)`) `tabla` es el nombre de la función y
+// `payload` sus argumentos (ej. { p_user, p_permiso } de `puede`).
+//
+// `sdk.errorUsuario` simula que `auth.getCurrentUser()` FALLA (ej.
+// { message: 'x', statusCode: 500 }); con `sdk.usuario = null` y sin error se
+// simula un token anónimo/inválido (sin usuario).
 export const sdk = {
   consultas: [],
   usuario: null,
+  errorUsuario: null,
   responder: () => ({ data: null, error: null }),
 };
 
 export function reiniciarSdk() {
   sdk.consultas = [];
   sdk.usuario = null;
+  sdk.errorUsuario = null;
   sdk.responder = () => ({ data: null, error: null });
 }
 
@@ -97,8 +105,8 @@ export function createAdminClient() {
   return {
     database: {
       from: (tabla) => crearConsulta(tabla),
-      rpc: (nombre) => {
-        const q = { tabla: nombre, op: 'rpc', cols: null, payload: null, filtros: [] };
+      rpc: (nombre, args = null) => {
+        const q = { tabla: nombre, op: 'rpc', cols: null, payload: args, filtros: [] };
         sdk.consultas.push(q);
         return Promise.resolve(sdk.responder(q) ?? { data: null, error: null });
       },
@@ -115,7 +123,10 @@ export function createAdminClient() {
 export function createClient() {
   return {
     auth: {
-      getCurrentUser: async () => ({ data: { user: sdk.usuario } }),
+      getCurrentUser: async () => ({
+        data: { user: sdk.errorUsuario ? null : sdk.usuario },
+        error: sdk.errorUsuario,
+      }),
     },
   };
 }

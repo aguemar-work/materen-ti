@@ -17,6 +17,8 @@ function mensajeError(code) {
     demasiadas_cuentas: 'Se puede entregar como máximo 20 cuentas por enlace.',
     cuentas_no_asignadas: 'Ninguna de las cuentas seleccionadas está asignada a ese empleado.',
     empleado_inactivo: 'El empleado no está activo: no se le pueden entregar credenciales.',
+    error_descifrado: 'No se pudo descifrar la credencial. Avise al administrador.',
+    demasiados_intentos: 'Demasiados intentos. Espere unos minutos e intente de nuevo.',
   };
   return mensajes[code] || `Error de credenciales (${code || 'desconocido'})`;
 }

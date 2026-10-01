@@ -14,6 +14,7 @@
 //   encuestaEstado público          → { respondida } (para no mostrar el formulario tras refrescar)
 //   encuesta       público          → { ok }
 //   version        staff            → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
+//   ping           público          → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
 //
 // Nota: el sistema no envía avisos/notificaciones por correo (se
 // retiró intencionalmente; ver docs/HISTORIAL-AUDITORIAS.md). El
@@ -97,6 +98,61 @@ const DESCRIPCION_MAX_LEN = 5000;
 const CREACION_MAX_IP = 8;         // creaciones públicas permitidas por ventana
 const CREACION_VENTANA_MIN = 10;   // minutos
 
+// Rate-limits de las acciones públicas de solo lectura/respuesta (Ciclo 21),
+// por IP y sobre `intentos_publicos` (migración 104). Mismos 10 min de ventana.
+const LIMITE_VENTANA_MIN = 10;
+const SEGUIMIENTO_MAX_IP = 60;
+const CATALOGO_MAX_IP = 60;
+const ENCUESTA_MAX_IP = 30; // encuestaEstado y encuesta, cada una por separado
+
+type ClienteAdmin = ReturnType<typeof createAdminClient>;
+
+// Rate-limit genérico sobre `intentos_publicos` (Ciclo 21): cuenta los
+// intentos recientes del par (ámbito, clave) y, si todavía hay cupo, registra
+// este. Devuelve true cuando YA se alcanzó el tope (el llamador responde 429
+// `demasiados_intentos`; un intento bloqueado no se registra). FAIL-CLOSED: si
+// no se puede contar o registrar se LANZA (→ error_interno), nunca se asume
+// "0 intentos". Copia a propósito en cada function (sin imports entre ellas).
+async function excedeLimite(
+  admin: ClienteAdmin,
+  ambito: string,
+  clave: string,
+  max: number,
+  ventanaMin: number,
+): Promise<boolean> {
+  const desde = new Date(Date.now() - ventanaMin * 60 * 1000).toISOString();
+  const { data, error } = await admin.database
+    .from('intentos_publicos')
+    .select('id')
+    .eq('ambito', ambito)
+    .eq('clave', clave)
+    .gte('created_at', desde)
+    .limit(max);
+  if (error) throw new Error(`No se pudo contar intentos_publicos (${ambito}): ${error.message}`);
+  if ((data?.length || 0) >= max) return true;
+  const { error: eRegistro } = await admin.database.from('intentos_publicos').insert([{ ambito, clave }]);
+  if (eRegistro) throw new Error(`No se pudo registrar el intento en intentos_publicos (${ambito}): ${eRegistro.message}`);
+  return false;
+}
+
+// Usuario dueño del token de sesión (Ciclo 21). Distingue "no hay usuario"
+// (token inválido/expirado/anónimo → null) de "falló la consulta" (caída de
+// red, 5xx, 408/429 → LANZA → error_interno 500). Antes se ignoraba el
+// `error`. Copia a propósito en cada function.
+async function usuarioDeToken(
+  userClient: ReturnType<typeof createClient>,
+): Promise<{ id: string; email: string | null } | null> {
+  const { data, error } = await userClient.auth.getCurrentUser();
+  if (error) {
+    const sc = (error as { statusCode?: number }).statusCode;
+    if (typeof sc === 'number' && sc >= 400 && sc < 500 && sc !== 408 && sc !== 429) return null;
+    throw new Error(`No se pudo verificar la sesión: ${error.message}`);
+  }
+  const user = data?.user;
+  if (!user?.id) return null;
+  return { id: user.id, email: user.email || null };
+}
+
 // Devuelve la extensión canónica si los primeros bytes son de una imagen
 // soportada; null si no lo es (no se sube).
 // export: probado en frontend/tests/tickets-validaciones.test.js
@@ -173,6 +229,11 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     return json({ ok: false, code: 'body_invalido' }, 400);
   }
 
+  // ping: healthcheck público (Ciclo 21). Sin sesión y SIN tocar la BD.
+  if (body.action === 'ping') {
+    return json({ ok: true, funcion: 'tickets', hora: new Date().toISOString() });
+  }
+
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
 
@@ -182,23 +243,30 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     ]);
   }
 
-  // Staff autenticado, si vino Authorization (opcional en "crear")
+  // Staff autenticado, si vino Authorization (opcional en "crear").
+  // Ciclo 21 — FAIL-CLOSED: "sin cabecera / token anónimo o inválido / usuario
+  // que no es staff activo" siguen siendo público (null), pero si HAY un
+  // usuario autenticado y la consulta de `staff` (o de la sesión) FALLA, se
+  // LANZA → error_interno 500. Antes un error de BD degradaba en silencio al
+  // staff a público (su ticket salía con origen 'empleado').
   async function staffDeSesion(): Promise<{ id: string; email: string | null } | null> {
     const authHeader = req.headers.get('Authorization');
     const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
     if (!userToken) return null;
     const userClient = createClient({ baseUrl, accessToken: userToken });
-    const { data } = await userClient.auth.getCurrentUser();
-    const user = data?.user;
-    if (!user?.id) return null;
-    const { data: staffRow } = await admin.database
+    const user = await usuarioDeToken(userClient);
+    if (!user) return null;
+    const { data: staffRow, error: eStaff } = await admin.database
       .from('staff')
       .select('activo')
       .eq('user_id', user.id)
       .maybeSingle();
+    if (eStaff) throw new Error(`No se pudo leer la fila de staff: ${eStaff.message}`);
     if (!staffRow?.activo) return null;
-    return { id: user.id, email: user.email || null };
+    return { id: user.id, email: user.email };
   }
+
+  const ip = ipDesdeHeaders(req.headers);
 
   // version: staff únicamente (cierra el pendiente de H-12 — ver el mismo
   // comentario en functions/credenciales.ts). No es una acción pública.
@@ -222,6 +290,9 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
 
   // ── catalogo: público, categorías/subcategorías activas para el formulario ──
   if (body.action === 'catalogo') {
+    if (await excedeLimite(admin, 'tickets.catalogo', ip, CATALOGO_MAX_IP, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
     const [{ data: categorias }, { data: subcategorias }] = await Promise.all([
       admin.database.from('categorias_ticket').select('id, nombre').is('deleted_at', null).order('nombre'),
       admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre, tipo_sugerido').is('deleted_at', null).order('nombre'),
@@ -252,7 +323,6 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     // se bloquea (error_interno) — antes un error de BD daba data=null →
     // "0 intentos" y el tope quedaba desactivado justo cuando la BD fallaba.
     if (!staff) {
-      const ip = ipDesdeHeaders(req.headers);
       const desde = new Date(Date.now() - CREACION_VENTANA_MIN * 60 * 1000).toISOString();
       const { data: intentos, error: eIntentos } = await admin.database
         .from('ticket_creacion_intentos')
@@ -365,9 +435,12 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
         categoria_id: categoriaId,
         subcategoria_id: subcategoriaId,
         tipo: tipoTicket,
-        equipo_id: body.equipoId || null,
-        cuenta_id: body.cuentaId || null,
-        licencia_id: body.licenciaId || null,
+        // Ciclo 21: el vínculo a equipo/cuenta/licencia lo puede fijar solo el
+        // staff. En el formulario público (sin sesión) se IGNORAN: eran ids
+        // sin validar que un tercero podía apuntar a activos ajenos.
+        equipo_id: staff ? (body.equipoId || null) : null,
+        cuenta_id: staff ? (body.cuentaId || null) : null,
+        licencia_id: staff ? (body.licenciaId || null) : null,
         adjunto_url: adjuntoUrl,
         adjunto_key: adjuntoKey,
       }])
@@ -384,6 +457,10 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
   if (body.action === 'seguimiento') {
     const token = String(body.token || '');
     if (!token) return json({ ok: false, code: 'token_requerido' });
+
+    if (await excedeLimite(admin, 'tickets.seguimiento', ip, SEGUIMIENTO_MAX_IP, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
 
     const { data: ticket } = await admin.database
       .from('tickets')
@@ -424,9 +501,8 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     const dni = soloDigitos(String(body.dni || ''));
     if (dni.length !== 8) return json({ ok: false, code: 'dni_invalido' });
 
-    // IP del cliente (ver ipDesdeHeaders). Se refuerza además con el
-    // límite por DNI, que no depende de la IP.
-    const ip = ipDesdeHeaders(req.headers);
+    // IP del cliente (ver ipDesdeHeaders, calculada arriba). Se refuerza
+    // además con el límite por DNI, que no depende de la IP.
     const desde = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
     // Fail-closed en los dos límites y en el registro del intento (Ciclo 20):
@@ -510,6 +586,10 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     const token = String(body.token || '');
     if (!token) return json({ ok: false, code: 'token_requerido' });
 
+    if (await excedeLimite(admin, 'tickets.encuestaEstado', ip, ENCUESTA_MAX_IP, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+
     const { data: ticket } = await admin.database
       .from('tickets').select('id').eq('token', token).maybeSingle();
     if (!ticket) return json({ ok: false, code: 'no_existe' });
@@ -525,6 +605,10 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     const token = String(body.token || '');
     const nivel = Number(body.nivel);
     if (!token || !nivel || nivel < 1 || nivel > 5) return json({ ok: false, code: 'datos_invalidos' });
+
+    if (await excedeLimite(admin, 'tickets.encuesta', ip, ENCUESTA_MAX_IP, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
 
     const { data: ticket } = await admin.database
       .from('tickets').select('id').eq('token', token).maybeSingle();

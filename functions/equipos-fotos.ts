@@ -22,6 +22,7 @@
 //   subirFoto   staff { contenidoBase64, equipoId? } → { url, key }
 //   eliminarFoto staff { key }            → { ok }
 //   version     staff  {}                 → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
+//   ping        público {}                → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
 // ============================================================
 
 import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
@@ -79,6 +80,58 @@ const FOTO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 // dice 6, el usuario ve el botón habilitado y la subida falla en el servidor.
 const MAX_FOTOS_POR_EQUIPO = 4;
 
+// Rate-limit por usuario de subirFoto/eliminarFoto (Ciclo 21): 30 / 10 min.
+const FOTOS_MAX_USUARIO = 30;
+const FOTOS_VENTANA_MIN = 10;
+
+type ClienteAdmin = ReturnType<typeof createAdminClient>;
+
+// Rate-limit genérico sobre `intentos_publicos` (Ciclo 21): cuenta los
+// intentos recientes del par (ámbito, clave) y, si todavía hay cupo, registra
+// este. Devuelve true cuando YA se alcanzó el tope (el llamador responde 429
+// `demasiados_intentos`; un intento bloqueado no se registra). FAIL-CLOSED: si
+// no se puede contar o registrar se LANZA (→ error_interno), nunca se asume
+// "0 intentos". Copia a propósito en cada function (sin imports entre ellas).
+async function excedeLimite(
+  admin: ClienteAdmin,
+  ambito: string,
+  clave: string,
+  max: number,
+  ventanaMin: number,
+): Promise<boolean> {
+  const desde = new Date(Date.now() - ventanaMin * 60 * 1000).toISOString();
+  const { data, error } = await admin.database
+    .from('intentos_publicos')
+    .select('id')
+    .eq('ambito', ambito)
+    .eq('clave', clave)
+    .gte('created_at', desde)
+    .limit(max);
+  if (error) throw new Error(`No se pudo contar intentos_publicos (${ambito}): ${error.message}`);
+  if ((data?.length || 0) >= max) return true;
+  const { error: eRegistro } = await admin.database.from('intentos_publicos').insert([{ ambito, clave }]);
+  if (eRegistro) throw new Error(`No se pudo registrar el intento en intentos_publicos (${ambito}): ${eRegistro.message}`);
+  return false;
+}
+
+// Usuario dueño del token de sesión (Ciclo 21). Distingue "no hay usuario"
+// (token inválido/expirado/anónimo → null → 401) de "falló la consulta"
+// (caída de red, 5xx, 408/429 → LANZA → error_interno 500). Antes se ignoraba
+// el `error`. Copia a propósito en cada function.
+async function usuarioDeToken(
+  userClient: ReturnType<typeof createClient>,
+): Promise<{ id: string; email: string | null } | null> {
+  const { data, error } = await userClient.auth.getCurrentUser();
+  if (error) {
+    const sc = (error as { statusCode?: number }).statusCode;
+    if (typeof sc === 'number' && sc >= 400 && sc < 500 && sc !== 408 && sc !== 429) return null;
+    throw new Error(`No se pudo verificar la sesión: ${error.message}`);
+  }
+  const user = data?.user;
+  if (!user?.id) return null;
+  return { id: user.id, email: user.email || null };
+}
+
 // Duplicado a propósito de functions/tickets.ts (sniffImagen/MIME_POR_EXT):
 // el proyecto no comparte código entre edge functions (ver AGENTS.md).
 // export: probado en frontend/tests/equipos-fotos-validaciones.test.js
@@ -121,26 +174,30 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     return json({ ok: false, code: 'body_invalido' }, 400);
   }
 
+  // ping: healthcheck público (Ciclo 21). Sin sesión y SIN tocar la BD.
+  if (body.action === 'ping') {
+    return json({ ok: true, funcion: 'equipos-fotos', hora: new Date().toISOString() });
+  }
+
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
 
-  // Permiso de módulo (migración 068) — mismo patrón y mismo motivo que
-  // tienePermisoModulo() en functions/credenciales.ts: la RLS de `equipos`
-  // ya exige tiene_permiso_modulo('equipos') para el CRUD normal de la
-  // tabla, pero esta función usa el cliente ADMIN (bypasea esa RLS) para
-  // subir/eliminar en el bucket. Sin este chequeo, cualquier staff activo
-  // sin el módulo "equipos" podía igual subir/borrar fotos del bucket
-  // completo (hallazgo de auditoría externa, 2026-08-20). Duplicado a
-  // propósito, no se comparte código entre edge functions (ver AGENTS.md).
+  // Permiso de módulo (Ciclo 21, migración 099): la regla vive en UN solo
+  // lugar, la RPC `public.puede(p_user, 'modulo:<id>')` (EXECUTE solo para el
+  // cliente admin; auth.uid() sería NULL acá). Antes se repetía a mano con una
+  // consulta directa a staff_modulos_permisos (hallazgo de auditoría externa,
+  // 2026-08-20: sin este chequeo un staff sin "equipos" subía/borraba fotos
+  // del bucket completo porque esta function usa el cliente ADMIN).
+  // FAIL-CLOSED y sin confundir causas: un error de la RPC se LANZA (→
+  // error_interno 500), solo un `false` explícito niega con 403; cualquier
+  // valor distinto de `true` también niega. El atajo de JEFE usa la fila de
+  // staff ya leída (activa) y evita una llamada. Duplicado a propósito, no se
+  // comparte código entre edge functions (ver AGENTS.md).
   async function tienePermisoModulo(rol: string, userId: string, modulo: string): Promise<boolean> {
     if (rol === 'JEFE') return true;
-    const { data } = await admin.database
-      .from('staff_modulos_permisos')
-      .select('staff_user_id')
-      .eq('staff_user_id', userId)
-      .eq('modulo', modulo)
-      .maybeSingle();
-    return !!data;
+    const { data, error } = await admin.database.rpc('puede', { p_user: userId, p_permiso: `modulo:${modulo}` });
+    if (error) throw new Error(`No se pudo verificar el permiso modulo:${modulo}: ${error.message}`);
+    return data === true;
   }
 
   // Toda acción requiere staff activo — no hay ninguna pública acá.
@@ -148,16 +205,18 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
   const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
   if (!userToken) return json({ ok: false, code: 'no_autenticado' }, 401);
 
+  // Ciclo 21: sin usuario (token inválido/anónimo) → 401; consulta que FALLA
+  // (sesión o tabla staff) → se lanza y el envoltorio responde error_interno.
   const userClient = createClient({ baseUrl, accessToken: userToken });
-  const { data: userData } = await userClient.auth.getCurrentUser();
-  const user = userData?.user;
-  if (!user?.id) return json({ ok: false, code: 'no_autenticado' }, 401);
+  const user = await usuarioDeToken(userClient);
+  if (!user) return json({ ok: false, code: 'no_autenticado' }, 401);
 
-  const { data: staffRow } = await admin.database
+  const { data: staffRow, error: eStaff } = await admin.database
     .from('staff')
     .select('activo, rol')
     .eq('user_id', user.id)
     .maybeSingle();
+  if (eStaff) throw new Error(`No se pudo leer la fila de staff: ${eStaff.message}`);
   if (!staffRow?.activo) return json({ ok: false, code: 'no_es_staff' }, 403);
 
   // version: cierra el pendiente de H-12 — ver el mismo comentario en
@@ -188,6 +247,11 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
 
     if (!(await tienePermisoModulo(staffRow.rol, user.id, 'equipos'))) {
       return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
+    // Rate-limit por usuario (Ciclo 21): 30 / 10 min. Fail-closed.
+    if (await excedeLimite(admin, 'equipos-fotos.subirFoto', user.id, FOTOS_MAX_USUARIO, FOTOS_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
     }
 
     // Tope de cantidad, server-side (2026-08-31). Dónde vive el estado real
@@ -264,6 +328,11 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
 
     if (!(await tienePermisoModulo(staffRow.rol, user.id, 'equipos'))) {
       return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
+    // Rate-limit por usuario (Ciclo 21): 30 / 10 min. Fail-closed.
+    if (await excedeLimite(admin, 'equipos-fotos.eliminarFoto', user.id, FOTOS_MAX_USUARIO, FOTOS_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
     }
 
     const { error } = await admin.storage.from('equipos-fotos').remove(key);
