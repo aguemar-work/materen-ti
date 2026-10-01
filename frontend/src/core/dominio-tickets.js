@@ -1,6 +1,11 @@
 // Vocabulario del dominio tickets: estados, prioridades y niveles con su
 // color semántico (badge--*). Única fuente — antes había 4 copias del mapa
 // de estados repartidas entre vistas.
+//
+// El TONO de cada estado/prioridad NO se decide acá: sale del mapa único de
+// core/tonos.js (regla 24 del sistema de diseño). Este archivo solo dice qué
+// etiqueta lleva cada valor.
+import { claseBadge, TONO_ESTADO_TICKET as TE, TONO_PRIORIDAD as TP, TONO_TICKET_SIN_VINCULAR } from './tonos.js';
 
 // 'resuelto' y 'cerrado' se muestran como una sola cosa para el staff
 // (decisión de producto 2026-08-21): en la práctica nadie ve nunca un
@@ -13,22 +18,29 @@
 // OPCIONES_FILTRO_ESTADO más abajo para el filtro (que sí necesita
 // colapsarlos en una sola opción, no solo un mismo label).
 export const ESTADOS_TICKET = {
-  abierto:     { label: 'Abierto',       clase: 'badge--info' },
-  en_progreso: { label: 'En progreso',   clase: 'badge--warning' },
-  resuelto:    { label: 'Resuelto',      clase: 'badge--success' },
-  cerrado:     { label: 'Resuelto',      clase: 'badge--success' },
-  reabierto:   { label: 'Reabierto',     clase: 'badge--danger' },
-  rechazado:   { label: 'Rechazado',     clase: 'badge--neutral' },
+  abierto:     { label: 'Abierto',       clase: claseBadge(TE.abierto) },
+  en_progreso: { label: 'En progreso',   clase: claseBadge(TE.en_progreso) },
+  resuelto:    { label: 'Resuelto',      clase: claseBadge(TE.resuelto) },
+  cerrado:     { label: 'Resuelto',      clase: claseBadge(TE.cerrado) },
+  reabierto:   { label: 'Reabierto',     clase: claseBadge(TE.reabierto) },
+  rechazado:   { label: 'Rechazado',     clase: claseBadge(TE.rechazado) },
 };
 
-// Paleta propia, separada de ESTADOS_TICKET — Estado y Prioridad se pintan
-// una junto a la otra en la misma fila y no pueden compartir color con
-// significado distinto.
+// Ticket público sin empleado vinculado ('Sin vincular'): alguien de TI tiene
+// que vincularlo, así que pide acción (ya no comparte el rojo con 'Urgente').
+export const CLASE_TICKET_SIN_VINCULAR = claseBadge(TONO_TICKET_SIN_VINCULAR);
+
+// Prioridad como RANGO ESCRITO (regla 24): baja/media/alta son neutras y solo
+// 'Urgente' es roja; el orden real lo dan el reloj y la cola, no el color.
+// Estado y Prioridad se pintan una junto a la otra en la misma fila: el
+// modificador `badge--rango` (mayúsculas semibold) las distingue aunque ambas
+// sean neutras (rechazado / baja), y por eso la clase de una prioridad nunca
+// coincide con la de un estado (tests/tonos.test.js).
 export const PRIORIDADES_TICKET = {
-  baja:    { label: 'Baja',    clase: 'badge--neutral' },
-  media:   { label: 'Media',   clase: 'badge--teal' },
-  alta:    { label: 'Alta',    clase: 'badge--purple' },
-  urgente: { label: 'Urgente', clase: 'badge--danger' },
+  baja:    { label: 'Baja',    clase: claseBadge(TP.baja, { rango: true }) },
+  media:   { label: 'Media',   clase: claseBadge(TP.media, { rango: true }) },
+  alta:    { label: 'Alta',    clase: claseBadge(TP.alta, { rango: true }) },
+  urgente: { label: 'Urgente', clase: claseBadge(TP.urgente, { rango: true }) },
 };
 
 // Para selects: [{ valor, label }]

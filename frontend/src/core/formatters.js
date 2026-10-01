@@ -94,6 +94,26 @@ export function formatFechaHora(iso) {
   });
 }
 
+// Fecha de un libro de movimientos (AppLibro, regla 19): "dd/mm/yy" arriba y
+// "hh:mm" debajo, en hora local. Un libro cruza años (un kardex de equipo
+// dura lustros), por eso el año va siempre y de dos dígitos. Una fecha sola
+// ('YYYY-MM-DD', sin hora) no inventa una hora: devuelve `hora: ''`.
+// Acepta un Date, un timestamp ISO o una fecha 'YYYY-MM-DD'.
+export function formatFechaLibro(valor) {
+  if (valor == null || valor === '') return { fecha: '', hora: '' };
+  const dos = (n) => String(n).padStart(2, '0');
+  if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+    const [y, m, d] = valor.split('-');
+    return { fecha: `${d}/${m}/${y.slice(2)}`, hora: '' };
+  }
+  const f = valor instanceof Date ? valor : new Date(valor);
+  if (Number.isNaN(f.getTime())) return { fecha: '', hora: '' };
+  return {
+    fecha: `${dos(f.getDate())}/${dos(f.getMonth() + 1)}/${String(f.getFullYear()).slice(2)}`,
+    hora: `${dos(f.getHours())}:${dos(f.getMinutes())}`,
+  };
+}
+
 // Horas decimales → "45 min" / "3.2 h" / "2 d 4 h". Para tiempos de atención:
 // en minutos cuando fue rápido y en días cuando el número de horas ya no se
 // puede leer de un vistazo.

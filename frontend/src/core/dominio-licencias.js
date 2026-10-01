@@ -4,6 +4,7 @@
 // del badge sigue siendo de cada vista (la de detalle de empleado omite a
 // propósito las licencias sanas; el listado siempre muestra la fecha).
 import { fechaLocalISO } from './formatters.js';
+import { claseBadge, TONO_VENCIMIENTO_LICENCIA as TV } from './tonos.js';
 
 // Ventana de "por vencer", en días. La usan el tag de cada fila (abajo) y el
 // filtro de situación del listado (api/domains/licencias.js), para que el
@@ -19,8 +20,8 @@ export function estadoVencimientoLicencia(lic) {
 }
 
 export const CLASE_VENCIMIENTO_LICENCIA = {
-  perpetua: 'badge--success',
-  vencida: 'badge--danger',
-  por_vencer: 'badge--warning',
-  vigente: 'badge--success',
+  perpetua: claseBadge(TV.perpetua),
+  vencida: claseBadge(TV.vencida),
+  por_vencer: claseBadge(TV.por_vencer),
+  vigente: claseBadge(TV.vigente),
 };

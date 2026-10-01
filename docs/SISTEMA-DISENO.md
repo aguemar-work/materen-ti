@@ -15,6 +15,14 @@
 > `primary-*` + grises de Tailwind), la tipografía (Inter Variable) y la
 > regla de **cero bordes laterales** (ni acentos a la izquierda ni líneas
 > verticales decorativas).
+>
+> **Versión "Expediente"** (plan de mejora Ciclo 21,
+> `docs/auditorias/ciclo-21/PLAN-DE-MEJORA.md` §3): se suma a V2 con las
+> reglas 14 a 25, el mapa único de tonos, las piezas `AppCodigo`, `AppSello`,
+> `AppCaratula` y `AppLibro` y la hoja imprimible. **Estado: la base está
+> construida (tonos, piezas, `impresion.css`, reglas en `patrones-ui.mjs`);
+> las pantallas todavía no la adoptan.** Cada módulo la adopta junto con su
+> rediseño; hasta entonces sigue vigente la receta V2 de §4. Ver §1.1.
 
 ## 1. Principios
 
@@ -65,6 +73,194 @@
     panel deslizante y las tablas pasan a tarjetas o listas; nada con scroll
     horizontal accidental.
 
+### 1.1 Versión "Expediente": reglas 14 a 25
+
+El sistema custodia quién tuvo qué (acceso, equipo, licencia), desde cuándo,
+hasta cuándo y con qué acta. La versión toma su lenguaje del **expediente**:
+cada registro tiene un número, abre con una carátula y lleva un libro de
+movimientos; lo que se imprime y se firma es la misma hoja que se ve en
+pantalla. Las reglas 1 a 13 **se mantienen**; estas 12 se suman.
+
+> **Estado de adopción (2026-10-01).** Construido: `core/tonos.js` (regla 24 y
+> el mapa de §1.2, ya consumido por `BadgeEstado`/`AppTag` y los
+> `core/dominio-*.js`), `AppCodigo`, `AppSello`, `AppCaratula`, `AppLibro`,
+> `styles/impresion.css` y las 15 reglas nuevas de
+> `scripts/patrones-ui.mjs` (§3.5). **Pendiente:** que las pantallas usen las
+> piezas (se adoptan por módulo). Mientras tanto el árbol incumple varias
+> reglas; esos incumplimientos están congelados en
+> `scripts/patrones-ui.baseline.json` y CI solo falla ante incumplimientos
+> nuevos. Las reglas que dependen de una pantalla aún no rediseñada se marcan
+> abajo con *(pieza nueva, aún no adoptada por las pantallas)*.
+
+14. **Los identificadores son el nombre del expediente.** Todo código del
+    dominio (`TCK-0281`, código de equipo, `codigo_almacen`, serie, DNI,
+    usuario de cuenta) se compone con un único render, `AppCodigo`: Inter
+    `font-medium tabular-nums`, prefijo y separador en `text-gray-500`,
+    dígitos en `text-gray-900`, `title` con el nombre completo del dato.
+    Nunca `font-mono` para códigos: `font-mono` queda reservado a lo que se
+    transcribe (contraseñas, usuarios, URLs: `.cred__valor`, `EntregaView`).
+    En tablas el identificador va en columna propia de ancho fijo, primera
+    después de prioridad/estado. El buscador global trata un código completo
+    como número de expediente: Enter abre el registro, no una lista.
+    *(`AppCodigo`: pieza nueva, aún no adoptada por las pantallas.)*
+15. **Los estados son sellos, no pastillas con ícono.** `AppTag` sigue siendo
+    el único render de tag (20 px, fondo tenue) y, en los tags de estado,
+    pierde `icono` y `punto`: un estado es una palabra. `AppSello` (escalón 2
+    de la escala de peso: solo borde de 1 px, sin fondo, `rounded-sm`,
+    `text-[11px] font-semibold uppercase tracking-wider`) se reserva a
+    **estados terminales en carátulas y en impresión**: CERRADO · conforme
+    30/09, RECHAZADO, BAJA 12/08/2026, DE BAJA, PERDIDO. Un sello por
+    carátula, nunca en filas de tabla. Tonos: gris (terminal neutro), verde
+    (cerrado conforme), rojo (rechazado, perdido); el texto siempre está
+    presente. *(`AppSello`: pieza nueva, aún no adoptada por las pantallas.
+    El retiro de `icono`/`punto` de los tags de estado llega con cada
+    módulo.)*
+16. **Jerarquía tipográfica de expediente, con Inter y tres pesos.** 400, 500
+    y 600; `font-bold` prohibido en UI (el negrita de las actas en papel se
+    mantiene). Cinco niveles: título de carátula
+    `text-2xl font-semibold tracking-tight`; identificador junto al título
+    `text-sm font-medium tabular-nums text-gray-600`; **rótulo de expediente**
+    `text-[11px] font-semibold uppercase tracking-wider text-gray-500` (el
+    mismo token del rótulo de grupo del menú, ahora también para
+    "EXPEDIENTE · EMPLEADO", los `dt` de la carátula y los subtítulos del
+    libro); cuerpo `text-sm`; fecha de libro `text-xs tabular-nums
+    text-gray-500`. Ningún número con `tracking` negativo ni agrandado por
+    énfasis: una cifra `text-2xl` solo existe en un reporte.
+17. **El azul es tinta.** `text-primary-*` solo en texto interactivo
+    (enlaces, el código que abre un expediente, "Ver mis 12 tickets →") y en
+    el ícono del ítem activo del menú. `bg-primary-50` solo en lo que el
+    usuario puso: chip aplicado, fila seleccionada, opción activa. Sólido
+    `primary-500` solo en la acción principal, el foco y la marca de 2 px de
+    `AppVistas`. Quedan fuera las cajas de ícono `bg-primary-50
+    text-primary-600` y las barras de progreso azules decorativas. Los
+    íconos informativos son grises y escasos.
+18. **Densidad de libro.** Dos densidades: *libro* (listados, kardex, Inicio):
+    celdas `px-3 py-2`, fila de 40 px, cabecera de 32 px; *ficha* (carátulas,
+    formularios): lo vigente. Toda tabla con `table-layout: fixed`. Orden de
+    columnas en listados: lo que decide (prioridad, reloj) · identificador ·
+    qué · quién · responsable · estado · fecha. Fechas de listado según §3.3;
+    en libros siempre `dd/mm/yy hh:mm` (un kardex cruza años).
+19. **Un solo libro de movimientos: `AppLibro`.** Reemplaza los cinco renders
+    de historial que hoy conviven (`historialUnificado` del empleado, hoja de
+    vida de equipos, historial de cuenta, hitos de `TicketTimelineUnificado`,
+    `ActividadView`). Fila: **Fecha** (88 px; `dd/mm/yy` arriba y `hh:mm` en
+    gris debajo) · **Movimiento** (verbo en participio: "Entregado",
+    "Contraseña rotada", "Abierto → En progreso"; siempre anterior → nuevo) ·
+    **Detalle** · **Por** (el actor; "no registrado (legado)" cuando falta) ·
+    **Ref.** (enlace al otro expediente o al acta). Sin puntos de color, sin
+    cajas de ícono, sin riel vertical. Los mensajes de un ticket son un
+    segundo tipo de fila del mismo libro. Historiales con lo más reciente
+    arriba; conversación de ticket con lo más reciente abajo y el composer al
+    pie. *(`AppLibro`: pieza nueva, aún no adoptada por las pantallas. Con la
+    fecha en dos líneas la fila mide ~48 px; 40 px es el mínimo.)*
+20. **Toda ficha abre con carátula: `AppCaratula`.** (1) rótulo +
+    identificador: "EMPLEADO · DNI 45678912", "TICKET · TCK-0281 ·
+    INCIDENTE", "EQUIPO · LAP-0142 · ALMACÉN A-00231"; (2) `h1` + sello si es
+    terminal; (3) `dl` horizontal de 3 a 6 pares rótulo/valor; acciones a la
+    derecha, una sola sólida; regla horizontal a sangre. Sin avatar grande
+    (queda en listas y menú de usuario). Sin "← Volver". *(`AppCaratula`:
+    pieza nueva, aún no adoptada por las pantallas.)*
+21. **El vacío se registra, no se ilustra.** Dato ausente: "Sin registrar" en
+    gris. Sección sin filas: **una fila de libro** en gris ("— Sin
+    movimientos registrados") con la acción como enlace de texto en la misma
+    fila. `AppVacio` con ícono solo para páginas completas. Se retira el
+    círculo verde de "Todo al día": al día es una línea de texto.
+22. **Microinteracciones: se anima lo que se mueve de lugar.** Permitido:
+    panel móvil (200 ms), menú/popover/modal (100 a 150 ms), toast, barra de
+    8 s del revelado (`.cred__barra`), `animate-spin` en un botón cargando,
+    hover de 150 ms. Prohibido: esqueletos `animate-pulse` con forma de
+    tarjeta (la carga es una línea de 2 px en el borde superior de la hoja y
+    el contenido anterior se queda), números que cuentan,
+    `animate-bounce`/`animate-ping`. `prefers-reduced-motion` respetado desde
+    `main.css`.
+23. **Imprimir es la misma hoja.** `styles/impresion.css` (`@media print`): el
+    marco desaparece (menú, barra de la hoja, avisos, todo `[data-no-print]`),
+    la hoja ocupa A4 sin sombras, la carátula es la cabecera, el libro
+    imprime como tabla de líneas finas con la cabecera repetida por página,
+    los sellos conservan el borde, los tags son texto con borde y el azul se
+    vuelve subrayado y texto oscuro; la fuente es la Inter del bundle. Ganchos
+    por atributo: `data-marco`/`data-hoja` (`AppLayout`), `data-caratula`,
+    `data-libro`, `data-sello`, `data-tag`. Toda ficha tiene "Imprimir" en
+    Más. *(La hoja imprimible está construida; las actas siguen en su
+    ventana de `acta-base.js` hasta migrar a la ruta imprimible, y los PDF de
+    jsPDF no cambian todavía.)*
+24. **Prioridad como rango escrito.** `BAJA · MEDIA · ALTA · URGENTE` con
+    `AppTag` neutro para las tres primeras y rojo solo para Urgente; el orden
+    lo da el reloj y la posición en la cola (servidor), no el color. La
+    severidad de un problema usa la misma escala. `sky`, `violet` y `teal`
+    dejan de ser colores de prioridad. Resuelve la colisión estado ↔
+    prioridad sin ampliar la paleta: lo que separa a la prioridad de un
+    estado neutro es la tipografía de rango (`AppTag rango`, mayúsculas
+    semibold con tracking), y `tests/tonos.test.js` impide que la clase de una
+    prioridad coincida con la de un estado de ticket.
+25. **Copy de registro.** Impersonal y de usted (como en §5); además sin
+    signos de exclamación ni "¡Listo!", "Genial", "Bienvenido"; verbos de
+    libro en participio, botones en infinitivo, estados en adjetivo. Inicio
+    conserva el saludo con nombre: "Buenos días, Alejandro", y debajo
+    "Martes 1 de octubre · 8 asuntos, 2 críticos".
+
+### 1.2 Mapa único de tonos (`core/tonos.js`, regla 24)
+
+El tono dice **qué tiene que hacer quien lo lee**, no de qué entidad es. Un
+solo módulo exporta el mapa; `core/badges.js`, los `core/dominio-*.js`,
+`AppTag`, `AppSello` y `BadgeEstado` lo consumen. Ningún tono nuevo: son los
+seis de la paleta más el neutro, con fondo `-50` y texto `-800` (neutro:
+`gray-100` + `gray-700`).
+
+| Tono | Color | Significado | Estados que lo usan |
+| --- | --- | --- | --- |
+| `accion` | amber | requiere acción de TI | ticket `abierto`, `reabierto`; problema `abierto`; acción de problema `pendiente`; licencia por vencer; reloj `por_vencer`; empleado `Suspendido`; ticket sin vincular |
+| `trabajando` | sky | TI está trabajando | ticket `en_progreso`; problema `diagnostico`, `acciones`; acción `en_progreso`; equipo `en_reparacion` |
+| `espera` | violet | se espera a un tercero | ticket `en_espera_usuario` (plan V2), `resuelto` (esperando conformidad) |
+| `ok` | green | terminado bien / vigente | ticket `cerrado`; problema `cerrado`; acción `completada`; equipo `operativo`, `disponible`, `asignado`, `en_ubicacion`; empleado `Activo`; staff activo; KB `publicado`; licencia vigente o perpetua; reloj `en_plazo` |
+| `neutro` | gray | terminal neutro o inactivo | ticket `rechazado`; prioridad y severidad `baja`/`media`/`alta`; empleado `Inactivo`; equipo `de_baja`; KB `borrador`, `en_revision`, `obsoleto`; reloj `pausado` |
+| `critico` | red | pérdida, vencimiento o urgencia | prioridad `urgente`; severidad `critica`; equipo `perdido`; licencia `vencida`; reloj `vencido` |
+| `categoria` | teal | categoría, no estado | tipo de cuenta, nivel N1 a N3, tipo de ticket, tipo de ubicación, categoría de acceso sensible |
+
+Reglas: un estado de ticket y una prioridad nunca comparten clase (§regla 24);
+`AppTag` acepta tanto el nombre semántico (`ok`, `accion`...) como el
+histórico (`success`, `warning`, `danger`, `purple`, `sky`, `teal`, `neutral`);
+el color nunca es el único portador del significado (texto siempre presente;
+en impresión todo tag es texto con borde). Un estado nuevo se agrega en
+`core/tonos.js` **y** en su `core/dominio-*.js`; `tests/tonos.test.js` falla
+si algún estado queda sin tono. Un valor desconocido de la base cae a
+`neutro`.
+
+Tipografía de tag: `AppTag` 20 px, `text-xs font-medium`, `rounded-md`;
+prioridad y severidad (`rango`) en `font-semibold uppercase tracking-wider`.
+*(El tamaño de 11 px y el retiro de `icono`/`punto` en estados quedan para
+cuando cada módulo adopte la versión.)*
+
+### 1.3 DNI
+
+- **Panel (staff con sesión):** DNI completo en la carátula del expediente y
+  en el formulario; es el identificador de la persona y se necesita para
+  WhatsApp y actas. No se muestra como columna de listados (se busca por él,
+  no se lee en masa). El registro de actividad y `accesos_log` nunca lo
+  guardan.
+- **Impresos:** en el **acta de entrega y devolución** va completo, porque la
+  persona firma identificándose con él. En **reportes, hoja de vida impresa y
+  etiquetas** va enmascarado: `****8912`.
+- **Portal público:** nunca se muestra; solo se escribe para buscar.
+- **Exportaciones CSV:** enmascarado por defecto; completo solo con la opción
+  "Incluir DNI", reservada a JEFE y auditada en `accesos_log`.
+- Al anonimizar un empleado, `ANON-<hash>` en todos lados.
+
+### 1.4 Móvil: solo lo necesario
+
+Versión a 390 px **sí** para: Inicio (lectura y abrir el detalle), triage y
+detalle de ticket (leer, asignarme, comentar, pedir información, marcar
+resuelto), hoja de vida del equipo abierta por QR (leer, entregar, devolver,
+verificar, adjuntar acta por foto), expediente del empleado (lectura) y el
+portal público completo. **No** se diseña móvil para: importación de equipos,
+reportes y PDF, configuración y staff, formularios largos de licencia y
+equipo, constructor de encuestas, accesos sensibles. En esas pantallas el
+móvil muestra la hoja a tamaño completo con el aviso "Esta pantalla está
+pensada para escritorio" y las acciones de lectura que quepan. Todo lo demás
+pasa la prueba de 390 px de §7. *(Regla pendiente en `patrones-ui.mjs`: toda
+vista con `meta.movil: false` declara ese aviso; llega con el router de
+expedientes.)*
+
 ## 2. Tokens (lo único que se "elige")
 
 | Qué | Valor |
@@ -72,8 +268,8 @@
 | Acento | `primary-50…950` (500 = `#0064E0`, único color de marca) |
 | Neutros | `gray-*` de Tailwind (marco `gray-50`, hoja `white`, bordes `gray-200`/`gray-100`, banda de cabecera de tabla `gray-50/80`) |
 | Texto | primario `gray-900` · secundario `gray-600` · terciario `gray-500` (mínimo para cualquier texto que informe: 4,5:1 sobre blanco). `gray-400`/`gray-300` solo en íconos decorativos, estados `disabled:` y `placeholder:` |
-| Estados | `green` (ok) · `amber` (atención) · `red` (error/vencido) — tonos 50 de fondo, 700/800 de texto |
-| Categorías del dominio | `sky` · `violet` · `teal` (prioridades, tipos) — mismos tonos |
+| Estados | `green` (ok) · `amber` (acción de TI) · `sky` (TI trabajando) · `violet` (esperando a un tercero) · `red` (pérdida/vencido/urgente) · gris (neutro) — fondo 50, texto 800. Mapa único en `core/tonos.js` (§1.2) |
+| Categorías del dominio | `teal` (tipo de cuenta, nivel, tipo de ticket y de ubicación) — la prioridad ya NO usa `sky`/`violet`/`teal` (regla 24) |
 | Tipografía | Inter Variable, `tabular-nums` en códigos, DNI, cifras y fechas |
 | Tamaños de texto | página `text-2xl font-semibold tracking-tight` · sección `text-sm font-semibold` · cuerpo `text-sm` · meta `text-xs` · cabecera de tabla `text-xs font-medium text-gray-500` · rótulo de grupo del menú `text-[11px] font-semibold uppercase tracking-wider` |
 | Alturas | 32px (`h-8`) controles compactos · 36px (`h-9`) campos y botón `md` · 44px (`h-11`) portal |
@@ -108,7 +304,16 @@ una decisión para pedir, no para completar.
   ícono en `primary-600`. En el riel, una línea fina separa los grupos.
 - **Estructura del menú**: `components/shared/navegacion.js` (`AREAS_NAV`),
   única fuente para el sidebar y para las migas (`migasDeRuta`). Un ítem
-  nuevo se agrega ahí, nunca en dos lados.
+  nuevo se agrega ahí, nunca en dos lados. Los ocho ítems con `modulo` salen de
+  `core/modulos.js` (`tests/modulos-unicos.test.js` los compara con el CHECK de
+  `staff_modulos_permisos` y con los guards del router). Grupos desde el
+  2026-10-01: Inicio · Mesa de ayuda (Tickets, Conocimiento, Problemas) ·
+  Personas (Empleados, Encuestas) · Custodia (Equipos, Licencias, Correos) ·
+  Administración (Registro de actividad, Accesos sensibles, Configuración).
+  "Solicitudes" entra a Mesa de ayuda cuando exista su ruta.
+- **Diálogos**: `AppDialog` es el diálogo único de formularios y paneles
+  (centrado o `lateral`); `Modal.vue` está en desuso hasta migrar sus últimos
+  consumidores, y las clases `.modal-*` se retiran con él.
 - **Barra de la hoja** (48px): botón de menú (en desktop alterna el riel, en
   móvil abre el panel), migas, búsqueda global (`AppSearch`: un campo a la
   vista con el atajo Ctrl/⌘K desde `sm`, lupa en móvil) y campana.
@@ -136,7 +341,11 @@ una decisión para pedir, no para completar.
 | `AppListaDatos` | Pares etiqueta/valor | `datos` [{label,valor,mono?}], `columnas` (1/2); slot `valor-<i>` |
 | `AppKpi` | Indicador con cifra | `label`, `valor`, `detalle`, `icono`, `tono`, `to` (enlace al listado que explica la cifra) |
 | `AppVacio` | Estado vacío | `titulo`, `mensaje`, `icono`, `variante` (pagina/seccion); slot = acción |
-| `AppTag` | Todo tag/pastilla, 20px (único render de tag del sistema) | `tono` (neutral/success/warning/danger/info/purple/sky/teal), `icono`, `punto` |
+| `AppTag` | Todo tag/pastilla, 20px (único render de tag del sistema). Los colores salen de `core/tonos.js` | `tono` (semántico: accion/trabajando/espera/ok/neutro/critico/categoria; o el histórico neutral/success/warning/danger/purple/sky/teal; `info` solo por compatibilidad), `rango` (prioridad y severidad: mayúsculas semibold), `icono`, `punto` |
+| `AppCodigo` | Identificador del dominio (`TCK-0281`, código de equipo, serie, DNI): Inter `tabular-nums`, prefijo gris, dígitos oscuros (regla 14). **Pieza nueva, aún no adoptada por las pantallas** | `valor`, `prefijo?` (se separa solo en `TCK-0281`), `titulo?` (el `title`); sin valor, "Sin registrar" |
+| `AppSello` | Estado terminal en carátula e impresión: solo borde, sin fondo, `rounded-sm`, 11px mayúsculas (regla 15). Un sello por carátula, nunca en filas. **Pieza nueva, aún no adoptada** | `tono` (neutro/ok/critico); el texto va en el slot |
+| `AppCaratula` | Apertura de toda ficha: rótulo + `h1` + sello + `dl` horizontal de 3 a 6 pares + acciones, con regla a sangre (regla 20). **Pieza nueva, aún no adoptada** | `rotulo`, `titulo` (el `h1`), `datos` [{rotulo, valor}]; slots `rotulo`, `sello`, `acciones`, `valor-<i>` |
+| `AppLibro` | Único render de historial: `<table>` Fecha · Movimiento · Detalle · Por · Ref. (regla 19), sin puntos ni íconos. **Pieza nueva, aún no adoptada** | `filas` [{fecha, movimiento, detalle?, por?, ref?: {texto, to?}}] o de tipo `mensaje` [{tipo:'mensaje', fecha, autor, visibilidad:'visible'\|'interna', texto}], `vacio`, `etiqueta`; slot `vacio` |
 | `AppAvatar` | Iniciales con tono estable | `nombre`, `tamano` (sm/md/lg/xl) |
 | `AppDialog` | Modal de formulario sobre PrimeVue | ver su cabecera |
 | `AppMenu` (vía `components/shared/MenuAcciones.vue`) | Menú ⋮ | `acciones` [{icono,label,onClick,danger?,disabled?,visible?,separador?}] |
@@ -313,6 +522,44 @@ plantilla. El vocabulario heredado de Carbon (`.btn*`, `.card*`,
 `.tag*`/`.cds-tag*`, `.page`, `.filters`, `.paginacion__*`,
 `.tarjeta-fila*`, `.timeline*`, `.avatar*`, `.form-group`...) está borrado:
 no reintroducirlo.
+
+### 3.5 Verificación por script (`scripts/patrones-ui.mjs`)
+Corre en CI (`node scripts/patrones-ui.mjs`) sobre el `<template>` de cada
+`.vue`. Cuatro reglas de accesibilidad/estructura (modal a mano, `<img>` sin
+`alt`, `<th>` sin texto, botón solo-ícono sin nombre) y **quince de la Versión
+Expediente**, cada una citando en su `porque` la regla de este documento:
+
+| Regla del script | Regla del sistema | Qué busca |
+| --- | --- | --- |
+| `borde-lateral` | 7 y restricción del dueño | `border-l/r/x/s/e-*`, `divide-x` (no `-0`) |
+| `caja-de-icono` | 17, 19 | `<span>` de tamaño fijo, redondeado y tonal cuyo único hijo es un `<i>` |
+| `azul-decorativo` | 17 | `<i>` con `text-primary-*` fijo; `bg-primary-50/100` fijo sin `aria-pressed/current/selected` ni `data-chip` |
+| `mono-fuera-de-credenciales` | 14 | `font-mono` |
+| `codigo-sin-tabular` | 14 | `{{ x.codigo }}`, `dni`, `serie`, `codigo_almacen` sin `AppCodigo` ni un ancestro `tabular-nums` |
+| `punto-de-color` | 15, 19 | punto redondo de 6 a 8 px |
+| `peso-700` | 16 | `font-bold`, `font-extrabold`, `font-black` |
+| `sombra-flotante` | 9 | `shadow-md/lg/xl/2xl` fuera de lo que flota |
+| `radio-enorme-o-gradiente` | 6, 9 | `rounded-2xl/3xl`, degradados, `backdrop-blur` |
+| `animacion-no-permitida` | 22 | `animate-pulse/bounce/ping` |
+| `kpi-fuera-de-reporte` | 16 | `<AppKpi>` fuera de `modules/*/Reporte*.vue` |
+| `copy-entusiasta-o-tuteo` | 25, §5 | `¡`, `!`, "Genial", "Bienvenido", "puedes", "tienes", "tu/tus", "haz clic" en el texto visible |
+| `historial-a-mano` | 19 | `<ul>/<ol divide-y>` que llama a `formatFecha*()` |
+| `error-crudo` | 25, §5 | `e?.message` / `error.message` en `modules/**` |
+| `vue-mayor-400-lineas` | (F-G) | `.vue` de más de 400 líneas |
+
+**Línea base.** Las reglas nuevas ya se incumplen en el árbol (se calibraron
+contra el árbol real); esos incumplimientos viven en
+`scripts/patrones-ui.baseline.json` (`{regla: [archivos]}`) y se llaman
+*heredados*. CI falla solo ante un incumplimiento **nuevo** (archivo/regla
+fuera de la línea base). La línea base **solo puede encogerse**: si un archivo
+ya no incumple y sigue listado, el script avisa; `--actualizar-baseline` lo
+retira, y se niega a agregar entradas (se arregla, o se declara una excepción
+con motivo/alcance/impacto). Limitación: la línea base es por (regla,
+archivo), no cuenta ocurrencias. El script imprime cuántos heredados quedan
+por regla; ese contador es el avance del rediseño. Las excepciones previstas
+(`AppAvatar`, `AppPortal`, `AppVacio`, las superficies flotantes...) están en
+`EXCEPCIONES`. Las reglas heurísticas documentan sus falsos positivos junto
+a su `buscar`.
 
 ## 4. Recetas de página
 

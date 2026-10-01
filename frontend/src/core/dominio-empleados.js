@@ -9,10 +9,12 @@
 // (`Activo`/`Inactivo`/`Suspendido`, capitalizados en la base — ver
 // docs/PANORAMA-SISTEMA.md §2).
 
+import { claseBadge, TONO_ESTADO_EMPLEADO as TE } from './tonos.js';
+
 export const ESTADOS_EMPLEADO = {
-  Activo:     { label: 'Activo',     clase: 'badge--success' },
-  Suspendido: { label: 'Suspendido', clase: 'badge--warning' },
-  Inactivo:   { label: 'Inactivo',   clase: 'badge--neutral' },
+  Activo:     { label: 'Activo',     clase: claseBadge(TE.Activo) },
+  Suspendido: { label: 'Suspendido', clase: claseBadge(TE.Suspendido) },
+  Inactivo:   { label: 'Inactivo',   clase: claseBadge(TE.Inactivo) },
 };
 
 export function estadoEmpleadoInfo(estado) {

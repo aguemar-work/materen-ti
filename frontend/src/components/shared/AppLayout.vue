@@ -230,7 +230,9 @@ async function cerrarSesion() {
 
 <template>
   <!-- ══ Marco ══════════════════════════════════════════════════ -->
-  <div class="flex h-screen overflow-hidden bg-gray-50">
+  <!-- data-marco / data-hoja: ganchos de styles/impresion.css (en papel el
+       marco, el menú y la barra de la hoja desaparecen y la hoja es A4). -->
+  <div data-marco class="flex h-screen overflow-hidden bg-gray-50">
     <!-- Velo del panel deslizante (solo móvil) -->
     <transition
       enter-active-class="transition-opacity duration-200"
@@ -295,7 +297,7 @@ async function cerrarSesion() {
 
     <!-- ══ Hoja ═══════════════════════════════════════════════════ -->
     <div class="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2">
-      <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-white md:rounded-xl md:shadow-xs md:ring-1 md:ring-gray-900/[0.07]">
+      <div data-hoja class="flex min-h-0 flex-1 flex-col overflow-hidden bg-white md:rounded-xl md:shadow-xs md:ring-1 md:ring-gray-900/[0.07]">
         <!-- Barra de la hoja: menú · migas · acciones globales -->
         <header class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-100 px-3 sm:px-4">
           <button

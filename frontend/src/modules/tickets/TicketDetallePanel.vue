@@ -266,7 +266,7 @@ function onConfirmarReabrir(motivo) {
         </div>
       </section>
 
-      <div class="space-y-5 border-t border-gray-100 bg-gray-50/60 px-5 py-4 xl:w-72 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-t-0">
+      <div class="space-y-5 border-t border-gray-100 bg-gray-50/60 px-5 py-4 xl:w-72 xl:shrink-0 xl:overflow-y-auto xl:border-t-0">
         <section aria-labelledby="pnl-solicitante">
           <h3 id="pnl-solicitante" class="mb-2 text-sm font-semibold text-gray-900">Solicitante</h3>
           <TicketSolicitante :ticket="ticket" />

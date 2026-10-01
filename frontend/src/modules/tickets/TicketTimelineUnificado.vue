@@ -37,6 +37,10 @@ const PUNTO = {
   success: 'bg-green-500',
   danger: 'bg-red-500',
   neutral: 'bg-gray-400',
+  // Tonos "trabajando" y "espera" del mapa único (core/tonos.js): en_progreso
+  // y resuelto ya no son ámbar/verde. Sin esto el punto caería al gris.
+  sky: 'bg-sky-500',
+  purple: 'bg-violet-500',
 };
 </script>
 

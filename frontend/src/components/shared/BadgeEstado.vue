@@ -1,6 +1,6 @@
 <script setup>
 // Badge semántico por dominio. Resuelve QUÉ tono le toca a un valor
-// ("ticket cerrado" → neutral) y delega el render en components/ui/AppTag.vue.
+// ("ticket cerrado" → ok; el mapa vive en core/tonos.js) y delega el render en components/ui/AppTag.vue.
 //
 // La división es a propósito y es la misma de toda la capa de diseño: acá
 // vive el conocimiento de DOMINIO (vía core/badges.js → core/dominio-*.js),
@@ -23,7 +23,7 @@
 import { computed } from 'vue';
 import AppTag from '../ui/AppTag.vue';
 import { badgeInfo } from '../../core/badges.js';
-import { rolDeTag } from '../../core/tagRol.js';
+import { rolDeTag, esRango } from '../../core/tagRol.js';
 
 const props = defineProps({
   /** empleado | ticket | prioridad | situacion | tipo_cuenta | tipo_ubicacion |
@@ -48,8 +48,11 @@ const tono = computed(() => {
   const normalizado = ALIAS[rol] ?? rol;
   return TONOS_APPTAG.has(normalizado) ? normalizado : 'neutral';
 });
+// Prioridad y severidad (clase `badge--x badge--rango`) se escriben como
+// rango: mayúsculas semibold. Lo decide el dominio, no la vista.
+const rango = computed(() => esRango(info.value.clase));
 </script>
 
 <template>
-  <AppTag :tono="tono" :punto="status">{{ info.label }}</AppTag>
+  <AppTag :tono="tono" :punto="status" :rango="rango">{{ info.label }}</AppTag>
 </template>

@@ -9,6 +9,9 @@
 /* Primitivas oficiales en CSS (campos, avisos, modal, combo, revelado):
    ver su cabecera y docs/SISTEMA-DISENO.md §3. */
 @import "./componentes.css";
+/* @media print (regla 23, "imprimir es la misma hoja"): marco fuera, hoja A4,
+   libro como tabla de líneas finas, azul → subrayado, sellos con borde. */
+@import "./impresion.css";
 
 @theme {
   /*

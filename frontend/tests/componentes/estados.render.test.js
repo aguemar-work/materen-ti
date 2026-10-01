@@ -11,6 +11,7 @@ import AppVacio from '../../src/components/ui/AppVacio.vue';
 import AppPaginacion from '../../src/components/ui/AppPaginacion.vue';
 import AppTag from '../../src/components/ui/AppTag.vue';
 import { badgeInfo } from '../../src/core/badges.js';
+import { rolDeTag } from '../../src/core/tagRol.js';
 
 describe('AppVacio.vue', () => {
   it('renderiza título, ícono decorativo y mensaje opcional', () => {
@@ -117,9 +118,13 @@ describe('BadgeEstado.vue', () => {
       ['prioridad', 'baja'],
     ];
     for (const [tipo, valor] of casos) {
-      const rol = badgeInfo(tipo, valor).clase.replace('badge--', '') || 'neutral';
+      // La clase puede traer el modificador `badge--rango` (prioridad y
+      // severidad): el rol es el primer token, y el modificador viaja aparte
+      // como la prop `rango` de AppTag.
+      const { clase } = badgeInfo(tipo, valor);
       const w = mount(BadgeEstado, { props: { tipo, valor } });
-      expect(tagDe(w).props('tono')).toBe(rol);
+      expect(tagDe(w).props('tono')).toBe(rolDeTag(clase));
+      expect(tagDe(w).props('rango')).toBe(tipo === 'prioridad');
     }
   });
 
