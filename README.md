@@ -231,8 +231,8 @@ global `Deno`.
   contraseña de Cuentas o Licencias exige además el permiso individual
   `credenciales.ver` (`staff_permisos`) — JEFE siempre lo tiene; a un
   ASISTENTE se le otorga/revoca desde Configuración·Staff. El gate real vive
-  en `functions/credenciales.ts`; el del frontend es cosmético (ver
-  `AGENTS.md` sobre por qué la regla está escrita dos veces).
+  en `functions/credenciales.ts` (única fuente de verdad desde la migración
+  088, ver `AGENTS.md`); el del frontend es cosmético.
 - `accesos_log` no tiene políticas de escritura para usuarios: solo la edge
   function (cliente admin) escribe. Ni el JEFE puede alterar la auditoría.
 - En formularios de edición, el campo contraseña vacío significa "mantener la
@@ -346,6 +346,17 @@ La anon key se obtiene con `npx @insforge/cli secrets get ANON_KEY` (requiere
 
 ## CI: secrets del smoke de integración
 
+**Actualización (2026-09-26) — P0-04 resuelto**: las 5 cuentas de staff
+dedicadas a CI (la genérica + las 4 de pruebas negativas de autorización)
+están creadas, correctamente configuradas y sus secrets cargados en GitHub
+Actions — `test-integration` corrió por primera vez de verdad contra el
+backend real. Al hacerlo, salieron a la luz 2 bugs de test que llevaban
+documentados desde agosto sin haberse visto correr nunca en CI
+(`ENTREGACREAR-TEST-BUG` y `ACCESOS-SENSIBLES-UPDATE-DELETE-TEST`, ver
+`docs/HISTORIAL-AUDITORIAS.md` Ciclo 14) — ya corregidos en
+`autorizacion-roles.smoke.test.js`. El resto de esta sección se conserva
+como referencia de cómo se provisionó cada cuenta.
+
 `test-integration` (`.github/workflows/ci.yml`) corre los smoke tests de
 `tests/integration/*.test.js` contra el backend real de InsForge — la única
 clase de check que atrapa una desincronización esquema↔frontend (un `select`
@@ -384,16 +395,12 @@ en rojo en este check** hasta completar los pasos siguientes.
    `autorizacion-anonima.smoke.test.js` y, si además se provisionan las
    cuentas de la sección siguiente, `autorizacion-roles.smoke.test.js`).
 
-   **Ojo — aun con los 4 secrets bien cargados, el job va a seguir en
-   rojo, por un motivo DISTINTO**: `autorizacion-anonima.smoke.test.js`
-   incluye a propósito un test que hoy falla (`tiene_permiso_modulo` —
-   hallazgo P0-05, `tiene_permiso_modulo(text)` es la única función
-   `SECURITY DEFINER` del sistema sin `revoke ... from public`, ver
-   `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11). No es un fallo del pipeline
-   ni de los secrets — es el hallazgo real quedando visible, en vez de
-   escondido detrás de un test debilitado. Va a seguir en rojo hasta que
-   se corrija esa migración (fuera del alcance de este cambio a
-   propósito).
+   ~~**Ojo — aun con los 4 secrets bien cargados, el job va a seguir en
+   rojo, por un motivo DISTINTO**~~ **Corregido**: el hallazgo P0-05
+   (`tiene_permiso_modulo(text)` sin `revoke ... from public`) ya fue
+   cerrado por la migración 073 (aplicada 2026-08-18, verificada a nivel de
+   esquema — ver `docs/HISTORIAL-AUDITORIAS.md` Ciclo 11/13). Con los 4
+   secrets cargados, el job no debería tener este motivo adicional de rojo.
 
 Mientras estos secrets no existan, `test-integration` falla en cada push/PR
 (a propósito). El job `resumen-verificacion` (mismo workflow) sigue

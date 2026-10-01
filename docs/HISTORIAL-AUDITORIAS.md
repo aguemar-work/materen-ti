@@ -771,6 +771,55 @@ del dominio, comparado contra sus FKs (`information_schema.
 table_constraints`) — no confiar en que "ya se cubrió todo" solo porque
 la migración que gateó la tabla principal lo dice en el nombre.
 
+## Ciclo 14 — Cierre de CREDENCIALES-VER-DUPLICADO y P0-04 (2026-09-26)
+
+Alcance: cierre del hallazgo de arquitectura sobre la duplicidad de
+`credenciales.ver` (documentado en `AGENTS.md` desde la migración 060) y del
+bloqueador P0-04 (cuentas de staff dedicadas a CI, ver Ciclo 10) — las 5
+cuentas ya existen y `test-integration` corrió por primera vez contra el
+backend real, revelando 2 bugs de test ya documentados que llevaban desde
+agosto sin ejecutarse nunca en CI.
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| CREDENCIALES-VER-DUPLICADO | `tiene_permiso_credenciales_ver()` (SQL, migración 060) y `tienePermisoCredenciales()` (`functions/credenciales.ts`) codificaban la misma regla en dos lugares, con una asimetría real (el atajo `rol === 'JEFE'` solo existía en la versión TS) y sin nada que las mantuviera sincronizadas | Media (deuda de arquitectura, no vulnerabilidad activa) | **Resuelto** — migración 088 elimina la función SQL huérfana, verificada en la base real (`select ... from pg_proc` → 0 filas) | La función SQL nunca tuvo consumidor de policy RLS (a diferencia de `tiene_permiso_modulo()`, que sí gatea RLS real). El único código que decide si se revela una contraseña siempre fue `tienePermisoCredenciales()` |
+| ENTREGACREAR-TEST-BUG | `entregaCrear (credenciales.ver ausente) — rechazada` (`autorizacion-roles.smoke.test.js`) llamaba con `cuentaIds: []`; el handler cortaba antes por `datos_requeridos` (200), sin llegar nunca al gate `tienePermisoCredenciales` que el test quiere ejercitar | Baja | **Resuelto** | `cuentaIds: ['00000000-0000-4000-8000-000000000000']` en vez de `[]` — llega de verdad al gate |
+| ACCESOS-SENSIBLES-UPDATE-DELETE-TEST | Los tests "JEFE sin permiso de fila no puede editar/eliminar" esperaban `error` en la respuesta, pero un `UPDATE`/`DELETE` bloqueado por la policy `USING` de RLS no lanza error — solo afecta 0 filas en silencio | Baja | **Resuelto** | Reemplazado `expect(error).toBeTruthy()` por una re-`SELECT` con la sesión de `JEFE_CON_FILA` que confirma que la fila no cambió |
+
+**P0-04 (Ciclo 10) — resuelto**: las 5 cuentas de staff de CI (genérica +
+4 de pruebas negativas de autorización) están creadas, correctamente
+configuradas y sus secrets cargados en GitHub Actions. `test-integration`
+pasó de fallar por secrets faltantes a ejecutar de verdad — los 2 hallazgos
+de la tabla de arriba son justamente lo que esa primera corrida real dejó
+visible.
+
+**Nota aparte, cerrada en el mismo cambio**: el PR de sincronización de las
+4 edge functions a `main` (código real desplegado desde el Ciclo 20 de
+`rediseno/sistema-visual`, nunca reflejado en el historial de `main` hasta
+hoy) trae, entre otras cosas, el fix de `ENTREGACREAR-RATELIMIT-BYPASS`
+(`ACCIONES_REVELADO` ya incluye `'enviar'`) — ver el ítem 24 de "Pendientes"
+más abajo, ya corregido.
+
+## Ciclo 15 — Cobertura de test para tiene_permiso_modulo() (2026-09-26)
+
+Alcance: auditoría del mismo patrón de doble-implementación que
+CREDENCIALES-VER-DUPLICADO (Ciclo 14), aplicado a `tiene_permiso_modulo()`
+— a diferencia de aquel caso, esta función sí gatea RLS real en ~10 tablas
+y 2 copias TS (`functions/credenciales.ts`, `functions/equipos-fotos.ts`).
+
+| ID | Hallazgo | Severidad | Estado | Referencia |
+|----|----------|-----------|--------|------------|
+| TIENE-PERMISO-MODULO-COBERTURA | Las 3 implementaciones (SQL `tiene_permiso_modulo()`, y sus 2 copias TS) se verificaron **equivalentes hoy**, línea por línea y en 4 escenarios de permisos — no es un bug de código. Pero la copia de `functions/credenciales.ts` nunca se ejercita en CI: `tienePermisoCredenciales()` se evalúa antes que `tienePermisoModulo()` en `revelar`/`revelarClaveLicencia`/`entregaCrear`, y la única cuenta de prueba existente (`INSFORGE_TEST_ASISTENTE_SIN_MODULO`) tiene ambos permisos revocados a la vez, así que esas 3 pruebas siempre se rechazan en el primer gate | Baja (deuda de cobertura, no vulnerabilidad) | **Resuelto** | Cuenta nueva `INSFORGE_TEST_ASISTENTE_SIN_MODULO_CON_CREDENCIALES` (módulos "Licencias"/"Correos" revocados, `credenciales.ver` intacto) + 3 tests nuevos en `autorizacion-roles.smoke.test.js` que aíslan el gate de módulo de verdad |
+
+**Nota**: la copia de `tienePermisoModulo()` en `functions/equipos-fotos.ts`
+ya estaba bien cubierta (`subirFoto`/`eliminarFoto` no tienen ningún gate
+previo) — este hallazgo es específico de `credenciales.ts`.
+
+**Pendiente de activación**: la cuenta de prueba y sus 2 secrets
+(`INSFORGE_TEST_ASISTENTE_SIN_MODULO_CON_CREDENCIALES_EMAIL`/`_PASSWORD`)
+todavía no existen — los 3 tests nuevos se saltan hasta que se provisionen
+(mismo patrón que las 4 cuentas opcionales de P0-04, Ciclo 10/14).
+
 ## Pendientes
 
 Consolidado de todo lo que sigue abierto a esta fecha (2026-08-20), no solo
@@ -990,9 +1039,12 @@ con fila propia en algún ciclo, esa fila también.
     entrega quedan auditados. Ver CUENTAS-SIN-AUDITORIA-CRUD (Ciclo 13).
 24. ~~`entregaCrear` no suma al pool de rate-limit de revelado (solo cuenta
     `ver`/`copiar`, no `enviar`) — se puede encadenar para revelar
-    credenciales sin activar el bloqueo de 40/5min. Ver
-    ENTREGACREAR-RATELIMIT-BYPASS (Ciclo 13).~~ — **Resuelto y desplegado**
-    (código 2026-09-24, redeploy de `credenciales` 2026-09-25, Ciclo 20, V2-01).
+    credenciales sin activar el bloqueo de 40/5min.~~ **Resuelto
+    (2026-09-26)**: cerrado junto con la sincronización de las 4 edge
+    functions a `main` (`ACCIONES_REVELADO` ya incluye `'enviar'`, código
+    real desplegado desde el Ciclo 20 de `rediseno/sistema-visual`, nunca
+    reflejado en el historial de `main` hasta hoy). Ver
+    ENTREGACREAR-RATELIMIT-BYPASS (Ciclo 13).
 25. `dar_baja_empleado()` y `revocar_cuenta_personal()` implementan la
     misma lógica de cierre+soft-delete de forma independiente, sin que
     ninguna reutilice a la otra — riesgo de divergencia silenciosa a

@@ -23,6 +23,24 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-09-26** (**P0-04 resuelto: cuentas de CI provisionadas, 2 bugs de
+  test corregidos**) — las 5 cuentas de staff dedicadas a CI ya existen,
+  están correctamente configuradas y sus secrets cargados en GitHub Actions;
+  `test-integration` corrió por primera vez contra el backend real. Salieron
+  a la luz 2 bugs de test ya documentados desde agosto sin haberse visto
+  correr nunca en CI (`ENTREGACREAR-TEST-BUG`, `ACCESOS-SENSIBLES-UPDATE-
+  DELETE-TEST`, ver `docs/HISTORIAL-AUDITORIAS.md` Ciclo 14) — corregidos en
+  `frontend/tests/integration/autorizacion-roles.smoke.test.js`. Actualizado
+  en el mismo cambio: `README.md` ("CI: secrets del smoke de integración") y
+  `AGENTS.md`.
+- **2026-09-26** (**Elimina `tiene_permiso_credenciales_ver()` huérfana**) —
+  auditoría de arquitectura (hallazgo CREDENCIALES-VER-DUPLICADO,
+  `docs/HISTORIAL-AUDITORIAS.md` Ciclo 14) confirmó que la función SQL de la
+  migración 060 nunca tuvo consumidor real de RLS; `tienePermisoCredenciales()`
+  en `functions/credenciales.ts` queda como única fuente de verdad. Migración
+  `088_eliminar_permiso_credenciales_ver_huerfano.sql`. Actualizado en el
+  mismo cambio: `AGENTS.md`, `docs/PANORAMA_SISTEMA.md` (§3), `README.md`
+  (Modelo de seguridad).
 - **2026-09-25** (**Auditoría V2 de todos los módulos**) — pedido del dueño:
   verificar que todo esté en V2 y quitar la vista de tarjetas de escritorio
   en Empleados y Equipos (se retiran `SelectorVista` y `useVistaModulo` de

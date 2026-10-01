@@ -38,15 +38,14 @@ y — **obligatorio antes de aplicar una migración** — `docs/GOTCHAS-CLI.md`.
    por `api/passwords.js` → edge function `credenciales` (cifra con claves de
    servidor, audita en `accesos_log`). Nunca cifrado en el cliente.
 3. **Softdelete (`deleted_at`) en todo.** DELETE físico solo JEFE, vía RLS.
-4. **`credenciales.ver` vive en dos lugares (tres con el atajo de JEFE) y nada
-   los sincroniza en runtime:** `tiene_permiso_credenciales_ver()` (SQL) y
-   `tienePermisoCredenciales()` (`functions/credenciales.ts`, consulta directa
-   porque corre con cliente admin y `auth.uid()` sería NULL). `credenciales.ts`
-   corta por `rol === 'JEFE'` antes; la función SQL no. Si cambia quién ve
-   contraseñas, se cambian las dos. El test que las compara
-   (`tests/integration/permisos-credenciales-sincronizados.smoke.test.js`) hoy
-   **se salta** (faltan cuentas de prueba, P0-04). El toggle del frontend es
-   cosmético: la barrera es el servidor.
+4. **`credenciales.ver` tiene una sola fuente de verdad desde la migración 088:**
+   `tienePermisoCredenciales()` (`functions/credenciales.ts`, consulta directa a
+   `staff_permisos` porque corre con cliente admin y `auth.uid()` sería NULL;
+   corta por `rol === 'JEFE'` antes). El gemelo SQL
+   `tiene_permiso_credenciales_ver()` se eliminó por huérfano (ninguna policy lo
+   usaba). Si una policy necesita algún día el mismo chequeo, se recrea con un
+   consumidor real en el mismo cambio. El toggle del frontend es cosmético: la
+   barrera es el servidor.
 5. **`tienePermisoModulo()` idem:** la regla vive en RLS **y** repetida a mano
    en `credenciales.ts` y `equipos-fotos.ts` (el cliente admin bypasea RLS), y
    desde la migración 086 también en las RPC `SECURITY DEFINER`.
