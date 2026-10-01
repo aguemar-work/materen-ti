@@ -130,7 +130,7 @@ function elegirRegistrarCorreo() {
 
 // Además del form entran el modo de acceso, el correo buscado/escrito y los
 // datos del correo nuevo en línea — todo es captura del usuario.
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => ({
     form: form.value,
     modoAcceso: modoAcceso.value,
@@ -266,7 +266,7 @@ async function guardar() {
     resultado = true;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al guardar licencia';
+    error.value = mensajeError(e, { porDefecto: 'Error al guardar licencia' });
   } finally {
     guardando.value = false;
   }
@@ -407,7 +407,7 @@ async function guardar() {
             :disabled="guardando"
             aria-label="Moneda"
             data-ui
-            class="shrink-0 cursor-pointer self-stretch rounded-l-md border-0 border-r border-gray-200 bg-gray-50 pl-3 pr-2 text-sm text-gray-700 focus:outline-none"
+            class="shrink-0 cursor-pointer self-stretch rounded-l-md border-0 bg-gray-50 pl-3 pr-2 text-sm text-gray-700 focus:outline-none"
           >
             <option value="PEN">S/</option>
             <option value="USD">US$</option>

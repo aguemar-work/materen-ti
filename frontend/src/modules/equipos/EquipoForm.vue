@@ -159,7 +159,7 @@ function lineaVacia() {
 
 // El buscador del catálogo (busquedaAcc) es transitorio y no cuenta como
 // cambio; la línea manual a medio escribir (nuevaLinea) sí.
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => ({
     form: form.value,
     nuevaLinea: nuevaLinea.value,
@@ -317,18 +317,17 @@ async function guardar() {
     resultado = true;
     modal.value?.cerrar();
   } catch (e) {
-    if (e?.message?.includes('uq_equipos_serie')) {
-      error.value = 'Ya existe un equipo con ese número de serie';
+    // `store.crear/actualizar` ya entregan el error traducido y con la
+    // restricción violada (api/erroresDb.js): el campo a enfocar sale de ahí.
+    const restriccion = e?.restriccion;
+    if (restriccion === 'uq_equipos_serie') {
       campoInvalido.value = 'serie';
-    } else if (e?.message?.includes('uq_equipos_codigo_almacen')) {
-      error.value = 'Ya existe un equipo con ese código de almacén';
+    } else if (restriccion === 'uq_equipos_codigo_almacen') {
       campoInvalido.value = 'codigo_almacen';
-    } else if (e?.message?.includes('equipos_codigo')) {
-      error.value = 'Ya existe un equipo con ese código';
+    } else if (restriccion === 'equipos_codigo_key') {
       campoInvalido.value = 'codigo';
-    } else {
-      error.value = e?.message || 'Error al guardar equipo';
     }
+    error.value = mensajeError(e, { porDefecto: 'Error al guardar equipo' });
     if (campoInvalido.value) enfocarCampoInvalido();
   } finally {
     guardando.value = false;
@@ -475,7 +474,7 @@ async function guardar() {
             :disabled="guardando"
             aria-label="Moneda"
             data-ui
-            class="shrink-0 cursor-pointer self-stretch rounded-l-md border-0 border-r border-gray-200 bg-gray-50 pl-3 pr-2 text-sm text-gray-700 focus:outline-none"
+            class="shrink-0 cursor-pointer self-stretch rounded-l-md border-0 bg-gray-50 pl-3 pr-2 text-sm text-gray-700 focus:outline-none"
           >
             <option value="PEN">S/</option>
             <option value="USD">US$</option>

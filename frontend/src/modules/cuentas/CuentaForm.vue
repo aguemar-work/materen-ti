@@ -54,7 +54,7 @@ const form = ref({
   notas: '',
 });
 
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => ({
   form: form.value,
   modoCompartido: modoCompartido.value,
@@ -153,7 +153,7 @@ async function guardar() {
     resultado = true;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al guardar cuenta';
+    error.value = mensajeError(e, { porDefecto: 'Error al guardar cuenta' });
   } finally {
     guardando.value = false;
   }

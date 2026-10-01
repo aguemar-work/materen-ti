@@ -1,3 +1,5 @@
+import { MODULO_POR_ID } from '../../core/modulos.js';
+
 // Estructura de la navegación del shell: áreas → grupos → ítems.
 //
 // Vive en su propio módulo (V2, 2026-09-25) porque la leen DOS piezas: el
@@ -6,23 +8,37 @@
 // grupo y módulo está la ruta actual. Antes vivía como constante dentro de
 // AppNav.vue; duplicarla en las migas la hubiera hecho divergir.
 //
-// Agrupada por intención de uso, no por tabla de origen (Plan Maestro v2,
-// 2026-09-04). Encuestas queda en Mesa de Ayuda como ítem propio; Gestión de
-// Personal queda con un solo ítem a propósito (lugar reservado para
-// Onboarding/Offboarding). Cada grupo lleva un `id` fijo, no el `label`.
+// Agrupada por intención de uso, no por tabla de origen (nombres decididos
+// el 2026-10-01, Ciclo 21 §3.2): Inicio · Mesa de ayuda (Tickets,
+// Conocimiento, Problemas) · Personas (Empleados, Encuestas) · Custodia
+// (Equipos, Licencias, Correos) · Administración (Registro de actividad,
+// Accesos sensibles, Configuración). Cada grupo lleva un `id` fijo, no el
+// `label`. "Solicitudes" entra a Mesa de ayuda cuando exista su ruta.
+//
+// Los 8 ítems con `modulo` salen de `core/modulos.js` (registro único con el
+// CHECK de la migración 056): acá solo se decide el orden y los extras.
 //
 // El nivel de Áreas está reservado para cuando el sistema crezca a dominios
 // no-TI (RRHH, Finanzas — docs/PANORAMA-SISTEMA.md §6): con una sola área
 // el nav no muestra encabezado de área.
 //
-// `soloJefe`: Actividad y Accesos sensibles son EXCLUSIVOS de JEFE, igual
-// que el guard real de sus rutas (`meta: { roles: ['jefe'] }`). El sidebar
-// nunca es la barrera: es el reflejo de ella. `modulo`: el ítem se oculta si
-// el integrante no tiene ese módulo (migración 056) — mismo reflejo.
+// `soloJefe`: Registro de actividad y Accesos sensibles son EXCLUSIVOS de
+// JEFE, igual que el guard real de sus rutas (`meta: { roles: ['jefe'] }`).
+// El sidebar nunca es la barrera: es el reflejo de ella
+// (tests/modulos-unicos.test.js compara cada ítem con el `meta` de su ruta).
+// `modulo`: el ítem se oculta si el integrante no tiene ese módulo
+// (migración 056) — mismo reflejo.
 //
 // Configuración NO es exclusiva de JEFE (6 de sus 7 pestañas están abiertas
 // a cualquier staff activo; solo Staff declara su propio guard). No
 // "arreglarlo" ocultándola.
+
+// Ítem de módulo configurable, con extras propios del menú (badge…).
+function itemModulo(id, extras = {}) {
+  const m = MODULO_POR_ID[id];
+  return { path: m.path, label: m.label, icon: m.icon, modulo: m.id, ...extras };
+}
+
 export const AREAS_NAV = [
   {
     id: 'ti',
@@ -37,35 +53,28 @@ export const AREAS_NAV = [
       },
       {
         id: 'mesa-de-ayuda',
-        label: 'Mesa de Ayuda',
+        label: 'Mesa de ayuda',
         items: [
-          { path: '/tickets', label: 'Tickets', icon: 'ti ti-headset', badgeSinAsignar: true, modulo: 'tickets' },
-          { path: '/base-conocimiento', label: 'Base de Conocimiento', icon: 'ti ti-books', modulo: 'base_conocimiento' },
-          { path: '/problemas', label: 'Problemas', icon: 'ti ti-alert-hexagon', modulo: 'problemas' },
-          { path: '/encuestas', label: 'Encuestas', icon: 'ti ti-clipboard-list', modulo: 'encuestas' },
+          itemModulo('tickets', { badgeSinAsignar: true }),
+          itemModulo('base_conocimiento'),
+          itemModulo('problemas'),
         ],
       },
       {
-        id: 'gestion-personal',
-        label: 'Gestión de Personal',
-        items: [
-          { path: '/empleados', label: 'Empleados', icon: 'ti ti-users', modulo: 'empleados' },
-        ],
+        id: 'personas',
+        label: 'Personas',
+        items: [itemModulo('empleados'), itemModulo('encuestas')],
       },
       {
-        id: 'inventario-global',
-        label: 'Inventario Global',
-        items: [
-          { path: '/correos', label: 'Correos', icon: 'ti ti-mail-share', modulo: 'correos' },
-          { path: '/licencias', label: 'Licencias', icon: 'ti ti-license', modulo: 'licencias' },
-          { path: '/equipos', label: 'Equipos', icon: 'ti ti-devices', modulo: 'equipos' },
-        ],
+        id: 'custodia',
+        label: 'Custodia',
+        items: [itemModulo('equipos'), itemModulo('licencias'), itemModulo('correos')],
       },
       {
         id: 'administracion',
         label: 'Administración',
         items: [
-          { path: '/actividad', label: 'Actividad', icon: 'ti ti-activity', soloJefe: true },
+          { path: '/actividad', label: 'Registro de actividad', icon: 'ti ti-activity', soloJefe: true },
           { path: '/accesos-sensibles', label: 'Accesos sensibles', icon: 'ti ti-shield-lock', soloJefe: true },
           { path: '/configuracion', label: 'Configuración', icon: 'ti ti-settings' },
         ],

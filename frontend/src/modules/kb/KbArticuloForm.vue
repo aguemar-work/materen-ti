@@ -28,7 +28,7 @@ const campoCategoria = useCampoAccesible();
 const campoSintoma = useCampoAccesible();
 const campoSolucion = useCampoAccesible();
 
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => form.value);
 tomarSnapshot();
 
@@ -50,7 +50,7 @@ async function guardar() {
     resultado = articulo;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al crear el artículo';
+    error.value = mensajeError(e, { porDefecto: 'Error al crear el artículo' });
   } finally {
     guardando.value = false;
   }

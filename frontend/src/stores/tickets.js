@@ -18,6 +18,7 @@ export const useTicketsStore = crearStorePaginado('tickets', {
   listarPagina: (params) => insforgeApi.listTicketsPage(params),
   filtrosIniciales: FILTROS_INICIALES,
   mensajeError: 'Error al cargar tickets',
+  entidad: 'ticket',
 
   state: () => ({
     // Último ticket abierto desde el listado — la fila correspondiente se

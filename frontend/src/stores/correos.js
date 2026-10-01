@@ -8,6 +8,7 @@ export const useCorreosStore = crearStorePaginado('correos', {
   // cada montaje de la vista junto con el resto (gotcha de resetearFiltros()).
   filtrosIniciales: () => ({ q: '', tipo: '', soloRotacion: false }),
   mensajeError: 'Error al cargar correos compartidos',
+  entidad: 'correo',
 
   actions: {
     async listaParaExportar() {

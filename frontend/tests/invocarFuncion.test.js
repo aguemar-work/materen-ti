@@ -73,6 +73,18 @@ describe('crearInvocador', () => {
     expect(errorRedActivo.value).toBe(false);
   });
 
+  // Capa única de errores (api/erroresDb.js): un fallo sin `code` de dominio
+  // no deja pasar texto técnico en inglés del gateway.
+  it('un error sin code con texto técnico en inglés o 401 se traduce al español', async () => {
+    const invocar = crearInvocador('tickets', () => 'x');
+
+    invokeSdk.mockResolvedValueOnce({ data: null, error: { message: 'Request failed: Bad Gateway', statusCode: 502 } });
+    await expect(invocar({ action: 'catalogo' })).rejects.toThrow('Error en el servidor de tickets');
+
+    invokeSdk.mockResolvedValueOnce({ data: null, error: { message: 'Unauthorized', statusCode: 401 } });
+    await expect(invocar({ action: 'catalogo' })).rejects.toThrow('La sesión expiró. Vuelva a iniciar sesión.');
+  });
+
   // Ciclo 20 bis: las 4 edge functions espejan `code` en `error` (body) en
   // toda respuesta no-2xx para que el SDK lo conserve — @insforge/sdk arma
   // un InsForgeError con esas claves extra (incluida `code`) en vez de

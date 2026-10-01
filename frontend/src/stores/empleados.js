@@ -13,6 +13,7 @@ export const useEmpleadosStore = crearStorePaginado('empleados', {
   // Las dimensiones (V2) son listas: varios valores por dimensión.
   filtrosIniciales: () => ({ q: '', estado: 'Activo', empresaIds: [], ubicacionIds: [], areaIds: [] }),
   mensajeError: 'Error al cargar empleados',
+  entidad: 'empleado',
 
   // Conteos de cuentas/equipos/licencias vinculados de la página; si fallan,
   // la columna "Vínculos" queda vacía pero el listado no se cae.

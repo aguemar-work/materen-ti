@@ -62,7 +62,7 @@ const form = ref({
   tipo_cuenta: 'compartida',
 });
 
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => form.value);
 
 function resetForm() {
@@ -132,7 +132,7 @@ async function guardar() {
     resultado = true;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al guardar';
+    error.value = mensajeError(e, { porDefecto: 'Error al guardar' });
   } finally {
     guardando.value = false;
   }

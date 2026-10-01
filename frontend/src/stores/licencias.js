@@ -9,6 +9,7 @@ export const useLicenciasStore = crearStorePaginado('licencias', {
   // que `q` (gotcha de resetearFiltros(), ver frontend/AGENTS.md).
   filtrosIniciales: () => ({ q: '', situacion: '' }),
   mensajeError: 'Error al cargar licencias',
+  entidad: 'licencia',
 
   actions: {
     async listaParaExportar() {

@@ -8,6 +8,7 @@ export const useKbStore = crearStorePaginado('kb', {
   listarPagina: (params) => insforgeApi.listKbPage(params),
   filtrosIniciales: () => ({ q: '', categoriaId: '', estado: '' }),
   mensajeError: 'Error al cargar la base de conocimiento',
+  entidad: 'artículo',
 
   actions: {
     async crear(datos) {

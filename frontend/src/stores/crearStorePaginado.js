@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia';
 import { TAM_PAGINA_DEFECTO } from '../constants/paginacion.js';
+import { anotarErrorDb } from '../api/erroresDb.js';
+
+// Mutaciones que el factory envuelve para que su error llegue traducido
+// (api/erroresDb.js): la vista sigue leyendo `e?.message`, pero ya no recibe
+// texto crudo de PostgREST. Las acciones propias del store con otro nombre
+// (darDeBaja, reactivar…) no se tocan.
+const MUTACIONES = ['crear', 'actualizar', 'softDelete'];
 
 // Los 7 listados con paginación server-side (tickets, empleados, correos,
 // equipos, licencias, kb, problemas) comparten exactamente el mismo ciclo:
@@ -11,6 +18,11 @@ import { TAM_PAGINA_DEFECTO } from '../constants/paginacion.js';
 // casi byte a byte iguales × 7 (ARQ-04, ver docs/HISTORIAL-AUDITORIAS.md).
 // Este factory es el análogo de `crearCatalogoStore()` (stores/catalogos.js)
 // para ese otro patrón repetido.
+//
+// Errores: `cargar` y las mutaciones `crear`/`actualizar`/`softDelete` pasan
+// por `anotarErrorDb` (api/erroresDb.js): el error que sale conserva `code` y
+// trae el mensaje ya traducido. `store.error` solo lo escribe `cargar` (una
+// mutación fallida no debe tumbar el listado con un banner).
 //
 // Cada store aporta lo suyo con `state`/`getters`/`actions`, que se mezclan
 // con lo común (las actions propias se aplican al final: un store puede
@@ -35,6 +47,8 @@ export function crearStorePaginado(id, {
   // y cada store debe recibir un objeto nuevo, no uno compartido.
   filtrosIniciales,
   mensajeError = 'Error al cargar',
+  // Nombre del recurso en singular para los mensajes ("un registro de equipo").
+  entidad,
   tamPagina = TAM_PAGINA_DEFECTO,
   // Datos extra de la página ya cargada (ej. conteos por fila). Si falla,
   // la página se muestra igual sin ellos — nunca tumba el listado.
@@ -43,6 +57,23 @@ export function crearStorePaginado(id, {
   getters = {},
   actions = {},
 }) {
+  // Mismo `this` y mismos argumentos; solo cambia el error que sale.
+  function conErrorTraducido(accion) {
+    return async function (...args) {
+      try {
+        return await accion.apply(this, args);
+      } catch (e) {
+        throw anotarErrorDb(e, { entidad });
+      }
+    };
+  }
+  const accionesEnvueltas = Object.fromEntries(
+    Object.entries(actions).map(([nombre, fn]) => [
+      nombre,
+      MUTACIONES.includes(nombre) && typeof fn === 'function' ? conErrorTraducido(fn) : fn,
+    ]),
+  );
+
   return defineStore(id, {
     state: () => ({
       lista: [],
@@ -93,8 +124,9 @@ export function crearStorePaginado(id, {
           }
         } catch (e) {
           if (peticionId !== this._peticionId) return;
-          this.error = e?.message || mensajeError;
-          throw e;
+          const traducido = anotarErrorDb(e, { entidad, porDefecto: mensajeError });
+          this.error = traducido.message || mensajeError;
+          throw traducido;
         } finally {
           if (peticionId === this._peticionId) this.cargando = false;
         }
@@ -146,7 +178,7 @@ export function crearStorePaginado(id, {
         await this.cargar();
       },
 
-      ...actions,
+      ...accionesEnvueltas,
     },
   });
 }

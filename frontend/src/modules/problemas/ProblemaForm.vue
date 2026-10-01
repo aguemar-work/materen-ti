@@ -36,7 +36,7 @@ const form = ref({
   responsable_id: '',
 });
 
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => form.value);
 tomarSnapshot();
 
@@ -69,7 +69,7 @@ async function guardar() {
     resultado = problema;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al crear el problema';
+    error.value = mensajeError(e, { porDefecto: 'Error al crear el problema' });
   } finally {
     guardando.value = false;
   }

@@ -8,6 +8,7 @@
 // ahí pasa a existir en el módulo Equipos real.
 import { ref, computed, onMounted, watch } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
+import { traducirErrorDb } from '../../api/erroresDb.js';
 import { showToast } from '../../core/toast.js';
 import { toTitleCase, trimText } from '../../core/formatters.js';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
@@ -396,7 +397,7 @@ function mensajeErrorMigracion(e) {
   if (msg.includes('uq_equipos_serie')) return 'Ya existe un equipo con ese número de serie';
   if (msg.includes('uq_equipos_codigo_almacen')) return 'Ya existe un equipo con ese código de almacén';
   if (msg.includes('equipos_codigo') || msg.includes('codigo')) return 'Ya existe un equipo con ese código';
-  return msg || 'Error al migrar';
+  return traducirErrorDb(e, { porDefecto: 'Error al migrar' }).mensaje;
 }
 
 async function migrarFila(fila) {

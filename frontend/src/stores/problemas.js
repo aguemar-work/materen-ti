@@ -6,6 +6,7 @@ export const useProblemasStore = crearStorePaginado('problemas', {
   listarPagina: (params) => insforgeApi.listProblemasPage(params),
   filtrosIniciales: () => ({ q: '', estado: '', severidad: '' }),
   mensajeError: 'Error al cargar los problemas',
+  entidad: 'problema',
 
   actions: {
     async crear(datos) {

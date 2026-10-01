@@ -32,7 +32,7 @@ const form = ref({
   preguntas: props.encuesta ? JSON.parse(JSON.stringify(props.encuesta.preguntas || [])) : [],
 });
 
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, descartarCambios } =
   useFormularioModal(() => form.value);
 tomarSnapshot();
 
@@ -97,7 +97,7 @@ async function guardar() {
     tomarSnapshot();
     modal.value?.cerrar();
   } catch (e) {
-    errorForm.value = e?.message || 'Error al guardar la encuesta';
+    errorForm.value = mensajeError(e, { porDefecto: 'Error al guardar la encuesta' });
   } finally {
     guardando.value = false;
   }

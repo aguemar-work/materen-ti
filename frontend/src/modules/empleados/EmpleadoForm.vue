@@ -76,7 +76,7 @@ const form = ref({
   notas: '',
 });
 
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => form.value);
 
 const campoNombres = useCampoAccesible();
@@ -194,12 +194,12 @@ async function guardar() {
     resultado = guardado;
     modal.value?.cerrar();
   } catch (e) {
-    if (e?.message?.includes('empleados_dni_key')) {
+    if (e?.restriccion === 'empleados_dni_key' || e?.message?.includes('empleados_dni_key')) {
       error.value = 'Ya existe un empleado con ese DNI';
       campoInvalido.value = 'dni';
       await buscarDuplicado(form.value.dni);
     } else {
-      error.value = e?.message || 'Error al guardar empleado';
+      error.value = mensajeError(e, { porDefecto: 'Error al guardar empleado' });
     }
     if (campoInvalido.value) enfocarCampoInvalido();
   } finally {

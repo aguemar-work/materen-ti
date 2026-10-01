@@ -31,6 +31,7 @@ function mensajeErrorFotos(code) {
     key_invalida: 'Referencia de foto inválida',
     error_subiendo: 'No se pudo subir la foto',
     error_eliminando: 'No se pudo eliminar la foto',
+    demasiados_intentos: 'Demasiadas operaciones con fotos en poco tiempo. Espere unos minutos e intente de nuevo.',
   };
   return mensajes[code] || `Error de fotos de equipo (${code || 'desconocido'})`;
 }
@@ -266,7 +267,7 @@ export const equiposApi = {
     if (activa?.ubicacion_id) {
       const { error: e0 } = await db
         .from('asignaciones_equipo')
-        .update({ fecha_fin: fechaLocalISO(), motivo_cierre: 'entrega a empleado' })
+        .update({ fecha_fin: fechaLocalISO(), motivo_cierre: 'entrega_a_empleado' })
         .eq('id', activa.id);
       if (e0) throw e0;
     }

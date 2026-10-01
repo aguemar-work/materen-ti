@@ -13,11 +13,20 @@
 //           confirmarCierre, cancelar, descartarCambios } =
 //     useFormularioModal(() => form.value);
 //
+// Errores al guardar: `mensajeError(e, { entidad, porDefecto })` es la única
+// forma de convertir el error de un `guardar()` en el texto del formulario
+// (api/erroresDb.js: 42501, P0001, 23505…). Nunca `e?.message` a secas: un
+// error de PostgREST llegaría en inglés. `ejecutarGuardado(accion, opciones)`
+// envuelve el patrón completo (guardando/error/try/catch) para los
+// formularios que no necesitan más lógica; devuelve el resultado de la
+// acción, o `undefined` si falló (y deja el texto en `error`).
+//
 // `fuente` es la misma que recibiría useDetectorDeCambios: una función que
 // devuelve lo que hay que vigilar (el form, o un objeto con el form más
 // otros controles del formulario).
 import { ref } from 'vue';
 import { useDetectorDeCambios } from './useDetectorDeCambios.js';
+import { traducirErrorDb } from '../api/erroresDb.js';
 
 export function useFormularioModal(fuente) {
   const modal = ref(null);
@@ -45,5 +54,25 @@ export function useFormularioModal(fuente) {
     modal.value?.cerrar();
   }
 
-  return { modal, estaSucio, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios };
+  const guardando = ref(false);
+  const error = ref('');
+
+  function mensajeError(e, opciones = {}) {
+    return traducirErrorDb(e, opciones).mensaje;
+  }
+
+  async function ejecutarGuardado(accion, opciones = {}) {
+    error.value = '';
+    guardando.value = true;
+    try {
+      return await accion();
+    } catch (e) {
+      error.value = mensajeError(e, opciones);
+      return undefined;
+    } finally {
+      guardando.value = false;
+    }
+  }
+
+  return { guardando, error, mensajeError, ejecutarGuardado, modal, estaSucio, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios };
 }

@@ -55,7 +55,7 @@ const infoErrorForm = infoNotificacion('error');
 // para editar) y ningún otro camino en la UI se lo devolvería.
 const permisosSeleccionados = ref([]);
 
-const { modal, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
   useFormularioModal(() => ({
   form: form.value,
   permisos: [...permisosSeleccionados.value].sort(),
@@ -142,7 +142,7 @@ async function guardar() {
     resultado = true;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al guardar el acceso';
+    error.value = mensajeError(e, { porDefecto: 'Error al guardar el acceso' });
   } finally {
     guardando.value = false;
   }

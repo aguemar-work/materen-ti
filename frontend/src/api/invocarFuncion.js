@@ -16,6 +16,7 @@
 // no al inicializar el módulo (ARQ-15, ver docs/HISTORIAL-AUDITORIAS.md).
 import { getClient } from './client.js';
 import { esErrorRed, esperarReintento, MENSAJE_ERROR_RED } from '../core/error-red.js';
+import { traducirErrorDb } from './erroresDb.js';
 
 // nombre: edge function a invocar ('credenciales' | 'tickets' | 'encuestas').
 // mensajeError: (code) => texto para el usuario ante { ok:false, code }.
@@ -50,7 +51,10 @@ export function crearInvocador(nombre, mensajeError) {
         e.code = error.code;
         throw e;
       }
-      throw new Error(error.message || `Error en el servidor de ${nombre}`);
+      // Sin `code` de dominio: sesión vencida, 403, texto técnico en inglés del
+      // gateway… se traducen con la capa única (erroresDb.js). Un mensaje ya
+      // legible en español pasa tal cual.
+      throw new Error(traducirErrorDb(error, { porDefecto: `Error en el servidor de ${nombre}` }).mensaje);
     }
     if (!data?.ok) {
       const e = new Error(mensajeError(data?.code));
