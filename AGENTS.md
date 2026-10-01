@@ -59,6 +59,11 @@ y — **obligatorio antes de aplicar una migración** — `docs/GOTCHAS-CLI.md`.
 10. **Ante conflicto entre documentación y código, gana el código.**
 11. **Español en todo** y nunca tutear en la UI: impersonal en títulos,
     imperativo de usted en formularios, errores y mensajes al empleado.
+12. **Commit antes que producción.** Ninguna migración se aplica ni ninguna edge
+    function se redespliega sin que su commit exista ya en el repositorio
+    (mergeado en la rama que corresponde). Aplicar primero y comitear después
+    dejó `main` semanas desincronizado de producción (Ciclo 14, 2026-09-26; ver
+    `docs/HISTORIAL-AUDITORIAS.md`). Es disciplina, no configuración.
 
 ## Documentación sensible
 
