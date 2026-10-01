@@ -614,6 +614,25 @@ Sentry (ya en `main.js:27`) con `release` = commit sha (`VERCEL_GIT_COMMIT_SHA`)
 
 ## 9. Hoja de ruta
 
+### Estado de ejecución (2026-10-01, rama local `mejora/h1-estabilizar`)
+
+| Ítem | Estado |
+|---|---|
+| H1-1 drift | **Parcial.** Hecho en local: `origin/main` mezclado en la rama del rediseño, secuencia 001–089 única, smoke test huérfano eliminado, invariantes 4 y 12. **Falta, con autorización**: publicar ramas (contradice la regla guardada de no subir ramas de trabajo), registrar 086–088 y aplicar 089 en producción, redesplegar `credenciales` desde un commit, borrar stashes y ramas |
+| H1-2 backups | **Parcial.** `healthcheck.yml` y `docs/CONTINUIDAD.md` escritos; activar los backups es una acción del panel de InsForge (dueño) |
+| H1-3 `deploy.mjs` | Hecho y probado con dependencias falsas y `--dry-run`; el flujo real de aplicar y registrar no se ha ejecutado |
+| H1-4 migración 099 + wrappers TS | Hecho en código; **migración sin aplicar** |
+| H1-5 migración 100 | Hecho en código; **sin aplicar** (hay un DNI de 9 dígitos que deja el CHECK en `NOT VALID`; ver decisiones) |
+| H1-6 `erroresDb.js` | Hecho; faltan enganchar la sesión expirada, el acceso denegado y el banner de red |
+| H1-7 módulos únicos | Hecho |
+| H1-8 rate-limits y `decryptAny` | Hecho en código; **sin desplegar** |
+| H1-9 snapshot y `drift-esquema` | Hecho; el job no se pudo ejecutar en GitHub y su transporte en CI sigue sin resolver (C13-e) |
+| H1-10 V2 F2 (096–098) | **No tocado**: pertenece al worktree `sistema-ti-v2` y a su propio checkpoint |
+| H1-11 diseño base y `AppDialog` | Hecho; Tickets migrado a `AppDialog`, quedan 23 consumidores de `Modal`; las piezas nuevas aún no están en las pantallas |
+
+**Orden de puesta en producción** (todo requiere autorización explícita del dueño): reconciliar 086–088 → aplicar 104 → 099 → 100 (con el frontend ya desplegado) → desplegar las 4 functions → desplegar el frontend. Antes de 100 hay que decidir el DNI de 9 dígitos, y antes de 099 la sección separable de `categorias_ticket`/`ubicaciones`.
+
+
 Esfuerzo: S ≤ 2 días · M ≤ 1 semana · L ≤ 3 semanas (1 desarrollador + agentes). "V2" = fase del plan de Tickets; "Diseño" = frente `v2/diseno-*`. Prioridad: H1 completo antes de cualquier H2; dentro de H2, 101/102 antes que F3 (toca las mismas pantallas); 108 es el ítem de mayor valor de negocio y va al final porque necesita 101, 102 y 103 debajo.
 
 ### Horizonte 1 — 0 a 30 días (estabilizar)
