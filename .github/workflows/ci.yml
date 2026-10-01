@@ -56,6 +56,10 @@ on:
     # que los secrets de smoke test siguen sin cargarse — ver job
     # `secrets-smoke-pendientes` más abajo.
     - cron: '0 8 * * 1'
+    # Todos los días 09:17 UTC (04:17 Lima): job `drift-esquema` (snapshot de
+    # esquema vs producción). Ojo: un cron dispara TODOS los jobs con
+    # `github.event_name == 'schedule'`, incluido `secrets-smoke-pendientes`.
+    - cron: '17 9 * * *'
 
 permissions:
   contents: read
@@ -218,7 +222,7 @@ jobs:
   # bloquea push/PR normales (solo corre en el cron), así que no rompe el
   # flujo de trabajo día a día.
   secrets-smoke-pendientes:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.event.schedule == '0 8 * * 1'
     runs-on: ubuntu-latest
     env:
       INSFORGE_TEST_STAFF_EMAIL: ${{ secrets.INSFORGE_TEST_STAFF_EMAIL }}
@@ -313,3 +317,79 @@ jobs:
             npx @insforge/cli db query -- "insert into public.function_deploys (funcion, sha256, commit_sha, desplegado_por) values ('$fn', '$sha', '${{ github.sha }}', '${{ github.actor }}');" \
               || echo "::warning::$fn se desplegó pero no se pudo registrar en function_deploys (¿todavía no existe la tabla? ver migración 070)."
           done
+
+  # Drift de esquema (Plan Ciclo 21 §7.6, H1-9): compara el catálogo VIVO de
+  # producción (policies, triggers, funciones, constraints, índices, columnas,
+  # tablas/RLS, vistas) con docs/esquema/snapshot.json. Un drift = alguien tocó
+  # producción sin migración, o una migración commiteada no se aplicó (lo que
+  # pasó con 086-089). Dispara en push a main, en el cron diario y a demanda.
+  # No corre en PR: el snapshot de un PR se actualiza desde la branch de pruebas
+  # (npm run snapshot) y se comitea junto con la migración.
+  #
+  # LÍMITE CONOCIDO — transporte SQL en CI (hallazgo C13-e, HISTORIAL-AUDITORIAS):
+  # el CLI de InsForge ignora INSFORGE_ACCESS_TOKEN (requireAuth() solo mira
+  # ~/.insforge/credentials.json y cae a OAuth interactivo) y además necesita la
+  # carpeta enlazada (.insforge/), que el runner no tiene. Por eso este job elige:
+  #   1. INSFORGE_PROJECT_URL + INSFORGE_API_KEY -> transporte HTTP directo al
+  #      endpoint de SQL (el mismo que usa `db query` por dentro). NO está
+  #      verificado contra el servicio real (requiere la clave admin del proyecto,
+  #      que hay que cargar como secret) y esa clave NO es de solo lectura.
+  #   2. Solo INSFORGE_ACCESS_TOKEN + INSFORGE_PROJECT_ID -> intenta el CLI con un
+  #      tope de 5 min (si no se queda esperando 25 min el OAuth). Se espera que
+  #      falle por C13-e: en ese caso emite ::warning:: y termina en verde SIN
+  #      haber verificado nada (queda dicho en el resumen del run).
+  #   3. Sin ninguno de los secrets: ::warning:: y exit 0 (igual que tests-db).
+  # Mientras no corra de verdad (rutas 1), el gate real es local: `npm run verify:db`
+  # antes de cada push (PR template). No se puede marcar como required desde acá:
+  # hacerlo (Settings > Branches > required checks) es del dueño, y solo cuando el
+  # job haya corrido en verde con transporte real.
+  drift-esquema:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      INSFORGE_ACCESS_TOKEN: ${{ secrets.INSFORGE_ACCESS_TOKEN }}
+      INSFORGE_PROJECT_ID: ${{ secrets.INSFORGE_PROJECT_ID }}
+      INSFORGE_PROJECT_URL: ${{ secrets.INSFORGE_PROJECT_URL }}
+      INSFORGE_API_KEY: ${{ secrets.INSFORGE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Verificar drift contra docs/esquema/snapshot.json
+        run: |
+          if [ -n "$INSFORGE_PROJECT_URL" ] && [ -n "$INSFORGE_API_KEY" ]; then
+            modo=http
+            export INSFORGE_SQL_TRANSPORT=http
+          elif [ -n "$INSFORGE_ACCESS_TOKEN" ] && [ -n "$INSFORGE_PROJECT_ID" ]; then
+            modo=cli
+          else
+            echo "::warning::Sin secrets de InsForge (INSFORGE_PROJECT_URL + INSFORGE_API_KEY, o INSFORGE_ACCESS_TOKEN + INSFORGE_PROJECT_ID): se omite la verificación de drift. Este check NO verificó nada."
+            echo "## ⚠ DRIFT DE ESQUEMA: NO EJECUTADO" >> "$GITHUB_STEP_SUMMARY"
+            echo "Faltan los secrets de InsForge. Este check pasó en verde sin verificar nada real; el gate sigue siendo local: npm run verify:db." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          set +e
+          timeout 300 node scripts/snapshot-esquema.mjs --verificar > drift.txt 2>&1
+          rc=$?
+          set -e
+          cat drift.txt
+          if [ "$rc" -eq 0 ]; then
+            echo "## ✓ Drift de esquema: sin diferencias (transporte $modo)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$rc" -eq 1 ]; then
+            echo "::error::Drift de esquema: el catálogo de producción no coincide con docs/esquema/snapshot.json (ver el log)."
+            { echo "## ✗ DRIFT DE ESQUEMA (transporte $modo)"; echo '```'; head -c 60000 drift.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          # rc 2 (sin conexión / sin sesión), 124 (timeout) u otro: no se pudo consultar.
+          if [ "$modo" = "cli" ]; then
+            echo "::warning::El CLI no pudo consultar la base en CI (hallazgo C13-e: ignora INSFORGE_ACCESS_TOKEN). El drift NO se verificó; cargar INSFORGE_PROJECT_URL + INSFORGE_API_KEY para usar el transporte HTTP."
+            echo "## ⚠ DRIFT DE ESQUEMA: NO VERIFICADO (el CLI no funciona en CI, C13-e)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "::error::El transporte HTTP no pudo consultar la base (código $rc): revisar INSFORGE_PROJECT_URL/INSFORGE_API_KEY y el endpoint (transporte no verificado, ver docs/CONTINUIDAD.md)."
+          { echo "## ✗ DRIFT DE ESQUEMA: transporte HTTP falló (código $rc)"; echo '```'; head -c 20000 drift.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

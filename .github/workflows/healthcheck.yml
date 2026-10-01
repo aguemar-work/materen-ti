@@ -1,0 +1,177 @@
+# Healthcheck horario (Plan Ciclo 21 §7.7, H1-2). Con 8 usuarios es más honesto
+# que un dashboard: si algo se rompe, aparece un issue con la etiqueta
+# `incidente` (se abre o se actualiza el mismo, no uno por hora).
+#
+# Comprueba:
+#   1. `ping` de las 4 edge functions (acción pública, sin sesión y sin tocar la
+#      base; existe en el código desde el Ciclo 21: si la function desplegada es
+#      anterior, el ping falla hasta el próximo deploy).
+#   2. (solo con INSFORGE_PROJECT_URL + INSFORGE_API_KEY) `select 1`, que el último
+#      respaldo de system.database_backups tenga menos de 48 h y que la última
+#      migración registrada en schema_migrations sea la última de migrations/.
+#
+# SECRETS / VARIABLES (ninguna URL real vive en el repo). Pendiente de que el
+# dueño las cargue en Settings > Secrets and variables > Actions:
+#   - INSFORGE_FUNCTIONS_URL (opcional): base de las functions, p. ej. <base>/functions.
+#     Si falta se usa <INSFORGE_PROJECT_URL>/functions (lo mismo que `functionsUrl`
+#     de frontend/src/api/client.js). Sirve como secret o como variable.
+#   - INSFORGE_PROJECT_URL (secret o variable) o, en su defecto, VITE_INSFORGE_URL.
+#   - VITE_INSFORGE_ANON_KEY (ya existe para test-integration): si está, se envía
+#     como Authorization: Bearer (el proxy de functions lo pide al SDK del frontend).
+#   - INSFORGE_API_KEY (secret): clave admin del proyecto, solo para el bloque de BD.
+#     Es poderosa (NO solo lectura); si no se carga, el bloque de BD se omite.
+#
+# LÍMITES: este workflow no se pudo ejecutar de verdad desde el entorno donde se
+# escribió (sin secrets ni Actions). La forma de la respuesta del ping y el
+# endpoint SQL por HTTP están sin verificar contra el servicio real.
+name: Healthcheck
+
+on:
+  schedule:
+    # Cada hora, al minuto 23 (evita el pico de :00 de GitHub Actions).
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+# Mínimo necesario: leer el repo y abrir/actualizar issues.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: healthcheck
+  cancel-in-progress: false
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PROJECT_URL: ${{ secrets.INSFORGE_PROJECT_URL || vars.INSFORGE_PROJECT_URL || secrets.VITE_INSFORGE_URL }}
+      FUNCTIONS_URL: ${{ secrets.INSFORGE_FUNCTIONS_URL || vars.INSFORGE_FUNCTIONS_URL }}
+      ANON_KEY: ${{ secrets.VITE_INSFORGE_ANON_KEY }}
+      INSFORGE_API_KEY: ${{ secrets.INSFORGE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Ping de las 4 edge functions
+        run: |
+          : > fallos.txt
+          base="${FUNCTIONS_URL:-}"
+          if [ -z "$base" ] && [ -n "$PROJECT_URL" ]; then base="${PROJECT_URL%/}/functions"; fi
+          if [ -z "$base" ]; then
+            echo "::error::Faltan INSFORGE_FUNCTIONS_URL o INSFORGE_PROJECT_URL (secret o variable del repo): no se puede hacer ping a las edge functions."
+            echo "Sin URL de functions configurada (INSFORGE_FUNCTIONS_URL / INSFORGE_PROJECT_URL): no se hizo ping a las edge functions." >> fallos.txt
+            exit 0
+          fi
+          base="${base%/}"
+          for fn in credenciales tickets encuestas equipos-fotos; do
+            cabecera=()
+            [ -n "$ANON_KEY" ] && cabecera=(-H "Authorization: Bearer $ANON_KEY")
+            codigo="$(curl -sS -m 20 -o "ping-$fn.json" -w '%{http_code}' -X POST "$base/$fn" -H 'Content-Type: application/json' "${cabecera[@]}" -d '{"action":"ping"}' || true)"
+            ok="$(jq -r 'select(.ok == true) | .funcion' "ping-$fn.json" 2>/dev/null || true)"
+            if [ "$codigo" = "200" ] && [ "$ok" = "$fn" ]; then
+              echo "✓ ping $fn"
+            else
+              echo "::error::ping $fn falló (HTTP $codigo)"
+              echo "ping de la function \`$fn\` falló (HTTP $codigo)." >> fallos.txt
+            fi
+          done
+
+      - name: Base de datos (respaldo y migraciones)
+        run: |
+          if [ -z "$INSFORGE_API_KEY" ] || [ -z "$PROJECT_URL" ]; then
+            echo "::warning::Sin INSFORGE_API_KEY o URL del proyecto: se omiten los chequeos de BD (select 1, respaldo < 48 h, última migración)."
+            echo "## ⚠ Healthcheck de BD omitido (faltan secrets)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          ultima_repo="$(ls migrations | grep -E '^[0-9]{3,}_.*\.sql$' | sort | tail -1 | grep -oE '^[0-9]{3,}')"
+          export INSFORGE_SQL_TRANSPORT=http INSFORGE_PROJECT_URL="$PROJECT_URL" ULTIMA_REPO="$ultima_repo"
+          set +e
+          node --input-type=module -e "
+            import { crearTransporte } from './scripts/lib/insforge-sql.mjs';
+            const t = crearTransporte();
+            const fallos = [];
+            try {
+              await t.consultarSql('select 1 as ok');
+              console.log('✓ select 1');
+            } catch (e) {
+              fallos.push('La base no responde a select 1: ' + e.message);
+            }
+            if (!fallos.length) {
+              try {
+                const [b] = await t.consultarSql('select max(completed_at) as ultimo, floor(extract(epoch from (now() - max(completed_at))) / 3600) as horas from system.database_backups where completed_at is not null and error_message is null');
+                if (!b || b.ultimo === null) fallos.push('No hay ningún respaldo completado en system.database_backups (activar backups de plataforma).');
+                else if (Number(b.horas) >= 48) fallos.push('El último respaldo tiene ' + b.horas + ' h (límite 48 h).');
+                else console.log('✓ último respaldo hace ' + b.horas + ' h');
+              } catch (e) {
+                fallos.push('No se pudo consultar system.database_backups: ' + e.message);
+              }
+              try {
+                const [m] = await t.consultarSql('select max(version) as ultima from public.schema_migrations');
+                const repo = process.env.ULTIMA_REPO;
+                if (!m || m.ultima !== repo) fallos.push('La última migración registrada en schema_migrations (' + (m && m.ultima) + ') no coincide con la última de migrations/ (' + repo + '): drift o registro pendiente.');
+                else console.log('✓ última migración ' + repo);
+              } catch (e) {
+                fallos.push('No se pudo consultar schema_migrations: ' + e.message);
+              }
+            }
+            const fs = await import('node:fs');
+            for (const f of fallos) { console.log('::error::' + f); fs.appendFileSync('fallos.txt', f + '\n'); }
+          "
+          exit 0
+
+      - name: Abrir o actualizar el issue de incidente
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const fallos = fs.existsSync('fallos.txt') ? fs.readFileSync('fallos.txt', 'utf8').trim() : '';
+            if (!fallos) {
+              core.info('Sin fallos: no se toca ningún issue.');
+              return;
+            }
+            const lista = fallos.split('\n').map((l) => `- ${l}`).join('\n');
+            const titulo = 'Incidente: healthcheck fallido';
+            const cuerpo = [
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              lista,
+              '',
+              'Procedimiento: docs/CONTINUIDAD.md (qué hacer si cae el sistema).',
+            ].join('\n');
+            try {
+              await github.rest.issues.createLabel({
+                ...context.repo, name: 'incidente', color: 'b60205', description: 'Healthcheck automático fallido',
+              });
+            } catch (e) {
+              if (e.status !== 422) core.warning(`No se pudo crear la etiqueta: ${e.message}`);
+            }
+            const abiertos = await github.rest.issues.listForRepo({
+              ...context.repo, state: 'open', labels: 'incidente', per_page: 20,
+            });
+            const existente = abiertos.data.find((i) => !i.pull_request && i.title === titulo);
+            if (existente) {
+              // Mismo conjunto de fallos que ya figura en el issue: no se repite el
+              // comentario cada hora (el run en rojo ya da la señal horaria).
+              if ((existente.body || '').includes(lista)) {
+                core.info(`Issue #${existente.number} ya describe estos fallos: sin cambios.`);
+              } else {
+                await github.rest.issues.update({ ...context.repo, issue_number: existente.number, body: cuerpo });
+                await github.rest.issues.createComment({ ...context.repo, issue_number: existente.number, body: cuerpo });
+                core.info(`Issue #${existente.number} actualizado.`);
+              }
+            } else {
+              const nuevo = await github.rest.issues.create({ ...context.repo, title: titulo, body: cuerpo, labels: ['incidente'] });
+              core.info(`Issue #${nuevo.data.number} abierto.`);
+            }
+
+      - name: Marcar el run en rojo si hubo fallos
+        run: |
+          if [ -s fallos.txt ]; then
+            cat fallos.txt
+            exit 1
+          fi
+          echo "Todo en orden."

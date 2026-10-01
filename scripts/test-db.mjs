@@ -20,7 +20,9 @@ const bloques = readFileSync(new URL('../tests/db/triggers.test.sql', import.met
   .filter((bloque) => bloque.includes('do $$'))
   .map((bloque) =>
     bloque
-      .split('\n')
+      // CRLF-safe (TEST-DB-CRLF): con \r\n, `.` no cruza el \r y `--.*$` dejaba el
+      // comentario pegado al SQL de la línea siguiente al unir con espacios.
+      .split(/\r?\n/)
       .map((linea) => linea.replace(/--.*$/, ''))
       .join(' ')
       .replace(/\s+/g, ' ')
