@@ -1,12 +1,9 @@
 {
   "animacion-no-permitida": [
-    "modules/actividad/ActividadView.vue",
-    "modules/dashboard/DashboardView.vue"
+    "modules/actividad/ActividadView.vue"
   ],
   "azul-decorativo": [
     "components/shared/AppNotifications.vue",
-    "modules/empleados/BajaEmpleadoModal.vue",
-    "modules/empleados/EmpleadoDetalleView.vue",
     "modules/licencias/LicenciaForm.vue",
     "modules/soporte/SoporteView.vue",
     "modules/tickets/TicketsView.vue"
@@ -20,14 +17,9 @@
     "modules/configuracion/TiposEquipoPanel.vue",
     "modules/configuracion/UbicacionesPanel.vue",
     "modules/correos/CorreosView.vue",
-    "modules/cuentas/CuentasPanel.vue",
-    "modules/dashboard/DashboardView.vue",
-    "modules/empleados/BajaEmpleadoModal.vue",
-    "modules/empleados/EmpleadoDetalleView.vue",
     "modules/empresas/EmpresasView.vue",
     "modules/encuestas/EncuestaDetalleView.vue",
     "modules/encuestas/EncuestasView.vue",
-    "modules/equipos/EquiposView.vue",
     "modules/kb/KbArticuloDetalleView.vue",
     "modules/kb/KbView.vue",
     "modules/licencias/LicenciasView.vue",
@@ -39,11 +31,8 @@
   ],
   "codigo-sin-tabular": [
     "components/shared/AppSearch.vue",
-    "modules/cuentas/CuentasPanel.vue",
     "modules/empleados/EmpleadoForm.vue",
     "modules/equipos/AsignarEquipoModal.vue",
-    "modules/equipos/EquiposView.vue",
-    "modules/equipos/ImportarEquiposView.vue",
     "modules/licencias/LicenciasView.vue"
   ],
   "error-crudo": [
@@ -55,22 +44,12 @@
     "modules/configuracion/TiposEquipoPanel.vue",
     "modules/correos/CorreoForm.vue",
     "modules/correos/CorreosView.vue",
-    "modules/cuentas/CuentaForm.vue",
-    "modules/cuentas/CuentasPanel.vue",
-    "modules/dashboard/DashboardView.vue",
-    "modules/empleados/BajaEmpleadoModal.vue",
-    "modules/empleados/EmpleadoDetalleView.vue",
-    "modules/empleados/EmpleadoForm.vue",
-    "modules/empleados/EmpleadosView.vue",
     "modules/empresas/EmpresasView.vue",
     "modules/encuestas/EncuestaDetalleView.vue",
     "modules/encuestas/EncuestaPublicaView.vue",
     "modules/encuestas/EncuestasView.vue",
     "modules/entregas/EntregaView.vue",
-    "modules/equipos/AsignarEquipoModal.vue",
     "modules/equipos/EquipoForm.vue",
-    "modules/equipos/EquiposView.vue",
-    "modules/equipos/ImportarEquiposView.vue",
     "modules/kb/KbArticuloDetalleView.vue",
     "modules/kb/KbArticuloForm.vue",
     "modules/licencias/AsignarLicenciaModal.vue",
@@ -92,39 +71,29 @@
     "modules/tickets/TicketsView.vue"
   ],
   "historial-a-mano": [
-    "modules/empleados/EmpleadoDetalleView.vue",
     "modules/encuestas/EncuestaDetalleView.vue",
     "modules/problemas/ProblemaDetalleView.vue",
     "modules/tickets/ReporteTicketsModal.vue"
-  ],
-  "kpi-fuera-de-reporte": [
-    "modules/dashboard/DashboardView.vue"
   ],
   "mono-fuera-de-credenciales": [
     "modules/accesosSensibles/AccesosSensiblesView.vue",
     "modules/auth/LoginView.vue",
     "modules/cuentas/CuentaForm.vue",
-    "modules/equipos/ImportarEquiposView.vue",
     "modules/plataformas/PlataformasView.vue",
     "modules/tickets/TicketBuscarView.vue",
     "modules/tickets/TicketNuevoView.vue",
     "modules/tickets/TicketSeguimientoView.vue"
   ],
   "punto-de-color": [
-    "modules/dashboard/DashboardView.vue",
     "modules/problemas/SeveridadProblema.vue",
     "modules/tickets/TicketTimelineUnificado.vue"
   ],
   "vue-mayor-400-lineas": [
     "modules/accesosSensibles/AccesosSensiblesView.vue",
     "modules/correos/CorreosView.vue",
-    "modules/cuentas/CuentasPanel.vue",
-    "modules/empleados/EmpleadoDetalleView.vue",
     "modules/empleados/EmpleadoForm.vue",
     "modules/empleados/EmpleadosView.vue",
     "modules/equipos/EquipoForm.vue",
-    "modules/equipos/EquiposView.vue",
-    "modules/equipos/ImportarEquiposView.vue",
     "modules/kb/KbArticuloDetalleView.vue",
     "modules/licencias/LicenciaForm.vue",
     "modules/licencias/LicenciasView.vue",

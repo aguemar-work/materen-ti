@@ -29,7 +29,7 @@ import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue
 import { useRouter, useRoute, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketsStore } from '../../stores/tickets.js';
-import { insforgeApi } from '../../api/insforge.js';
+import { useDashboardStore } from '../../stores/dashboard.js';
 import { getClient } from '../../api/client.js';
 // El nombre del header es marca + descriptor, y marca.js ya tiene las dos
 // piezas por separado (NOMBRE_MARCA sobrevive al crecimiento fuera de TI,
@@ -111,25 +111,31 @@ const ticketsStore = useTicketsStore();
 
 // Cola viva de tickets sin asignar para el badge del SideNav: baja cuando
 // alguien asigna el ticket, no cuando alguien "lo ve" (no es un contador de
-// no-leídos). Se reusa pendientesTickets() del Dashboard, no se agrega
-// query nueva.
-const ticketsSinAsignar = ref(0);
-async function cargarSinAsignar() {
-  try {
-    const { sinAsignar } = await insforgeApi.pendientesTickets();
-    ticketsSinAsignar.value = sinAsignar.length;
-  } catch {
-    // Sin dato fiable: se deja el último valor conocido.
-  }
-}
-onMounted(cargarSinAsignar);
+// no-leídos). Sale del MISMO store que el Inicio (`resumen.tickets`, RPC
+// `dashboard_resumen`): una sola llamada para los dos, que ya no se repite
+// aquí. Sin dato fiable (la RPC falló) se conserva el último valor conocido.
+const dashboard = useDashboardStore();
+const ticketsSinAsignar = computed(() => dashboard.sinAsignar);
+onMounted(() => dashboard.cargar({ silencioso: true }));
 
 // El sonido debe sonar por cada ticket nuevo, pero el refresco de la lista
 // (pesado) se coalesce — ver crearRefrescoDebounced/REFRESCO_LISTA_DEBOUNCE_MS.
 const refrescarTickets = crearRefrescoDebounced(
-  () => Promise.all([ticketsStore.cargar(), cargarSinAsignar()]),
+  () => Promise.all([ticketsStore.cargar(), dashboard.cargar({ silencioso: true })]),
   { delayMs: REFRESCO_LISTA_DEBOUNCE_MS }
 );
+
+// Al volver a la pestaña el resumen puede haber envejecido (nadie lo refresca
+// en segundo plano): una recarga silenciosa, con el mismo debounce.
+const refrescarResumen = crearRefrescoDebounced(
+  () => dashboard.cargar({ silencioso: true }),
+  { delayMs: REFRESCO_LISTA_DEBOUNCE_MS }
+);
+function alVolverALaPestana() {
+  if (document.visibilityState === 'visible') refrescarResumen();
+}
+onMounted(() => document.addEventListener('visibilitychange', alVolverALaPestana));
+onUnmounted(() => document.removeEventListener('visibilitychange', alVolverALaPestana));
 
 useRealtimeRefresco('tickets:list', (payload) => {
   if (payload?.op === 'INSERT') reproducirNotificacion();

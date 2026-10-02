@@ -12,6 +12,10 @@
 // (licencia vencida / por vencer, garantías, alta reciente, ticket de +3 días)
 // sigan siendo los mismos cualquier día que se abra la maqueta.
 
+import { RPC_EQUIPOS } from './rpc-equipos.js';
+import { RPC_EMPLEADOS } from './rpc-empleados.js';
+import { ESCENARIO, resumenInicio } from './inicio.js';
+
 const DIA_MS = 86400000;
 
 function fecha(dias = 0) {
@@ -24,12 +28,11 @@ function hace(dias = 0, horas = 0) {
   return new Date(Date.now() - dias * DIA_MS - horas * 3600000).toISOString();
 }
 
-export const USUARIO_MAQUETA = {
-  id: 'u-jefe',
-  email: 'jefe@materen.pe',
-  emailVerified: true,
-  profile: { name: 'Alejandro Guevara' },
-};
+// Con `?maqueta=asistente` la sesión es la de Diego Huamán (ASISTENTE, sin los
+// módulos licencias ni problemas): ver maqueta/inicio.js.
+export const USUARIO_MAQUETA = ESCENARIO === 'asistente'
+  ? { id: 'u-asis-1', email: 'dhuaman@materen.pe', emailVerified: true, profile: { name: 'Diego Huamán Rojas' } }
+  : { id: 'u-jefe', email: 'jefe@materen.pe', emailVerified: true, profile: { name: 'Alejandro Guevara' } };
 
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
@@ -181,13 +184,14 @@ const cuentas = [
   cuenta('c06', 'gmail', 'cflores@materen.pe', 'personal'),
   cuenta('c07', 'erp', 'cflores', 'personal', { password: null, last_password_change: null }),
   cuenta('c08', 'gmail', 'almacen.chorrillos@materen.pe', 'reutilizable', { notas: 'Correo del puesto de almacén' }),
-  cuenta('c09', 'gmail', 'obra.miraflores@materen.pe', 'compartida', { notas: 'Buzón de obra, lo revisan residente y maestro' }),
+  cuenta('c09', 'gmail', 'obra.miraflores@materen.pe', 'compartida', { requiere_rotacion: true, notas: 'Buzón de obra, lo revisan residente y maestro' }),
   cuenta('c10', 'office365', 'licencias.m365@materen.pe', 'compartida', { url: 'https://admin.microsoft.com', notas: 'Titular de la suscripción Microsoft 365' }),
   cuenta('c11', 'autodesk', 'autodesk.materen@materen.pe', 'compartida', { url: 'https://manage.autodesk.com' }),
   cuenta('c12', 'gmail', 'rrhh.postulaciones@materen.pe', 'reutilizable', { requiere_rotacion: true, notas: 'Liberada tras la salida del anterior titular' }),
   cuenta('c13', 'vpn', 'soporte.ti', 'compartida', { password: null, last_password_change: null }),
   cuenta('c14', 'gmail', 'gnunez@materen.pe', 'personal'),
   cuenta('c15', 'bitrix24', 'jvargas', 'personal', { created_at: hace(4) }),
+  cuenta('c16', 'erp', 'mrojas', 'personal'),
 ];
 
 function asigCuenta(id, cuenta_id, empleado_id, diasInicio, diasFin = null, notas = null) {
@@ -222,6 +226,9 @@ const asignaciones_cuenta = [
   asigCuenta('ac19', 'c13', 'e03', 100),
   asigCuenta('ac20', 'c14', 'e11', 255),
   asigCuenta('ac21', 'c15', 'e12', 4),
+  // e08 (Suspendido): una personal y una compartida con la rotación pendiente.
+  asigCuenta('ac22', 'c16', 'e08', 300),
+  asigCuenta('ac23', 'c09', 'e08', 250),
 ];
 
 // ── Licencias ───────────────────────────────────────────────────────────────
@@ -277,6 +284,7 @@ const asignaciones_licencia = [
   asigLicencia('al08', 'l05', 'e05', 240),
   asigLicencia('al09', 'l06', 'e03', 90),
   asigLicencia('al10', 'l07', 'e10', 400, 60),
+  asigLicencia('al11', 'l03', 'e08', 280),
 ];
 
 // ── Equipos ─────────────────────────────────────────────────────────────────
@@ -300,9 +308,15 @@ function equipo(id, codigo, tipo_id, marca, modelo, serie, estado, extra = {}) {
   };
 }
 
+const FOTO_EJEMPLO = (texto) => `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="#e5e7eb"/>`
+  + `<text x="160" y="126" font-family="sans-serif" font-size="18" text-anchor="middle" fill="#6b7280">${texto}</text></svg>`,
+)}`;
+
 const equipos = [
   equipo('q01', 'LAP-001', 'laptop', 'Lenovo', 'ThinkPad E14 Gen 5', 'PF4K2L9X', 'operativo', {
     costo: 4250, moneda: 'PEN', garantia_hasta: fecha(20), tiene_asignacion_activa: true,
+    fotos: [{ url: FOTO_EJEMPLO('Foto 1 (maqueta)'), key: 'maq-q01-1' }, { url: FOTO_EJEMPLO('Foto 2 (maqueta)'), key: 'maq-q01-2' }],
     specs: { Procesador: 'Intel Core i5-1335U', RAM: '16 GB', Disco: 'SSD 512 GB', 'Sistema operativo': 'Windows 11 Pro' },
   }),
   equipo('q02', 'LAP-002', 'laptop', 'Hp', 'ProBook 450 G9', '5CD2381KQW', 'operativo', {
@@ -335,7 +349,7 @@ const equipos = [
     notas: 'Placa dañada por humedad, dado de baja', specs: { Almacenamiento: '128 GB', RAM: '4 GB', IMEI: '350000000000002' },
   }),
   equipo('q10', 'TAB-001', 'tablet', 'Samsung', 'Galaxy Tab A8', 'R9PT1234XYZ', 'operativo', {
-    garantia_hasta: fecha(10), specs: { Almacenamiento: '64 GB', RAM: '4 GB' },
+    garantia_hasta: fecha(10), tiene_asignacion_activa: true, specs: { Almacenamiento: '64 GB', RAM: '4 GB' },
   }),
   equipo('q11', 'LAP-005', 'laptop', 'Asus', 'VivoBook 15 X1502', 'N3NRCX012345', 'perdido', {
     notas: 'Reportado como robado en obra (denuncia policial adjunta)',
@@ -371,7 +385,7 @@ function asigEquipo(id, equipo_id, destino, diasInicio, diasFin = null, extra = 
 }
 
 const asignaciones_equipo = [
-  asigEquipo('ae01', 'q01', 'e01', 380),
+  asigEquipo('ae01', 'q01', 'e01', 380, null, { condicion_entrega: 'Buen estado, con cargador' }),
   asigEquipo('ae02', 'q02', 'e02', 420, null, { condicion_entrega: 'Nuevo, con cargador' }),
   asigEquipo('ae03', 'q05', 'e05', 700),
   asigEquipo('ae04', 'q06', 'ub-sede', 300),
@@ -381,19 +395,52 @@ const asignaciones_equipo = [
   asigEquipo('ae08', 'q04', 'e11', 400, 15, { condicion_devolucion: 'Pantalla con falla', motivo_cierre: 'devolucion' }),
   asigEquipo('ae09', 'q10', 'e10', 500, 60, { condicion_devolucion: 'Buen estado', motivo_cierre: 'devolucion' }),
   asigEquipo('ae10', 'q11', 'e04', 120, 30, { motivo_cierre: 'perdida' }),
+  // Historial de LAP-001: primero la tuvo Jorge, luego Rosa (acta de entrega firmada de cada una).
+  asigEquipo('ae11', 'q01', 'e02', 460, 380, { condicion_devolucion: 'Con rayones en la tapa', motivo_cierre: 'cambio_equipo' }),
+  // e08 (Suspendido) conserva una tablet; el expediente la muestra en custodia.
+  asigEquipo('ae12', 'q10', 'e08', 40),
 ];
 
+// Kardex con actores (user_id + user_email) y uno heredado sin actor
+// ("no registrado (legado)"): los eventos de antes de la auditoría de actor.
+const JEFE = { user_id: 'u-jefe', user_email: 'jefe@materen.pe' };
+const DIEGO = { user_id: 'u-asis-1', user_email: 'dhuaman@materen.pe' };
+const LUCIA = { user_id: 'u-asis-2', user_email: 'lparedes@materen.pe' };
+const LEGADO = { user_id: null, user_email: null };
+
 const eventos_equipo = [
-  { id: 'ev01', equipo_id: 'q03', evento: 'registrado', detalle: 'Código LAP-003', user_email: 'jefe@materen.pe', created_at: hace(20) },
-  { id: 'ev02', equipo_id: 'q04', evento: 'devuelto', detalle: 'Devuelto por Gabriela Núñez Pinto — Pantalla con falla', user_email: 'dhuaman@materen.pe', created_at: hace(15) },
-  { id: 'ev03', equipo_id: 'q04', evento: 'estado_cambiado', detalle: 'De "operativo" a "en_reparacion"', user_email: 'dhuaman@materen.pe', created_at: hace(15) },
-  { id: 'ev04', equipo_id: 'q11', evento: 'devuelto', detalle: 'Devuelto por Luis Alberto Chávez Paredes — pérdida', user_email: 'jefe@materen.pe', created_at: hace(30) },
-  { id: 'ev05', equipo_id: 'q11', evento: 'estado_cambiado', detalle: 'De "operativo" a "perdido"', user_email: 'jefe@materen.pe', created_at: hace(30) },
-  { id: 'ev06', equipo_id: 'q10', evento: 'devuelto', detalle: 'Devuelto por Raúl Condori Mamani — Buen estado', user_email: 'jefe@materen.pe', created_at: hace(60) },
-  { id: 'ev07', equipo_id: 'q09', evento: 'estado_cambiado', detalle: 'De "operativo" a "de_baja"', user_email: 'jefe@materen.pe', created_at: hace(75) },
-  { id: 'ev08', equipo_id: 'q07', evento: 'asignado', detalle: 'Entregado a Obra Miraflores', user_email: 'lparedes@materen.pe', created_at: hace(150) },
-  { id: 'ev09', equipo_id: 'q01', evento: 'asignado', detalle: 'Entregado a Rosa Quispe Mamani — Buen estado', user_email: 'jefe@materen.pe', created_at: hace(380) },
-  { id: 'ev10', equipo_id: 'q02', evento: 'asignado', detalle: 'Entregado a Jorge Huamán Ccori — Nuevo, con cargador', user_email: 'jefe@materen.pe', created_at: hace(420) },
+  { id: 'ev01', equipo_id: 'q03', evento: 'registrado', detalle: 'Código LAP-003', ...JEFE, created_at: hace(20) },
+  { id: 'ev01b', equipo_id: 'q03', evento: 'verificado', detalle: 'Verificado físicamente en Almacén Chorrillos', ...DIEGO, created_at: hace(6) },
+  { id: 'ev02', equipo_id: 'q04', evento: 'devuelto', detalle: 'Devuelto por Gabriela Núñez Pinto — Pantalla con falla', ...DIEGO, created_at: hace(15) },
+  { id: 'ev03', equipo_id: 'q04', evento: 'estado_cambiado', detalle: 'De "operativo" a "en_reparacion"', ...DIEGO, created_at: hace(15) },
+  { id: 'ev03b', equipo_id: 'q04', evento: 'registrado', detalle: 'Código LAP-004', ...LEGADO, created_at: hace(500) },
+  { id: 'ev03c', equipo_id: 'q04', evento: 'asignado', detalle: 'Entregado a Gabriela Núñez Pinto — Buen estado', ...LEGADO, created_at: hace(400) },
+  { id: 'ev04', equipo_id: 'q11', evento: 'devuelto', detalle: 'Devuelto por Luis Alberto Chávez Paredes — pérdida', ...JEFE, created_at: hace(30) },
+  { id: 'ev05', equipo_id: 'q11', evento: 'estado_cambiado', detalle: 'De "operativo" a "perdido"', ...JEFE, created_at: hace(30) },
+  { id: 'ev06', equipo_id: 'q10', evento: 'devuelto', detalle: 'Devuelto por Raúl Condori Mamani — Buen estado', ...JEFE, created_at: hace(60) },
+  { id: 'ev07', equipo_id: 'q09', evento: 'estado_cambiado', detalle: 'De "operativo" a "de_baja"', ...JEFE, created_at: hace(75) },
+  { id: 'ev08', equipo_id: 'q07', evento: 'asignado', detalle: 'Ubicado en Obra Miraflores', ...LUCIA, created_at: hace(150) },
+  // LAP-001: registro, primer portador, cambio de equipo, segundo portador con acta, verificación.
+  { id: 'ev09a', equipo_id: 'q01', evento: 'registrado', detalle: 'Código LAP-001', ...LEGADO, created_at: hace(461) },
+  { id: 'ev09b', equipo_id: 'q01', evento: 'asignado', detalle: 'Entregado a Jorge Huamán Ccori — Nuevo, con cargador', ...JEFE, created_at: hace(460) },
+  { id: 'ev09c', equipo_id: 'q01', evento: 'acta_adjuntada', detalle: 'Acta de entrega firmada adjuntada (firmada el 20/07/2025)', ...JEFE, created_at: hace(458) },
+  { id: 'ev09d', equipo_id: 'q01', evento: 'devuelto', detalle: 'Devuelto por Jorge Huamán Ccori — Con rayones en la tapa', ...DIEGO, created_at: hace(380) },
+  { id: 'ev09', equipo_id: 'q01', evento: 'asignado', detalle: 'Entregado a Rosa Quispe Mamani — Buen estado, con cargador', ...JEFE, created_at: hace(380) },
+  { id: 'ev09e', equipo_id: 'q01', evento: 'acta_adjuntada', detalle: 'Acta de entrega firmada adjuntada (firmada el 12/08/2025)', ...DIEGO, created_at: hace(378) },
+  { id: 'ev09f', equipo_id: 'q01', evento: 'verificado', detalle: 'Verificado físicamente en Sede Central San Isidro — conforme', ...DIEGO, created_at: hace(35) },
+  { id: 'ev10', equipo_id: 'q02', evento: 'asignado', detalle: 'Entregado a Jorge Huamán Ccori — Nuevo, con cargador', ...JEFE, created_at: hace(420) },
+  // Entregas que el expediente de cada persona necesita ver en su libro.
+  { id: 'evx01', equipo_id: 'q08', evento: 'asignado', detalle: 'Entregado a Pedro Ticona Apaza — Nuevo en caja', ...JEFE, created_at: hace(600) },
+  { id: 'evx02', equipo_id: 'q10', evento: 'asignado', detalle: 'Entregado a Miguel Ángel Rojas Cárdenas — Buen estado', ...DIEGO, created_at: hace(40) },
+  { id: 'evx03', equipo_id: 'q05', evento: 'asignado', detalle: 'Entregado a Carmen Rosa Flores Huanca — Buen estado', ...JEFE, created_at: hace(700) },
+  { id: 'evx04', equipo_id: 'q12', evento: 'asignado', detalle: 'Entregado a María Fernanda Salazar Ríos — Buen estado', ...LUCIA, created_at: hace(200) },
+];
+
+// Actas de entrega/devolución firmadas en físico y subidas (migración 110).
+const actas = [
+  { id: 'act01', asignacion_equipo_id: 'ae01', tipo: 'entrega', empleado_id: 'e01', equipo_id: 'q01', tamano_bytes: 482113, firmado_at: fecha(-378), subido_por: 'u-asis-1', created_at: hace(378), deleted_at: null },
+  { id: 'act02', asignacion_equipo_id: 'ae11', tipo: 'entrega', empleado_id: 'e02', equipo_id: 'q01', tamano_bytes: 351200, firmado_at: fecha(-458), subido_por: 'u-jefe', created_at: hace(458), deleted_at: null },
+  { id: 'act03', asignacion_equipo_id: 'ae02', tipo: 'entrega', empleado_id: 'e02', equipo_id: 'q02', tamano_bytes: 402880, firmado_at: fecha(-419), subido_por: 'u-jefe', created_at: hace(419), deleted_at: null },
 ];
 
 const equipos_importacion = [
@@ -502,6 +549,14 @@ const tickets = [
   ticket(105, 'Quiero instalar juegos en la laptop', 'rechazado', 'baja', {
     empleado_id: 'e04', categoria_id: 'software', subcategoria_id: 'sub-05', tipo: 'solicitud',
     descripcion: 'Para los tiempos muertos en obra.', created_at: hace(28), updated_at: hace(27),
+  }),
+  ticket(104, 'Acceso al ERP bloqueado tras cambio de clave', 'cerrado', 'media', {
+    empleado_id: 'e08', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-01', tipo: 'solicitud', cuenta_id: 'c16',
+    created_at: hace(60), updated_at: hace(59),
+  }),
+  ticket(103, 'Coordinar el recojo del celular corporativo', 'abierto', 'media', {
+    empleado_id: 'e06', categoria_id: 'equipos', subcategoria_id: 'sub-03', tipo: 'solicitud', equipo_id: 'q08',
+    descripcion: 'Quedó pendiente desde la baja; el equipo sigue con el ex colaborador.', created_at: hace(20), updated_at: hace(19),
   }),
 ];
 
@@ -694,6 +749,7 @@ const notificaciones = [
   { id: 'n03', tipo: 'empleado_alta', entidad_tipo: 'empleado', entidad_id: 'e07', titulo: 'Alta de empleado: Ana Lucía Torres Vílchez', url_destino: '/empleados/e07', creado_en: hace(3) },
   { id: 'n04', tipo: 'cuenta_creada', entidad_tipo: 'cuenta', entidad_id: 'c15', titulo: 'Cuenta creada: jvargas (Bitrix24)', url_destino: '/empleados/e12', creado_en: hace(4) },
   { id: 'n05', tipo: 'empleado_baja', entidad_tipo: 'empleado', entidad_id: 'e06', titulo: 'Baja de empleado: Pedro Ticona Apaza', url_destino: '/empleados/e06', creado_en: hace(30) },
+  { id: 'n06', tipo: 'empleado_suspendido', entidad_tipo: 'empleado', entidad_id: 'e08', titulo: 'Empleado suspendido · Miguel Ángel Rojas Cárdenas', url_destino: '/empleados/e08', creado_en: hace(6) },
 ];
 
 const notificaciones_lecturas = [
@@ -701,10 +757,78 @@ const notificaciones_lecturas = [
   { id: 'nl02', notificacion_id: 'n05', usuario_id: 'u-jefe' },
 ];
 
+// Columnas reales de `entregas` (migración 010): expires_at, viewed_at y
+// created_by. Una entrega sin viewed_at y con expires_at pasado está vencida.
 const entregas = [
-  { id: 'ent01', empleado_id: 'e12', created_at: hace(3), expira_en: hace(2) },
-  { id: 'ent02', empleado_id: 'e09', created_at: hace(10), expira_en: hace(9) },
+  { id: 'ent01', empleado_id: 'e12', created_at: hace(3), expires_at: hace(2), viewed_at: null, created_by: 'u-asis-1', expira_en: hace(2) },
+  { id: 'ent02', empleado_id: 'e09', created_at: hace(10), expires_at: hace(9), viewed_at: hace(9, 20), created_by: 'u-jefe', expira_en: hace(9) },
+  { id: 'ent03', empleado_id: 'e01', created_at: hace(399), expires_at: hace(398), viewed_at: hace(398, 22), created_by: 'u-jefe', expira_en: hace(398) },
+  { id: 'ent04', empleado_id: 'e01', created_at: hace(120), expires_at: hace(119), viewed_at: null, created_by: 'u-asis-1', expira_en: hace(119) },
 ];
+
+// ── Ciclo de vida del empleado (migración 102) ──────────────────────────────
+// Hoja de vida append-only: nunca lleva DNI ni valores de contacto. `rol_actor`
+// es tecnico | jefe | usuario | sistema | legado; los eventos heredados no
+// tienen actor ("no registrado (legado)").
+const ACTOR_JEFE = { user_id: 'u-jefe', user_email: 'jefe@materen.pe', rol_actor: 'jefe' };
+const ACTOR_DIEGO = { user_id: 'u-asis-1', user_email: 'dhuaman@materen.pe', rol_actor: 'tecnico' };
+const ACTOR_LUCIA = { user_id: 'u-asis-2', user_email: 'lparedes@materen.pe', rol_actor: 'tecnico' };
+const ACTOR_SISTEMA = { user_id: null, user_email: null, rol_actor: 'sistema' };
+const ACTOR_LEGADO = { user_id: null, user_email: null, rol_actor: 'legado' };
+
+let secEvento = 0;
+function eventoEmpleado(empleado_id, evento, dias, extra = {}) {
+  secEvento += 1;
+  return {
+    id: `eev${String(secEvento).padStart(3, '0')}`,
+    empleado_id, evento, campo: null, valor_anterior: null, valor_nuevo: null,
+    detalle: null, ...ACTOR_LEGADO, created_at: hace(dias), ...extra,
+  };
+}
+
+const empleado_eventos = [
+  // Todos tienen su 'creado' (backfill de la migración, rol legado)…
+  ...empleados.map((e) => eventoEmpleado(e.id, 'creado', Math.round((Date.now() - Date.parse(e.created_at)) / 86400000), {
+    campo: 'estado', valor_nuevo: 'Activo', detalle: 'Registro anterior a la auditoría',
+  })),
+  // e01: historia con los tres tipos de actor.
+  eventoEmpleado('e01', 'cargo_cambiado', 200, { campo: 'cargo', valor_anterior: 'Asistente', valor_nuevo: 'Asistente Administrativa', ...ACTOR_DIEGO }),
+  eventoEmpleado('e01', 'area_cambiada', 120, { campo: 'area_obra', valor_anterior: 'Logística', valor_nuevo: 'Administración', ...ACTOR_JEFE }),
+  eventoEmpleado('e01', 'contacto_cambiado', 30, { campo: 'whatsapp,correo_personal', detalle: 'actualizado', ...ACTOR_DIEGO }),
+  eventoEmpleado('e01', 'accesos_revisados', 12, { detalle: 'Revisión trimestral: 2 cuentas y 1 equipo, sin observaciones.', ...ACTOR_JEFE }),
+  // e06: baja con motivo (el celular quedó sin devolver).
+  eventoEmpleado('e06', 'ubicacion_cambiada', 400, { campo: 'ubicacion', valor_anterior: 'Sede Central San Isidro', valor_nuevo: 'Almacén Chorrillos', ...ACTOR_LUCIA }),
+  eventoEmpleado('e06', 'baja_ejecutada', 30, { campo: 'estado', valor_anterior: 'Activo', valor_nuevo: 'Inactivo', detalle: 'Término de contrato. Pendiente devolver el celular corporativo.', ...ACTOR_JEFE }),
+  // e08: suspensión.
+  eventoEmpleado('e08', 'accesos_revisados', 7, { detalle: 'Revisión previa a la suspensión: cuentas y equipo vigentes.', ...ACTOR_DIEGO }),
+  eventoEmpleado('e08', 'suspendido', 6, { campo: 'estado', valor_anterior: 'Activo', valor_nuevo: 'Suspendido', detalle: 'Investigación interna en curso: se suspende hasta nuevo aviso.', ...ACTOR_JEFE }),
+  eventoEmpleado('e08', 'contacto_cambiado', 5, { campo: 'telefono', detalle: 'actualizado', ...ACTOR_SISTEMA }),
+  // e09: reingreso.
+  eventoEmpleado('e09', 'baja_ejecutada', 160, { campo: 'estado', valor_anterior: 'Activo', valor_nuevo: 'Inactivo', detalle: 'Fin de contrato temporal.', ...ACTOR_LUCIA }),
+  eventoEmpleado('e09', 'reingreso', 12, { campo: 'estado', valor_anterior: 'Inactivo', valor_nuevo: 'Activo', detalle: 'Reingreso; fecha de alta 2025-03-02 → hoy', ...ACTOR_JEFE }),
+  // e10: baja heredada, fecha aproximada.
+  eventoEmpleado('e10', 'estado_cambiado', 60, { campo: 'estado', valor_nuevo: 'Inactivo', detalle: 'Fecha aproximada (última actualización)' }),
+  // e07 y e12: altas recientes con actor.
+  eventoEmpleado('e07', 'creado', 3, { campo: 'estado', valor_nuevo: 'Activo', detalle: 'Alta en el sistema', ...ACTOR_DIEGO }),
+  eventoEmpleado('e12', 'creado', 5, { campo: 'estado', valor_nuevo: 'Activo', detalle: 'Alta en el sistema', ...ACTOR_JEFE }),
+].map((ev, i, todos) => {
+  // El 'creado' heredado se descarta donde hay uno con actor (e07, e12).
+  if (ev.rol_actor === 'legado' && ev.evento === 'creado'
+      && todos.some((o) => o !== ev && o.empleado_id === ev.empleado_id && o.evento === 'creado' && o.rol_actor !== 'legado')) {
+    return null;
+  }
+  return ev;
+}).filter(Boolean);
+
+// Revisión de accesos (migración 102) + la vista de "última revisión".
+const empleado_revisiones_acceso = [
+  { id: 'rev01', empleado_id: 'e01', revisado_por: 'u-jefe', revisado_at: hace(12), resultado: { cuentas: 2, equipos: 1, licencias: 1 }, nota: 'Revisión trimestral: 2 cuentas y 1 equipo, sin observaciones.' },
+  { id: 'rev02', empleado_id: 'e08', revisado_por: 'u-asis-1', revisado_at: hace(7), resultado: { cuentas: 2, equipos: 1, licencias: 1 }, nota: 'Revisión previa a la suspensión: cuentas y equipo vigentes.' },
+];
+const v_empleado_ultima_revision_acceso = empleado_revisiones_acceso.map((r) => ({
+  empleado_id: r.empleado_id, revision_id: r.id, revisado_por: r.revisado_por,
+  revisado_at: r.revisado_at, resultado: r.resultado, nota: r.nota,
+}));
 
 export const TABLAS = {
   staff, staff_modulos_permisos, staff_permisos,
@@ -712,12 +836,13 @@ export const TABLAS = {
   categorias_ticket, subcategorias_ticket,
   empleados, cuentas, asignaciones_cuenta,
   licencias, asignaciones_licencia,
-  equipos, equipo_accesorios, asignaciones_equipo, eventos_equipo, equipos_importacion,
+  equipos, equipo_accesorios, asignaciones_equipo, eventos_equipo, actas, equipos_importacion,
   tickets, ticket_comentarios, ticket_eventos, ticket_satisfaccion,
   kb_articulos, problemas, problema_tickets, acciones_correctivas,
   encuestas, encuesta_rondas, encuesta_respuestas,
   accesos_sensibles, accesos_sensibles_permisos,
   accesos_log, notificaciones, notificaciones_lecturas, entregas,
+  empleado_eventos, empleado_revisiones_acceso, v_empleado_ultima_revision_acceso,
 };
 
 // ── RPC ─────────────────────────────────────────────────────────────────────
@@ -767,6 +892,7 @@ function satisfaccionConsolidada(db) {
 }
 
 export const RPC = {
+  ...RPC_EQUIPOS,
   staff_nombres: (db) => db.staff.filter((s) => s.activo).map((s) => ({ user_id: s.user_id, nombre: s.nombre })),
   reporte_satisfaccion_consolidado: satisfaccionConsolidada,
   cerrar_ticket: (db, args) => {
@@ -774,15 +900,14 @@ export const RPC = {
     if (t) t.estado = 'cerrado';
     return t || null;
   },
-  dar_baja_empleado: (db, args) => {
-    const e = db.empleados.find((x) => x.id === args?.p_empleado_id);
-    if (e) e.estado = 'Inactivo';
-    return e || null;
-  },
   kb_registrar_feedback: (db, args) => {
     const a = db.kb_articulos.find((x) => x.id === args?.p_articulo_id);
     if (a) a[args.p_util ? 'util_si' : 'util_no'] += 1;
     return null;
   },
-  revocar_cuenta_personal: () => null,
+  // Cuentas (101) y ciclo de vida del empleado (102): maqueta/rpc-empleados.js
+  // (incluye revocar_cuenta_personal y dar_baja_empleado con motivo).
+  ...RPC_EMPLEADOS,
+  // Inicio (103): una sola RPC; escenarios por `?maqueta=...` en maqueta/inicio.js.
+  dashboard_resumen: (db) => resumenInicio(db, { usuarioId: USUARIO_MAQUETA.id }),
 };

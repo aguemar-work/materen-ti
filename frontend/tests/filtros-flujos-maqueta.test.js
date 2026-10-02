@@ -73,12 +73,10 @@ describe('Tickets — filtro por categoría (deep-link)', () => {
 
 describe('Dashboard — "Posible problema recurrente" lleva a Tickets filtrado', () => {
   it('el destino incluye ?categoria=<id>', () => {
-    const [item] = construirFeedPendientes(
-      { porRotar: [], sinPassword: [], licenciasPorVencer: [], equiposSinDevolver: [], garantiasPorVencer: [] },
-      { sinAsignar: [], sinVincular: [], abiertosViejos: [] },
-      { categoriasRecurrentes: [{ categoria_id: 'red', categoria_nombre: 'Redes', tickets: [{}, {}, {}] }] },
-    );
-    expect(item.categoriaLabel).toBe('Posible problema recurrente');
+    const [item] = construirFeedPendientes({
+      problemas: { acciones_vencidas: [], recurrentes: [{ categoria_id: 'red', categoria_nombre: 'Redes', total: 3, tickets: [{}, {}, {}] }] },
+    });
+    expect(item.titulo).toBe('Posible problema recurrente');
     expect(item.destino).toBe('/tickets?vista=todos&categoria=red');
   });
 });

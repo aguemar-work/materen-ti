@@ -9,9 +9,11 @@
 // logueado, realtime/storage/functions como no-ops. Las escrituras quedan en
 // memoria durante la sesión (recargar la página vuelve a los datos iniciales).
 //
-// Nunca revela contraseñas: toda acción de la edge function `credenciales`
-// responde { ok:false, code:'maqueta' }.
+// Nunca revela contraseñas reales: la edge function `credenciales` solo
+// responde el revelado/cifrado/entrega con valores inventados; el resto de sus
+// acciones responde { ok:false, code:'maqueta' }.
 import { TABLAS, RPC, USUARIO_MAQUETA } from './datos.js';
+import { funcionEquiposFotos, alActualizarFila } from './rpc-equipos.js';
 
 const clonar = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 
@@ -272,7 +274,11 @@ class ConsultaFalsa {
         const error = violacionUnica(this.tabla, { ...fila, ...this.payload }, fila);
         if (error) return { data: null, error, count: null };
       }
-      for (const fila of afectadas) Object.assign(fila, this.payload, { updated_at: new Date().toISOString() });
+      for (const fila of afectadas) {
+        const previa = { ...fila };
+        Object.assign(fila, this.payload, { updated_at: new Date().toISOString() });
+        alActualizarFila(db, this.tabla, previa, fila); // kardex que dejaría el trigger
+      }
     } else if (this.operacion === 'delete') {
       const aBorrar = new Set(this.filtros.length ? this.filasFiltradas() : []);
       db[this.tabla] = tabla.filter((f) => !aBorrar.has(f));
@@ -330,6 +336,24 @@ function respuestaFuncion(nombre, body = {}) {
   }
   // Fire-and-forget de auditoría: el llamador lo ignora; responder ok evita ruido.
   if (nombre === 'credenciales' && accion === 'accesoDenegado') return { ok: true };
+  // Revelado, cifrado y entrega de cuentas (expediente del empleado): valores
+  // INVENTADOS, nunca una contraseña real, para poder recorrer el flujo
+  // (barra de 8 s, traspaso con contraseña nueva, enviar accesos).
+  if (nombre === 'credenciales' && accion === 'revelar') return { ok: true, password: 'Maqueta-2026-ficticia' };
+  if (nombre === 'credenciales' && accion === 'encrypt') return { ok: true, encrypted: 'enc2:bWFxdWV0YQ==:ZmljdGljaWE=' };
+  if (nombre === 'credenciales' && accion === 'entregaCrear') {
+    const ahora = Date.now();
+    db.entregas.push({
+      id: nuevoId(), empleado_id: body.empleadoId, created_at: new Date(ahora).toISOString(),
+      expires_at: new Date(ahora + 86400000).toISOString(), viewed_at: null, created_by: 'u-jefe',
+    });
+    return { ok: true, token: `maqueta-${ahora.toString(36)}`, expiresAt: new Date(ahora + 86400000).toISOString() };
+  }
+  // Fotos y actas firmadas de equipos: simuladas en ./rpc-equipos.js
+  if (nombre === 'equipos-fotos') {
+    const resultado = funcionEquiposFotos(db, body);
+    if (resultado) return clonar(resultado);
+  }
   // Todo lo demás (incluido TODO revelado/cifrado de contraseñas) queda
   // deshabilitado en la maqueta.
   return { ok: false, code: 'maqueta' };
@@ -386,8 +410,15 @@ export function getClient() {
         from: (tabla) => new ConsultaFalsa(tabla),
         rpc: (nombre, args) => {
           const fn = RPC[nombre];
-          const data = typeof fn === "function" ? fn(db, args) : (fn ?? []);
-          return Promise.resolve({ data: clonar(data), error: null });
+          try {
+            const data = typeof fn === "function" ? fn(db, args) : (fn ?? []);
+            return Promise.resolve({ data: clonar(data), error: null });
+          } catch (e) {
+            // Una RPC de la maqueta puede rechazar como lo haría Postgres:
+            // lanza { code, message } y llega al llamador como `error`.
+            if (e && e.code && e.message) return Promise.resolve({ data: null, error: e });
+            throw e;
+          }
         },
       },
       auth,

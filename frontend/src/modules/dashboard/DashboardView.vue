@@ -1,344 +1,205 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { RouterLink } from 'vue-router';
-import { insforgeApi } from '../../api/insforge.js';
+// Inicio: la mesa del día (Versión Expediente, plan Ciclo 21 §3.3 pantalla 1).
+//
+// Una sola llamada: todo sale de `dashboard_resumen` (migración 103) a través
+// de stores/dashboard.js, el MISMO store que alimenta el contador de tickets
+// del menú. La pantalla no calcula umbrales ni consulta tablas.
+//
+//   · Encabezado: saludo con el nombre (hora de Lima) y, debajo, la fecha y el
+//     total de asuntos / críticos del feed. Una sola acción sólida.
+//   · Fila de vistas (AppVistas) con conteo: filtra el feed EN EL LUGAR. Solo
+//     aparecen las vistas con alguna sección que el servidor entregó.
+//   · Feed en libro, CRÍTICO / ATENCIÓN, y a su lado Mis tickets, Vence esta
+//     semana y Hoy en custodia.
+//   · La carga es una línea de 2 px arriba; el contenido anterior se queda
+//     mientras recarga (stale-while-revalidate). Sin esqueletos.
+//   · Un fallo de sección es una fila con "Reintentar"; un fallo de la RPC
+//     entera es UN aviso con "Reintentar". "Al día" es una línea de texto y
+//     solo se escribe con la respuesta completa y sin errores.
+import { ref, computed, watch, onMounted, defineAsyncComponent } from 'vue';
+import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/auth.js';
+import { useDashboardStore } from '../../stores/dashboard.js';
 import { showToast } from '../../core/toast.js';
-import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import { rolDeTag } from '../../core/tagRol.js';
-import { prioridadInfo } from '../../core/dominio-tickets.js';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
-import AppKpi from '../../components/ui/AppKpi.vue';
-import AppSeccion from '../../components/ui/AppSeccion.vue';
-import AppTag from '../../components/ui/AppTag.vue';
-import AppVacio from '../../components/ui/AppVacio.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
 import AppButton from '../../components/ui/AppButton.vue';
-import { construirFeedPendientes } from './pendientesFeed.js';
+import FeedPendientes from './FeedPendientes.vue';
+import PanelMisTickets from './PanelMisTickets.vue';
+import PanelVencimientos from './PanelVencimientos.vue';
+import PanelCustodiaHoy from './PanelCustodiaHoy.vue';
+import PanelInicio from './PanelInicio.vue';
+import FilaAviso from './FilaAviso.vue';
+import { construirFeedPendientes, GRUPOS_INICIO } from './pendientesFeed.js';
+import {
+  vistasDisponibles, erroresDelFeed, erroresDe, hayAlguna, vencimientosDeLaSemana,
+  ETIQUETA_SECCION, SECCIONES_LATERALES,
+} from './vistasInicio.js';
+import { tramoDelDia, fechaLarga } from './tiempoLima.js';
+
+// El formulario es el del módulo Tickets; se carga solo al abrirlo (como el
+// formulario de nombre del menú) para no sumarlo al chunk del Inicio.
+const TicketInternoForm = defineAsyncComponent(() => import('../tickets/TicketInternoForm.vue'));
 
 const auth = useAuthStore();
-const stats = ref(null);
-// Mis tickets vigentes. Se pide siempre (no depende de un módulo: un ticket
-// asignado a mí es mío tenga o no el módulo Tickets en el sidebar — si no lo
-// tuviera, la RLS de `tickets` devolvería vacío y la columna queda vacía, que
-// es el comportamiento correcto).
-const misTickets = ref({ lista: [], total: 0 });
-const pendientes = ref({
-  porRotar: [], sinPassword: [], licenciasPorVencer: [],
-  equiposSinDevolver: [], garantiasPorVencer: [],
-});
-const pendientesTickets = ref({ sinAsignar: [], sinVincular: [], abiertosViejos: [] });
-const pendientesProblemas = ref({ categoriasRecurrentes: [], accionesVencidas: [] });
-// Altas de personal a medias. Se pide SOLO con el módulo `correos`: la RLS de
-// `asignaciones_cuenta` lo exige (migración 068), y sin él el embed vuelve
-// vacío y todos los empleados recientes parecerían sin cuenta. Mismo criterio
-// que ya gatea las stat-cards de más abajo.
-const altasIncompletas = ref([]);
-const cargando = ref(true);
+const store = useDashboardStore();
+const { resumen, cargando, error, errores } = storeToRefs(store);
 
-// El feed mezcla las 10 categorías y las ordena por urgencia real
-// (ver pendientesFeed.js); acá solo se corta a un tamaño mostrable.
-const LIMITE_FEED = 10;
-const feedExpandido = ref(false);
+// "Ahora" se fija al montar: el saludo y la fecha no deben cambiar bajo los
+// pies de quien lee. Hora y día en Lima (tiempoLima.js), no del navegador.
+const ahora = ref(new Date());
 
-const feedPendientes = computed(() => construirFeedPendientes(pendientes.value, pendientesTickets.value, pendientesProblemas.value, altasIncompletas.value));
-
-// ── Presentación (rediseño 2026-09-23) ─────────────────────────────────
-// Los KPIs de arriba agrupan el MISMO feed por área y lo filtran en el
-// lugar (mismo patrón que la fila de disponibilidad de Equipos): la cifra
-// explica exactamente qué filas hay debajo, sin una segunda consulta ni un
-// segundo criterio de urgencia. El grupo sale del prefijo de `key` que ya
-// arma pendientesFeed.js — no se toca la regla de tiers.
-const GRUPOS = [
-  { id: 'tickets', label: 'Tickets', icono: 'ti ti-headset', prefijos: ['tk-'] },
-  { id: 'accesos', label: 'Accesos y altas', icono: 'ti ti-key', prefijos: ['sinpw-', 'rotar-', 'alta-'] },
-  { id: 'inventario', label: 'Licencias y equipos', icono: 'ti ti-devices', prefijos: ['lic-', 'garantia-', 'equipo-'] },
-  { id: 'problemas', label: 'Problemas', icono: 'ti ti-bug', prefijos: ['accion-vencida-', 'recurrencia-'] },
-];
-function grupoDe(item) {
-  return GRUPOS.find((g) => g.prefijos.some((p) => item.key.startsWith(p)))?.id || null;
-}
-const filtroGrupo = ref('');
-function alternarGrupo(id) {
-  filtroGrupo.value = filtroGrupo.value === id ? '' : id;
-  feedExpandido.value = false;
-}
-const kpisGrupo = computed(() => GRUPOS.map((g) => {
-  const items = feedPendientes.value.filter((i) => grupoDe(i) === g.id);
-  const criticos = items.filter((i) => i.tier === 1).length;
-  let tono = 'success';
-  let detalle = 'Al día';
-  if (criticos) {
-    tono = 'danger';
-    detalle = `${criticos} ${criticos === 1 ? 'crítico' : 'críticos'}`;
-  } else if (items.length) {
-    tono = 'warning';
-    detalle = 'Requieren atención';
-  }
-  return { ...g, total: items.length, tono, detalle };
-}));
-const feedFiltrado = computed(() =>
-  filtroGrupo.value ? feedPendientes.value.filter((i) => grupoDe(i) === filtroGrupo.value) : feedPendientes.value
-);
-const feedMostrado = computed(() =>
-  feedExpandido.value ? feedFiltrado.value : feedFiltrado.value.slice(0, LIMITE_FEED)
-);
-// Crítico y atención como dos bloques con su propio rótulo: el orden ya
-// venía por tier, esto solo lo hace visible.
-const bloquesFeed = computed(() => [
-  { tier: 1, label: 'Crítico', items: feedMostrado.value.filter((i) => i.tier === 1) },
-  { tier: 2, label: 'Atención', items: feedMostrado.value.filter((i) => i.tier !== 1) },
-].filter((b) => b.items.length));
-const totalCriticos = computed(() => feedPendientes.value.filter((i) => i.tier === 1).length);
-const grupoActivo = computed(() => GRUPOS.find((g) => g.id === filtroGrupo.value) || null);
-
-const CAJA_ICONO = {
-  danger: 'bg-red-50 text-red-600',
-  warning: 'bg-amber-50 text-amber-600',
-  info: 'bg-primary-50 text-primary-600',
-  neutral: 'bg-gray-100 text-gray-500',
-};
-function tonoFamilia(familia) {
-  const rol = rolDeTag(familia);
-  return CAJA_ICONO[rol] ? rol : 'neutral';
-}
-
-function tonoPrioridad(p) {
-  return rolDeTag(prioridadInfo(p).clase);
-}
-
-// V2: la portada saluda a quien entra (el menú y las migas la llaman
-// "Inicio"; el título "Dashboard" no coincidía con ninguno de los dos).
 const saludo = computed(() => {
-  const hora = new Date().getHours();
-  const tramo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const tramo = tramoDelDia(ahora.value);
   const nombre = (auth.nombre || '').trim().split(/\s+/)[0];
   return nombre ? `${tramo}, ${nombre}` : tramo;
 });
 
-const fechaHoy = computed(() => {
-  const txt = new Date().toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
-  return txt.charAt(0).toUpperCase() + txt.slice(1);
-});
+const feed = computed(() => construirFeedPendientes(resumen.value, { ahora: ahora.value }));
+const totalCriticos = computed(() => feed.value.filter((i) => i.tier === 1).length);
+
 const subtitulo = computed(() => {
-  if (cargando.value) return fechaHoy.value;
-  const n = feedPendientes.value.length;
-  if (!n) return `${fechaHoy.value} · todo al día`;
-  const pend = `${n} ${n === 1 ? 'pendiente' : 'pendientes'}`;
-  const crit = totalCriticos.value ? `, ${totalCriticos.value} ${totalCriticos.value === 1 ? 'crítico' : 'críticos'}` : '';
-  return `${fechaHoy.value} · ${pend}${crit}`;
+  const fecha = fechaLarga(ahora.value);
+  if (!resumen.value) return fecha;
+  const n = feed.value.length;
+  if (!n) return errores.value.length || error.value ? fecha : `${fecha} · al día`;
+  const asuntos = `${n} ${n === 1 ? 'asunto pendiente' : 'asuntos pendientes'}`;
+  const c = totalCriticos.value;
+  const criticos = c ? `, ${c} ${c === 1 ? 'crítico' : 'críticos'}` : '';
+  return `${fecha} · ${asuntos}${criticos}`;
 });
 
-// Inventario: cifras de "cuánto hay", secundarias — una lista compacta en
-// la columna lateral, no tarjetas que compitan con los pendientes. Mismos
-// gates de módulo y mismos destinos que las stat-cards anteriores.
-const inventario = computed(() => {
-  if (!stats.value) return [];
-  const s = stats.value;
-  return [
-    { label: 'Tickets abiertos', icono: 'ti ti-headset', valor: s.ticketsAbiertos, to: '/tickets?vista=pendientes', visible: auth.puedeVerModulo('tickets') },
-    { label: 'Empleados activos', icono: 'ti ti-users', valor: s.empleadosActivos, to: '/empleados?estado=Activo', visible: auth.puedeVerModulo('empleados') },
-    { label: 'Dados de baja', icono: 'ti ti-users-minus', valor: s.empleadosTotal - s.empleadosActivos, to: '/empleados?estado=Inactivo', visible: auth.puedeVerModulo('empleados') },
-    // Sin enlace: no existe una vista global de cuentas (viven en la ficha del empleado)
-    { label: 'Cuentas asignadas', icono: 'ti ti-key', valor: s.cuentasAsignadas, to: null, visible: true },
-    { label: 'Correos compartidos', icono: 'ti ti-mail-share', valor: s.correosCompartidos, to: '/correos?vista=compartida', visible: auth.puedeVerModulo('correos') },
-    { label: 'Equipos', icono: 'ti ti-devices', valor: s.equiposTotal, to: '/equipos', visible: auth.puedeVerModulo('equipos') },
-  ].filter((f) => f.visible);
+// ── Vistas ───────────────────────────────────────────────────────────────
+const vista = ref('todos');
+const opcionesVistas = computed(() => [
+  { valor: 'todos', label: 'Todos', conteo: resumen.value ? feed.value.length : undefined },
+  ...vistasDisponibles(resumen.value).map((id) => ({
+    valor: id,
+    label: GRUPOS_INICIO[id].label,
+    conteo: feed.value.filter((i) => i.grupo === id).length,
+  })),
+]);
+// Si tras recargar la vista elegida ya no existe, se vuelve a "Todos".
+watch(opcionesVistas, (ops) => {
+  if (!ops.some((o) => o.valor === vista.value)) vista.value = 'todos';
 });
 
-onMounted(async () => {
-  try {
-    const [est, mios, pend, pendTk, pendProb, altas] = await Promise.all([
-      insforgeApi.getEstadisticas(),
-      insforgeApi.misTickets(auth.user?.id),
-      insforgeApi.listPendientes(),
-      insforgeApi.pendientesTickets(),
-      insforgeApi.pendientesProblemas(),
-      auth.puedeVerModulo('correos') ? insforgeApi.altasIncompletas() : Promise.resolve([]),
-    ]);
-    stats.value = est;
-    misTickets.value = mios;
-    pendientes.value = pend;
-    pendientesTickets.value = pendTk;
-    pendientesProblemas.value = pendProb;
-    altasIncompletas.value = altas;
-  } catch (e) {
-    // Un fallo de carga no debe tumbar la vista: stats queda en null y el
-    // template lo trata como "no disponible" en vez de leer sus propiedades.
-    showToast(e?.message || 'Error al cargar el dashboard', 'error');
-  } finally {
-    cargando.value = false;
+const feedVista = computed(() => (vista.value === 'todos' ? feed.value : feed.value.filter((i) => i.grupo === vista.value)));
+const textoAviso = (seccion) => `No se pudo calcular ${ETIQUETA_SECCION[seccion] || seccion}.`;
+const avisosFeed = computed(() =>
+  erroresDelFeed(resumen.value, vista.value).map((seccion) => ({ seccion, texto: textoAviso(seccion) })),
+);
+// "Al día" solo con la respuesta completa y sin errores en ninguna sección ni
+// al actualizar: en cualquier otro caso se dice "ningún asunto pendiente"
+// (lo calculado) y el aviso de la sección que falló explica el resto.
+const vacioFeed = computed(() => {
+  if (!resumen.value || avisosFeed.value.length) return '';
+  if (vista.value !== 'todos') return `Sin pendientes en ${GRUPOS_INICIO[vista.value].label.toLowerCase()}.`;
+  return errores.value.length || error.value ? 'Ningún asunto pendiente.' : 'Al día. Ningún asunto pendiente.';
+});
+const tituloFeed = computed(() => (vista.value === 'todos' ? 'Pendientes' : `Pendientes · ${GRUPOS_INICIO[vista.value].label}`));
+
+// ── Paneles laterales: solo con la sección entregada (o con su error) ────
+const verMios = computed(() => hayAlguna(resumen.value, SECCIONES_LATERALES.mios));
+const verVencimientos = computed(() => hayAlguna(resumen.value, SECCIONES_LATERALES.vencimientos));
+const verCustodiaHoy = computed(() => hayAlguna(resumen.value, SECCIONES_LATERALES.custodiaHoy));
+const avisoMios = computed(() => (erroresDe(resumen.value, SECCIONES_LATERALES.mios).length ? textoAviso('tickets') : ''));
+const avisosVencimientos = computed(() =>
+  erroresDe(resumen.value, SECCIONES_LATERALES.vencimientos).map(textoAviso),
+);
+const avisoCustodiaHoy = computed(() => (erroresDe(resumen.value, SECCIONES_LATERALES.custodiaHoy).length ? textoAviso('custodia_hoy') : ''));
+const vencimientos = computed(() => vencimientosDeLaSemana(resumen.value, ahora.value));
+
+// ── Carga ────────────────────────────────────────────────────────────────
+const reintentar = () => store.cargar();
+// Con un resumen ya cargado el fallo no lo borra: se avisa y se conserva.
+const textoErrorTotal = computed(() => {
+  const e = error.value;
+  return /^No se pudo/.test(e) ? e : `No se pudo cargar el Inicio. ${e}`;
+});
+
+onMounted(() => {
+  // El store comparte la carga en curso y respeta un intento reciente: si el
+  // menú ya pidió el resumen al montarse (la ruta de esta vista es un chunk
+  // diferido y llega después), no se repite la petición al servidor.
+  store.cargarSiHaceFalta();
+});
+
+// ── Ticket interno ───────────────────────────────────────────────────────
+const mostrarNuevo = ref(false);
+function onNuevoCerrado(creado) {
+  mostrarNuevo.value = false;
+  if (creado) {
+    showToast('Ticket interno creado');
+    store.cargar({ silencioso: true });
   }
-});
+}
 </script>
-
 
 <template>
   <div class="w-full pb-10">
-    <AppEncabezado :titulo="saludo" :subtitulo="subtitulo" />
+    <!-- Línea de carga: 2 px, siempre ocupa su lugar para que no salte nada. -->
+    <div
+      class="sticky top-0 z-10 h-0.5"
+      :class="cargando ? 'bg-gray-400' : 'bg-transparent'"
+      :role="cargando ? 'progressbar' : undefined"
+      :aria-label="cargando ? 'Actualizando el Inicio' : undefined"
+      data-carga
+    ></div>
 
-    <!-- ══ Carga: esqueleto con la misma forma que la página ══════════ -->
-    <div v-if="cargando" class="px-4 sm:px-6" aria-hidden="true">
-      <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <div v-for="n in 4" :key="n" class="h-[76px] animate-pulse rounded-lg border border-gray-200 bg-white"></div>
-      </div>
-      <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div class="h-96 animate-pulse rounded-lg border border-gray-200 bg-white"></div>
-        <div class="h-64 animate-pulse rounded-lg border border-gray-200 bg-white"></div>
-      </div>
+    <AppEncabezado :titulo="saludo" :subtitulo="subtitulo">
+      <template v-if="auth.puedeVerModulo('tickets')" #acciones>
+        <AppButton severity="primary" icon="ti ti-plus" label="Ticket interno" @click="mostrarNuevo = true" />
+      </template>
+    </AppEncabezado>
+
+    <AppVistas v-model="vista" :opciones="opcionesVistas" label="Vista del Inicio" />
+
+    <!-- Primera carga: sin resumen todavía. Texto discreto, sin esqueletos. -->
+    <p v-if="!resumen && cargando" class="px-4 py-6 text-sm text-gray-500 sm:px-6" role="status">Cargando el Inicio…</p>
+
+    <!-- La RPC falló entera y no hay nada que mostrar: UN aviso con reintento. -->
+    <div v-else-if="!resumen" class="mt-6 px-4 sm:px-6" data-error-total>
+      <PanelInicio titulo="Inicio">
+        <FilaAviso :texto="textoErrorTotal" @reintentar="reintentar" />
+      </PanelInicio>
     </div>
-    <p v-if="cargando" class="sr-only" role="status">Cargando el dashboard…</p>
 
     <template v-else>
-      <!-- ══ Pendientes por área: cada KPI filtra la lista de abajo ═════ -->
-      <div class="grid grid-cols-2 gap-3 px-4 sm:px-6 xl:grid-cols-4" role="group" aria-label="Pendientes por área">
-        <button
-          v-for="k in kpisGrupo"
-          :key="k.id"
-          type="button"
-          class="min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-          :aria-pressed="filtroGrupo === k.id"
-          @click="alternarGrupo(k.id)"
-        >
-          <AppKpi
-            :label="k.label"
-            :valor="k.total"
-            :icono="k.icono"
-            :tono="k.tono"
-            :detalle="filtroGrupo === k.id ? 'Filtro aplicado · clic para quitar' : k.detalle"
-            class="h-full transition-colors duration-150"
-            :class="filtroGrupo === k.id ? 'border-primary-300 bg-primary-50/50' : 'hover:border-gray-300 hover:bg-gray-50/60'"
-          />
-        </button>
+      <div v-if="error" class="mt-4 px-4 sm:px-6" data-error-actualizacion>
+        <PanelInicio titulo="Actualización">
+          <FilaAviso :texto="`No se pudo actualizar el Inicio. Se muestra la última carga. ${error}`" @reintentar="reintentar" />
+        </PanelInicio>
       </div>
 
       <div class="mt-6 grid items-start gap-6 px-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <!-- ══ Requiere atención (feed único, ordenado por urgencia) ══ -->
-        <AppSeccion
-          titulo="Requiere atención"
-          :conteo="feedFiltrado.length"
-          :descripcion="grupoActivo ? `Solo ${grupoActivo.label.toLowerCase()}` : 'Lo que nadie tomó todavía o se está pasando de tiempo'"
-          sin-padding
-        >
-          <template v-if="grupoActivo" #acciones>
-            <AppButton size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Quitar filtro" @click="filtroGrupo = ''" />
-          </template>
+        <FeedPendientes
+          :titulo="tituloFeed"
+          :items="feedVista"
+          :avisos="avisosFeed"
+          :vacio="vacioFeed"
+          @reintentar="reintentar"
+        />
 
-          <div v-if="feedFiltrado.length === 0" class="flex flex-col items-center px-6 py-12 text-center">
-            <span class="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-green-50 text-xl text-green-600">
-              <i class="ti ti-circle-check" aria-hidden="true"></i>
-            </span>
-            <p class="text-sm font-medium text-gray-900">Todo al día</p>
-            <p class="mt-1 max-w-sm text-sm text-gray-500">
-              <template v-if="grupoActivo">Sin pendientes en {{ grupoActivo.label.toLowerCase() }}.</template>
-              <template v-else>Sin contraseñas por rotar, licencias por vencer, equipos sin devolver ni tickets pendientes.</template>
-            </p>
-          </div>
-
-          <template v-else>
-            <div v-for="bloque in bloquesFeed" :key="bloque.tier">
-              <h3
-                class="flex items-center gap-2 border-b border-gray-100 bg-gray-50/70 px-4 py-1.5 text-xs font-medium"
-                :class="bloque.tier === 1 ? 'text-red-700' : 'text-gray-500'"
-              >
-                <span class="h-1.5 w-1.5 rounded-full" :class="bloque.tier === 1 ? 'bg-red-500' : 'bg-amber-400'" aria-hidden="true"></span>
-                {{ bloque.label }}
-              </h3>
-              <ul class="divide-y divide-gray-100">
-                <li v-for="item in bloque.items" :key="item.key">
-                  <RouterLink
-                    :to="item.destino"
-                    class="group flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
-                  >
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-lg" :class="CAJA_ICONO[tonoFamilia(item.colorFamilia)]">
-                      <i :class="item.icono" aria-hidden="true"></i>
-                    </span>
-                    <div class="min-w-0 flex-1">
-                      <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                        <span class="min-w-0 truncate text-sm font-medium text-gray-900">{{ item.titulo }}</span>
-                        <AppTag class="shrink-0">{{ item.categoriaLabel }}</AppTag>
-                      </div>
-                      <p class="mt-0.5 truncate text-xs text-gray-500">{{ item.contexto }}</p>
-                    </div>
-                    <i class="ti ti-chevron-right shrink-0 text-gray-300 transition-colors group-hover:text-gray-500" aria-hidden="true"></i>
-                  </RouterLink>
-                </li>
-              </ul>
-            </div>
-            <div v-if="feedFiltrado.length > LIMITE_FEED" class="border-t border-gray-100 px-2 py-1.5">
-              <AppButton
-                size="sm"
-                variant="text"
-                block
-                :icon="feedExpandido ? 'ti ti-chevron-up' : 'ti ti-chevron-down'"
-                :label="feedExpandido ? 'Ver menos' : `Ver ${feedFiltrado.length - LIMITE_FEED} más`"
-                @click="feedExpandido = !feedExpandido"
-              />
-            </div>
-          </template>
-        </AppSeccion>
-
-        <!-- ══ Lateral: lo propio + inventario ═══════════════════════ -->
-        <aside class="min-w-0 space-y-6 lg:sticky lg:top-6">
-          <!-- "Mis tickets" reemplaza a "Últimos empleados" (2026-09-02):
-               lo que un técnico abre la app para ver es lo suyo. El feed
-               cubre lo que NADIE tomó todavía. -->
-          <AppSeccion titulo="Mis tickets" :conteo="misTickets.total" sin-padding>
-            <AppVacio
-              v-if="misTickets.total === 0"
-              variante="seccion"
-              titulo="Sin tickets asignados"
-              mensaje="Los tickets que se le asignen aparecerán acá."
-            />
-            <template v-else>
-              <ul class="divide-y divide-gray-100">
-                <li v-for="t in misTickets.lista" :key="t.id">
-                  <RouterLink
-                    :to="`/tickets/${t.id}`"
-                    class="block px-4 py-3 transition-colors duration-150 hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
-                  >
-                    <div class="flex items-center gap-2 text-xs">
-                      <span class="font-medium text-gray-500 tabular-nums">{{ t.codigo }}</span>
-                      <AppTag v-if="t.prioridad === 'alta' || t.prioridad === 'urgente'" :tono="tonoPrioridad(t.prioridad)">{{ prioridadInfo(t.prioridad).label }}</AppTag>
-                      <BadgeEstado class="ml-auto" tipo="ticket" :valor="t.estado" status />
-                    </div>
-                    <p class="mt-1 line-clamp-2 text-sm text-gray-900">{{ t.titulo }}</p>
-                  </RouterLink>
-                </li>
-              </ul>
-              <!-- El total es de todos los asignados, no de los mostrados:
-                   el enlace tiene que decir la verdad. -->
-              <RouterLink
-                v-if="misTickets.total > misTickets.lista.length"
-                to="/tickets?vista=pendientes&asignado=yo"
-                class="flex items-center justify-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
-              >
-                Ver mis {{ misTickets.total }} tickets
-                <i class="ti ti-arrow-right" aria-hidden="true"></i>
-              </RouterLink>
-            </template>
-          </AppSeccion>
-
-          <AppSeccion titulo="Inventario" sin-padding>
-            <p v-if="!stats" class="px-4 py-6 text-center text-sm text-gray-500">No se pudo cargar el resumen.</p>
-            <ul v-else class="divide-y divide-gray-100">
-              <li v-for="f in inventario" :key="f.label">
-                <component
-                  :is="f.to ? RouterLink : 'div'"
-                  :to="f.to || undefined"
-                  class="flex items-center gap-3 px-4 py-2.5 text-sm"
-                  :class="f.to ? 'group transition-colors duration-150 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500' : ''"
-                >
-                  <i :class="f.icono" class="text-base text-gray-500" aria-hidden="true"></i>
-                  <span class="min-w-0 flex-1 truncate text-gray-600">{{ f.label }}</span>
-                  <span class="font-semibold text-gray-900 tabular-nums">{{ f.valor }}</span>
-                  <i v-if="f.to" class="ti ti-chevron-right text-gray-300 group-hover:text-gray-500" aria-hidden="true"></i>
-                  <span v-else class="w-4" aria-hidden="true"></span>
-                </component>
-              </li>
-            </ul>
-          </AppSeccion>
+        <aside class="min-w-0 space-y-6" aria-label="Lo suyo y lo de hoy">
+          <PanelMisTickets v-if="verMios" :tickets="resumen.tickets" :aviso="avisoMios" @reintentar="reintentar" />
+          <PanelVencimientos
+            v-if="verVencimientos"
+            :items="vencimientos.items"
+            :mas="vencimientos.mas"
+            :avisos="avisosVencimientos"
+            @reintentar="reintentar"
+          />
+          <PanelCustodiaHoy
+            v-if="verCustodiaHoy"
+            :movimientos="resumen.custodia_hoy || []"
+            :aviso="avisoCustodiaHoy"
+            @reintentar="reintentar"
+          />
         </aside>
       </div>
     </template>
+
+    <TicketInternoForm v-if="mostrarNuevo" @cerrar="onNuevoCerrado" />
   </div>
 </template>

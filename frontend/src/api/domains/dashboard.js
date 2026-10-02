@@ -1,12 +1,37 @@
-// Dominio dashboard/actividad: búsqueda global, estadísticas, pendientes
-// accionables (cuentas, licencias, equipos, tickets) y log de auditoría.
+// Dominio dashboard/actividad: búsqueda global, resumen del Inicio y log de
+// auditoría.
+//
+// El Inicio y el contador del menú leen TODO de `getResumen()` (RPC
+// `dashboard_resumen`, migración 103): una sola llamada. Los métodos
+// `getEstadisticas`, `listPendientes`, `pendientesTickets` y `misTickets`
+// que siguen más abajo ya no los llama ninguna pantalla (fueron el origen de
+// las ≈25 requests del Inicio); se conservan solo porque la prueba de forma
+// del API los lista y son candidatos a retiro (ver CHANGELOG).
 import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
+import { anotarErrorDb } from '../erroresDb.js';
+import { normalizarResumen } from '../../core/resumen-inicio.js';
 import { fechaLocalISO } from '../../core/formatters.js';
 import { ordenarPorUrgencia } from '../../core/dominio-tickets.js';
 import { DIAS_POR_VENCER_LICENCIA } from '../../core/dominio-licencias.js';
 
 export const dashboardApi = {
+  // Resumen del Inicio: una sola RPC (`dashboard_resumen`, migración 103) con
+  // kpis, pendientes, "mis tickets" y custodia de hoy. Cada sección llega
+  // `null` si la persona no tiene el módulo (no es un error) o si su cálculo
+  // falló en el servidor (entonces su nombre está en `errores`). Si la RPC
+  // falla ENTERA (backend sin la 103, red) lanza un error ya traducido: el
+  // Inicio muestra UN aviso con reintento, nunca "al día".
+  async getResumen() {
+    const { data, error } = await getClient().database.rpc('dashboard_resumen');
+    if (error) throw anotarErrorDb(error, { porDefecto: 'No se pudo cargar el resumen del Inicio.' });
+    const resumen = Array.isArray(data) ? data[0] : data;
+    if (!resumen || typeof resumen !== 'object') {
+      throw new Error('El servidor devolvió un resumen vacío.');
+    }
+    return normalizarResumen(resumen);
+  },
+
   // Búsqueda global del panel: empleados, cuentas, equipos, tickets y
   // licencias en una sola consulta
   async buscarGlobal(query) {

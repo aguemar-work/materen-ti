@@ -12,6 +12,10 @@ const METODOS = [
   'getEmpleado', 'createEmpleado', 'buscarPorDni',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
   'conteosVinculos', 'altasIncompletas', 'tieneEntrega', 'conteosEmpleadosPorEstado',
+  // ciclo de vida del empleado (migración 102) y lecturas del expediente
+  'suspenderEmpleado', 'reingresarEmpleado', 'registrarRevisionAccesos', 'ultimaRevisionAccesos',
+  'listEventosEmpleado', 'ticketsDeEmpleado', 'entregasDeEmpleado', 'actasDeEmpleado',
+  'historialCuentasEmpleado', 'historialLicenciasEmpleado', 'historialEquiposEmpleado',
   // catálogos
   'listEmpresas', 'createEmpresa', 'updateEmpresa', 'softDeleteEmpresa',
   'listPlataformas', 'createPlataforma', 'updatePlataforma', 'softDeletePlataforma',
@@ -23,7 +27,7 @@ const METODOS = [
   'listCuentasPorEmpleado', 'createCuenta', 'updateCuenta', 'traspasarCuenta',
   'historialCuenta', 'cerrarAsignacion', 'revocarCuentaPersonal',
   // dashboard / actividad
-  'getEstadisticas', 'listPendientes', 'pendientesTickets', 'listActividad',
+  'getEstadisticas', 'listPendientes', 'pendientesTickets', 'listActividad', 'getResumen',
   // correos
   'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados', 'conteosCorreosPorVista',
   'createCorreo', 'updateCorreo',
@@ -37,9 +41,12 @@ const METODOS = [
   'cambiarEstadoEquipo', 'softDeleteEquipo', 'asignarEquipo', 'devolverEquipo',
   'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado', 'ultimosMovimientos',
   'conteosEquiposPorSituacion',
+  // hoja de vida, actas firmadas y etiquetas QR (RPC 101, tabla actas 110)
+  'verificarEquipo', 'getEquipo', 'buscarEquipoPorCodigo', 'listEquiposPorIds', 'guardarFotosEquipo',
+  'asignacionesDeEquipo', 'listActasEquipo', 'subirActa', 'urlActa',
   // bandeja de importación de equipos desde Excel (migración 057)
   'listImportacionPendiente', 'bulkCrearImportacion', 'updateImportacion',
-  'eliminarImportacion', 'vaciarImportacion',
+  'eliminarImportacion', 'vaciarImportacion', 'migrarImportacionEquipo', 'migrarImportacionEquipos',
   // tickets (staff) + categorías
   'listCategoriasTicket', 'listSubcategoriasTicket', 'createCategoriaTicket',
   'updateCategoriaTicket', 'softDeleteCategoriaTicket', 'createSubcategoriaTicket',
@@ -73,7 +80,7 @@ const METODOS = [
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 164 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();
