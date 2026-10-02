@@ -5,7 +5,7 @@ import { useKbStore } from '../../stores/kb.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 
@@ -68,7 +68,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Modal ref="modal" titulo="Nuevo artículo" :confirmar-cierre="confirmarCierre" @close="emit('cerrar', resultado)">
+  <AppDialog ref="modal" titulo="Nuevo artículo" :confirmar-cierre="confirmarCierre" @cerrado="emit('cerrar', resultado)">
     <form id="kb-form" class="form-grid" @submit.prevent="guardar">
       <div class="campo full" :class="{ 'campo--inerte': guardando }">
         <label class="campo__etiqueta" :for="campoTitulo.id">Título<span aria-hidden="true"> *</span></label>
@@ -142,7 +142,7 @@ onMounted(async () => {
       <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
       <AppButton type="submit" form="kb-form" :label="guardando ? 'Creando...' : 'Crear artículo'" :loading="guardando" :disabled="guardando" />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"

@@ -23,7 +23,7 @@ function liberarScroll() {
 <script setup>
 // Diálogo único del sistema para formularios y paneles (centrado o lateral),
 // sobre primevue/dialog Unstyled + Tailwind (preset buildFormDialogPT en
-// pt/dialog.pt.js). Unifica a components/shared/Modal.vue (decisión del dueño,
+// pt/dialog.pt.js). Unificó al antiguo components/shared/Modal.vue (retirado; decisión del dueño,
 // 2026-10-01): es un SUPERCONJUNTO de su API, así que migrar un consumidor es
 // cambiar la etiqueta `<Modal>` por `<AppDialog>`. Las confirmaciones sí/no
 // siguen en ConfirmDialog.vue (mismo Dialog, preset más angosto).

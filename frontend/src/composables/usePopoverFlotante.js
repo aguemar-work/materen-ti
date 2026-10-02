@@ -7,7 +7,7 @@
 // idéntica salvo la política de alineación — un fix de accesibilidad o de
 // posicionamiento había que aplicarlo dos veces (ARQ-08, ver
 // docs/HISTORIAL-AUDITORIAS.md). No alcanzaba con lo que usan los modales
-// (`Modal.vue`, foco atrapado en un diálogo), porque acá es un popover
+// (`AppDialog.vue`, foco atrapado en un diálogo), porque acá es un popover
 // anclado a un botón, no un diálogo.
 //
 // Lo que NO absorbe, por ser propio de cada uno: dónde se ancla el panel

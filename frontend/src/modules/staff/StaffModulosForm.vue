@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { MODULOS_CONFIGURABLES } from '../../constants/modulos.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -51,7 +51,7 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal ref="modal" :titulo="`Módulos visibles para ${miembro.nombre}`" size="sm" @close="emit('cerrar')">
+  <AppDialog ref="modal" :titulo="`Módulos visibles para ${miembro.nombre}`" size="sm" @cerrado="emit('cerrar')">
     <form id="staff-modulos-form" class="space-y-4" @submit.prevent="guardar">
       <p v-if="cargando" class="py-6 text-center text-sm text-gray-500" role="status">Cargando módulos...</p>
       <fieldset v-else>
@@ -92,5 +92,5 @@ async function guardar() {
       <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modal?.cerrar()" />
       <AppButton type="submit" form="staff-modulos-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" :disabled="cargando" />
     </template>
-  </Modal>
+  </AppDialog>
 </template>

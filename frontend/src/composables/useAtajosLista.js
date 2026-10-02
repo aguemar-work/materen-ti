@@ -4,7 +4,7 @@ import { onMounted, onBeforeUnmount } from 'vue';
 // opcionalmente, "f" abre algún popover de filtros (si el módulo consumidor
 // tiene uno — Tickets ya no lo usa, ver TicketsView.vue). Escape no está acá
 // a propósito — cada popover/modal ya lo maneja por su cuenta
-// (MenuAcciones.vue, Modal.vue), y un handler global compitiendo con ellos
+// (MenuAcciones.vue, AppDialog.vue), y un handler global compitiendo con ellos
 // cerraría de más.
 //
 // Escrito como composable y no dentro de TicketsView.vue porque la tabla de

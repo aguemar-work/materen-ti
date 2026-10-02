@@ -1,11 +1,11 @@
-// Andamiaje común de los formularios que viven en un <Modal>: la referencia
+// Andamiaje común de los formularios que viven en un <AppDialog>: la referencia
 // al modal, la detección de cambios sin guardar y el flujo de descarte con
 // confirmación.
 //
-// Los 7 formularios sobre <Modal> (AccesoSensible, Correo, Cuenta, Empleado,
+// Los 7 formularios sobre <AppDialog> (antes <Modal>, retirado el 2026-10-02) (AccesoSensible, Correo, Cuenta, Empleado,
 // Encuesta, KbArticulo, Problema) tenían este bloque copiado byte a byte
 // (ARQ-07, ver docs/HISTORIAL-AUDITORIAS.md). EquipoForm.vue, LicenciaForm.vue
-// y TicketInternoForm.vue lo usan también desde su migración a <Modal>
+// y TicketInternoForm.vue lo usan también desde su migración a <AppDialog>
 // (auditoría ago 2026, hallazgo UX6-03 en docs/HISTORIAL-AUDITORIAS.md).
 //
 // Uso:
@@ -35,7 +35,7 @@ export function useFormularioModal(fuente) {
   const dialogoDescarte = ref(null);
 
   // Todas las salidas del modal (Cancelar, la X, Escape, backdrop) pasan por
-  // acá — se pasa como `:confirmar-cierre` a <Modal>: con cambios sin
+  // acá — se pasa como `:confirmar-cierre` a <AppDialog>: con cambios sin
   // guardar pide confirmación antes de descartar; limpio cierra directo.
   function confirmarCierre() {
     if (estaSucio.value) {

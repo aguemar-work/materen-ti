@@ -6,7 +6,7 @@ import { useAuthStore } from '../../stores/auth.js';
 import { CATEGORIAS_ACCESO_SENSIBLE } from '../../core/dominio-accesos-sensibles.js';
 import { generarPassword } from '../../core/generarPassword.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
@@ -112,7 +112,7 @@ function togglePermiso(userId) {
   else permisosSeleccionados.value.splice(i, 1);
 }
 
-// Guard de cierre del Modal compartido: backdrop/Escape/X pasan por acá
+// Guard de cierre del AppDialog compartido: backdrop/Escape/X pasan por acá
 // igual que el botón "Cancelar" — con cambios sin guardar se pide
 // confirmación antes de descartar; limpio cierra directo.
 function generar() {
@@ -150,12 +150,12 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal
+  <AppDialog
     ref="modal"
     size="lg"
     :titulo="esEdicion ? 'Editar acceso sensible' : 'Nuevo acceso sensible'"
     :confirmar-cierre="confirmarCierre"
-    @close="emit('cerrar', resultado)"
+    @cerrado="emit('cerrar', resultado)"
   >
     <form id="acceso-sensible-form" class="form-grid" @submit.prevent="guardar">
       <!-- ── Credencial ── -->
@@ -303,7 +303,7 @@ async function guardar() {
         :disabled="cargandoJefes"
       />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"

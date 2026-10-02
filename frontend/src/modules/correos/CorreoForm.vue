@@ -4,7 +4,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useCorreosStore } from '../../stores/correos.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { generarPassword } from '../../core/generarPassword.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
@@ -20,7 +20,7 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Migrado a Modal.vue (pasada de diseño ago 2026, mismo patrón que
+// Migrado a AppDialog.vue (pasada de diseño ago 2026, mismo patrón que
 // EmpleadoForm.vue/AccesoSensibleForm.vue): Teleport, bloqueo de scroll del
 // body, atrapamiento de foco y Escape los resuelve el componente
 // compartido.
@@ -88,7 +88,7 @@ function resetForm() {
 watch(() => props.correo, resetForm, { immediate: true });
 
 onMounted(async () => {
-  // Modal.vue pone el foco inicial en el primer control tras su propio
+  // AppDialog pone el foco inicial en el primer control tras su propio
   // nextTick (el onMounted del hijo corre antes que el de este componente),
   // así que este nextTick llega después y lleva el foco a la contraseña.
   if (modoRotar.value) {
@@ -104,7 +104,7 @@ onMounted(async () => {
   }
 });
 
-// Guard de cierre del Modal compartido: Escape y la X (backdrop
+// Guard de cierre del AppDialog compartido: Escape y la X (backdrop
 // deshabilitado, ver template — formulario de captura, un clic afuera no
 // debe perder lo escrito) pasan por acá igual que el botón "Cancelar" —
 // con cambios sin guardar se pide confirmación antes de descartar; limpio
@@ -140,12 +140,12 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal
+  <AppDialog
     ref="modal"
     :titulo="modoRotar ? 'Rotar contraseña' : esEdicion ? 'Editar correo compartido' : 'Nuevo correo compartido'"
     :confirmar-cierre="confirmarCierre"
     :cerrar-en-backdrop="false"
-    @close="emit('cerrar', resultado)"
+    @cerrado="emit('cerrar', resultado)"
   >
     <form id="correo-form" class="form-grid" @submit.prevent="guardar">
       <!-- ── Tipo ── -->
@@ -302,7 +302,7 @@ async function guardar() {
       <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
       <AppButton type="submit" form="correo-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"

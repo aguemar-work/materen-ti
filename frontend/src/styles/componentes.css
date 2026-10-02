@@ -12,8 +12,7 @@
    Lo que queda son las primitivas OFICIALES de docs/SISTEMA-DISENO.md §3:
    marcado repetido en decenas de formularios/vistas que no gana nada
    convirtiéndose en componente (campos, avisos inline, grilla de
-   formulario), o cuyo marcado está atado a otra pieza (Modal.vue,
-   BuscadorCombo, SelectorVista, el revelado auditado de useRevelado).
+   formulario), o cuyo marcado está atado a otra pieza (BuscadorCombo, SelectorVista, el revelado auditado de useRevelado).
    Una clase nueva acá es una decisión de sistema, no un atajo: lo propio
    de una vista va con utilidades de Tailwind en su plantilla.
 
@@ -135,56 +134,6 @@
   .combo-lista .combo-registrar { @apply justify-start text-xs text-primary-600; }
   .combo-lista .combo-registrar strong { @apply font-mono font-semibold; }
   .combo-sec { @apply text-xs text-gray-500; }
-
-  /* ── Modales (components/shared/Modal.vue) ────────────────────────── */
-  .modal-bg { @apply fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 p-4; }
-  .modal {
-    @apply flex max-h-[90vh] w-full max-w-[540px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-xl
-      focus:outline-none;
-  }
-  .modal > form { @apply flex min-h-0 flex-col; }
-  .modal .modal-body { @apply min-h-0 flex-auto overflow-y-auto; }
-  .modal .modal-title, .modal .modal-actions { @apply shrink-0; }
-  .modal.modal-sm { @apply max-w-[440px]; }
-  .modal.modal-md { @apply max-w-[540px]; }
-  .modal.modal-detail { @apply max-w-[620px]; }
-  .modal.modal-lg { @apply max-w-[680px]; }
-  .modal-title { @apply mb-5 flex items-center justify-between gap-3 text-base font-semibold text-gray-900; }
-  .modal-actions { @apply mt-5 flex justify-end gap-2 border-t border-gray-100 pt-4; }
-  .modal-bg--lateral { @apply items-stretch justify-end p-0; }
-  .modal--lateral { @apply h-full max-h-full rounded-none border-y-0 border-r-0; }
-  @media (max-width: 480px) { .modal--lateral { @apply max-w-full; } }
-
-  /* Nombres de <Transition> de Modal.vue: 'modal-anim' (por defecto),
-     'modal-anim-rapida' (prop `transicion`, diálogos sobre otro modal) y
-     'modal-anim-lateral' (prop `lateral`). */
-  .modal-anim-enter-active, .modal-anim-lateral-enter-active { transition: opacity 190ms ease-out; }
-  .modal-anim-leave-active, .modal-anim-lateral-leave-active { transition: opacity 130ms ease-in; }
-  .modal-anim-enter-active .modal { transition: transform 190ms cubic-bezier(0.2, 0, 0, 1); }
-  .modal-anim-leave-active .modal { transition: transform 130ms ease-in; }
-  .modal-anim-enter-from, .modal-anim-leave-to,
-  .modal-anim-rapida-enter-from, .modal-anim-rapida-leave-to,
-  .modal-anim-lateral-enter-from, .modal-anim-lateral-leave-to { opacity: 0; }
-  .modal-anim-enter-from .modal, .modal-anim-leave-to .modal { transform: scale(0.97); }
-  .modal-anim-rapida-enter-active { transition: opacity 110ms ease-out; }
-  .modal-anim-rapida-leave-active { transition: opacity 100ms ease-in; }
-  .modal-anim-rapida-enter-active .modal { transition: transform 110ms ease-out; }
-  .modal-anim-rapida-leave-active .modal { transition: transform 100ms ease-in; }
-  .modal-anim-rapida-enter-from .modal, .modal-anim-rapida-leave-to .modal { transform: scale(0.98); }
-  .modal-anim-lateral-enter-active .modal { transition: transform 220ms cubic-bezier(0.2, 0, 0, 1); }
-  .modal-anim-lateral-leave-active .modal { transition: transform 160ms ease-in; }
-  .modal-anim-lateral-enter-from .modal, .modal-anim-lateral-leave-to .modal { transform: translateX(100%); }
-  @media (prefers-reduced-motion: reduce) {
-    .modal-anim-enter-active, .modal-anim-leave-active,
-    .modal-anim-rapida-enter-active, .modal-anim-rapida-leave-active,
-    .modal-anim-lateral-enter-active, .modal-anim-lateral-leave-active,
-    .modal-anim-enter-active .modal, .modal-anim-leave-active .modal,
-    .modal-anim-rapida-enter-active .modal, .modal-anim-rapida-leave-active .modal,
-    .modal-anim-lateral-enter-active .modal, .modal-anim-lateral-leave-active .modal { transition-duration: 1ms; }
-    .modal-anim-enter-from .modal, .modal-anim-leave-to .modal,
-    .modal-anim-rapida-enter-from .modal, .modal-anim-rapida-leave-to .modal,
-    .modal-anim-lateral-enter-from .modal, .modal-anim-lateral-leave-to .modal { transform: none; }
-  }
 
   /* ── Revelado de contraseñas (useRevelado) — el marcado NO se toca ── */
   .cred { @apply flex min-w-0 items-center gap-1; }

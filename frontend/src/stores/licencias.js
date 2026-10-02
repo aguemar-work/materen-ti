@@ -16,9 +16,13 @@ export const useLicenciasStore = crearStorePaginado('licencias', {
       return insforgeApi.listLicenciasFiltrados(this.filtros);
     },
 
-    async crear(datos) {
+    // cuentaNueva (opcional): correo que se crea junto con la licencia, en una
+    // sola transacción (RPC crear_licencia_con_cuenta, migración 101).
+    async crear(datos, cuentaNueva = null) {
       this.error = null;
-      const id = await insforgeApi.createLicencia(datos);
+      const id = cuentaNueva
+        ? await insforgeApi.createLicenciaConCuenta(datos, cuentaNueva)
+        : await insforgeApi.createLicencia(datos);
       await this.cargar();
       return id;
     },

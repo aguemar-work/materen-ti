@@ -9,7 +9,7 @@
 //     y oferta de "Ver acta" (ruta imprimible) al entregar un equipo.
 //
 // Mismo arnés que las vistas: se mockea solo api/insforge.js; Pinia, router
-// y Modal.vue (Teleport a <body>) son reales.
+// y AppDialog.vue (Teleport a <body>) son reales.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';

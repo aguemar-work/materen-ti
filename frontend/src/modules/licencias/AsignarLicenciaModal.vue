@@ -11,7 +11,7 @@
 import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 
@@ -69,12 +69,12 @@ async function confirmar() {
 </script>
 
 <template>
-  <Modal
+  <AppDialog
     ref="modal"
     size="sm"
     :confirmar-cierre="confirmarCierreProcesando"
     :cerrar-en-backdrop="false"
-    @close="emit('close')"
+    @cerrado="emit('close')"
   >
     <template #titulo>Asignar licencia a {{ empleadoNombre }}</template>
 
@@ -126,5 +126,5 @@ async function confirmar() {
         @click="confirmar"
       />
     </template>
-  </Modal>
+  </AppDialog>
 </template>

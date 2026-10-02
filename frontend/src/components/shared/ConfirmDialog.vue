@@ -7,15 +7,15 @@
 //     formaliza el patrón de "rechazar ticket".
 //
 // Reescrito 2026-09-07 sobre primevue/dialog (Unstyled + Tailwind, ver
-// pt/dialog.pt.js) + AppButton — antes sobre <Modal> propio. La API PÚBLICA
+// pt/dialog.pt.js) + AppButton — antes sobre un <Modal> propio (retirado el 2026-10-02). La API PÚBLICA
 // (props/emits/expose) NO cambió: las ~31 vistas que usan <ConfirmDialog>
 // siguen funcionando sin tocarlas. Dialog trae su propio focus-trap,
 // Escape, aria-modal y backdrop — no hace falta reimplementar nada de eso
-// (a diferencia de Modal.vue, que sí lo hacía a mano, y que sigue siendo lo
-// correcto para modales de contenido libre — este cambio es solo de
+// (a diferencia del antiguo Modal.vue, que lo hacía a mano, y que fue
+// reemplazado por AppDialog.vue para modales de contenido libre — este cambio es solo de
 // ConfirmDialog).
 //
-// Diferencia de comportamiento aceptada a propósito: Modal.vue esperaba a
+// Diferencia de comportamiento aceptada a propósito: el antiguo Modal esperaba a
 // que la animación de salida terminara (@after-leave) antes de emitir
 // 'cancel', para que el padre desmontara con v-if recién ahí y la salida se
 // viera completa. PrimeVue Dialog no expone un hook público equivalente

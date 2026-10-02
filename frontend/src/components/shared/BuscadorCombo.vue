@@ -1,7 +1,7 @@
 <script setup>
 // Combo de búsqueda con lista flotante.
 //
-// La lista se teletransporta a <body> (mismo patrón que Modal.vue y
+// La lista se teletransporta a <body> (mismo patrón que AppDialog.vue y
 // MenuAcciones.vue) en lugar de posicionarse con `absolute` dentro del campo.
 // Motivo: .modal-body tiene overflow-y:auto y el modal se ajusta a su
 // contenido, así que en un modal chico una lista `absolute` quedaba recortada
@@ -230,11 +230,11 @@ function verActivo() {
 }
 
 // Escape debe cerrar solo la lista y dejar el modal abierto. No se puede
-// resolver desde el input: Modal.vue escucha en `document` en fase de captura
-// y detiene ahí la propagación, así que el evento nunca baja hasta el campo.
-// La captura en `window` corre antes que la de `document`, y es el único
-// punto donde se puede interceptar sin tocar Modal.vue. Solo intercepta con
-// la lista visible; en cualquier otro caso Escape cierra el modal como siempre.
+// resolver desde el input: AppDialog escucha Escape en `document` y cierra el diálogo
+// sin dejar que el campo lo atienda primero.
+// La captura en `window` corre antes que los listeners de `document`, y es el único
+// punto donde se puede interceptar sin tocar AppDialog.vue. Solo intercepta con
+// la lista visible; en cualquier otro caso Escape cierra el diálogo como siempre.
 function onEscapeCaptura(e) {
   if (e.key !== 'Escape' || !abierta.value) return;
   e.preventDefault();

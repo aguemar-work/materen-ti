@@ -4,9 +4,9 @@
 //                          unificación Modal -> AppDialog.
 //   - buildFormDialogPT(): AppDialog.vue (formularios y paneles en modal,
 //                          centrado o lateral). Reproduce el aspecto de las
-//                          clases `.modal-*` de styles/componentes.css (que
-//                          siguen vivas mientras exista Modal.vue): mismos
-//                          anchos, radios, rellenos y animaciones.
+//                          antiguas clases `.modal-*` (retiradas junto con
+//                          Modal.vue el 2026-10-02): mismos anchos, radios,
+//                          rellenos y animaciones.
 //
 // Reglas de diseño pedidas: estética minimalista, backdrop semitransparente,
 // sin bordes gruesos (1px, igual que el resto del sistema).

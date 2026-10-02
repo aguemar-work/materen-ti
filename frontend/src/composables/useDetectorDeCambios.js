@@ -1,5 +1,5 @@
 // Dirty-tracking para formularios en modal (Fase 2 de la protección contra
-// pérdida de datos; complementa el guard `confirmarCierre` de Modal.vue).
+// pérdida de datos; complementa el guard `confirmarCierre` de AppDialog.vue).
 // Compara el estado actual del formulario contra un snapshot serializado
 // del estado inicial.
 //

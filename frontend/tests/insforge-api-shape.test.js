@@ -33,7 +33,7 @@ const METODOS = [
   'createCorreo', 'updateCorreo',
   'softDeleteCorreo', 'asignarCuentaExistente',
   // licencias
-  'listLicencias', 'listLicenciasPage', 'listLicenciasFiltrados', 'conteosLicenciasPorSituacion', 'createLicencia', 'updateLicencia', 'renovarLicencia',
+  'listLicencias', 'listLicenciasPage', 'listLicenciasFiltrados', 'conteosLicenciasPorSituacion', 'createLicencia', 'createLicenciaConCuenta', 'updateLicencia', 'renovarLicencia',
   'softDeleteLicencia', 'asignarLicencia', 'cerrarAsignacionLicencia', 'licenciasPorEmpleado',
   'asignarUsuario', 'liberarUsuario',
   // equipos

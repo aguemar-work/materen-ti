@@ -10,7 +10,7 @@ import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
 import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
@@ -35,8 +35,8 @@ const errorForm = ref('');
 const campoNombreCategoria = useCampoAccesible();
 const infoErrorForm = infoNotificacion('error');
 
-// Cerrar vía Modal.cerrar() reproduce la animación de salida;
-// el @close del Modal es quien baja mostrarCatForm.
+// Cerrar vía AppDialog.cerrar() reproduce la animación de salida;
+// el @cerrado del AppDialog es quien baja mostrarCatForm.
 const modalCatForm = ref(null);
 
 // Alta rápida de subcategoría (inline, sin modal)
@@ -279,13 +279,13 @@ onMounted(async () => {
       </li>
     </ul>
 
-    <!-- Formulario de categoría (Modal accesible compartido) -->
-    <Modal
+    <!-- Formulario de categoría (AppDialog compartido) -->
+    <AppDialog
       v-if="mostrarCatForm"
       ref="modalCatForm"
       :titulo="catEditar ? 'Editar categoría' : 'Nueva categoría'"
       size="sm"
-      @close="mostrarCatForm = false"
+      @cerrado="mostrarCatForm = false"
     >
       <form id="cat-form" @submit.prevent="guardarCategoria">
         <div class="campo" :class="{ 'campo--inerte': guardando }">
@@ -315,7 +315,7 @@ onMounted(async () => {
         <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalCatForm?.cerrar()" />
         <AppButton type="submit" form="cat-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog

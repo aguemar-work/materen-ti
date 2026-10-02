@@ -18,7 +18,7 @@ import { infoNotificacion } from '../../core/notificacionInfo.js';
 const emit = defineEmits(['cerrar']);
 
 // Sobre AppDialog.vue (PrimeVue Dialog; desde el 2026-10-01 el diálogo único
-// del sistema, que reemplaza a Modal.vue): Teleport, foco atrapado, Escape,
+// del sistema, que reemplazó al antiguo Modal.vue): Teleport, foco atrapado, Escape,
 // aria-modal y backdrop los resuelve AppDialog. El contrato con
 // useFormularioModal.js es el de siempre: `modal.value?.cerrar()`
 // incondicional + `:confirmar-cierre` como veto de Escape/X/fondo.

@@ -7,7 +7,7 @@ import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -30,8 +30,8 @@ const guardando = ref(false);
 const errorForm = ref('');
 const infoErrorForm = infoNotificacion('error');
 
-// Cerrar vía Modal.cerrar() reproduce la animación de salida;
-// el @close del Modal es quien baja mostrarForm.
+// Cerrar vía AppDialog.cerrar() reproduce la animación de salida;
+// el @cerrado del AppDialog es quien baja mostrarForm.
 const modalForm = ref(null);
 
 const form = ref({ id: '', nombre: '', icono: '' });
@@ -253,13 +253,13 @@ onMounted(async () => {
       />
     </template>
 
-    <!-- Modal plataforma (Modal accesible compartido) -->
-    <Modal
+    <!-- Modal plataforma (AppDialog compartido) -->
+    <AppDialog
       v-if="mostrarForm"
       ref="modalForm"
       :titulo="esEdicion ? 'Editar plataforma' : 'Nueva plataforma'"
       size="sm"
-      @close="cerrarForm"
+      @cerrado="cerrarForm"
     >
       <form id="plat-form" @submit.prevent="guardar">
         <div class="form-grid">
@@ -338,7 +338,7 @@ onMounted(async () => {
         <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
         <AppButton type="submit" form="plat-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog

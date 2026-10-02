@@ -63,13 +63,6 @@ const RUTA_BASELINE = join(RAIZ, 'scripts/patrones-ui.baseline.json');
 // relativa a frontend/src.
 export const EXCEPCIONES = [
   {
-    archivo: 'components/shared/Modal.vue',
-    reglas: ['modal-a-mano'],
-    motivo: 'Es LA implementación del modal: centraliza role=dialog, aria-modal, foco atrapado y cierre con Escape.',
-    alcance: 'El componente compartido.',
-    impacto: 'Ninguno: es la fuente de la regla, no su excepción.',
-  },
-  {
     archivo: 'components/ui/AppAvatar.vue',
     reglas: ['caja-de-icono'],
     motivo: 'El avatar de iniciales es un círculo tonal por diseño (regla 20: vive en listas y menú de usuario).',
@@ -142,7 +135,6 @@ export const EXCEPCIONES = [
   ...[
     'components/shared/AppLayout.vue',
     'components/ui/AppMenu.vue',
-    'components/shared/Modal.vue',
     'components/ui/AppDialog.vue',
     'components/shared/BuscadorCombo.vue',
     'components/shared/AppSearch.vue',
@@ -336,7 +328,7 @@ export const REGLAS = {
     titulo: 'Modal hecho a mano en vez del componente compartido',
     porque:
       'Un modal propio se salta role=dialog, aria-modal, el foco atrapado y el cierre con Escape. Es el hallazgo más serio del ciclo 2026-08-31 (7 archivos, 8 modales) y el mismo hueco que UX6-03. SISTEMA-DISENO §6.',
-    arreglo: 'Usar <Modal> de components/shared/Modal.vue.',
+    arreglo: 'Usar <AppDialog> de components/ui/AppDialog.vue.',
     buscar: (tpl) => (/class="[^"]*\bmodal-bg\b/.test(tpl) ? ['class="modal-bg"'] : []),
   },
   'img-sin-alt': {

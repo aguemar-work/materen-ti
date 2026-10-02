@@ -87,7 +87,7 @@ onUnmounted(() => {
 // Atajo global de búsqueda (Ctrl/Cmd+K, patrón Linear/Notion/Vercel/GitHub):
 // ahorra el viaje del mouse en el flujo más repetido del día (buscar un
 // ticket/empleado/cuenta). No se activa con un modal abierto y atrapando
-// foco (Modal.vue/ConfirmDialog.vue usan role="dialog") — saltar al
+// foco (AppDialog.vue/ConfirmDialog.vue usan role="dialog") — saltar al
 // buscador del header detrás del overlay sería confuso.
 const appSearchRef = ref(null);
 

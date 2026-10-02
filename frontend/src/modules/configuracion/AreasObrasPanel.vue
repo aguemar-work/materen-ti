@@ -5,7 +5,7 @@
 import { useAreasObrasStore } from '../../stores/catalogos.js';
 import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -151,13 +151,13 @@ const infoErrorForm = infoNotificacion('error');
       />
     </template>
 
-    <!-- Formulario (Modal accesible compartido) -->
-    <Modal
+    <!-- Formulario (AppDialog compartido) -->
+    <AppDialog
       v-if="mostrarForm"
       ref="modalForm"
       :titulo="editar ? 'Editar área/obra' : 'Nueva área/obra'"
       size="sm"
-      @close="mostrarForm = false"
+      @cerrado="mostrarForm = false"
     >
       <form id="ao-form" class="space-y-4" @submit.prevent="guardar">
         <div class="campo" :class="{ 'campo--inerte': guardando }">
@@ -201,7 +201,7 @@ const infoErrorForm = infoNotificacion('error');
         <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
         <AppButton type="submit" form="ao-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog

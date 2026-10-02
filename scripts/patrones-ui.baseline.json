@@ -4,7 +4,6 @@
   ],
   "azul-decorativo": [
     "components/shared/AppNotifications.vue",
-    "modules/licencias/LicenciaForm.vue",
     "modules/soporte/SoporteView.vue",
     "modules/tickets/TicketsView.vue"
   ],
@@ -22,7 +21,6 @@
     "modules/encuestas/EncuestasView.vue",
     "modules/kb/KbArticuloDetalleView.vue",
     "modules/kb/KbView.vue",
-    "modules/licencias/LicenciasView.vue",
     "modules/plataformas/PlataformasView.vue",
     "modules/problemas/ProblemaDetalleView.vue",
     "modules/problemas/ProblemasView.vue",
@@ -32,8 +30,7 @@
   "codigo-sin-tabular": [
     "components/shared/AppSearch.vue",
     "modules/empleados/EmpleadoForm.vue",
-    "modules/equipos/AsignarEquipoModal.vue",
-    "modules/licencias/LicenciasView.vue"
+    "modules/equipos/AsignarEquipoModal.vue"
   ],
   "error-crudo": [
     "modules/accesosSensibles/AccesoSensibleForm.vue",
@@ -95,8 +92,6 @@
     "modules/empleados/EmpleadosView.vue",
     "modules/equipos/EquipoForm.vue",
     "modules/kb/KbArticuloDetalleView.vue",
-    "modules/licencias/LicenciaForm.vue",
-    "modules/licencias/LicenciasView.vue",
     "modules/problemas/ProblemaDetalleView.vue",
     "modules/staff/StaffView.vue",
     "modules/tickets/ReporteSatisfaccionView.vue",

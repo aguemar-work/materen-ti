@@ -110,7 +110,7 @@ async function activarModoCompartido() {
   }
 }
 
-// Guard de cierre del Modal compartido: Escape y la X (backdrop
+// Guard de cierre del AppDialog compartido: Escape y la X (backdrop
 // deshabilitado, ver template — formulario de captura, un clic afuera no
 // debe perder lo escrito) pasan por acá igual que el botón "Cancelar" —
 // con cambios sin guardar se pide confirmación antes de descartar; limpio

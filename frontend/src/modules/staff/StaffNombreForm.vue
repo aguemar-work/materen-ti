@@ -5,7 +5,7 @@
 // que StaffModulosForm.vue: llama al API directo, sin pasar por un store.
 import { ref } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
@@ -46,7 +46,7 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal ref="modal" titulo="Editar nombre" size="sm" @close="emit('cerrar')">
+  <AppDialog ref="modal" titulo="Editar nombre" size="sm" @cerrado="emit('cerrar')">
     <form id="staff-nombre-form" class="space-y-4" @submit.prevent="guardar">
       <div class="campo" :class="{ 'campo--invalido': campoNombre.invalido.value, 'campo--inerte': guardando }">
         <label class="campo__etiqueta" :for="campoNombre.id">
@@ -81,5 +81,5 @@ async function guardar() {
       <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modal?.cerrar()" />
       <AppButton type="submit" form="staff-nombre-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
     </template>
-  </Modal>
+  </AppDialog>
 </template>

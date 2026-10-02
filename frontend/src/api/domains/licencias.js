@@ -8,7 +8,7 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { cifrarPassword } from '../passwords.js';
-import { trimText, fechaLocalISO } from '../../core/formatters.js';
+import { trimText, toLower, fechaLocalISO } from '../../core/formatters.js';
 import { DIAS_POR_VENCER_LICENCIA } from '../../core/dominio-licencias.js';
 import { cuentasApi } from './cuentas.js';
 import { correosApi } from './correos.js';
@@ -140,6 +140,30 @@ export const licenciasApi = {
       .insert([await licenciaToRow(datos)])
       .select('id')
       .single();
+    if (error) throw error;
+    return data.id;
+  },
+
+  // Licencia + correo NUEVO que será su login, en UNA transacción (RPC
+  // crear_licencia_con_cuenta, migración 101; guards `licencias` y `correos`).
+  // Antes el formulario creaba el correo y después la licencia: si la segunda
+  // fallaba quedaba un correo huérfano. La clave y la contraseña del correo
+  // viajan YA cifradas (invariante 2: cifrarPassword → edge function
+  // `credenciales`); la RPC rechaza texto plano. `datos.cuenta_id` se ignora a
+  // propósito: la RPC rechaza cuenta existente y nueva a la vez. La cuenta nueva
+  // queda sin asignar (como createCorreo). Los rechazos (23505 de usuario
+  // duplicado, P0001, 42501) llegan crudos: los traduce api/erroresDb.js.
+  async createLicenciaConCuenta(datos, cuentaNueva) {
+    const p_licencia = await licenciaToRow({ ...datos, cuenta_id: null });
+    const p_cuenta = {
+      plataforma_id: cuentaNueva.plataforma_id,
+      usuario: toLower(cuentaNueva.usuario),
+      password: cuentaNueva.password ? await cifrarPassword(cuentaNueva.password) : null,
+      url: trimText(cuentaNueva.url),
+      notas: trimText(cuentaNueva.notas),
+      tipo_cuenta: cuentaNueva.tipo_cuenta || 'compartida',
+    };
+    const { data, error } = await getClient().database.rpc('crear_licencia_con_cuenta', { p_licencia, p_cuenta });
     if (error) throw error;
     return data.id;
   },

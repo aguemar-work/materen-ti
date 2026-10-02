@@ -5,7 +5,7 @@ import { useEmpresasStore } from '../../stores/empresas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -239,12 +239,12 @@ onMounted(async () => {
       />
     </template>
 
-    <Modal
+    <AppDialog
       v-if="mostrarForm"
       ref="modalForm"
       :titulo="esEdicion ? 'Editar empresa' : 'Nueva empresa'"
       size="sm"
-      @close="cerrarForm"
+      @cerrado="cerrarForm"
     >
       <form id="empresa-form" class="form-grid" @submit.prevent="guardar">
         <div class="campo" :class="{ 'campo--inerte': guardando }">
@@ -288,7 +288,7 @@ onMounted(async () => {
         <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
         <AppButton type="submit" form="empresa-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog

@@ -4,7 +4,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useProblemasStore } from '../../stores/problemas.js';
 import { OPCIONES_SEVERIDAD_PROBLEMA } from '../../core/dominio-problemas.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
@@ -87,7 +87,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Modal ref="modal" titulo="Nuevo problema" :confirmar-cierre="confirmarCierre" @close="emit('cerrar', resultado)">
+  <AppDialog ref="modal" titulo="Nuevo problema" :confirmar-cierre="confirmarCierre" @cerrado="emit('cerrar', resultado)">
     <form id="problema-form" class="form-grid" @submit.prevent="guardar">
       <p v-if="ticketDisparador" class="full flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
         <i class="ti ti-ticket text-gray-500" aria-hidden="true"></i>
@@ -173,7 +173,7 @@ onMounted(async () => {
         :disabled="guardando"
       />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"

@@ -8,7 +8,7 @@ import { badgeInfo } from '../../core/badges.js';
 import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -168,13 +168,13 @@ const campoDescripcion = useCampoAccesible();
       />
     </template>
 
-    <!-- Formulario (Modal accesible compartido) -->
-    <Modal
+    <!-- Formulario (AppDialog compartido) -->
+    <AppDialog
       v-if="mostrarForm"
       ref="modalForm"
       :titulo="editar ? 'Editar ubicación' : 'Nueva ubicación'"
       size="sm"
-      @close="mostrarForm = false"
+      @cerrado="mostrarForm = false"
     >
       <form id="ub-form" class="space-y-4" @submit.prevent="guardar">
         <div class="campo" :class="{ 'campo--inerte': guardando }">
@@ -242,7 +242,7 @@ const campoDescripcion = useCampoAccesible();
         <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
         <AppButton type="submit" form="ub-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog

@@ -8,7 +8,7 @@ import { ref } from 'vue';
 import { useEncuestasStore } from '../../stores/encuestas.js';
 import { TIPOS_PREGUNTA, nuevaPregunta } from '../../core/dominio-encuestas.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
@@ -105,7 +105,7 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal ref="modal" :titulo="esEdicion ? 'Editar encuesta' : 'Nueva encuesta'" size="lg" :confirmar-cierre="confirmarCierre" @close="emit('cerrar')">
+  <AppDialog ref="modal" :titulo="esEdicion ? 'Editar encuesta' : 'Nueva encuesta'" size="lg" :confirmar-cierre="confirmarCierre" @cerrado="emit('cerrar')">
     <form id="enc-form" class="space-y-5" @submit.prevent="guardar">
       <div class="campo" :class="{ 'campo--inerte': guardando }">
         <label class="campo__etiqueta" :for="campoTitulo.id">Título<span aria-hidden="true"> *</span></label>
@@ -241,7 +241,7 @@ async function guardar() {
         :disabled="guardando"
       />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"

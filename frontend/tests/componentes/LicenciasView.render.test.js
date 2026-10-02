@@ -80,7 +80,7 @@ async function montar() {
   const w = mount(LicenciasView, {
     global: {
       plugins: [router],
-      stubs: { LicenciaForm: true, Modal: true, ConfirmDialog: true },
+      stubs: { LicenciaForm: true, AppDialog: true, ConfirmDialog: true },
     },
   });
   await flushPromises();
@@ -165,7 +165,7 @@ describe('LicenciasView.vue — listado migrado a AppTable/AppColumn/AppButton',
     router.push('/licencias');
     await router.isReady();
     const w = mount(LicenciasView, {
-      global: { plugins: [router], stubs: { LicenciaForm: true, Modal: true, ConfirmDialog: true } },
+      global: { plugins: [router], stubs: { LicenciaForm: true, AppDialog: true, ConfirmDialog: true } },
     });
     await Promise.resolve();
     // Todavía cargando: la tabla existe (con 0 filas), no explota.
@@ -225,7 +225,7 @@ describe('LicenciasView.vue — filtros V2 (vistas + chips + URL)', () => {
     const router = crearRouter();
     router.push('/licencias?empresa=emp-1');
     await router.isReady();
-    const w = mount(LicenciasView, { global: { plugins: [router], stubs: { LicenciaForm: true, Modal: true, ConfirmDialog: true } } });
+    const w = mount(LicenciasView, { global: { plugins: [router], stubs: { LicenciaForm: true, AppDialog: true, ConfirmDialog: true } } });
     await flushPromises();
     expect(insforgeApi.listLicenciasPage.mock.calls.at(-1)[0].empresaIds).toEqual(['emp-1']);
     expect(insforgeApi.conteosLicenciasPorSituacion.mock.calls.at(-1)[0].empresaIds).toEqual(['emp-1']);
@@ -239,7 +239,7 @@ describe('LicenciasView.vue — /licencias?nuevo=1', () => {
     router.push('/licencias?nuevo=1');
     await router.isReady();
     const w = mount(LicenciasView, {
-      global: { plugins: [router], stubs: { LicenciaForm: true, Modal: true, ConfirmDialog: true } },
+      global: { plugins: [router], stubs: { LicenciaForm: true, AppDialog: true, ConfirmDialog: true } },
     });
     await flushPromises();
     expect(w.findComponent({ name: 'LicenciaForm' }).exists()).toBe(true);
