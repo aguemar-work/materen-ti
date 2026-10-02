@@ -6,12 +6,13 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { crearTicket } from '../../api/ticketsPublicos.js';
-import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
+import { OPCIONES_TIPO as TIPOS, resolverAvisoCategoria } from '../../core/dominio-tickets.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import AppDialog from '../../components/ui/AppDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
+import AvisoCategoria from './AvisoCategoria.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -63,6 +64,20 @@ tomarSnapshot();
 const subcategoriasFiltradas = computed(() =>
   subcategorias.value.filter((s) => s.categoria_id === form.value.categoriaId)
 );
+
+// Cambiar de categoría descarta la subcategoría elegida (ya no está en la
+// lista; si quedara, su tipo sugerido y su aviso seguirían aplicando).
+function elegirCategoria(id) {
+  form.value.categoriaId = id;
+  form.value.subcategoriaId = '';
+}
+
+// Aviso fijo de la categoría/subcategoría (migración 114): el mismo que ve el
+// solicitante en el portal; gana el de la subcategoría. Vacío = nada.
+const avisoCategoria = computed(() => resolverAvisoCategoria(
+  categorias.value.find((c) => c.id === form.value.categoriaId),
+  subcategoriasFiltradas.value.find((s) => s.id === form.value.subcategoriaId),
+));
 
 // Precarga Tipo con el default de la subcategoría elegida (tipo_sugerido);
 // queda vacío si la subcategoría es una de las ambiguas a propósito o si
@@ -168,7 +183,7 @@ onMounted(async () => {
               :value="form.categoriaId"
               required
               :disabled="guardando || cargandoCatalogo"
-              @change="form.categoriaId = $event.target.value"
+              @change="elegirCategoria($event.target.value)"
             >
               <option value="" disabled>Seleccionar</option>
               <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
@@ -210,6 +225,9 @@ onMounted(async () => {
             <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
           </div>
         </div>
+
+        <!-- Aviso fijo de la categoría/subcategoría elegida (114), bajo los selectores. -->
+        <AvisoCategoria v-if="avisoCategoria" class="full" :texto="avisoCategoria" />
 
         <div class="campo full" :class="{ 'campo--inerte': guardando }">
           <label class="campo__etiqueta" :for="campoTitulo.id">

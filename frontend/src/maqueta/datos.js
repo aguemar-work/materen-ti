@@ -119,24 +119,32 @@ const catalogo_almacen = [
   { id: 'cat-06', codigo: null, descripcion: 'Chip Claro corporativo', deleted_at: null },
 ];
 
+// `aviso` (migración 114): advertencia fija que ve el solicitante al elegir la
+// categoría o la subcategoría (gana el de la subcategoría). El ejemplo del
+// dueño vive en «Cámaras › Solicitud de imagen o corto».
+const AVISO_CAMARAS = 'Deberá adjuntar la autorización de gerencia. TI no es responsable del contenido: solo administra el sistema.';
+
 const categorias_ticket = [
-  { id: 'accesos_cuentas', nombre: 'Accesos y Cuentas', servicio_id: 'accesos', deleted_at: null },
-  { id: 'equipos', nombre: 'Equipos', servicio_id: 'equipos', deleted_at: null },
-  { id: 'software', nombre: 'Software y Licencias', servicio_id: 'licencias', deleted_at: null },
-  { id: 'red', nombre: 'Red y Conectividad', servicio_id: 'red', deleted_at: null },
-  { id: 'otro', nombre: 'Otro', servicio_id: null, deleted_at: null },
+  { id: 'accesos_cuentas', nombre: 'Accesos y Cuentas', servicio_id: 'accesos', aviso: null, deleted_at: null },
+  { id: 'camaras', nombre: 'Cámaras', servicio_id: null, aviso: null, deleted_at: null },
+  { id: 'equipos', nombre: 'Equipos', servicio_id: 'equipos', aviso: null, deleted_at: null },
+  { id: 'software', nombre: 'Software y Licencias', servicio_id: 'licencias', aviso: null, deleted_at: null },
+  { id: 'red', nombre: 'Red y Conectividad', servicio_id: 'red', aviso: null, deleted_at: null },
+  { id: 'otro', nombre: 'Otro', servicio_id: null, aviso: null, deleted_at: null },
 ];
 
 const subcategorias_ticket = [
-  { id: 'sub-01', categoria_id: 'accesos_cuentas', nombre: 'Restablecer contraseña', tipo_sugerido: 'solicitud', deleted_at: null },
-  { id: 'sub-02', categoria_id: 'accesos_cuentas', nombre: 'Crear cuenta', tipo_sugerido: 'solicitud', deleted_at: null },
-  { id: 'sub-03', categoria_id: 'equipos', nombre: 'Falla de hardware', tipo_sugerido: 'incidente', deleted_at: null },
-  { id: 'sub-04', categoria_id: 'equipos', nombre: 'Solicitud de equipo', tipo_sugerido: 'solicitud', deleted_at: null },
-  { id: 'sub-05', categoria_id: 'software', nombre: 'Instalación de programa', tipo_sugerido: 'solicitud', deleted_at: null },
-  { id: 'sub-06', categoria_id: 'software', nombre: 'Error de aplicación', tipo_sugerido: 'incidente', deleted_at: null },
-  { id: 'sub-07', categoria_id: 'red', nombre: 'Sin internet', tipo_sugerido: 'incidente', deleted_at: null },
-  { id: 'sub-08', categoria_id: 'red', nombre: 'VPN no conecta', tipo_sugerido: 'incidente', deleted_at: null },
-  { id: 'sub-09', categoria_id: 'otro', nombre: 'Consulta general', tipo_sugerido: null, deleted_at: null },
+  { id: 'sub-01', categoria_id: 'accesos_cuentas', nombre: 'Restablecer contraseña', tipo_sugerido: 'solicitud', aviso: null, deleted_at: null },
+  { id: 'sub-02', categoria_id: 'accesos_cuentas', nombre: 'Crear cuenta', tipo_sugerido: 'solicitud', aviso: null, deleted_at: null },
+  { id: 'sub-03', categoria_id: 'equipos', nombre: 'Falla de hardware', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
+  { id: 'sub-04', categoria_id: 'equipos', nombre: 'Solicitud de equipo', tipo_sugerido: 'solicitud', aviso: null, deleted_at: null },
+  { id: 'sub-05', categoria_id: 'software', nombre: 'Instalación de programa', tipo_sugerido: 'solicitud', aviso: null, deleted_at: null },
+  { id: 'sub-06', categoria_id: 'software', nombre: 'Error de aplicación', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
+  { id: 'sub-07', categoria_id: 'red', nombre: 'Sin internet', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
+  { id: 'sub-08', categoria_id: 'red', nombre: 'VPN no conecta', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
+  { id: 'sub-09', categoria_id: 'otro', nombre: 'Consulta general', tipo_sugerido: null, aviso: null, deleted_at: null },
+  { id: 'sub-10', categoria_id: 'camaras', nombre: 'Solicitud de imagen o corto', tipo_sugerido: 'solicitud', aviso: AVISO_CAMARAS, deleted_at: null },
+  { id: 'sub-11', categoria_id: 'camaras', nombre: 'Cámara sin señal', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
 ];
 
 // ── Empleados ───────────────────────────────────────────────────────────────
@@ -506,6 +514,12 @@ function ticket(n, titulo, estado, prioridad, extra = {}) {
 }
 
 const tickets = [
+  // Categoría con aviso (114): el detalle del staff muestra la regla que vio el solicitante.
+  ticket(119, 'Video de la caseta de ingreso del martes', 'en_progreso', 'media', {
+    empleado_id: 'e05', categoria_id: 'camaras', subcategoria_id: 'sub-10', tipo: 'solicitud',
+    descripcion: 'Gerencia pide el corte de 7:30 a 8:15 del ingreso de camiones. Adjunto la autorización firmada.',
+    created_at: hace(0, 5), updated_at: hace(0, 4),
+  }),
   ticket(118, 'No puedo ingresar al correo desde el celular', 'abierto', 'urgente', {
     asignado_a: null, empleado_id: 'e02', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-01', cuenta_id: 'c03', tipo: 'incidente',
     descripcion: 'Desde esta mañana Gmail me pide verificar la cuenta y no me llega el código. Necesito revisar planos que me enviaron.',

@@ -308,6 +308,7 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
               :equipos="equiposEmpleado"
               :articulos="articulosRelacionados"
               :categoria-id="ticket.categoria_id"
+              :aviso="ticket.aviso"
               mostrar-vacios
             />
           </AppSeccion>

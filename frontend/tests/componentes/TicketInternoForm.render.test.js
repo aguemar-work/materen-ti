@@ -134,6 +134,41 @@ describe('TicketInternoForm.vue — modal migrado a AppDialog (primevue/dialog)'
     botonPorTexto('Descartar y salir').click();
     await vi.waitFor(() => expect(w.emitted('cerrar')).toBeTruthy());
   });
+  // Aviso fijo por categoría/subcategoría (migración 114): el mismo que ve el
+  // solicitante en el portal, para que el staff lo lea al registrar por él.
+  it('muestra el aviso de la categoría/subcategoría elegida y lo quita al cambiar a una sin aviso', async () => {
+    insforgeApi.listCategoriasTicket.mockResolvedValue([
+      { id: 'camaras', nombre: 'Cámaras', aviso: null },
+      { id: 'red', nombre: 'Redes', aviso: 'Indique la sede afectada.' },
+    ]);
+    insforgeApi.listSubcategoriasTicket.mockResolvedValue([
+      { id: 's-corto', categoria_id: 'camaras', nombre: 'Solicitud de imagen o corto', tipo_sugerido: 'solicitud', aviso: 'Deberá adjuntar la autorización de gerencia.' },
+      { id: 's-senal', categoria_id: 'camaras', nombre: 'Cámara sin señal', tipo_sugerido: 'incidente', aviso: null },
+    ]);
+    await montar();
+    const aviso = () => document.querySelector('[data-aviso-categoria]');
+    const elegir = async (select, valor) => {
+      select.value = valor;
+      select.dispatchEvent(new Event('change'));
+      await nextTick();
+    };
+    expect(aviso()).toBeNull();
+
+    const categoria = document.querySelectorAll('select')[0];
+    await elegir(categoria, 'red');
+    expect(aviso()).toBeTruthy();
+    expect(aviso().getAttribute('role')).toBe('note');
+    expect(aviso().textContent).toContain('Indique la sede afectada.');
+
+    await elegir(categoria, 'camaras');
+    expect(aviso()).toBeNull(); // la categoría no tiene aviso propio
+    const subcategoria = document.querySelectorAll('select')[1];
+    await elegir(subcategoria, 's-corto');
+    expect(aviso().textContent).toContain('Deberá adjuntar la autorización de gerencia.');
+    await elegir(subcategoria, 's-senal');
+    expect(aviso()).toBeNull();
+  });
+
   it('con cambios sin guardar, Escape NO cierra: abre el descarte (el veto de AppDialog funciona)', async () => {
     const w = await montar();
     const titulo = document.querySelector('input[type="text"]');

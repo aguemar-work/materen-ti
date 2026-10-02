@@ -151,6 +151,23 @@ export function destinoDeCambio(detalle) {
   return /a "(\w+)"\s*$/.exec(String(detalle || ''))?.[1] || null;
 }
 
+// ── Aviso al solicitante por categoría / subcategoría (migración 114) ──────
+// Tope de la columna `aviso` (CHECK en la base): el contador del formulario de
+// Configuración y el maxlength del textarea salen de acá, no de un literal.
+export const AVISO_CATEGORIA_MAX = 600;
+
+/**
+ * Aviso que corresponde mostrar al elegir una categoría y, opcionalmente, una
+ * subcategoría: gana el de la subcategoría; si no tiene, el de la categoría;
+ * si ninguna tiene, ''. ÚNICA implementación de la regla (la cabecera de la
+ * migración 114 la documenta; la edge function `catalogo` solo devuelve los
+ * dos textos crudos). Acepta objetos nulos y avisos en blanco.
+ */
+export function resolverAvisoCategoria(categoria, subcategoria) {
+  const limpio = (v) => String(v ?? '').trim();
+  return limpio(subcategoria?.aviso) || limpio(categoria?.aviso);
+}
+
 export function estadoInfo(e) {
   return ESTADOS_TICKET[e] || { label: e, clase: 'badge--neutral' };
 }

@@ -5693,3 +5693,80 @@ begin
     raise exception 'TESTS_FALLARON [113a]: %', fallos;
   end if;
 end $$;
+
+-- ============================================================
+-- BLOQUE 114a — aviso al solicitante por categoría/subcategoría de ticket (migración 114):
+-- blanco → NULL (trigger), CHECK de 600 caracteres y sin HTML, en las dos tablas.
+-- ============================================================
+do $$
+declare
+  v_sub uuid;
+  v_aviso text;
+  fallos text := '';
+begin
+  -- Un aviso en blanco se guarda como NULL (sin aviso)
+  insert into public.categorias_ticket (id, nombre, aviso) values ('__test_ci_114a', '__TEST_CI__ Camaras 114a', '   ');
+  select aviso into v_aviso from public.categorias_ticket where id = '__test_ci_114a';
+  if v_aviso is not null then
+    fallos := fallos || '[114] un aviso en blanco no quedo como NULL en categorias_ticket; ';
+  end if;
+
+  -- Se recortan espacios y saltos de línea alrededor
+  update public.categorias_ticket set aviso = E'  Debera adjuntar la autorizacion de gerencia.\n ' where id = '__test_ci_114a';
+  select aviso into v_aviso from public.categorias_ticket where id = '__test_ci_114a';
+  if v_aviso is distinct from 'Debera adjuntar la autorizacion de gerencia.' then
+    fallos := fallos || '[114] el aviso no se recorto (quedo "' || coalesce(v_aviso, 'NULL') || '"); ';
+  end if;
+
+  -- Tope: 600 caracteres pasan, 601 no
+  begin
+    update public.categorias_ticket set aviso = repeat('a', 600) where id = '__test_ci_114a';
+  exception when check_violation then fallos := fallos || '[114] se rechazo un aviso de 600 caracteres; '; end;
+  begin
+    update public.categorias_ticket set aviso = repeat('a', 601) where id = '__test_ci_114a';
+    fallos := fallos || '[114] se admitio un aviso de 601 caracteres; ';
+  exception when check_violation then null; end;
+
+  -- Sin HTML: una etiqueta se rechaza; un "<" de comparacion no
+  begin
+    update public.categorias_ticket set aviso = 'Adjunte <b>la autorizacion</b> firmada' where id = '__test_ci_114a';
+    fallos := fallos || '[114] se admitio HTML en el aviso; ';
+  exception when check_violation then null; end;
+  begin
+    update public.categorias_ticket set aviso = 'Solo cortes de < 5 minutos' where id = '__test_ci_114a';
+  exception when check_violation then fallos := fallos || '[114] se rechazo un < que no es una etiqueta; '; end;
+
+  -- NULL explicito borra el aviso
+  update public.categorias_ticket set aviso = null where id = '__test_ci_114a';
+  if exists (select 1 from public.categorias_ticket where id = '__test_ci_114a' and aviso is not null) then
+    fallos := fallos || '[114] no se pudo borrar el aviso con NULL; ';
+  end if;
+
+  -- Subcategoria: mismo trigger y mismo CHECK
+  insert into public.subcategorias_ticket (categoria_id, nombre, tipo_sugerido, aviso)
+    values ('__test_ci_114a', '__TEST_CI__ Solicitud de imagen o corto', 'solicitud', E' \n ')
+    returning id into v_sub;
+  if (select aviso from public.subcategorias_ticket where id = v_sub) is not null then
+    fallos := fallos || '[114] un aviso en blanco no quedo como NULL en subcategorias_ticket; ';
+  end if;
+  begin
+    update public.subcategorias_ticket set aviso = ' Debera adjuntar la autorizacion de gerencia. ' where id = v_sub;
+  exception when check_violation then fallos := fallos || '[114] se rechazo un aviso valido de subcategoria; '; end;
+  if (select aviso from public.subcategorias_ticket where id = v_sub) is distinct from 'Debera adjuntar la autorizacion de gerencia.' then
+    fallos := fallos || '[114] el aviso de la subcategoria no se recorto; ';
+  end if;
+  begin
+    update public.subcategorias_ticket set aviso = repeat('b', 601) where id = v_sub;
+    fallos := fallos || '[114] se admitio un aviso de 601 caracteres en subcategorias_ticket; ';
+  exception when check_violation then null; end;
+  begin
+    update public.subcategorias_ticket set aviso = '<script>x</script>' where id = v_sub;
+    fallos := fallos || '[114] se admitio HTML en el aviso de la subcategoria; ';
+  exception when check_violation then null; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [114a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [114a]: %', fallos;
+  end if;
+end $$;

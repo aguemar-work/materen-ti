@@ -325,11 +325,26 @@ describe('serviciosApi y servicio_id de las categorías', () => {
     respuestaTabla = () => ({ data: { id: 'x' }, error: null });
     consultas.length = 0;
     await ticketsApi.createCategoriaTicket({ id: 'x', nombre: ' Nueva ', servicio_id: '' });
-    expect(consultas[0].op.find(([m]) => m === 'insert')[1]).toEqual([{ id: 'x', nombre: 'Nueva', servicio_id: null }]);
+    // aviso (114): sin texto se inserta como null, nunca como ''
+    expect(consultas[0].op.find(([m]) => m === 'insert')[1]).toEqual([{ id: 'x', nombre: 'Nueva', servicio_id: null, aviso: null }]);
     await ticketsApi.updateCategoriaTicket('x', { nombre: 'Nueva', servicio_id: 'erp' });
     expect(consultas[1].op.find(([m]) => m === 'update')[1]).toEqual({ nombre: 'Nueva', servicio_id: 'erp' });
-    // sin la clave, la actualización no toca el servicio (renombrar no lo borra)
+    // sin la clave, la actualización no toca el servicio ni el aviso (renombrar no los borra)
     await ticketsApi.updateCategoriaTicket('x', { nombre: 'Solo nombre' });
     expect(consultas[2].op.find(([m]) => m === 'update')[1]).toEqual({ nombre: 'Solo nombre' });
+  });
+
+  it('el aviso al solicitante (114) viaja recortado, vacío como null y con sus saltos de línea', async () => {
+    respuestaTabla = () => ({ data: { id: 'x' }, error: null });
+    consultas.length = 0;
+    await ticketsApi.updateCategoriaTicket('x', { nombre: 'Cámaras', aviso: '  Línea 1\nLínea 2  ' });
+    expect(consultas[0].op.find(([m]) => m === 'update')[1]).toEqual({ nombre: 'Cámaras', aviso: 'Línea 1\nLínea 2' });
+    await ticketsApi.updateCategoriaTicket('x', { nombre: 'Cámaras', aviso: '   ' });
+    expect(consultas[1].op.find(([m]) => m === 'update')[1]).toEqual({ nombre: 'Cámaras', aviso: null });
+    await ticketsApi.updateSubcategoriaTicket('s1', { nombre: 'Corto', tipo_sugerido: '', aviso: 'Adjunte la autorización.' });
+    expect(consultas[2].op.find(([m]) => m === 'update')[1]).toEqual({ nombre: 'Corto', tipo_sugerido: null, aviso: 'Adjunte la autorización.' });
+    // renombrar una subcategoría no toca su tipo ni su aviso
+    await ticketsApi.updateSubcategoriaTicket('s1', { nombre: 'Solo nombre' });
+    expect(consultas[3].op.find(([m]) => m === 'update')[1]).toEqual({ nombre: 'Solo nombre' });
   });
 });

@@ -8,6 +8,7 @@
 // salvo "Artículos de KB" con `mostrar-vacios` (la página completa lo usa
 // para decir que la categoría todavía no tiene artículos).
 import AppTag from '../../components/ui/AppTag.vue';
+import AvisoCategoria from './AvisoCategoria.vue';
 import { estadoProblemaInfo } from '../../core/dominio-problemas.js';
 import { rolDeTag } from '../../core/tagRol.js';
 
@@ -16,6 +17,9 @@ defineProps({
   articulos: { type: Array, default: () => [] },
   problema: { type: Object, default: null },
   categoriaId: { type: String, default: null },
+  // Aviso de la categoría/subcategoría del ticket (114), ya resuelto por el
+  // API: el técnico recuerda la regla que vio el solicitante al registrarlo.
+  aviso: { type: String, default: '' },
   mostrarVacios: { type: Boolean, default: false },
 });
 
@@ -24,6 +28,11 @@ const ROTULO = 'mb-1.5 flex items-center gap-1.5 text-xs font-medium text-gray-5
 
 <template>
   <div class="space-y-4">
+    <div v-if="aviso">
+      <p :class="ROTULO"><i class="ti ti-alert-triangle" aria-hidden="true"></i>Aviso de la categoría</p>
+      <AvisoCategoria :texto="aviso" />
+    </div>
+
     <div v-if="problema">
       <p :class="ROTULO"><i class="ti ti-alert-hexagon" aria-hidden="true"></i>Problema vinculado</p>
       <RouterLink

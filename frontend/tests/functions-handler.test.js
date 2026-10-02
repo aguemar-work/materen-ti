@@ -247,6 +247,31 @@ describe('credenciales — entregaAbrir (pública)', () => {
   });
 });
 
+describe('tickets — catalogo', () => {
+  it('devuelve el aviso de categorías y subcategorías (migración 114) y lo pide a la base, solo filas vivas', async () => {
+    sdk.usuario = null;
+    sdk.responder = responderCon({
+      'categorias_ticket:select': () => ({ data: [{ id: 'camaras', nombre: 'Cámaras', aviso: null }], error: null }),
+      'subcategorias_ticket:select': () => ({
+        data: [{ id: 's-1', categoria_id: 'camaras', nombre: 'Solicitud de imagen o corto', tipo_sugerido: 'solicitud', aviso: 'Deberá adjuntar la autorización de gerencia.' }],
+        error: null,
+      }),
+    });
+    const r = await tickets(peticion({ action: 'catalogo' }, { token: null, ip: '203.0.113.5' }));
+    expect(r.status).toBe(200);
+    const datos = await r.json();
+    expect(datos.ok).toBe(true);
+    expect(datos.categorias).toEqual([{ id: 'camaras', nombre: 'Cámaras', aviso: null }]);
+    expect(datos.subcategorias[0]).toMatchObject({ id: 's-1', aviso: 'Deberá adjuntar la autorización de gerencia.' });
+    const [cat] = consultasDe('categorias_ticket', 'select');
+    const [sub] = consultasDe('subcategorias_ticket', 'select');
+    expect(cat.cols.split(/,\s*/)).toEqual(expect.arrayContaining(['id', 'nombre', 'aviso']));
+    expect(sub.cols.split(/,\s*/)).toEqual(expect.arrayContaining(['id', 'categoria_id', 'nombre', 'tipo_sugerido', 'aviso']));
+    expect(tieneFiltro(cat, 'is', 'deleted_at', null)).toBe(true);
+    expect(tieneFiltro(sub, 'is', 'deleted_at', null)).toBe(true);
+  });
+});
+
 describe('primer nivel: excepciones y CORS', () => {
   it('una excepción no controlada responde error_interno (500) con CORS', async () => {
     sdk.responder = () => {

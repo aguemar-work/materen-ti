@@ -239,4 +239,20 @@ describe('TicketDetalleView.vue — encabezado y feed V2', () => {
     expect(w.findAll('[data-tipo="evento"]').length).toBe(0);
     expect(w.findAll('[data-tipo="comentario"]').length).toBe(1);
   });
+
+  // Aviso de la categoría/subcategoría (migración 114): el técnico ve en el
+  // contexto la misma regla que vio el solicitante al registrar el ticket.
+  it('muestra en Contexto el aviso de la categoría del ticket, y nada si no tiene', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ aviso: 'Deberá adjuntar la autorización de gerencia.' }));
+    let w = await montar();
+    const nota = w.find('[data-aviso-categoria]');
+    expect(nota.exists()).toBe(true);
+    expect(nota.attributes('role')).toBe('note');
+    expect(nota.text()).toContain('Deberá adjuntar la autorización de gerencia.');
+    w.unmount();
+
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ aviso: '' }));
+    w = await montar();
+    expect(w.find('[data-aviso-categoria]').exists()).toBe(false);
+  });
 });

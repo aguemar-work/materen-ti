@@ -7,7 +7,7 @@
 // INSERT), todo pasa por aquí con cliente admin.
 //
 // Acciones (POST { action, ... }):
-//   catalogo       público          → { categorias[], subcategorias[] }
+//   catalogo       público          → { categorias[], subcategorias[] } (con `aviso`, migración 114)
 //   crear          público o staff  → { codigo, token, vinculado }
 //   seguimiento    público          → { codigo, titulo, estado, comentarios[], adjuntoUrl? }
 //   adjuntoStaff   staff            → { url, expiraSegundos } (URL firmada de la captura de un ticket)
@@ -166,13 +166,16 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
   }
 
   // ── catalogo: público, categorías/subcategorías activas para el formulario ──
+  // `aviso` (migración 114): advertencia fija que el formulario muestra al
+  // elegir la categoría o la subcategoría (gana el de la subcategoría). Es texto
+  // plano del catálogo, sin datos personales: puede salir al portal público.
   if (body.action === 'catalogo') {
     if (await excedeLimite(admin, 'tickets.catalogo', ip, CATALOGO_MAX_IP, LIMITE_VENTANA_MIN)) {
       return json({ ok: false, code: 'demasiados_intentos' }, 429);
     }
     const [{ data: categorias }, { data: subcategorias }] = await Promise.all([
-      admin.database.from('categorias_ticket').select('id, nombre').is('deleted_at', null).order('nombre'),
-      admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre, tipo_sugerido').is('deleted_at', null).order('nombre'),
+      admin.database.from('categorias_ticket').select('id, nombre, aviso').is('deleted_at', null).order('nombre'),
+      admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre, tipo_sugerido, aviso').is('deleted_at', null).order('nombre'),
     ]);
     return json({ ok: true, categorias: categorias || [], subcategorias: subcategorias || [] });
   }

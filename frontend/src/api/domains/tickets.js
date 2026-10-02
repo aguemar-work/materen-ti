@@ -5,7 +5,7 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { trimText } from '../../core/formatters.js';
-import { ESTADO_FILTRO_VIGENTES, SIN_ASIGNAR } from '../../core/dominio-tickets.js';
+import { ESTADO_FILTRO_VIGENTES, SIN_ASIGNAR, resolverAvisoCategoria } from '../../core/dominio-tickets.js';
 
 // Columnas de "tickets" ordenables desde la tabla (excluye solicitante y
 // asignado_a: el primero viene de un join y el segundo es un UUID sin
@@ -18,11 +18,19 @@ const ORDEN_DEFECTO = { columna: 'created_at', ascending: false };
 // api/ticketsPublicos.js (edge function). Aquí solo lo que opera el staff
 // vía RLS directo: catálogo, bandeja, detalle, comentarios, cambios de estado.
 
+// Columnas de los dos catálogos. `aviso` (migración 114): advertencia fija al
+// solicitante; vacío se manda como null (la base también lo normaliza). No
+// pasa por trimText(): ese colapsa los saltos de línea, y un aviso de varios
+// párrafos los necesita (se pinta con `whitespace-pre-line`).
+const COLS_CATEGORIA = 'id, nombre, servicio_id, aviso';
+const COLS_SUBCATEGORIA = 'id, categoria_id, nombre, tipo_sugerido, aviso';
+const avisoONull = (v) => String(v ?? '').trim() || null;
+
 export const ticketsApi = {
   async listCategoriasTicket() {
     const { data, error } = await getClient().database
       .from('categorias_ticket')
-      .select('id, nombre, servicio_id')
+      .select(COLS_CATEGORIA)
       .is('deleted_at', null)
       .order('nombre', { ascending: true });
     if (error) throw error;
@@ -32,7 +40,7 @@ export const ticketsApi = {
   async listSubcategoriasTicket(categoriaId = null) {
     let query = getClient().database
       .from('subcategorias_ticket')
-      .select('id, categoria_id, nombre, tipo_sugerido')
+      .select(COLS_SUBCATEGORIA)
       .is('deleted_at', null)
       .order('nombre', { ascending: true });
     if (categoriaId) query = query.eq('categoria_id', categoriaId);
@@ -44,8 +52,8 @@ export const ticketsApi = {
   async createCategoriaTicket(datos) {
     const { data, error } = await getClient().database
       .from('categorias_ticket')
-      .insert([{ id: datos.id, nombre: trimText(datos.nombre), servicio_id: datos.servicio_id || null }])
-      .select('id, nombre, servicio_id')
+      .insert([{ id: datos.id, nombre: trimText(datos.nombre), servicio_id: datos.servicio_id || null, aviso: avisoONull(datos.aviso) }])
+      .select(COLS_CATEGORIA)
       .single();
     if (error) throw error;
     return data;
@@ -56,11 +64,12 @@ export const ticketsApi = {
       .from('categorias_ticket')
       .update({
         nombre: trimText(datos.nombre),
-        // Servicio opcional (migración 107): solo se toca si el formulario lo manda.
+        // Servicio opcional (migración 107) y aviso (114): solo se tocan si el formulario los manda.
         ...('servicio_id' in datos ? { servicio_id: datos.servicio_id || null } : {}),
+        ...('aviso' in datos ? { aviso: avisoONull(datos.aviso) } : {}),
       })
       .eq('id', id)
-      .select('id, nombre, servicio_id')
+      .select(COLS_CATEGORIA)
       .single();
     if (error) throw error;
     return data;
@@ -81,25 +90,26 @@ export const ticketsApi = {
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
       .insert([{ categoria_id: categoriaId, nombre: trimText(nombre), tipo_sugerido: tipoSugerido }])
-      .select('id, categoria_id, nombre, tipo_sugerido')
+      .select(COLS_SUBCATEGORIA)
       .single();
     if (error) throw error;
     return data;
   },
 
-  // tipoSugerido es opcional a propósito (a diferencia del alta): omitirlo
-  // no toca la columna, así renombrar una subcategoría no obliga a fijar
-  // (o borrar) su clasificación. Pasarlo explícito — incluido null/'' — sí
-  // la actualiza. Sin llamador todavía: no hay UI de edición de
-  // subcategorías, solo alta rápida y borrado.
-  async updateSubcategoriaTicket(id, nombre, tipoSugerido) {
-    const datos = { nombre: trimText(nombre) };
-    if (tipoSugerido !== undefined) datos.tipo_sugerido = tipoSugerido || null;
+  // `datos`: { nombre, tipo_sugerido?, aviso? }. tipo_sugerido y aviso son
+  // opcionales a propósito (a diferencia del alta): omitirlos no toca la
+  // columna, así renombrar una subcategoría no obliga a fijar (o borrar) su
+  // clasificación ni su aviso. Pasarlos explícitos — incluido null/'' — sí
+  // los actualiza. Llamador: SubcategoriaTicketForm.vue (Configuración, 114).
+  async updateSubcategoriaTicket(id, datos) {
+    const cambios = { nombre: trimText(datos.nombre) };
+    if ('tipo_sugerido' in datos) cambios.tipo_sugerido = datos.tipo_sugerido || null;
+    if ('aviso' in datos) cambios.aviso = avisoONull(datos.aviso);
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
-      .update(datos)
+      .update(cambios)
       .eq('id', id)
-      .select('id, categoria_id, nombre, tipo_sugerido')
+      .select(COLS_SUBCATEGORIA)
       .single();
     if (error) throw error;
     return data;
@@ -167,8 +177,8 @@ export const ticketsApi = {
         contacto_ingresado, asignado_a,
         adjunto_key, created_at, updated_at,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
-        categoria_id, categorias_ticket(nombre),
-        subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido),
+        categoria_id, categorias_ticket(nombre, aviso),
+        subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido, aviso),
         equipo_id, equipos(codigo, marca, modelo),
         cuenta_id, cuentas(usuario, plataformas(nombre)),
         licencia_id, licencias(software)
@@ -395,6 +405,9 @@ function mapTicketDetalle(row) {
     subcategoria_id: row.subcategoria_id,
     subcategoria_nombre: row.subcategorias_ticket?.nombre || '',
     subcategoria_tipo_sugerido: row.subcategorias_ticket?.tipo_sugerido || null,
+    // Aviso de la categoría/subcategoría (114), ya resuelto: el técnico lo ve
+    // en el contexto del ticket para recordar la regla que vio el solicitante.
+    aviso: resolverAvisoCategoria(row.categorias_ticket, row.subcategorias_ticket),
     equipo_id: row.equipo_id,
     equipo_desc: row.equipos ? `${row.equipos.codigo} — ${row.equipos.marca || ''} ${row.equipos.modelo || ''}`.trim() : '',
     cuenta_id: row.cuenta_id,

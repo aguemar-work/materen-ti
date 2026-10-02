@@ -5,6 +5,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { insforgeApi } from '../../api/insforge.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { useCategoriasTicketStore, useServiciosStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
@@ -15,8 +16,18 @@ import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppVacio from '../../components/ui/AppVacio.vue';
 import EncabezadoCatalogo from './EncabezadoCatalogo.vue';
+import CampoAvisoCategoria from './CampoAvisoCategoria.vue';
+import SubcategoriaTicketForm from './SubcategoriaTicketForm.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
+
+// Quién escribe este catálogo lo decide la RLS: INSERT/UPDATE de categorías
+// (099) y subcategorías (082) exigen el módulo `tickets` (el JEFE está exento).
+// El resto del staff solo lee; no se le ofrecen acciones que el servidor
+// rechazaría (frontend/AGENTS.md). El aviso al solicitante (114) es una
+// columna más de esas filas: lo edita quien edita la categoría.
+const auth = useAuthStore();
+const puedeEditar = computed(() => auth.puedeVerModulo('tickets'));
 
 // Las categorías viven en el store de catálogos; las subcategorías son
 // un detalle de este panel y se quedan locales (insforgeApi directo).
@@ -34,8 +45,10 @@ const expandidoId = ref(null);
 // Modal categoría
 const mostrarCatForm = ref(false);
 const catEditar = ref(null);
-const catForm = ref({ id: '', nombre: '', servicio_id: '' });
+const catForm = ref({ id: '', nombre: '', servicio_id: '', aviso: '' });
 const errorForm = ref('');
+// Edición de una subcategoría (nombre, tipo y aviso): su propio diálogo.
+const subEditar = ref(null);
 const campoNombreCategoria = useCampoAccesible();
 const campoServicioCategoria = useCampoAccesible({ ayuda: () => 'Opcional' });
 const infoErrorForm = infoNotificacion('error');
@@ -78,14 +91,14 @@ function toggleExpandir(id) {
 
 function abrirNuevaCategoria() {
   catEditar.value = null;
-  catForm.value = { id: '', nombre: '', servicio_id: '' };
+  catForm.value = { id: '', nombre: '', servicio_id: '', aviso: '' };
   errorForm.value = '';
   mostrarCatForm.value = true;
 }
 
 function abrirEditarCategoria(cat) {
   catEditar.value = cat;
-  catForm.value = { id: cat.id, nombre: cat.nombre, servicio_id: cat.servicio_id || '' };
+  catForm.value = { id: cat.id, nombre: cat.nombre, servicio_id: cat.servicio_id || '', aviso: cat.aviso || '' };
   errorForm.value = '';
   mostrarCatForm.value = true;
 }
@@ -98,7 +111,12 @@ async function guardarCategoria() {
       await catStore.actualizar(catEditar.value.id, catForm.value);
       showToast('Categoría actualizada');
     } else {
-      await catStore.crear({ id: slugDe(catForm.value.nombre), nombre: catForm.value.nombre, servicio_id: catForm.value.servicio_id || null });
+      await catStore.crear({
+        id: slugDe(catForm.value.nombre),
+        nombre: catForm.value.nombre,
+        servicio_id: catForm.value.servicio_id || null,
+        aviso: catForm.value.aviso,
+      });
       showToast('Categoría creada');
     }
     modalCatForm.value?.cerrar();
@@ -137,6 +155,14 @@ async function agregarSubcategoria(categoriaId) {
 
 function pedirEliminarSubcategoria(sub) {
   pendienteEliminar.value = { tipo: 'subcategoria', item: sub };
+}
+
+// La fila editada vuelve del diálogo ya guardada (o null si se canceló).
+function onSubcategoriaCerrada(fila) {
+  subEditar.value = null;
+  if (!fila) return;
+  subcategorias.value = subcategorias.value.map((s) => (s.id === fila.id ? fila : s));
+  showToast('Subcategoría actualizada');
 }
 
 async function confirmarEliminarPendiente() {
@@ -197,10 +223,12 @@ onMounted(async () => {
       :conteo="categorias.length"
       descripcion="Clasifican cada ticket; sus subcategorías sugieren si es un incidente o una solicitud."
     >
-      <template #acciones>
+      <template v-if="puedeEditar" #acciones>
         <AppButton icon="ti ti-plus" label="Nueva categoría" @click="abrirNuevaCategoria" />
       </template>
     </EncabezadoCatalogo>
+
+    <p v-if="!puedeEditar" class="text-sm text-gray-500" data-solo-modulo>Solo el staff con el módulo Tickets puede crear, editar o eliminar categorías y sus avisos.</p>
 
     <div v-if="cargando" class="rounded-lg border border-gray-200 bg-white py-10 text-center text-sm text-gray-500" role="status">
       Cargando categorías...
@@ -210,9 +238,9 @@ onMounted(async () => {
       v-else-if="categorias.length === 0"
       icono="ti ti-headset"
       titulo="Sin categorías todavía"
-      mensaje="Cree la primera categoría para clasificar los tickets."
+      :mensaje="puedeEditar ? 'Cree la primera categoría para clasificar los tickets.' : 'Todavía no hay categorías registradas.'"
     >
-      <AppButton variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar categoría" @click="abrirNuevaCategoria" />
+      <AppButton v-if="puedeEditar" variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar categoría" @click="abrirNuevaCategoria" />
     </AppVacio>
 
     <ul v-else class="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white" aria-label="Categorías de tickets">
@@ -231,34 +259,46 @@ onMounted(async () => {
             ></i>
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium text-gray-900">{{ cat.nombre }}</span>
-              <span class="block text-xs tabular-nums" :class="subsDe(cat.id).length ? 'text-gray-500' : 'text-gray-500'">
-                {{ subsDe(cat.id).length }} {{ subsDe(cat.id).length === 1 ? 'subcategoría' : 'subcategorías' }}<template v-if="nombreServicio(cat.servicio_id)"> · Servicio: {{ nombreServicio(cat.servicio_id) }}</template>
+              <span class="block text-xs tabular-nums text-gray-500">
+                {{ subsDe(cat.id).length }} {{ subsDe(cat.id).length === 1 ? 'subcategoría' : 'subcategorías' }}<template v-if="nombreServicio(cat.servicio_id)"> · Servicio: {{ nombreServicio(cat.servicio_id) }}</template><template v-if="cat.aviso"> · Con aviso</template>
               </span>
             </span>
           </button>
-          <MenuAcciones :acciones="accionesCategoria(cat)" :label="`Acciones de ${cat.nombre}`" />
+          <MenuAcciones v-if="puedeEditar" :acciones="accionesCategoria(cat)" :label="`Acciones de ${cat.nombre}`" />
         </div>
 
         <div v-if="expandidoId === cat.id" class="border-t border-gray-100 bg-gray-50/60 px-4 py-3 sm:pl-11">
           <ul v-if="subsDe(cat.id).length" class="mb-3 divide-y divide-gray-100 rounded-md border border-gray-200 bg-white" :aria-label="`Subcategorías de ${cat.nombre}`">
             <li v-for="sub in subsDe(cat.id)" :key="sub.id" class="flex items-center gap-3 py-1.5 pl-3 pr-1.5">
               <span class="min-w-0 flex-1 truncate text-sm text-gray-900">{{ sub.nombre }}</span>
+              <span v-if="sub.aviso" class="shrink-0 text-xs text-gray-500">Con aviso</span>
               <span v-if="tipoLabel(sub.tipo_sugerido)" class="shrink-0 text-xs text-gray-500">{{ tipoLabel(sub.tipo_sugerido) }}</span>
-              <button
-                class="icon-btn danger"
-                type="button"
-                title="Eliminar subcategoría"
-                :aria-label="`Eliminar la subcategoría ${sub.nombre}`"
-                @click="pedirEliminarSubcategoria(sub)"
-              >
-                <i class="ti ti-trash" aria-hidden="true"></i>
-              </button>
+              <template v-if="puedeEditar">
+                <button
+                  class="icon-btn"
+                  type="button"
+                  title="Editar subcategoría"
+                  :aria-label="`Editar la subcategoría ${sub.nombre}`"
+                  @click="subEditar = sub"
+                >
+                  <i class="ti ti-pencil" aria-hidden="true"></i>
+                </button>
+                <button
+                  class="icon-btn danger"
+                  type="button"
+                  title="Eliminar subcategoría"
+                  :aria-label="`Eliminar la subcategoría ${sub.nombre}`"
+                  @click="pedirEliminarSubcategoria(sub)"
+                >
+                  <i class="ti ti-trash" aria-hidden="true"></i>
+                </button>
+              </template>
             </li>
           </ul>
-          <p v-else class="mb-3 text-sm text-gray-500">Sin subcategorías. Agregue la primera abajo.</p>
+          <p v-else class="mb-3 text-sm text-gray-500">{{ puedeEditar ? 'Sin subcategorías. Agregue la primera abajo.' : 'Sin subcategorías.' }}</p>
 
           <!-- Alta rápida de subcategoría (inline, sin modal) -->
-          <div class="flex flex-wrap items-center gap-2">
+          <div v-if="puedeEditar" class="flex flex-wrap items-center gap-2">
             <div class="campo min-w-0 flex-1 basis-48">
               <div class="campo__caja">
                 <input
@@ -322,7 +362,8 @@ onMounted(async () => {
           </div>
           <p :id="campoServicioCategoria.idAyuda" class="campo__pie">Opcional. Sirve para medir los tickets de cada servicio.</p>
         </div>
-        <div v-if="errorForm" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+        <CampoAvisoCategoria v-model="catForm.aviso" class="mt-4" :disabled="guardando" />
+        <div v-if="errorForm" class="notif mt-4" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
           <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
           <div class="notif__texto">
             <p class="notif__detalle">{{ errorForm }}</p>
@@ -334,6 +375,9 @@ onMounted(async () => {
         <AppButton type="submit" form="cat-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
     </AppDialog>
+
+    <!-- Edición de subcategoría: nombre, tipo sugerido y aviso al solicitante (114) -->
+    <SubcategoriaTicketForm v-if="subEditar" :subcategoria="subEditar" @cerrar="onSubcategoriaCerrada" />
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog

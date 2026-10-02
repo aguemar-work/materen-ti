@@ -23,6 +23,14 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-02** (**migración 114 — Aviso al solicitante por categoría de ticket**, escrita, **sin aplicar**; pedido
+  del dueño) — `categorias_ticket.aviso` y `subcategorias_ticket.aviso` (texto plano ≤ 600, blanco → NULL por
+  trigger, CHECK sin HTML). Gana el aviso de la subcategoría; si es NULL, el de la categoría
+  (`resolverAvisoCategoria`, `core/dominio-tickets.js`). Lo ve el solicitante en el portal (`catalogo` de la
+  function `tickets` devuelve `aviso`; dist regenerado, **sin desplegar**) y en el formulario interno, y el
+  técnico en el contexto del ticket. Se edita en Configuración › Categorías (campo «Aviso al solicitante» en
+  categoría y en la nueva edición de subcategoría). Permisos sin cambios: módulo Tickets (JEFE exento); el
+  panel ya no ofrece escritura a quien no lo tiene. Aplicar la migración ANTES de desplegar el frontend.
 - **2026-10-02** (**Ciclo 21 · migración 113**, escrita, **sin aplicar**; requiere la 107) — Corrige el defecto de la 107:
   borrar de `auth.users` a quien registró o aprobó un cambio ya no se bloquea (`check_transicion_cambio` deja pasar
   `solicitado_por` a NULL y `cambios_aprobacion_coherente` pasa a `aprobado_por is null or aprobado_at is not null`,

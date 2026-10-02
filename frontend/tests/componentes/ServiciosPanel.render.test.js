@@ -231,7 +231,7 @@ describe('CategoriasTicketPanel — servicio opcional', () => {
     await escribir(campo('Servicio de TI'), 'erp');
     botonDeDialogo('Guardar').click();
     await espera(40);
-    expect(insforgeApi.createCategoriaTicket).toHaveBeenCalledWith({ id: 'telefonia', nombre: 'Telefonía', servicio_id: 'erp' });
+    expect(insforgeApi.createCategoriaTicket).toHaveBeenCalledWith({ id: 'telefonia', nombre: 'Telefonía', servicio_id: 'erp', aviso: '' });
   });
 
   it('editar precarga el servicio y lo guarda; vaciarlo lo quita', async () => {

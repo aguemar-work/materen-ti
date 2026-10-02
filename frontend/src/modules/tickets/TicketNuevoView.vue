@@ -15,8 +15,10 @@ import { ref, computed, onMounted } from 'vue';
 import { catalogoTickets, crearTicket, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { comprimirImagen, archivoABase64 } from '../../core/imagenes.js';
 import { esDniValido } from '../../core/utils.js';
+import { resolverAvisoCategoria } from '../../core/dominio-tickets.js';
 import AppPortal from '../../components/ui/AppPortal.vue';
 import AppButton from '../../components/ui/AppButton.vue';
+import AvisoCategoria from './AvisoCategoria.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -49,6 +51,20 @@ function onDniInput(valor) {
 const subcategoriasFiltradas = computed(() =>
   subcategorias.value.filter((s) => s.categoria_id === form.value.categoriaId)
 );
+
+// Cambiar de categoría descarta la subcategoría elegida: la anterior ya no
+// está en la lista y, si quedara, su aviso (abajo) seguiría mostrándose.
+function elegirCategoria(id) {
+  form.value.categoriaId = id;
+  form.value.subcategoriaId = '';
+}
+
+// Aviso fijo de la categoría/subcategoría (migración 114): gana el de la
+// subcategoría. Vacío = nada que mostrar.
+const avisoCategoria = computed(() => resolverAvisoCategoria(
+  categorias.value.find((c) => c.id === form.value.categoriaId),
+  subcategoriasFiltradas.value.find((s) => s.id === form.value.subcategoriaId),
+));
 
 const archivo = ref(null);
 const previewUrl = ref('');
@@ -219,7 +235,7 @@ const encabezado = computed(() => {
             :value="form.categoriaId"
             required
             :disabled="estado === 'enviando'"
-            @change="form.categoriaId = $event.target.value"
+            @change="elegirCategoria($event.target.value)"
           >
             <option value="" disabled>Seleccionar</option>
             <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
@@ -244,6 +260,10 @@ const encabezado = computed(() => {
           <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
         </div>
       </div>
+
+      <!-- Aviso fijo de la categoría/subcategoría elegida (114). Sin transición:
+           el portal no tiene un patrón de entrada/salida permitido para esto. -->
+      <AvisoCategoria v-if="avisoCategoria" :texto="avisoCategoria" />
 
       <div class="campo" :class="{ 'campo--inerte': estado === 'enviando' }">
         <label class="campo__etiqueta" :for="campoTitulo.id">

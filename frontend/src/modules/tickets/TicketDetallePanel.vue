@@ -76,7 +76,7 @@ watch(() => [cargando.value, filasFeed.value.length], async () => {
 // columna con lista expandida. Sin columna si no hay ningún dato de
 // contexto: no tiene sentido reservarle espacio a una columna vacía.
 const mostrarContexto = computed(() =>
-  equiposEmpleado.value.length > 0 || articulosRelacionados.value.length > 0 || !!problemaVinculado.value,
+  equiposEmpleado.value.length > 0 || articulosRelacionados.value.length > 0 || !!problemaVinculado.value || !!ticket.value?.aviso,
 );
 // Colapsable, no persistido: es para esta sesión de trabajo, no una
 // preferencia a recordar entre visitas (a diferencia de `vista`, que sí se
@@ -299,7 +299,7 @@ function onConfirmarReabrir(motivo) {
 
         <section v-if="mostrarContexto && contextoAbierto" aria-labelledby="pnl-contexto">
           <h3 id="pnl-contexto" class="mb-2 text-sm font-semibold text-gray-900">Contexto</h3>
-          <TicketContexto :equipos="equiposEmpleado" :articulos="articulosRelacionados" :problema="problemaVinculado" />
+          <TicketContexto :equipos="equiposEmpleado" :articulos="articulosRelacionados" :problema="problemaVinculado" :aviso="ticket?.aviso" />
         </section>
 
         <!-- Macros de WhatsApp: clipboard + toast, sin abrir wa.me — el staff
