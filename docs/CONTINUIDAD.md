@@ -116,7 +116,7 @@ Se propone declarar la caída cuando no se puede registrar nada durante más de 
 Quien decide es el dueño o, en su ausencia, el JEFE de TI.
 
 1. **Entregas de equipos y accesos: acta física.** Imprimir el acta en papel (la
-   plantilla vigente sale de `modules/equipos/acta-base.js`; mantener una copia impresa en
+   plantilla vigente sale de `modules/equipos/acta-datos.js` y `ActaView.vue`; mantener una copia impresa en
    blanco **(pendiente de confirmar que existe)**), firmarla en físico y guardarla. La
    entrega queda **pendiente de registrar** en el sistema.
 2. **Tickets y solicitudes: hoja de cálculo.** Una hoja compartida con las columnas:

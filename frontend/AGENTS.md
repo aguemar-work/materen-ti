@@ -56,8 +56,16 @@
 - **Botón que navega**: `AppButton` con `to` (RouterLink) o `href` (`<a>`).
 - **Portal público y errores**: `components/ui/AppPortal.vue` (receta 4.5);
   cada página con un `<h1>`.
-- **Actas imprimibles**: `reservarVentanaActa()` en el clic, antes de
-  cualquier `await` (si no, el navegador bloquea la ventana).
+- **Actas, QR y etiquetas**: las actas son la ruta `/equipos/:id/acta/:asignacionId`
+  (DNI completo: es documento legal) y se suben firmadas con `subirActa`;
+  `/e/:codigo` es pública y NO consulta nada sin sesión; las etiquetas de
+  50×25 mm salen de `EtiquetaEquipo` (`qrcode` solo dibuja la matriz).
+- **Inicio**: una sola llamada, `stores/dashboard.js` (`cargar` / `cargarSiHaceFalta`),
+  compartida con el contador del menú; un lector nuevo del resumen no llama a
+  `getResumen()` directo. Escenarios de la maqueta: `/dashboard?maqueta=aldia|
+  errorseccion|errorseccion-fijo|errortotal|sinrpc|asistente`.
+- **Acciones que el servidor rechazaría no se ofrecen** (rol, módulo o estado);
+  cada sección del expediente depende de su módulo y, sin él, no se consulta.
 - **Shell V2 "marco + hoja"** (`AppLayout`/`AppNav`/`AppSearch`/
   `NotificacionesCampana`, SISTEMA-DISENO §3.1): marco `gray-50` con el
   sidebar (marca · menú · usuario) y una hoja blanca con barra de migas.

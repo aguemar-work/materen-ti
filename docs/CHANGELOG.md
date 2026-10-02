@@ -23,6 +23,41 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-01** (**Ciclo 21 · H2 (parte 1) — Expedientes, Inicio y reglas al servidor, todo en local**) —
+  Por indicación del dueño todo se desarrolla y revisa en local: ninguna migración
+  se aplicó ni ninguna function se desplegó. (1) Migraciones escritas, validadas
+  con el parser de Postgres y en un Postgres local en memoria, **sin aplicar**:
+  101 (RPC transaccionales de cuentas, equipos, importación y licencias, auditoría
+  CRUD de cuentas, `verificar_equipo`), 102 (ciclo de vida del empleado:
+  `empleado_eventos` inmutable, transiciones, suspender, reactivar, reingresar,
+  baja con motivo, revisión de accesos), 103 (`config_parametros`, vistas de cupo
+  y recurrencia, `dashboard_resumen`) y 110 (actas firmadas, `registrar_acta`);
+  `equipos-fotos` gana `subirActa` y `urlActa`. (2) **Equipos**: hoja de vida
+  `/equipos/:id` (carátula, kardex en `AppLibro`, fotos, verificar), acciones
+  sobre las RPC, QR y etiquetas de 50×25 mm (`qrcode` 1.5.4, ruta pública
+  `/e/:codigo` que no consulta nada sin sesión), actas como ruta imprimible
+  `/equipos/:id/acta/:asignacionId` con subida del PDF firmado (se retiran
+  `acta-base.js`, `acta.js` y `acta-devolucion.js`), `EquiposView` de 1183 a
+  339 líneas, `ImportarEquiposView` de 781 a 97. (3) **Empleados**: expediente
+  rehecho (carátula con DNI completo, guía de alta en fila, tabla única "En
+  custodia", entregas, tickets y libro de movimientos real); Suspender,
+  Reactivar, Reingresar, baja con motivo y Revisar accesos; cuentas sobre las RPC;
+  `CuentasPanel` retirado; el listado deja de mostrar el DNI y las acciones que
+  el servidor rechazaría ya no se ofrecen. (4) **Inicio** como mesa del día: una
+  sola llamada a `dashboard_resumen` (`stores/dashboard.js`, compartido con el
+  contador del menú), vistas con conteo, feed CRÍTICO/ATENCIÓN, Mis tickets,
+  Vence esta semana, Hoy en custodia, "Acta sin adjuntar"; se retiran KPI,
+  Inventario, esqueletos y el círculo de "Todo al día"; error de sección o total
+  con reintento. (5) `AppDialog` reemplaza a `Modal` en Equipos, Empleados y
+  Cuentas (quedan consumidores en otros módulos). La maqueta simula todo lo
+  nuevo (siete escenarios del Inicio con `?maqueta=…`). Verificado en local:
+  1230 pruebas de Vitest, 51 de scripts, lint sin errores y `patrones-ui` sin
+  fallas. Para producción: aplicar 099 → 100 → 101 → 102 → 103 → 110 (más 104
+  antes de desplegar las functions) y crear el bucket privado `actas-firmadas`
+  antes de desplegar el frontend; hasta entonces el frontend nuevo falla contra la
+  base real, y es lo esperado. Actualizado en el mismo cambio: `README.md`,
+  `AGENTS.md`, `frontend/AGENTS.md`, `docs/SISTEMA-DISENO.md`,
+  `docs/CONTINUIDAD.md` y `docs/PANORAMA-SISTEMA.md`.
 - **2026-10-01** (**Ciclo 21 · H1 — Auditoría integral y primer horizonte del plan de mejora**) —
   Fase 0 de la auditoría (`docs/auditorias/ciclo-21/`: reconocimiento, hallazgos,
   anexos A–E) y `PLAN-DE-MEJORA.md` ("Expediente", migraciones 099–110, hoja de

@@ -107,9 +107,11 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   ya habían divergido, ARQ-01..08):
   1. `api/invocarFuncion.js` — `crearInvocador()`, única mecánica para llamar
      a una edge function; cada dominio aporta solo su mapa código → mensaje.
-  2. `modules/equipos/acta-base.js` — estilos, escapado y armado de actas; y
-     `reservarVentanaActa()`: la ventana se abre en el clic, antes de
-     cualquier `await` (si no, el navegador la bloquea).
+  2. `modules/equipos/ActaView.vue` + `acta-datos.js` — las actas son la ruta
+     imprimible `/equipos/:id/acta/:asignacionId`; "Ver acta" es un enlace
+     `target="_blank"` (se abre en el clic, sin `await` antes). Acciones de
+     equipos (entregar, devolver, mover, estado, verificar) en
+     `useEquiposAcciones` + `EquipoAccionesModales`, sobre las RPC de la 101.
   3. `modules/tickets/TicketCamposGestion|TicketComentarios|TicketComposer|
      TicketHistorial.vue` — contenido compartido entre `TicketDetalleView` y
      `TicketDetallePanel`; las diferencias van como prop, nunca en uno solo.
@@ -157,8 +159,9 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   | `equipos-fotos` | subir/borrar fotos (magic bytes + tamaño) | exige staff activo **con** módulo `equipos` |
 
 - ⚠️ **Tope de fotos**: el `4` vive en dos lugares que se mueven juntos,
-  `MAX_FOTOS` (`EquipoForm.vue`) y `MAX_FOTOS_POR_EQUIPO` (`equipos-fotos.ts`).
-  No es frontera dura (alta sin fila, `equipoId` omitido); esa sería un CHECK.
+  `MAX_FOTOS_EQUIPO` (`core/dominio-equipos.js`) y `MAX_FOTOS_POR_EQUIPO`
+  (`equipos-fotos.ts`). La migración 100 (sin aplicar) agrega el CHECK
+  `equipos_fotos_max`, que sí es frontera dura.
 - `schema_migrations`/`function_deploys` (069/070): qué está aplicado y
   desplegado; sin RLS, solo cliente admin. Acción `version` en las 4 functions.
 - `functions/tsconfig.json` es solo para `deno check`; tocarlo no requiere deploy.

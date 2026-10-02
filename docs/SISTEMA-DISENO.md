@@ -3,7 +3,7 @@
 > **V2 "marco + hoja"**, vigente desde el **2026-09-25** (reemplaza al shell
 > y las recetas del 2026-09-22). Implementación de referencia: el módulo
 > **Empleados** (`modules/empleados/EmpleadosView.vue`,
-> `EmpleadoDetalleView.vue`, `modules/cuentas/CuentasPanel.vue`) y el shell
+> `EmpleadoDetalleView.vue`) y el shell
 > (`components/shared/AppLayout.vue` + `AppNav.vue`). Ante la duda, se hace
 > como ahí.
 >
@@ -181,9 +181,9 @@ pantalla. Las reglas 1 a 13 **se mantienen**; estas 12 se suman.
     vuelve subrayado y texto oscuro; la fuente es la Inter del bundle. Ganchos
     por atributo: `data-marco`/`data-hoja` (`AppLayout`), `data-caratula`,
     `data-libro`, `data-sello`, `data-tag`. Toda ficha tiene "Imprimir" en
-    Más. *(La hoja imprimible está construida; las actas siguen en su
-    ventana de `acta-base.js` hasta migrar a la ruta imprimible, y los PDF de
-    jsPDF no cambian todavía.)*
+    Más. *(Construida y adoptada: expediente del empleado, hoja de vida del
+    equipo y las actas, que son la ruta imprimible `/equipos/:id/acta/…`. Los
+    PDF de jsPDF no cambian todavía.)*
 24. **Prioridad como rango escrito.** `BAJA · MEDIA · ALTA · URGENTE` con
     `AppTag` neutro para las tres primeras y rojo solo para Urgente; el orden
     lo da el reloj y la posición en la cola (servidor), no el color. La

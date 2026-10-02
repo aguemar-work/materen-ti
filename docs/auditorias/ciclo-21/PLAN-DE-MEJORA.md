@@ -630,6 +630,8 @@ Sentry (ya en `main.js:27`) con `release` = commit sha (`VERCEL_GIT_COMMIT_SHA`)
 | H1-10 V2 F2 (096–098) | **No tocado**: pertenece al worktree `sistema-ti-v2` y a su propio checkpoint |
 | H1-11 diseño base y `AppDialog` | Hecho; Tickets migrado a `AppDialog`, quedan 23 consumidores de `Modal`; las piezas nuevas aún no están en las pantallas |
 
+**Horizonte 2, avance local (2026-10-01):** hechos y sin aplicar: H2-1 (101), H2-2 (102), H2-3 (103 y Inicio como mesa del día), H2-4 (expediente del empleado, hoja de vida del equipo, actas imprimibles y subida del PDF firmado) y H2-12 (etiquetas QR y verificación). Pendientes: H2-5 (Triage y detalle de ticket: dependen de la fase 3 del plan V2 en su worktree), H2-6 (105, depende de 094), H2-7 (110 adjuntos privados de tickets), H2-8 (`_shared` de functions), H2-10 (rama anonimizada y `tests-db` en CI) y H2-11 (104 retención y purga). Regla del dueño: todo se revisa en local y solo lo revisado va a producción.
+
 **Orden de puesta en producción** (todo requiere autorización explícita del dueño): reconciliar 086–088 → aplicar 104 → 099 → 100 (con el frontend ya desplegado) → desplegar las 4 functions → desplegar el frontend. Antes de 100 hay que decidir el DNI de 9 dígitos, y antes de 099 la sección separable de `categorias_ticket`/`ubicaciones`.
 
 
