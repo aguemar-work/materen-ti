@@ -89,6 +89,9 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   gate (Equipos/Licencias/Correos embeben su nombre); solo INSERT/UPDATE.
   `categorias_ticket` y `ubicaciones` quedan en `es_staff()` a propósito
   (satélites de dos módulos, decisión pendiente).
+- **Solicitudes (108)**: el trámite lo guarda el servidor; los pasos de otros módulos se marcan solos
+  por triggers; permiso = `empleados` (el CHECK de 056 no admite otro). `solicitudes` no tiene
+  INSERT/UPDATE de cliente: solo sus RPC. Un paso obligatorio solo lo omite un JEFE.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

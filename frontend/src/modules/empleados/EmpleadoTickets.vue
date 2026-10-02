@@ -1,7 +1,8 @@
 <script setup>
-// "Tickets y solicitudes": los últimos tickets del empleado (módulo `tickets`,
+// "Tickets": los últimos tickets del empleado (módulo `tickets`,
 // lectura limitada a 20). El código abre el ticket; el listado completo vive en
-// Tickets. Es un resumen: nunca se imprime con el expediente.
+// Tickets (las solicitudes de servicio tienen su propia sección). Es un resumen:
+// nunca se imprime con el expediente.
 import { computed } from 'vue';
 import { formatFechaLibro } from '../../core/formatters.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -16,7 +17,7 @@ const filas = computed(() => props.tickets.map((t) => ({ ...t, fechaTexto: forma
 </script>
 
 <template>
-  <AppSeccion data-no-print titulo="Tickets y solicitudes" :conteo="tickets.length" sin-padding>
+  <AppSeccion data-no-print titulo="Tickets" :conteo="tickets.length" sin-padding>
     <div class="overflow-x-auto">
       <table class="w-full table-fixed border-collapse text-sm" aria-label="Tickets del empleado">
         <colgroup>

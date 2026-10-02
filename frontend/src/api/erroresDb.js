@@ -46,6 +46,8 @@ export const UNICOS = {
   problema_tickets_problema_id_ticket_id_key: 'El ticket ya está vinculado a este problema.',
   entregas_token_hash_unique: 'Ya existe una entrega con ese enlace.',
   idx_entregas_token_hash: 'Ya existe una entrega con ese enlace.',
+  solicitudes_una_abierta_por_tipo: 'Ya hay una solicitud abierta de ese tipo para esta persona.',
+  solicitudes_ticket_unico: 'El ticket ya tiene una solicitud vinculada.',
 };
 
 // 23514 (CHECK).

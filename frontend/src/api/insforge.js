@@ -21,6 +21,7 @@ import { kbApi } from './domains/kb.js';
 import { problemasApi } from './domains/problemas.js';
 import { encuestasApi } from './domains/encuestas.js';
 import { notificacionesApi } from './domains/notificaciones.js';
+import { solicitudesApi } from './domains/solicitudes.js';
 
 export const insforgeApi = {
   mode: 'insforge',
@@ -42,4 +43,5 @@ export const insforgeApi = {
   ...problemasApi,
   ...encuestasApi,
   ...notificacionesApi,
+  ...solicitudesApi,
 };

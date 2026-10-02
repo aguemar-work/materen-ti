@@ -7,6 +7,7 @@
 // no aplica: el JEFE ficticio siempre puede) para poder recorrer los flujos
 // sin backend. NADA de esto entra al bundle de producción (solo lo importan
 // datos.js y client.js, que solo carga el plugin del modo maqueta).
+import { autocompletarPaso, alActualizarFilaSolicitudes } from './rpc-solicitudes.js';
 
 const hoyISO = () => {
   const d = new Date();
@@ -72,6 +73,8 @@ function asignar(db, { p_equipo_id: equipoId, p_empleado_id: empleadoId, p_condi
   db.asignaciones_equipo.push(asig);
   sincronizarAsignacion(db, equipoId);
   registrarEvento(db, equipoId, 'asignado', `Entregado a ${nombreEmpleado(emp)}${condicion ? ` — ${condicion}` : ''}`);
+  // Trigger de la 108: la entrega marca el paso de la solicitud abierta de la persona.
+  autocompletarPaso(db, { empleadoId, clave: 'asignar_equipo', referenciaId: asig.id });
   return asig;
 }
 
@@ -86,6 +89,8 @@ function devolver(db, { p_asignacion_id: asignacionId, p_condicion: condicion = 
   if (!asig.empleado_id) throw errorSql('P0001', 'La asignación no corresponde a una persona. Use el movimiento de ubicación.');
 
   Object.assign(asig, { fecha_fin: hoyISO(), condicion_devolucion: condicion || null, motivo_cierre: m });
+  // Trigger de la 108: cerrar la asignación marca el paso de recuperar/devolver ESE equipo.
+  autocompletarPaso(db, { empleadoId: asig.empleado_id, clave: 'devolver_equipo', objetivoId: asig.id, referenciaId: asig.id });
   const eq = db.equipos.find((e) => e.id === asig.equipo_id);
   const emp = db.empleados.find((e) => e.id === asig.empleado_id);
   sincronizarAsignacion(db, eq.id);
@@ -212,6 +217,9 @@ export function alActualizarFila(db, tabla, previa, actual) {
   if (tabla === 'equipos' && previa.estado !== actual.estado) {
     registrarEvento(db, actual.id, 'estado_cambiado', `De "${previa.estado}" a "${actual.estado}"`);
   }
+  // Triggers de autocompletado de las solicitudes (108): contraseña rotada,
+  // equipo devuelto, entrega abierta.
+  alActualizarFilaSolicitudes(db, tabla, previa, actual);
 }
 
 // ── Edge function equipos-fotos: fotos y actas firmadas ─────────────────────

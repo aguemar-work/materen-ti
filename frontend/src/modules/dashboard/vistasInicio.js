@@ -7,7 +7,7 @@ import { diasDesde } from './tiempoLima.js';
 // servidor (`dashboard_resumen` devuelve `null` en lo que no puede ver).
 
 /** Orden fijo de las vistas de la fila `AppVistas` (después de "Todos"). */
-export const ORDEN_VISTAS = Object.freeze(['tickets', 'accesos', 'custodia', 'problemas']);
+export const ORDEN_VISTAS = Object.freeze(['tickets', 'solicitudes', 'accesos', 'custodia', 'problemas']);
 
 /** Nombre legible de cada bloque de la RPC, para los avisos de error. */
 export const ETIQUETA_SECCION = Object.freeze({
@@ -18,7 +18,7 @@ export const ETIQUETA_SECCION = Object.freeze({
   equipos_sin_devolver: 'los equipos sin devolver',
   licencias_por_vencer: 'las licencias por vencer',
   garantias_por_vencer: 'las garantías por vencer',
-  altas_incompletas: 'las altas a medias',
+  solicitudes_abiertas: 'las solicitudes abiertas',
   problemas: 'los problemas',
   encuestas_sin_responder: 'las encuestas sin responder',
   custodia_hoy: 'la custodia de hoy',

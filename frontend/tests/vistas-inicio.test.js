@@ -9,13 +9,13 @@ import { SECCIONES_RESUMEN, normalizarResumen, ticketsSinAsignar } from '../src/
 import { resumenVacio, resumenCompleto, ticket, AHORA } from './stubs/resumen-inicio.js';
 
 describe('vistas disponibles', () => {
-  it('un JEFE (todo presente) ve las cuatro vistas, en orden fijo', () => {
-    expect(vistasDisponibles(resumenVacio())).toEqual(['tickets', 'accesos', 'custodia', 'problemas']);
+  it('un JEFE (todo presente) ve las cinco vistas, en orden fijo', () => {
+    expect(vistasDisponibles(resumenVacio())).toEqual(['tickets', 'solicitudes', 'accesos', 'custodia', 'problemas']);
   });
 
-  it('sin los módulos correos y problemas esas vistas no existen', () => {
+  it('sin los módulos correos, empleados y problemas esas vistas no existen', () => {
     const r = resumenVacio({
-      rotaciones_pendientes: null, cuentas_sin_password: null, altas_incompletas: null, problemas: null,
+      rotaciones_pendientes: null, cuentas_sin_password: null, solicitudes_abiertas: null, problemas: null,
     });
     expect(vistasDisponibles(r)).toEqual(['tickets', 'custodia']);
   });

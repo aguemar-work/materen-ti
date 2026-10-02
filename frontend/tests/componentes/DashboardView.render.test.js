@@ -178,12 +178,15 @@ describe('Inicio — contenido normal', () => {
     expect(href(acta)).toBe('/equipos/q9/acta/as1?tipo=entrega');
   });
 
-  it('muestra "Alta a medias" con el nombre y a dónde se resuelve', async () => {
+  it('muestra la solicitud abierta con su código, el tipo, la persona, el avance y a dónde se resuelve', async () => {
     responde(resumenCompleto());
     const w = await montar();
-    const alta = filas(w).find((f) => f.text().includes('Alta a medias'));
+    const alta = filas(w).find((f) => f.text().includes('Alta de empleado'));
+    expect(alta.text()).toContain('SOL-0012');
     expect(alta.text()).toContain('Ana Torres');
-    expect(href(alta)).toBe('/empleados/e7');
+    expect(alta.text()).toContain('1 de 7 pasos');
+    expect(alta.text()).toContain('falta: Crear la cuenta de correo');
+    expect(href(alta)).toBe('/solicitudes/s1');
   });
 
   it('"Mis tickets": prioridad y estado, y el enlace dice el total real', async () => {
@@ -243,8 +246,8 @@ describe('Inicio — filtro por vista', () => {
     responde(resumenCompleto());
     const w = await montar();
     const etiquetas = vistas(w).map((b) => b.text().replace(/\s+/g, ' ').trim());
-    expect(etiquetas).toHaveLength(5);
-    expect(etiquetas.map((e) => e.replace(/\d+$/, '').trim())).toEqual(['Todos', 'Tickets', 'Accesos', 'Custodia', 'Problemas']);
+    expect(etiquetas).toHaveLength(6);
+    expect(etiquetas.map((e) => e.replace(/\d+$/, '').trim())).toEqual(['Todos', 'Tickets', 'Solicitudes', 'Accesos', 'Custodia', 'Problemas']);
     const total = Number(etiquetas[0].match(/\d+$/)[0]);
     const suma = etiquetas.slice(1).reduce((n, e) => n + Number(e.match(/\d+$/)[0]), 0);
     expect(suma).toBe(total); // cada asunto cae en exactamente una vista
@@ -402,7 +405,7 @@ describe('Inicio — permisos: lo que el servidor no entrega no se muestra', () 
     responde(r);
     const w = await montar();
     expect(w.find('h1').text()).toBe('Buenos días, Diego');
-    expect(vistas(w).map((b) => b.text().replace(/\d+$/, '').trim())).toEqual(['Todos', 'Tickets', 'Accesos', 'Custodia']);
+    expect(vistas(w).map((b) => b.text().replace(/\d+$/, '').trim())).toEqual(['Todos', 'Tickets', 'Solicitudes', 'Accesos', 'Custodia']);
     expect(w.find('[role="alert"]').exists()).toBe(false); // null sin error no es un error
     expect(w.text()).not.toContain('Acción correctiva');
     expect(w.text()).not.toContain('ESET');
@@ -413,7 +416,7 @@ describe('Inicio — permisos: lo que el servidor no entrega no se muestra', () 
     usuario({ rol: 'ASISTENTE', modulos: ['correos'] });
     responde(resumenVacio({
       tickets: null, licencias_por_vencer: null, equipos_sin_devolver: null, garantias_por_vencer: null,
-      actas_pendientes: null, custodia_hoy: null, problemas: null,
+      actas_pendientes: null, custodia_hoy: null, problemas: null, solicitudes_abiertas: null,
     }));
     const w = await montar();
     const titulos = w.findAll('h2').map((h) => h.text());

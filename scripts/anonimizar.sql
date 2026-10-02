@@ -38,6 +38,8 @@
 --   entregas           payload vaciado, nombre fijo
 --   notificaciones     título fijo (copian títulos de tickets y nombres)
 --   equipos_importacion  raw (texto crudo del Excel, con nombres) y notas
+--   solicitudes / solicitud_pasos   notas, datos, motivos y etiquetas de pasos con
+--                      cuenta o equipo -> NULL o texto fijo (la estructura se conserva)
 --   eventos_equipo / ticket_eventos   detalle y user_email en NULL
 --   vaciadas (TRUNCATE) accesos_log, accesos_sensibles (y sus permisos),
 --                      empleado_eventos, empleado_revisiones_acceso,
@@ -158,6 +160,19 @@ begin
   -- ── 6) importación de equipos: el texto crudo del Excel trae nombres ────
   if to_regclass('public.equipos_importacion') is not null then
     update public.equipos_importacion set raw = '{}'::jsonb;
+  end if;
+
+  -- ── 6b) solicitudes de servicio (108): notas, parámetros, motivos y las
+  --        etiquetas de los pasos que nombran una cuenta o un equipo ──────────
+  if to_regclass('public.solicitudes') is not null then
+    update public.solicitudes
+       set nota = null,
+           datos = '{}'::jsonb,
+           motivo_cancelacion = case when motivo_cancelacion is null then null else 'Motivo de prueba' end;
+    update public.solicitud_pasos
+       set nota = null,
+           motivo_omision = case when motivo_omision is null then null else 'Motivo de prueba' end,
+           label = case when objetivo_id is null then label else 'Paso de prueba (' || clave || ')' end;
   end if;
 
   -- ── 7) tablas que se vacían (TRUNCATE no dispara triggers de fila) ──────

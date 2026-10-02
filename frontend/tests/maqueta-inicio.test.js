@@ -23,11 +23,11 @@ afterEach(() => { delete globalThis.location; });
 beforeEach(() => vi.spyOn(console, 'info').mockImplementation(() => {}));
 
 describe('maqueta — escenario normal', () => {
-  it('devuelve las 15 claves del contrato y ningún error', async () => {
+  it('devuelve las 14 claves del contrato y ningún error', async () => {
     const { data, error } = await resumenDe(await maquetaCon());
     expect(error).toBeNull();
     expect(Object.keys(data).sort()).toEqual([
-      'actas_pendientes', 'altas_incompletas', 'cuentas_sin_password', 'custodia_hoy', 'encuestas_sin_responder',
+      'actas_pendientes', 'cuentas_sin_password', 'custodia_hoy', 'encuestas_sin_responder',
       'equipos_sin_devolver', 'errores', 'garantias_por_vencer', 'generado_en', 'kpis', 'licencias_por_vencer',
       'problemas', 'rotaciones_pendientes', 'solicitudes_abiertas', 'tickets',
     ]);

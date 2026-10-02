@@ -1,4 +1,5 @@
 import { formatFecha } from '../../core/formatters.js';
+import { DIAS_SOLICITUD_CRITICA, TIPOS_CRITICOS_SI_VIEJOS } from '../../core/dominio-solicitudes.js';
 import { diasDesde, textoAntiguedad } from './tiempoLima.js';
 
 // Aplana los pendientes del Inicio (tickets, accesos, custodia, problemas)
@@ -6,15 +7,18 @@ import { diasDesde, textoAntiguedad } from './tiempoLima.js';
 // devuelve la RPC `dashboard_resumen` (migración 103, ver
 // `core/resumen-inicio.js`). Los umbrales de días (ventana de alta, licencias,
 // garantías, ticket viejo, acta sin adjuntar) ya los aplica el servidor desde
-// `config_parametros`: acá no hay ningún literal de ese tipo.
+// `config_parametros`: acá no hay ningún literal de ese tipo. Las solicitudes de
+// servicio (altas, bajas, accesos, equipos; migración 108) vienen ya abiertas y
+// con su avance desde el servidor: acá solo se ordenan.
 //
 // Reglas de tier/orden (decisión de producto, no derivar de nuevo):
 // - Tier 1 (crítico): cuentas sin contraseña, equipos sin devolver, licencias
-//   y garantías YA vencidas, acciones correctivas vencidas y altas a medias
-//   con más de `DIAS_ALTA_CRITICA` días.
+//   y garantías YA vencidas, acciones correctivas vencidas y altas o bajas
+//   abiertas con más de `DIAS_SOLICITUD_CRITICA` días.
 // - Tier 2 (atención): por rotar, licencias/garantías por vencer (aún no
 //   vencidas), tickets sin asignar / sin vincular / abiertos hace tiempo,
-//   posibles problemas recurrentes, actas sin adjuntar y altas recientes.
+//   posibles problemas recurrentes, actas sin adjuntar, solicitudes abiertas
+//   (las altas y bajas recientes incluidas).
 // - Dentro de un tier ordena por `diasUrgencia` descendente (más días de
 //   atraso primero). Sin fecha confiable en el esquema (`porRotar`,
 //   `sinPassword`, `equiposSinDevolver`: no hay fecha de baja ni
@@ -25,13 +29,11 @@ import { diasDesde, textoAntiguedad } from './tiempoLima.js';
 // AppCodigo; `antiguedad` es el texto de la columna de la izquierda ("3 d",
 // "hoy", "—").
 
-/** Las altas a medias con más días que esto suben a crítico (regla del feed). */
-export const DIAS_ALTA_CRITICA = 3;
-
 /** Vistas del Inicio: cada una es un `grupo` del feed. */
 export const GRUPOS_INICIO = Object.freeze({
   tickets: { label: 'Tickets', secciones: ['tickets'] },
-  accesos: { label: 'Accesos', secciones: ['rotaciones_pendientes', 'cuentas_sin_password', 'altas_incompletas'] },
+  solicitudes: { label: 'Solicitudes', secciones: ['solicitudes_abiertas'] },
+  accesos: { label: 'Accesos', secciones: ['rotaciones_pendientes', 'cuentas_sin_password'] },
   custodia: { label: 'Custodia', secciones: ['equipos_sin_devolver', 'garantias_por_vencer', 'licencias_por_vencer', 'actas_pendientes'] },
   problemas: { label: 'Problemas', secciones: ['problemas'] },
 });
@@ -53,8 +55,6 @@ function contextoCuenta(item) {
 
 const dias = (n) => `${n} ${n === 1 ? 'día' : 'días'}`;
 const unir = (...partes) => partes.filter(Boolean).join(' · ');
-
-const FALTA_ALTA = { cuenta: 'cuenta' };
 
 /**
  * @param {object|null} resumen  resultado de `getResumen()` (normalizado)
@@ -96,26 +96,28 @@ export function construirFeedPendientes(resumen, { ahora = new Date() } = {}) {
     });
   }
 
-  // Alguien que entró hace poco y todavía no tiene con qué trabajar. Pasados
-  // DIAS_ALTA_CRITICA días deja de ser un alta en curso y son días de una
-  // persona sin poder trabajar. La regla "qué es un alta a medias" y su
-  // ventana viven en el servidor (`dias_ventana_alta`).
-  for (const a of resumen.altas_incompletas || []) {
-    const urgente = a.dias > DIAS_ALTA_CRITICA;
-    const faltan = (a.faltan?.length ? a.faltan : ['cuenta']).map((f) => FALTA_ALTA[f] || f).join(', ');
+  // ── Solicitudes de servicio (migración 108) ─────────────────────────
+  // El trámite lo guarda el servidor: el Inicio solo lo ordena. Una alta o una
+  // baja abierta por más de DIAS_SOLICITUD_CRITICA días es crítica (una persona
+  // sin poder trabajar, o accesos y equipos de alguien que ya se fue); el resto
+  // es atención. El texto dice cuánto va y qué falta ahora.
+  for (const s of resumen.solicitudes_abiertas || []) {
+    const urgente = TIPOS_CRITICOS_SI_VIEJOS.includes(s.tipo_id) && s.dias > DIAS_SOLICITUD_CRITICA;
     agregar({
-      key: `alta-${a.empleado_id}`,
+      key: `sol-${s.solicitud_id}`,
       tier: urgente ? 1 : 2,
-      grupo: 'accesos',
-      titulo: 'Alta a medias',
-      sujeto: a.nombre,
+      grupo: 'solicitudes',
+      codigo: s.codigo,
+      codigoTitulo: 'Número de solicitud',
+      titulo: s.tipo,
+      sujeto: s.empleado,
       contexto: unir(
-        `Sin ${faltan}`,
-        a.dias === 0 ? 'entró hoy' : `entró el ${formatFecha(a.fecha_alta)}`,
-        a.cargo,
+        `${s.pasos_hechos} de ${s.pasos_total} ${s.pasos_total === 1 ? 'paso' : 'pasos'}`,
+        s.siguiente && `falta: ${s.siguiente}`,
+        s.dias === 0 ? 'abierta hoy' : `abierta el ${formatFecha(s.creada_at)}`,
       ),
-      destino: `/empleados/${a.empleado_id}`,
-      diasUrgencia: a.dias,
+      destino: `/solicitudes/${s.solicitud_id}`,
+      diasUrgencia: Number.isFinite(s.dias) ? s.dias : edad(s.creada_at),
     });
   }
 

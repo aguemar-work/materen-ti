@@ -466,6 +466,70 @@ async function escenarios(etiqueta) {
     await falla('S12 112: anon no ejecuta es_branch', () => anonimo(() => db.exec('select es_branch()')), { code: '42501' });
   }
 
+  // ---- S13 108: solicitudes de servicio con sesiones reales (RLS, privilegios, actor, autocompletado de punta a punta)
+  if ((await uno("select to_regclass('public.solicitudes') as t")).t) {
+    const eS = await mkEmp('Sol');
+    const sol = await como(U.asist, () => uno(`select * from crear_solicitud('cambio_puesto', '${eS}', null, '{}'::jsonb, 'Pedido de RRHH por correo', 'rrhh_correo')`));
+    afirmar('S13 108: un asistente con el modulo empleados crea la solicitud y queda como creador', sol && sol.creada_por === U.asist && sol.estado === 'abierta' && /^SOL-/.test(sol.codigo), JSON.stringify(sol));
+    await falla('S13 108: sin el modulo empleados crear_solicitud da 42501', () => como(U.sinmod, () => db.exec(`select crear_solicitud('cambio_puesto', '${eS}')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S13 108: staff inactivo no crea solicitudes', () => como(U.inact, () => db.exec(`select crear_solicitud('acceso_nuevo', '${eS}')`)), { code: '42501' });
+    await falla('S13 108: anon no ejecuta crear_solicitud', () => anonimo(() => db.exec(`select crear_solicitud('acceso_nuevo', '${eS}')`)), { code: '42501' });
+    await falla('S13 108: authenticated no ejecuta un nucleo (project_admin only)', () => como(U.jefe, () => db.exec(`select crear_solicitud_nucleo('licencia', '${eS}')`)), { code: '42501' });
+    await falla('S13 108: authenticated no ejecuta solicitud_marcar_paso', () => como(U.jefe, () => db.exec(`select solicitud_marcar_paso('${eS}', 'crear_cuenta', null, null)`)), { code: '42501' });
+    afirmar('S13 108: lee las solicitudes quien tiene el modulo; sin el modulo no ve ninguna', (await como(U.asist, () => uno('select count(*)::int n from solicitudes'))).n >= 1 && (await como(U.sinmod, () => uno('select count(*)::int n from solicitudes'))).n === 0 && (await como(U.sinmod, () => uno('select count(*)::int n from solicitud_pasos'))).n === 0);
+    await falla('S13 108: anon no lee solicitudes', () => anonimo(() => db.exec('select * from solicitudes')), { code: '42501' });
+    await falla('S13 108: un asistente no inserta en solicitudes (sin privilegio)', () => como(U.asist, () => db.exec(`insert into solicitudes (tipo_id, empleado_id) values ('licencia', '${eS}')`)), { code: '42501' });
+    await falla('S13 108: ni el jefe actualiza solicitudes directo', () => como(U.jefe, () => db.exec(`update solicitudes set nota = 'x' where id = '${sol.id}'`)), { code: '42501' });
+    await falla('S13 108: nadie escribe pasos directo', () => como(U.jefe, () => db.exec(`update solicitud_pasos set nota = 'x' where solicitud_id = '${sol.id}'`)), { code: '42501' });
+    // omitir un paso obligatorio: solo el jefe; un opcional, cualquiera con el modulo
+    const pObl = (await uno(`select id from solicitud_pasos where solicitud_id = '${sol.id}' and obligatorio order by orden limit 1`)).id;
+    await falla('S13 108: un asistente no omite un paso obligatorio (P0001 solo un jefe)', () => como(U.asist, () => db.exec(`select omitir_paso_solicitud('${pObl}', 'No aplica')`)), { code: 'P0001', msg: 'solo un jefe' });
+    const om = await como(U.jefe, () => uno(`select * from omitir_paso_solicitud('${pObl}', 'No aplica al puesto')`));
+    afirmar('S13 108: el jefe omite el paso obligatorio y queda como autor', om.estado === 'omitido' && om.hecho_por === U.jefe && om.automatico === false, JSON.stringify(om));
+    const pOpc = (await uno(`select id from solicitud_pasos where solicitud_id = '${sol.id}' and not obligatorio and estado = 'pendiente' limit 1`)).id;
+    const omA = await como(U.asist, () => uno(`select * from omitir_paso_solicitud('${pOpc}', 'No corresponde')`));
+    afirmar('S13 108: un asistente omite un paso opcional con motivo', omA.estado === 'omitido' && omA.hecho_por === U.asist, JSON.stringify(omA));
+    await falla('S13 108: sin el modulo empleados completar_paso_solicitud da 42501', () => como(U.sinmod, () => db.exec(`select completar_paso_solicitud('${pObl}')`)), { code: '42501' });
+    // completar a mano lo que queda y ver el cierre automatico
+    const pend = await q(`select id from solicitud_pasos where solicitud_id = '${sol.id}' and estado = 'pendiente' order by orden`);
+    for (const p of pend) await como(U.asist, () => db.exec(`select completar_paso_solicitud('${p.id}', null, 'Hecho a mano')`));
+    afirmar('S13 108: al cerrar el ultimo paso la solicitud se completa sola', (await uno(`select estado from solicitudes where id = '${sol.id}'`)).estado === 'completada');
+    await falla('S13 108: cancelar una solicitud completada es P0001', () => como(U.asist, () => db.exec(`select cancelar_solicitud('${sol.id}', 'tarde')`)), { code: 'P0001' });
+    // RLS de DELETE: solo el jefe
+    await como(U.asist, () => db.exec(`delete from solicitudes where id = '${sol.id}'`));
+    afirmar('S13 108: un asistente no borra solicitudes (RLS: 0 filas)', (await uno(`select count(*)::int n from solicitudes where id = '${sol.id}'`)).n === 1);
+
+    // Alta con persona nueva y cancelacion con el actor de la sesion
+    const alta = await como(U.asist, () => uno(`select * from crear_solicitud('alta_empleado', null, jsonb_build_object('nombres','Nuevo','apellidos','Esc ${sfx}','dni','${dniN()}','empresa_id','${empresa}'), '{}'::jsonb, null, 'rrhh_correo')`));
+    afirmar('S13 108: el alta crea a la persona en la misma transaccion', alta && (await uno(`select count(*)::int n from empleados where id = '${alta.empleado_id}' and nombres = 'Nuevo'`)).n === 1);
+    await falla('S13 108: cancelar sin motivo es P0001', () => como(U.asist, () => db.exec(`select cancelar_solicitud('${alta.id}', '')`)), { code: 'P0001' });
+    const canc = await como(U.asist, () => uno(`select * from cancelar_solicitud('${alta.id}', 'Pedido duplicado')`));
+    afirmar('S13 108: cancelar deja el actor, la fecha y el motivo', canc.estado === 'cancelada' && canc.cancelada_por === U.asist && canc.cancelada_at !== null && canc.motivo_cancelacion === 'Pedido duplicado', JSON.stringify(canc));
+
+    // Baja de punta a punta con sesion: la solicitud nace de la RPC y se cierra al recuperar el equipo
+    const eB = await mkEmp('BajaSol');
+    const qB = await mkEq('QS');
+    const asigB = await como(U.asist, () => uno(`select * from asignar_equipo('${qB}', '${eB}', 'bueno')`));
+    await como(U.asist, () => db.exec(`select dar_baja_empleado(p_empleado_id => '${eB}', p_motivo => 'Fin de contrato')`));
+    const bajaSol = await uno(`select * from solicitudes where empleado_id = '${eB}' and tipo_id = 'baja_empleado'`);
+    afirmar('S13 108: dar_baja_empleado crea la solicitud de baja con el actor de la sesion', bajaSol && bajaSol.estado === 'abierta' && bajaSol.creada_por === U.asist && bajaSol.nota === 'Fin de contrato', JSON.stringify(bajaSol));
+    const pasosB = await q(`select clave, estado, objetivo_id from solicitud_pasos where solicitud_id = '${bajaSol.id}' order by orden`);
+    afirmar('S13 108: la baja deja cerrar_accesos hecho y recuperar el equipo pendiente', pasosB.length === 2 && pasosB[0].clave === 'cerrar_accesos' && pasosB[0].estado === 'hecho' && pasosB[1].clave === 'devolver_equipo' && pasosB[1].estado === 'pendiente' && pasosB[1].objetivo_id === asigB.id, JSON.stringify(pasosB));
+    await como(U.asist, () => db.exec(`select devolver_equipo('${asigB.id}', 'bueno', 'baja_empleado', false)`));
+    const pDev = await uno(`select estado, automatico, hecho_por, referencia_id from solicitud_pasos where solicitud_id = '${bajaSol.id}' and clave = 'devolver_equipo'`);
+    afirmar('S13 108: devolver_equipo (RPC de la 101) marca solo el paso con el actor de la sesion', pDev.estado === 'hecho' && pDev.automatico === true && pDev.hecho_por === U.asist && pDev.referencia_id === asigB.id, JSON.stringify(pDev));
+    afirmar('S13 108: la baja se completa sola al recuperar el equipo', (await uno(`select estado from solicitudes where id = '${bajaSol.id}'`)).estado === 'completada');
+
+    // Inicio: el asistente con el modulo recibe la seccion; sin el modulo es null y no es un error
+    const eD = await mkEmp('DashSol');
+    const solD = await como(U.asist, () => uno(`select * from crear_solicitud('acceso_nuevo', '${eD}')`));
+    const dS = await como(U.asist, () => uno('select dashboard_resumen() as d'));
+    afirmar('S13 108: dashboard_resumen lista la solicitud abierta con su avance', Array.isArray(dS.d.solicitudes_abiertas) && dS.d.solicitudes_abiertas.some((x) => x.solicitud_id === solD.id && x.pasos_total === 3 && x.pasos_hechos === 0), JSON.stringify(dS.d.solicitudes_abiertas).slice(0, 200));
+    const dN = await como(U.sinmod, () => uno('select dashboard_resumen() as d'));
+    afirmar('S13 108: sin el modulo empleados la seccion es null y no cuenta como error', dN.d.solicitudes_abiertas === null && dN.d.altas_incompletas === null && !dN.d.errores.includes('solicitudes_abiertas'), JSON.stringify([dN.d.solicitudes_abiertas, dN.d.errores]));
+    afirmar('S13 108: el resumen del jefe no trae errores con solicitudes', (await como(U.jefe, () => uno('select dashboard_resumen() as d'))).d.errores.length === 0);
+  }
+
   console.log(`   escenarios (${etiqueta}): ${esc.ok} afirmaciones OK, ${esc.mal.length} MAL`);
   reg(`escenarios integrados (${etiqueta}): ${esc.ok} afirmaciones`, esc.mal.length === 0, esc.mal.join(' || '));
 }
@@ -548,7 +612,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|110|111|112)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|108|110|111|112)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -624,6 +688,7 @@ if (!args.includes('--sin-dependencias')) {
     ['100', ['099']], ['101', ['099']], ['101', ['100']], ['102', ['099']], ['103', ['099']],
     ['110', ['099']], ['110', ['101']], ['110', ['103']], ['110', ['101', '103']], ['111', ['099']], ['111', ['104']],
     ['112', ['099']], ['112', ['102']], ['112', ['103']], ['112', ['104']],
+    ['108', ['099']], ['108', ['101']], ['108', ['102']], ['108', ['103']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });

@@ -1,23 +1,24 @@
 <script setup>
-// Dar de baja a un empleado: resumen de consecuencias, motivo opcional y un
-// checklist que se completa cuando la RPC `dar_baja_empleado` (migración 102)
-// responde. Sobre AppDialog (diálogo único del sistema).
-//
-// El checklist animado es de PRESENTACIÓN: la baja es una sola transacción de
-// servidor, no hay progreso real por paso. Marca el último paso recién cuando
-// la RPC real resolvió (`Promise.all` en confirmarBaja), así que nunca miente
-// sobre si la baja ya ocurrió.
+// Dar de baja a un empleado en dos tiempos:
+//   1. Resumen de consecuencias + motivo opcional.
+//   2. El RESULTADO real: la baja es una sola transacción de servidor
+//      (`dar_baja_empleado`, migración 102) y, desde la 108, deja una solicitud
+//      de baja con lo que de verdad quedó pendiente —rotar la contraseña de cada
+//      cuenta compartida, recuperar cada equipo, cerrar las cuentas personales en
+//      su plataforma—. Antes un checklist animado fingía progreso por paso; ahora
+//      se muestra lo que la RPC devolvió, con el enlace a cada pendiente.
 //
 // Los equipos NO forman parte de la baja (nunca se cierran sus asignaciones,
-// docs/PANORAMA-SISTEMA.md §2): se muestran como lo que son, pasos PENDIENTES
-// de TI, cada uno con el enlace a su hoja de vida donde se registra la
-// devolución.
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+// docs/PANORAMA-SISTEMA.md §2): son pasos PENDIENTES de TI, cada uno con el
+// enlace a su hoja de vida donde se registra la devolución.
+// Sobre AppDialog (diálogo único del sistema).
+import { ref, computed, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { traducirErrorDb } from '../../api/erroresDb.js';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
+import { destinoPaso, avanceSolicitud } from '../../core/dominio-solicitudes.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import AppDialog from '../../components/ui/AppDialog.vue';
@@ -45,6 +46,11 @@ const motivo = ref('');
 const infoError = infoNotificacion('error');
 const campoMotivo = useCampoAccesible();
 
+// 'resumen' | 'procesando' | 'hecha'
+const fase = ref('resumen');
+// La solicitud de baja que devolvió la RPC (null si el backend aún no tiene la 108).
+const solicitud = ref(null);
+
 const nombreCompleto = computed(() => nombreCompletoDe(props.empleado));
 const descripcionEquipo = (eq) => [eq.tipo, eq.marca, eq.modelo].filter(Boolean).join(' ');
 
@@ -68,60 +74,31 @@ onMounted(async () => {
   }
 });
 
-// ── Checklist progresivo (300 ms por paso) ───────────────────────────────────
-const fase = ref('resumen'); // 'resumen' | 'confirmando'
-const pasoActivo = ref(-1);
-let temporizadores = [];
+// Sobre qué actúa cada paso con `objetivo_id`, con lo que el resumen ya trajo:
+// la cuenta (por su id) y el equipo (por el id de su asignación).
+const objetivos = computed(() => ({
+  ...Object.fromEntries(cuentas.value.map((c) => [c.cuenta_id, { usuario: c.usuario }])),
+  ...Object.fromEntries(equipos.value.map((eq) => [eq.asignacion_id, { equipo_id: eq.equipo_id, codigo: eq.codigo }])),
+}));
 
-function limpiarTemporizadores() {
-  temporizadores.forEach(clearTimeout);
-  temporizadores = [];
-}
-onUnmounted(limpiarTemporizadores);
-
-const pasosConfirmacion = computed(() => {
-  const pasos = [];
-  if (personales.value.length) {
-    pasos.push({ id: 'personales', label: `Dando de baja ${personales.value.length} ${personales.value.length === 1 ? 'cuenta personal' : 'cuentas personales'}`, estado: 'exito' });
-  }
-  if (reutilizables.value.length || compartidas.value.length) {
-    const n = reutilizables.value.length + compartidas.value.length;
-    pasos.push({ id: 'rotacion', label: `Liberando ${n} ${n === 1 ? 'cuenta' : 'cuentas'} y marcando la rotación de contraseña pendiente`, estado: 'exito' });
-  }
-  if (licencias.value.length) {
-    pasos.push({ id: 'licencias', label: `Liberando ${licencias.value.length} ${licencias.value.length === 1 ? 'asiento' : 'asientos'} de licencia`, estado: 'exito' });
-  }
-  pasos.push({ id: 'estado', label: 'Marcando al empleado como Inactivo', estado: 'exito' });
-  for (const eq of equipos.value) {
-    pasos.push({ id: `equipo-${eq.asignacion_id}`, label: 'Pendiente de devolución', estado: 'pendiente', equipo: eq });
-  }
-  return pasos;
-});
+// Los pasos de la solicitud de baja, ya con su enlace.
+const pasosResultado = computed(() => (solicitud.value?.pasos || []).map((p) => ({
+  ...p,
+  hecho: p.estado !== 'pendiente',
+  destino: p.estado === 'pendiente' ? destinoPaso(p, { empleadoId: props.empleado.id, objetivo: objetivos.value[p.objetivo_id] }) : null,
+})));
+const avance = computed(() => avanceSolicitud(solicitud.value?.pasos));
 
 async function confirmarBaja() {
   error.value = '';
-  fase.value = 'confirmando';
-  pasoActivo.value = -1;
-
-  const pasos = pasosConfirmacion.value;
-  const avance = new Promise((resolve) => {
-    let i = 0;
-    function siguiente() {
-      if (i >= pasos.length) { resolve(); return; }
-      pasoActivo.value = i;
-      temporizadores.push(setTimeout(() => { i += 1; siguiente(); }, 300));
-    }
-    siguiente();
-  });
-
+  fase.value = 'procesando';
   try {
-    await Promise.all([store.darDeBaja(props.empleado.id, motivo.value.trim() || null), avance]);
-    pasoActivo.value = pasos.length;
-    showToast(`${nombreCompleto.value} dado de baja`);
+    const r = await store.darDeBaja(props.empleado.id, motivo.value.trim() || null);
+    solicitud.value = r?.solicitud || null;
     resultado = true;
-    temporizadores.push(setTimeout(() => dialogo.value?.cerrar(), 450));
+    showToast(`${nombreCompleto.value} dado de baja`);
+    fase.value = 'hecha';
   } catch (e) {
-    limpiarTemporizadores();
     error.value = traducirErrorDb(e, { entidad: 'empleado', porDefecto: 'No se pudo dar de baja al empleado.' }).mensaje;
     fase.value = 'resumen';
   }
@@ -132,51 +109,60 @@ async function confirmarBaja() {
   <AppDialog
     ref="dialogo"
     size="md"
-    :mostrar-cerrar="fase !== 'confirmando'"
-    :cerrar-en-backdrop="fase !== 'confirmando'"
-    :confirmar-cierre="() => fase !== 'confirmando'"
+    :mostrar-cerrar="fase !== 'procesando'"
+    :cerrar-en-backdrop="fase === 'resumen'"
+    :confirmar-cierre="() => fase !== 'procesando'"
     @cerrado="emit('cerrar', resultado)"
   >
     <template #titulo>
-      <span class="block truncate">Dar de baja a {{ nombreCompleto }}</span>
-      <span class="block text-xs font-normal text-gray-500">Revise las consecuencias antes de confirmar</span>
+      <span class="block truncate">{{ fase === 'hecha' ? `Baja registrada · ${nombreCompleto}` : `Dar de baja a ${nombreCompleto}` }}</span>
+      <span class="block text-xs font-normal text-gray-500">{{ fase === 'hecha' ? 'Esto es lo que quedó pendiente' : 'Revise las consecuencias antes de confirmar' }}</span>
     </template>
 
     <p v-if="cargando" class="py-8 text-center text-sm text-gray-500" role="status">Cargando resumen de accesos...</p>
 
-    <!-- ══ Fase 2: procesando (checklist progresivo) ══════════════ -->
-    <div v-else-if="fase === 'confirmando'" role="status" aria-live="polite">
-      <p class="mb-3 text-sm text-gray-600">Procesando la baja de {{ nombreCompleto }}:</p>
-      <ol class="space-y-2">
-        <li v-for="(paso, idx) in pasosConfirmacion" :key="paso.id" class="flex items-start gap-2.5 text-sm">
-          <i
-            v-if="idx < pasoActivo && paso.estado === 'exito'"
-            class="ti ti-circle-check mt-0.5 text-lg text-green-600"
-            aria-hidden="true"
-          ></i>
-          <i
-            v-else-if="idx < pasoActivo"
-            class="ti ti-clock mt-0.5 text-lg text-amber-600"
-            aria-hidden="true"
-          ></i>
-          <i
-            v-else-if="idx === pasoActivo"
-            class="ti ti-loader-2 mt-0.5 animate-spin text-lg text-gray-500"
-            aria-hidden="true"
-          ></i>
-          <i v-else class="ti ti-circle-dashed mt-0.5 text-lg text-gray-300" aria-hidden="true"></i>
-          <span class="min-w-0" :class="idx > pasoActivo ? 'text-gray-500' : 'text-gray-900'">
-            <template v-if="paso.equipo">
-              <RouterLink
-                class="rounded-sm text-primary-600 hover:underline focus-visible:underline focus-visible:outline-none"
-                :to="`/equipos/${paso.equipo.equipo_id}`"
-              ><AppCodigo :valor="paso.equipo.codigo" titulo="Código del equipo" /></RouterLink>
-              {{ descripcionEquipo(paso.equipo) }} · {{ paso.label }}
-            </template>
-            <template v-else>{{ paso.label }}</template>
-          </span>
-        </li>
-      </ol>
+    <p v-else-if="fase === 'procesando'" class="py-8 text-center text-sm text-gray-600" role="status" aria-live="polite">
+      <i class="ti ti-loader-2 mr-1 animate-spin" aria-hidden="true"></i>
+      Registrando la baja de {{ nombreCompleto }}...
+    </p>
+
+    <!-- ══ Resultado: lo que la RPC dejó hecho y pendiente ════════ -->
+    <div v-else-if="fase === 'hecha'" class="space-y-4" aria-live="polite">
+      <template v-if="solicitud">
+        <p class="text-sm text-gray-700">
+          Quedó la solicitud
+          <RouterLink
+            class="rounded-sm text-primary-600 hover:underline focus-visible:underline focus-visible:outline-none"
+            :to="`/solicitudes/${solicitud.id}`"
+          ><AppCodigo :valor="solicitud.codigo" titulo="Número de solicitud" /></RouterLink>
+          con
+          <span class="tabular-nums">{{ avance.resueltos }} de {{ avance.total }}</span>
+          {{ avance.total === 1 ? 'paso hecho' : 'pasos hechos' }}.
+          <template v-if="avance.pendientes === 0">No queda nada pendiente.</template>
+        </p>
+        <ol class="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200" aria-label="Pasos de la baja">
+          <li v-for="p in pasosResultado" :key="p.id" class="flex items-start gap-2.5 px-3 py-2.5 text-sm" :data-hecho="p.hecho">
+            <i
+              class="mt-0.5 text-lg"
+              :class="p.hecho ? 'ti ti-circle-check text-green-700' : 'ti ti-clock text-amber-700'"
+              aria-hidden="true"
+            ></i>
+            <span class="min-w-0 flex-1" :class="p.hecho ? 'text-gray-500' : 'text-gray-900'">
+              <span class="sr-only">{{ p.hecho ? 'Hecho' : 'Pendiente' }}: </span>{{ p.label }}
+              <span v-if="p.hecho && p.nota" class="block text-xs text-gray-500">{{ p.nota }}</span>
+            </span>
+            <RouterLink
+              v-if="p.destino"
+              class="shrink-0 rounded-sm text-xs text-primary-600 hover:underline focus-visible:underline focus-visible:outline-none"
+              :to="p.destino.to"
+              :aria-label="`${p.destino.texto}: ${p.label}`"
+            >{{ p.destino.texto }}</RouterLink>
+          </li>
+        </ol>
+      </template>
+      <p v-else class="text-sm text-gray-700">
+        La baja quedó registrada. Revise en el expediente las contraseñas por rotar y los equipos por recuperar.
+      </p>
     </div>
 
     <!-- ══ Fase 1: resumen de consecuencias ═══════════════════════ -->
@@ -227,7 +213,7 @@ async function confirmarBaja() {
           </li>
 
           <li class="px-3 py-3">
-            <p class="text-sm font-medium text-gray-900">Marca al empleado como Inactivo</p>
+            <p class="text-sm font-medium text-gray-900">Marca al empleado como Inactivo y abre su solicitud de baja</p>
             <p v-if="sinAccesos" class="mt-1 text-xs text-gray-500">No tiene cuentas, licencias ni equipos asignados actualmente.</p>
           </li>
         </ul>
@@ -293,9 +279,13 @@ async function confirmarBaja() {
       </div>
     </div>
 
-    <template v-if="fase !== 'confirmando'" #acciones>
+    <template v-if="fase === 'resumen'" #acciones>
       <AppButton variant="outline" severity="secondary" label="Cancelar" @click="dialogo?.cerrar()" />
       <AppButton severity="danger" icon="ti ti-user-off" label="Confirmar baja" :disabled="cargando" @click="confirmarBaja" />
+    </template>
+    <template v-else-if="fase === 'hecha'" #acciones>
+      <AppButton v-if="solicitud" variant="outline" severity="secondary" label="Ver solicitud" :to="`/solicitudes/${solicitud.id}`" @click="dialogo?.cerrar()" />
+      <AppButton label="Cerrar" @click="dialogo?.cerrar()" />
     </template>
   </AppDialog>
 </template>

@@ -6,8 +6,6 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { traducirErrorDb } from '../../api/erroresDb.js';
-import { altaIncompleta } from '../../core/dominio-empleados.js';
-import { fechaLocalISO } from '../../core/formatters.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { exportarCSV } from '../../core/exportar.js';
@@ -130,21 +128,6 @@ const { esMovil } = useEsMovil();
 
 useRealtimeRefresco('empleados:list', () => Promise.all([store.cargar(), refrescarConteos()]), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
-// El chip de cuentas de la fila ya distinguía "0 cuentas" con un tono
-// apagado, pero cero cuentas no significa lo mismo en todos lados: en alguien
-// que entró la semana pasada es un alta a medias, y en alguien de hace dos
-// años es sencillamente cómo trabaja. Misma regla que alimenta el feed de
-// pendientes del Dashboard (core/dominio-empleados.js) — el chip solo cambia
-// de significado, no se agrega ningún elemento nuevo a la fila.
-function altaPendiente(emp) {
-  return !!altaIncompleta(emp, { cuentas: emp.n_cuentas ?? 0 }, fechaLocalISO());
-}
-
-function tituloCuentas(emp) {
-  const base = `${emp.n_cuentas} cuenta(s) activa(s)`;
-  return altaPendiente(emp) ? `${base} — alta sin completar` : base;
-}
-
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
 
@@ -212,16 +195,27 @@ function cerrarForm() {
   empleadoEditar.value = null;
 }
 
-function onFormCerrado(guardado) {
+async function onFormCerrado(guardado) {
   const fueEdicion = !!empleadoEditar.value;
   cerrarForm();
   if (!guardado) return;
   if (fueEdicion) {
     showToast('Empleado actualizado');
-  } else {
-    // Alta guiada: llevar a la ficha del nuevo empleado para asignarle accesos
-    router.push(`/empleados/${guardado.id}?nuevo=1`);
+    return;
   }
+  // Alta guiada: la persona nueva abre su solicitud de alta (migración 108) y se
+  // la lleva a la ficha, donde la guía lee esa solicitud para asignarle accesos.
+  // Si la solicitud no se pudo abrir (p. ej. el backend aún no la tiene) la
+  // persona igual quedó creada: se avisa y se sigue.
+  try {
+    await insforgeApi.crearSolicitud({ tipo: 'alta_empleado', empleadoId: guardado.id });
+  } catch (e) {
+    showToast(
+      traducirErrorDb(e, { entidad: 'solicitud', porDefecto: 'No se pudo abrir la solicitud de alta.' }).mensaje,
+      'warning',
+    );
+  }
+  router.push(`/empleados/${guardado.id}`);
 }
 
 function verFicha(empleado) {
@@ -409,9 +403,9 @@ onMounted(async () => {
                   <div v-if="emp.n_cuentas != null" class="flex items-center gap-4 text-sm tabular-nums">
                     <span
                       class="inline-flex items-center gap-1"
-                      :class="altaPendiente(emp) ? 'text-amber-700' : emp.n_cuentas ? 'text-gray-700' : 'text-gray-400'"
-                      :title="tituloCuentas(emp)"
-                      :aria-label="tituloCuentas(emp)"
+                      :class="emp.n_cuentas ? 'text-gray-700' : 'text-gray-400'"
+                      :title="`${emp.n_cuentas} cuenta(s) activa(s)`"
+                      :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`"
                     ><i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}</span>
                     <span
                       class="inline-flex items-center gap-1"
@@ -489,7 +483,7 @@ onMounted(async () => {
               <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
                 <BadgeEstado tipo="empleado" :valor="emp.estado" status />
                 <div v-if="emp.n_cuentas != null" class="flex items-center gap-3 text-xs tabular-nums">
-                  <span :class="altaPendiente(emp) ? 'text-amber-700' : emp.n_cuentas ? 'text-gray-600' : 'text-gray-400'" :title="tituloCuentas(emp)" :aria-label="tituloCuentas(emp)"><i class="ti ti-key" aria-hidden="true"></i> {{ emp.n_cuentas }}</span>
+                  <span :class="emp.n_cuentas ? 'text-gray-600' : 'text-gray-400'" :title="`${emp.n_cuentas} cuenta(s) activa(s)`" :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`"><i class="ti ti-key" aria-hidden="true"></i> {{ emp.n_cuentas }}</span>
                   <span :class="emp.n_equipos ? 'text-gray-600' : 'text-gray-400'" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"><i class="ti ti-devices" aria-hidden="true"></i> {{ emp.n_equipos }}</span>
                   <span :class="emp.n_licencias ? 'text-gray-600' : 'text-gray-400'" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"><i class="ti ti-license" aria-hidden="true"></i> {{ emp.n_licencias }}</span>
                 </div>

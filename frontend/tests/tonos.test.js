@@ -32,6 +32,7 @@ import { ESTADOS_KB } from '../src/core/dominio-kb.js';
 import { ESTADOS_PROBLEMA, SEVERIDADES_PROBLEMA, ESTADOS_ACCION } from '../src/core/dominio-problemas.js';
 import { CATEGORIAS_ACCESO_SENSIBLE } from '../src/core/dominio-accesos-sensibles.js';
 import { CLASE_VENCIMIENTO_LICENCIA } from '../src/core/dominio-licencias.js';
+import { ESTADOS_SOLICITUD, ESTADOS_PASO } from '../src/core/dominio-solicitudes.js';
 
 // dominio → [mapa de tono, claves que el dominio conoce, ¿es de rango?]
 const DOMINIOS = [
@@ -44,6 +45,8 @@ const DOMINIOS = [
   ['problema_severidad', 'problema_severidad', SEVERIDADES_PROBLEMA, true],
   ['accion_estado', 'accion_estado', ESTADOS_ACCION, false],
   ['categoria_acceso_sensible', 'categoria_acceso_sensible', CATEGORIAS_ACCESO_SENSIBLE, false],
+  ['solicitud', 'solicitud_estado', ESTADOS_SOLICITUD, false],
+  ['paso_solicitud', 'solicitud_paso_estado', ESTADOS_PASO, false],
 ];
 
 describe('definición de los tonos', () => {

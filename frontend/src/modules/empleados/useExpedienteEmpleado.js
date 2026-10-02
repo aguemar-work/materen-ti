@@ -1,5 +1,6 @@
 // Carga del expediente del empleado: la ficha y, aparte, lo que cada módulo
-// aporta (cuentas, equipos, licencias, entregas, tickets, actas, hoja de vida).
+// aporta (cuentas, equipos, licencias, entregas, tickets, solicitudes, actas,
+// hoja de vida).
 //
 // Reglas que esta capa hace cumplir:
 //   · Cada fuente se pide SOLO si el usuario tiene su módulo
@@ -28,6 +29,9 @@ export function useExpedienteEmpleado(obtenerId) {
   const licencias = ref([]);
   const entregas = ref([]);
   const tickets = ref([]);
+  // Solicitudes de servicio de la persona (migración 108), con sus pasos: de ahí
+  // sale la guía de alta y la sección «Solicitudes».
+  const solicitudes = ref([]);
   const actas = ref([]);
   const ultimaRevision = ref(null);
   const cargando = ref(true);
@@ -45,6 +49,8 @@ export function useExpedienteEmpleado(obtenerId) {
   const puedeEquipos = computed(() => auth.puedeVerModulo('equipos'));
   const puedeLicencias = computed(() => auth.puedeVerModulo('licencias'));
   const puedeTickets = computed(() => auth.puedeVerModulo('tickets'));
+  // Las solicitudes comparten el módulo `empleados` (no hay uno propio).
+  const puedeSolicitudes = computed(() => auth.puedeVerModulo('empleados'));
 
   const cuentasCargadas = computed(() => cuentasStore.empleadoActual === obtenerId());
 
@@ -71,7 +77,7 @@ export function useExpedienteEmpleado(obtenerId) {
 
   async function cargarCustodia() {
     const id = obtenerId();
-    const [eq, lic, ent, tk, act, rev, cu] = await Promise.allSettled([
+    const [eq, lic, ent, tk, act, rev, cu, sol] = await Promise.allSettled([
       puedeEquipos.value ? insforgeApi.equiposPorEmpleado(id) : [],
       puedeLicencias.value ? insforgeApi.licenciasPorEmpleado(id) : [],
       puedeCorreos.value ? insforgeApi.entregasDeEmpleado(id) : [],
@@ -79,6 +85,7 @@ export function useExpedienteEmpleado(obtenerId) {
       puedeEquipos.value ? insforgeApi.actasDeEmpleado(id) : [],
       insforgeApi.ultimaRevisionAccesos(id),
       puedeCorreos.value ? cuentasStore.cargarPorEmpleado(id) : Promise.resolve(),
+      puedeSolicitudes.value ? insforgeApi.solicitudesDeEmpleado(id) : [],
     ]);
     equipos.value = valorDe(eq, []);
     licencias.value = valorDe(lic, []);
@@ -86,7 +93,8 @@ export function useExpedienteEmpleado(obtenerId) {
     tickets.value = valorDe(tk, []);
     actas.value = valorDe(act, []);
     ultimaRevision.value = valorDe(rev, null);
-    avisarFallos([eq, lic, ent, tk, act, rev, cu]);
+    solicitudes.value = valorDe(sol, []);
+    avisarFallos([eq, lic, ent, tk, act, rev, cu, sol]);
   }
 
   async function cargarLibro() {
@@ -155,9 +163,9 @@ export function useExpedienteEmpleado(obtenerId) {
   }
 
   return {
-    empleado, equipos, licencias, entregas, tickets, actas, ultimaRevision,
+    empleado, equipos, licencias, entregas, tickets, solicitudes, actas, ultimaRevision,
     cargando, errorFicha, libro, libroCargando, fechaBaja, actaEntregaPorAsignacion, nombresStaff,
-    puedeCorreos, puedeEquipos, puedeLicencias, puedeTickets, cuentasCargadas,
+    puedeCorreos, puedeEquipos, puedeLicencias, puedeTickets, puedeSolicitudes, cuentasCargadas,
     cargar, refrescar, cargarLibro,
   };
 }

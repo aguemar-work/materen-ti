@@ -15,6 +15,8 @@
 import { RPC_EQUIPOS } from './rpc-equipos.js';
 import { RPC_EMPLEADOS } from './rpc-empleados.js';
 import { RPC_LICENCIAS } from './rpc-licencias.js';
+import { RPC_SOLICITUDES, definirActorSolicitudes } from './rpc-solicitudes.js';
+import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
 
 const DIA_MS = 86400000;
@@ -34,6 +36,8 @@ function hace(dias = 0, horas = 0) {
 export const USUARIO_MAQUETA = ESCENARIO === 'asistente'
   ? { id: 'u-asis-1', email: 'dhuaman@materen.pe', emailVerified: true, profile: { name: 'Diego Huamán Rojas' } }
   : { id: 'u-jefe', email: 'jefe@materen.pe', emailVerified: true, profile: { name: 'Alejandro Guevara' } };
+// Las RPC de solicitudes necesitan saber si quien actúa es jefe (omitir un paso obligatorio).
+definirActorSolicitudes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
 
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
@@ -833,6 +837,71 @@ const v_empleado_ultima_revision_acceso = empleado_revisiones_acceso.map((r) => 
   revisado_at: r.revisado_at, resultado: r.resultado, nota: r.nota,
 }));
 
+// ── Solicitudes de servicio (migración 108) ─────────────────────────────────
+// Cuatro estados a la vista: dos altas abiertas (la guía de alta del expediente
+// y el Inicio las leen), una baja abierta con un equipo por recuperar, una baja
+// y un alta ya completadas, y una solicitud cancelada.
+const solicitud_tipos = TIPOS_SOLICITUD.map((t) => ({ ...t }));
+
+function solicitudMaq(n, tipo_id, empleado_id, dias, extra = {}) {
+  return {
+    id: `sol${String(n).padStart(2, '0')}`,
+    codigo: `SOL-${String(n).padStart(4, '0')}`,
+    tipo_id, empleado_id,
+    estado: 'abierta', origen: 'rrhh_correo', nota: null, datos: {}, ticket_id: null,
+    creada_por: 'u-jefe', completada_at: null, cancelada_at: null, cancelada_por: null, motivo_cancelacion: null,
+    created_at: hace(dias), updated_at: hace(dias),
+    ...extra,
+  };
+}
+
+const solicitudes = [
+  solicitudMaq(1, 'alta_empleado', 'e07', 3, { nota: 'Pedido de RRHH por correo: ingresa a la obra Mirasol como arquitecta proyectista.', ticket_id: 't116' }),
+  solicitudMaq(2, 'alta_empleado', 'e12', 5, { nota: 'Pedido de RRHH por correo del lunes.', creada_por: 'u-asis-1' }),
+  solicitudMaq(3, 'baja_empleado', 'e06', 30, { origen: 'sistema', nota: 'Término de contrato. Pendiente devolver el celular corporativo.' }),
+  solicitudMaq(4, 'baja_empleado', 'e10', 60, { origen: 'sistema', estado: 'completada', completada_at: hace(58) }),
+  solicitudMaq(5, 'alta_empleado', 'e09', 12, { estado: 'completada', completada_at: hace(9), nota: 'Pedido de RRHH por correo.' }),
+  solicitudMaq(6, 'licencia', 'e11', 8, {
+    origen: 'jefe_directo', estado: 'cancelada', cancelada_at: hace(7), cancelada_por: 'u-asis-1', motivo_cancelacion: 'Pedido duplicado: ya tenía la licencia.',
+  }),
+];
+
+const solicitud_pasos = [];
+const resuelto = (dias, extra = {}) => ({ estado: 'hecho', automatico: true, hecho_por: 'u-asis-1', hecho_at: hace(dias), ...extra });
+
+// Pasos de la plantilla (los no dinámicos), con lo que ya se resolvió por clave.
+function pasosDe(n, cambios = {}) {
+  const sol = solicitudes.find((x) => x.codigo === `SOL-${String(n).padStart(4, '0')}`);
+  for (const pl of plantillaDe(sol.tipo_id)) {
+    solicitud_pasos.push(pasoDePlantilla(pl, sol.id, `${sol.id}-${pl.clave}`, { created_at: sol.created_at, ...(cambios[pl.clave] || {}) }));
+  }
+}
+// Un paso dinámico de la baja (uno por cuenta o por equipo).
+function pasoBaja(n, clave, extra) {
+  const sol = solicitudes.find((x) => x.codigo === `SOL-${String(n).padStart(4, '0')}`);
+  solicitud_pasos.push(pasoDePlantilla(plantillaPaso('baja_empleado', clave), sol.id, `${sol.id}-${clave}-${solicitud_pasos.length}`, { created_at: sol.created_at, ...extra }));
+}
+
+pasosDe(1, { registrar_empleado: resuelto(3, { referencia_id: 'e07', hecho_por: 'u-jefe' }) });
+pasosDe(2, {
+  registrar_empleado: resuelto(5, { referencia_id: 'e12', hecho_por: 'u-asis-1' }),
+  crear_cuenta: resuelto(4, { referencia_id: 'ac21' }),
+});
+pasoBaja(3, 'cerrar_accesos', resuelto(30, { hecho_por: 'u-jefe', nota: '1 asignaciones de cuenta y 0 de licencia cerradas.' }));
+pasoBaja(3, 'devolver_equipo', { label: 'Recuperar el equipo CEL-001 · Samsung Galaxy A34 5G', objetivo_id: 'ae06' });
+pasoBaja(4, 'cerrar_accesos', resuelto(60, { hecho_por: 'u-jefe', nota: '1 asignaciones de cuenta y 1 de licencia cerradas.' }));
+pasoBaja(4, 'devolver_equipo', resuelto(58, { label: 'Recuperar el equipo TAB-001 · Samsung Galaxy Tab A8', objetivo_id: 'ae09', referencia_id: 'ae09' }));
+pasosDe(5, {
+  registrar_empleado: resuelto(12, { referencia_id: 'e09', hecho_por: 'u-jefe' }),
+  crear_cuenta: resuelto(11),
+  entregar_credenciales: resuelto(10, { hecho_por: null }),
+  dar_accesos_area: { estado: 'omitido', hecho_por: 'u-asis-1', hecho_at: hace(10), motivo_omision: 'Logística no necesita accesos propios del área.' },
+  asignar_equipo: { estado: 'omitido', hecho_por: 'u-asis-1', hecho_at: hace(10), motivo_omision: 'Usa un equipo del almacén.' },
+  asignar_licencia: { estado: 'omitido', hecho_por: 'u-asis-1', hecho_at: hace(10), motivo_omision: 'No corresponde al cargo.' },
+  confirmar_recepcion: resuelto(9, { automatico: false }),
+});
+pasosDe(6, {});
+
 export const TABLAS = {
   staff, staff_modulos_permisos, staff_permisos,
   empresas, areas_obras, ubicaciones, plataformas, tipos_equipo, catalogo_almacen,
@@ -846,6 +915,7 @@ export const TABLAS = {
   accesos_sensibles, accesos_sensibles_permisos,
   accesos_log, notificaciones, notificaciones_lecturas, entregas,
   empleado_eventos, empleado_revisiones_acceso, v_empleado_ultima_revision_acceso,
+  solicitud_tipos, solicitudes, solicitud_pasos,
 };
 
 // ── RPC ─────────────────────────────────────────────────────────────────────
@@ -913,6 +983,8 @@ export const RPC = {
   ...RPC_EMPLEADOS,
   // Licencias (101): crear_licencia_con_cuenta — maqueta/rpc-licencias.js.
   ...RPC_LICENCIAS,
+  // Solicitudes de servicio (108): maqueta/rpc-solicitudes.js (pasos, autocompletado y cierre).
+  ...RPC_SOLICITUDES,
   // Inicio (103): una sola RPC; escenarios por `?maqueta=...` en maqueta/inicio.js.
   dashboard_resumen: (db) => resumenInicio(db, { usuarioId: USUARIO_MAQUETA.id }),
 };

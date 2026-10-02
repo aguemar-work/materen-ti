@@ -23,6 +23,18 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-02** (**Ciclo 21 · H3-3 — Solicitudes de servicio**, migración 108 escrita, **sin aplicar**; el dueño
+  ya aplicó 111 y 112) — `solicitud_tipos` (7) y `solicitud_plantilla_pasos` (24), `solicitudes` (`SOL-####`) y
+  `solicitud_pasos`; RPC `crear_solicitud` (el alta crea a la persona en la misma transacción),
+  `completar_paso_solicitud`, `omitir_paso_solicitud` (motivo obligatorio; un paso obligatorio solo lo omite
+  un JEFE), `cancelar_solicitud` y `convertir_ticket_en_solicitud`. Los pasos se marcan solos por triggers
+  cuando el staff usa Cuentas, Entregas, Equipos o Licencias, o limpia `requiere_rotacion`.
+  `dar_baja_empleado` crea la solicitud de baja con pasos reales (una rotación por cuenta compartida, una
+  devolución por equipo). `dashboard_resumen` llena `solicitudes_abiertas` y deriva `altas_incompletas` por
+  compatibilidad. Frontend: módulo Solicitudes (Personas › Solicitudes, mismo permiso `empleados`),
+  sección en el expediente, guía de alta leída de la solicitud abierta, baja con su resultado real y vista
+  en Inicio. Se retiran `altasIncompletas()`, `DIAS_VENTANA_ALTA` y el checklist cosmético de la baja.
+  Sin backfill: las altas anteriores no tienen solicitud. Desplegar el frontend **después** de aplicar la 108.
 - **2026-10-02** (**Ciclo 21 · H2 (parte 3) — `_shared` de functions, retención y anonimización**) — (1)
   `functions/_shared/*.ts` (cors, http, errores, auth fail-closed, permisos por RPC, ratelimit, imágenes
   con `stripExif`, version) + `scripts/build-functions.mjs` (marcador `// @inline ./_shared/x.ts`,

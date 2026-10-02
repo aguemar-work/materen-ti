@@ -13,7 +13,8 @@ import { MODULO_POR_ID } from '../../core/modulos.js';
 // Conocimiento, Problemas) · Personas (Empleados, Encuestas) · Custodia
 // (Equipos, Licencias, Correos) · Administración (Registro de actividad,
 // Accesos sensibles, Configuración). Cada grupo lleva un `id` fijo, no el
-// `label`. "Solicitudes" entra a Mesa de ayuda cuando exista su ruta.
+// `label`. Solicitudes (migración 108) vive en Personas, entre Empleados y
+// Encuestas: es el trámite de la persona (alta, baja, accesos, equipos).
 //
 // Los 8 ítems con `modulo` salen de `core/modulos.js` (registro único con el
 // CHECK de la migración 056): acá solo se decide el orden y los extras.
@@ -63,7 +64,13 @@ export const AREAS_NAV = [
       {
         id: 'personas',
         label: 'Personas',
-        items: [itemModulo('empleados'), itemModulo('encuestas')],
+        // Solicitudes (108) usa el módulo `empleados`: no es un módulo propio
+        // (el CHECK de la 056 admite 8) y su ruta declara el mismo meta.modulo.
+        items: [
+          itemModulo('empleados'),
+          { path: '/solicitudes', label: 'Solicitudes', icon: 'ti ti-clipboard-check', modulo: 'empleados' },
+          itemModulo('encuestas'),
+        ],
       },
       {
         id: 'custodia',

@@ -1,7 +1,7 @@
 // Feed de pendientes del Inicio con la forma de `dashboard_resumen` (103):
 // niveles (crítico / atención), orden, textos, un solo asunto por ticket,
-// "acta sin adjuntar" y ningún umbral de días escrito en el cliente. Las altas
-// a medias tienen su propio archivo (feed-altas-incompletas.test.js).
+// "acta sin adjuntar" y ningún umbral de días escrito en el cliente. Las solicitudes
+// abiertas (altas, bajas, accesos...) tienen su propio archivo (feed-solicitudes.test.js).
 import { describe, it, expect } from 'vitest';
 import { construirFeedPendientes, GRUPOS_INICIO } from '../src/modules/dashboard/pendientesFeed.js';
 import { resumenVacio, resumenCompleto, cuenta, ticket, AHORA } from './stubs/resumen-inicio.js';
@@ -38,7 +38,7 @@ describe('feed — niveles', () => {
 
   it('cada ítem declara su grupo (vista) y todos los grupos existen', () => {
     for (const i of items) expect(Object.keys(GRUPOS_INICIO)).toContain(i.grupo);
-    expect(new Set(items.map((i) => i.grupo))).toEqual(new Set(['tickets', 'accesos', 'custodia', 'problemas']));
+    expect(new Set(items.map((i) => i.grupo))).toEqual(new Set(['tickets', 'solicitudes', 'accesos', 'custodia', 'problemas']));
   });
 });
 

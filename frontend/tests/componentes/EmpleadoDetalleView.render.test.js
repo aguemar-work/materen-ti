@@ -6,9 +6,10 @@
 // tiene su propia prueba en empleado-dialogos.render.test.js).
 //
 // Cubre lo que el rediseño promete: carátula con rótulo + DNI (enmascarado en
-// lo impreso), UNA acción sólida según el estado, sello BAJA, guía de alta como
-// fila de pasos, la tabla única de custodia con sus acciones y permisos, y el
-// libro de movimientos (orden, filtros, vacío). Y lo que no se puede ver: sin el
+// lo impreso), UNA acción sólida según el estado, sello BAJA, la guía de alta
+// (la solicitud de alta ABIERTA de la migración 108 leída como fila de pasos),
+// la sección de Solicitudes, la tabla única de custodia con sus acciones y
+// permisos, y el libro de movimientos (orden, filtros, vacío). Y lo que no se puede ver: sin el
 // módulo de una sección, ni se pinta ni se pide.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -18,7 +19,6 @@ import PrimeVue from 'primevue/config';
 import EmpleadoDetalleView from '../../src/modules/empleados/EmpleadoDetalleView.vue';
 import AppButton from '../../src/components/ui/AppButton.vue';
 import { useAuthStore } from '../../src/stores/auth.js';
-import { fechaLocalISO } from '../../src/core/formatters.js';
 
 vi.mock('../../src/api/insforge.js', () => ({
   insforgeApi: {
@@ -30,6 +30,8 @@ vi.mock('../../src/api/insforge.js', () => ({
     ticketsDeEmpleado: vi.fn(),
     actasDeEmpleado: vi.fn(),
     ultimaRevisionAccesos: vi.fn(),
+    solicitudesDeEmpleado: vi.fn(),
+    completarPasoSolicitud: vi.fn(),
     listEventosEmpleado: vi.fn(),
     historialEquiposEmpleado: vi.fn(),
     historialCuentasEmpleado: vi.fn(),
@@ -72,12 +74,32 @@ const HIST_EQUIPOS = {
   eventos: [{ id: 'eq1', equipo_id: 'q1', evento: 'asignado', detalle: 'Entregado a Rosa Quispe Mamani — Buen estado', user_email: 'dhuaman@materen.pe', created_at: '2025-03-12T10:30:00' }],
 };
 
+// Solicitud de alta ABIERTA (migración 108) como la devuelve `solicitudesDeEmpleado`.
+const paso = (orden, clave, label, extra = {}) => ({
+  id: `p${orden}`, solicitud_id: 's1', orden, clave, label, obligatorio: true, modulo: 'empleados', referencia_tipo: null,
+  objetivo_id: null, autocompleta: false, estado: 'pendiente', referencia_id: null, automatico: false, hecho_por: null,
+  hecho_at: null, nota: '', motivo_omision: '', ...extra,
+});
+const HECHO = { estado: 'hecho', automatico: true, hecho_at: '2026-09-30T10:00:00' };
+const pasosAlta = (hechos = {}) => [
+  paso(1, 'registrar_empleado', 'Registrar a la persona', { ...HECHO, referencia_tipo: 'empleado' }),
+  paso(2, 'crear_cuenta', 'Crear la cuenta de correo', { modulo: 'correos', referencia_tipo: 'cuenta', autocompleta: true, ...hechos.crear_cuenta }),
+  paso(3, 'entregar_credenciales', 'Entregar las credenciales por enlace', { modulo: 'correos', referencia_tipo: 'entrega', autocompleta: true, ...hechos.entregar_credenciales }),
+  paso(4, 'asignar_equipo', 'Asignar el equipo', { obligatorio: false, modulo: 'equipos', referencia_tipo: 'equipo', autocompleta: true, ...hechos.asignar_equipo }),
+  paso(5, 'asignar_licencia', 'Asignar las licencias', { obligatorio: false, modulo: 'licencias', referencia_tipo: 'licencia', autocompleta: true, ...hechos.asignar_licencia }),
+  paso(6, 'confirmar_recepcion', 'Confirmar la recepción con la persona', hechos.confirmar_recepcion),
+];
+const solicitudAlta = (hechos = {}, extra = {}) => ({
+  id: 's1', codigo: 'SOL-0012', tipo_id: 'alta_empleado', tipo_nombre: 'Alta de empleado', empleado_id: 'e01', estado: 'abierta',
+  origen: 'rrhh_correo', created_at: new Date(Date.now() - 86400000).toISOString(), pasos: pasosAlta(hechos), ...extra,
+});
+
 const MODULOS_TODOS = ['empleados', 'correos', 'equipos', 'licencias', 'tickets'];
 
 function cargarApi(sobre = {}) {
   const api = {
     empleado: EMPLEADO, cuentas: CUENTAS, equipos: EQUIPOS, licencias: LICENCIAS, actas: ACTAS,
-    entregas: ENTREGAS, tickets: TICKETS, eventos: EVENTOS, ...sobre,
+    entregas: ENTREGAS, tickets: TICKETS, eventos: EVENTOS, solicitudes: [], ...sobre,
   };
   insforgeApi.getEmpleado.mockResolvedValue(api.empleado);
   insforgeApi.listCuentasPorEmpleado.mockResolvedValue(api.cuentas);
@@ -87,6 +109,8 @@ function cargarApi(sobre = {}) {
   insforgeApi.ticketsDeEmpleado.mockResolvedValue(api.tickets);
   insforgeApi.actasDeEmpleado.mockResolvedValue(api.actas);
   insforgeApi.ultimaRevisionAccesos.mockResolvedValue({ revisado_at: '2026-09-20T09:00:00', revisado_por: 'u1' });
+  insforgeApi.solicitudesDeEmpleado.mockResolvedValue(api.solicitudes);
+  insforgeApi.completarPasoSolicitud.mockResolvedValue({ id: 'p6', estado: 'hecho' });
   insforgeApi.listEventosEmpleado.mockResolvedValue(api.eventos);
   insforgeApi.historialEquiposEmpleado.mockResolvedValue(api.equipos.length ? HIST_EQUIPOS : { asignaciones: [], eventos: [] });
   insforgeApi.historialCuentasEmpleado.mockResolvedValue(api.cuentas.length ? HIST_CUENTAS : []);
@@ -97,7 +121,7 @@ function cargarApi(sobre = {}) {
 const STUBS = {
   EmpleadoForm: true, BajaEmpleadoModal: true, EmpleadoMotivoDialog: true, ReingresarEmpleadoDialog: true,
   AsignarEquipoModal: true, AsignarLicenciaModal: true, CuentaForm: true, TraspasarCuentaDialog: true,
-  HistorialCuentaDialog: true, ConfirmDialog: true,
+  HistorialCuentaDialog: true, ConfirmDialog: true, SolicitudForm: true,
 };
 
 const espera = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -342,9 +366,9 @@ describe('Expediente — En custodia', () => {
 });
 
 describe('Expediente — secciones y entregas', () => {
-  it('Tickets y solicitudes: código con AppCodigo hacia /tickets/:id y el estado como tag', async () => {
+  it('Tickets: código con AppCodigo hacia /tickets/:id y el estado como tag', async () => {
     const { w } = await montar();
-    const s = seccion(w, 'Tickets y solicitudes');
+    const s = seccion(w, 'Tickets');
     expect(s.find('a[href="/tickets/t1"] [data-codigo]').text()).toBe('TCK-0281');
     expect(s.text()).toContain('Impresora de obra');
     expect(s.find('[data-tag]').text()).toBe('Abierto');
@@ -369,25 +393,26 @@ describe('Expediente — secciones y entregas', () => {
   });
 });
 
-describe('Expediente — guía de alta', () => {
-  const sinCuentas = () => cargarApi({
-    empleado: { ...EMPLEADO, fecha_alta: fechaLocalISO(-1) },
-    cuentas: [], equipos: [], licencias: [], entregas: [],
-  });
+describe('Expediente — guía de alta (la solicitud de alta abierta)', () => {
+  const sinCuentas = (solicitudes = [solicitudAlta()]) => cargarApi({ cuentas: [], equipos: [], licencias: [], entregas: [], solicitudes });
   const guiaDe = (w) => w.find('#alta-titulo').element.closest('section');
   const textoPaso = (li) => [...li.children].map((c) => c.textContent.trim()).filter(Boolean).join(' ');
   const pasosDe = (guia) => [...guia.querySelectorAll('li')].map(textoPaso);
 
-  it('un alta a medias muestra una fila de pasos (sin barra de progreso) y cada pendiente con su acción', async () => {
+  it('una alta abierta muestra una fila de pasos (sin barra de progreso), el código de la solicitud y cada pendiente con su acción', async () => {
     sinCuentas();
     const { w } = await montar();
     const guia = guiaDe(w);
-    expect(guia.textContent).toMatch(/Alta en curso · 0 de 4 pasos · entró hace 1 día/i);
+    expect(guia.querySelector('h2').textContent.replace(/\s+/g, ' ')).toMatch(/Alta en curso · 1 de 6 pasos · abierta hace 1 día · SOL-0012/i);
+    expect(guia.querySelector('a[href="/solicitudes/s1"]')).not.toBeNull();
     expect(pasosDe(guia)).toEqual([
-      'Cuenta de correo Crear cuenta',
-      'Credenciales entregadas',
-      'Equipo opcional Entregar',
-      'Licencia opcional Asignar',
+      'Registrar a la persona',
+      'Crear la cuenta de correo Crear cuenta',
+      // Sin una cuenta que enviar no se ofrece la entrega.
+      'Entregar las credenciales por enlace',
+      'Asignar el equipo opcional Entregar',
+      'Asignar las licencias opcional Asignar',
+      'Confirmar la recepción con la persona Marcar hecho',
     ]);
     expect(guia.querySelector('[role="progressbar"], .bg-primary-500')).toBeNull();
   });
@@ -404,28 +429,98 @@ describe('Expediente — guía de alta', () => {
     expect(w.findComponent({ name: 'AsignarEquipoModal' }).exists()).toBe(true);
   });
 
-  it('con una cuenta y la entrega hechas, esos dos pasos quedan marcados y sin acción', async () => {
-    cargarApi({ empleado: { ...EMPLEADO, fecha_alta: fechaLocalISO(-1) }, equipos: [], licencias: [] });
-    const { w } = await montar({ url: '/empleados/e01?nuevo=1' });
+  it('con la cuenta y la entrega abierta ya marcadas por el servidor, esos pasos quedan hechos y sin acción', async () => {
+    cargarApi({
+      equipos: [], licencias: [],
+      solicitudes: [solicitudAlta({ crear_cuenta: HECHO, entregar_credenciales: HECHO })],
+    });
+    const { w } = await montar();
     const pasos = [...guiaDe(w).querySelectorAll('li')];
-    expect(pasos[0].dataset.hecho).toBe('true');
     expect(pasos[1].dataset.hecho).toBe('true');
-    expect(pasos[0].querySelector('button')).toBeNull();
-    expect(guiaDe(w).textContent).toMatch(/2 de 4 pasos/);
+    expect(pasos[2].dataset.hecho).toBe('true');
+    expect(pasos[1].querySelector('button')).toBeNull();
+    expect(guiaDe(w).textContent).toMatch(/3 de 6 pasos/);
   });
 
-  it('con `?nuevo=1` la guía aparece aunque nada falte; ocultarla la quita y limpia la URL', async () => {
-    const { w, router } = await montar({ url: '/empleados/e01?nuevo=1' });
+  it('un paso omitido cuenta como resuelto y lo dice', async () => {
+    cargarApi({
+      solicitudes: [solicitudAlta({ asignar_equipo: { estado: 'omitido', hecho_at: '2026-09-30T11:00:00', motivo_omision: 'No usa equipo' } })],
+    });
+    const { w } = await montar();
+    const equipo = [...guiaDe(w).querySelectorAll('li')][3];
+    expect(equipo.dataset.hecho).toBe('true');
+    expect(equipo.textContent).toContain('omitido');
+    expect(equipo.querySelector('button')).toBeNull();
+  });
+
+  it('"Marcar hecho" en un paso manual llama a la RPC y vuelve a leer el expediente', async () => {
+    sinCuentas();
+    const { w } = await montar();
+    const hechoAntes = insforgeApi.getEmpleado.mock.calls.length;
+    [...guiaDe(w).querySelectorAll('button')].find((b) => b.textContent.trim() === 'Marcar hecho').click();
+    await listo();
+    expect(insforgeApi.completarPasoSolicitud).toHaveBeenCalledWith('p6');
+    expect(insforgeApi.getEmpleado.mock.calls.length).toBeGreaterThan(hechoAntes);
+  });
+
+  it('ocultarla quita la guía en esta visita; el trámite sigue en la sección Solicitudes', async () => {
+    sinCuentas();
+    const { w } = await montar();
     expect(w.find('#alta-titulo').exists()).toBe(true);
     await w.find('button[aria-label="Ocultar la guía de alta"]').trigger('click');
-    await espera();
     expect(w.find('#alta-titulo').exists()).toBe(false);
-    expect(router.currentRoute.value.query.nuevo).toBeUndefined();
+    expect(seccion(w, 'Solicitudes').text()).toContain('SOL-0012');
   });
 
-  it('un alta ya completa y antigua no muestra la guía', async () => {
+  it('sin solicitud de alta abierta no hay guía (alta completada, otra solicitud o ninguna)', async () => {
+    cargarApi({ solicitudes: [] });
+    expect((await montar()).w.find('#alta-titulo').exists()).toBe(false);
+    cargarApi({ solicitudes: [solicitudAlta({}, { estado: 'completada' })] });
+    expect((await montar()).w.find('#alta-titulo').exists()).toBe(false);
+    cargarApi({ solicitudes: [solicitudAlta({}, { tipo_id: 'cambio_puesto' })] });
+    expect((await montar()).w.find('#alta-titulo').exists()).toBe(false);
+  });
+});
+
+describe('Expediente — sección Solicitudes', () => {
+  const dos = () => [
+    solicitudAlta(),
+    solicitudAlta({}, { id: 's0', codigo: 'SOL-0003', tipo_id: 'cambio_puesto', tipo_nombre: 'Cambio de puesto', estado: 'completada', created_at: '2026-03-15T10:00:00', pasos: [paso(1, 'actualizar_datos', 'Actualizar', { estado: 'hecho', hecho_at: '2026-03-16T10:00:00' })] }),
+  ];
+
+  it('lista las solicitudes con código hacia su detalle, tipo, avance y estado', async () => {
+    cargarApi({ solicitudes: dos() });
     const { w } = await montar();
-    expect(w.find('#alta-titulo').exists()).toBe(false);
+    const s = seccion(w, 'Solicitudes');
+    expect(s.find('h2').text()).toContain('2');
+    const filas = s.findAll('[data-solicitud]');
+    expect(filas).toHaveLength(2);
+    expect(filas[0].find('a[href="/solicitudes/s1"] [data-codigo]').text()).toBe('SOL-0012');
+    expect(filas[0].text()).toContain('Alta de empleado');
+    expect(filas[0].text()).toContain('1 de 6 pasos');
+    expect(filas[0].find('[data-tag]').text()).toBe('Abierta');
+    expect(filas[1].text()).toContain('1 de 1 paso');
+    expect(filas[1].find('[data-tag]').text()).toBe('Completada');
+  });
+
+  it('sin solicitudes registra el vacío como una fila', async () => {
+    const { w } = await montar();
+    expect(seccion(w, 'Solicitudes').text()).toContain('— Sin solicitudes registradas.');
+  });
+
+  it('"Nueva solicitud" abre el formulario con esta persona fija, solo para un Activo', async () => {
+    const { w } = await montar();
+    const abrir = () => seccion(w, 'Solicitudes').findAll('button').find((b) => b.text().includes('Nueva solicitud'));
+    await abrir().trigger('click');
+    const form = w.findComponent({ name: 'SolicitudForm' });
+    expect(form.exists()).toBe(true);
+    expect(form.props('empleado').id).toBe('e01');
+  });
+
+  it('un Inactivo no recibe solicitudes nuevas (el servidor las rechazaría)', async () => {
+    cargarApi({ empleado: { ...EMPLEADO, estado: 'Inactivo' } });
+    const { w } = await montar();
+    expect(seccion(w, 'Solicitudes').findAll('button').some((b) => b.text().includes('Nueva solicitud'))).toBe(false);
   });
 });
 
@@ -434,11 +529,12 @@ describe('Expediente — sin permisos de módulo', () => {
     const { w } = await montar({ rol: 'ASISTENTE', modulos: ['empleados'] });
     const titulos = w.findAll('h2').map((h) => h.text());
     expect(titulos.some((t) => t.includes('En custodia'))).toBe(false);
-    expect(titulos.some((t) => t.includes('Tickets y solicitudes'))).toBe(false);
+    expect(titulos.some((t) => t.startsWith('Tickets'))).toBe(false);
     expect(titulos.some((t) => t.includes('Entregas de credenciales'))).toBe(false);
     expect(w.text()).not.toContain('Adjuntar acta');
-    // La carátula, los datos y el libro de la hoja de vida siguen.
+    // La carátula, los datos, las solicitudes (módulo empleados) y el libro de la hoja de vida siguen.
     expect(caratula(w).find('h1').text()).toBe('Rosa Quispe Mamani');
+    expect(titulos.some((t) => t.includes('Solicitudes'))).toBe(true);
     expect(titulos.some((t) => t.includes('Libro de movimientos'))).toBe(true);
     for (const fuente of ['listCuentasPorEmpleado', 'equiposPorEmpleado', 'licenciasPorEmpleado', 'entregasDeEmpleado',
       'ticketsDeEmpleado', 'actasDeEmpleado', 'historialEquiposEmpleado', 'historialCuentasEmpleado', 'historialLicenciasEmpleado']) {
@@ -461,12 +557,21 @@ describe('Expediente — sin permisos de módulo', () => {
     expect(insforgeApi.equiposPorEmpleado).toHaveBeenCalled();
   });
 
-  it('la guía de alta no pide pasos de módulos que el rol no ve', async () => {
-    cargarApi({ empleado: { ...EMPLEADO, fecha_alta: fechaLocalISO(-1) }, cuentas: [], equipos: [], licencias: [], entregas: [] });
-    const { w } = await montar({ rol: 'ASISTENTE', modulos: ['empleados', 'licencias'], url: '/empleados/e01?nuevo=1' });
+  it('la guía de alta no ofrece acciones de módulos que el rol no ve', async () => {
+    cargarApi({ cuentas: [], equipos: [], licencias: [], entregas: [], solicitudes: [solicitudAlta()] });
+    const { w } = await montar({ rol: 'ASISTENTE', modulos: ['empleados', 'licencias'] });
     const guia = w.find('#alta-titulo').element.closest('section');
     const textoPaso = (li) => [...li.children].map((c) => c.textContent.trim()).filter(Boolean).join(' ');
-    expect([...guia.querySelectorAll('li')].map(textoPaso)).toEqual(['Licencia opcional Asignar']);
+    // Los pasos siguen visibles (es el trámite entero), pero sin Crear cuenta ni Entregar:
+    // solo la licencia (su módulo) y el paso manual del módulo empleados.
+    expect([...guia.querySelectorAll('li')].map(textoPaso)).toEqual([
+      'Registrar a la persona',
+      'Crear la cuenta de correo',
+      'Entregar las credenciales por enlace',
+      'Asignar el equipo opcional',
+      'Asignar las licencias opcional Asignar',
+      'Confirmar la recepción con la persona Marcar hecho',
+    ]);
   });
 });
 

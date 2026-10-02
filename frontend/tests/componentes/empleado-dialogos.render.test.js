@@ -4,8 +4,8 @@
 // sobre AppDialog (primevue/dialog real): Suspender (motivo obligatorio),
 // Reactivar (motivo opcional), Revisar accesos (nota opcional), Reingresar
 // (datos opcionales: solo viajan los que cambian) y Dar de baja (resumen,
-// motivo opcional y los equipos como pasos pendientes con enlace a su hoja de
-// vida). Se mockea solo api/insforge.js; los stores, el router y la capa de
+// motivo opcional y, al terminar, el RESULTADO real de la RPC: la solicitud de
+// baja con sus pasos hechos y pendientes, cada pendiente con su enlace). Se mockea solo api/insforge.js; los stores, el router y la capa de
 // traducción de errores son reales.
 //
 // Dialog se teletransporta a <body> después de su propio mounted(): se busca
@@ -35,6 +35,16 @@ vi.mock('../../src/api/insforge.js', () => ({
   },
 }));
 import { insforgeApi } from '../../src/api/insforge.js';
+
+// Lo que devuelve `bajaEmpleado` desde la migración 108: la solicitud de baja con
+// los pasos REALES (cerrar accesos ya hecho; el equipo, pendiente).
+const SOLICITUD_BAJA = {
+  id: 's1', codigo: 'SOL-0007',
+  pasos: [
+    { id: 'p1', orden: 1, clave: 'cerrar_accesos', label: 'Cerrar los accesos y los asientos de licencia', obligatorio: true, estado: 'hecho', nota: '1 asignaciones de cuenta y 0 de licencia cerradas.', objetivo_id: null, referencia_tipo: null, modulo: 'empleados' },
+    { id: 'p2', orden: 3, clave: 'devolver_equipo', label: 'Recuperar el equipo CEL-001 · Samsung A34', obligatorio: true, estado: 'pendiente', nota: '', objetivo_id: 'ae1', referencia_tipo: 'equipo', modulo: 'equipos' },
+  ],
+};
 
 const EMPLEADO = {
   id: 'e1', nombres: 'Pedro', apellidos: 'Ticona Apaza', estado: 'Activo', cargo: 'Almacenero',
@@ -81,7 +91,7 @@ beforeEach(() => {
   insforgeApi.reactivarEmpleado.mockResolvedValue({ ...EMPLEADO, estado: 'Activo' });
   insforgeApi.reingresarEmpleado.mockResolvedValue({ ...EMPLEADO, estado: 'Activo' });
   insforgeApi.registrarRevisionAccesos.mockResolvedValue({ id: 'rev1' });
-  insforgeApi.bajaEmpleado.mockResolvedValue({ empleado: { ...EMPLEADO, estado: 'Inactivo' }, resumen: {} });
+  insforgeApi.bajaEmpleado.mockResolvedValue({ empleado: { ...EMPLEADO, estado: 'Inactivo' }, resumen: {}, solicitud: SOLICITUD_BAJA });
   insforgeApi.resumenBaja.mockResolvedValue({
     cuentas: [{ asignacion_id: 'a1', cuenta_id: 'c1', usuario: 'pticona', tipo_cuenta: 'personal', plataforma: 'Gmail' }],
     licencias: [],
@@ -258,41 +268,61 @@ describe('Dar de baja — resumen, motivo y equipos pendientes', () => {
     await escribir(textarea(), 'Término de contrato');
     expect(dialogo().textContent).toContain('19/500');
     boton('Confirmar baja').click();
-    await espera(1600);
+    await espera(50);
     expect(insforgeApi.bajaEmpleado).toHaveBeenCalledWith('e1', 'Término de contrato');
-    expect(w.emitted('cerrar')[0]).toEqual([true]);
+    // El diálogo se queda mostrando el resultado; se avisa al padre al cerrarlo.
+    expect(w.emitted('cerrar')).toBeUndefined();
+    boton('Cerrar').click();
+    expect((await cerrada(w))[0]).toEqual([true]);
   });
 
   it('sin motivo la baja viaja con null', async () => {
     await montar(BajaEmpleadoModal, { empleado: EMPLEADO });
     boton('Confirmar baja').click();
-    await espera(1600);
+    await espera(50);
     expect(insforgeApi.bajaEmpleado).toHaveBeenCalledWith('e1', null);
   });
 
-  it('el checklist deja el equipo como paso PENDIENTE (reloj), con su enlace, nunca como hecho', async () => {
+  it('el resultado es la solicitud de baja de la RPC: lo hecho, lo pendiente (reloj) y su enlace, nunca el equipo como hecho', async () => {
     await montar(BajaEmpleadoModal, { empleado: EMPLEADO });
     boton('Confirmar baja').click();
-    // 3 pasos x 300 ms: el último ya dejó de girar y quedó como pendiente.
-    await espera(1100);
+    await espera(50);
+    const texto = dialogo().textContent.replace(/\s+/g, ' ');
+    expect(texto).toContain('Baja registrada · Pedro Ticona Apaza');
+    const solicitud = dialogo().querySelector('a[href="/solicitudes/s1"]');
+    expect(solicitud.textContent).toContain('SOL-0007');
+    expect(texto).toContain('1 de 2 pasos hechos');
     const pasos = [...dialogo().querySelectorAll('ol li')];
     expect(pasos.map((p) => p.textContent.replace(/\s+/g, ' ').trim())).toEqual([
-      'Dando de baja 1 cuenta personal',
-      'Marcando al empleado como Inactivo',
-      'CEL-001 Celular Samsung A34 · Pendiente de devolución',
+      'Hecho: Cerrar los accesos y los asientos de licencia 1 asignaciones de cuenta y 0 de licencia cerradas.',
+      'Pendiente: Recuperar el equipo CEL-001 · Samsung A34 Abrir equipo',
     ]);
-    const equipo = pasos[2];
+    expect(pasos[0].querySelector('i.ti-circle-check')).not.toBeNull();
+    const equipo = pasos[1];
     expect(equipo.querySelector('i.ti-clock')).not.toBeNull();
     expect(equipo.querySelector('i.ti-circle-check')).toBeNull();
     expect(equipo.querySelector('a[href="/equipos/q1"]')).not.toBeNull();
-    await espera(1000);
+    // Ya no hay checklist animado ni "Confirmar baja": solo ver la solicitud o cerrar.
+    expect(boton('Confirmar baja')).toBeUndefined();
+    expect([...dialogo().querySelectorAll('a')].some((a) => a.textContent.trim() === 'Ver solicitud')).toBe(true);
+  });
+
+  it('si el backend aún no devuelve la solicitud (sin la 108), la baja igual se confirma con un aviso', async () => {
+    insforgeApi.bajaEmpleado.mockResolvedValue({ empleado: { ...EMPLEADO, estado: 'Inactivo' }, resumen: {}, solicitud: null });
+    const w = await montar(BajaEmpleadoModal, { empleado: EMPLEADO });
+    boton('Confirmar baja').click();
+    await espera(50);
+    expect(dialogo().textContent).toContain('La baja quedó registrada');
+    expect(dialogo().querySelector('a[href^="/solicitudes/"]')).toBeNull();
+    boton('Cerrar').click();
+    expect((await cerrada(w))[0]).toEqual([true]);
   });
 
   it('un 42501 vuelve al resumen con el mensaje de "sin permiso"', async () => {
     insforgeApi.bajaEmpleado.mockRejectedValue({ code: '42501', message: 'No autorizado' });
     const w = await montar(BajaEmpleadoModal, { empleado: EMPLEADO });
     boton('Confirmar baja').click();
-    await espera(900);
+    await espera(50);
     expect(dialogo().textContent).toContain(MENSAJE_SIN_PERMISO);
     expect(boton('Confirmar baja')).toBeTruthy();
     expect(w.emitted('cerrar')).toBeUndefined();

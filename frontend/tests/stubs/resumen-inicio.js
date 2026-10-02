@@ -21,7 +21,6 @@ export function resumenVacio(extra = {}) {
     equipos_sin_devolver: [],
     licencias_por_vencer: [],
     garantias_por_vencer: [],
-    altas_incompletas: [],
     problemas: { acciones_vencidas: [], recurrentes: [] },
     encuestas_sin_responder: 0,
     custodia_hoy: [],
@@ -34,6 +33,13 @@ export function resumenVacio(extra = {}) {
 
 export const cuenta = (extra = {}) => ({
   cuenta_id: 'c1', usuario: 'soporte@materen.pe', tipo_cuenta: 'reutilizable', plataforma: 'Gmail', titulares: [], ...extra,
+});
+
+/** Una fila de `solicitudes_abiertas` (migración 108): un alta con 1 de 7 pasos. */
+export const solicitud = (extra = {}) => ({
+  solicitud_id: 's1', codigo: 'SOL-0012', tipo_id: 'alta_empleado', tipo: 'Alta de empleado',
+  empleado_id: 'e7', empleado: 'Ana Torres', cargo: 'Arquitecta', creada_at: '2026-09-28T15:00:00Z', dias: 3,
+  pasos_total: 7, pasos_hechos: 1, siguiente: 'Crear la cuenta de correo', siguiente_modulo: 'correos', ...extra,
 });
 
 export const ticket = (extra = {}) => ({
@@ -68,9 +74,7 @@ export function resumenCompleto() {
     garantias_por_vencer: [
       { equipo_id: 'q1', codigo: 'LAP-001', equipo: 'Lenovo ThinkPad', garantia_hasta: '2026-10-05', vencida: false },
     ],
-    altas_incompletas: [{
-      empleado_id: 'e7', nombre: 'Ana Torres', cargo: 'Arquitecta', fecha_alta: '2026-09-28', dias: 3, faltan: ['cuenta'],
-    }],
+    solicitudes_abiertas: [solicitud()],
     problemas: {
       acciones_vencidas: [{
         accion_id: 'ac1', descripcion: 'Contratar línea de respaldo', fecha_limite: '2026-09-28', problema_id: 'p1', problema_titulo: 'Caídas de internet',

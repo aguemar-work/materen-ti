@@ -16,7 +16,7 @@ export const SECCIONES_RESUMEN = Object.freeze([
   'equipos_sin_devolver',
   'licencias_por_vencer',
   'garantias_por_vencer',
-  'altas_incompletas',
+  'solicitudes_abiertas',
   'problemas',
   'encuestas_sin_responder',
   'custodia_hoy',
@@ -37,7 +37,7 @@ export function normalizarResumen(crudo) {
 
   for (const k of [
     'rotaciones_pendientes', 'cuentas_sin_password', 'equipos_sin_devolver',
-    'licencias_por_vencer', 'garantias_por_vencer', 'altas_incompletas',
+    'licencias_por_vencer', 'garantias_por_vencer', 'solicitudes_abiertas',
     'custodia_hoy', 'actas_pendientes',
   ]) {
     r[k] = lista(crudo?.[k]);
@@ -65,7 +65,9 @@ export function normalizarResumen(crudo) {
 
   r.kpis = crudo?.kpis && typeof crudo.kpis === 'object' ? crudo.kpis : null;
   r.encuestas_sin_responder = Number.isFinite(crudo?.encuestas_sin_responder) ? crudo.encuestas_sin_responder : null;
-  r.solicitudes_abiertas = lista(crudo?.solicitudes_abiertas) || [];
+  // `altas_incompletas` (compatibilidad de la 103) ya no se lee: las altas a medias
+  // son solicitudes de alta abiertas (migración 108) dentro de `solicitudes_abiertas`.
+  delete r.altas_incompletas;
   return r;
 }
 

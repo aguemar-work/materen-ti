@@ -246,6 +246,20 @@ export const TONO_VENCIMIENTO_LICENCIA = Object.freeze({
   vencida: 'critico',
 });
 
+/** `solicitudes.estado` (migración 108): abierta = TI está trabajando en ella. */
+export const TONO_ESTADO_SOLICITUD = Object.freeze({
+  abierta: 'trabajando',
+  completada: 'ok',
+  cancelada: 'neutro',
+});
+
+/** `solicitud_pasos.estado`: lo pendiente pide acción de TI; omitido es un cierre neutro. */
+export const TONO_ESTADO_PASO = Object.freeze({
+  pendiente: 'accion',
+  hecho: 'ok',
+  omitido: 'neutro',
+});
+
 // ── Categorías (teal): dicen de qué clase es algo, no en qué estado está ─────
 
 /** `cuentas.tipo`. */
@@ -299,6 +313,8 @@ export const MAPAS_DE_TONO = Object.freeze({
   problema_estado: TONO_ESTADO_PROBLEMA,
   problema_severidad: TONO_SEVERIDAD_PROBLEMA,
   accion_estado: TONO_ESTADO_ACCION,
+  solicitud_estado: TONO_ESTADO_SOLICITUD,
+  solicitud_paso_estado: TONO_ESTADO_PASO,
   vencimiento_licencia: TONO_VENCIMIENTO_LICENCIA,
   tipo_cuenta: TONO_TIPO_CUENTA,
   tipo_ubicacion: TONO_TIPO_UBICACION,

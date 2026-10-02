@@ -1,14 +1,10 @@
 // Reglas del dominio que sostienen el expediente del empleado: qué acciones
-// ofrece cada estado, qué pasos de la guía de alta ve cada rol y el DNI
-// enmascarado de lo impreso. Más la maqueta, que simula las RPC con el mismo
+// ofrece cada estado y el DNI enmascarado de lo impreso. (Los pasos de la guía
+// de alta ya no se derivan en el cliente: son la solicitud de alta de la
+// migración 108, probada en solicitudes-dominio.test.js.) Más la maqueta, que simula las RPC con el mismo
 // SQLSTATE y el mismo texto que el servidor para poder probar sus errores.
 import { describe, it, expect } from 'vitest';
-import {
-  accionesExpediente,
-  pasosAlta,
-  pasosAltaVisibles,
-  altaLista,
-} from '../src/core/dominio-empleados.js';
+import { accionesExpediente } from '../src/core/dominio-empleados.js';
 import { enmascararDni } from '../src/core/formatters.js';
 import { iconoNotificacion } from '../src/core/notificacionIconos.js';
 import { TABLAS } from '../src/maqueta/datos.js';
@@ -43,27 +39,6 @@ describe('accionesExpediente', () => {
       expect(a.botones).toContain(a.solida);
       expect(a.menu).toContain('imprimir');
     }
-  });
-});
-
-describe('pasosAltaVisibles', () => {
-  const pasos = pasosAlta({ cuentas: 1, equipos: 0, licencias: 0, entregaEnviada: false });
-
-  it('con todos los módulos quedan los 4 pasos accionables (sin el registro)', () => {
-    expect(pasosAltaVisibles(pasos, () => true).map((p) => p.id)).toEqual(['cuenta', 'entrega', 'equipo', 'licencia']);
-  });
-
-  it('sin el módulo de un paso, ese paso no se muestra', () => {
-    const solo = (...ok) => (m) => ok.includes(m);
-    expect(pasosAltaVisibles(pasos, solo('equipos')).map((p) => p.id)).toEqual(['equipo']);
-    expect(pasosAltaVisibles(pasos, solo('correos', 'licencias')).map((p) => p.id)).toEqual(['cuenta', 'entrega', 'licencia']);
-    expect(pasosAltaVisibles(pasos, () => false)).toEqual([]);
-  });
-
-  it('el alta está lista cuando los pasos requeridos que el rol ve están hechos', () => {
-    const conCuentaYEntrega = pasosAlta({ cuentas: 1, entregaEnviada: true });
-    expect(altaLista(pasosAltaVisibles(conCuentaYEntrega, () => true))).toBe(true);
-    expect(altaLista(pasosAltaVisibles(pasos, () => true))).toBe(false);
   });
 });
 

@@ -11,7 +11,7 @@ const METODOS = [
   'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
   'getEmpleado', 'createEmpleado', 'buscarPorDni',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
-  'conteosVinculos', 'altasIncompletas', 'tieneEntrega', 'conteosEmpleadosPorEstado',
+  'conteosVinculos', 'conteosEmpleadosPorEstado',
   // ciclo de vida del empleado (migración 102) y lecturas del expediente
   'suspenderEmpleado', 'reingresarEmpleado', 'registrarRevisionAccesos', 'ultimaRevisionAccesos',
   'listEventosEmpleado', 'ticketsDeEmpleado', 'entregasDeEmpleado', 'actasDeEmpleado',
@@ -71,6 +71,10 @@ const METODOS = [
   // encuestas
   'listEncuestas', 'getEncuesta', 'createEncuesta', 'updateEncuesta', 'softDeleteEncuesta',
   'listRondas', 'crearRonda', 'cerrarRonda', 'listRespuestas',
+  // solicitudes de servicio (migración 108): lectura con RLS y escritura por RPC
+  'listSolicitudesPage', 'conteosSolicitudesPorEstado', 'getSolicitud', 'solicitudesDeEmpleado',
+  'solicitudDeBaja', 'objetivosDePasosSolicitud', 'crearSolicitud', 'completarPasoSolicitud',
+  'omitirPasoSolicitud', 'cancelarSolicitud', 'convertirTicketEnSolicitud',
   // notificaciones
   'listNotificaciones', 'listLecturas', 'marcarLeida', 'marcarVariasLeidas',
   // permisos de módulo (migración 056)

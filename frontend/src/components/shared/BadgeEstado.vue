@@ -28,7 +28,8 @@ import { rolDeTag, esRango } from '../../core/tagRol.js';
 const props = defineProps({
   /** empleado | ticket | prioridad | situacion | tipo_cuenta | tipo_ubicacion |
    *  categoria_acceso_sensible | kb_estado | problema_estado |
-   *  problema_severidad | accion_estado | activo_staff | ticket_sin_vincular */
+   *  problema_severidad | accion_estado | solicitud | paso_solicitud | activo_staff |
+   *  ticket_sin_vincular */
   tipo: { type: String, required: true },
   valor: { type: [String, Boolean], default: '' },
   /** Punto de estado "vivo" (Activo/Inactivo/Suspendido, requiere rotación). */

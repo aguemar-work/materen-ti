@@ -76,14 +76,19 @@ describe('navegación del shell', () => {
     expect(grupos).toEqual([
       ['', ['Inicio']],
       ['Mesa de ayuda', ['Tickets', 'Conocimiento', 'Problemas']],
-      ['Personas', ['Empleados', 'Encuestas']],
+      ['Personas', ['Empleados', 'Solicitudes', 'Encuestas']],
       ['Custodia', ['Equipos', 'Licencias', 'Correos']],
       ['Administración', ['Registro de actividad', 'Accesos sensibles', 'Configuración']],
     ]);
   });
 
+  // Solicitudes (migración 108) NO es un módulo: es un ítem extra que cuelga del
+  // módulo `empleados` (mismo meta.modulo en su ruta). El CHECK de la 056 admite
+  // 8 módulos y ninguno es «solicitudes».
+  const EXTRAS_DE_MODULO = ['/solicitudes'];
+
   it('los ítems con módulo salen del registro y caen en el grupo que éste declara', () => {
-    const conModulo = items.filter((i) => i.modulo);
+    const conModulo = items.filter((i) => i.modulo && !EXTRAS_DE_MODULO.includes(i.path));
     expect(conModulo.map((i) => i.modulo).sort()).toEqual(MODULOS.map((m) => m.id).sort());
     for (const i of conModulo) {
       const m = MODULOS.find((x) => x.id === i.modulo);
@@ -103,10 +108,22 @@ describe('navegación del shell', () => {
     }
   });
 
+  it('Solicitudes cuelga del módulo empleados, sin inventar un permiso nuevo', () => {
+    const extra = items.filter((i) => EXTRAS_DE_MODULO.includes(i.path));
+    expect(extra).toHaveLength(1);
+    expect(extra[0]).toMatchObject({ label: 'Solicitudes', modulo: 'empleados', grupo: 'personas' });
+    for (const ruta of RUTAS.filter((r) => r.path.startsWith('/solicitudes'))) {
+      expect(ruta.meta?.modulo, ruta.path).toBe('empleados');
+    }
+    expect(MODULOS.map((m) => m.id)).not.toContain('solicitudes');
+  });
+
   it('las migas usan los nombres nuevos', () => {
     expect(migasDeRuta('/tickets')).toEqual([{ label: 'Mesa de ayuda' }, { label: 'Tickets' }]);
     expect(migasDeRuta('/base-conocimiento')).toEqual([{ label: 'Mesa de ayuda' }, { label: 'Conocimiento' }]);
     expect(migasDeRuta('/encuestas')).toEqual([{ label: 'Personas' }, { label: 'Encuestas' }]);
+    expect(migasDeRuta('/solicitudes')).toEqual([{ label: 'Personas' }, { label: 'Solicitudes' }]);
+    expect(migasDeRuta('/solicitudes/s1')).toEqual([{ label: 'Personas' }, { label: 'Solicitudes', to: '/solicitudes' }]);
     expect(migasDeRuta('/equipos')).toEqual([{ label: 'Custodia' }, { label: 'Equipos' }]);
     expect(migasDeRuta('/actividad')).toEqual([{ label: 'Administración' }, { label: 'Registro de actividad' }]);
     expect(migasDeRuta('/equipos/importar')).toEqual([

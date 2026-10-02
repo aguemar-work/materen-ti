@@ -140,15 +140,25 @@ export function resumenInicio(db, { usuarioId }) {
   const rotaciones = puede('correos') ? cuentasVivas.filter((c) => c.requiere_rotacion).map(filaCuenta) : null;
   const sinPassword = puede('correos') ? cuentasVivas.filter((c) => c.password == null).map(filaCuenta) : null;
 
-  const altas = puede('correos')
-    ? db.empleados
-      .filter((e) => !e.deleted_at && e.estado === 'Activo' && e.fecha_alta && e.fecha_alta <= hoy && e.fecha_alta >= fecha(-30))
-      .filter((e) => !db.asignaciones_cuenta.some((a) => a.empleado_id === e.id && a.fecha_fin == null
-        && cuentasVivas.some((c) => c.id === a.cuenta_id)))
-      .map((e) => ({
-        empleado_id: e.id, nombre: nombreDe(e), cargo: e.cargo || '', fecha_alta: e.fecha_alta,
-        dias: Math.round((Date.parse(hoy) - Date.parse(e.fecha_alta)) / DIA_MS), faltan: ['cuenta'],
-      }))
+  // Solicitudes de servicio abiertas con su avance (migración 108). Reemplaza al
+  // cálculo de "altas a medias" del cliente: el trámite lo guarda el servidor.
+  const solicitudesAbiertas = puede('empleados')
+    ? db.solicitudes
+      .filter((s) => s.estado === 'abierta')
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((s) => {
+        const pasos = db.solicitud_pasos.filter((p) => p.solicitud_id === s.id).sort((a, b) => a.orden - b.orden);
+        const siguiente = pasos.find((p) => p.estado === 'pendiente');
+        const emp = empleado(s.empleado_id);
+        return {
+          solicitud_id: s.id, codigo: s.codigo, tipo_id: s.tipo_id,
+          tipo: db.solicitud_tipos.find((t) => t.id === s.tipo_id)?.nombre || s.tipo_id,
+          empleado_id: s.empleado_id, empleado: nombreDe(emp), cargo: emp?.cargo || '',
+          creada_at: s.created_at, dias: Math.max(0, Math.round((Date.parse(hoy) - Date.parse(diaDe(s.created_at))) / DIA_MS)),
+          pasos_total: pasos.length, pasos_hechos: pasos.filter((p) => p.estado !== 'pendiente').length,
+          siguiente: siguiente?.label ?? null, siguiente_modulo: siguiente?.modulo ?? null,
+        };
+      })
     : null;
 
   const licencias = puede('licencias')
@@ -266,12 +276,11 @@ export function resumenInicio(db, { usuarioId }) {
     equipos_sin_devolver: sinDevolver,
     licencias_por_vencer: licencias,
     garantias_por_vencer: garantias,
-    altas_incompletas: altas,
     problemas: problemasFinal,
     encuestas_sin_responder: encuestas,
     custodia_hoy: custodia,
     actas_pendientes: actas,
-    solicitudes_abiertas: [],
+    solicitudes_abiertas: solicitudesAbiertas,
     errores,
   };
 
@@ -279,7 +288,7 @@ export function resumenInicio(db, { usuarioId }) {
   // "Mis tickets" y "Hoy en custodia" conservan sus datos).
   if (ESCENARIO === 'aldia') {
     for (const k of ['rotaciones_pendientes', 'cuentas_sin_password', 'equipos_sin_devolver', 'licencias_por_vencer',
-      'garantias_por_vencer', 'altas_incompletas', 'actas_pendientes']) {
+      'garantias_por_vencer', 'solicitudes_abiertas', 'actas_pendientes']) {
       if (resumen[k]) resumen[k] = [];
     }
     if (resumen.tickets) Object.assign(resumen.tickets, { sin_asignar: [], sin_vincular: [], viejos: [] });

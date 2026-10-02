@@ -69,7 +69,7 @@ describe('AppNav.vue', () => {
     expect(rotulos).toEqual(['Mesa de ayuda', 'Personas', 'Custodia', 'Administración']);
     const enlaces = w.findAll('a').map((a) => a.text());
     expect(enlaces).toEqual([
-      'Inicio', 'Tickets', 'Conocimiento', 'Problemas', 'Empleados', 'Encuestas',
+      'Inicio', 'Tickets', 'Conocimiento', 'Problemas', 'Empleados', 'Solicitudes', 'Encuestas',
       'Equipos', 'Licencias', 'Correos', 'Registro de actividad', 'Accesos sensibles', 'Configuración',
     ]);
   });

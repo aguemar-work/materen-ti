@@ -14,6 +14,7 @@
 // acciones responde { ok:false, code:'maqueta' }.
 import { TABLAS, RPC, USUARIO_MAQUETA } from './datos.js';
 import { funcionEquiposFotos, alActualizarFila } from './rpc-equipos.js';
+import { alInsertarFilaSolicitudes } from './rpc-solicitudes.js';
 import { funcionTickets } from './rpc-tickets.js';
 
 const clonar = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
@@ -38,6 +39,8 @@ const FK_DE = {
   plataformas: 'plataforma_id',
   tipos_equipo: 'tipo_id',
   tickets: 'ticket_id',
+  solicitudes: 'solicitud_id',
+  solicitud_tipos: 'tipo_id',
   problemas: 'problema_id',
   encuestas: 'encuesta_id',
   encuesta_rondas: 'ronda_id',
@@ -267,6 +270,7 @@ class ConsultaFalsa {
         if (existente) return Object.assign(existente, p, { updated_at: ahora });
         const fila = { id: nuevoId(), created_at: ahora, updated_at: ahora, deleted_at: null, ...p };
         tabla.push(fila);
+        alInsertarFilaSolicitudes(db, this.tabla, fila); // triggers de autocompletado (108)
         return fila;
       });
     } else if (this.operacion === 'update') {

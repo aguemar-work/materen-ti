@@ -55,6 +55,12 @@
 --         entregas, notificaciones leidas, ip/user_agent de accesos_log, auditoria
 --         purga_ejecutada), anonimizar_empleado (plazo, que se anonimiza y que se
 --         conserva) y entorno / es_branch()
+--   [108] (bloques 108-a a 108-f) solicitudes de servicio: catalogo y privilegios,
+--         crear_solicitud (alta con persona nueva en la misma transaccion, validaciones,
+--         una sola abierta por tipo), AUTOCOMPLETADO por cuenta/entrega abierta/equipo/
+--         licencia/rotacion, integridad (whitelist, omitir con motivo, cancelar), baja que
+--         crea su solicitud con pasos reales, Inicio (solicitudes_abiertas), reingreso y
+--         convertir_ticket_en_solicitud
 --
 -- OJO — esta conexión (project_admin, ver AGENTS.md) tiene BYPASSRLS y el
 -- CLI bloquea los cambios de rol y de configuración de sesión ("Changing SQL session configuration
@@ -3495,5 +3501,767 @@ begin
     raise exception 'TESTS_OK [112c] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [112c]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 108-a: catálogo (7 tipos, 24 pasos), privilegios (el cliente solo lee),
+-- policies, EXECUTE de RPC y núcleos, y el guard 42501 de las 5 RPC sin sesión
+-- ------------------------------------------------------------
+do $$
+declare
+  v_n int;
+  v_f text;
+  fallos text := '';
+begin
+  select count(*) into v_n from public.solicitud_tipos;
+  if v_n <> 7 then fallos := fallos || '[108] se esperaban 7 tipos y hay ' || v_n || '; '; end if;
+  select count(*) into v_n from public.solicitud_plantilla_pasos;
+  if v_n <> 24 then fallos := fallos || '[108] se esperaban 24 pasos de plantilla y hay ' || v_n || '; '; end if;
+  select count(*) into v_n from public.solicitud_tipos t
+   where not exists (select 1 from public.solicitud_plantilla_pasos p where p.tipo_id = t.id);
+  if v_n <> 0 then fallos := fallos || '[108] hay tipos sin pasos de plantilla; '; end if;
+  select count(*) into v_n from public.solicitud_plantilla_pasos where tipo_id = 'baja_empleado' and dinamico;
+  if v_n <> 3 then fallos := fallos || '[108] la baja debe tener 3 pasos dinamicos y tiene ' || v_n || '; '; end if;
+  select count(*) into v_n from public.transiciones_solicitud_permitidas;
+  if v_n <> 2 then fallos := fallos || '[108] la whitelist debe tener 2 transiciones; '; end if;
+  if exists (select 1 from public.transiciones_solicitud_permitidas where origen <> 'abierta') then
+    fallos := fallos || '[108] completada y cancelada deben ser terminales; ';
+  end if;
+
+  -- el cliente solo lee: sin INSERT/UPDATE, DELETE solo por RLS (jefe), anon nada
+  if has_table_privilege('authenticated', 'public.solicitudes', 'insert')
+     or has_table_privilege('authenticated', 'public.solicitudes', 'update')
+     or has_table_privilege('authenticated', 'public.solicitud_pasos', 'insert')
+     or has_table_privilege('authenticated', 'public.solicitud_pasos', 'update')
+     or has_table_privilege('authenticated', 'public.solicitud_tipos', 'insert')
+     or has_table_privilege('authenticated', 'public.solicitud_plantilla_pasos', 'update')
+     or has_table_privilege('authenticated', 'public.transiciones_solicitud_permitidas', 'insert')
+     or not has_table_privilege('authenticated', 'public.solicitudes', 'select')
+     or not has_table_privilege('authenticated', 'public.solicitud_pasos', 'select')
+     or has_table_privilege('anon', 'public.solicitudes', 'select')
+     or has_table_privilege('anon', 'public.solicitud_pasos', 'select')
+     or has_table_privilege('anon', 'public.solicitud_tipos', 'select') then
+    fallos := fallos || '[108] privilegios de tablas incorrectos; ';
+  end if;
+  if has_sequence_privilege('authenticated', 'public.solicitud_codigo_seq', 'usage')
+     or has_sequence_privilege('anon', 'public.solicitud_codigo_seq', 'usage') then
+    fallos := fallos || '[108] la secuencia de codigos es usable por clientes; ';
+  end if;
+
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename in ('solicitudes', 'solicitud_pasos', 'solicitud_tipos', 'solicitud_plantilla_pasos')
+    and cmd = 'SELECT' and qual like '%puede_actual%empleados%';
+  if v_n <> 4 then fallos := fallos || '[108] faltan policies SELECT con el modulo empleados (' || v_n || '/4); '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename in ('solicitudes', 'solicitud_pasos')
+    and cmd = 'DELETE' and qual like '%es_jefe%';
+  if v_n <> 2 then fallos := fallos || '[108] faltan policies DELETE es_jefe; '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public'
+    and tablename in ('solicitudes', 'solicitud_pasos', 'solicitud_tipos', 'solicitud_plantilla_pasos', 'transiciones_solicitud_permitidas')
+    and cmd in ('INSERT', 'UPDATE', 'ALL');
+  if v_n <> 0 then fallos := fallos || '[108] las tablas de solicitudes tienen policies de escritura; '; end if;
+  select count(*) into v_n from pg_class where oid in ('public.solicitudes'::regclass, 'public.solicitud_pasos'::regclass,
+    'public.solicitud_tipos'::regclass, 'public.solicitud_plantilla_pasos'::regclass, 'public.transiciones_solicitud_permitidas'::regclass) and relrowsecurity;
+  if v_n <> 5 then fallos := fallos || '[108] alguna tabla de solicitudes sin RLS; '; end if;
+
+  -- EXECUTE: RPC a authenticated; nucleos, internas y triggers solo a project_admin
+  foreach v_f in array array[
+    'public.crear_solicitud(text, uuid, jsonb, jsonb, text, text, uuid)',
+    'public.completar_paso_solicitud(uuid, uuid, text)',
+    'public.omitir_paso_solicitud(uuid, text)',
+    'public.cancelar_solicitud(uuid, text)',
+    'public.convertir_ticket_en_solicitud(uuid, text, text)'] loop
+    if not has_function_privilege('authenticated', v_f, 'execute') or has_function_privilege('anon', v_f, 'execute') then
+      fallos := fallos || '[108] EXECUTE incorrecto en ' || v_f || '; ';
+    end if;
+  end loop;
+  foreach v_f in array array[
+    'public.crear_solicitud_nucleo(text, uuid, jsonb, jsonb, text, text, uuid)',
+    'public.completar_paso_solicitud_nucleo(uuid, uuid, text)',
+    'public.omitir_paso_solicitud_nucleo(uuid, text)',
+    'public.cancelar_solicitud_nucleo(uuid, text)',
+    'public.convertir_ticket_en_solicitud_nucleo(uuid, text, text)',
+    'public.solicitud_baja_crear(uuid, text, uuid[], uuid[], integer, integer, integer)',
+    'public.solicitud_marcar_paso(uuid, text, uuid, uuid)',
+    'public.solicitud_revertir_paso(text, uuid)',
+    'public.solicitud_evaluar_cierre(uuid)',
+    'public.siguiente_codigo_solicitud()'] loop
+    if has_function_privilege('authenticated', v_f, 'execute') or has_function_privilege('anon', v_f, 'execute')
+       or not has_function_privilege('project_admin', v_f, 'execute') then
+      fallos := fallos || '[108] EXECUTE incorrecto en ' || v_f || '; ';
+    end if;
+  end loop;
+
+  -- sin sesion (auth.uid() NULL) cada RPC publica responde 42501
+  begin perform public.crear_solicitud('alta_empleado'); fallos := fallos || '[108] crear_solicitud respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[108] crear_solicitud sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.completar_paso_solicitud(gen_random_uuid()); fallos := fallos || '[108] completar_paso_solicitud respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[108] completar_paso_solicitud sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.omitir_paso_solicitud(gen_random_uuid(), 'x'); fallos := fallos || '[108] omitir_paso_solicitud respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[108] omitir_paso_solicitud sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.cancelar_solicitud(gen_random_uuid(), 'x'); fallos := fallos || '[108] cancelar_solicitud respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[108] cancelar_solicitud sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.convertir_ticket_en_solicitud(gen_random_uuid(), 'acceso_nuevo'); fallos := fallos || '[108] convertir_ticket_en_solicitud respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[108] convertir_ticket_en_solicitud sin sesion lanzo ' || sqlstate || '; '; end if; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [108a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [108a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 108-b: crear_solicitud_nucleo — alta con persona nueva en la misma
+-- transaccion, validaciones del empleado, una sola alta/baja/cambio abierta,
+-- baja a mano rechazada, estado del empleado y limites de nota/datos/origen
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_e2 uuid;
+  v_sol public.solicitudes;
+  v_sol2 public.solicitudes;
+  v_n int;
+  v_paso record;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 108b') returning id into v_empresa;
+
+  v_sol := public.crear_solicitud_nucleo('alta_empleado', null,
+    jsonb_build_object('nombres', '  Test ', 'apellidos', 'CI 108b', 'dni', '99010801', 'empresa_id', v_empresa, 'cargo', 'Operario'),
+    '{}'::jsonb, '   Pedido de RRHH por correo   ', 'rrhh_correo', null);
+  select id into v_emp from public.empleados where dni = '99010801';
+  if v_emp is null then fallos := fallos || '[108] el alta no creo a la persona; '; end if;
+  if v_sol.codigo !~ '^SOL-[0-9]{4,}$' then fallos := fallos || '[108] codigo con formato inesperado: ' || v_sol.codigo || '; '; end if;
+  if v_sol.empleado_id is distinct from v_emp or v_sol.estado <> 'abierta' or v_sol.origen <> 'rrhh_correo' or v_sol.tipo_id <> 'alta_empleado' then
+    fallos := fallos || '[108] la solicitud de alta quedo incompleta; ';
+  end if;
+  if v_sol.nota is distinct from 'Pedido de RRHH por correo' then fallos := fallos || '[108] la nota no se limpio; '; end if;
+  if (select nombres from public.empleados where id = v_emp) <> 'Test' or (select cargo from public.empleados where id = v_emp) <> 'Operario' then
+    fallos := fallos || '[108] los datos del empleado nuevo no se guardaron limpios; ';
+  end if;
+  if v_sol.creada_por is not null then fallos := fallos || '[108] creada_por debia ser NULL sin sesion; '; end if;
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id;
+  if v_n <> 7 then fallos := fallos || '[108] el alta debia copiar 7 pasos y copio ' || v_n || '; '; end if;
+  select estado, automatico, referencia_id into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'registrar_empleado';
+  if v_paso.estado is distinct from 'hecho' or v_paso.referencia_id is distinct from v_emp then
+    fallos := fallos || '[108] registrar_empleado debia nacer hecho con la persona de referencia; ';
+  end if;
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id and estado = 'pendiente';
+  if v_n <> 6 then fallos := fallos || '[108] debian quedar 6 pasos pendientes y hay ' || v_n || '; '; end if;
+  -- autocompleta se copia de la plantilla: 5 de los 7 pasos del alta se marcan solos
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id and autocompleta;
+  if v_n <> 5 then fallos := fallos || '[108] el alta debia copiar autocompleta en 5 pasos y copio ' || v_n || '; '; end if;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'creado';
+  if v_n <> 1 then fallos := fallos || '[108] la persona creada por la RPC no dejo su evento creado; '; end if;
+
+  -- el codigo es correlativo
+  v_sol2 := public.crear_solicitud_nucleo('cambio_puesto', v_emp);
+  if substring(v_sol2.codigo from 5)::int <> substring(v_sol.codigo from 5)::int + 1 then fallos := fallos || '[108] codigos no correlativos; '; end if;
+
+  -- una sola alta / cambio de puesto abierta por persona, con el codigo de la existente
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado', v_emp);
+    fallos := fallos || '[108] permitio una segunda alta abierta; ';
+  exception when others then
+    if sqlerrm not like '%' || v_sol.codigo || '%' then fallos := fallos || '[108] la segunda alta se rechazo sin citar el codigo: ' || sqlerrm || '; '; end if;
+  end;
+  begin
+    perform public.crear_solicitud_nucleo('cambio_puesto', v_emp);
+    fallos := fallos || '[108] permitio un segundo cambio de puesto abierto; ';
+  exception when others then
+    if sqlerrm not like '%' || v_sol2.codigo || '%' then fallos := fallos || '[108] el segundo cambio se rechazo sin citar el codigo: ' || sqlerrm || '; '; end if;
+  end;
+  begin
+    insert into public.solicitudes (tipo_id, empleado_id) values ('alta_empleado', v_emp);
+    fallos := fallos || '[108] el indice unico no freno una alta duplicada; ';
+  exception when unique_violation then null; end;
+  -- acceso, equipo y licencia SI admiten varias abiertas
+  perform public.crear_solicitud_nucleo('acceso_nuevo', v_emp);
+  perform public.crear_solicitud_nucleo('acceso_nuevo', v_emp);
+  select count(*) into v_n from public.solicitudes where empleado_id = v_emp and tipo_id = 'acceso_nuevo' and estado = 'abierta';
+  if v_n <> 2 then fallos := fallos || '[108] acceso_nuevo debia admitir dos abiertas; '; end if;
+
+  -- validaciones del alta con persona nueva
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado', null, jsonb_build_object('nombres', 'A', 'apellidos', 'B', 'dni', '99010801', 'empresa_id', v_empresa));
+    fallos := fallos || '[108] permitio un DNI repetido; ';
+  exception when others then if sqlerrm not like '%Ya existe un empleado con ese DNI%' then fallos := fallos || '[108] DNI repetido rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado', null, jsonb_build_object('nombres', 'A', 'apellidos', 'B', 'dni', '1234', 'empresa_id', v_empresa));
+    fallos := fallos || '[108] permitio un DNI de 4 digitos; ';
+  exception when others then if sqlerrm not like '%8 dígitos%' then fallos := fallos || '[108] DNI corto rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado', null, jsonb_build_object('nombres', 'A', 'apellidos', 'B', 'dni', '99010802', 'empresa_id', gen_random_uuid()));
+    fallos := fallos || '[108] permitio una empresa inexistente; ';
+  exception when others then if sqlerrm not like '%empresa indicada no existe%' then fallos := fallos || '[108] empresa inexistente rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado', null, jsonb_build_object('nombres', 'A', 'apellidos', 'B', 'dni', '99010802'));
+    fallos := fallos || '[108] permitio un alta sin empresa; ';
+  exception when others then if sqlerrm not like '%empresa es obligatoria%' then fallos := fallos || '[108] alta sin empresa rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado', null, jsonb_build_object('nombres', '', 'apellidos', 'B', 'dni', '99010802', 'empresa_id', v_empresa));
+    fallos := fallos || '[108] permitio nombres vacios; ';
+  exception when others then if sqlerrm not like '%nombres%obligatorios%' then fallos := fallos || '[108] nombres vacios rechazados por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado', null, jsonb_build_object('nombres', 'A', 'apellidos', 'B', 'dni', '99010802', 'empresa_id', v_empresa, 'fecha_alta', 'ayer'));
+    fallos := fallos || '[108] permitio una fecha invalida; ';
+  exception when others then if sqlerrm not like '%fecha de ingreso%' then fallos := fallos || '[108] fecha invalida rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado');
+    fallos := fallos || '[108] permitio un alta sin persona; ';
+  exception when others then if sqlerrm not like '%Indique los datos%' then fallos := fallos || '[108] alta sin persona rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.crear_solicitud_nucleo('alta_empleado', v_emp, jsonb_build_object('nombres', 'A'));
+    fallos := fallos || '[108] permitio id y datos a la vez; ';
+  exception when others then if sqlerrm not like '%no ambos%' then fallos := fallos || '[108] id y datos rechazados por otro motivo: ' || sqlerrm || '; '; end if; end;
+  select count(*) into v_n from public.empleados where dni = '99010802';
+  if v_n <> 0 then fallos := fallos || '[108] un alta rechazada dejo a la persona creada; '; end if;
+
+  -- tipo, baja a mano, empleado ausente o inexistente
+  begin perform public.crear_solicitud_nucleo('inventado', v_emp); fallos := fallos || '[108] permitio un tipo inexistente; ';
+  exception when others then if sqlerrm not like '%no existe o no está disponible%' then fallos := fallos || '[108] tipo inexistente rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_solicitud_nucleo('baja_empleado', v_emp); fallos := fallos || '[108] permitio crear una baja a mano; ';
+  exception when others then if sqlerrm not like '%Dar de baja%' then fallos := fallos || '[108] baja a mano rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_solicitud_nucleo('cambio_puesto'); fallos := fallos || '[108] permitio un cambio de puesto sin empleado; ';
+  exception when others then if sqlerrm not like '%Elija al empleado%' then fallos := fallos || '[108] sin empleado rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_solicitud_nucleo('licencia', gen_random_uuid()); fallos := fallos || '[108] permitio un empleado inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[108] empleado inexistente lanzo ' || sqlstate || ' en vez de P0002; '; end if; end;
+
+  -- limites de nota, datos y origen
+  begin perform public.crear_solicitud_nucleo('licencia', v_emp, null, '{}'::jsonb, repeat('x', 1001)); fallos := fallos || '[108] permitio una nota de 1001 caracteres; ';
+  exception when others then if sqlerrm not like '%1000%' then fallos := fallos || '[108] nota larga rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_solicitud_nucleo('licencia', v_emp, null, '[1]'::jsonb); fallos := fallos || '[108] permitio datos que no son un objeto; ';
+  exception when others then if sqlerrm not like '%objeto JSON%' then fallos := fallos || '[108] datos no objeto rechazados por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_solicitud_nucleo('licencia', v_emp, null, jsonb_build_object('x', repeat('y', 4100))); fallos := fallos || '[108] permitio datos de mas de 4000 caracteres; ';
+  exception when others then if sqlerrm not like '%4000%' then fallos := fallos || '[108] datos largos rechazados por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_solicitud_nucleo('licencia', v_emp, null, '{}'::jsonb, null, 'inventado'); fallos := fallos || '[108] permitio un origen inventado; ';
+  exception when others then if sqlerrm not like '%origen%' then fallos := fallos || '[108] origen inventado rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- estado del empleado: solo la devolucion de equipo admite a un Inactivo
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado) values ('Test', 'CI 108b Baja', '99010803', v_empresa, 'Inactivo') returning id into v_e2;
+  begin perform public.crear_solicitud_nucleo('cambio_puesto', v_e2); fallos := fallos || '[108] permitio un cambio de puesto a un Inactivo; ';
+  exception when others then if sqlerrm not like '%no está activo%' then fallos := fallos || '[108] Inactivo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_solicitud_nucleo('alta_empleado', v_e2); fallos := fallos || '[108] permitio un alta a un Inactivo; ';
+  exception when others then if sqlerrm not like '%no está activo%' then fallos := fallos || '[108] alta a Inactivo rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  v_sol2 := public.crear_solicitud_nucleo('devolucion_equipo', v_e2);
+  if v_sol2.estado <> 'abierta' then fallos := fallos || '[108] la devolucion de un Inactivo debia abrirse; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [108b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [108b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 108-c: AUTOCOMPLETADO — usar los modulos de siempre marca el paso de la
+-- solicitud abierta de ESA persona (cuenta, entrega abierta, equipo, licencia),
+-- una sola marca por evento, y la solicitud se completa sola con el ultimo paso
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_otro uuid;
+  v_e3 uuid;
+  v_sol public.solicitudes;
+  v_sol_b public.solicitudes;
+  v_cuenta uuid;
+  v_cuenta2 uuid;
+  v_cuenta3 uuid;
+  v_cuenta4 uuid;
+  v_asig_cta uuid;
+  v_asig_otro uuid;
+  v_asig_cta3 uuid;
+  v_entrega uuid;
+  v_eq uuid;
+  v_eq2 uuid;
+  v_asig_eq uuid;
+  v_ubic uuid;
+  v_lic uuid;
+  v_asig_lic uuid;
+  v_paso record;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 108c') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 108c Uno', '99010811', v_empresa) returning id into v_emp;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 108c Otro', '99010812', v_empresa) returning id into v_otro;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 108c Tres', '99010813', v_empresa) returning id into v_e3;
+  insert into public.plataformas (id, nombre) values ('__test_ci_108c__', '__TEST_CI__ Plataforma 108c');
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_108c__', '__test_ci_108c_1__@correo.test', 'personal') returning id into v_cuenta;
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_108c__', '__test_ci_108c_2__@correo.test', 'personal') returning id into v_cuenta2;
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_108c__', '__test_ci_108c_3__@correo.test', 'personal') returning id into v_cuenta3;
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_108c__', '__test_ci_108c_4__@correo.test', 'personal') returning id into v_cuenta4;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_108c__', '__TEST_CI__ Tipo 108c');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_108C_1__', '__test_ci_108c__') returning id into v_eq;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_108C_2__', '__test_ci_108c__') returning id into v_eq2;
+  insert into public.ubicaciones (nombre, tipo) values ('__TEST_CI__ Ubicacion 108c', 'otro') returning id into v_ubic;
+  insert into public.licencias (software, cantidad) values ('__TEST_CI__ Lic 108c', 3) returning id into v_lic;
+
+  v_sol := public.crear_solicitud_nucleo('alta_empleado', v_emp);
+
+  -- la cuenta de OTRA persona no marca el paso de esta alta
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cuenta2, v_otro) returning id into v_asig_otro;
+  select estado into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'crear_cuenta';
+  if v_paso.estado <> 'pendiente' then fallos := fallos || '[108] la cuenta de otra persona marco el paso; '; end if;
+
+  -- cuenta asignada a la persona -> crear_cuenta
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cuenta, v_emp) returning id into v_asig_cta;
+  select estado, automatico, referencia_id, hecho_at into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'crear_cuenta';
+  if v_paso.estado <> 'hecho' or not v_paso.automatico or v_paso.referencia_id is distinct from v_asig_cta or v_paso.hecho_at is null then
+    fallos := fallos || '[108] la asignacion de cuenta no marco crear_cuenta con su referencia; ';
+  end if;
+
+  -- entrega: crearla no marca; ABRIRLA (viewed_at) si; deshacer la apertura reabre el paso
+  insert into public.entregas (token_hash, empleado_id, empleado_nombre, payload, expires_at)
+    values ('__test_ci_108c_e1__', v_emp, 'Test CI 108c Uno', '', now() + interval '1 day') returning id into v_entrega;
+  select estado into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'entregar_credenciales';
+  if v_paso.estado <> 'pendiente' then fallos := fallos || '[108] crear la entrega ya marco entregar_credenciales; '; end if;
+  update public.entregas set viewed_at = now() where id = v_entrega;
+  select estado, automatico, referencia_id into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'entregar_credenciales';
+  if v_paso.estado <> 'hecho' or not v_paso.automatico or v_paso.referencia_id is distinct from v_entrega then
+    fallos := fallos || '[108] abrir la entrega no marco entregar_credenciales; ';
+  end if;
+  update public.entregas set viewed_at = null where id = v_entrega;
+  select estado, automatico, referencia_id, hecho_at into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'entregar_credenciales';
+  if v_paso.estado <> 'pendiente' or v_paso.automatico or v_paso.referencia_id is not null or v_paso.hecho_at is not null then
+    fallos := fallos || '[108] deshacer la apertura no reabrio el paso; ';
+  end if;
+  update public.entregas set viewed_at = now() where id = v_entrega;
+
+  -- equipo a una UBICACION no marca; a la persona si
+  insert into public.asignaciones_equipo (equipo_id, ubicacion_id) values (v_eq2, v_ubic);
+  select estado into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'asignar_equipo';
+  if v_paso.estado <> 'pendiente' then fallos := fallos || '[108] una asignacion a ubicacion marco asignar_equipo; '; end if;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_eq, v_emp) returning id into v_asig_eq;
+  select estado, referencia_id into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'asignar_equipo';
+  if v_paso.estado <> 'hecho' or v_paso.referencia_id is distinct from v_asig_eq then fallos := fallos || '[108] la asignacion de equipo no marco asignar_equipo; '; end if;
+
+  -- licencia -> asignar_licencia
+  insert into public.asignaciones_licencia (licencia_id, empleado_id) values (v_lic, v_emp) returning id into v_asig_lic;
+  select estado, referencia_id into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'asignar_licencia';
+  if v_paso.estado <> 'hecho' or v_paso.referencia_id is distinct from v_asig_lic then fallos := fallos || '[108] la asignacion de licencia no marco asignar_licencia; '; end if;
+
+  -- quedan dos pasos manuales: la solicitud sigue abierta
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id and estado = 'pendiente';
+  if v_n <> 2 then fallos := fallos || '[108] debian quedar 2 pasos manuales y quedan ' || v_n || '; '; end if;
+  if (select estado from public.solicitudes where id = v_sol.id) <> 'abierta' then fallos := fallos || '[108] la solicitud se cerro con pasos pendientes; '; end if;
+
+  -- paso manual con referencia: debe ser de ESTA persona y el paso debe admitirla
+  begin
+    perform public.completar_paso_solicitud_nucleo((select id from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'dar_accesos_area'), v_asig_otro);
+    fallos := fallos || '[108] acepto una referencia de otra persona; ';
+  exception when others then if sqlerrm not like '%no pertenece al empleado%' then fallos := fallos || '[108] referencia ajena rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.completar_paso_solicitud_nucleo((select id from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'confirmar_recepcion'), v_asig_cta);
+    fallos := fallos || '[108] un paso sin referencia_tipo acepto una referencia; ';
+  exception when others then if sqlerrm not like '%no admite una referencia%' then fallos := fallos || '[108] referencia en paso sin tipo rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.completar_paso_solicitud_nucleo(gen_random_uuid());
+    fallos := fallos || '[108] completo un paso inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[108] paso inexistente lanzo ' || sqlstate || '; '; end if; end;
+  perform public.completar_paso_solicitud_nucleo((select id from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'dar_accesos_area'), v_asig_cta, '  accesos del area  ');
+  select estado, automatico, referencia_id, nota into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'dar_accesos_area';
+  if v_paso.estado <> 'hecho' or v_paso.automatico or v_paso.referencia_id is distinct from v_asig_cta or v_paso.nota is distinct from 'accesos del area' then
+    fallos := fallos || '[108] completar a mano dejo el paso mal; ';
+  end if;
+  begin
+    perform public.completar_paso_solicitud_nucleo((select id from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'dar_accesos_area'));
+    fallos := fallos || '[108] completo dos veces el mismo paso; ';
+  exception when others then if sqlerrm not like '%ya fue resuelto%' then fallos := fallos || '[108] doble completar rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- el ultimo paso completa la solicitud SOLA
+  perform public.completar_paso_solicitud_nucleo((select id from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'confirmar_recepcion'));
+  select * into v_sol from public.solicitudes where id = v_sol.id;
+  if v_sol.estado <> 'completada' or v_sol.completada_at is null then fallos := fallos || '[108] la solicitud no se completo sola; '; end if;
+  begin
+    perform public.completar_paso_solicitud_nucleo((select id from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'confirmar_recepcion'));
+    fallos := fallos || '[108] completo un paso de una solicitud cerrada; ';
+  exception when others then if sqlerrm not like '%ya no está abierta%' then fallos := fallos || '[108] paso de solicitud cerrada rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- una solicitud cerrada ya no recibe marcas del sistema
+  insert into public.asignaciones_licencia (licencia_id, empleado_id) values (v_lic, v_emp);
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'asignar_licencia' and referencia_id = v_asig_lic;
+  if v_n <> 1 then fallos := fallos || '[108] una solicitud completada recibio una marca nueva; '; end if;
+
+  -- DOS solicitudes abiertas con el mismo paso pendiente: cada evento marca UNA, la mas antigua
+  v_sol := public.crear_solicitud_nucleo('alta_empleado', v_e3);
+  v_sol_b := public.crear_solicitud_nucleo('acceso_nuevo', v_e3);
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cuenta3, v_e3) returning id into v_asig_cta3;
+  select estado into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'crear_cuenta';
+  if v_paso.estado <> 'hecho' then fallos := fallos || '[108] la solicitud mas antigua no recibio la marca; '; end if;
+  select estado into v_paso from public.solicitud_pasos where solicitud_id = v_sol_b.id and clave = 'crear_cuenta';
+  if v_paso.estado <> 'pendiente' then fallos := fallos || '[108] un solo evento marco dos solicitudes; '; end if;
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cuenta4, v_e3);
+  select estado into v_paso from public.solicitud_pasos where solicitud_id = v_sol_b.id and clave = 'crear_cuenta';
+  if v_paso.estado <> 'hecho' then fallos := fallos || '[108] el segundo evento no marco la siguiente solicitud; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [108c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [108c]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 108-d: integridad — transiciones (whitelist), identidad inmutable, nunca
+-- completada con pasos pendientes, omitir con motivo (obligatorio solo el
+-- jefe), cancelar con motivo y pasos congelados en una solicitud cerrada
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_sol public.solicitudes;
+  v_sol2 public.solicitudes;
+  v_p_datos uuid;
+  v_p_accesos uuid;
+  v_p_equipo uuid;
+  v_paso record;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 108d') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 108d', '99010821', v_empresa) returning id into v_emp;
+
+  v_sol := public.crear_solicitud_nucleo('cambio_puesto', v_emp);
+  select id into v_p_datos from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'actualizar_datos';
+  select id into v_p_accesos from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'revisar_accesos';
+  select id into v_p_equipo from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'reasignar_equipo';
+
+  -- no se completa con pasos pendientes
+  begin
+    update public.solicitudes set estado = 'completada', completada_at = now() where id = v_sol.id;
+    fallos := fallos || '[108] completo una solicitud con pasos pendientes; ';
+  exception when others then if sqlerrm not like '%quedan pasos pendientes%' then fallos := fallos || '[108] completar con pendientes rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- la identidad no cambia
+  begin update public.solicitudes set tipo_id = 'licencia' where id = v_sol.id; fallos := fallos || '[108] cambio el tipo de una solicitud; ';
+  exception when others then if sqlerrm not like '%no cambia de código%' then fallos := fallos || '[108] cambio de tipo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.solicitudes set codigo = 'SOL-9999' where id = v_sol.id; fallos := fallos || '[108] cambio el codigo de una solicitud; ';
+  exception when others then if sqlerrm not like '%no cambia de código%' then fallos := fallos || '[108] cambio de codigo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.solicitud_pasos set clave = 'otra' where id = v_p_datos; fallos := fallos || '[108] cambio la clave de un paso; ';
+  exception when others then if sqlerrm not like '%no cambia de solicitud, clave%' then fallos := fallos || '[108] cambio de clave rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin insert into public.solicitud_pasos (solicitud_id, orden, clave, label) values (v_sol.id, 9, 'actualizar_datos', 'Duplicado'); fallos := fallos || '[108] permitio un paso duplicado; ';
+  exception when unique_violation then null; end;
+
+  -- omitir: motivo obligatorio
+  begin perform public.omitir_paso_solicitud_nucleo(v_p_equipo, '   '); fallos := fallos || '[108] omitio sin motivo; ';
+  exception when others then if sqlerrm not like '%motivo%obligatorio%' then fallos := fallos || '[108] omitir sin motivo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.omitir_paso_solicitud_nucleo(v_p_equipo, repeat('m', 501)); fallos := fallos || '[108] omitio con un motivo de 501 caracteres; ';
+  exception when others then if sqlerrm not like '%500%' then fallos := fallos || '[108] motivo largo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  -- un paso obligatorio no lo omite quien no es jefe (aqui no hay sesion: no hay jefe)
+  begin perform public.omitir_paso_solicitud_nucleo(v_p_accesos, 'No aplica'); fallos := fallos || '[108] omitio un paso obligatorio sin ser jefe; ';
+  exception when others then if sqlerrm not like '%solo un jefe%' then fallos := fallos || '[108] omitir obligatorio rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  -- un opcional si, con motivo
+  perform public.omitir_paso_solicitud_nucleo(v_p_equipo, '  No tenia equipo asignado  ');
+  select estado, motivo_omision, hecho_at, automatico into v_paso from public.solicitud_pasos where id = v_p_equipo;
+  if v_paso.estado <> 'omitido' or v_paso.motivo_omision is distinct from 'No tenia equipo asignado' or v_paso.hecho_at is null or v_paso.automatico then
+    fallos := fallos || '[108] omitir dejo el paso mal; ';
+  end if;
+  begin update public.solicitud_pasos set estado = 'hecho' where id = v_p_equipo; fallos := fallos || '[108] un paso omitido volvio a hecho; ';
+  exception when others then if sqlerrm not like '%no permitida%' then fallos := fallos || '[108] omitido a hecho rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.solicitud_pasos set estado = 'omitido', hecho_at = now() where id = v_p_datos; fallos := fallos || '[108] omitio sin motivo por UPDATE directo; ';
+  exception when check_violation then null; end;
+
+  -- omitidos u hechos: al quedar todos resueltos se completa sola
+  perform public.completar_paso_solicitud_nucleo(v_p_datos);
+  select estado into v_paso from public.solicitudes where id = v_sol.id;
+  if v_paso.estado <> 'abierta' then fallos := fallos || '[108] se completo con un paso pendiente; '; end if;
+  perform public.completar_paso_solicitud_nucleo(v_p_accesos);
+  select estado into v_paso from public.solicitudes where id = v_sol.id;
+  if v_paso.estado <> 'completada' then fallos := fallos || '[108] con todos los pasos hechos u omitidos no se completo; '; end if;
+
+  -- terminales: completada no vuelve a abierta ni pasa a cancelada; sus pasos quedan congelados
+  begin update public.solicitudes set estado = 'abierta', completada_at = null where id = v_sol.id; fallos := fallos || '[108] reabrio una solicitud completada; ';
+  exception when others then if sqlerrm not like '%no permitida%' then fallos := fallos || '[108] reabrir rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.solicitudes set estado = 'cancelada', cancelada_at = now(), motivo_cancelacion = 'x', completada_at = null where id = v_sol.id; fallos := fallos || '[108] cancelo una solicitud completada; ';
+  exception when others then if sqlerrm not like '%no permitida%' then fallos := fallos || '[108] cancelar completada rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.solicitud_pasos set estado = 'pendiente', hecho_at = null where id = v_p_datos; fallos := fallos || '[108] reabrio un paso de una solicitud completada; ';
+  exception when others then if sqlerrm not like '%ya no está abierta%' then fallos := fallos || '[108] paso de solicitud completada rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.cancelar_solicitud_nucleo(v_sol.id, 'tarde'); fallos := fallos || '[108] cancelo una solicitud completada por la RPC; ';
+  exception when others then if sqlerrm not like '%ya está completada%' then fallos := fallos || '[108] cancelar completada por la RPC rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- cancelar: motivo obligatorio, queda registrado y la solicitud cancelada se congela
+  v_sol2 := public.crear_solicitud_nucleo('acceso_nuevo', v_emp);
+  begin perform public.cancelar_solicitud_nucleo(v_sol2.id, ' '); fallos := fallos || '[108] cancelo sin motivo; ';
+  exception when others then if sqlerrm not like '%motivo%obligatorio%' then fallos := fallos || '[108] cancelar sin motivo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.cancelar_solicitud_nucleo(gen_random_uuid(), 'x'); fallos := fallos || '[108] cancelo una solicitud inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[108] cancelar inexistente lanzo ' || sqlstate || '; '; end if; end;
+  begin update public.solicitudes set estado = 'cancelada', cancelada_at = now() where id = v_sol2.id; fallos := fallos || '[108] el CHECK permitio cancelar sin motivo; ';
+  exception when check_violation then null; end;
+  v_sol2 := public.cancelar_solicitud_nucleo(v_sol2.id, '  Pedido duplicado  ');
+  if v_sol2.estado <> 'cancelada' or v_sol2.cancelada_at is null or v_sol2.motivo_cancelacion is distinct from 'Pedido duplicado' then
+    fallos := fallos || '[108] cancelar dejo la solicitud mal; ';
+  end if;
+  begin perform public.cancelar_solicitud_nucleo(v_sol2.id, 'otra vez'); fallos := fallos || '[108] cancelo dos veces; ';
+  exception when others then if sqlerrm not like '%ya está cancelada%' then fallos := fallos || '[108] doble cancelacion rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.completar_paso_solicitud_nucleo((select id from public.solicitud_pasos where solicitud_id = v_sol2.id and clave = 'crear_cuenta')); fallos := fallos || '[108] completo un paso de una solicitud cancelada; ';
+  exception when others then if sqlerrm not like '%ya no está abierta%' then fallos := fallos || '[108] paso de solicitud cancelada rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  -- y el sistema tampoco marca pasos de una cancelada
+  insert into public.plataformas (id, nombre) values ('__test_ci_108d__', '__TEST_CI__ Plataforma 108d');
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_108d__', '__test_ci_108d__@correo.test', 'personal');
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) select id, v_emp from public.cuentas where usuario = '__test_ci_108d__@correo.test';
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol2.id and estado <> 'pendiente';
+  if v_n <> 0 then fallos := fallos || '[108] el autocompletado toco una solicitud cancelada; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [108d] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [108d]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 108-e: dar de baja crea la solicitud de baja con los pasos REALES (rotar
+-- cada cuenta compartida/reutilizable, recuperar cada equipo, cerrar las
+-- cuentas personales en su plataforma), cancela las otras solicitudes abiertas,
+-- no se repite en una segunda baja y se completa sola al rotar y devolver
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_vacio uuid;
+  v_reing uuid;
+  v_eq2 uuid;
+  v_c_pers uuid;
+  v_c_reut uuid;
+  v_c_comp uuid;
+  v_lic uuid;
+  v_eq uuid;
+  v_asig_eq uuid;
+  v_sol_alta public.solicitudes;
+  v_sol_cambio public.solicitudes;
+  v_sol public.solicitudes;
+  v_paso record;
+  v_n int;
+  v_ids uuid[];
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 108e') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 108e', '99010831', v_empresa) returning id into v_emp;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 108e Vacio', '99010832', v_empresa) returning id into v_vacio;
+  insert into public.plataformas (id, nombre) values ('__test_ci_108e__', '__TEST_CI__ Plataforma 108e');
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_108e__', '__test_ci_108e_p__@correo.test', 'personal') returning id into v_c_pers;
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_108e__', '__test_ci_108e_r__@correo.test', 'reutilizable') returning id into v_c_reut;
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_108e__', '__test_ci_108e_c__@correo.test', 'compartida') returning id into v_c_comp;
+  insert into public.licencias (software, cantidad) values ('__TEST_CI__ Lic 108e', 2) returning id into v_lic;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_108e__', '__TEST_CI__ Tipo 108e');
+  insert into public.equipos (codigo, tipo_id, marca, modelo) values ('__TEST_CI_108E__', '__test_ci_108e__', 'Marca', 'Modelo') returning id into v_eq;
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_c_pers, v_emp), (v_c_reut, v_emp), (v_c_comp, v_emp);
+  insert into public.asignaciones_licencia (licencia_id, empleado_id) values (v_lic, v_emp);
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_eq, v_emp) returning id into v_asig_eq;
+
+  v_sol_alta := public.crear_solicitud_nucleo('alta_empleado', v_emp);
+  v_sol_cambio := public.crear_solicitud_nucleo('cambio_puesto', v_emp);
+
+  perform public.empleado_dar_baja_interno(v_emp, 'Renuncia');
+
+  if (select estado::text from public.empleados where id = v_emp) <> 'Inactivo' then fallos := fallos || '[108] la baja no dejo Inactivo; '; end if;
+  select count(*) into v_n from public.solicitudes where empleado_id = v_emp and tipo_id = 'baja_empleado';
+  if v_n <> 1 then fallos := fallos || '[108] la baja debia crear 1 solicitud y creo ' || v_n || '; '; end if;
+  select * into v_sol from public.solicitudes where empleado_id = v_emp and tipo_id = 'baja_empleado';
+  if v_sol.estado <> 'abierta' or v_sol.origen <> 'sistema' or v_sol.nota is distinct from 'Renuncia' or v_sol.codigo !~ '^SOL-' then
+    fallos := fallos || '[108] la solicitud de baja quedo mal (estado ' || coalesce(v_sol.estado, '?') || '); ';
+  end if;
+
+  -- las otras solicitudes abiertas de la persona se cancelan
+  select count(*) into v_n from public.solicitudes where id in (v_sol_alta.id, v_sol_cambio.id) and estado = 'cancelada' and motivo_cancelacion like '%baja%';
+  if v_n <> 2 then fallos := fallos || '[108] la baja no cancelo las otras solicitudes abiertas (' || v_n || '/2); '; end if;
+
+  -- pasos reales: 1 cerrar_accesos hecho, 2 rotar (reutilizable y compartida), 1 recuperar equipo, 1 cerrar cuentas personales
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id;
+  if v_n <> 5 then fallos := fallos || '[108] la baja debia tener 5 pasos y tiene ' || v_n || '; '; end if;
+  select estado, automatico, nota into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'cerrar_accesos';
+  if v_paso.estado <> 'hecho' or not v_paso.automatico or v_paso.nota not like '3 asignaciones de cuenta y 1 de licencia%' then
+    fallos := fallos || '[108] cerrar_accesos incorrecto: ' || coalesce(v_paso.nota, '?') || '; ';
+  end if;
+  select array_agg(objetivo_id order by label) into v_ids from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'rotar_contrasenas' and estado = 'pendiente';
+  if cardinality(v_ids) is distinct from 2 or not (v_c_reut = any (v_ids)) or not (v_c_comp = any (v_ids)) or v_c_pers = any (v_ids) then
+    fallos := fallos || '[108] los pasos de rotacion no apuntan a la reutilizable y la compartida; ';
+  end if;
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'rotar_contrasenas' and label like 'Rotar la contraseña de __test_ci_108e_%@correo.test%';
+  if v_n <> 2 then fallos := fallos || '[108] la etiqueta de rotacion no nombra la cuenta; '; end if;
+  select objetivo_id, label, obligatorio into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'devolver_equipo';
+  if v_paso.objetivo_id is distinct from v_asig_eq or v_paso.label not like 'Recuperar el equipo __TEST_CI_108E__ · Marca Modelo' or not v_paso.obligatorio then
+    fallos := fallos || '[108] el paso de recuperar equipo incorrecto: ' || coalesce(v_paso.label, '?') || '; ';
+  end if;
+  select estado, nota into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'cerrar_cuentas_plataforma';
+  if v_paso.estado <> 'pendiente' or v_paso.nota not like '1 cuenta personal%' then fallos := fallos || '[108] cerrar_cuentas_plataforma incorrecto; '; end if;
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id and autocompleta
+    and clave in ('cerrar_accesos', 'rotar_contrasenas', 'devolver_equipo');
+  if v_n <> 4 then fallos := fallos || '[108] los pasos reales de la baja debian copiar autocompleta (' || v_n || '/4); '; end if;
+  select autocompleta into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'cerrar_cuentas_plataforma';
+  if v_paso.autocompleta then fallos := fallos || '[108] cerrar_cuentas_plataforma es manual y no debia marcarse autocompleta; '; end if;
+
+  -- la baja repetida sobre un Inactivo es inocua: no crea otra solicitud
+  perform public.empleado_dar_baja_interno(v_emp, 'otra vez');
+  select count(*) into v_n from public.solicitudes where empleado_id = v_emp and tipo_id = 'baja_empleado';
+  if v_n <> 1 then fallos := fallos || '[108] una segunda baja duplico la solicitud; '; end if;
+
+  -- rotar la contraseña (la 100 limpia requiere_rotacion) marca SOLO el paso de esa cuenta
+  update public.cuentas set password = 'enc2:AAAA:BBBB' where id = v_c_reut;
+  select estado, automatico, referencia_id into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'rotar_contrasenas' and objetivo_id = v_c_reut;
+  if v_paso.estado <> 'hecho' or not v_paso.automatico or v_paso.referencia_id is distinct from v_c_reut then fallos := fallos || '[108] rotar la reutilizable no marco su paso; '; end if;
+  select estado into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'rotar_contrasenas' and objetivo_id = v_c_comp;
+  if v_paso.estado <> 'pendiente' then fallos := fallos || '[108] rotar una cuenta marco el paso de otra; '; end if;
+
+  -- devolver el equipo (se cierra su asignacion) marca el paso de ESA asignacion
+  update public.asignaciones_equipo set fecha_fin = current_date, motivo_cierre = 'baja_empleado' where id = v_asig_eq;
+  select estado, referencia_id into v_paso from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'devolver_equipo';
+  if v_paso.estado <> 'hecho' or v_paso.referencia_id is distinct from v_asig_eq then fallos := fallos || '[108] devolver el equipo no marco su paso; '; end if;
+
+  -- quedan la compartida y la cuenta real en la plataforma: sigue abierta
+  if (select estado from public.solicitudes where id = v_sol.id) <> 'abierta' then fallos := fallos || '[108] la baja se cerro con pasos pendientes; '; end if;
+  update public.cuentas set password = 'enc2:CCCC:DDDD' where id = v_c_comp;
+  if (select estado from public.solicitudes where id = v_sol.id) <> 'abierta' then fallos := fallos || '[108] la baja se cerro sin cerrar las cuentas personales; '; end if;
+  perform public.completar_paso_solicitud_nucleo((select id from public.solicitud_pasos where solicitud_id = v_sol.id and clave = 'cerrar_cuentas_plataforma'), null, 'Cuenta suspendida en la plataforma');
+  select * into v_sol from public.solicitudes where id = v_sol.id;
+  if v_sol.estado <> 'completada' or v_sol.completada_at is null then fallos := fallos || '[108] la baja no se completo sola al terminar los pasos; '; end if;
+
+  -- una baja sin nada pendiente nace completada (solo cerrar_accesos, hecho)
+  perform public.empleado_dar_baja_interno(v_vacio, null);
+  select * into v_sol from public.solicitudes where empleado_id = v_vacio and tipo_id = 'baja_empleado';
+  if v_sol.estado is distinct from 'completada' then fallos := fallos || '[108] una baja sin pendientes debia nacer completada; '; end if;
+  select count(*) into v_n from public.solicitud_pasos where solicitud_id = v_sol.id;
+  if v_n <> 1 then fallos := fallos || '[108] una baja sin pendientes debia tener solo cerrar_accesos; '; end if;
+
+  -- una baja nueva tras un reingreso: la anterior (aun abierta) se cancela, no choca con el indice
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 108e Reingresado', '99010833', v_empresa) returning id into v_reing;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_108E2__', '__test_ci_108e__') returning id into v_eq2;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_eq2, v_reing);
+  perform public.empleado_dar_baja_interno(v_reing, 'Primera baja');
+  update public.empleados set estado = 'Activo' where id = v_reing;
+  perform public.empleado_dar_baja_interno(v_reing, 'Segunda baja');
+  select count(*) into v_n from public.solicitudes where empleado_id = v_reing and tipo_id = 'baja_empleado' and estado = 'cancelada' and nota = 'Primera baja';
+  if v_n <> 1 then fallos := fallos || '[108] la segunda baja no cancelo la primera abierta; '; end if;
+  select count(*) into v_n from public.solicitudes where empleado_id = v_reing and tipo_id = 'baja_empleado' and estado = 'abierta' and nota = 'Segunda baja';
+  if v_n <> 1 then fallos := fallos || '[108] la segunda baja no quedo abierta; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [108e] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [108e]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 108-f: dashboard_resumen_de (solicitudes_abiertas y altas_incompletas
+-- derivadas, null sin el modulo empleados, sin errores), reingreso que abre un
+-- alta y convertir_ticket_en_solicitud
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_rein uuid;
+  v_jefe uuid;
+  v_asis_t uuid;
+  v_asis_e uuid;
+  v_sol public.solicitudes;
+  v_sol2 public.solicitudes;
+  v_ticket uuid;
+  v_ticket_sin uuid;
+  v_item jsonb;
+  r jsonb;
+  v_n int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_108f_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_108f_tk@example.test') returning id into v_asis_t;
+  insert into auth.users (email) values ('__test_ci_108f_em@example.test') returning id into v_asis_e;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  update public.staff set activo = true where user_id in (v_asis_t, v_asis_e);
+  delete from public.staff_modulos_permisos where staff_user_id = v_asis_t and modulo <> 'tickets';
+  delete from public.staff_modulos_permisos where staff_user_id = v_asis_e and modulo <> 'empleados';
+
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 108f') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, cargo) values ('Test', 'CI 108f', '99010841', v_empresa, 'Residente') returning id into v_emp;
+  v_sol := public.crear_solicitud_nucleo('alta_empleado', v_emp, null, '{}'::jsonb, 'Pedido de RRHH', 'rrhh_correo');
+
+  -- JEFE: la seccion trae la solicitud con su avance y el siguiente paso
+  r := public.dashboard_resumen_de(v_jefe);
+  if r -> 'errores' <> '[]'::jsonb then fallos := fallos || '[108] el resumen del JEFE trajo errores: ' || (r ->> 'errores') || '; '; end if;
+  if jsonb_typeof(r -> 'solicitudes_abiertas') <> 'array' then fallos := fallos || '[108] solicitudes_abiertas no es un arreglo; '; end if;
+  select x into v_item from jsonb_array_elements(r -> 'solicitudes_abiertas') as t(x) where x ->> 'solicitud_id' = v_sol.id::text;
+  if v_item is null then
+    fallos := fallos || '[108] la solicitud abierta no figura en el Inicio; ';
+  else
+    if v_item ->> 'codigo' <> v_sol.codigo or v_item ->> 'tipo_id' <> 'alta_empleado' or v_item ->> 'tipo' <> 'Alta de empleado'
+       or v_item ->> 'empleado_id' <> v_emp::text or v_item ->> 'empleado' <> 'Test CI 108f' or v_item ->> 'cargo' <> 'Residente' then
+      fallos := fallos || '[108] datos de identidad de la fila del Inicio incorrectos; ';
+    end if;
+    if (v_item ->> 'pasos_total')::int <> 7 or (v_item ->> 'pasos_hechos')::int <> 1 then fallos := fallos || '[108] avance del Inicio incorrecto: ' || (v_item ->> 'pasos_hechos') || '/' || (v_item ->> 'pasos_total') || '; '; end if;
+    if v_item ->> 'siguiente' <> 'Crear la cuenta de correo' or v_item ->> 'siguiente_modulo' <> 'correos' then fallos := fallos || '[108] el siguiente paso del Inicio es incorrecto; '; end if;
+    if (v_item ->> 'dias')::int <> 0 then fallos := fallos || '[108] los dias de la solicitud de hoy no son 0; '; end if;
+  end if;
+  -- altas_incompletas conserva su forma y sale de las solicitudes de alta
+  select x into v_item from jsonb_array_elements(r -> 'altas_incompletas') as t(x) where x ->> 'empleado_id' = v_emp::text;
+  if v_item is null then
+    fallos := fallos || '[108] altas_incompletas no trae el alta abierta; ';
+  elsif v_item -> 'faltan' <> '["crear_cuenta","entregar_credenciales","confirmar_recepcion"]'::jsonb or v_item ->> 'nombre' <> 'Test CI 108f' or v_item ->> 'cargo' <> 'Residente' then
+    fallos := fallos || '[108] altas_incompletas con forma incorrecta: ' || v_item::text || '; ';
+  end if;
+
+  -- sin el modulo empleados: null y NO es un error
+  r := public.dashboard_resumen_de(v_asis_t);
+  if jsonb_typeof(r -> 'solicitudes_abiertas') <> 'null' or jsonb_typeof(r -> 'altas_incompletas') <> 'null' then fallos := fallos || '[108] sin el modulo empleados las secciones debian ser null; '; end if;
+  if r -> 'errores' <> '[]'::jsonb then fallos := fallos || '[108] una seccion sin permiso conto como error; '; end if;
+  -- con solo empleados: la seccion llega
+  r := public.dashboard_resumen_de(v_asis_e);
+  if jsonb_typeof(r -> 'solicitudes_abiertas') <> 'array' then fallos := fallos || '[108] con el modulo empleados faltó solicitudes_abiertas; '; end if;
+
+  -- cancelada o completada deja de listarse
+  perform public.cancelar_solicitud_nucleo(v_sol.id, 'Prueba');
+  r := public.dashboard_resumen_de(v_jefe);
+  if exists (select 1 from jsonb_array_elements(r -> 'solicitudes_abiertas') x where x ->> 'solicitud_id' = v_sol.id::text)
+     or exists (select 1 from jsonb_array_elements(r -> 'altas_incompletas') x where x ->> 'empleado_id' = v_emp::text) then
+    fallos := fallos || '[108] una solicitud cancelada sigue en el Inicio; ';
+  end if;
+
+  -- reingreso: reingresar_empleado abre un alta (origen sistema); sin duplicar
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado, fecha_alta) values ('Test', 'CI 108f Reingreso', '99010842', v_empresa, 'Inactivo', '2020-01-15') returning id into v_rein;
+  perform public.empleado_reingresar_interno(v_rein, '{}'::jsonb);
+  select * into v_sol2 from public.solicitudes where empleado_id = v_rein and tipo_id = 'alta_empleado';
+  if v_sol2.id is null or v_sol2.estado <> 'abierta' or v_sol2.origen <> 'sistema' or v_sol2.nota is distinct from 'Reingreso del empleado.' then
+    fallos := fallos || '[108] el reingreso no abrio su alta; ';
+  end if;
+  select count(*) into v_n from public.solicitudes where empleado_id = v_rein and tipo_id = 'alta_empleado';
+  if v_n <> 1 then fallos := fallos || '[108] el reingreso creo ' || v_n || ' altas; '; end if;
+
+  -- convertir un ticket en solicitud
+  insert into public.tickets (codigo, token, titulo, descripcion, empleado_id, tipo)
+    values ('__TEST_CI_108F__', lpad('1', 24, 'F'), 'Necesito acceso al ERP', 'Descripcion', v_emp, 'incidente') returning id into v_ticket;
+  insert into public.tickets (codigo, token, titulo, descripcion)
+    values ('__TEST_CI_108F2__', lpad('2', 24, 'F'), 'Sin empleado', 'Descripcion') returning id into v_ticket_sin;
+  v_sol := public.convertir_ticket_en_solicitud_nucleo(v_ticket, 'acceso_nuevo', 'Pedido por ticket');
+  if v_sol.ticket_id is distinct from v_ticket or v_sol.origen <> 'ticket' or v_sol.empleado_id <> v_emp or v_sol.tipo_id <> 'acceso_nuevo'
+     or v_sol.datos ->> 'ticket_codigo' is distinct from '__TEST_CI_108F__' then
+    fallos := fallos || '[108] convertir_ticket_en_solicitud dejo la solicitud mal; ';
+  end if;
+  if (select tipo from public.tickets where id = v_ticket) is distinct from 'solicitud' then fallos := fallos || '[108] el ticket no quedo como tipo solicitud; '; end if;
+  if (select estado from public.tickets where id = v_ticket) <> 'abierto' then fallos := fallos || '[108] convertir toco el estado del ticket; '; end if;
+  begin perform public.convertir_ticket_en_solicitud_nucleo(v_ticket, 'licencia'); fallos := fallos || '[108] convirtio dos veces el mismo ticket; ';
+  exception when others then if sqlerrm not like '%ya tiene una solicitud vinculada%' then fallos := fallos || '[108] segunda conversion rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.convertir_ticket_en_solicitud_nucleo(v_ticket_sin, 'acceso_nuevo'); fallos := fallos || '[108] convirtio un ticket sin empleado; ';
+  exception when others then if sqlerrm not like '%no tiene un empleado vinculado%' then fallos := fallos || '[108] ticket sin empleado rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.convertir_ticket_en_solicitud_nucleo(gen_random_uuid(), 'acceso_nuevo'); fallos := fallos || '[108] convirtio un ticket inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[108] ticket inexistente lanzo ' || sqlstate || '; '; end if; end;
+  begin insert into public.solicitudes (tipo_id, empleado_id, ticket_id) values ('licencia', v_emp, v_ticket); fallos := fallos || '[108] el indice permitio dos solicitudes vivas para un ticket; ';
+  exception when unique_violation then null; end;
+  -- cancelar la solicitud libera el ticket
+  perform public.cancelar_solicitud_nucleo(v_sol.id, 'Se pidio por error');
+  v_sol2 := public.convertir_ticket_en_solicitud_nucleo(v_ticket, 'licencia');
+  if v_sol2.ticket_id is distinct from v_ticket then fallos := fallos || '[108] tras cancelar no se pudo convertir de nuevo; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [108f] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [108f]: %', fallos;
   end if;
 end $$;

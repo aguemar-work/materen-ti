@@ -7,6 +7,7 @@
 //
 // Todo es inventado: ningún dato sale de esta sesión (recargar la página
 // devuelve los datos iniciales).
+import { autocompletarPaso, crearSolicitudBaja, crearSolicitudNucleo } from './rpc-solicitudes.js';
 
 function hoyISO() {
   const d = new Date();
@@ -112,6 +113,8 @@ export const RPC_EMPLEADOS = {
       created_at: ahora,
     };
     db.asignaciones_cuenta.push(asignacion);
+    // Trigger de la 108: asignar una cuenta marca el paso de la solicitud abierta.
+    autocompletarPaso(db, { empleadoId: emp.id, clave: 'crear_cuenta', referenciaId: asignacion.id });
     return asignacion;
   },
 
@@ -151,6 +154,9 @@ export const RPC_EMPLEADOS = {
       created_at: new Date().toISOString(),
     };
     db.asignaciones_cuenta.push(nueva);
+    autocompletarPaso(db, { empleadoId: destino.id, clave: 'crear_cuenta', referenciaId: nueva.id });
+    // Una contraseña nueva limpia la rotación: marca el paso de rotar ESA cuenta.
+    if (a.p_password_cifrada) autocompletarPaso(db, { clave: 'rotar_contrasenas', objetivoId: cuenta.id, referenciaId: cuenta.id });
     return nueva;
   },
 
@@ -259,6 +265,12 @@ export const RPC_EMPLEADOS = {
       campo: 'estado', valor_anterior: 'Inactivo', valor_nuevo: 'Activo',
       detalle: `Reingreso; fecha de alta ${anteriorAlta} → ${emp.fecha_alta}`,
     });
+    // Trigger de la 108: el reingreso abre su solicitud de alta (si no hay una abierta).
+    if (!db.solicitudes.some((s) => s.empleado_id === emp.id && s.tipo_id === 'alta_empleado' && s.estado === 'abierta')) {
+      crearSolicitudNucleo(db, {
+        p_tipo: 'alta_empleado', p_empleado_id: emp.id, p_nota: 'Reingreso del empleado.', p_origen: 'sistema',
+      });
+    }
     return emp;
   },
 
@@ -267,11 +279,23 @@ export const RPC_EMPLEADOS = {
     const emp = empleadoPorId(db, a.p_empleado_id);
     if (emp.estado === 'Inactivo') rechazar('P0001', 'El empleado ya está dado de baja.');
     const anterior = emp.estado;
+    // Lo que la solicitud de baja deja pendiente se reúne ANTES de cerrar nada (108).
+    const vigentes = db.asignaciones_cuenta.filter((x) => x.empleado_id === emp.id && !x.fecha_fin)
+      .map((x) => ({ asig: x, cuenta: db.cuentas.find((c) => c.id === x.cuenta_id) }))
+      .filter((x) => x.cuenta && !x.cuenta.deleted_at);
+    const cuentasRotar = vigentes.filter((x) => x.cuenta.tipo_cuenta !== 'personal').map((x) => x.cuenta);
+    const personales = vigentes.filter((x) => x.cuenta.tipo_cuenta === 'personal').length;
+    const asignaciones = db.asignaciones_equipo.filter((x) => x.empleado_id === emp.id && !x.fecha_fin);
+    const nCuentas = db.asignaciones_cuenta.filter((x) => x.empleado_id === emp.id && !x.fecha_fin).length;
+    const licenciasAbiertas = db.asignaciones_licencia.filter((x) => x.empleado_id === emp.id && !x.fecha_fin);
     cerrarCuentasDe(db, emp.id, 'Baja del empleado');
-    for (const al of db.asignaciones_licencia.filter((x) => x.empleado_id === emp.id && !x.fecha_fin)) {
+    for (const al of licenciasAbiertas) {
       al.fecha_fin = hoyISO();
     }
     emp.estado = 'Inactivo';
+    crearSolicitudBaja(db, emp, {
+      motivo, cuentasRotar, asignaciones, nCuentas, nLicencias: licenciasAbiertas.length, personales,
+    });
     registrarEvento(db, emp.id, 'baja_ejecutada', {
       campo: 'estado', valor_anterior: anterior, valor_nuevo: 'Inactivo', detalle: motivo || 'Baja del empleado',
     });

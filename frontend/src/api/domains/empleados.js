@@ -11,10 +11,10 @@
 import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
-import { toTitleCase, toLower, normalizarTelefono, onlyDigits, trimText } from '../../core/formatters.js';
+import { trimText } from '../../core/formatters.js';
+import { empleadoToRow } from '../empleadoFila.js';
 import { equiposApi } from './equipos.js';
-import { altaIncompleta, DIAS_VENTANA_ALTA } from '../../core/dominio-empleados.js';
-import { fechaLocalISO } from '../../core/formatters.js';
+import { solicitudesApi } from './solicitudes.js';
 
 // Columnas de "empleados" ordenables desde la tabla (excluye empresa/área,
 // que vienen de un join, y los conteos de vínculos, que son calculados).
@@ -254,6 +254,12 @@ export const empleadosApi = {
   //
   // `motivo` (opcional, ≤ 500; migración 102) queda en el evento
   // `baja_ejecutada` de la hoja de vida del empleado.
+  //
+  // Desde la migración 108 la baja crea además la SOLICITUD de baja con sus
+  // pasos reales (rotar cada contraseña, recuperar cada equipo): se relee y
+  // se devuelve como `solicitud` para que la UI muestre lo que de verdad
+  // quedó pendiente en lugar de un checklist de presentación. Si la lectura
+  // falla (sin la 108, o sin permiso) `solicitud` es null: la baja ya ocurrió.
   async bajaEmpleado(empleadoId, motivo = null) {
     // Antes `this.resumenBaja`: se referencia el propio objeto del dominio.
     // Se lee ANTES de la baja (foto de qué tenía el empleado al momento de
@@ -267,70 +273,13 @@ export const empleadosApi = {
     if (error) throw error;
 
     const empleado = await empleadosApi.getEmpleado(empleadoId);
-    return { empleado, resumen };
-  },
-
-  // Altas que quedaron a medias: gente que entró hace poco, sigue Activa y
-  // todavía no tiene una cuenta con la que trabajar. Alimenta el feed de
-  // pendientes del Dashboard; la regla de qué cuenta como "incompleta" vive
-  // en core/dominio-empleados.js, no acá.
-  //
-  // OJO — quien llame debe tener el módulo `correos`. `asignaciones_cuenta`
-  // está gateada por ese módulo en RLS (migración 068): un ASISTENTE sin él
-  // recibe el embed vacío y TODOS los empleados recientes parecerían sin
-  // cuenta. El Dashboard lo llama solo si `puedeVerModulo('correos')`, igual
-  // que ya hace con sus stat-cards. No se resuelve acá porque esta capa no
-  // conoce la sesión.
-  //
-  // Una sola consulta con embed en vez de reusar conteosVinculos(), que
-  // necesita los ids por adelantado y costaría dos viajes: acá la ventana de
-  // fecha ya acota las filas.
-  async altasIncompletas(hoyISO = fechaLocalISO()) {
-    const desde = fechaLocalISO(-DIAS_VENTANA_ALTA);
-    const { data, error } = await getClient().database
-      .from('empleados')
-      .select('id, nombres, apellidos, cargo, estado, fecha_alta, asignaciones_cuenta(fecha_fin, cuentas(deleted_at))')
-      .eq('estado', 'Activo')
-      .is('deleted_at', null)
-      .gte('fecha_alta', desde)
-      .order('fecha_alta', { ascending: true });
-    if (error) throw error;
-
-    return (data || [])
-      .map((e) => {
-        // Activas = sin fecha_fin y con la cuenta viva. Mismo criterio que
-        // conteosVinculos(): una cuenta con deleted_at no habilita a nadie.
-        const cuentas = (e.asignaciones_cuenta || []).filter(
-          (a) => !a.fecha_fin && a.cuentas && !a.cuentas.deleted_at,
-        ).length;
-        const falta = altaIncompleta(e, { cuentas }, hoyISO);
-        if (!falta) return null;
-        return {
-          empleado_id: e.id,
-          nombre: `${e.nombres} ${e.apellidos}`.trim(),
-          cargo: e.cargo || '',
-          fecha_alta: e.fecha_alta,
-          dias: falta.diasDesdeAlta,
-          faltan: falta.faltan,
-        };
-      })
-      .filter(Boolean);
-  },
-
-  // Alta guiada, paso "Entrega" (Plan Maestro v2, Frente 3): ¿ya se generó
-  // al menos un enlace de entrega para este empleado? No importa si ya
-  // expiró o se abrió — lo que marca el paso como hecho es que el staff ya
-  // le hizo llegar sus credenciales al menos una vez, no repetir el aviso en
-  // cada visita a la ficha. RLS de `entregas` (migración 010) permite el
-  // SELECT a cualquier staff activo.
-  async tieneEntrega(empleadoId) {
-    const { data, error } = await getClient().database
-      .from('entregas')
-      .select('id')
-      .eq('empleado_id', empleadoId)
-      .limit(1);
-    if (error) throw error;
-    return (data || []).length > 0;
+    let solicitud = null;
+    try {
+      solicitud = await solicitudesApi.solicitudDeBaja(empleadoId);
+    } catch {
+      /* la baja ya ocurrió; sin la solicitud la UI cae al resumen previo */
+    }
+    return { empleado, resumen, solicitud };
   },
 
   // ── Ciclo de vida (migración 102) ─────────────────────────────
@@ -523,28 +472,6 @@ export const empleadosApi = {
     return { asignaciones, eventos: evs || [] };
   },
 };
-
-function empleadoToRow(datos) {
-  // "notas" volvió al formulario (UX4-26, docs/HISTORIAL-AUDITORIAS.md Ciclo 4):
-  // se mostraba en la ficha sin ningún control de edición.
-  // ubicacion_id (migración 059): independiente de area_obra_id, sin
-  // derivarse ni sincronizarse con ella.
-  return {
-    nombres:         toTitleCase(datos.nombres),
-    apellidos:       toTitleCase(datos.apellidos),
-    dni:             onlyDigits(datos.dni),
-    empresa_id:      datos.empresa_id,
-    area_obra_id:    datos.area_obra_id || null,
-    ubicacion_id:    datos.ubicacion_id || null,
-    estado:          datos.estado,
-    fecha_alta:      datos.fecha_alta,
-    telefono:        normalizarTelefono(datos.telefono),
-    whatsapp:        normalizarTelefono(datos.whatsapp),
-    correo_personal: toLower(datos.correo_personal),
-    cargo:           toTitleCase(datos.cargo),
-    notas:           trimText(datos.notas),
-  };
-}
 
 function mapEmpleado(row) {
   const empresa = row.empresas || {};
