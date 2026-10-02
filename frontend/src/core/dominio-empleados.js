@@ -104,3 +104,33 @@ export function pasosAlta({ cuentas = 0, equipos = 0, licencias = 0, entregaEnvi
 export function altaLista(pasos) {
   return pasos.every((p) => !p.requisito || p.hecho);
 }
+
+// Pasos que el usuario puede ver y cumplir: la cuenta y la entrega viven en
+// `correos`, el equipo en `equipos` y la licencia en `licencias`. Sin el módulo
+// el paso no se muestra (ni cuenta como pendiente): no se le pide a nadie algo
+// que su rol no puede hacer. El paso de registro ya está hecho por definición y
+// no se lista: "2 de 4 pasos" cuenta lo que queda por hacer.
+const MODULO_DE_PASO = { cuenta: 'correos', entrega: 'correos', equipo: 'equipos', licencia: 'licencias' };
+
+export function pasosAltaVisibles(pasos, puedeVerModulo) {
+  return pasos.filter((p) => MODULO_DE_PASO[p.id] && puedeVerModulo(MODULO_DE_PASO[p.id]));
+}
+
+// Acciones del expediente según el estado del empleado (migración 102). Una
+// sola es sólida; el resto, outline o dentro del menú "Más". Los ids los
+// resuelve la vista (EmpleadoCaratula) a etiqueta, ícono y manejador.
+//   Activo      → Dar de baja · Editar (sólida)   · Más: Suspender, Revisar accesos, Imprimir
+//   Suspendido  → Editar · Reactivar (sólida)     · Más: Dar de baja, Revisar accesos, Imprimir
+//   Inactivo    → Editar · Reactivar · Reingresar (sólida) · Más: Revisar accesos, Imprimir
+export function accionesExpediente(estado) {
+  switch (estado) {
+    case 'Activo':
+      return { botones: ['baja', 'editar'], solida: 'editar', menu: ['suspender', 'revisar', 'imprimir'] };
+    case 'Suspendido':
+      return { botones: ['editar', 'reactivar'], solida: 'reactivar', menu: ['baja', 'revisar', 'imprimir'] };
+    case 'Inactivo':
+      return { botones: ['editar', 'reactivar', 'reingresar'], solida: 'reingresar', menu: ['revisar', 'imprimir'] };
+    default:
+      return { botones: ['editar'], solida: 'editar', menu: ['imprimir'] };
+  }
+}

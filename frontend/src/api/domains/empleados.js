@@ -1,5 +1,13 @@
-// Dominio empleados: fichas, altas/ediciones y el flujo de baja/reactivación
-// (la baja cierra asignaciones activas y da de baja cuentas personales).
+// Dominio empleados: fichas, altas/ediciones y el ciclo de vida del empleado
+// (baja, suspensión, reactivación, reingreso y revisión de accesos), más las
+// lecturas del expediente (hoja de vida, tickets, entregas, actas).
+//
+// El ciclo de vida corre por RPC de la migración 102 (guard módulo
+// `empleados`, 42501 sin permiso, rechazos de negocio P0001 en español): el
+// cliente ya no escribe `estado` a mano. Las RPC devuelven la fila cruda de
+// `empleados`; acá se relee con los embeds para devolver la forma de siempre
+// (`mapEmpleado`). Los errores se relanzan crudos: los traduce quien los
+// muestra (api/erroresDb.js).
 import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
@@ -17,6 +25,9 @@ const ORDEN_DEFECTO = { columna: 'apellidos', ascending: true };
 // ejes independientes desde la migración 059 — cada uno su propio embed,
 // sin relación entre sí (antes la ubicación salía de areas_obras.ubicacion_id).
 const SELECT_EMPLEADO = '*, empresas(nombre), areas_obras(nombre), ubicaciones(nombre)';
+
+// Claves que reingresar_empleado acepta en `p_datos` (migración 102).
+const DATOS_REINGRESO = ['area_obra_id', 'ubicacion_id', 'cargo', 'empresa_id'];
 
 // Query base del listado con filtros en servidor. La búsqueda "juan perez"
 // se trocea por tokens y cada token debe matchear nombre, apellido o DNI
@@ -129,9 +140,14 @@ export const empleadosApi = {
   },
 
   async updateEmpleado(id, datos) {
+    // Editar no cambia el estado: eso es suspender/reactivar/reingresar/dar de
+    // baja (RPC, migración 102). Mandarlo acá chocaría con la máquina de
+    // estados en cuanto se exija el contexto de RPC.
+    const fila = empleadoToRow(datos);
+    delete fila.estado;
     const { data, error } = await getClient().database
       .from('empleados')
-      .update(empleadoToRow(datos))
+      .update(fila)
       .eq('id', id)
       .select(SELECT_EMPLEADO)
       .single();
@@ -235,13 +251,19 @@ export const empleadosApi = {
   // cerrada), el empleado quedaba con asignaciones cerradas pero ACTIVO y
   // con cuentas personales vivas, sin rastro de que la operación quedó a
   // medias (auditoría integral 2026-08-05, hallazgo A-01).
-  async bajaEmpleado(empleadoId) {
+  //
+  // `motivo` (opcional, ≤ 500; migración 102) queda en el evento
+  // `baja_ejecutada` de la hoja de vida del empleado.
+  async bajaEmpleado(empleadoId, motivo = null) {
     // Antes `this.resumenBaja`: se referencia el propio objeto del dominio.
     // Se lee ANTES de la baja (foto de qué tenía el empleado al momento de
     // dar de baja, para el resumen que muestra la UI).
     const resumen = await empleadosApi.resumenBaja(empleadoId);
 
-    const { error } = await getClient().database.rpc('dar_baja_empleado', { p_empleado_id: empleadoId });
+    const { error } = await getClient().database.rpc('dar_baja_empleado', {
+      p_empleado_id: empleadoId,
+      p_motivo: trimText(motivo),
+    });
     if (error) throw error;
 
     const empleado = await empleadosApi.getEmpleado(empleadoId);
@@ -311,15 +333,194 @@ export const empleadosApi = {
     return (data || []).length > 0;
   },
 
-  async reactivarEmpleado(id) {
-    const { data, error } = await getClient().database
-      .from('empleados')
-      .update({ deleted_at: null, estado: 'Activo' })
-      .eq('id', id)
-      .select(SELECT_EMPLEADO)
-      .single();
+  // ── Ciclo de vida (migración 102) ─────────────────────────────
+  // Suspender: motivo OBLIGATORIO (≤ 500), solo desde Activo. Marca "Rotar
+  // contraseña" en las cuentas compartidas/reutilizables sin cerrar nada.
+  async suspenderEmpleado(empleadoId, motivo) {
+    const { error } = await getClient().database.rpc('suspender_empleado', {
+      p_empleado_id: empleadoId,
+      p_motivo: trimText(motivo),
+    });
     if (error) throw error;
-    return mapEmpleado(data);
+    return empleadosApi.getEmpleado(empleadoId);
+  },
+
+  // Reactivar: desde Suspendido o Inactivo (también restaura a un eliminado).
+  // No toca fecha_alta. Reemplaza al UPDATE directo de antes.
+  async reactivarEmpleado(empleadoId, motivo = null) {
+    const { error } = await getClient().database.rpc('reactivar_empleado', {
+      p_empleado_id: empleadoId,
+      p_motivo: trimText(motivo),
+    });
+    if (error) throw error;
+    return empleadosApi.getEmpleado(empleadoId);
+  },
+
+  // Reingresar: solo desde Inactivo. Vuelve a Activo con fecha_alta = hoy.
+  // `datos` acepta SOLO area_obra_id, ubicacion_id, cargo y empresa_id: una
+  // clave presente con '' limpia el valor (salvo la empresa, obligatoria) y
+  // una ausente lo conserva.
+  async reingresarEmpleado(empleadoId, datos = {}) {
+    const pDatos = {};
+    for (const clave of DATOS_REINGRESO) {
+      if (datos[clave] !== undefined) pDatos[clave] = datos[clave] ?? '';
+    }
+    const { error } = await getClient().database.rpc('reingresar_empleado', {
+      p_empleado_id: empleadoId,
+      p_datos: pDatos,
+    });
+    if (error) throw error;
+    return empleadosApi.getEmpleado(empleadoId);
+  },
+
+  // Control periódico de accesos: escribe la fila de `empleado_revisiones_acceso`
+  // y el evento `accesos_revisados`. Devuelve la fila de la revisión.
+  // `resultado` es un objeto libre (hoy: conteos de lo revisado).
+  async registrarRevisionAccesos(empleadoId, resultado = {}, nota = null) {
+    const { data, error } = await getClient().database.rpc('registrar_revision_accesos', {
+      p_empleado_id: empleadoId,
+      p_resultado: resultado || {},
+      p_nota: trimText(nota),
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  // Última revisión de accesos del empleado, o null si nunca se hizo (vista
+  // security_invoker: exige el módulo `empleados`).
+  async ultimaRevisionAccesos(empleadoId) {
+    const { data, error } = await getClient().database
+      .from('v_empleado_ultima_revision_acceso')
+      .select('revision_id, revisado_por, revisado_at, resultado, nota')
+      .eq('empleado_id', empleadoId)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  // ── Lecturas del expediente ───────────────────────────────────
+  // Hoja de vida append-only (migración 102). Nunca trae DNI ni valores de
+  // contacto. Lo más reciente primero.
+  async listEventosEmpleado(empleadoId, limite = 200) {
+    const { data, error } = await getClient().database
+      .from('empleado_eventos')
+      .select('id, empleado_id, evento, campo, valor_anterior, valor_nuevo, user_id, user_email, rol_actor, detalle, created_at')
+      .eq('empleado_id', empleadoId)
+      .order('created_at', { ascending: false })
+      .limit(limite);
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Últimos tickets del empleado (módulo `tickets`). Lectura limitada: el
+  // expediente muestra un resumen, el listado completo vive en Tickets.
+  async ticketsDeEmpleado(empleadoId, limite = 20) {
+    const { data, error } = await getClient().database
+      .from('tickets')
+      .select('id, codigo, titulo, estado, tipo, prioridad, origen, created_at, updated_at')
+      .eq('empleado_id', empleadoId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(limite);
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Entregas de credenciales del empleado (módulo `correos`). El estado
+  // (enviada / abierta / vencida) se deriva de viewed_at y expires_at.
+  async entregasDeEmpleado(empleadoId, limite = 50) {
+    const { data, error } = await getClient().database
+      .from('entregas')
+      .select('id, created_at, expires_at, viewed_at, created_by')
+      .eq('empleado_id', empleadoId)
+      .order('created_at', { ascending: false })
+      .limit(limite);
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Actas firmadas vigentes del empleado (módulo `equipos`, migración 110).
+  async actasDeEmpleado(empleadoId) {
+    const { data, error } = await getClient().database
+      .from('actas')
+      .select('id, asignacion_equipo_id, tipo, empleado_id, equipo_id, firmado_at, created_at, deleted_at')
+      .eq('empleado_id', empleadoId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Todas las asignaciones de cuenta del empleado, también las cerradas
+  // (módulo `correos`): alimentan el libro con "Cuenta asignada/cerrada".
+  async historialCuentasEmpleado(empleadoId) {
+    const { data, error } = await getClient().database
+      .from('asignaciones_cuenta')
+      .select('id, cuenta_id, fecha_inicio, fecha_fin, notas, cuentas(usuario, tipo_cuenta, plataformas(nombre))')
+      .eq('empleado_id', empleadoId)
+      .order('fecha_inicio', { ascending: false });
+    if (error) throw error;
+    return (data || []).map((a) => ({
+      id: a.id,
+      cuenta_id: a.cuenta_id,
+      fecha_inicio: a.fecha_inicio,
+      fecha_fin: a.fecha_fin,
+      notas: a.notas || '',
+      usuario: a.cuentas?.usuario || '',
+      tipo_cuenta: a.cuentas?.tipo_cuenta || 'personal',
+      plataforma: a.cuentas?.plataformas?.nombre || '',
+    }));
+  },
+
+  // Ídem para las licencias directas (módulo `licencias`).
+  async historialLicenciasEmpleado(empleadoId) {
+    const { data, error } = await getClient().database
+      .from('asignaciones_licencia')
+      .select('id, licencia_id, fecha_inicio, fecha_fin, licencias(software)')
+      .eq('empleado_id', empleadoId)
+      .order('fecha_inicio', { ascending: false });
+    if (error) throw error;
+    return (data || []).map((a) => ({
+      id: a.id,
+      licencia_id: a.licencia_id,
+      fecha_inicio: a.fecha_inicio,
+      fecha_fin: a.fecha_fin,
+      software: a.licencias?.software || '',
+    }));
+  },
+
+  // Equipos que pasaron por el empleado (también los ya devueltos) con los
+  // eventos de la hoja de vida de CADA equipo (módulo `equipos`). Quedarse con
+  // lo ocurrido mientras el equipo estuvo con este empleado lo hace
+  // `armarLibroEmpleado` (modules/empleados/libroEmpleado.js), que conoce las
+  // fechas de cada asignación.
+  async historialEquiposEmpleado(empleadoId) {
+    const db = getClient().database;
+    const { data: asigs, error } = await db
+      .from('asignaciones_equipo')
+      .select('id, equipo_id, fecha_inicio, fecha_fin, created_at, motivo_cierre, equipos(codigo, marca, modelo)')
+      .eq('empleado_id', empleadoId)
+      .order('fecha_inicio', { ascending: false });
+    if (error) throw error;
+    const asignaciones = (asigs || []).map((a) => ({
+      id: a.id,
+      equipo_id: a.equipo_id,
+      fecha_inicio: a.fecha_inicio,
+      fecha_fin: a.fecha_fin,
+      created_at: a.created_at,
+      motivo_cierre: a.motivo_cierre || null,
+      codigo: a.equipos?.codigo || '',
+      descripcion: [a.equipos?.marca, a.equipos?.modelo].filter(Boolean).join(' '),
+    }));
+    const equipoIds = [...new Set(asignaciones.map((a) => a.equipo_id))];
+    if (!equipoIds.length) return { asignaciones, eventos: [] };
+    const { data: evs, error: e2 } = await db
+      .from('eventos_equipo')
+      .select('id, equipo_id, evento, detalle, user_email, created_at')
+      .in('equipo_id', equipoIds)
+      .order('created_at', { ascending: false });
+    if (e2) throw e2;
+    return { asignaciones, eventos: evs || [] };
   },
 };
 

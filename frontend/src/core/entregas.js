@@ -1,7 +1,7 @@
 // Flujo compartido de "enviar credenciales": genera un enlace de
 // entrega de un solo uso (expira en 24h o al abrirse) y abre WhatsApp
 // con el mensaje estándar. Usado por el perfil del empleado
-// (CuentasPanel) y por la acción rápida de la tabla de Empleados.
+// (EmpleadoDetalleView) y por la acción rápida de la tabla de Empleados.
 import { crearEntrega } from '../api/passwords.js';
 
 export async function enviarCredencialesWhatsApp({ empleadoId, empleadoNombre, whatsapp, cuentaIds }) {

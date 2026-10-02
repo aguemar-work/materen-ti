@@ -5,8 +5,9 @@ import { useCuentasStore } from '../../stores/cuentas.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { generarPassword } from '../../core/generarPassword.js';
 import { showToast } from '../../core/toast.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import { traducirErrorDb } from '../../api/erroresDb.js';
 import AppButton from '../../components/ui/AppButton.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
@@ -19,10 +20,9 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Migrado a Modal.vue (pasada de diseño ago 2026, mismo patrón que
-// EmpleadoForm.vue/AccesoSensibleForm.vue): Teleport, bloqueo de scroll del
-// body, atrapamiento de foco y Escape los resuelve el componente
-// compartido.
+// Sobre AppDialog (diálogo único del sistema): bloqueo de scroll, foco
+// atrapado y Escape los resuelve el componente compartido. `@cerrado` se emite
+// en todo cierre; `resultado` dice si hubo guardado.
 let resultado = false;
 
 const store = useCuentasStore();
@@ -89,7 +89,7 @@ onMounted(async () => {
   try {
     plataformas.value = await insforgeApi.listPlataformas();
   } catch (e) {
-    error.value = e?.message || 'Error al cargar plataformas';
+    error.value = traducirErrorDb(e, { porDefecto: 'No se pudieron cargar las plataformas.' }).mensaje;
   } finally {
     cargandoPlataformas.value = false;
   }
@@ -103,7 +103,7 @@ async function activarModoCompartido() {
     try {
       correosCompartidos.value = await insforgeApi.listCorreosAsignables();
     } catch (e) {
-      error.value = e?.message || 'Error al cargar correos compartidos';
+      error.value = traducirErrorDb(e, { porDefecto: 'No se pudieron cargar los correos compartidos.' }).mensaje;
     } finally {
       cargandoCompartidos.value = false;
     }
@@ -124,7 +124,7 @@ async function copiarGenerada() {
     await navigator.clipboard.writeText(form.value.password);
     showToast('Contraseña copiada');
   } catch {
-    showToast('No se pudo copiar. Selecciónala manualmente', 'error');
+    showToast('No se pudo copiar. Selecciónela manualmente', 'error');
   }
 }
 
@@ -161,12 +161,12 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal
+  <AppDialog
     ref="modal"
     :titulo="esEdicion ? 'Editar cuenta' : 'Nueva cuenta'"
     :confirmar-cierre="confirmarCierre"
     :cerrar-en-backdrop="false"
-    @close="emit('cerrar', resultado)"
+    @cerrado="emit('cerrar', resultado)"
   >
     <form id="cuenta-form" class="form-grid" @submit.prevent="guardar">
       <!-- Modo: solo al crear. Personal = cuenta nueva del empleado;
@@ -360,7 +360,7 @@ async function guardar() {
         :loading="guardando"
       />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"

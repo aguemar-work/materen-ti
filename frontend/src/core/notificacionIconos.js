@@ -6,6 +6,10 @@ const ICONO_POR_TIPO = {
   cuenta_creada: 'ti-key',
   empleado_alta: 'ti-user-plus',
   empleado_baja: 'ti-user-off',
+  // Migración 102: la suspensión también marca "Rotar contraseña" en las
+  // cuentas compartidas y reutilizables del empleado. El destino
+  // (`/empleados/<id>`) lo trae la propia notificación.
+  empleado_suspendido: 'ti-user-pause',
   ticket_asignado: 'ti-user-check',
   ticket_estado_cambiado: 'ti-progress',
   ticket_comentario_nuevo: 'ti-message-circle',

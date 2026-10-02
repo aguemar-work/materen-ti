@@ -5,7 +5,8 @@ import { useEmpleadosStore } from '../../stores/empleados.js';
 import { normalizarTelefono, onlyDigits } from '../../core/formatters.js';
 import { nombreCompleto, estadoEmpleadoInfo } from '../../core/dominio-empleados.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
+import { traducirErrorDb } from '../../api/erroresDb.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
@@ -22,7 +23,7 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Migrado a Modal.vue (pasada de diseño ago 2026, mismo patrón que
+// Sobre AppDialog (diálogo único; antes Modal.vue, pasada de diseño ago 2026, mismo patrón que
 // AccesoSensibleForm.vue): Teleport, bloqueo de scroll del body,
 // atrapamiento de foco y Escape los resuelve el componente compartido —
 // antes este archivo los reimplementaba a mano y le faltaban los dos
@@ -142,7 +143,7 @@ onMounted(async () => {
       insforgeApi.listUbicaciones(),
     ]);
   } catch (e) {
-    error.value = e?.message || 'Error al cargar catálogos';
+    error.value = traducirErrorDb(e, { porDefecto: 'No se pudieron cargar los catálogos.' }).mensaje;
   } finally {
     cargandoEmpresas.value = false;
   }
@@ -194,7 +195,7 @@ async function guardar() {
     resultado = guardado;
     modal.value?.cerrar();
   } catch (e) {
-    if (e?.restriccion === 'empleados_dni_key' || e?.message?.includes('empleados_dni_key')) {
+    if (traducirErrorDb(e).restriccion === 'empleados_dni_key') {
       error.value = 'Ya existe un empleado con ese DNI';
       campoInvalido.value = 'dni';
       await buscarDuplicado(form.value.dni);
@@ -209,13 +210,13 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal
+  <AppDialog
     ref="modal"
     size="lg"
     :titulo="esEdicion ? 'Editar empleado' : 'Nuevo empleado'"
     :confirmar-cierre="confirmarCierre"
     :cerrar-en-backdrop="false"
-    @close="emit('cerrar', resultado)"
+    @cerrado="emit('cerrar', resultado)"
   >
     <form id="empleado-form" class="form-grid" @submit.prevent="guardar">
       <!-- ── Identidad ── -->
@@ -501,7 +502,7 @@ async function guardar() {
       <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
       <AppButton type="submit" form="empleado-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"

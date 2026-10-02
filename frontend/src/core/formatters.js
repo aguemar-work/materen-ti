@@ -29,6 +29,16 @@ export function onlyDigits(val) {
   return s || null;
 }
 
+// "45871236" → "****1236". DNI en lo IMPRESO que no es un acta: expediente,
+// hoja de vida, reportes y etiquetas (plan de mejora Ciclo 21, §3.10). El acta
+// de entrega/devolución lleva el DNI completo porque la persona firma
+// identificándose con él. Sin valor devuelve '' (el llamador decide el texto).
+export function enmascararDni(val) {
+  const s = String(val ?? '').replace(/\s/g, '');
+  if (!s) return '';
+  return s.length > 4 ? `****${s.slice(-4)}` : '****';
+}
+
 // Trim + colapsa espacios dobles
 export function trimText(val) {
   return clean(val);

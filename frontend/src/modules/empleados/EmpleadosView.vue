@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { traducirErrorDb } from '../../api/erroresDb.js';
 import { altaIncompleta } from '../../core/dominio-empleados.js';
 import { fechaLocalISO } from '../../core/formatters.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
@@ -14,6 +15,7 @@ import { showToast } from '../../core/toast.js';
 import { nombreCompleto } from '../../core/dominio-empleados.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
+import EmpleadoMotivoDialog from './EmpleadoMotivoDialog.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -162,14 +164,14 @@ async function exportar() {
       ]),
     );
   } catch (e) {
-    showToast(e?.message || 'Error al exportar', 'error');
+    showToast(traducirErrorDb(e, { porDefecto: 'No se pudo exportar.' }).mensaje, 'error');
   } finally {
     exportando.value = false;
   }
 }
 
 // ── Enviar credenciales sin entrar al perfil ──────────────────────
-// Mismo flujo que el botón de WhatsApp en la ficha (CuentasPanel):
+// Mismo flujo que el botón de WhatsApp en la ficha (EmpleadoDetalleView):
 // enlace de entrega de un solo uso con TODAS las cuentas del empleado.
 const enviandoCredsId = ref(null);
 
@@ -189,7 +191,7 @@ async function enviarCredenciales(emp) {
       cuentaIds: cuentas.map((c) => c.cuenta_id),
     });
   } catch (e) {
-    showToast(e?.message || 'Error al crear la entrega', 'error');
+    showToast(traducirErrorDb(e, { porDefecto: 'No se pudo crear la entrega.' }).mensaje, 'error');
   } finally {
     enviandoCredsId.value = null;
   }
@@ -233,8 +235,18 @@ function darDeBaja(empleado) {
   empleadoBaja.value = empleado;
 }
 
-function onBajaCerrada() {
+function onBajaCerrada(hecho) {
   empleadoBaja.value = null;
+  if (hecho) refrescarConteos();
+}
+
+// Suspender / Reactivar desde el menú ⋮ (RPC de la migración 102). Mismo
+// diálogo que el del expediente; la lista se recarga sola desde el store.
+const motivoEmpleado = ref(null); // { accion: 'suspender' | 'reactivar', empleado }
+
+function onMotivoCerrado(hecho) {
+  motivoEmpleado.value = null;
+  if (hecho) refrescarConteos();
 }
 
 // Acciones por fila: menú ⋮ de la tabla y de las tarjetas (rediseño
@@ -248,6 +260,18 @@ function accionesDe(emp) {
       label: 'Enviar credenciales por WhatsApp',
       disabled: enviandoCredsId.value === emp.id || !auth.puedeVerCredenciales,
       onClick: () => enviarCredenciales(emp),
+    },
+    {
+      icono: 'ti-user-pause',
+      label: 'Suspender',
+      visible: emp.estado === 'Activo',
+      onClick: () => { motivoEmpleado.value = { accion: 'suspender', empleado: emp }; },
+    },
+    {
+      icono: 'ti-user-check',
+      label: 'Reactivar',
+      visible: emp.estado !== 'Activo',
+      onClick: () => { motivoEmpleado.value = { accion: 'reactivar', empleado: emp }; },
     },
     {
       icono: 'ti-user-off',
@@ -366,7 +390,6 @@ onMounted(async () => {
                     <AppAvatar :nombre="nombreCompleto(emp)" />
                     <div class="min-w-0">
                       <div class="truncate font-medium text-gray-900">{{ nombreCompleto(emp) }}</div>
-                      <div class="text-xs text-gray-500 tabular-nums">DNI {{ emp.dni }}</div>
                     </div>
                   </div>
                 </template>
@@ -455,7 +478,6 @@ onMounted(async () => {
                 <AppAvatar :nombre="nombreCompleto(emp)" tamano="md" />
                 <div class="min-w-0 flex-1">
                   <div class="truncate font-medium text-gray-900">{{ nombreCompleto(emp) }}</div>
-                  <div class="text-xs text-gray-500 tabular-nums">DNI {{ emp.dni }}</div>
                 </div>
                 <div class="-mr-1 -mt-1" @click.stop>
                   <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
@@ -496,6 +518,13 @@ onMounted(async () => {
       v-if="empleadoBaja"
       :empleado="empleadoBaja"
       @cerrar="onBajaCerrada"
+    />
+
+    <EmpleadoMotivoDialog
+      v-if="motivoEmpleado"
+      :accion="motivoEmpleado.accion"
+      :empleado="motivoEmpleado.empleado"
+      @cerrar="onMotivoCerrado"
     />
   </div>
 </template>
