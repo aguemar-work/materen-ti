@@ -3,7 +3,7 @@
 //
 // Uso:
 //   node scripts/deploy.mjs migracion migrations/0XX_nombre.sql [--entorno produccion|v2] [--dry-run] [--forzar] [--solo-registro] [--proyecto <texto>] [--cambio CHG-0001]
-//   node scripts/deploy.mjs function  credenciales|tickets|encuestas|equipos-fotos [--entorno produccion|v2] [--dry-run] [--proyecto <texto>] [--cambio CHG-0001]
+//   node scripts/deploy.mjs function  credenciales|tickets|encuestas|equipos-fotos|portal [--entorno produccion|v2] [--dry-run] [--proyecto <texto>] [--cambio CHG-0001]
 //
 // --cambio CHG-####: el cambio (módulo Cambios, migración 107) que autoriza este despliegue. Se
 // valida el formato (CHG- y 4 o más dígitos) y, si las columnas schema_migrations.cambio_id /
@@ -54,7 +54,7 @@ import { userInfo } from 'node:os';
 import { crearTransporte, literalSql } from './lib/insforge-sql.mjs';
 import { verificarDist } from './build-functions.mjs';
 
-export const FUNCIONES_PERMITIDAS = ['credenciales', 'tickets', 'encuestas', 'equipos-fotos'];
+export const FUNCIONES_PERMITIDAS = ['credenciales', 'tickets', 'encuestas', 'equipos-fotos', 'portal'];
 // Archivo que se despliega: el dist autocontenido, no la fuente (que tiene marcadores
 // de inlinado y no corre en el runtime de InsForge).
 export const rutaDistFunction = (nombre) => `functions/dist/${nombre}.ts`;

@@ -33,6 +33,8 @@ export function useExpedienteEmpleado(obtenerId) {
   // sale la guía de alta y la sección «Solicitudes».
   const solicitudes = ref([]);
   const actas = ref([]);
+  // Enlace del portal del empleado sin revocar (109), solo con el módulo empleados.
+  const enlacePortal = ref(null);
   const ultimaRevision = ref(null);
   const cargando = ref(true);
   // La lectura de la ficha falló (red, permisos): distinto de "no existe".
@@ -51,6 +53,7 @@ export function useExpedienteEmpleado(obtenerId) {
   const puedeTickets = computed(() => auth.puedeVerModulo('tickets'));
   // Las solicitudes comparten el módulo `empleados` (no hay uno propio).
   const puedeSolicitudes = computed(() => auth.puedeVerModulo('empleados'));
+  const puedeEmpleados = puedeSolicitudes;
 
   const cuentasCargadas = computed(() => cuentasStore.empleadoActual === obtenerId());
 
@@ -77,7 +80,7 @@ export function useExpedienteEmpleado(obtenerId) {
 
   async function cargarCustodia() {
     const id = obtenerId();
-    const [eq, lic, ent, tk, act, rev, cu, sol] = await Promise.allSettled([
+    const [eq, lic, ent, tk, act, rev, cu, sol, enl] = await Promise.allSettled([
       puedeEquipos.value ? insforgeApi.equiposPorEmpleado(id) : [],
       puedeLicencias.value ? insforgeApi.licenciasPorEmpleado(id) : [],
       puedeCorreos.value ? insforgeApi.entregasDeEmpleado(id) : [],
@@ -86,6 +89,7 @@ export function useExpedienteEmpleado(obtenerId) {
       insforgeApi.ultimaRevisionAccesos(id),
       puedeCorreos.value ? cuentasStore.cargarPorEmpleado(id) : Promise.resolve(),
       puedeSolicitudes.value ? insforgeApi.solicitudesDeEmpleado(id) : [],
+      puedeEmpleados.value ? insforgeApi.enlacePortalActivo(id) : null,
     ]);
     equipos.value = valorDe(eq, []);
     licencias.value = valorDe(lic, []);
@@ -94,7 +98,8 @@ export function useExpedienteEmpleado(obtenerId) {
     actas.value = valorDe(act, []);
     ultimaRevision.value = valorDe(rev, null);
     solicitudes.value = valorDe(sol, []);
-    avisarFallos([eq, lic, ent, tk, act, rev, cu, sol]);
+    enlacePortal.value = valorDe(enl, null);
+    avisarFallos([eq, lic, ent, tk, act, rev, cu, sol, enl]);
   }
 
   async function cargarLibro() {
@@ -140,6 +145,16 @@ export function useExpedienteEmpleado(obtenerId) {
     actas.value.filter((a) => a.tipo === 'entrega').map((a) => [a.asignacion_equipo_id, a]),
   ));
 
+  /** Relee solo el enlace del portal (tras emitirlo o revocarlo). */
+  async function cargarEnlacePortal() {
+    if (!puedeEmpleados.value) return;
+    try {
+      enlacePortal.value = await insforgeApi.enlacePortalActivo(obtenerId());
+    } catch (e) {
+      showToast(traducirErrorDb(e, { porDefecto: 'No se pudo cargar el enlace del portal.' }).mensaje, 'error');
+    }
+  }
+
   /** Carga completa: ficha, custodia y (después) libro. */
   async function cargar() {
     cargando.value = true;
@@ -163,9 +178,9 @@ export function useExpedienteEmpleado(obtenerId) {
   }
 
   return {
-    empleado, equipos, licencias, entregas, tickets, solicitudes, actas, ultimaRevision,
+    empleado, equipos, licencias, entregas, tickets, solicitudes, actas, ultimaRevision, enlacePortal,
     cargando, errorFicha, libro, libroCargando, fechaBaja, actaEntregaPorAsignacion, nombresStaff,
-    puedeCorreos, puedeEquipos, puedeLicencias, puedeTickets, puedeSolicitudes, cuentasCargadas,
-    cargar, refrescar, cargarLibro,
+    puedeCorreos, puedeEquipos, puedeLicencias, puedeTickets, puedeSolicitudes, puedeEmpleados, cuentasCargadas,
+    cargar, refrescar, cargarLibro, cargarEnlacePortal,
   };
 }

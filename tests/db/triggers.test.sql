@@ -3218,7 +3218,8 @@ begin
   begin update public.config_retencion set tabla = 'accesos_log' where tabla = 'entregas'; fallos := fallos || '[112] acepto cambiar la tabla de una regla; ';
   exception when others then null; end;
   select count(*) into v_n from public.config_retencion;
-  if v_n <> 8 then fallos := fallos || '[112] config_retencion no tiene las 8 reglas sembradas (' || v_n || '); '; end if;
+  -- 8 reglas de la 112, mas la de empleado_enlaces cuando la 109 esta aplicada
+  if v_n <> 8 + (case when to_regclass('public.empleado_enlaces') is not null then 1 else 0 end) then fallos := fallos || '[112] config_retencion no tiene las reglas sembradas (' || v_n || '); '; end if;
   if has_table_privilege('authenticated', 'public.config_retencion', 'insert')
      or has_table_privilege('authenticated', 'public.config_retencion', 'delete')
      or has_table_privilege('anon', 'public.config_retencion', 'select')
@@ -5307,5 +5308,335 @@ begin
     raise exception 'TESTS_OK [107d] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [107d]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 109-a: portal del empleado (esquema) — tabla, CHECK, privilegios por columna,
+-- EXECUTE de las RPC, un solo enlace activo, guard 42501 sin sesion, trigger de
+-- empleados que revoca al pasar a no-Activo y retencion (112) de los enlaces
+-- muertos. La emision con sesion real y el guard de asignaciones para
+-- authenticated se prueban en scripts/sql-local/verificar-migraciones.mjs (S16).
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_enl1 uuid;
+  v_enl2 uuid;
+  v_res jsonb;
+  v_n int;
+  v_tipo text;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 109a') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 109a', '99010901', v_empresa) returning id into v_emp;
+
+  -- tabla, RLS, policy, indice unico parcial
+  if not (select relrowsecurity from pg_class where oid = 'public.empleado_enlaces'::regclass) then fallos := fallos || '[109] empleado_enlaces sin RLS; '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'empleado_enlaces';
+  if v_n <> 1 then fallos := fallos || '[109] se esperaba 1 policy en empleado_enlaces y hay ' || v_n || '; '; end if;
+  if not exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'uq_empleado_enlaces_uno_activo' and indexdef like '%revocado_at IS NULL%') then
+    fallos := fallos || '[109] falta el indice unico parcial de un enlace activo por empleado; ';
+  end if;
+
+  -- privilegios: el rol authenticated no lee el hash ni la IP y no escribe nada
+  if has_column_privilege('authenticated', 'public.empleado_enlaces', 'token_hash', 'select')
+     or has_column_privilege('authenticated', 'public.empleado_enlaces', 'ultimo_ip', 'select') then
+    fallos := fallos || '[109] authenticated puede leer token_hash o ultimo_ip; ';
+  end if;
+  if not has_column_privilege('authenticated', 'public.empleado_enlaces', 'expires_at', 'select')
+     or not has_column_privilege('authenticated', 'public.empleado_enlaces', 'revocado_at', 'select') then
+    fallos := fallos || '[109] authenticated no lee las columnas no secretas; ';
+  end if;
+  if has_table_privilege('authenticated', 'public.empleado_enlaces', 'insert') or has_table_privilege('authenticated', 'public.empleado_enlaces', 'update')
+     or has_table_privilege('authenticated', 'public.empleado_enlaces', 'delete') or has_table_privilege('anon', 'public.empleado_enlaces', 'select') then
+    fallos := fallos || '[109] privilegios de tabla de empleado_enlaces demasiado abiertos; ';
+  end if;
+
+  -- EXECUTE
+  if has_function_privilege('anon', 'public.portal_abrir(text,text)', 'execute') or has_function_privilege('authenticated', 'public.portal_abrir(text,text)', 'execute')
+     or has_function_privilege('anon', 'public.portal_confirmar_equipo(text,uuid,text)', 'execute') or has_function_privilege('authenticated', 'public.portal_confirmar_equipo(text,uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.portal_resolver_enlace(text)', 'execute') or has_function_privilege('authenticated', 'public.portal_resolver_enlace(text)', 'execute')
+     or not has_function_privilege('project_admin', 'public.portal_abrir(text,text)', 'execute') then
+    fallos := fallos || '[109] portal_abrir / confirmar / resolver deben ser solo de project_admin; ';
+  end if;
+  if has_function_privilege('anon', 'public.portal_emitir_enlace(uuid,text[],integer)', 'execute') or has_function_privilege('anon', 'public.portal_revocar_enlace(uuid)', 'execute')
+     or not has_function_privilege('authenticated', 'public.portal_emitir_enlace(uuid,text[],integer)', 'execute')
+     or not has_function_privilege('authenticated', 'public.portal_revocar_enlace(uuid)', 'execute') then
+    fallos := fallos || '[109] EXECUTE de portal_emitir_enlace / portal_revocar_enlace incorrecto; ';
+  end if;
+
+  -- guard: sin sesion de staff, emitir y revocar son 42501
+  begin perform public.portal_emitir_enlace(v_emp); fallos := fallos || '[109] emitir sin sesion no fue rechazado; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[109] emitir sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.portal_revocar_enlace(v_emp); fallos := fallos || '[109] revocar sin sesion no fue rechazado; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[109] revocar sin sesion lanzo ' || sqlstate || '; '; end if; end;
+
+  -- CHECK de la tabla
+  begin insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values (v_emp, 'no-es-un-hash', array['ver_equipos'], now() + interval '1 day');
+    fallos := fallos || '[109] admitio un token_hash mal formado; '; exception when check_violation then null; end;
+  begin insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values (v_emp, repeat('a', 64), array[]::text[], now() + interval '1 day');
+    fallos := fallos || '[109] admitio un alcance vacio; '; exception when check_violation then null; end;
+  begin insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values (v_emp, repeat('a', 64), array['confirmar_ticket'], now() + interval '1 day');
+    fallos := fallos || '[109] admitio el alcance confirmar_ticket (pendiente de V2); '; exception when check_violation then null; end;
+  begin insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values (v_emp, repeat('a', 64), array['ver_equipos', 'inventado'], now() + interval '1 day');
+    fallos := fallos || '[109] admitio un alcance desconocido; '; exception when check_violation then null; end;
+
+  -- un solo enlace activo por empleado
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values (v_emp, repeat('b', 64), array['ver_equipos'], now() + interval '1 day') returning id into v_enl1;
+  begin insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values (v_emp, repeat('c', 64), array['ver_equipos'], now() + interval '1 day');
+    fallos := fallos || '[109] admitio dos enlaces sin revocar para el mismo empleado; '; exception when unique_violation then null; end;
+  update public.empleado_enlaces set revocado_at = now() where id = v_enl1;
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values (v_emp, repeat('c', 64), array['ver_equipos'], now() + interval '1 day') returning id into v_enl2;
+  begin insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values (v_emp, repeat('c', 64), array['ver_equipos'], now() + interval '1 day');
+    fallos := fallos || '[109] admitio un token_hash repetido; '; exception when unique_violation then null; end;
+
+  -- pasar a Suspendido revoca el enlace; reactivar no lo revive
+  perform public.empleado_suspender_interno(v_emp, 'Prueba 109');
+  if (select revocado_at from public.empleado_enlaces where id = v_enl2) is null then fallos := fallos || '[109] suspender no revoco el enlace; '; end if;
+  perform public.empleado_reactivar_interno(v_emp, 'Prueba 109');
+  if (select revocado_at from public.empleado_enlaces where id = v_enl2) is null then fallos := fallos || '[109] reactivar revivio el enlace; '; end if;
+
+  -- retencion (112): la regla existe y la purga borra solo los enlaces muertos hace mas de 30 dias
+  select tabla into v_tipo from public.config_retencion where tabla = 'empleado_enlaces' and dias = 30 and accion = 'borrar';
+  if v_tipo is null then fallos := fallos || '[109] falta la regla de retencion de empleado_enlaces; '; end if;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 109a Dos', '99010902', v_empresa) returning id into v_enl1;
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at, created_at, revocado_at)
+    values (v_enl1, repeat('d', 64), array['ver_equipos'], now() - interval '50 days', now() - interval '60 days', null);
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at, created_at, revocado_at)
+    values (v_emp, repeat('e', 64), array['ver_equipos'], now() + interval '5 days', now() - interval '2 days', now() - interval '40 days');
+  v_res := public.purgar_datos_temporales();
+  if coalesce((v_res -> 'tablas' ->> 'empleado_enlaces')::int, -1) < 2 then fallos := fallos || '[109] la purga no borro los enlaces muertos: ' || coalesce((v_res -> 'tablas' ->> 'empleado_enlaces'), 'sin entrada') || '; '; end if;
+  if exists (select 1 from public.empleado_enlaces where token_hash in (repeat('d', 64), repeat('e', 64))) then fallos := fallos || '[109] quedaron enlaces muertos tras la purga; '; end if;
+  if not exists (select 1 from public.empleado_enlaces where id = v_enl2) then fallos := fallos || '[109] la purga borro un enlace revocado hace poco; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [109a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [109a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 109-b: portal_abrir — respuesta unica ante un token invalido, alcance, datos
+-- minimos (nunca contrasena, URL ni notas), aislamiento entre empleados,
+-- conteo de usos y auditoria
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_a uuid;
+  v_b uuid;
+  v_c uuid;
+  v_cuenta_a uuid;
+  v_cuenta_b uuid;
+  v_eq1 uuid;
+  v_eq2 uuid;
+  v_eq3 uuid;
+  v_eq4 uuid;
+  v_enl uuid;
+  v_res jsonb;
+  v_txt text;
+  v_n int;
+  v_nada constant jsonb := '{"ok": false, "code": "no_existe"}'::jsonb;
+  c_tok constant text := 'T109bAAAAAAAAAAAAAAAAAAA';
+  c_tok_acc constant text := 'T109bBBBBBBBBBBBBBBBBBBB';
+  c_tok_venc constant text := 'T109bCCCCCCCCCCCCCCCCCCC';
+  c_tok_rev constant text := 'T109bDDDDDDDDDDDDDDDDDDD';
+  c_tok_inact constant text := 'T109bEEEEEEEEEEEEEEEEEEE';
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 109b') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Rosa', 'CI 109b', '99010911', v_empresa) returning id into v_a;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Otro', 'CI 109b Ajeno', '99010912', v_empresa) returning id into v_b;
+
+  insert into public.plataformas (id, nombre) values ('__test_ci_109b__', '__TEST_CI__ Plataforma 109b');
+  insert into public.cuentas (plataforma_id, usuario, password, url, notas, tipo_cuenta)
+    values ('__test_ci_109b__', 'rosa109b@correo.test', 'enc2:SECRETO109:SECRETO109', 'https://secreto109.example/acceso', 'NOTA-SECRETA-109', 'personal') returning id into v_cuenta_a;
+  insert into public.cuentas (plataforma_id, usuario, password, tipo_cuenta)
+    values ('__test_ci_109b__', 'ajeno109b@correo.test', 'enc2:AJENO109:AJENO109', 'personal') returning id into v_cuenta_b;
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cuenta_a, v_a), (v_cuenta_b, v_b);
+
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_109b__', '__TEST_CI__ Tipo 109b');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_109B1__', '__test_ci_109b__') returning id into v_eq1;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_109B2__', '__test_ci_109b__') returning id into v_eq2;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_109B3__', '__test_ci_109b__') returning id into v_eq3;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_109B4__', '__test_ci_109b__') returning id into v_eq4;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id, condicion_entrega) values (v_eq1, v_a, 'Nuevo, con funda'), (v_eq2, v_a, null), (v_eq3, v_b, null);
+  -- un equipo devuelto no aparece
+  insert into public.asignaciones_equipo (equipo_id, empleado_id, fecha_inicio, fecha_fin, motivo_cierre)
+    values (v_eq4, v_a, current_date - 30, current_date - 10, 'devolucion');
+
+  insert into public.tickets (codigo, token, titulo, descripcion, empleado_id, estado) values
+    ('__TESTCI-109B1__', 'tk109bAAAAAAAAAAAAAAAAAA', '__TEST_CI__ Ticket abierto de Rosa', 'd', v_a, 'abierto'),
+    ('__TESTCI-109B2__', 'tk109bBBBBBBBBBBBBBBBBBB', '__TEST_CI__ Ticket cerrado de Rosa', 'd', v_a, 'cerrado'),
+    ('__TESTCI-109B3__', 'tk109bCCCCCCCCCCCCCCCCCC', '__TEST_CI__ Ticket del ajeno', 'd', v_b, 'abierto');
+
+  -- enlaces: completo (A), solo accesos (B), vencido, revocado y de un empleado Inactivo
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at)
+    values (v_a, encode(sha256(convert_to(c_tok, 'UTF8')), 'hex'), array['ver_accesos', 'ver_equipos', 'ver_tickets', 'confirmar_equipo'], now() + interval '3 days') returning id into v_enl;
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at)
+    values (v_b, encode(sha256(convert_to(c_tok_acc, 'UTF8')), 'hex'), array['ver_accesos'], now() + interval '3 days');
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Venc', 'CI 109b', '99010913', v_empresa) returning id into v_c;
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at, created_at)
+    values (v_c, encode(sha256(convert_to(c_tok_venc, 'UTF8')), 'hex'), array['ver_equipos'], now() - interval '1 day', now() - interval '8 days');
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Rev', 'CI 109b', '99010914', v_empresa) returning id into v_c;
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at, revocado_at)
+    values (v_c, encode(sha256(convert_to(c_tok_rev, 'UTF8')), 'hex'), array['ver_equipos'], now() + interval '3 days', now());
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado) values ('Inact', 'CI 109b', '99010915', v_empresa, 'Inactivo') returning id into v_c;
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at)
+    values (v_c, encode(sha256(convert_to(c_tok_inact, 'UTF8')), 'hex'), array['ver_equipos'], now() + interval '3 days');
+
+  -- SIN ORACULO: inexistente, mal formado, nulo, vencido, revocado e inactivo dan exactamente lo mismo
+  if public.portal_abrir('T109bZZZZZZZZZZZZZZZZZZZ') is distinct from v_nada then fallos := fallos || '[109] token inexistente: respuesta distinta; '; end if;
+  if public.portal_abrir('corto') is distinct from v_nada then fallos := fallos || '[109] token mal formado: respuesta distinta; '; end if;
+  if public.portal_abrir(null) is distinct from v_nada then fallos := fallos || '[109] token nulo: respuesta distinta; '; end if;
+  if public.portal_abrir(c_tok_venc) is distinct from v_nada then fallos := fallos || '[109] token vencido: respuesta distinta; '; end if;
+  if public.portal_abrir(c_tok_rev) is distinct from v_nada then fallos := fallos || '[109] token revocado: respuesta distinta; '; end if;
+  if public.portal_abrir(c_tok_inact) is distinct from v_nada then fallos := fallos || '[109] empleado Inactivo: respuesta distinta; '; end if;
+  if public.portal_abrir(c_tok || 'x') is distinct from v_nada or public.portal_abrir(lower(c_tok)) is distinct from v_nada then fallos := fallos || '[109] token alterado: respuesta distinta; '; end if;
+  -- el hash en hexadecimal NO sirve como token
+  if public.portal_abrir(encode(sha256(convert_to(c_tok, 'UTF8')), 'hex')) is distinct from v_nada then fallos := fallos || '[109] el hash sirvio como token; '; end if;
+
+  -- apertura valida
+  v_res := public.portal_abrir(c_tok, '203.0.113.7');
+  v_txt := v_res::text;
+  if (v_res ->> 'ok')::boolean is not true then fallos := fallos || '[109] el token valido no abre: ' || v_txt || '; '; end if;
+  if v_res ->> 'nombre' <> 'Rosa CI 109b' then fallos := fallos || '[109] nombre inesperado: ' || coalesce(v_res ->> 'nombre', 'null') || '; '; end if;
+  if jsonb_array_length(v_res -> 'equipos') <> 2 then fallos := fallos || '[109] se esperaban 2 equipos vigentes y hay ' || jsonb_array_length(v_res -> 'equipos') || '; '; end if;
+  if jsonb_array_length(v_res -> 'accesos') <> 1 then fallos := fallos || '[109] se esperaba 1 acceso; '; end if;
+  if jsonb_array_length(v_res -> 'tickets') <> 1 then fallos := fallos || '[109] se esperaba 1 ticket activo; '; end if;
+  -- forma exacta de cada renglon
+  if (select array_agg(k order by k) from jsonb_object_keys((v_res -> 'accesos') -> 0) k) is distinct from array['plataforma', 'usuario'] then
+    fallos := fallos || '[109] un acceso expone mas que plataforma y usuario; ';
+  end if;
+  if (select array_agg(k order by k) from jsonb_object_keys((v_res -> 'equipos') -> 0) k) is distinct from array['asignacion_id', 'codigo', 'condicion', 'confirmado_at', 'entregado', 'tipo'] then
+    fallos := fallos || '[109] un equipo expone otras claves; ';
+  end if;
+  if (select array_agg(k order by k) from jsonb_object_keys((v_res -> 'tickets') -> 0) k) is distinct from array['codigo', 'creado', 'estado', 'titulo'] then
+    fallos := fallos || '[109] un ticket expone otras claves; ';
+  end if;
+  -- NADA secreto ni ajeno en TODO el texto de la respuesta
+  if v_txt like '%SECRETO109%' or v_txt like '%enc2:%' or v_txt like '%secreto109.example%' or v_txt like '%NOTA-SECRETA-109%' or v_txt like '%password%' then
+    fallos := fallos || '[109] la respuesta filtra contrasena, URL o notas; ';
+  end if;
+  if v_txt like '%ajeno109b%' or v_txt like '%AJENO109%' or v_txt like '%109B3%' or v_txt like '%Ajeno%' or v_txt like '%tk109b%' then
+    fallos := fallos || '[109] la respuesta incluye datos de otro empleado o el token de un ticket; ';
+  end if;
+  if v_txt like '%99010911%' then fallos := fallos || '[109] la respuesta incluye el DNI; '; end if;
+  if v_txt not like '%Nuevo, con funda%' or v_txt not like '%rosa109b@correo.test%' or v_txt not like '%TESTCI-109B1%' then fallos := fallos || '[109] faltan los datos propios en la respuesta; '; end if;
+  if v_txt like '%Ticket cerrado%' then fallos := fallos || '[109] aparece un ticket cerrado; '; end if;
+
+  -- usos, ultimo uso, IP y auditoria (una fila por hora)
+  select usos into v_n from public.empleado_enlaces where id = v_enl;
+  if v_n <> 1 or (select ultimo_uso_at from public.empleado_enlaces where id = v_enl) is null or (select ultimo_ip from public.empleado_enlaces where id = v_enl) <> '203.0.113.7' then
+    fallos := fallos || '[109] no se registro el uso del enlace; ';
+  end if;
+  perform public.portal_abrir(c_tok, '203.0.113.7');
+  select usos into v_n from public.empleado_enlaces where id = v_enl;
+  if v_n <> 2 then fallos := fallos || '[109] el segundo uso no se conto (' || v_n || '); '; end if;
+  select count(*) into v_n from public.accesos_log where accion = 'portal_abierto' and cuenta_usuario = '(portal)' and detalle = 'Portal abierto por Rosa CI 109b';
+  if v_n <> 1 then fallos := fallos || '[109] portal_abierto debe auditarse una vez por hora y hay ' || v_n || '; '; end if;
+  if exists (select 1 from public.accesos_log where accion = 'portal_abierto' and (detalle like '%' || c_tok || '%')) then fallos := fallos || '[109] el token quedo en la auditoria; '; end if;
+
+  -- alcance acotado: solo accesos, y solo los del dueño del enlace
+  v_res := public.portal_abrir(c_tok_acc);
+  if not (v_res ? 'accesos') or v_res ? 'equipos' or v_res ? 'tickets' then fallos := fallos || '[109] el alcance ver_accesos no acota la respuesta; '; end if;
+  if v_res::text like '%rosa109b%' or v_res::text not like '%ajeno109b@correo.test%' then fallos := fallos || '[109] el enlace de otro empleado ve datos que no son suyos; '; end if;
+
+  -- el empleado que pasa a Suspendido deja de abrir
+  perform public.empleado_suspender_interno(v_a, 'Prueba 109b');
+  if public.portal_abrir(c_tok) is distinct from v_nada then fallos := fallos || '[109] un empleado Suspendido sigue abriendo el portal; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [109b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [109b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 109-c: portal_confirmar_equipo — solo equipos del propio empleado, idempotente,
+-- evento recepcion_confirmada, alcance, token invalido y asignacion cerrada
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_a uuid;
+  v_b uuid;
+  v_eq_a uuid;
+  v_eq_b uuid;
+  v_eq_cer uuid;
+  v_asig_a uuid;
+  v_asig_b uuid;
+  v_asig_cer uuid;
+  v_enl uuid;
+  v_res jsonb;
+  v_res2 jsonb;
+  v_ts timestamptz;
+  v_n int;
+  c_tok constant text := 'T109cAAAAAAAAAAAAAAAAAAA';
+  c_tok_sin constant text := 'T109cBBBBBBBBBBBBBBBBBBB';
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 109c') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Ana', 'CI 109c', '99010921', v_empresa) returning id into v_a;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Beto', 'CI 109c', '99010922', v_empresa) returning id into v_b;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_109c__', '__TEST_CI__ Tipo 109c');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_109CA__', '__test_ci_109c__') returning id into v_eq_a;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_109CB__', '__test_ci_109c__') returning id into v_eq_b;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_109CC__', '__test_ci_109c__') returning id into v_eq_cer;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_eq_a, v_a) returning id into v_asig_a;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_eq_b, v_b) returning id into v_asig_b;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id, fecha_inicio, fecha_fin, motivo_cierre)
+    values (v_eq_cer, v_a, current_date - 20, current_date - 5, 'devolucion') returning id into v_asig_cer;
+
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at)
+    values (v_a, encode(sha256(convert_to(c_tok, 'UTF8')), 'hex'), array['ver_equipos', 'confirmar_equipo'], now() + interval '2 days') returning id into v_enl;
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at)
+    values (v_b, encode(sha256(convert_to(c_tok_sin, 'UTF8')), 'hex'), array['ver_equipos'], now() + interval '2 days');
+
+  -- token invalido: la misma respuesta unica
+  if public.portal_confirmar_equipo('T109cZZZZZZZZZZZZZZZZZZZ', v_asig_a) is distinct from '{"ok": false, "code": "no_existe"}'::jsonb
+     or public.portal_confirmar_equipo(null, v_asig_a) is distinct from '{"ok": false, "code": "no_existe"}'::jsonb then
+    fallos := fallos || '[109] confirmar con un token invalido no da no_existe; ';
+  end if;
+
+  -- sin el alcance confirmar_equipo
+  if public.portal_confirmar_equipo(c_tok_sin, v_asig_b) is distinct from '{"ok": false, "code": "sin_alcance"}'::jsonb then fallos := fallos || '[109] sin alcance no da sin_alcance; '; end if;
+  if (select confirmado_por_empleado_at from public.asignaciones_equipo where id = v_asig_b) is not null then fallos := fallos || '[109] se confirmo sin alcance; '; end if;
+
+  -- un enlace NO confirma el equipo de otro empleado ni uno cerrado ni uno inexistente ni nulo
+  if public.portal_confirmar_equipo(c_tok, v_asig_b) is distinct from '{"ok": false, "code": "no_encontrada"}'::jsonb then fallos := fallos || '[109] confirmo el equipo de otro empleado; '; end if;
+  if (select confirmado_por_empleado_at from public.asignaciones_equipo where id = v_asig_b) is not null then fallos := fallos || '[109] el equipo ajeno quedo confirmado; '; end if;
+  if public.portal_confirmar_equipo(c_tok, v_asig_cer) is distinct from '{"ok": false, "code": "no_encontrada"}'::jsonb then fallos := fallos || '[109] confirmo una asignacion cerrada; '; end if;
+  if public.portal_confirmar_equipo(c_tok, gen_random_uuid()) is distinct from '{"ok": false, "code": "no_encontrada"}'::jsonb
+     or public.portal_confirmar_equipo(c_tok, null) is distinct from '{"ok": false, "code": "no_encontrada"}'::jsonb then
+    fallos := fallos || '[109] una asignacion inexistente no da no_encontrada; ';
+  end if;
+
+  -- confirmar la propia: fecha, enlace y evento
+  v_res := public.portal_confirmar_equipo(c_tok, v_asig_a, '203.0.113.8');
+  if (v_res ->> 'ok')::boolean is not true or (v_res ->> 'ya_confirmada')::boolean is not false then fallos := fallos || '[109] la confirmacion propia fallo: ' || v_res::text || '; '; end if;
+  select confirmado_por_empleado_at into v_ts from public.asignaciones_equipo where id = v_asig_a;
+  if v_ts is null or (select confirmacion_enlace_id from public.asignaciones_equipo where id = v_asig_a) is distinct from v_enl then fallos := fallos || '[109] no quedo la fecha o el enlace de la confirmacion; '; end if;
+  select count(*) into v_n from public.eventos_equipo where equipo_id = v_eq_a and evento = 'recepcion_confirmada';
+  if v_n <> 1 then fallos := fallos || '[109] se esperaba 1 evento recepcion_confirmada y hay ' || v_n || '; '; end if;
+  if exists (select 1 from public.eventos_equipo where equipo_id = v_eq_a and evento = 'recepcion_confirmada' and (detalle like '%Ana%' or user_id is not null)) then fallos := fallos || '[109] el evento lleva el nombre o un actor; '; end if;
+
+  -- idempotente: no cambia la fecha ni repite el evento
+  v_res2 := public.portal_confirmar_equipo(c_tok, v_asig_a);
+  if (v_res2 ->> 'ya_confirmada')::boolean is not true or (v_res2 ->> 'confirmado_at')::timestamptz is distinct from v_ts then fallos := fallos || '[109] la segunda confirmacion no es idempotente; '; end if;
+  select count(*) into v_n from public.eventos_equipo where equipo_id = v_eq_a and evento = 'recepcion_confirmada';
+  if v_n <> 1 then fallos := fallos || '[109] la segunda confirmacion repitio el evento; '; end if;
+
+  -- y el portal la muestra
+  if ((public.portal_abrir(c_tok) -> 'equipos' -> 0 ->> 'confirmado_at')::timestamptz) is distinct from v_ts then fallos := fallos || '[109] el portal no muestra la fecha confirmada; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [109c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [109c]: %', fallos;
   end if;
 end $$;

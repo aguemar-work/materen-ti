@@ -23,6 +23,18 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-02** (**Ciclo 21 · H3-5 — Portal del empleado sin cuentas**, migración 109, **sin aplicar**; se
+  aplica DESPUÉS de la 112 porque extiende su purga) — Enlace personal firmado `/mi/<token>` (144 bits, solo
+  se guarda el `sha256`; vigencia de 7 días, rango 1 a 30; un enlace activo por empleado; revocable y se
+  revoca solo al suspender o dar de baja). El empleado ve sus equipos, sus cuentas (plataforma y usuario,
+  nunca contraseña, URL ni notas) y hasta 20 tickets activos, y confirma la recepción de sus equipos
+  (`confirmado_por_empleado_at`, solo escribible por `portal_confirmar_equipo`). Token inválido, vencido,
+  revocado o de un empleado no Activo responden igual (`no_existe`). RPC de staff `portal_emitir_enlace` y
+  `portal_revocar_enlace`; `portal_abrir` y `portal_confirmar_equipo` solo `project_admin`. Quinta edge
+  function `portal` (rate-limit de 20 por IP y por token cada 10 min; proyecta los campos uno a uno),
+  **sin desplegar**. Expediente: «Enviar enlace del portal» (el enlace se muestra una sola vez; no hay
+  envío automático). `purgar_datos_temporales()` borra enlaces muertos hace más de 30 días. Pendiente de
+  V2: `confirmar_ticket`. Riesgo residual medio-bajo: el enlace es un bearer token.
 - **2026-10-02** (**Ciclo 21 · H3-4 — Servicios y cambios**, migración 107, **aplicada por el dueño**) — Catálogo
   `servicios` (≤15, `servicio_id` opcional en categorías, plataformas, licencias y tipos de equipo) y registro
   de cambios `CHG-####` (estándar, normal, emergencia) con whitelist de estados, aprobación por JEFE,

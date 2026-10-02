@@ -26,6 +26,8 @@ import EmpleadoCaratula from './EmpleadoCaratula.vue';
 import EmpleadoGuiaAlta from './EmpleadoGuiaAlta.vue';
 import EmpleadoCustodia from './EmpleadoCustodia.vue';
 import EmpleadoEntregas from './EmpleadoEntregas.vue';
+import EmpleadoPortal from './EmpleadoPortal.vue';
+import PortalEnlaceDialog from './PortalEnlaceDialog.vue';
 import EmpleadoDatos from './EmpleadoDatos.vue';
 import EmpleadoSolicitudes from './EmpleadoSolicitudes.vue';
 import EmpleadoTickets from './EmpleadoTickets.vue';
@@ -45,9 +47,9 @@ const cuentasStore = useCuentasStore();
 
 const exp = useExpedienteEmpleado(() => route.params.id);
 const {
-  empleado, equipos, licencias, entregas, tickets, solicitudes, ultimaRevision, cargando,
+  empleado, equipos, licencias, entregas, tickets, solicitudes, ultimaRevision, enlacePortal, cargando,
   libro, libroCargando, fechaBaja, actaEntregaPorAsignacion, nombresStaff,
-  puedeCorreos, puedeEquipos, puedeLicencias, puedeTickets, puedeSolicitudes,
+  puedeCorreos, puedeEquipos, puedeLicencias, puedeTickets, puedeSolicitudes, puedeEmpleados,
 } = exp;
 
 const nombreCompleto = computed(() => nombreCompletoDe(empleado.value));
@@ -141,6 +143,7 @@ const mostrarForm = ref(false);
 const mostrarBaja = ref(false);
 const mostrarReingreso = ref(false);
 const mostrarSolicitud = ref(false);
+const mostrarPortal = ref(false);
 const dialogoMotivo = ref(null); // 'suspender' | 'reactivar' | 'revisar' | null
 
 const resumenRevision = computed(() => ({
@@ -180,6 +183,12 @@ async function onCicloCerrado(hecho) {
   mostrarReingreso.value = false;
   dialogoMotivo.value = null;
   if (hecho) await exp.refrescar();
+}
+
+// Portal del empleado (109): el enlace se genera o se revoca; solo se relee su estado.
+async function onPortalCerrado(hubo) {
+  mostrarPortal.value = false;
+  if (hubo) await exp.cargarEnlacePortal();
 }
 
 async function onSolicitudCerrada(creada) {
@@ -247,6 +256,7 @@ watch(() => route.params.id, async (id) => {
               :enviando="enviandoEntrega"
               @enviar="enviarEntrega"
             />
+            <EmpleadoPortal v-if="puedeEmpleados && empleado.estado === 'Activo'" :enlace="enlacePortal" @abrir="mostrarPortal = true" />
             <EmpleadoDatos :empleado="empleado" :revision="ultimaRevision" :revisor="revisor" />
           </aside>
         </div>
@@ -277,6 +287,8 @@ watch(() => route.params.id, async (id) => {
     />
 
     <ReingresarEmpleadoDialog v-if="mostrarReingreso" :empleado="empleado" @cerrar="onCicloCerrado" />
+
+    <PortalEnlaceDialog v-if="mostrarPortal" :empleado="empleado" :enlace="enlacePortal" @cerrar="onPortalCerrado" />
 
     <SolicitudForm v-if="mostrarSolicitud" :empleado="empleado" @cerrar="onSolicitudCerrada" />
 

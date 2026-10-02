@@ -1,5 +1,5 @@
 {
-  // Type-check de las 4 edge functions, sobre functions/dist/*.ts (los archivos
+  // Type-check de las 5 edge functions, sobre functions/dist/*.ts (los archivos
   // autocontenidos que genera scripts/build-functions.mjs y que son lo que se
   // despliega; las fuentes functions/*.ts + _shared/ no se chequean sueltas porque
   // los bloques compartidos se inlinan recién en el build). Runtime real: Deno Subhosting —

@@ -79,6 +79,7 @@ empresa en la seguridad de sus sistemas para la auditoría y el rate-limit.
 | `intentos_publicos.clave` | IP, DNI o id de usuario del intento | Nadie con sesión (solo el cliente admin de las functions) | **7 días** | Borrado |
 | `ticket_busqueda_intentos` (DNI, IP), `ticket_creacion_intentos` (IP), `encuesta_respuesta_intentos` (IP) | Tablas legadas de rate-limit | JEFE (SELECT) | **7 días** | Borrado |
 | `contexto_transaccion` | Rol y origen de una transacción | Nadie con sesión | **1 día** | Borrado |
+| `empleado_enlaces` (`token_hash`, `ultimo_ip`, `alcance`, `usos`) | Enlace del portal del empleado (migración 109): hash del token (nunca el token), IP de la última apertura y cuántas veces se abrió | Staff con el módulo `empleados` lee las columnas **no secretas**; `token_hash` y `ultimo_ip` no se conceden a ningún cliente | **30 días** después de vencido o revocado | Borrado de la fila; la fecha de confirmación de recepción del equipo se conserva |
 | `notificaciones.titulo` | Texto como "Empleado registrado · Nombre" | Staff (las generales) o su destinatario | **180 días**, solo las **leídas** | Borrado; al anonimizar, el nombre pasa a `Empleado anonimizado` |
 | `equipos_importacion.raw` | Texto crudo del Excel de activos (incluye el usuario del equipo) | Módulo `equipos` | Hasta migrar la fila a Equipos (es una bandeja de trabajo; la fila desaparece al migrarse) | Una fila que nunca se migra conserva el texto **(pendiente de decidir)**; en la branch se vacía |
 | `encuesta_respuestas.respuestas` | Respuestas anónimas | Staff | Con la ronda | Se conserva (anónimas por diseño) |
@@ -125,6 +126,7 @@ personales); si esa fila no puede escribirse, la purga se revierte entera.
 | `entregas` | 30 | vaciar `payload` (desde que se abrió; si nunca se abrió, desde que venció) |
 | `notificaciones` | 180 | borrar las **leídas** (personales: por su destinatario; generales: por todo el staff activo) |
 | `accesos_log` | 365 | `NULL` en `ip` y `user_agent`; **nunca** se borran filas |
+| `empleado_enlaces` | 30 | borrar los enlaces del portal vencidos o revocados hace más de N días (migración 109; `asignaciones_equipo.confirmacion_enlace_id` pasa a `NULL`, `confirmado_por_empleado_at` se conserva) |
 
 Programación diaria: **todavía no existe**. Pasos y compromisos en la cabecera de
 la migración 112 (`schedules create` hacia una acción de mantenimiento, o hacia

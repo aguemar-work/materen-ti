@@ -18,6 +18,7 @@ import { RPC_LICENCIAS } from './rpc-licencias.js';
 import { RPC_SOLICITUDES, definirActorSolicitudes } from './rpc-solicitudes.js';
 import { RPC_KB, definirActorKb, calcularKpiKb } from './rpc-kb.js';
 import { RPC_CAMBIOS, definirActorCambios } from './rpc-cambios.js';
+import { RPC_PORTAL } from './rpc-portal.js';
 import { crearDatosCambios } from './cambios-datos.js';
 import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
@@ -944,6 +945,7 @@ export const TABLAS = {
   accesos_log, notificaciones, notificaciones_lecturas, entregas,
   empleado_eventos, empleado_revisiones_acceso, v_empleado_ultima_revision_acceso,
   solicitud_tipos, solicitudes, solicitud_pasos,
+  empleado_enlaces: [],
   ...datosCambios,
 };
 
@@ -1018,6 +1020,8 @@ export const RPC = {
   ...RPC_CAMBIOS,
   // KEDB (106): publicar_workaround_problema, crear_kb_desde_ticket, registrar_uso_kb_ticket — maqueta/rpc-kb.js.
   ...RPC_KB,
+  // Portal del empleado (109): emitir y revocar el enlace — maqueta/rpc-portal.js (la function pública, en client.js).
+  ...RPC_PORTAL,
   // Inicio (103): una sola RPC; escenarios por `?maqueta=...` en maqueta/inicio.js.
   dashboard_resumen: (db) => resumenInicio(db, { usuarioId: USUARIO_MAQUETA.id }),
 };

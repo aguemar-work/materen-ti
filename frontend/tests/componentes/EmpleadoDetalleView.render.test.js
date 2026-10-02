@@ -31,6 +31,7 @@ vi.mock('../../src/api/insforge.js', () => ({
     actasDeEmpleado: vi.fn(),
     ultimaRevisionAccesos: vi.fn(),
     solicitudesDeEmpleado: vi.fn(),
+    enlacePortalActivo: vi.fn(),
     completarPasoSolicitud: vi.fn(),
     listEventosEmpleado: vi.fn(),
     historialEquiposEmpleado: vi.fn(),
@@ -110,6 +111,7 @@ function cargarApi(sobre = {}) {
   insforgeApi.actasDeEmpleado.mockResolvedValue(api.actas);
   insforgeApi.ultimaRevisionAccesos.mockResolvedValue({ revisado_at: '2026-09-20T09:00:00', revisado_por: 'u1' });
   insforgeApi.solicitudesDeEmpleado.mockResolvedValue(api.solicitudes);
+  insforgeApi.enlacePortalActivo.mockResolvedValue(api.enlacePortal ?? null);
   insforgeApi.completarPasoSolicitud.mockResolvedValue({ id: 'p6', estado: 'hecho' });
   insforgeApi.listEventosEmpleado.mockResolvedValue(api.eventos);
   insforgeApi.historialEquiposEmpleado.mockResolvedValue(api.equipos.length ? HIST_EQUIPOS : { asignaciones: [], eventos: [] });
@@ -642,5 +644,39 @@ describe('Expediente — carga', () => {
     expect(insforgeApi.getEmpleado).toHaveBeenCalledTimes(1);
     expect(insforgeApi.listEventosEmpleado).toHaveBeenCalledTimes(1);
     expect(insforgeApi.listCuentasPorEmpleado).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Expediente — portal del empleado (migración 109)', () => {
+  const ENLACE = { id: 'l1', empleado_id: 'e01', alcance: ['ver_equipos', 'confirmar_equipo'], expires_at: '2099-01-01T00:00:00Z', revocado_at: null, usos: 2, ultimo_uso_at: '2026-10-01T15:00:00Z' };
+
+  it('un empleado Activo con el módulo empleados ve «Portal del empleado» y la acción «Enviar enlace del portal»', async () => {
+    const { w } = await montar();
+    const s = seccion(w, 'Portal del empleado');
+    expect(s).toBeTruthy();
+    expect(s.text()).toContain('Sin enlace');
+    expect(s.findAll('button').map((b) => b.text())).toContain('Enviar enlace del portal');
+    expect(insforgeApi.enlacePortalActivo).toHaveBeenCalledWith('e01');
+  });
+
+  it('con un enlace vigente muestra su estado, qué puede ver y cuántas veces se abrió', async () => {
+    cargarApi({ enlacePortal: ENLACE });
+    const { w } = await montar();
+    const t = seccion(w, 'Portal del empleado').text();
+    expect(t).toContain('Vigente');
+    expect(t).toContain('Abierto 2 veces');
+    expect(t).not.toContain('Sin enlace');
+  });
+
+  it('sin el módulo empleados la sección no aparece ni se consulta el enlace', async () => {
+    const { w } = await montar({ rol: 'ASISTENTE', modulos: ['correos', 'equipos'] });
+    expect(seccion(w, 'Portal del empleado')).toBeFalsy();
+    expect(insforgeApi.enlacePortalActivo).not.toHaveBeenCalled();
+  });
+
+  it('a un empleado dado de baja no se le ofrece el portal', async () => {
+    cargarApi({ empleado: { ...EMPLEADO, estado: 'Inactivo' } });
+    const { w } = await montar();
+    expect(seccion(w, 'Portal del empleado')).toBeFalsy();
   });
 });

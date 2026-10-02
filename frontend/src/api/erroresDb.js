@@ -48,6 +48,7 @@ export const UNICOS = {
   idx_entregas_token_hash: 'Ya existe una entrega con ese enlace.',
   solicitudes_una_abierta_por_tipo: 'Ya hay una solicitud abierta de ese tipo para esta persona.',
   solicitudes_ticket_unico: 'El ticket ya tiene una solicitud vinculada.',
+  uq_empleado_enlaces_uno_activo: 'El empleado ya tiene un enlace del portal vigente. Intente de nuevo.',
   kb_articulos_workaround_por_problema: 'El problema ya tiene un artículo de workaround.',
   servicios_nombre_unico: 'Ya existe un servicio con ese nombre.',
   servicios_pkey: 'Ya existe un servicio con ese identificador.',

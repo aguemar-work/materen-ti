@@ -15,6 +15,9 @@ const REPO = opt('--repo', join(aqui, '..', '..'));
 const MIG = join(REPO, 'migrations');
 // Todas las migraciones desde la 099 que existan en migrations/ (una migracion nueva entra sola).
 const NUEVAS = readdirSync(MIG).filter((f) => /^\d{3}_.*\.sql$/.test(f) && Number(f.slice(0, 3)) >= 99).map((f) => f.slice(0, 3)).sort();
+// La 109 (portal del empleado) EXTIENDE la purga de la 112 (config_retencion): en produccion se aplica despues de la
+// 112 aunque su numero sea menor, asi que aqui va la ultima (y su rollback, la primera).
+if (NUEVAS.includes('109')) NUEVAS.splice(NUEVAS.indexOf('109'), 1), NUEVAS.push('109');
 // Rollback: de la mas nueva a la mas vieja, con la 104 (independiente) justo antes de la 099.
 const ROLLBACK_ORDEN = [...NUEVAS].reverse().filter((n) => n !== '104' && n !== '099').concat(NUEVAS.includes('104') ? ['104'] : [], ['099']).filter((n, i, a) => NUEVAS.includes(n) && a.indexOf(n) === i);
 const lee = (p) => readFileSync(p, 'utf8');
@@ -456,7 +459,7 @@ async function escenarios(etiqueta) {
     afirmar('S12 112: config_retencion la edita el jefe (updated_by) y no un asistente', cr.dias === 14 && cr.updated_by === U.jefe, JSON.stringify(cr));
     await como(U.jefe, () => db.exec(`update config_retencion set dias = 7 where tabla = 'intentos_publicos'`));
     await falla('S12 112: el jefe no puede cambiar la accion de una regla (sin privilegio de columna)', () => como(U.jefe, () => db.exec(`update config_retencion set accion = 'borrar' where tabla = 'entregas'`)), { code: '42501' });
-    afirmar('S12 112: un asistente lee las 8 reglas', (await como(U.asist, () => uno('select count(*)::int n from config_retencion'))).n === 8);
+    afirmar('S12 112: un asistente lee las reglas de retencion (8; 9 con la 109)', [8, 9].includes((await como(U.asist, () => uno('select count(*)::int n from config_retencion'))).n));
     await falla('S12 112: anon no lee config_retencion', () => anonimo(() => db.exec('select * from config_retencion')), { code: '42501' });
 
     // entorno
@@ -689,6 +692,123 @@ async function escenarios(etiqueta) {
     afirmar('S15 107: schema_migrations guarda un cambio_id aunque ese cambio no exista', (await uno(`select cambio_id from schema_migrations where version = 's15${sfx}'`)).cambio_id === 'CHG-9999');
   }
 
+  // ---- S16 109: portal del empleado por enlace firmado, con sesiones reales (guard, privilegios por columna, hash, un solo enlace, aislamiento)
+  if ((await uno("select to_regclass('public.empleado_enlaces') as t")).t) {
+    const NADA = { ok: false, code: 'no_existe' };
+    const abrir = async (tok, ip = null) => (await uno(`select portal_abrir(${tok === null ? 'null' : `'${tok}'`}, ${ip ? `'${ip}'` : 'null'}) as j`)).j;
+    const confirmar = async (tok, asig) => (await uno(`select portal_confirmar_equipo('${tok}', ${asig ? `'${asig}'` : 'null'}) as j`)).j;
+    const P1 = await mkEmp('Portal1'), P2 = await mkEmp('Portal2');
+    const eqP1 = await mkEq('PA'), eqP2 = await mkEq('PB'), eqP3 = await mkEq('PC'), eqLibre = await mkEq('PL');
+    const aP1 = await como(U.asist, () => uno(`select * from asignar_equipo('${eqP1}', '${P1}', 'bueno')`));
+    const aP1b = await como(U.asist, () => uno(`select * from asignar_equipo('${eqP3}', '${P1}', 'bueno')`));
+    const aP2 = await como(U.asist, () => uno(`select * from asignar_equipo('${eqP2}', '${P2}', 'bueno')`));
+    await crearCuenta(U.asist, `portal1-${sfx}@x.test`, P1, 'personal');
+    await crearCuenta(U.asist, `portal2-${sfx}@x.test`, P2, 'personal');
+
+    // emitir: guard por modulo, estado y argumentos
+    await falla('S16 109: sin el modulo empleados emitir un enlace da 42501', () => como(U.sinmod, () => db.exec(`select portal_emitir_enlace('${P1}')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S16 109: staff inactivo no emite enlaces', () => como(U.inact, () => db.exec(`select portal_emitir_enlace('${P1}')`)), { code: '42501' });
+    await falla('S16 109: anon no ejecuta portal_emitir_enlace', () => anonimo(() => db.exec(`select portal_emitir_enlace('${P1}')`)), { code: '42501' });
+    await falla('S16 109: a un empleado Inactivo no se le emite enlace (P0001)', () => como(U.asist, () => db.exec(`select portal_emitir_enlace('${E.baja}')`)), { code: 'P0001', msg: 'Activo' });
+    await falla('S16 109: un empleado inexistente es P0002', () => como(U.asist, () => db.exec("select portal_emitir_enlace('00000000-0000-0000-0000-000000000000')")), { code: 'P0002' });
+    await falla('S16 109: un alcance desconocido es P0001', () => como(U.asist, () => db.exec(`select portal_emitir_enlace('${P1}', array['ver_equipos','inventado'])`)), { code: 'P0001', msg: 'alcance' });
+    await falla('S16 109: confirmar_ticket (pendiente de V2) no es un alcance valido', () => como(U.asist, () => db.exec(`select portal_emitir_enlace('${P1}', array['confirmar_ticket'])`)), { code: 'P0001' });
+    await falla('S16 109: vigencia de 0 dias es P0001', () => como(U.asist, () => db.exec(`select portal_emitir_enlace('${P1}', null, 0)`)), { code: 'P0001', msg: 'vigencia' });
+    await falla('S16 109: vigencia de 31 dias es P0001', () => como(U.asist, () => db.exec(`select portal_emitir_enlace('${P1}', null, 31)`)), { code: 'P0001', msg: 'vigencia' });
+    afirmar('S16 109: los intentos rechazados no dejaron ningun enlace', (await uno(`select count(*)::int n from empleado_enlaces where empleado_id in ('${P1}', '${E.baja}')`)).n === 0);
+
+    // emision valida: token de 144 bits en base64url, solo se guarda su hash, auditoria sin token
+    const em1 = (await como(U.asist, () => uno(`select portal_emitir_enlace('${P1}') as j`))).j;
+    afirmar('S16 109: emitir devuelve ok, token de 24 caracteres base64url, alcance completo y 7 dias', em1.ok === true && /^[A-Za-z0-9_-]{24}$/.test(em1.token) && em1.dias === 7 && em1.alcance.length === 4, JSON.stringify({ ...em1, token: '...' }));
+    const fila1 = await uno(`select * from empleado_enlaces where id = '${em1.id}'`);
+    const hashEsperado = (await uno(`select encode(sha256(convert_to('${em1.token}', 'UTF8')), 'hex') h`)).h;
+    afirmar('S16 109: se guarda sha256(token) y NUNCA el token', fila1.token_hash === hashEsperado && fila1.token_hash !== em1.token, fila1.token_hash);
+    afirmar('S16 109: el token no aparece en ninguna columna del enlace ni de la auditoria', (await uno(`select count(*)::int n from empleado_enlaces e where e::text like '%${em1.token}%'`)).n === 0
+      && (await uno(`select count(*)::int n from accesos_log l where l::text like '%${em1.token}%'`)).n === 0);
+    const dias1 = (await uno(`select extract(epoch from (expires_at - created_at)) / 86400 as d from empleado_enlaces where id = '${em1.id}'`)).d;
+    afirmar('S16 109: la vigencia por defecto es la del parametro (7 dias)', Math.round(Number(dias1)) === 7, String(dias1));
+    const logE = await q(`select user_id, cuenta_usuario, detalle from accesos_log where accion = 'enviar' and cuenta_usuario = '(portal)' and detalle like '%Portal1 Esc ${sfx} (7 d; alcance: ver_accesos, ver_equipos, ver_tickets, confirmar_equipo)'`);
+    afirmar('S16 109: emitir audita "enviar" con el actor de la sesion', logE.length === 1 && logE[0].user_id === U.asist, JSON.stringify(logE));
+
+    // el portal abre con ese token; cualquier otro da lo mismo
+    const ab1 = await abrir(em1.token, '198.51.100.4');
+    afirmar('S16 109: el portal abre con el token emitido y muestra solo lo del empleado', ab1.ok === true && ab1.equipos.length === 2 && ab1.accesos.length === 1 && ab1.accesos[0].usuario === `portal1-${sfx}@x.test` && !JSON.stringify(ab1).includes(`portal2-${sfx}`), JSON.stringify(ab1));
+    afirmar('S16 109: la respuesta del portal no lleva contrasena, URL ni notas', !/enc2:|password|"url"|"notas"/i.test(JSON.stringify(ab1)));
+    afirmar('S16 109: token inexistente, hash del token y token nulo dan la misma respuesta', JSON.stringify(await abrir('ZZZZZZZZZZZZZZZZZZZZZZZZ')) === JSON.stringify(NADA) && JSON.stringify(await abrir(hashEsperado)) === JSON.stringify(NADA) && JSON.stringify(await abrir(null)) === JSON.stringify(NADA));
+
+    // un solo enlace activo: re-emitir revoca el anterior
+    const em2 = (await como(U.asist, () => uno(`select portal_emitir_enlace('${P1}', array['ver_accesos'], 30) as j`))).j;
+    afirmar('S16 109: re-emitir da otro token, otro alcance y 30 dias', em2.token !== em1.token && em2.alcance.join() === 'ver_accesos' && em2.dias === 30);
+    afirmar('S16 109: queda UN solo enlace sin revocar por empleado', (await uno(`select count(*)::int n from empleado_enlaces where empleado_id = '${P1}' and revocado_at is null`)).n === 1 && (await uno(`select count(*)::int n from empleado_enlaces where empleado_id = '${P1}'`)).n === 2);
+    afirmar('S16 109: el token anterior ya no abre (misma respuesta que uno inexistente)', JSON.stringify(await abrir(em1.token)) === JSON.stringify(NADA));
+    const ab2 = await abrir(em2.token);
+    afirmar('S16 109: el alcance reducido solo devuelve accesos', ab2.ok === true && 'accesos' in ab2 && !('equipos' in ab2) && !('tickets' in ab2));
+    // confirmar_equipo implica ver_equipos
+    const emC = (await como(U.asist, () => uno(`select portal_emitir_enlace('${P1}', array['confirmar_equipo']) as j`))).j;
+    afirmar('S16 109: confirmar_equipo suma ver_equipos al alcance', emC.alcance.join() === 'confirmar_equipo,ver_equipos', emC.alcance.join());
+
+    // otro empleado: token distinto, aislamiento
+    const emP2 = (await como(U.asist, () => uno(`select portal_emitir_enlace('${P2}') as j`))).j;
+    afirmar('S16 109: dos empleados no comparten token', emP2.token !== emC.token && emP2.token !== em1.token);
+    const abP2 = await abrir(emP2.token);
+    afirmar('S16 109: el enlace del otro empleado no ve nada del primero', abP2.ok === true && !JSON.stringify(abP2).includes(`portal1-${sfx}`) && !JSON.stringify(abP2).includes(eqP1) && abP2.equipos.length === 1 && abP2.equipos[0].asignacion_id === aP2.id);
+
+    // confirmar equipo: solo los propios; el cliente no puede falsear ni borrar la confirmacion
+    afirmar('S16 109: confirmar el equipo de OTRO empleado se rechaza (no_encontrada)', (await confirmar(emC.token, aP2.id)).code === 'no_encontrada' && (await uno(`select confirmado_por_empleado_at c from asignaciones_equipo where id = '${aP2.id}'`)).c === null);
+    const cf = await confirmar(emC.token, aP1.id);
+    afirmar('S16 109: confirmar el propio equipo registra fecha, enlace y evento', cf.ok === true && cf.ya_confirmada === false
+      && (await uno(`select confirmacion_enlace_id e from asignaciones_equipo where id = '${aP1.id}'`)).e === emC.id
+      && (await uno(`select count(*)::int n from eventos_equipo where equipo_id = '${eqP1}' and evento = 'recepcion_confirmada'`)).n === 1);
+    afirmar('S16 109: confirmar dos veces es idempotente', (await confirmar(emC.token, aP1.id)).ya_confirmada === true && (await uno(`select count(*)::int n from eventos_equipo where equipo_id = '${eqP1}' and evento = 'recepcion_confirmada'`)).n === 1);
+    await falla('S16 109: ni el jefe fabrica una confirmacion con un UPDATE (42501)', () => como(U.jefe, () => db.exec(`update asignaciones_equipo set confirmado_por_empleado_at = now() where id = '${aP2.id}'`)), { code: '42501' });
+    await falla('S16 109: ni el jefe borra una confirmacion con un UPDATE (42501)', () => como(U.jefe, () => db.exec(`update asignaciones_equipo set confirmado_por_empleado_at = null where id = '${aP1.id}'`)), { code: '42501' });
+    await falla('S16 109: ni un INSERT directo trae la confirmacion hecha (42501)', () => como(U.jefe, () => db.exec(`insert into asignaciones_equipo (equipo_id, empleado_id, confirmado_por_empleado_at) values ('${eqLibre}', '${P2}', now())`)), { code: '42501' });
+    afirmar('S16 109: la confirmacion de P1 sigue intacta tras los intentos del jefe', (await uno(`select confirmado_por_empleado_at c from asignaciones_equipo where id = '${aP1.id}'`)).c !== null);
+    await como(U.asist, () => db.exec(`select devolver_equipo('${aP1.id}', 'bueno', 'devolucion', false)`));
+    afirmar('S16 109: devolver un equipo ya confirmado funciona y conserva la confirmacion', (await uno(`select fecha_fin is not null f, confirmado_por_empleado_at is not null c from asignaciones_equipo where id = '${aP1.id}'`)).f === true && (await uno(`select confirmado_por_empleado_at is not null c from asignaciones_equipo where id = '${aP1.id}'`)).c === true);
+    afirmar('S16 109: una asignacion devuelta ya no se confirma', (await confirmar(emC.token, aP1.id)).code === 'no_encontrada' && (await confirmar(emC.token, aP1b.id)).ok === true);
+
+    // privilegios por columna y RLS de lectura para el staff
+    await falla('S16 109: el staff no lee token_hash (42501)', () => como(U.asist, () => db.exec('select token_hash from empleado_enlaces')), { code: '42501' });
+    await falla('S16 109: el staff no lee ultimo_ip (42501)', () => como(U.jefe, () => db.exec('select ultimo_ip from empleado_enlaces')), { code: '42501' });
+    await falla('S16 109: select * tampoco (incluye columnas secretas)', () => como(U.jefe, () => db.exec('select * from empleado_enlaces')), { code: '42501' });
+    afirmar('S16 109: con el modulo empleados se lee el estado del enlace (columnas no secretas)', (await como(U.asist, () => uno(`select count(*)::int n from empleado_enlaces where empleado_id = '${P1}' and revocado_at is null`))).n === 1);
+    afirmar('S16 109: sin el modulo empleados no se ve ningun enlace', (await como(U.sinmod, () => uno('select count(id)::int n from empleado_enlaces'))).n === 0);
+    await falla('S16 109: anon no lee empleado_enlaces', () => anonimo(() => db.exec('select id from empleado_enlaces')), { code: '42501' });
+    await falla('S16 109: ni el jefe inserta directo en empleado_enlaces', () => como(U.jefe, () => db.exec(`insert into empleado_enlaces (empleado_id, token_hash, alcance, expires_at) values ('${P2}', '${'f'.repeat(64)}', array['ver_equipos'], now() + interval '1 day')`)), { code: '42501' });
+    await falla('S16 109: ni el jefe actualiza empleado_enlaces', () => como(U.jefe, () => db.exec(`update empleado_enlaces set revocado_at = null where empleado_id = '${P2}'`)), { code: '42501' });
+    await falla('S16 109: ni el jefe borra empleado_enlaces', () => como(U.jefe, () => db.exec(`delete from empleado_enlaces where empleado_id = '${P2}'`)), { code: '42501' });
+
+    // las RPC del portal no son accesibles desde un navegador
+    await falla('S16 109: authenticated no ejecuta portal_abrir', () => como(U.jefe, () => db.exec(`select portal_abrir('${emP2.token}')`)), { code: '42501' });
+    await falla('S16 109: anon no ejecuta portal_abrir', () => anonimo(() => db.exec(`select portal_abrir('${emP2.token}')`)), { code: '42501' });
+    await falla('S16 109: authenticated no ejecuta portal_confirmar_equipo', () => como(U.jefe, () => db.exec(`select portal_confirmar_equipo('${emP2.token}', '${aP2.id}')`)), { code: '42501' });
+    await falla('S16 109: authenticated no ejecuta portal_resolver_enlace', () => como(U.jefe, () => db.exec(`select portal_resolver_enlace('${emP2.token}')`)), { code: '42501' });
+
+    // revocar
+    await falla('S16 109: sin el modulo empleados revocar da 42501', () => como(U.sinmod, () => db.exec(`select portal_revocar_enlace('${P2}')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S16 109: anon no revoca', () => anonimo(() => db.exec(`select portal_revocar_enlace('${P2}')`)), { code: '42501' });
+    afirmar('S16 109: revocar devuelve true la primera vez y false la segunda', (await como(U.asist, () => uno(`select portal_revocar_enlace('${P2}') as v`))).v === true && (await como(U.asist, () => uno(`select portal_revocar_enlace('${P2}') as v`))).v === false);
+    afirmar('S16 109: un enlace revocado da la misma respuesta que uno inexistente', JSON.stringify(await abrir(emP2.token)) === JSON.stringify(NADA) && JSON.stringify(await confirmar(emP2.token, aP2.id)) === JSON.stringify(NADA));
+    afirmar('S16 109: revocar audita "permiso_revocado" con el actor', (await uno(`select count(*)::int n from accesos_log where accion = 'permiso_revocado' and cuenta_usuario = '(portal)' and user_id = '${U.asist}'`)).n === 1);
+
+    // pasar a Suspendido revoca; reactivar no lo revive
+    const emS = (await como(U.asist, () => uno(`select portal_emitir_enlace('${P2}') as j`))).j;
+    afirmar('S16 109: tras revocar se puede emitir uno nuevo y abre', (await abrir(emS.token)).ok === true);
+    await como(U.asist, () => db.exec(`select suspender_empleado('${P2}', 'Prueba portal')`));
+    afirmar('S16 109: suspender al empleado revoca su enlace', JSON.stringify(await abrir(emS.token)) === JSON.stringify(NADA));
+    await como(U.asist, () => db.exec(`select reactivar_empleado('${P2}')`));
+    afirmar('S16 109: reactivarlo no revive el enlace viejo', JSON.stringify(await abrir(emS.token)) === JSON.stringify(NADA));
+    afirmar('S16 109: se puede emitir uno nuevo al reactivarlo', (await abrir((await como(U.asist, () => uno(`select portal_emitir_enlace('${P2}') as j`))).j.token)).ok === true);
+
+    // ningun token (ni en claro ni en la bitacora) quedo guardado
+    const tokens = [em1.token, em2.token, emC.token, emP2.token, emS.token];
+    let rastro = 0;
+    for (const t of tokens) rastro += (await uno(`select count(*)::int n from accesos_log l where l::text like '%${t}%'`)).n + (await uno(`select count(*)::int n from empleado_enlaces e where e::text like '%${t}%'`)).n + (await uno(`select count(*)::int n from eventos_equipo x where x::text like '%${t}%'`)).n;
+    afirmar('S16 109: ningun token emitido aparece en accesos_log, empleado_enlaces ni eventos_equipo', rastro === 0, String(rastro));
+    afirmar('S16 109: los 5 tokens emitidos son distintos', new Set(tokens).size === 5);
+  }
+
   console.log(`   escenarios (${etiqueta}): ${esc.ok} afirmaciones OK, ${esc.mal.length} MAL`);
   reg(`escenarios integrados (${etiqueta}): ${esc.ok} afirmaciones`, esc.mal.length === 0, esc.mal.join(' || '));
 }
@@ -771,7 +891,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|110|111|112)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -850,6 +970,7 @@ if (!args.includes('--sin-dependencias')) {
     ['108', ['099']], ['108', ['101']], ['108', ['102']], ['108', ['103']],
     ['106', ['099']], ['106', ['101']],
     ['107', ['099']], ['107', ['101']],
+    ['109', ['099']], ['109', ['101']], ['109', ['103']], ['109', ['104']], ['109', ['112']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });
@@ -918,6 +1039,7 @@ if (NUEVAS.includes('112') && existsSync(join(REPO, 'scripts/anonimizar.sql'))) 
       `insert into intentos_publicos (ambito, clave) values ('tickets.crear.dni', '70000001')`,
       `insert into ticket_busqueda_intentos (ip, dni) values ('203.0.113.9', '70000001')`,
       `insert into equipos_importacion (raw, notas) values ('{"usuario":"Persona1 Real1"}'::jsonb, 'nota import')`,
+      ...(NUEVAS.includes('109') ? [`insert into empleado_enlaces (empleado_id, token_hash, alcance, expires_at, ultimo_ip) select id, repeat('a', 64), array['ver_equipos'], now() + interval '1 day', '203.0.113.9' from empleados limit 1`] : []),
     ];
     for (const s of sembrar) await db.exec(s);
     const nEmp = (await q('select count(*)::int n from empleados'))[0].n;
@@ -944,7 +1066,7 @@ if (NUEVAS.includes('112') && existsSync(join(REPO, 'scripts/anonimizar.sql'))) 
       if ((await c("select count(*)::int n from entregas where payload <> '' or empleado_nombre <> 'Empleado de prueba'")) !== 0) malos.push('entregas con datos');
       if ((await c("select count(*)::int n from notificaciones where titulo <> 'Notificación de prueba'")) !== 0) malos.push('notificaciones con titulo');
       if ((await c("select count(*)::int n from equipos_importacion where raw <> '{}'::jsonb or notas is not null")) !== 0) malos.push('equipos_importacion con datos');
-      for (const t of ['accesos_log', 'intentos_publicos', 'ticket_busqueda_intentos', 'empleado_eventos']) {
+      for (const t of ['accesos_log', 'intentos_publicos', 'ticket_busqueda_intentos', 'empleado_eventos', ...(NUEVAS.includes('109') ? ['empleado_enlaces'] : [])]) {
         if ((await c(`select count(*)::int n from ${t}`)) !== 0) malos.push(`${t} no quedo vacia`);
       }
       reg('h3 anonimizar.sql: ningun dato personal sembrado sobrevive', malos.length === 0, malos.join(', '));

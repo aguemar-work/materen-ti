@@ -16,6 +16,7 @@ import { TABLAS, RPC, USUARIO_MAQUETA } from './datos.js';
 import { funcionEquiposFotos, alActualizarFila } from './rpc-equipos.js';
 import { alInsertarFilaSolicitudes } from './rpc-solicitudes.js';
 import { funcionTickets } from './rpc-tickets.js';
+import { funcionPortal } from './rpc-portal.js';
 
 const clonar = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 
@@ -344,6 +345,11 @@ function respuestaFuncion(nombre, body = {}) {
   // Seguimiento por token y captura adjunta privada (URL firmada): ./rpc-tickets.js
   if (nombre === 'tickets') {
     const resultado = funcionTickets(db, body);
+    if (resultado) return clonar(resultado);
+  }
+  // Portal del empleado por enlace (109): ./rpc-portal.js
+  if (nombre === 'portal') {
+    const resultado = funcionPortal(db, body);
     if (resultado) return clonar(resultado);
   }
   // Fire-and-forget de auditoría: el llamador lo ignora; responder ok evita ruido.

@@ -45,6 +45,13 @@ export default [
     meta: { public: true },
   },
   {
+    // Portal del empleado por enlace personal (identidad ligera, sin cuenta; migración 109)
+    path: '/mi/:token',
+    name: 'portal-empleado',
+    component: () => import('../../modules/portal/PortalEmpleadoView.vue'),
+    meta: { public: true },
+  },
+  {
     // Responder una ronda de encuesta anónima (sin sesión, sin un solo uso)
     path: '/encuesta/:slug',
     name: 'encuesta-publica',

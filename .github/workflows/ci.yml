@@ -38,11 +38,11 @@ on:
         required: false
         default: ''
       desplegar_functions:
-        description: 'Redesplegar las 4 edge functions (credenciales, tickets, encuestas, equipos-fotos)'
+        description: 'Redesplegar las 5 edge functions (credenciales, tickets, encuestas, equipos-fotos, portal)'
         type: boolean
         default: false
       funcion:
-        description: 'Funcion a redesplegar cuando desplegar_functions=true ("todas" = las 4)'
+        description: 'Funcion a redesplegar cuando desplegar_functions=true ("todas" = las 5)'
         type: choice
         options:
           - todas
@@ -50,6 +50,7 @@ on:
           - tickets
           - encuestas
           - equipos-fotos
+          - portal
         default: 'todas'
   schedule:
     # Todos los lunes 08:00 UTC: recordatorio forzado (job que SÍ falla) de
@@ -309,13 +310,13 @@ jobs:
         run: |
           case "$FUNCION_SELECCIONADA" in
             todas)
-              fns="credenciales tickets encuestas equipos-fotos"
+              fns="credenciales tickets encuestas equipos-fotos portal"
               ;;
-            credenciales|tickets|encuestas|equipos-fotos)
+            credenciales|tickets|encuestas|equipos-fotos|portal)
               fns="$FUNCION_SELECCIONADA"
               ;;
             *)
-              echo "::error::Valor de 'funcion' no permitido: '$FUNCION_SELECCIONADA'. Debe ser una de: todas, credenciales, tickets, encuestas, equipos-fotos."
+              echo "::error::Valor de 'funcion' no permitido: '$FUNCION_SELECCIONADA'. Debe ser una de: todas, credenciales, tickets, encuestas, equipos-fotos, portal."
               exit 1
               ;;
           esac

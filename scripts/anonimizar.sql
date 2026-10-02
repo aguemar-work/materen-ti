@@ -46,6 +46,7 @@
 --                      intentos_publicos, ticket_busqueda_intentos,
 --                      ticket_creacion_intentos, encuesta_respuesta_intentos,
 --                      contexto_transaccion
+--   borrada (DELETE) empleado_enlaces (109: hash del token e IP; sin CASCADE)
 -- Cada tabla/columna se anonimiza SOLO si existe en la branch: sirve para una
 -- branch anterior a las migraciones 099-112 (las del PR se aplican después).
 --
@@ -173,6 +174,13 @@ begin
        set nota = null,
            motivo_omision = case when motivo_omision is null then null else 'Motivo de prueba' end,
            label = case when objetivo_id is null then label else 'Paso de prueba (' || clave || ')' end;
+  end if;
+
+  -- ── 7a) enlaces del portal del empleado (109): hash del token e IP ──────
+  -- DELETE y no TRUNCATE ... CASCADE: asignaciones_equipo referencia esta tabla
+  -- (confirmacion_enlace_id) y el CASCADE vaciaría también las asignaciones.
+  if to_regclass('public.empleado_enlaces') is not null then
+    delete from public.empleado_enlaces;
   end if;
 
   -- ── 7) tablas que se vacían (TRUNCATE no dispara triggers de fila) ──────

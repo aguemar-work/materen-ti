@@ -101,6 +101,11 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   cambio no se borra, se cancela; fuera de borrador su contenido se congela; una emergencia sin
   aprobar no se cierra (plazo de 48 h). `servicios` lo escribe solo un JEFE (máximo 15 vivos).
   `deploy.mjs --cambio` valida el formato y registra `cambio_id`, pero no bloquea si el cambio no existe.
+- **Portal del empleado (109)**: el enlace es un bearer token. Nunca se guarda su valor (solo `sha256`) ni se
+  muestra más de una vez; su alcance nunca incluye contraseñas, URL ni notas; un token inválido responde
+  siempre `no_existe`. `confirmado_por_empleado_at` solo lo escribe `portal_confirmar_equipo`;
+  `portal_abrir` y `portal_confirmar_equipo` son solo `project_admin`. `functions/portal.ts` proyecta los
+  campos uno a uno: un campo nuevo se agrega en la RPC, en la proyección y en el test 109b.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una
@@ -158,7 +163,7 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   `schema_migrations`); `apply-migration.mjs` es un alias en desuso. Nunca
   `db query` con cuerpos `$$`. Verificar siempre después.
 - **Updates masivos en Windows**: un solo `UPDATE ... FROM (VALUES ...)` por lote.
-- **Edge functions** (4). El runtime exige UN archivo por function, así que los
+- **Edge functions** (5: credenciales, tickets, encuestas, equipos-fotos y portal). El runtime exige UN archivo por function, así que los
   helpers comunes viven en `functions/_shared/*.ts` y se inlinan con
   `// @inline ./_shared/<modulo>.ts`: se edita la fuente (`functions/<nombre>.ts` o
   `_shared`), se corre `npm run build:functions` y se **commitea** `functions/dist/`
@@ -172,6 +177,7 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   | `tickets` | crear/buscar/seguir tickets públicos, adjuntos | rate-limit por IP/DNI |
   | `encuestas` | `abrir`/`responder` rondas anónimas | distinta de `ticket_satisfaccion` |
   | `equipos-fotos` | subir/borrar fotos (magic bytes + tamaño) | exige staff activo **con** módulo `equipos` |
+  | `portal` | portal del empleado por enlace firmado (`abrir`, `confirmarEquipo`) | sin sesión; rate-limit por IP y por token; sin desplegar hasta aplicar la 109 |
 
 - ⚠️ **Tope de fotos**: el `4` vive en dos lugares que se mueven juntos,
   `MAX_FOTOS_EQUIPO` (`core/dominio-equipos.js`) y `MAX_FOTOS_POR_EQUIPO`

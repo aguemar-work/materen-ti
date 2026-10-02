@@ -24,6 +24,7 @@ import { notificacionesApi } from './domains/notificaciones.js';
 import { solicitudesApi } from './domains/solicitudes.js';
 import { cambiosApi } from './domains/cambios.js';
 import { serviciosApi } from './domains/servicios.js';
+import { portalApi } from './domains/portal.js';
 
 export const insforgeApi = {
   mode: 'insforge',
@@ -48,4 +49,5 @@ export const insforgeApi = {
   ...solicitudesApi,
   ...cambiosApi,
   ...serviciosApi,
+  ...portalApi,
 };

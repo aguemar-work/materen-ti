@@ -83,6 +83,8 @@ const METODOS = [
   'transicionarCambio', 'aprobarCambio', 'rechazarCambio', 'vincularCambioTicket', 'desvincularCambioTicket',
   // servicios (migración 107): catálogo de ≤ 15, lo escribe solo un JEFE
   'listServicios', 'createServicio', 'updateServicio', 'softDeleteServicio',
+  // portal del empleado (migración 109): enlace por token, solo columnas no secretas
+  'enlacePortalActivo', 'emitirEnlacePortal', 'revocarEnlacePortal',
   // notificaciones
   'listNotificaciones', 'listLecturas', 'marcarLeida', 'marcarVariasLeidas',
   // permisos de módulo (migración 056)
