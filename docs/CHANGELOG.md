@@ -23,6 +23,21 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-02** (**Ciclo 21 · H2 (parte 3) — `_shared` de functions, retención y anonimización**) — (1)
+  `functions/_shared/*.ts` (cors, http, errores, auth fail-closed, permisos por RPC, ratelimit, imágenes
+  con `stripExif`, version) + `scripts/build-functions.mjs` (marcador `// @inline ./_shared/x.ts`,
+  salida determinista) que genera `functions/dist/<nombre>.ts`, versionado y desplegado por
+  `scripts/deploy.mjs` (que aborta si `dist/` está desactualizado); CI corre `check:functions`.
+  (2) **Migración 112** (escrita, **sin aplicar**; requiere 099, 102, 103 y 104): `config_retencion`,
+  `purgar_datos_temporales()` (intentos de rate-limit 7 d, `contexto_transaccion` 1 d, `entregas.payload`
+  a 30 d, notificaciones leídas 180 d, `ip`/`user_agent` de `accesos_log` a 365 d; auditada como
+  `purga_ejecutada` solo con conteos), `anonimizar_empleado` (solo JEFE, Inactivo con baja de 5 años o
+  más, historial íntegro, DNI → `ANON-` con hash aleatorio irreversible, anonimiza también el nombre
+  que quedó en `eventos_equipo.detalle` y `accesos_log.detalle`), `v_empleados_anonimizables`, tabla
+  `entorno` + `es_branch()` y `scripts/anonimizar.sql` (solo corre en una rama de pruebas).
+  `docs/PROTECCION-DATOS.md` inventaría los datos personales (bases legales y plazos ARCO marcados «a
+  confirmar con asesoría legal»). La programación diaria de la purga no está creada: opciones y
+  riesgos en la cabecera de la 112.
 - **2026-10-02** (**Ciclo 21 · H2 (parte 2) — Adjuntos privados, diálogo único y Licencias partida**) — El
   dueño aplicó 101, 102, 103 y 110 en producción tras corregir un rechazo del servidor: **InsForge
   rechaza todo `.sql` cuyo texto contenga `set_config`/`set local`/`set role`, incluso en comentarios**

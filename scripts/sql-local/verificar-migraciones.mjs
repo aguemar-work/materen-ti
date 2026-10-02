@@ -46,7 +46,7 @@ console.log('=== (0) texto aceptado por el servidor de InsForge');
   const PROHIBIDO = /set_config\s*\(|\bset\s+(local|session)\s|\bset\s+role\b|\breset\s+role\b|\bset\s+session\s+authorization\b/i;
   const PALABRA = /set_config/i;
   const archivos = [];
-  for (const d of ['migrations', 'migrations/rollback', 'tests/db']) {
+  for (const d of ['migrations', 'migrations/rollback', 'tests/db', 'scripts']) {
     const dir = join(REPO, d);
     if (!existsSync(dir)) continue;
     for (const f of readdirSync(dir)) if (f.endsWith('.sql')) archivos.push(join(dir, f));
@@ -418,6 +418,54 @@ async function escenarios(etiqueta) {
   afirmar('S9 024: el creador JEFE recibe el permiso sobre su acceso sensible', (await uno(`select count(*)::int n from accesos_sensibles_permisos where acceso_id='${acc}' and staff_user_id='${U.jefe}'`)).n === 1);
   await falla('S9 099: no se puede desactivar al unico jefe con permiso sobre un acceso sensible', () => como(U.jefe, () => db.exec(`update staff set activo = false where user_id = '${U.jefe}'`)), { msg: 'único jefe activo' });
 
+  // ---- S12 112: purga, anonimizacion y entorno con sesiones reales
+  if ((await uno("select to_regclass('public.config_retencion') as t")).t) {
+    const eOld = (await uno(`insert into empleados (nombres, apellidos, dni, empresa_id, estado, telefono) values ('Vieja', 'Baja ${sfx}', '${dniN()}', '${empresa}', 'Inactivo', '955000111') returning id`)).id;
+    await db.exec(`insert into empleado_eventos (empleado_id, evento, rol_actor, detalle, created_at) values ('${eOld}', 'baja_ejecutada', 'jefe', 'Renuncia', now() - interval '6 years')`);
+    await falla('S12 112: anon no ejecuta anonimizar_empleado', () => anonimo(() => db.exec(`select anonimizar_empleado('${eOld}', 'prueba')`)), { code: '42501' });
+    await falla('S12 112: un asistente no anonimiza (42501 No autorizado)', () => como(U.asist, () => db.exec(`select anonimizar_empleado('${eOld}', 'prueba')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S12 112: staff inactivo no anonimiza', () => como(U.inact, () => db.exec(`select anonimizar_empleado('${eOld}', 'prueba')`)), { code: '42501' });
+    await falla('S12 112: ni el jefe ejecuta anonimizar_empleado_interno (solo project_admin)', () => como(U.jefe, () => db.exec(`select anonimizar_empleado_interno('${eOld}', 'prueba')`)), { code: '42501' });
+    afirmar('S12 112: v_empleados_anonimizables vacia para un asistente', (await como(U.asist, () => uno('select count(*)::int n from v_empleados_anonimizables'))).n === 0);
+    const cand = await como(U.jefe, () => q(`select empleado_id, anios_requeridos from v_empleados_anonimizables where empleado_id = '${eOld}'`));
+    afirmar('S12 112: v_empleados_anonimizables lista al candidato para el jefe (5 anios requeridos)', cand.length === 1 && Number(cand[0].anios_requeridos) === 5, JSON.stringify(cand));
+    const rA = await como(U.jefe, () => uno(`select anonimizar_empleado('${eOld}', 'Plazo cumplido') as r`));
+    afirmar('S12 112: el jefe anonimiza y recibe el resumen', rA.r && rA.r.empleado_id === eOld, JSON.stringify(rA));
+    const eA = await uno(`select nombres, apellidos, dni, telefono, anonimizado_at from empleados where id = '${eOld}'`);
+    afirmar('S12 112: empleado anonimizado (nombre, DNI ANON-, telefono NULL)', eA.nombres === 'Empleado' && /^ANON-[0-9a-f]{16}$/.test(eA.dni) && eA.telefono === null && eA.anonimizado_at !== null, JSON.stringify(eA));
+    const evA = await uno(`select user_id, rol_actor, detalle from empleado_eventos where empleado_id = '${eOld}' and evento = 'anonimizado'`);
+    afirmar('S12 112: evento anonimizado con el actor jefe y el motivo', evA && evA.user_id === U.jefe && evA.rol_actor === 'jefe' && /Plazo cumplido/.test(evA.detalle), JSON.stringify(evA));
+    afirmar('S12 112: tras anonimizar, la vista ya no lista al empleado', (await como(U.jefe, () => uno(`select count(*)::int n from v_empleados_anonimizables where empleado_id = '${eOld}'`))).n === 0);
+    await falla('S12 112: no se anonimiza dos veces (P0001)', () => como(U.jefe, () => db.exec(`select anonimizar_empleado('${eOld}', 'otra vez')`)), { code: 'P0001', msg: 'ya fue anonimizado' });
+
+    // purga: solo el jefe (envoltorio) y project_admin (funcion)
+    await falla('S12 112: un asistente no ejecuta la purga manual (42501)', () => como(U.asist, () => db.exec('select purgar_datos_temporales_manual()')), { code: '42501', msg: 'No autorizado' });
+    await falla('S12 112: ni el jefe ejecuta purgar_datos_temporales directo (solo project_admin)', () => como(U.jefe, () => db.exec('select purgar_datos_temporales()')), { code: '42501' });
+    await falla('S12 112: anon no ejecuta la purga', () => anonimo(() => db.exec('select purgar_datos_temporales_manual()')), { code: '42501' });
+    const rP = await como(U.jefe, () => uno('select purgar_datos_temporales_manual() as r'));
+    afirmar('S12 112: la purga manual del jefe termina sin errores', rP.r && rP.r.errores === 0 && typeof rP.r.total === 'number', JSON.stringify(rP));
+    const lg = await uno(`select user_id, detalle from accesos_log where accion = 'purga_ejecutada' order by created_at desc limit 1`);
+    afirmar('S12 112: la purga manual deja purga_ejecutada con el usuario jefe y solo conteos', lg && lg.user_id === U.jefe && /^\{/.test(lg.detalle) && !/@/.test(lg.detalle), JSON.stringify(lg));
+    const rP2 = await uno('select purgar_datos_temporales() as r');
+    afirmar('S12 112: project_admin ejecuta la purga sin sesion (usuario NULL en la auditoria)', rP2.r && rP2.r.errores === 0 && (await uno(`select count(*)::int n from accesos_log where accion = 'purga_ejecutada' and user_id is null`)).n >= 1);
+
+    // config_retencion: el jefe cambia dias y activo; un asistente no (RLS: 0 filas)
+    await como(U.jefe, () => db.exec(`update config_retencion set dias = 14 where tabla = 'intentos_publicos'`));
+    await como(U.asist, () => db.exec(`update config_retencion set dias = 21 where tabla = 'intentos_publicos'`));
+    const cr = await uno(`select dias, updated_by from config_retencion where tabla = 'intentos_publicos'`);
+    afirmar('S12 112: config_retencion la edita el jefe (updated_by) y no un asistente', cr.dias === 14 && cr.updated_by === U.jefe, JSON.stringify(cr));
+    await como(U.jefe, () => db.exec(`update config_retencion set dias = 7 where tabla = 'intentos_publicos'`));
+    await falla('S12 112: el jefe no puede cambiar la accion de una regla (sin privilegio de columna)', () => como(U.jefe, () => db.exec(`update config_retencion set accion = 'borrar' where tabla = 'entregas'`)), { code: '42501' });
+    afirmar('S12 112: un asistente lee las 8 reglas', (await como(U.asist, () => uno('select count(*)::int n from config_retencion'))).n === 8);
+    await falla('S12 112: anon no lee config_retencion', () => anonimo(() => db.exec('select * from config_retencion')), { code: '42501' });
+
+    // entorno
+    afirmar('S12 112: es_branch() es false en este entorno y lo ve un asistente', (await como(U.asist, () => uno('select es_branch() v'))).v === false && (await como(U.asist, () => uno('select count(*)::int n from entorno'))).n === 1);
+    await falla('S12 112: un asistente no escribe en entorno', () => como(U.asist, () => db.exec(`update entorno set nombre = 'branch'`)), { code: '42501' });
+    await falla('S12 112: ni el jefe escribe en entorno', () => como(U.jefe, () => db.exec(`update entorno set nombre = 'branch'`)), { code: '42501' });
+    await falla('S12 112: anon no ejecuta es_branch', () => anonimo(() => db.exec('select es_branch()')), { code: '42501' });
+  }
+
   console.log(`   escenarios (${etiqueta}): ${esc.ok} afirmaciones OK, ${esc.mal.length} MAL`);
   reg(`escenarios integrados (${etiqueta}): ${esc.ok} afirmaciones`, esc.mal.length === 0, esc.mal.join(' || '));
 }
@@ -500,7 +548,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|110|111)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|110|111|112)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -575,6 +623,7 @@ if (!args.includes('--sin-dependencias')) {
   const casos = [
     ['100', ['099']], ['101', ['099']], ['101', ['100']], ['102', ['099']], ['103', ['099']],
     ['110', ['099']], ['110', ['101']], ['110', ['103']], ['110', ['101', '103']], ['111', ['099']], ['111', ['104']],
+    ['112', ['099']], ['112', ['102']], ['112', ['103']], ['112', ['104']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });
@@ -618,6 +667,67 @@ if (!args.includes('--sin-dependencias')) {
     console.log(`  rollback ${n} solo: ${res}`);
     resultados.push({ paso: `rollback aislado ${n}`, ok: true, detalle: res });
   }
+}
+
+// ---------------------------------------------------------------- (h) scripts/anonimizar.sql sobre una base nueva con las migraciones aplicadas
+// Comprueba el guard (en produccion aborta y no cambia nada) y que, marcada como branch, no queda ningun dato personal sembrado.
+if (NUEVAS.includes('112') && existsSync(join(REPO, 'scripts/anonimizar.sql'))) {
+  console.log('=== (h) scripts/anonimizar.sql (base nueva con todas las migraciones)');
+  const inst = new PGlite({ extensions: { pgcrypto } });
+  await construirBase(inst);
+  const guardado = db; db = inst;
+  try {
+    for (const m of NUEVAS) await db.exec(sqlMig(m));
+    const script = lee(join(REPO, 'scripts/anonimizar.sql'));
+    const sembrar = [
+      `insert into empresas (nombre) values ('Empresa H')`,
+      `insert into empleados (nombres, apellidos, dni, empresa_id, telefono, whatsapp, correo_personal, notas) select 'Persona' || g, 'Real' || g, (70000000 + g)::text, (select id from empresas limit 1), '9990000' || g, '9990001' || g, 'persona' || g || '@real.test', 'nota privada ' || g from generate_series(1, 4) g`,
+      `insert into plataformas (id, nombre) values ('gmailh', 'Gmail H')`,
+      `insert into cuentas (plataforma_id, usuario, password, notas, tipo_cuenta) values ('gmailh', 'persona1.real@empresa.test', 'enc2:AAAA:BBBB', 'nota cuenta', 'personal'), ('gmailh', 'persona2.real@empresa.test', 'enc2:AAAA:BBBB', null, 'personal')`,
+      `insert into licencias (software, tipo, cantidad, clave, notas) values ('Office', 'suscripcion', 2, 'enc2:AAAA:BBBB', 'nota licencia')`,
+      `insert into tickets (codigo, token, titulo, descripcion, contacto_ingresado, empleado_id) select 'TCK-H' || g, lpad(g::text, 24, 'H'), 'Problema de Persona' || g, 'Descripcion con datos de Persona' || g, '9990000' || g, (select id from empleados limit 1) from generate_series(1, 3) g`,
+      `insert into entregas (token_hash, empleado_id, empleado_nombre, payload, expires_at) values ('hash-h-1', (select id from empleados limit 1), 'Persona1 Real1', 'enc2:AAAA:BBBB', now() + interval '1 day')`,
+      `insert into notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino) values ('empleado_alta', 'empleado', gen_random_uuid(), 'Empleado registrado · Persona1 Real1', '/x')`,
+      `insert into accesos_log (cuenta_usuario, accion, ip, user_agent, detalle) values ('persona1.real@empresa.test', 'ver', '203.0.113.9', 'navegador', 'Entrega abierta — Persona1 Real1')`,
+      `insert into intentos_publicos (ambito, clave) values ('tickets.crear.dni', '70000001')`,
+      `insert into ticket_busqueda_intentos (ip, dni) values ('203.0.113.9', '70000001')`,
+      `insert into equipos_importacion (raw, notas) values ('{"usuario":"Persona1 Real1"}'::jsonb, 'nota import')`,
+    ];
+    for (const s of sembrar) await db.exec(s);
+    const nEmp = (await q('select count(*)::int n from empleados'))[0].n;
+
+    let abort = '';
+    try { await db.exec(script); abort = 'SIN ERROR'; } catch (e) { abort = e.message || ''; }
+    const intacto = (await q("select count(*)::int n from empleados where nombres like 'Persona%' and telefono is not null"))[0].n === nEmp
+      && (await q('select count(*)::int n from accesos_log'))[0].n >= 1;
+    reg('h1 anonimizar.sql aborta cuando el entorno es produccion y no modifica nada', /NO est. marcado como branch/.test(abort) && intacto, abort.slice(0, 120));
+
+    await db.exec("update entorno set nombre = 'branch' where id = 1");
+    let corrio = '';
+    try { await db.exec(script); corrio = 'ok'; } catch (e) { corrio = e.message || ''; }
+    reg('h2 anonimizar.sql corre en una branch marcada', corrio === 'ok', corrio.slice(0, 200));
+    if (corrio === 'ok') {
+      const c = async (sql) => (await q(sql))[0].n;
+      const malos = [];
+      if ((await c('select count(*)::int n from empleados')) !== nEmp) malos.push('cambio la cantidad de empleados');
+      if ((await c("select count(*)::int n from empleados where nombres not like 'Empleado %' or apellidos <> 'Prueba' or dni !~ '^[0-9]{8}$' or dni like '70000%' or telefono is not null or whatsapp is not null or correo_personal is not null or notas is not null")) !== 0) malos.push('empleados con datos');
+      if ((await c("select count(distinct dni)::int n from empleados")) !== nEmp) malos.push('DNI repetidos');
+      if ((await c("select count(*)::int n from cuentas where usuario !~ '^usuario[0-9]+@ejemplo[.]test$' or password is not null or notas is not null")) !== 0) malos.push('cuentas con datos');
+      if ((await c("select count(*)::int n from licencias where clave is not null or notas is not null")) !== 0) malos.push('licencias con datos');
+      if ((await c("select count(*)::int n from tickets where contacto_ingresado is not null or titulo <> 'Ticket de prueba' or descripcion <> 'Descripción de prueba'")) !== 0) malos.push('tickets con texto');
+      if ((await c("select count(*)::int n from entregas where payload <> '' or empleado_nombre <> 'Empleado de prueba'")) !== 0) malos.push('entregas con datos');
+      if ((await c("select count(*)::int n from notificaciones where titulo <> 'Notificación de prueba'")) !== 0) malos.push('notificaciones con titulo');
+      if ((await c("select count(*)::int n from equipos_importacion where raw <> '{}'::jsonb or notas is not null")) !== 0) malos.push('equipos_importacion con datos');
+      for (const t of ['accesos_log', 'intentos_publicos', 'ticket_busqueda_intentos', 'empleado_eventos']) {
+        if ((await c(`select count(*)::int n from ${t}`)) !== 0) malos.push(`${t} no quedo vacia`);
+      }
+      reg('h3 anonimizar.sql: ningun dato personal sembrado sobrevive', malos.length === 0, malos.join(', '));
+    }
+    // idempotente: correrlo otra vez sigue funcionando
+    let otra = '';
+    try { await db.exec(script); otra = 'ok'; } catch (e) { otra = e.message || ''; }
+    reg('h4 anonimizar.sql se puede repetir', otra === 'ok', otra.slice(0, 200));
+  } finally { db = guardado; }
 }
 
 console.log(`\n=== RESUMEN: ${resultados.length - fallos} OK, ${fallos} fallas (${((Date.now() - t0) / 1000).toFixed(1)}s en las fases b-e)`);

@@ -51,6 +51,10 @@
 --         intento atomicos, vinculacion por DNI, vinculos a activos solo con
 --         staff, rate-limit por IP y DNI, guards 22023/42501) y
 --         adjuntar_captura_ticket (solo la key tickets/<id>/captura.<ext>)
+--   [112] (bloques 112-a a 112-c) purgar_datos_temporales (reglas de config_retencion,
+--         entregas, notificaciones leidas, ip/user_agent de accesos_log, auditoria
+--         purga_ejecutada), anonimizar_empleado (plazo, que se anonimiza y que se
+--         conserva) y entorno / es_branch()
 --
 -- OJO — esta conexión (project_admin, ver AGENTS.md) tiene BYPASSRLS y el
 -- CLI bloquea los cambios de rol y de configuración de sesión ("Changing SQL session configuration
@@ -3037,5 +3041,459 @@ begin
     raise exception 'TESTS_OK [111b] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [111b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 112-a: purgar_datos_temporales — borra lo viejo y respeta lo reciente, vacia
+-- el payload de entregas usadas, solo notificaciones leidas, ip/user_agent de
+-- accesos_log sin borrar filas, regla inactiva y dias editables, auditoria
+-- purga_ejecutada sin datos personales, privilegios y CHECK de config_retencion
+-- ------------------------------------------------------------
+do $$
+declare
+  v_user uuid;
+  v_n1 uuid;
+  v_n2 uuid;
+  v_n3 uuid;
+  v_n4 uuid;
+  v_r jsonb;
+  v_r2 jsonb;
+  v_n int;
+  v_txt text;
+  v_otros boolean;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_112a@example.test') returning id into v_user;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set activo = true, created_at = now() - interval '900 days' where user_id = v_user;
+
+  -- intentos de rate-limit (la nueva y las tres legadas) y contexto de transaccion
+  insert into public.intentos_publicos (ambito, clave, created_at) values
+    ('__test_ci_112__', 'viejo', now() - interval '10 days'),
+    ('__test_ci_112__', 'reciente', now() - interval '1 day');
+  insert into public.ticket_busqueda_intentos (ip, dni, created_at) values
+    ('__test_ci_112_viejo__', '99999999', now() - interval '10 days'),
+    ('__test_ci_112_reciente__', '99999999', now() - interval '1 day');
+  insert into public.ticket_creacion_intentos (ip, created_at) values
+    ('__test_ci_112_viejo__', now() - interval '10 days'),
+    ('__test_ci_112_reciente__', now() - interval '1 day');
+  insert into public.encuesta_respuesta_intentos (ip, created_at) values
+    ('__test_ci_112_viejo__', now() - interval '10 days'),
+    ('__test_ci_112_reciente__', now() - interval '1 day');
+  insert into public.contexto_transaccion (txid, rol, origen, creado_en) values
+    (-1120001, 'sistema', '__test_ci_112__', now() - interval '3 days'),
+    (-1120002, 'sistema', '__test_ci_112__', now() - interval '1 hour');
+
+  -- entregas: abierta hace 40 d aunque su enlace siga vigente (se vacia), abierta hace 10 d (queda),
+  -- vencida hace 40 d sin abrir (se vacia), vigente (queda)
+  insert into public.entregas (token_hash, empleado_nombre, payload, expires_at, viewed_at) values
+    ('__test_ci_112_e1__', 'Test CI 112', 'enc2:AAAA:BBBB', now() + interval '1 day', now() - interval '40 days'),
+    ('__test_ci_112_e2__', 'Test CI 112', 'enc2:AAAA:BBBB', now() + interval '1 day', now() - interval '10 days'),
+    ('__test_ci_112_e3__', 'Test CI 112', 'enc2:AAAA:BBBB', now() - interval '40 days', null),
+    ('__test_ci_112_e4__', 'Test CI 112', 'enc2:AAAA:BBBB', now() + interval '1 day', null);
+
+  -- notificaciones: personal leida vieja (se borra), personal sin leer vieja
+  -- (queda), personal leida reciente (queda), general vieja leida por el staff
+  insert into public.notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino, creado_en, destinatario_id)
+    values ('ticket_creado', 'x', gen_random_uuid(), '__test_ci_112__ n1', '/', now() - interval '200 days', v_user) returning id into v_n1;
+  insert into public.notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino, creado_en, destinatario_id)
+    values ('ticket_creado', 'x', gen_random_uuid(), '__test_ci_112__ n2', '/', now() - interval '200 days', v_user) returning id into v_n2;
+  insert into public.notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino, creado_en, destinatario_id)
+    values ('ticket_creado', 'x', gen_random_uuid(), '__test_ci_112__ n3', '/', now() - interval '10 days', v_user) returning id into v_n3;
+  insert into public.notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino, creado_en)
+    values ('ticket_creado', 'x', gen_random_uuid(), '__test_ci_112__ n4', '/', now() - interval '200 days') returning id into v_n4;
+  insert into public.notificaciones_lecturas (notificacion_id, usuario_id) values (v_n1, v_user), (v_n3, v_user), (v_n4, v_user);
+
+  -- accesos_log: una fila de hace 400 d con ip y user_agent, otra de hace 10 d
+  insert into public.accesos_log (cuenta_usuario, accion, ip, user_agent, detalle, created_at) values
+    ('__test_ci_112_log_viejo__', 'ver', '203.0.113.7', 'navegador de prueba', 'detalle conservado', now() - interval '400 days'),
+    ('__test_ci_112_log_nuevo__', 'ver', '203.0.113.8', 'navegador de prueba', 'detalle conservado', now() - interval '10 days');
+
+  -- regla inactiva: no se purga mientras activo = false
+  update public.config_retencion set activo = false where tabla = 'intentos_publicos';
+  insert into public.intentos_publicos (ambito, clave, created_at) values ('__test_ci_112__', 'viejo_inactiva', now() - interval '10 days');
+
+  v_r := public.purgar_datos_temporales();
+
+  if (v_r ->> 'errores')::int <> 0 then fallos := fallos || '[112] la purga informo errores: ' || (v_r ->> 'errores') || '; '; end if;
+  if jsonb_exists(v_r -> 'tablas', 'intentos_publicos') then fallos := fallos || '[112] una regla inactiva figura en el resultado; '; end if;
+  select count(*) into v_n from public.intentos_publicos where clave = 'viejo_inactiva';
+  if v_n <> 1 then fallos := fallos || '[112] se purgo una regla inactiva; '; end if;
+
+  -- reactivada con 365 dias la fila de 10 dias queda; con 7 dias se borra
+  update public.config_retencion set activo = true, dias = 365 where tabla = 'intentos_publicos';
+  v_r2 := public.purgar_datos_temporales();
+  select count(*) into v_n from public.intentos_publicos where clave = 'viejo';
+  if v_n <> 1 then fallos := fallos || '[112] con 365 dias se borro una fila de 10 dias; '; end if;
+  update public.config_retencion set dias = 7 where tabla = 'intentos_publicos';
+  v_r2 := public.purgar_datos_temporales();
+  select count(*) into v_n from public.intentos_publicos where ambito = '__test_ci_112__' and clave in ('viejo', 'viejo_inactiva');
+  if v_n <> 0 then fallos := fallos || '[112] intentos_publicos viejos sin purgar; '; end if;
+  select count(*) into v_n from public.intentos_publicos where ambito = '__test_ci_112__' and clave = 'reciente';
+  if v_n <> 1 then fallos := fallos || '[112] se purgo un intento reciente; '; end if;
+
+  select count(*) into v_n from public.ticket_busqueda_intentos where ip = '__test_ci_112_viejo__';
+  if v_n <> 0 then fallos := fallos || '[112] ticket_busqueda_intentos viejo sin purgar; '; end if;
+  select count(*) into v_n from public.ticket_busqueda_intentos where ip = '__test_ci_112_reciente__';
+  if v_n <> 1 then fallos := fallos || '[112] se purgo un ticket_busqueda_intentos reciente; '; end if;
+  select count(*) into v_n from public.ticket_creacion_intentos where ip = '__test_ci_112_viejo__';
+  if v_n <> 0 then fallos := fallos || '[112] ticket_creacion_intentos viejo sin purgar; '; end if;
+  select count(*) into v_n from public.encuesta_respuesta_intentos where ip = '__test_ci_112_viejo__';
+  if v_n <> 0 then fallos := fallos || '[112] encuesta_respuesta_intentos viejo sin purgar; '; end if;
+  select count(*) into v_n from public.encuesta_respuesta_intentos where ip = '__test_ci_112_reciente__';
+  if v_n <> 1 then fallos := fallos || '[112] se purgo un encuesta_respuesta_intentos reciente; '; end if;
+
+  select count(*) into v_n from public.contexto_transaccion where txid = -1120001;
+  if v_n <> 0 then fallos := fallos || '[112] contexto_transaccion de 3 dias sin purgar; '; end if;
+  select count(*) into v_n from public.contexto_transaccion where txid = -1120002;
+  if v_n <> 1 then fallos := fallos || '[112] se purgo un contexto de hace 1 hora; '; end if;
+
+  -- entregas: las 4 filas quedan, solo cambia el payload
+  select count(*) into v_n from public.entregas where token_hash in ('__test_ci_112_e1__', '__test_ci_112_e2__', '__test_ci_112_e3__', '__test_ci_112_e4__');
+  if v_n <> 4 then fallos := fallos || '[112] se borro una fila de entregas (' || v_n || '); '; end if;
+  select payload into v_txt from public.entregas where token_hash = '__test_ci_112_e1__';
+  if v_txt <> '' then fallos := fallos || '[112] la entrega abierta hace 40 dias conserva el payload; '; end if;
+  select payload into v_txt from public.entregas where token_hash = '__test_ci_112_e3__';
+  if v_txt <> '' then fallos := fallos || '[112] la entrega vencida hace 40 dias conserva el payload; '; end if;
+  select payload into v_txt from public.entregas where token_hash = '__test_ci_112_e2__';
+  if v_txt <> 'enc2:AAAA:BBBB' then fallos := fallos || '[112] se vacio la entrega abierta hace 10 dias; '; end if;
+  select payload into v_txt from public.entregas where token_hash = '__test_ci_112_e4__';
+  if v_txt <> 'enc2:AAAA:BBBB' then fallos := fallos || '[112] se vacio una entrega vigente; '; end if;
+
+  -- notificaciones: solo las leidas
+  if exists (select 1 from public.notificaciones where id = v_n1) then fallos := fallos || '[112] notificacion personal leida de 200 dias sin purgar; '; end if;
+  if not exists (select 1 from public.notificaciones where id = v_n2) then fallos := fallos || '[112] se purgo una notificacion NO leida; '; end if;
+  if not exists (select 1 from public.notificaciones where id = v_n3) then fallos := fallos || '[112] se purgo una notificacion reciente; '; end if;
+  select count(*) into v_n from public.notificaciones_lecturas where notificacion_id = v_n1;
+  if v_n <> 0 then fallos := fallos || '[112] la lectura de una notificacion purgada quedo huerfana; '; end if;
+  -- la general solo se purga si ningun OTRO staff activo ya existente la dejo sin leer
+  -- (en produccion puede haber staff real que no la leyo: entonces debe quedar)
+  select exists (select 1 from public.staff s where s.activo and s.user_id <> v_user and s.created_at <= now() - interval '200 days') into v_otros;
+  if not v_otros and exists (select 1 from public.notificaciones where id = v_n4) then fallos := fallos || '[112] notificacion general leida por todo el staff sin purgar; '; end if;
+  if v_otros and not exists (select 1 from public.notificaciones where id = v_n4) then fallos := fallos || '[112] se purgo una general que otro staff no leyo; '; end if;
+
+  -- accesos_log: las dos filas siguen, la vieja sin ip ni user_agent
+  select count(*) into v_n from public.accesos_log where cuenta_usuario in ('__test_ci_112_log_viejo__', '__test_ci_112_log_nuevo__');
+  if v_n <> 2 then fallos := fallos || '[112] la purga borro filas de accesos_log; '; end if;
+  select count(*) into v_n from public.accesos_log where cuenta_usuario = '__test_ci_112_log_viejo__' and ip is null and user_agent is null and detalle = 'detalle conservado';
+  if v_n <> 1 then fallos := fallos || '[112] la fila de accesos_log de 400 dias conserva ip/user_agent o perdio el detalle; '; end if;
+  select count(*) into v_n from public.accesos_log where cuenta_usuario = '__test_ci_112_log_nuevo__' and ip = '203.0.113.8' and user_agent is not null;
+  if v_n <> 1 then fallos := fallos || '[112] se nulifico ip/user_agent de una fila de 10 dias; '; end if;
+
+  -- repetir no encuentra nada nuevo
+  v_r2 := public.purgar_datos_temporales();
+  if (v_r2 ->> 'total')::bigint <> 0 then fallos := fallos || '[112] una segunda purga seguida encontro filas (' || (v_r2 ->> 'total') || '); '; end if;
+
+  -- auditoria: solo conteos, sin ip, correo ni nombres
+  select count(*) into v_n from public.accesos_log where accion = 'purga_ejecutada' and created_at = now() and cuenta_usuario = '(sistema)';
+  if v_n < 1 then fallos := fallos || '[112] la purga no dejo la fila purga_ejecutada; '; end if;
+  select count(*) into v_n from public.accesos_log
+   where accion = 'purga_ejecutada' and created_at = now()
+     and (detalle !~ '^[{]' or detalle ~ '@' or detalle ~ '[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+');
+  if v_n <> 0 then fallos := fallos || '[112] el detalle de purga_ejecutada no es un JSON de conteos limpio; '; end if;
+
+  -- config_retencion: CHECK, trigger de validacion, privilegios y policies
+  begin insert into public.config_retencion (tabla, dias, accion) values ('tickets', 7, 'borrar'); fallos := fallos || '[112] acepto una tabla fuera de la lista; ';
+  exception when check_violation then null; end;
+  begin update public.config_retencion set dias = 0 where tabla = 'entregas'; fallos := fallos || '[112] acepto dias = 0; ';
+  exception when check_violation then null; end;
+  begin update public.config_retencion set dias = 4000 where tabla = 'entregas'; fallos := fallos || '[112] acepto dias = 4000; ';
+  exception when check_violation then null; end;
+  begin update public.config_retencion set accion = 'nulificar_columna' where tabla = 'intentos_publicos'; fallos := fallos || '[112] acepto cambiar la accion de una regla; ';
+  exception when others then null; end;
+  begin update public.config_retencion set tabla = 'accesos_log' where tabla = 'entregas'; fallos := fallos || '[112] acepto cambiar la tabla de una regla; ';
+  exception when others then null; end;
+  select count(*) into v_n from public.config_retencion;
+  if v_n <> 8 then fallos := fallos || '[112] config_retencion no tiene las 8 reglas sembradas (' || v_n || '); '; end if;
+  if has_table_privilege('authenticated', 'public.config_retencion', 'insert')
+     or has_table_privilege('authenticated', 'public.config_retencion', 'delete')
+     or has_table_privilege('anon', 'public.config_retencion', 'select')
+     or not has_table_privilege('authenticated', 'public.config_retencion', 'select')
+     or not has_column_privilege('authenticated', 'public.config_retencion', 'dias', 'update')
+     or not has_column_privilege('authenticated', 'public.config_retencion', 'activo', 'update')
+     or has_column_privilege('authenticated', 'public.config_retencion', 'tabla', 'update')
+     or has_column_privilege('authenticated', 'public.config_retencion', 'accion', 'update') then
+    fallos := fallos || '[112] privilegios de config_retencion incorrectos; ';
+  end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'config_retencion'
+    and ((cmd = 'SELECT' and qual like '%es_staff%') or (cmd = 'UPDATE' and qual like '%es_jefe%'));
+  if v_n <> 2 then fallos := fallos || '[112] faltan las policies SELECT es_staff / UPDATE es_jefe de config_retencion; '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'config_retencion' and cmd in ('INSERT', 'DELETE', 'ALL');
+  if v_n <> 0 then fallos := fallos || '[112] config_retencion tiene policy de INSERT/DELETE; '; end if;
+
+  -- EXECUTE y guard
+  if has_function_privilege('authenticated', 'public.purgar_datos_temporales()', 'execute')
+     or has_function_privilege('anon', 'public.purgar_datos_temporales()', 'execute')
+     or not has_function_privilege('project_admin', 'public.purgar_datos_temporales()', 'execute')
+     or has_function_privilege('anon', 'public.purgar_datos_temporales_manual()', 'execute')
+     or not has_function_privilege('authenticated', 'public.purgar_datos_temporales_manual()', 'execute') then
+    fallos := fallos || '[112] EXECUTE de purgar_datos_temporales / _manual incorrecto; ';
+  end if;
+  begin
+    perform public.purgar_datos_temporales_manual();
+    fallos := fallos || '[112] purgar_datos_temporales_manual sin sesion no fue rechazada; ';
+  exception when insufficient_privilege then null; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [112a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [112a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 112-b: anonimizar_empleado — plazo, estado y motivo, qué se anonimiza y qué
+-- se conserva (historial, asignaciones, tickets), sin datos personales en los
+-- eventos, doble anonimización, parametro con piso de 1 año y privilegios
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_otro uuid;
+  v_rec uuid;
+  v_act uuid;
+  v_equipo uuid;
+  v_asig uuid;
+  v_cuenta uuid;
+  v_t1 uuid;
+  v_t2 uuid;
+  v_t3 uuid;
+  v_r jsonb;
+  e public.empleados;
+  v_n int;
+  v_txt text;
+  v_ev_antes int;
+  v_ev_equipo int;
+  v_baja timestamptz;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 112b') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado, correo_personal, telefono, whatsapp, notas, cargo)
+    values ('Zulema', 'Quispe Test112', '99112001', v_empresa, 'Inactivo', 'zq112@example.test', '999000111', '999000222', 'nota privada 112', 'Chofer')
+    returning id into v_emp;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado, telefono)
+    values ('Otra', 'Persona112', '99112002', v_empresa, 'Inactivo', '988777666') returning id into v_otro;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado)
+    values ('Reciente', 'Baja112', '99112003', v_empresa, 'Inactivo') returning id into v_rec;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    values ('Activo', 'Vigente112', '99112004', v_empresa) returning id into v_act;
+
+  -- las bajas: v_emp y v_otro hace 6 anios, v_rec hace un mes
+  insert into public.empleado_eventos (empleado_id, evento, rol_actor, detalle, created_at) values
+    (v_emp, 'baja_ejecutada', 'jefe', 'Renuncia', now() - interval '6 years'),
+    (v_otro, 'baja_ejecutada', 'jefe', 'Renuncia', now() - interval '6 years'),
+    (v_rec, 'baja_ejecutada', 'jefe', 'Renuncia', now() - interval '1 month');
+
+  -- historial de equipos, cuentas y tickets del empleado
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_112b__', '__TEST_CI__ Tipo 112b');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_112B__', '__test_ci_112b__') returning id into v_equipo;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_equipo, v_emp) returning id into v_asig;
+  insert into public.plataformas (id, nombre) values ('__test_ci_112b__', '__TEST_CI__ Plataforma 112b');
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_112b__', '__test_ci_112b__@correo.test', 'personal') returning id into v_cuenta;
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cuenta, v_emp);
+  insert into public.tickets (codigo, token, titulo, descripcion, empleado_id, contacto_ingresado, estado)
+    values ('__TEST_CI_112B1__', lpad('1', 24, 'T'), 'Titulo del ticket 1', 'Descripcion 1', v_emp, 'contacto libre 112', 'cerrado') returning id into v_t1;
+  insert into public.tickets (codigo, token, titulo, descripcion, contacto_ingresado)
+    values ('__TEST_CI_112B2__', lpad('2', 24, 'T'), 'Titulo del ticket 2', 'Descripcion 2', '999000111') returning id into v_t2;
+  insert into public.tickets (codigo, token, titulo, descripcion, contacto_ingresado)
+    values ('__TEST_CI_112B3__', lpad('3', 24, 'T'), 'Titulo del ticket 3', 'Descripcion 3', 'ajeno112@example.test') returning id into v_t3;
+  insert into public.entregas (token_hash, empleado_id, empleado_nombre, payload, expires_at) values
+    ('__test_ci_112b_e1__', v_emp, 'Zulema Quispe Test112', '', now() - interval '6 years'),
+    ('__test_ci_112b_e2__', v_otro, 'Otra Persona112', '', now() - interval '6 years');
+  insert into public.notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino) values
+    ('empleado_baja', 'empleado', v_emp, 'Empleado dado de baja · Zulema Quispe Test112', '/empleados/x'),
+    ('empleado_baja', 'empleado', v_otro, 'Empleado dado de baja · Otra Persona112', '/empleados/y');
+  insert into public.accesos_log (cuenta_usuario, accion, detalle) values
+    ('__test_ci_112b__', 'entrega_abierta', 'Entrega abierta — Zulema Quispe Test112'),
+    ('__test_ci_112b__', 'enviar', 'Entrega creada para Zulema Quispe Test112 (expira en 24h)'),
+    ('__test_ci_112b__', 'entrega_abierta', 'Entrega abierta — Otra Persona112');
+  select count(*) into v_ev_equipo from public.eventos_equipo where equipo_id = v_equipo;
+  select count(*) into v_n from public.eventos_equipo where equipo_id = v_equipo and detalle like '%Zulema Quispe Test112%';
+  if v_n < 1 then fallos := fallos || '[112] el fixture no genero el evento "Entregado a" con el nombre; '; end if;
+  select count(*) into v_ev_antes from public.empleado_eventos where empleado_id = v_emp;
+
+  -- fecha de baja derivada de la hoja de vida
+  v_baja := public.empleado_fecha_baja(v_emp);
+  if v_baja > now() - interval '5 years 11 months' or v_baja < now() - interval '6 years 1 month' then fallos := fallos || '[112] empleado_fecha_baja no devolvio la baja de hace 6 anios; '; end if;
+  v_baja := public.empleado_fecha_baja(v_rec);
+  if v_baja < now() - interval '2 months' then fallos := fallos || '[112] empleado_fecha_baja de una baja reciente es vieja; '; end if;
+
+  -- rechazos (ninguno modifica nada)
+  begin perform public.anonimizar_empleado_interno(v_act, 'prueba');
+    fallos := fallos || '[112] anonimizo a un empleado Activo; ';
+  exception when raise_exception then if sqlerrm not like '%Inactivo%' then fallos := fallos || '[112] el rechazo del Activo dio otro mensaje: ' || sqlerrm || '; '; end if; end;
+  begin perform public.anonimizar_empleado_interno(v_rec, 'prueba');
+    fallos := fallos || '[112] anonimizo una baja de hace un mes; ';
+  exception when raise_exception then if sqlerrm not like '%cumple%' then fallos := fallos || '[112] el rechazo por plazo dio otro mensaje: ' || sqlerrm || '; '; end if; end;
+  begin perform public.anonimizar_empleado_interno(v_emp, '   ');
+    fallos := fallos || '[112] anonimizo sin motivo; ';
+  exception when raise_exception then null; end;
+  begin perform public.anonimizar_empleado_interno(v_emp, repeat('x', 201));
+    fallos := fallos || '[112] acepto un motivo de 201 caracteres; ';
+  exception when raise_exception then null; end;
+  begin perform public.anonimizar_empleado_interno(gen_random_uuid(), 'prueba');
+    fallos := fallos || '[112] anonimizo un empleado inexistente; ';
+  exception when raise_exception then null; end;
+  -- piso de 1 anio aunque el parametro valga 0, y parametro mayor que la antiguedad
+  update public.config_parametros set valor = '0'::jsonb where clave = 'anios_anonimizacion_empleado';
+  begin perform public.anonimizar_empleado_interno(v_rec, 'prueba');
+    fallos := fallos || '[112] con el parametro en 0 anonimizo una baja de un mes; ';
+  exception when raise_exception then null; end;
+  update public.config_parametros set valor = '10'::jsonb where clave = 'anios_anonimizacion_empleado';
+  begin perform public.anonimizar_empleado_interno(v_emp, 'prueba');
+    fallos := fallos || '[112] con el parametro en 10 anonimizo una baja de 6 anios; ';
+  exception when raise_exception then null; end;
+  update public.config_parametros set valor = '5'::jsonb where clave = 'anios_anonimizacion_empleado';
+  select nombres into v_txt from public.empleados where id = v_emp;
+  if v_txt <> 'Zulema' then fallos := fallos || '[112] un rechazo modifico al empleado; '; end if;
+
+  -- la anonimizacion
+  v_r := public.anonimizar_empleado_interno(v_emp, 'Plazo de 5 anios cumplido');
+
+  select * into e from public.empleados where id = v_emp;
+  if e.nombres <> 'Empleado' or e.apellidos <> 'anonimizado' then fallos := fallos || '[112] nombre sin anonimizar; '; end if;
+  if e.dni !~ '^ANON-[0-9a-f]{16}$' then fallos := fallos || '[112] dni con formato inesperado: ' || e.dni || '; '; end if;
+  if e.correo_personal is not null or e.telefono is not null or e.whatsapp is not null or e.notas is not null then fallos := fallos || '[112] contacto o notas sin limpiar; '; end if;
+  if e.anonimizado_at is null then fallos := fallos || '[112] anonimizado_at sin marcar; '; end if;
+  if e.cargo <> 'Chofer' or e.estado::text <> 'Inactivo' or e.empresa_id <> v_empresa then fallos := fallos || '[112] se perdio cargo, estado o empresa; '; end if;
+  select * into e from public.empleados where id = v_otro;
+  if e.nombres <> 'Otra' or e.dni <> '99112002' or e.telefono <> '988777666' or e.anonimizado_at is not null then fallos := fallos || '[112] se modifico a otro empleado; '; end if;
+
+  -- tickets: solo el contacto; el resto queda
+  select count(*) into v_n from public.tickets where id = v_t1 and contacto_ingresado is null and titulo = 'Titulo del ticket 1' and descripcion = 'Descripcion 1' and empleado_id = v_emp;
+  if v_n <> 1 then fallos := fallos || '[112] ticket vinculado: contacto sin limpiar o ticket alterado; '; end if;
+  select count(*) into v_n from public.tickets where id = v_t2 and contacto_ingresado is null;
+  if v_n <> 1 then fallos := fallos || '[112] ticket que repetia el telefono sin limpiar; '; end if;
+  select count(*) into v_n from public.tickets where id = v_t3 and contacto_ingresado = 'ajeno112@example.test';
+  if v_n <> 1 then fallos := fallos || '[112] se limpio el contacto de un ticket ajeno; '; end if;
+  if (v_r ->> 'tickets_contacto')::int <> 2 then fallos := fallos || '[112] el resumen cuenta ' || (v_r ->> 'tickets_contacto') || ' tickets, esperaba 2; '; end if;
+
+  -- entregas, notificaciones, auditoria de accesos y eventos de equipos
+  select count(*) into v_n from public.entregas where token_hash = '__test_ci_112b_e1__' and empleado_nombre = 'Empleado anonimizado';
+  if v_n <> 1 then fallos := fallos || '[112] entrega sin anonimizar; '; end if;
+  select count(*) into v_n from public.entregas where token_hash = '__test_ci_112b_e2__' and empleado_nombre = 'Otra Persona112';
+  if v_n <> 1 then fallos := fallos || '[112] se modifico la entrega de otro empleado; '; end if;
+  select count(*) into v_n from public.notificaciones where entidad_id = v_emp and titulo = 'Empleado dado de baja · Empleado anonimizado';
+  if v_n <> 1 then fallos := fallos || '[112] notificacion del empleado sin anonimizar; '; end if;
+  select count(*) into v_n from public.notificaciones where entidad_id = v_otro and titulo = 'Empleado dado de baja · Otra Persona112';
+  if v_n <> 1 then fallos := fallos || '[112] se modifico la notificacion de otro empleado; '; end if;
+  select count(*) into v_n from public.accesos_log where cuenta_usuario = '__test_ci_112b__' and detalle like '%Zulema%';
+  if v_n <> 0 then fallos := fallos || '[112] accesos_log conserva el nombre; '; end if;
+  select count(*) into v_n from public.accesos_log where cuenta_usuario = '__test_ci_112b__' and detalle in ('Entrega abierta — Empleado anonimizado', 'Entrega creada para Empleado anonimizado (expira en 24h)');
+  if v_n <> 2 then fallos := fallos || '[112] accesos_log: el reemplazo del nombre no conservo el resto del texto; '; end if;
+  select count(*) into v_n from public.accesos_log where cuenta_usuario = '__test_ci_112b__' and detalle = 'Entrega abierta — Otra Persona112';
+  if v_n <> 1 then fallos := fallos || '[112] se modifico el accesos_log de otra persona; '; end if;
+  select count(*) into v_n from public.eventos_equipo where equipo_id = v_equipo;
+  if v_n <> v_ev_equipo then fallos := fallos || '[112] cambio la cantidad de eventos del equipo; '; end if;
+  select count(*) into v_n from public.eventos_equipo where equipo_id = v_equipo and detalle like '%Zulema%';
+  if v_n <> 0 then fallos := fallos || '[112] eventos_equipo conserva el nombre; '; end if;
+  select count(*) into v_n from public.eventos_equipo where equipo_id = v_equipo and detalle like 'Entregado a Empleado anonimizado%';
+  if v_n <> 1 then fallos := fallos || '[112] eventos_equipo: falta "Entregado a Empleado anonimizado"; '; end if;
+
+  -- historial intacto: asignaciones, cuenta y eventos del empleado
+  select count(*) into v_n from public.asignaciones_equipo where id = v_asig and empleado_id = v_emp and fecha_fin is null;
+  if v_n <> 1 then fallos := fallos || '[112] la asignacion de equipo cambio; '; end if;
+  select count(*) into v_n from public.asignaciones_cuenta where cuenta_id = v_cuenta and empleado_id = v_emp;
+  if v_n <> 1 then fallos := fallos || '[112] la asignacion de cuenta cambio; '; end if;
+  if (v_r ->> 'asignaciones_abiertas')::int <> 2 then fallos := fallos || '[112] el resumen debia informar 2 asignaciones abiertas; '; end if;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp;
+  if v_n < v_ev_antes + 1 then fallos := fallos || '[112] la hoja de vida perdio eventos o no sumo el anonimizado; '; end if;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'anonimizado' and detalle like '%Plazo de 5 anios cumplido%';
+  if v_n <> 1 then fallos := fallos || '[112] falta el evento anonimizado con el motivo; '; end if;
+  select count(*) into v_n from public.empleado_eventos
+   where empleado_id = v_emp
+     and (coalesce(detalle, '') || coalesce(campo, '') || coalesce(valor_anterior, '') || coalesce(valor_nuevo, '') || coalesce(user_email, '')) ~* '(zulema|quispe|99112001|zq112|999000111|999000222|nota privada)';
+  if v_n <> 0 then fallos := fallos || '[112] la hoja de vida contiene datos personales del empleado; '; end if;
+
+  -- no se anonimiza dos veces
+  begin perform public.anonimizar_empleado_interno(v_emp, 'otra vez');
+    fallos := fallos || '[112] anonimizo dos veces; ';
+  exception when raise_exception then if sqlerrm not like '%ya fue anonimizado%' then fallos := fallos || '[112] el doble intento dio otro mensaje: ' || sqlerrm || '; '; end if; end;
+
+  -- vista y privilegios
+  select count(*) into v_n from public.v_empleados_anonimizables;
+  if v_n <> 0 then fallos := fallos || '[112] la vista devolvio filas sin sesion de JEFE; '; end if;
+  if pg_get_viewdef('public.v_empleados_anonimizables'::regclass) not like '%puede_actual%' then fallos := fallos || '[112] la vista no filtra por puede_actual; '; end if;
+  if not has_table_privilege('authenticated', 'public.v_empleados_anonimizables', 'select')
+     or has_table_privilege('anon', 'public.v_empleados_anonimizables', 'select')
+     or has_function_privilege('authenticated', 'public.anonimizar_empleado_interno(uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.anonimizar_empleado_interno(uuid,text)', 'execute')
+     or not has_function_privilege('project_admin', 'public.anonimizar_empleado_interno(uuid,text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.anonimizar_empleado(uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.anonimizar_empleado(uuid,text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.empleado_fecha_baja(uuid)', 'execute')
+     or has_function_privilege('anon', 'public.empleado_fecha_baja(uuid)', 'execute') then
+    fallos := fallos || '[112] privilegios de la vista o de las funciones de anonimizacion incorrectos; ';
+  end if;
+  begin perform public.anonimizar_empleado(v_otro, 'prueba');
+    fallos := fallos || '[112] anonimizar_empleado sin sesion no fue rechazada; ';
+  exception when insufficient_privilege then null; end;
+  select count(*) into v_n from public.empleados where id = v_otro and anonimizado_at is null;
+  if v_n <> 1 then fallos := fallos || '[112] el intento sin sesion modifico al empleado; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [112b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [112b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 112-c: entorno — una sola fila, produccion por defecto, es_branch() solo
+-- con 'branch', la fila no se borra ni se vacia y ningun cliente la escribe
+-- ------------------------------------------------------------
+do $$
+declare
+  v_n int;
+  v_txt text;
+  fallos text := '';
+begin
+  select count(*) into v_n from public.entorno;
+  if v_n <> 1 then fallos := fallos || '[112] entorno debe tener exactamente 1 fila (' || v_n || '); '; end if;
+  select nombre into v_txt from public.entorno where id = 1;
+  if v_txt <> 'produccion' then fallos := fallos || '[112] el entorno no es produccion: ' || coalesce(v_txt, 'null') || '; '; end if;
+  if public.es_branch() then fallos := fallos || '[112] es_branch() es true en produccion; '; end if;
+
+  update public.entorno set nombre = 'branch' where id = 1;
+  if not public.es_branch() then fallos := fallos || '[112] es_branch() es false con nombre = branch; '; end if;
+  update public.entorno set nombre = 'produccion' where id = 1;
+  if public.es_branch() then fallos := fallos || '[112] es_branch() sigue true al volver a produccion; '; end if;
+
+  begin update public.entorno set nombre = 'staging' where id = 1; fallos := fallos || '[112] acepto un nombre de entorno fuera de la lista; ';
+  exception when check_violation then null; end;
+  begin insert into public.entorno (id, nombre) values (2, 'branch'); fallos := fallos || '[112] acepto una segunda fila de entorno; ';
+  exception when check_violation then null; end;
+  begin insert into public.entorno (id, nombre) values (1, 'branch'); fallos := fallos || '[112] acepto duplicar la fila 1; ';
+  exception when unique_violation then null; end;
+  update public.entorno set id = 2 where id = 1;
+  select count(*) into v_n from public.entorno where id = 1;
+  if v_n <> 1 then fallos := fallos || '[112] un UPDATE cambio el id de la fila de entorno; '; end if;
+  begin delete from public.entorno; fallos := fallos || '[112] permitio borrar la fila de entorno; ';
+  exception when raise_exception then null; end;
+  begin truncate public.entorno; fallos := fallos || '[112] permitio TRUNCATE de entorno; ';
+  exception when raise_exception then null; end;
+  select count(*) into v_n from public.entorno;
+  if v_n <> 1 then fallos := fallos || '[112] la fila de entorno desaparecio; '; end if;
+
+  if has_table_privilege('authenticated', 'public.entorno', 'insert')
+     or has_table_privilege('authenticated', 'public.entorno', 'update')
+     or has_table_privilege('authenticated', 'public.entorno', 'delete')
+     or has_table_privilege('anon', 'public.entorno', 'select')
+     or not has_table_privilege('authenticated', 'public.entorno', 'select')
+     or has_function_privilege('anon', 'public.es_branch()', 'execute')
+     or not has_function_privilege('authenticated', 'public.es_branch()', 'execute') then
+    fallos := fallos || '[112] privilegios de entorno / es_branch incorrectos; ';
+  end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'entorno' and cmd = 'SELECT' and qual like '%es_staff%';
+  if v_n <> 1 then fallos := fallos || '[112] falta la policy SELECT es_staff de entorno; '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'entorno' and cmd <> 'SELECT';
+  if v_n <> 0 then fallos := fallos || '[112] entorno tiene policies de escritura; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [112c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [112c]: %', fallos;
   end if;
 end $$;
