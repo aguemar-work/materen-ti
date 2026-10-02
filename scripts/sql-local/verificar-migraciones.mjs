@@ -35,6 +35,29 @@ async function intentar(paso, sql) {
   catch (e) { reg(paso, false, (e.message || String(e)).split('\n')[0].slice(0, 300)); return false; }
 }
 
+// ---------------------------------------------------------------- (0) texto aceptado por el servidor
+// InsForge rechaza todo archivo cuyo TEXTO contenga una instruccion de cambio de configuracion de sesion
+// ("Changing SQL session configuration is not allowed"), incluso dentro de un comentario o de un literal.
+// PGlite no lo detecta, asi que se comprueba aparte sobre las migraciones, sus rollbacks y los tests de BD.
+console.log('=== (0) texto aceptado por el servidor de InsForge');
+{
+  const PROHIBIDO = /set_config\s*\(|\bset\s+(local|session)\s|\bset\s+role\b|\breset\s+role\b|\bset\s+session\s+authorization\b/i;
+  const PALABRA = /set_config/i;
+  const archivos = [];
+  for (const d of ['migrations', 'migrations/rollback', 'tests/db']) {
+    const dir = join(REPO, d);
+    if (!existsSync(dir)) continue;
+    for (const f of readdirSync(dir)) if (f.endsWith('.sql')) archivos.push(join(dir, f));
+  }
+  const malos = [];
+  for (const ruta of archivos) {
+    lee(ruta).split(/\r?\n/).forEach((linea, i) => {
+      if (PROHIBIDO.test(linea) || PALABRA.test(linea)) malos.push(`${ruta.slice(REPO.length + 1).replace(/\\/g, '/')}:${i + 1}`);
+    });
+  }
+  reg('0 ningun .sql menciona set_config / set local / set role (ni en comentarios)', malos.length === 0, malos.slice(0, 8).join(', '));
+}
+
 // ---------------------------------------------------------------- (a) esquema base
 console.log('=== (a) esquema base: stubs + migraciones historicas 001..089');
 const EXCLUIR_HIST = (opt('--excluir', '') || '').split(',').filter(Boolean); // p. ej. --excluir 088,089 (aun sin aplicar en produccion)

@@ -49,7 +49,7 @@
 --         ampliado y trigger del ultimo JEFE con permiso sobre un acceso sensible
 --
 -- OJO — esta conexión (project_admin, ver AGENTS.md) tiene BYPASSRLS y el
--- CLI bloquea `SET ROLE`/`SET LOCAL` ("Changing SQL session configuration
+-- CLI bloquea los cambios de rol y de configuración de sesión ("Changing SQL session configuration
 -- is not allowed"), así que este archivo SOLO puede probar invariantes de
 -- TRIGGERS/constraints (corren igual sin importar el rol) — NO puede
 -- simular una sesión de STAFF/JEFE real para ejercer las políticas RLS de
@@ -1450,8 +1450,8 @@ end $$;
 -- Agregados 2026-10-01 (Ciclo 21, H2). Requieren 099, 100 y 101 aplicadas:
 -- contra una base sin ellas fallan (es lo esperado).
 --
--- Esta conexión (project_admin) no tiene auth.uid() y el CLI prohíbe
--- SET/set_config, así que NO puede llamar a las RPC públicas con un permiso
+-- Esta conexión (project_admin) no tiene auth.uid() y el servidor no admite cambiar
+-- la configuración de sesión, así que NO puede llamar a las RPC públicas con un permiso
 -- válido: cada RPC pública es guard (exigir_permiso) + función núcleo
 -- <nombre>_nucleo con TODA la lógica, y estos bloques ejercen los núcleos
 -- (caso feliz y rechazos con datos sintéticos) y las RPC públicas solo para

@@ -43,6 +43,7 @@ caso antes de elegir el workaround:
 | --- | --- | --- |
 | Límite de línea de comandos (031, jul 2026) | DDL rechazado con `Query could not be parsed...` | `db import <archivo.sql>`, partido por concepto |
 | Dollar-quoting (038, 2026-08-05) | `create function` / `do $ ... $` → `{"error":"no language specified"}` | `db import` o `apply-migration.mjs` (que usa `db import` desde 2026-08-18); nunca `db query` |
+| Configuración de sesión (101–103, 2026-10-02) | `Changing SQL session configuration is not allowed` al importar un archivo | El servidor revisa el **texto** del archivo, comentarios incluidos: ningún `.sql` puede contener `set_config`, `set local`, `set role` ni equivalentes. `npm run test:sql-local` lo comprueba (paso 0) |
 | `ENAMETOOLONG` de PowerShell (062, 2026-08-17) | **Ya no aplica**: la versión del script que lo causaba se retiró el 2026-08-18 | — (histórico, ver abajo) |
 
 Detalle de cada uno:

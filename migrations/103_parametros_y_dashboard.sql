@@ -88,7 +88,7 @@
 --     El cuerpo, para un usuario explícito (permisos con puede(p_user, ...)).
 --     EXECUTE solo project_admin: así un cliente no puede pedir el resumen de
 --     otro usuario y las pruebas de tests/db pueden ejercerla sin simular una
---     sesión (el CLI bloquea set_config; mismo patrón que puede/puede_actual
+--     sesión (el servidor bloquea la configuración de sesión; mismo patrón que puede/puede_actual
 --     de la 099). Forma EXACTA del resultado (cada sección es null si el
 --     usuario no tiene el módulo —eso NO es un error— o si su bloque falló,
 --     en cuyo caso su nombre queda en `errores`):
@@ -951,7 +951,7 @@ revoke all on function public.dashboard_resumen_de(uuid) from public, anon, auth
 grant execute on function public.dashboard_resumen_de(uuid) to project_admin;
 
 comment on function public.dashboard_resumen_de(uuid) is
-  'Cuerpo de dashboard_resumen() para un usuario explícito (103). EXECUTE solo project_admin: un cliente no puede pedir el resumen de otro; existe para poder probar la función sin simular una sesión (el CLI bloquea set_config).';
+  'Cuerpo de dashboard_resumen() para un usuario explícito (103). EXECUTE solo project_admin: un cliente no puede pedir el resumen de otro; existe para poder probar la función sin simular una sesión (el servidor bloquea la configuración de sesión).';
 
 -- La RPC que llama el frontend: el usuario es siempre el de la sesión.
 create or replace function public.dashboard_resumen()

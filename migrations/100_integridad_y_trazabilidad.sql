@@ -32,8 +32,8 @@
 --     228 activas → una sola normalización ('entrega a empleado' →
 --     'entrega_a_empleado') y el CHECK nace validado.
 --   - equipos.fotos: ningún equipo con más de 4 fotos, todas arreglos JSON.
---   - empleados.dni: 100 filas, 1 NO cumple '^[0-9]{8}$' (9 dígitos; podría
---     ser un documento de extranjería): el CHECK nace NOT VALID (ver 6).
+--   - empleados.dni: 100 filas, 1 NO cumple '^[0-9]{8}$' (9 dígitos; el dueño confirmó el 2026-10-02
+--     que el DNI es solo de 8 dígitos: es un error de digitación a corregir; el CHECK nace NOT VALID, ver 6).
 --   - problemas: 1 fila, estado 'abierto'.
 --
 -- ⚠️ DESPLIEGUE EN ORDEN (acoplamiento con el frontend):
@@ -380,8 +380,8 @@ comment on constraint equipos_fotos_max on public.equipos is
 -- 6) empleados.dni: formato
 -- Plan §3.10: DNI de 8 dígitos; las filas anonimizadas (migración 104/102)
 -- llevan 'ANON-<hash>' y siguen siendo únicas. Verificado en producción: de
--- 100 empleados, 1 tiene 9 dígitos (posible carné de extranjería o error de
--- tipeo) → el CHECK nace NOT VALID: se exige a toda fila NUEVA o
+-- 100 empleados, 1 tiene 9 dígitos (error de digitación: el dueño confirmó que
+-- el DNI es solo de 8 dígitos; no se amplía el CHECK) → el CHECK nace NOT VALID: se exige a toda fila NUEVA o
 -- MODIFICADA, y las existentes que no cumplan se saltan hasta validar.
 --
 -- ⚠️ Un CHECK NOT VALID se evalúa igualmente en cada UPDATE de la fila: hasta

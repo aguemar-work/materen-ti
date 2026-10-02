@@ -25,8 +25,8 @@
 -- Qué crea (una sección por concepto, todas idempotentes):
 --   1) empleados_ajustes        interruptor de compatibilidad (ver decisión A)
 --   2) contexto_transaccion     "quién y por dónde" de la transacción actual,
---                               por txid_current() (InsForge no permite
---                               set_config) + marcar_contexto/contexto_actual
+--                               por txid_current() (InsForge no admite cambiar la
+--                               configuración de sesión) + marcar_contexto/contexto_actual
 --   3) empleado_eventos         hoja de vida append-only (RLS + trigger de
 --                               inmutabilidad) + trigger evento_empleado_cambios
 --   4) transiciones_empleado_permitidas + check_transicion_empleado
@@ -229,7 +229,7 @@ grant select on table public.empleados_ajustes to authenticated;
 -- ============================================================
 -- 2) contexto_transaccion (+ marcar_contexto / contexto_actual /
 --    restaurar_contexto)
--- InsForge no permite set_config, así que el "quién y por dónde" de la
+-- InsForge no admite cambiar la configuración de sesión, así que el "quién y por dónde" de la
 -- transacción vive en una tabla clavada por txid_current(). Solo la tocan
 -- funciones SECURITY DEFINER (dueño project_admin): RLS habilitada sin
 -- policies y sin privilegios para anon/authenticated.

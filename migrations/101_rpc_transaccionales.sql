@@ -92,7 +92,7 @@
 -- ------------------------------------------------------------
 -- DISEÑO — por qué cada RPC tiene un "núcleo" (<nombre>_nucleo)
 -- La conexión de los tests de BD (project_admin, sin auth.uid()) no puede
--- simular una sesión de staff (el CLI prohíbe SET/set_config). Cada RPC
+-- simular una sesión de staff (el servidor de InsForge no admite cambiar la configuración de sesión). Cada RPC
 -- pública es UN guard (exigir_permiso) + una llamada a su función núcleo,
 -- que contiene TODA la lógica. Los núcleos tienen EXECUTE solo para
 -- project_admin (nunca para authenticated/anon), así que el cliente no puede
