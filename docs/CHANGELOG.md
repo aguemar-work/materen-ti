@@ -23,6 +23,26 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-02** (**Ciclo 21 · H2 (parte 2) — Adjuntos privados, diálogo único y Licencias partida**) — El
+  dueño aplicó 101, 102, 103 y 110 en producción tras corregir un rechazo del servidor: **InsForge
+  rechaza todo `.sql` cuyo texto contenga `set_config`/`set local`/`set role`, incluso en comentarios**
+  (`Changing SQL session configuration is not allowed`); se quitó de 101–103 y de `tests/db`, y el
+  arnés `npm run test:sql-local` gana un paso 0 que lo comprueba (anotado en `docs/GOTCHAS-CLI.md`).
+  Decisión del dueño: el DNI es solo de 8 dígitos (un empleado activo tiene 9: error de digitación a
+  corregir; el CHECK de la 100 no se amplía). (1) **Migración 111** (escrita, **sin aplicar**):
+  `crear_ticket_publico` (ticket + evento + rate-limit en una transacción, cierra el fail-open del
+  evento) y `adjuntar_captura_ticket`; `functions/tickets.ts` guarda las capturas en
+  `tickets/<ticket.id>/captura.<ext>`, `seguimiento` devuelve URL firmada de 300 s y `adjuntoStaff`
+  exige sesión y `puede('modulo:tickets')`; `stripExif` (JPEG, PNG y WebP, fail-closed) también en
+  `equipos-fotos`; `scripts/migrar-adjuntos.mjs` (dry-run por defecto) mueve los 66 adjuntos
+  existentes. **El bucket `tickets-adjuntos` no se puede volver privado por SQL**: paso manual en el
+  panel de InsForge y solo al final (aplicar 111 → desplegar `tickets` y `equipos-fotos` → desplegar
+  el frontend → `migrar-adjuntos --ejecutar` → apagar «Public»). (2) **`Modal.vue` eliminado**: los 15
+  consumidores restantes pasaron a `AppDialog` (`@close` → `@cerrado`) y se retiraron sus clases
+  `.modal-*`. (3) **`LicenciasView` 812 → 278 líneas** (tabla, diálogos y composables propios) y la
+  creación con correo nuevo usa la RPC `crear_licencia_con_cuenta` (101); `patrones-ui` baja de 86 a
+  81 incumplimientos. Pendiente antes de desplegar functions: `npm run typecheck:functions` (Deno no
+  está instalado en este equipo).
 - **2026-10-01** (**Ciclo 21 · verificación local del SQL**) — `scripts/sql-local/verificar-migraciones.mjs`
   (`npm run test:sql-local`, devDependency `@electric-sql/pglite`): aplica `001…089` y las migraciones
   nuevas (099 a 104 y 110) sobre un Postgres en memoria con los roles y el esquema simulados como
