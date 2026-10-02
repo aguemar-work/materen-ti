@@ -2,8 +2,16 @@
 // H1-3; materializa la invariante 12 de AGENTS.md: "commit antes que producción").
 //
 // Uso:
-//   node scripts/deploy.mjs migracion migrations/0XX_nombre.sql [--entorno produccion|v2] [--dry-run] [--forzar] [--solo-registro] [--proyecto <texto>]
-//   node scripts/deploy.mjs function  credenciales|tickets|encuestas|equipos-fotos [--entorno produccion|v2] [--dry-run] [--proyecto <texto>]
+//   node scripts/deploy.mjs migracion migrations/0XX_nombre.sql [--entorno produccion|v2] [--dry-run] [--forzar] [--solo-registro] [--proyecto <texto>] [--cambio CHG-0001]
+//   node scripts/deploy.mjs function  credenciales|tickets|encuestas|equipos-fotos [--entorno produccion|v2] [--dry-run] [--proyecto <texto>] [--cambio CHG-0001]
+//
+// --cambio CHG-####: el cambio (módulo Cambios, migración 107) que autoriza este despliegue. Se
+// valida el formato (CHG- y 4 o más dígitos) y, si las columnas schema_migrations.cambio_id /
+// function_deploys.cambio_id existen, queda registrado ahí. DECISIÓN: si el cambio no existe en la
+// base, o está en un estado que no autoriza ejecutar, solo AVISA y sigue. El tracking es constancia,
+// no una cerradura: el candado de verdad es git (árbol limpio, HEAD en origin/main), y bloquear por
+// un registro que depende de la migración 107 haría imposible aplicar la propia 107, o desplegar
+// en un entorno (v2, branch) cuya base no tiene los cambios de producción.
 //
 // Aborta (exit 1, mensaje en español) si:
 //   - el árbol de trabajo tiene cambios sin comitear (modificados/staged; o archivos
@@ -51,6 +59,8 @@ export const FUNCIONES_PERMITIDAS = ['credenciales', 'tickets', 'encuestas', 'eq
 // de inlinado y no corre en el runtime de InsForge).
 export const rutaDistFunction = (nombre) => `functions/dist/${nombre}.ts`;
 export const REF_POR_ENTORNO = { produccion: 'origin/main', v2: 'origin/release/v2' };
+// Código de un cambio (siguiente_codigo_cambio, migración 107): CHG- y 4 o más dígitos.
+export const FORMATO_CAMBIO = /^CHG-\d{4,}$/;
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // ── Argumentos (puro) ─────────────────────────────────────────────────────
@@ -62,7 +72,7 @@ export function parsearArgumentos(argv) {
   if (!objetivo || objetivo.startsWith('--')) {
     throw new Error(tipo === 'migracion' ? 'Indique la migración, ej. migrations/089_tickets_resuelto_at.sql' : `Indique la función: ${FUNCIONES_PERMITIDAS.join(', ')}`);
   }
-  const o = { tipo, objetivo, entorno: 'produccion', dryRun: false, forzar: false, soloRegistro: false, proyecto: null };
+  const o = { tipo, objetivo, entorno: 'produccion', dryRun: false, forzar: false, soloRegistro: false, proyecto: null, cambio: null };
   for (let i = 0; i < resto.length; i++) {
     const a = resto[i];
     if (a === '--dry-run') o.dryRun = true;
@@ -74,6 +84,9 @@ export function parsearArgumentos(argv) {
     } else if (a === '--proyecto') {
       o.proyecto = resto[++i];
       if (!o.proyecto) throw new Error('--proyecto requiere un texto.');
+    } else if (a === '--cambio') {
+      o.cambio = String(resto[++i] ?? '').trim().toUpperCase();
+      if (!FORMATO_CAMBIO.test(o.cambio)) throw new Error(`--cambio requiere un código como CHG-0001 (CHG- y 4 o más dígitos), no "${resto[i] ?? ''}".`);
     } else throw new Error(`Argumento desconocido: ${a}`);
   }
   if (tipo === 'function' && !FUNCIONES_PERMITIDAS.includes(objetivo)) {
@@ -151,7 +164,7 @@ export function extraerSentenciasVerificacion(sql) {
 }
 
 // ── Registro (puro) ───────────────────────────────────────────────────────
-export function construirInsertMigracion({ version, nombre, checksum, aplicadaPor, commitSha, entorno, columnas, forzar }) {
+export function construirInsertMigracion({ version, nombre, checksum, aplicadaPor, commitSha, entorno, columnas, forzar, cambio = null }) {
   const campos = [
     ['version', version],
     ['nombre_archivo', nombre],
@@ -160,6 +173,7 @@ export function construirInsertMigracion({ version, nombre, checksum, aplicadaPo
   ];
   if (columnas.has('commit_sha')) campos.push(['commit_sha', commitSha]);
   if (columnas.has('entorno')) campos.push(['entorno', entorno]);
+  if (cambio && columnas.has('cambio_id')) campos.push(['cambio_id', cambio]);
   const nombres = campos.map(([c]) => c).join(', ');
   const valores = campos.map(([, v]) => literalSql(v)).join(', ');
   let sql = `insert into public.schema_migrations (${nombres}) values (${valores})`;
@@ -171,7 +185,7 @@ export function construirInsertMigracion({ version, nombre, checksum, aplicadaPo
   return sql;
 }
 
-export function construirInsertDeploy({ funcion, sha256, commitSha, desplegadoPor, entorno, columnas }) {
+export function construirInsertDeploy({ funcion, sha256, commitSha, desplegadoPor, entorno, columnas, cambio = null }) {
   const campos = [
     ['funcion', funcion],
     ['sha256', sha256],
@@ -179,6 +193,7 @@ export function construirInsertDeploy({ funcion, sha256, commitSha, desplegadoPo
   if (columnas.has('commit_sha')) campos.push(['commit_sha', commitSha]);
   if (columnas.has('desplegado_por')) campos.push(['desplegado_por', desplegadoPor]);
   if (columnas.has('entorno')) campos.push(['entorno', entorno]);
+  if (cambio && columnas.has('cambio_id')) campos.push(['cambio_id', cambio]);
   return `insert into public.function_deploys (${campos.map(([c]) => c).join(', ')}) values (${campos.map(([, v]) => literalSql(v)).join(', ')})`;
 }
 
@@ -200,6 +215,22 @@ export function codigoCoincide(local, desplegadoSalida) {
 
 export function proyectoCoincide(lineaProyecto, fragmento) {
   return typeof lineaProyecto === 'string' && lineaProyecto.toLowerCase().includes(String(fragmento).toLowerCase());
+}
+
+// ── Cambio que autoriza el despliegue (puro) ──────────────────────────────
+// fila = { tipo, estado } de public.cambios, o null si el código no existe. Nunca bloquea:
+// devuelve el mensaje del pre-chequeo `cambio_registrado` (severidad 'aviso' si hay algo que
+// revisar). Una emergencia puede ejecutarse sin aprobación previa; el resto debe estar aprobado
+// o en ejecución.
+export function evaluarCambio(codigo, fila) {
+  if (!fila) {
+    return { advertir: true, mensaje: `El cambio ${codigo} no existe en la base: se registra igual, pero conviene darlo de alta en Cambios (Mesa de ayuda) para que quede la constancia.` };
+  }
+  const autorizan = fila.tipo === 'emergencia' ? ['borrador', 'solicitado', 'aprobado', 'en_ejecucion'] : ['aprobado', 'en_ejecucion'];
+  if (!autorizan.includes(fila.estado)) {
+    return { advertir: true, mensaje: `El cambio ${codigo} (${fila.tipo}) está "${fila.estado}": no autoriza ejecutar (se esperaba ${autorizan.join(' o ')}). Se registra igual.` };
+  }
+  return { advertir: false, mensaje: `Cambio ${codigo} (${fila.tipo}, ${fila.estado})` };
 }
 
 // ── Pre-chequeos (con dependencias inyectadas) ────────────────────────────
@@ -259,6 +290,24 @@ export async function prechequeos(ctx, deps) {
     if (anc.status === 0) agregar('head_en_remoto', true, 'al_desplegar', `HEAD está contenido en ${ref}`);
     else if (anc.status === 1) agregar('head_en_remoto', false, 'al_desplegar', `HEAD no está contenido en ${ref}: el commit no está publicado/mergeado en esa rama (invariante 12: primero merge, después producción). Si acaba de mergear, git fetch origin.`);
     else agregar('head_en_remoto', false, 'al_desplegar', `git merge-base falló contra ${ref}: ${(anc.stderr || '').trim()}`);
+  }
+
+  // Cambio que autoriza el despliegue: nunca bloquea (ver la cabecera).
+  if (ctx.cambio) {
+    try {
+      const filas = await deps.consultarSql(`select tipo, estado from public.cambios where codigo = ${literalSql(ctx.cambio)}`);
+      const ev = evaluarCambio(ctx.cambio, filas[0] || null);
+      agregar('cambio_registrado', true, ev.advertir ? 'aviso' : 'bloqueante', ev.mensaje);
+    } catch (e) {
+      agregar(
+        'cambio_registrado',
+        true,
+        'aviso',
+        e.codigo === 'transporte'
+          ? `No se pudo comprobar el cambio ${ctx.cambio} (sin conexión con la base): se registra igual si la columna existe.`
+          : `No se pudo comprobar el cambio ${ctx.cambio} (¿falta aplicar la migración 107?): ${e.message}. Se registra igual si la columna existe.`,
+      );
+    }
   }
 
   if (ctx.tipo === 'migracion') {
@@ -327,7 +376,7 @@ export async function ejecutarMigracion(ctx, deps) {
     warn(`No se pudieron leer las columnas de schema_migrations: ${e.message}`);
   }
   const falta = ['commit_sha', 'entorno'].filter((c) => !columnas.has(c));
-  const insert = construirInsertMigracion({ version: m.version, nombre: m.nombre, checksum, aplicadaPor, commitSha, entorno, columnas, forzar: ctx.forzar });
+  const insert = construirInsertMigracion({ version: m.version, nombre: m.nombre, checksum, aplicadaPor, commitSha, entorno, columnas, forzar: ctx.forzar, cambio: ctx.cambio });
 
   log('');
   log(`Plan (${ctx.dryRun ? 'DRY-RUN: no se ejecuta nada de lo que sigue' : 'se ejecuta ahora'}):`);
@@ -337,6 +386,7 @@ export async function ejecutarMigracion(ctx, deps) {
   log(`  3. Registrar en schema_migrations: ${insert.replace(checksum, `${checksum.slice(0, 12)}…`)}`);
   log(`     checksum sha256 real = ${checksum}`);
   if (falta.length) log(`     (columnas aún inexistentes en schema_migrations, se omiten: ${falta.join(', ')} — las crea la migración 100)`);
+  if (ctx.cambio) log(columnas.has('cambio_id') ? `     cambio que autoriza: ${ctx.cambio}` : `     (--cambio ${ctx.cambio}: la columna cambio_id aún no existe en schema_migrations, no se registra — la crea la migración 107)`);
   if (ctx.dryRun) return 0;
 
   if (!ctx.soloRegistro) {
@@ -373,7 +423,7 @@ export async function ejecutarMigracion(ctx, deps) {
     return 1;
   }
   try {
-    const filas = await transporte.consultarSql(`select version, nombre_archivo, left(checksum, 12) as checksum, aplicada_por from public.schema_migrations where version = ${literalSql(m.version)}`);
+    const filas = await transporte.consultarSql(`select version, nombre_archivo, left(checksum, 12) as checksum, aplicada_por${columnas.has('cambio_id') ? ', cambio_id' : ''} from public.schema_migrations where version = ${literalSql(m.version)}`);
     log(`  Registro leído de vuelta: ${JSON.stringify(filas[0] || null)}`);
   } catch {
     // la lectura de vuelta es informativa
@@ -417,7 +467,7 @@ export async function ejecutarFunction(ctx, deps) {
   } catch (e) {
     warn(`No se pudieron leer las columnas de function_deploys: ${e.message}`);
   }
-  const insert = construirInsertDeploy({ funcion: nombre, sha256: sha, commitSha, desplegadoPor, entorno: ctx.entorno, columnas });
+  const insert = construirInsertDeploy({ funcion: nombre, sha256: sha, commitSha, desplegadoPor, entorno: ctx.entorno, columnas, cambio: ctx.cambio });
 
   log('');
   log(`Plan (${ctx.dryRun ? 'DRY-RUN: no se ejecuta nada de lo que sigue' : 'se ejecuta ahora'}):`);
@@ -426,6 +476,7 @@ export async function ejecutarFunction(ctx, deps) {
   log(`  3. Registrar en function_deploys: ${insert}`);
   log(`     sha256 del archivo = ${sha}`);
   if (!columnas.has('entorno')) log('     (function_deploys todavía no tiene la columna entorno: se omite — la agrega la migración 100)');
+  if (ctx.cambio) log(columnas.has('cambio_id') ? `     cambio que autoriza: ${ctx.cambio}` : `     (--cambio ${ctx.cambio}: la columna cambio_id aún no existe en function_deploys, no se registra — la crea la migración 107)`);
   if (ctx.dryRun) return 0;
 
   log('\nDesplegando…');
@@ -484,7 +535,7 @@ export async function principal(argv, depsExtra = {}) {
     ctx = parsearArgumentos(argv);
     if (ctx.tipo === 'migracion') ctx.migracion = validarRutaMigracion(ctx.objetivo);
   } catch (e) {
-    console.error(`${e.message}\nUso: node scripts/deploy.mjs migracion migrations/0XX_x.sql | function <nombre> [--entorno produccion|v2] [--dry-run] [--forzar] [--solo-registro] [--proyecto <texto>]`);
+    console.error(`${e.message}\nUso: node scripts/deploy.mjs migracion migrations/0XX_x.sql | function <nombre> [--entorno produccion|v2] [--dry-run] [--forzar] [--solo-registro] [--proyecto <texto>] [--cambio CHG-0001]`);
     return 64;
   }
 

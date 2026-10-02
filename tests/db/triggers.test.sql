@@ -61,6 +61,13 @@
 --         licencia/rotacion, integridad (whitelist, omitir con motivo, cancelar), baja que
 --         crea su solicitud con pasos reales, Inicio (solicitudes_abiertas), reingreso y
 --         convertir_ticket_en_solicitud
+--   [107] (bloques 107-a a 107-d) catalogo de servicios (CHECK, nombre unico, tope de 15,
+--         servicio_id ON DELETE SET NULL en los cuatro catalogos), cambios (plan de retroceso y
+--         ventana, whitelist por tipo, contenido congelado fuera de borrador, aprobador jefe activo,
+--         libro inmutable con actor y rol, enlace con tickets), emergencia (ejecucion sin aprobacion
+--         previa, plazo de 48 h, aprobacion a posteriori, no cierra sin ella), vistas
+--         v_cambios_aprobacion_vencida / v_kpi_cambios y cambio_id de schema_migrations y
+--         function_deploys
 --
 -- OJO — esta conexión (project_admin, ver AGENTS.md) tiene BYPASSRLS y el
 -- CLI bloquea los cambios de rol y de configuración de sesión ("Changing SQL session configuration
@@ -4649,5 +4656,656 @@ begin
     raise exception 'TESTS_OK [106e] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [106e]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 107-a: servicios (CHECK, nombre unico, dueno, tope de 15), servicio_id en los
+-- cuatro catalogos (ON DELETE SET NULL), cambio_id, whitelist, RLS, privilegios
+-- y EXECUTE (los servicios vivos se dan de baja DENTRO del bloque, que se revierte)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_n int;
+  v_f text;
+  v_i int;
+  v_user uuid;
+  fallos text := '';
+begin
+  -- columnas y FK
+  select count(*) into v_n from information_schema.columns
+   where table_schema = 'public' and column_name = 'servicio_id' and is_nullable = 'YES'
+     and table_name in ('categorias_ticket', 'plataformas', 'licencias', 'tipos_equipo');
+  if v_n <> 4 then fallos := fallos || '[107] se esperaban 4 columnas servicio_id nullables y hay ' || v_n || '; '; end if;
+  select count(*) into v_n from pg_constraint
+   where contype = 'f' and confrelid = 'public.servicios'::regclass and confdeltype = 'n'
+     and conrelid in ('public.categorias_ticket'::regclass, 'public.plataformas'::regclass, 'public.licencias'::regclass, 'public.tipos_equipo'::regclass);
+  if v_n <> 4 then fallos := fallos || '[107] las 4 FK a servicios deben ser ON DELETE SET NULL (' || v_n || '/4); '; end if;
+  select count(*) into v_n from information_schema.columns
+   where table_schema = 'public' and column_name = 'cambio_id' and is_nullable = 'YES'
+     and table_name in ('schema_migrations', 'function_deploys');
+  if v_n <> 2 then fallos := fallos || '[107] faltan las columnas cambio_id de schema_migrations y function_deploys; '; end if;
+
+  -- whitelist: 14 filas, 2 solo jefe, terminales sin salida
+  select count(*) into v_n from public.transiciones_cambio_permitidas;
+  if v_n <> 14 then fallos := fallos || '[107] la whitelist debe tener 14 transiciones y tiene ' || v_n || '; '; end if;
+  if exists (select 1 from public.transiciones_cambio_permitidas where origen in ('cerrado', 'rechazado', 'cancelado', 'revertido')) then
+    fallos := fallos || '[107] cerrado, rechazado, cancelado y revertido deben ser terminales; ';
+  end if;
+  select count(*) into v_n from public.transiciones_cambio_permitidas where solo_jefe;
+  if v_n <> 2 then fallos := fallos || '[107] solo aprobar y rechazar son de jefe (' || v_n || '); '; end if;
+  select count(*) into v_n from public.transiciones_cambio_permitidas
+   where destino = 'en_ejecucion' and origen in ('borrador', 'solicitado') and tipos <> array['emergencia'];
+  if v_n <> 0 then fallos := fallos || '[107] solo la emergencia se ejecuta sin aprobacion previa; '; end if;
+
+  -- el catalogo sembrado existe (en produccion el jefe pudo editarlo)
+  select count(*) into v_n from public.servicios
+   where id in ('correo', 'bitrix24', 'vpn', 'erp', 'red', 'equipos', 'impresion', 'telefonia', 'licencias', 'accesos');
+  if v_n = 0 then fallos := fallos || '[107] no hay ningun servicio sembrado; '; end if;
+
+  -- desde aqui el catalogo se vacia (rollback del bloque)
+  update public.servicios set deleted_at = now() where deleted_at is null;
+
+  -- CHECK de id, nombre, criticidad, horario y dueno
+  begin insert into public.servicios (id, nombre) values ('Mal Id', 'Nombre valido'); fallos := fallos || '[107] el CHECK admitio un id con mayusculas y espacios; ';
+  exception when check_violation then null; end;
+  begin insert into public.servicios (id, nombre) values ('s_corto', 'x'); fallos := fallos || '[107] el CHECK admitio un nombre de un caracter; ';
+  exception when check_violation then null; end;
+  begin insert into public.servicios (id, nombre, criticidad) values ('s_crit', 'Servicio crit', 'urgente'); fallos := fallos || '[107] el CHECK admitio una criticidad fuera de dominio; ';
+  exception when check_violation then null; end;
+  begin insert into public.servicios (id, nombre, horario) values ('s_hor', 'Servicio hor', repeat('x', 61)); fallos := fallos || '[107] el CHECK admitio un horario de 61 caracteres; ';
+  exception when check_violation then null; end;
+  begin insert into public.servicios (id, nombre, dueno_user_id) values ('s_dueno', 'Servicio dueno', gen_random_uuid()); fallos := fallos || '[107] el dueno admitio un usuario que no es staff; ';
+  exception when foreign_key_violation then null; end;
+
+  -- nombre unico entre los vivos (sin distinguir mayusculas); uno dado de baja libera el nombre
+  insert into public.servicios (id, nombre) values ('s_uno', '__TEST_CI__ Servicio 107');
+  begin insert into public.servicios (id, nombre) values ('s_dos', '__test_ci__ servicio 107'); fallos := fallos || '[107] se admitieron dos servicios vivos con el mismo nombre; ';
+  exception when unique_violation then null; end;
+  update public.servicios set deleted_at = now() where id = 's_uno';
+  insert into public.servicios (id, nombre) values ('s_dos', '__TEST_CI__ Servicio 107');
+  update public.servicios set deleted_at = now() where id = 's_dos';
+
+  -- dueno: un integrante del staff (el trigger de auth.users lo crea)
+  insert into auth.users (email) values ('__test_ci_107a_dueno@example.test') returning id into v_user;
+  insert into public.servicios (id, nombre, dueno_user_id, criticidad, horario)
+    values ('s_dueno', '__TEST_CI__ Con dueno', v_user, 'critica', '24 x 7');
+  update public.servicios set deleted_at = now() where id = 's_dueno';
+
+  -- servicio_id en los cuatro catalogos: ON DELETE SET NULL y FK real
+  insert into public.servicios (id, nombre) values ('s_fk', '__TEST_CI__ FK');
+  insert into public.categorias_ticket (id, nombre, servicio_id) values ('__test_ci_107a__', '__TEST_CI__ Categoria', 's_fk');
+  insert into public.plataformas (id, nombre, servicio_id) values ('__test_ci_107a__', '__TEST_CI__ Plataforma', 's_fk');
+  insert into public.licencias (software, tipo, servicio_id) values ('__TEST_CI__ Software 107', 'perpetua', 's_fk');
+  insert into public.tipos_equipo (id, nombre, servicio_id) values ('__test_ci_107a__', '__TEST_CI__ Tipo', 's_fk');
+  begin insert into public.categorias_ticket (id, nombre, servicio_id) values ('__test_ci_107a_2__', '__TEST_CI__ Categoria 2', 'no_existe');
+    fallos := fallos || '[107] una categoria admitio un servicio inexistente; ';
+  exception when foreign_key_violation then null; end;
+  delete from public.servicios where id = 's_fk';
+  select count(*) into v_n from (
+    select servicio_id from public.categorias_ticket where id = '__test_ci_107a__'
+    union all select servicio_id from public.plataformas where id = '__test_ci_107a__'
+    union all select servicio_id from public.licencias where software = '__TEST_CI__ Software 107'
+    union all select servicio_id from public.tipos_equipo where id = '__test_ci_107a__') t
+   where servicio_id is not null;
+  if v_n <> 0 then fallos := fallos || '[107] borrar el servicio no dejo en NULL las 4 filas que lo referenciaban (' || v_n || '); '; end if;
+
+  -- tope de 15 servicios vivos
+  for v_i in 1..15 loop
+    insert into public.servicios (id, nombre) values ('s_tope_' || v_i, '__TEST_CI__ Tope ' || v_i);
+  end loop;
+  begin insert into public.servicios (id, nombre) values ('s_tope_16', '__TEST_CI__ Tope 16'); fallos := fallos || '[107] se admitio el servicio numero 16; ';
+  exception when others then if sqlerrm not like '%15 servicios%' then fallos := fallos || '[107] el tope fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  update public.servicios set deleted_at = now() where id = 's_tope_1';
+  insert into public.servicios (id, nombre) values ('s_tope_16', '__TEST_CI__ Tope 16');
+  begin update public.servicios set deleted_at = null where id = 's_tope_1'; fallos := fallos || '[107] se restauro un servicio por encima del tope; ';
+  exception when others then if sqlerrm not like '%15 servicios%' then fallos := fallos || '[107] restaurar por encima del tope fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  update public.servicios set descripcion = 'Editado' where id = 's_tope_2';
+
+  -- RLS y policies
+  select count(*) into v_n from pg_class
+   where oid in ('public.servicios'::regclass, 'public.cambios'::regclass, 'public.cambio_eventos'::regclass,
+                 'public.cambio_tickets'::regclass, 'public.transiciones_cambio_permitidas'::regclass) and relrowsecurity;
+  if v_n <> 5 then fallos := fallos || '[107] alguna tabla sin RLS (' || v_n || '/5); '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'servicios'
+    and ((cmd = 'SELECT' and qual like '%staff:activo%')
+      or (cmd = 'INSERT' and with_check like '%rol:jefe%')
+      or (cmd = 'UPDATE' and qual like '%rol:jefe%' and with_check like '%rol:jefe%')
+      or (cmd = 'DELETE' and qual like '%rol:jefe%'));
+  if v_n <> 4 then fallos := fallos || '[107] servicios: faltan policies (SELECT staff activo; INSERT/UPDATE/DELETE jefe) (' || v_n || '/4); '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public'
+    and tablename in ('cambios', 'cambio_eventos', 'cambio_tickets') and cmd = 'SELECT' and qual like '%puede_actual%tickets%';
+  if v_n <> 3 then fallos := fallos || '[107] faltan policies SELECT con el modulo tickets (' || v_n || '/3); '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public'
+    and tablename in ('cambios', 'cambio_eventos', 'cambio_tickets', 'transiciones_cambio_permitidas') and cmd in ('INSERT', 'UPDATE', 'DELETE', 'ALL');
+  if v_n <> 0 then fallos := fallos || '[107] las tablas de cambios tienen policies de escritura; '; end if;
+
+  -- privilegios: los clientes no escriben cambios, ni leen nada como anon
+  if has_table_privilege('authenticated', 'public.cambios', 'insert')
+     or has_table_privilege('authenticated', 'public.cambios', 'update')
+     or has_table_privilege('authenticated', 'public.cambios', 'delete')
+     or has_table_privilege('authenticated', 'public.cambio_eventos', 'insert')
+     or has_table_privilege('authenticated', 'public.cambio_eventos', 'update')
+     or has_table_privilege('authenticated', 'public.cambio_eventos', 'delete')
+     or has_table_privilege('authenticated', 'public.cambio_tickets', 'insert')
+     or has_table_privilege('authenticated', 'public.cambio_tickets', 'delete')
+     or has_table_privilege('authenticated', 'public.transiciones_cambio_permitidas', 'insert')
+     or not has_table_privilege('authenticated', 'public.cambios', 'select')
+     or not has_table_privilege('authenticated', 'public.cambio_eventos', 'select')
+     or not has_table_privilege('authenticated', 'public.cambio_tickets', 'select')
+     or has_table_privilege('anon', 'public.cambios', 'select')
+     or has_table_privilege('anon', 'public.cambio_eventos', 'select')
+     or has_table_privilege('anon', 'public.cambio_tickets', 'select')
+     or has_table_privilege('anon', 'public.servicios', 'select') then
+    fallos := fallos || '[107] privilegios de tablas incorrectos; ';
+  end if;
+  if not has_table_privilege('authenticated', 'public.servicios', 'insert')
+     or not has_table_privilege('authenticated', 'public.servicios', 'update') then
+    fallos := fallos || '[107] el catalogo de servicios debe poder escribirse desde el cliente (la RLS lo limita al jefe); ';
+  end if;
+  if has_sequence_privilege('authenticated', 'public.cambio_codigo_seq', 'usage')
+     or has_sequence_privilege('anon', 'public.cambio_codigo_seq', 'usage') then
+    fallos := fallos || '[107] la secuencia de codigos es usable por clientes; ';
+  end if;
+
+  -- EXECUTE: RPC a authenticated; nucleos, internas y triggers solo a project_admin
+  foreach v_f in array array[
+    'public.crear_cambio(text, text, text, text, text, text, timestamptz, timestamptz, boolean)',
+    'public.actualizar_cambio(uuid, text, text, text, text, text, text, timestamptz, timestamptz)',
+    'public.transicionar_cambio(uuid, text, text)',
+    'public.aprobar_cambio(uuid, text)',
+    'public.rechazar_cambio(uuid, text)',
+    'public.vincular_cambio_ticket(uuid, uuid)',
+    'public.desvincular_cambio_ticket(uuid, uuid)'] loop
+    if not has_function_privilege('authenticated', v_f, 'execute') or has_function_privilege('anon', v_f, 'execute') then
+      fallos := fallos || '[107] EXECUTE incorrecto en ' || v_f || '; ';
+    end if;
+  end loop;
+  foreach v_f in array array[
+    'public.crear_cambio_nucleo(text, text, text, text, text, text, timestamptz, timestamptz, boolean, uuid, boolean)',
+    'public.actualizar_cambio_nucleo(uuid, text, text, text, text, text, text, timestamptz, timestamptz, uuid, boolean)',
+    'public.transicionar_cambio_nucleo(uuid, text, text, uuid, boolean)',
+    'public.aprobar_cambio_nucleo(uuid, text, uuid, boolean)',
+    'public.rechazar_cambio_nucleo(uuid, text, uuid, boolean)',
+    'public.vincular_cambio_ticket_nucleo(uuid, uuid, uuid, boolean)',
+    'public.desvincular_cambio_ticket_nucleo(uuid, uuid, uuid, boolean)',
+    'public.registrar_evento_cambio(uuid, text, text, text, text, uuid, text)',
+    'public.cambio_validar_campos(text, text, text, text, text, text, timestamptz, timestamptz)',
+    'public.check_transicion_cambio()',
+    'public.check_tope_servicios()',
+    'public.siguiente_codigo_cambio()',
+    'public.texto_multilinea(text)'] loop
+    if has_function_privilege('authenticated', v_f, 'execute') or has_function_privilege('anon', v_f, 'execute')
+       or not has_function_privilege('project_admin', v_f, 'execute') then
+      fallos := fallos || '[107] EXECUTE incorrecto en ' || v_f || '; ';
+    end if;
+  end loop;
+
+  -- sin sesion (auth.uid() NULL) cada RPC publica responde 42501
+  begin perform public.crear_cambio('Titulo', 'normal', 'bajo', 'correo', 'd'); fallos := fallos || '[107] crear_cambio respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[107] crear_cambio sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.actualizar_cambio(gen_random_uuid(), 'Titulo', 'normal', 'bajo', 'correo', 'd'); fallos := fallos || '[107] actualizar_cambio respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[107] actualizar_cambio sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.transicionar_cambio(gen_random_uuid(), 'solicitado'); fallos := fallos || '[107] transicionar_cambio respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[107] transicionar_cambio sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.aprobar_cambio(gen_random_uuid()); fallos := fallos || '[107] aprobar_cambio respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[107] aprobar_cambio sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.rechazar_cambio(gen_random_uuid(), 'x'); fallos := fallos || '[107] rechazar_cambio respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[107] rechazar_cambio sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.vincular_cambio_ticket(gen_random_uuid(), gen_random_uuid()); fallos := fallos || '[107] vincular_cambio_ticket respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[107] vincular_cambio_ticket sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.desvincular_cambio_ticket(gen_random_uuid(), gen_random_uuid()); fallos := fallos || '[107] desvincular_cambio_ticket respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[107] desvincular_cambio_ticket sin sesion lanzo ' || sqlstate || '; '; end if; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [107a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [107a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 107-b: trigger y CHECK de los cambios con SQL directo (project_admin tampoco se
+-- salta la whitelist): plan y ventana, congelado fuera de borrador, aprobador jefe
+-- activo, emergencia sin aprobar no cierra, libro inmutable, enlace con tickets
+-- ------------------------------------------------------------
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_n uuid;
+  v_n2 uuid;
+  v_e uuid;
+  v_s uuid;
+  v_t uuid;
+  v_ev uuid;
+  v_codigo text;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_107b_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_107b_asis@example.test') returning id into v_asis;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  update public.staff set activo = true where user_id = v_asis;
+  update public.servicios set deleted_at = now() where deleted_at is null;
+  insert into public.servicios (id, nombre) values ('s107b', '__TEST_CI__ Servicio 107b');
+
+  insert into public.cambios (titulo, tipo, riesgo, servicio_id, descripcion)
+    values ('__TEST_CI__ Normal 107b', 'normal', 'medio', 's107b', 'Descripcion') returning id, codigo into v_n, v_codigo;
+  if v_codigo !~ '^CHG-[0-9]{4,}$' then fallos := fallos || '[107] el codigo no tiene la forma CHG-####: ' || v_codigo || '; '; end if;
+
+  -- sin plan de retroceso ni ventana no sale de borrador (CHECK)
+  begin update public.cambios set estado = 'solicitado' where id = v_n; fallos := fallos || '[107] un cambio normal salio de borrador sin plan ni ventana; ';
+  exception when check_violation then null; end;
+  begin update public.cambios set plan_retroceso = '   ', ventana_inicio = now(), ventana_fin = now() + interval '1 hour', estado = 'solicitado' where id = v_n;
+    fallos := fallos || '[107] un plan de retroceso en blanco conto como plan; ';
+  exception when check_violation then null; end;
+  -- ventana coherente: ambas o ninguna, y fin posterior al inicio
+  begin update public.cambios set ventana_inicio = now() where id = v_n; fallos := fallos || '[107] se admitio una ventana con solo el inicio; ';
+  exception when check_violation then null; end;
+  begin update public.cambios set ventana_inicio = now(), ventana_fin = now() - interval '1 hour' where id = v_n; fallos := fallos || '[107] se admitio una ventana que termina antes de empezar; ';
+  exception when check_violation then null; end;
+
+  update public.cambios
+     set plan_retroceso = 'Restaurar la configuracion anterior', ventana_inicio = now() + interval '1 day', ventana_fin = now() + interval '1 day 2 hours'
+   where id = v_n;
+  update public.cambios set estado = 'solicitado' where id = v_n;
+
+  -- contenido congelado fuera de borrador
+  begin update public.cambios set titulo = 'Otro titulo' where id = v_n; fallos := fallos || '[107] se edito el titulo de un cambio solicitado; ';
+  exception when others then if sqlerrm not like '%no se edita%' then fallos := fallos || '[107] editar un solicitado fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.cambios set plan_retroceso = 'Otro plan' where id = v_n; fallos := fallos || '[107] se edito el plan de un cambio solicitado; ';
+  exception when others then if sqlerrm not like '%no se edita%' then fallos := fallos || '[107] editar el plan fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.cambios set codigo = 'CHG-9999' where id = v_n; fallos := fallos || '[107] se cambio el codigo de un cambio; ';
+  exception when others then if sqlerrm not like '%no cambia de c%' then fallos := fallos || '[107] cambiar el codigo fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- aprobar: exige aprobador, y que sea un jefe activo
+  begin update public.cambios set estado = 'aprobado' where id = v_n; fallos := fallos || '[107] un cambio normal paso a aprobado sin aprobador; ';
+  exception when others then if sqlerrm not like '%solo pasa a aprobado%' then fallos := fallos || '[107] aprobar sin aprobador fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.cambios set estado = 'aprobado', aprobado_por = v_asis, aprobado_at = now() where id = v_n; fallos := fallos || '[107] un asistente figuro como aprobador; ';
+  exception when others then if sqlerrm not like '%jefe activo%' then fallos := fallos || '[107] aprobador asistente fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.cambios set aprobado_por = v_jefe where id = v_n; fallos := fallos || '[107] se admitio aprobado_por sin aprobado_at; ';
+  exception when check_violation then null; end;
+  update public.cambios set estado = 'aprobado', aprobado_por = v_jefe, aprobado_at = now() where id = v_n;
+
+  -- whitelist
+  begin update public.cambios set estado = 'cerrado' where id = v_n; fallos := fallos || '[107] aprobado -> cerrado no deberia permitirse; ';
+  exception when others then if sqlerrm not like '%no permitida%' then fallos := fallos || '[107] aprobado -> cerrado fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin update public.cambios set aprobacion_pendiente_hasta = now() where id = v_n; fallos := fallos || '[107] un cambio normal admitio un plazo de aprobacion; ';
+  exception when check_violation then null; end;
+
+  -- un cambio normal no se ejecuta sin pasar por la aprobacion
+  insert into public.cambios (titulo, tipo, riesgo, servicio_id, descripcion)
+    values ('__TEST_CI__ Normal 107b-2', 'normal', 'bajo', 's107b', 'Descripcion') returning id into v_n2;
+  begin update public.cambios set estado = 'en_ejecucion' where id = v_n2; fallos := fallos || '[107] un cambio normal en borrador paso a en_ejecucion; ';
+  exception when others then if sqlerrm not like '%no permitida%' then fallos := fallos || '[107] normal -> en_ejecucion fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- un borrador incompleto se puede cancelar
+  update public.cambios set estado = 'cancelado' where id = v_n2;
+  begin update public.cambios set estado = 'solicitado' where id = v_n2; fallos := fallos || '[107] un cambio cancelado volvio a solicitado; ';
+  exception when others then if sqlerrm not like '%no permitida%' then fallos := fallos || '[107] cancelado -> solicitado fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- estandar: preautorizado (sin plan), pero con ventana
+  insert into public.cambios (titulo, tipo, riesgo, servicio_id, descripcion)
+    values ('__TEST_CI__ Estandar 107b', 'estandar', 'bajo', 's107b', 'Rutina') returning id into v_s;
+  begin update public.cambios set estado = 'aprobado' where id = v_s; fallos := fallos || '[107] un estandar paso a aprobado sin ventana; ';
+  exception when check_violation then null; end;
+  update public.cambios set ventana_inicio = now(), ventana_fin = now() + interval '1 hour' where id = v_s;
+  update public.cambios set estado = 'aprobado' where id = v_s;
+  if (select aprobado_por from public.cambios where id = v_s) is not null then fallos := fallos || '[107] un estandar preautorizado no deberia tener aprobador; '; end if;
+
+  -- emergencia: se ejecuta sin aprobacion previa, pero no se cierra sin aprobacion a posteriori
+  insert into public.cambios (titulo, tipo, riesgo, servicio_id, descripcion, plan_retroceso)
+    values ('__TEST_CI__ Emergencia 107b', 'emergencia', 'alto', 's107b', 'Caida', 'Volver al enlace anterior') returning id into v_e;
+  update public.cambios set estado = 'en_ejecucion' where id = v_e;
+  update public.cambios set estado = 'implementado' where id = v_e;
+  begin update public.cambios set estado = 'cerrado' where id = v_e; fallos := fallos || '[107] una emergencia sin aprobar se cerro; ';
+  exception when others then if sqlerrm not like '%aprobaci_n a posteriori%' then fallos := fallos || '[107] cerrar la emergencia fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  update public.cambios set aprobado_por = v_jefe, aprobado_at = now() where id = v_e;
+  update public.cambios set estado = 'cerrado' where id = v_e;
+  if (select estado from public.cambios where id = v_e) <> 'cerrado' then fallos := fallos || '[107] la emergencia aprobada no cerro; '; end if;
+
+  -- libro inmutable y con dominio cerrado
+  perform public.registrar_evento_cambio(v_n, 'editado', 'solicitado', 'solicitado', 'Prueba', v_jefe, 'jefe');
+  select id into v_ev from public.cambio_eventos where cambio_id = v_n limit 1;
+  begin update public.cambio_eventos set detalle = 'Alterado' where id = v_ev; fallos := fallos || '[107] se modifico un evento del libro; ';
+  exception when others then if sqlerrm not like '%inmutable%' then fallos := fallos || '[107] UPDATE del libro fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin delete from public.cambio_eventos where id = v_ev; fallos := fallos || '[107] se borro un evento del libro; ';
+  exception when others then if sqlerrm not like '%inmutable%' then fallos := fallos || '[107] DELETE del libro fallo por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.registrar_evento_cambio(v_n, 'inventado', null, null, null, v_jefe, 'jefe'); fallos := fallos || '[107] el libro admitio un evento fuera de dominio; ';
+  exception when check_violation then null; end;
+  begin perform public.registrar_evento_cambio(v_n, 'editado', null, null, null, v_jefe, 'usuario'); fallos := fallos || '[107] el libro admitio un rol fuera de dominio; ';
+  exception when check_violation then null; end;
+
+  -- enlace con tickets: clave unica y se va con el ticket
+  insert into public.tickets (codigo, token, titulo, descripcion, estado)
+    values ('__TESTCI-107B__', '__test_ci_107b_token__', 'Test CI 107b', 'Ticket de prueba', 'abierto') returning id into v_t;
+  insert into public.cambio_tickets (cambio_id, ticket_id, vinculado_por) values (v_n, v_t, v_jefe);
+  begin insert into public.cambio_tickets (cambio_id, ticket_id) values (v_n, v_t); fallos := fallos || '[107] se enlazo dos veces el mismo ticket; ';
+  exception when unique_violation then null; end;
+  delete from public.tickets where id = v_t;
+  if exists (select 1 from public.cambio_tickets where cambio_id = v_n) then fallos := fallos || '[107] el enlace sobrevivio al ticket; '; end if;
+
+  -- un cambio con eventos no se puede borrar (el libro es parte de su historia)
+  begin delete from public.cambios where id = v_n; fallos := fallos || '[107] se borro un cambio con libro; ';
+  exception when foreign_key_violation then null; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [107b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [107b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 107-c: nucleos — ciclo de vida de un cambio normal (borrador, solicitado,
+-- aprobado, en ejecucion, implementado, cerrado), validaciones de crear, jefe
+-- para aprobar y rechazar, motivos, estandar preautorizado, libro con actor y
+-- rol, y vincular / desvincular tickets
+-- ------------------------------------------------------------
+do $$
+declare
+  v_jefe uuid;
+  v_tec uuid;
+  v_c public.cambios;
+  v_c2 public.cambios;
+  v_c3 public.cambios;
+  v_c4 public.cambios;
+  v_est public.cambios;
+  v_t uuid;
+  v_vinc public.cambio_tickets;
+  v_ok boolean;
+  v_evs text;
+  v_n int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_107c_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_107c_tec@example.test') returning id into v_tec;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  update public.staff set activo = true where user_id = v_tec;
+  update public.servicios set deleted_at = now() where deleted_at is null;
+  insert into public.servicios (id, nombre) values ('s107c', '__TEST_CI__ Servicio 107c');
+  insert into public.servicios (id, nombre) values ('s107c_baja', '__TEST_CI__ Servicio 107c baja');
+  update public.servicios set deleted_at = now() where id = 's107c_baja';
+
+  -- validaciones de crear_cambio_nucleo
+  begin perform public.crear_cambio_nucleo('ab', 'normal', 'bajo', 's107c', 'd', 'p', null, null, false, v_tec, false); fallos := fallos || '[107] se admitio un titulo de 2 caracteres; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%t_tulo%' then fallos := fallos || '[107] titulo corto: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'otro', 'bajo', 's107c', 'd', 'p', null, null, false, v_tec, false); fallos := fallos || '[107] se admitio un tipo fuera de dominio; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%tipo de cambio%' then fallos := fallos || '[107] tipo invalido: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'normal', 'extremo', 's107c', 'd', 'p', null, null, false, v_tec, false); fallos := fallos || '[107] se admitio un riesgo fuera de dominio; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%riesgo%' then fallos := fallos || '[107] riesgo invalido: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'normal', 'bajo', 'no_existe', 'd', 'p', null, null, false, v_tec, false); fallos := fallos || '[107] se admitio un servicio inexistente; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%servicio%' then fallos := fallos || '[107] servicio inexistente: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'normal', 'bajo', 's107c_baja', 'd', 'p', null, null, false, v_tec, false); fallos := fallos || '[107] se admitio un servicio dado de baja; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%servicio%' then fallos := fallos || '[107] servicio de baja: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'normal', 'bajo', 's107c', '   ', 'p', null, null, false, v_tec, false); fallos := fallos || '[107] se admitio una descripcion vacia; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%descripci%' then fallos := fallos || '[107] descripcion vacia: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'normal', 'bajo', 's107c', 'd', 'p', now(), now() - interval '1 hour', false, v_tec, false); fallos := fallos || '[107] se admitio una ventana invertida; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%termina antes%' then fallos := fallos || '[107] ventana invertida: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'normal', 'bajo', 's107c', 'd', 'p', now(), null, false, v_tec, false); fallos := fallos || '[107] se admitio una ventana a medias; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%inicio y el fin%' then fallos := fallos || '[107] ventana a medias: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  -- enviar sin plan o sin ventana: mensajes claros y nada queda creado
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'normal', 'bajo', 's107c', 'd', null, now() + interval '1 day', now() + interval '2 days', true, v_tec, false); fallos := fallos || '[107] se envio un normal sin plan de retroceso; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%plan de retroceso%' then fallos := fallos || '[107] enviar sin plan: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_cambio_nucleo('Titulo valido', 'normal', 'bajo', 's107c', 'd', 'Plan', null, null, true, v_tec, false); fallos := fallos || '[107] se envio un normal sin ventana; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%ventana%' then fallos := fallos || '[107] enviar sin ventana: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+
+  -- borrador: se limpia el titulo y se conservan los saltos de linea
+  v_c := public.crear_cambio_nucleo('  Cambio   de   router  ', 'normal', 'medio', 's107c', E'Linea 1\nLinea 2', 'Volver a la configuracion guardada', null, null, false, v_tec, false);
+  if v_c.titulo <> 'Cambio de router' then fallos := fallos || '[107] el titulo no se limpio: ' || v_c.titulo || '; '; end if;
+  if position(chr(10) in v_c.descripcion) = 0 then fallos := fallos || '[107] la descripcion perdio sus saltos de linea; '; end if;
+  if v_c.estado <> 'borrador' or v_c.solicitado_por is distinct from v_tec or v_c.codigo !~ '^CHG-[0-9]{4,}$' then fallos := fallos || '[107] el borrador nacio mal; '; end if;
+
+  -- editar el borrador
+  v_c := public.actualizar_cambio_nucleo(v_c.id, 'Cambio del router principal', 'normal', 'alto', 's107c', 'Cambiar el router', 'Plan A', now() + interval '1 day', now() + interval '1 day 3 hours', v_tec, false);
+  if v_c.titulo <> 'Cambio del router principal' or v_c.riesgo <> 'alto' or v_c.ventana_inicio is null then fallos := fallos || '[107] actualizar_cambio_nucleo no aplico los datos; '; end if;
+  begin perform public.actualizar_cambio_nucleo(v_c.id, 'Titulo valido', 'normal', 'alto', 'no_existe', 'd', 'p', null, null, v_tec, false); fallos := fallos || '[107] actualizar admitio un servicio inexistente; ';
+  exception when others then if sqlstate <> 'P0001' then fallos := fallos || '[107] actualizar con servicio inexistente: ' || sqlstate || '; '; end if; end;
+  begin perform public.actualizar_cambio_nucleo(gen_random_uuid(), 'Titulo valido', 'normal', 'alto', 's107c', 'd', 'p', null, null, v_tec, false); fallos := fallos || '[107] actualizar un cambio inexistente no fallo; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[107] actualizar inexistente lanzo ' || sqlstate || '; '; end if; end;
+
+  -- solicitar
+  v_c := public.transicionar_cambio_nucleo(v_c.id, 'solicitado', null, v_tec, false);
+  if v_c.estado <> 'solicitado' or v_c.solicitado_at is null then fallos := fallos || '[107] no quedo solicitado con su fecha; '; end if;
+  begin perform public.actualizar_cambio_nucleo(v_c.id, 'Titulo valido', 'normal', 'alto', 's107c', 'd', 'p', null, null, v_tec, false); fallos := fallos || '[107] se edito un cambio solicitado; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%no se edita%' then fallos := fallos || '[107] editar solicitado: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+
+  -- aprobar: solo un jefe (por las dos puertas)
+  begin perform public.aprobar_cambio_nucleo(v_c.id, null, v_tec, false); fallos := fallos || '[107] un tecnico aprobo un cambio; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%Solo un jefe%' then fallos := fallos || '[107] aprobar como tecnico: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.transicionar_cambio_nucleo(v_c.id, 'aprobado', null, v_tec, false); fallos := fallos || '[107] un tecnico aprobo con transicionar; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%Solo un jefe%' then fallos := fallos || '[107] transicionar a aprobado como tecnico: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.rechazar_cambio_nucleo(v_c.id, 'No', v_tec, false); fallos := fallos || '[107] un tecnico rechazo un cambio; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%Solo un jefe%' then fallos := fallos || '[107] rechazar como tecnico: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  v_c := public.aprobar_cambio_nucleo(v_c.id, 'Autorizado', v_jefe, true);
+  if v_c.estado <> 'aprobado' or v_c.aprobado_por is distinct from v_jefe or v_c.aprobado_at is null then fallos := fallos || '[107] la aprobacion no registro al jefe; '; end if;
+  begin perform public.aprobar_cambio_nucleo(v_c.id, null, v_jefe, true); fallos := fallos || '[107] se aprobo dos veces; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%no admite aprobaci%' then fallos := fallos || '[107] doble aprobacion: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.transicionar_cambio_nucleo(v_c.id, 'implementado', null, v_tec, false); fallos := fallos || '[107] aprobado -> implementado no deberia permitirse; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%no puede pasar%' then fallos := fallos || '[107] aprobado -> implementado: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+
+  -- ejecutar, implementar, cerrar
+  v_c := public.transicionar_cambio_nucleo(v_c.id, 'en_ejecucion', null, v_tec, false);
+  if v_c.inicio_real_at is null or v_c.aprobacion_pendiente_hasta is not null then fallos := fallos || '[107] en_ejecucion mal registrado; '; end if;
+  v_c := public.transicionar_cambio_nucleo(v_c.id, 'implementado', 'Router cambiado sin incidentes', v_tec, false);
+  if v_c.fin_real_at is null or v_c.resultado <> 'Router cambiado sin incidentes' then fallos := fallos || '[107] implementado sin resultado ni fecha; '; end if;
+  v_c := public.transicionar_cambio_nucleo(v_c.id, 'cerrado', null, v_jefe, true);
+  if v_c.estado <> 'cerrado' then fallos := fallos || '[107] no cerro; '; end if;
+  begin perform public.transicionar_cambio_nucleo(v_c.id, 'cancelado', 'tarde', v_tec, false); fallos := fallos || '[107] un cambio cerrado se cancelo; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%no puede pasar%' then fallos := fallos || '[107] cerrado es terminal: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+
+  -- libro: orden, actor y rol
+  select string_agg(evento, ',' order by orden) into v_evs from public.cambio_eventos where cambio_id = v_c.id;
+  if v_evs is distinct from 'creado,editado,solicitado,aprobado,iniciado,implementado,cerrado' then fallos := fallos || '[107] libro inesperado: ' || coalesce(v_evs, 'vacio') || '; '; end if;
+  if (select user_id from public.cambio_eventos where cambio_id = v_c.id and evento = 'creado') is distinct from v_tec
+     or (select rol_actor from public.cambio_eventos where cambio_id = v_c.id and evento = 'creado') <> 'tecnico'
+     or (select user_email from public.cambio_eventos where cambio_id = v_c.id and evento = 'creado') <> '__test_ci_107c_tec@example.test' then
+    fallos := fallos || '[107] el evento creado no registra al tecnico; ';
+  end if;
+  if (select rol_actor from public.cambio_eventos where cambio_id = v_c.id and evento = 'aprobado') <> 'jefe' then fallos := fallos || '[107] el evento aprobado no registra el rol jefe; '; end if;
+
+  -- rechazar: motivo obligatorio
+  v_c2 := public.crear_cambio_nucleo('Cambio a rechazar', 'normal', 'bajo', 's107c', 'd', 'Plan', now() + interval '1 day', now() + interval '2 days', true, v_tec, false);
+  if v_c2.estado <> 'solicitado' then fallos := fallos || '[107] crear con p_enviar no dejo el cambio solicitado; '; end if;
+  begin perform public.rechazar_cambio_nucleo(v_c2.id, '   ', v_jefe, true); fallos := fallos || '[107] se rechazo sin motivo; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%motivo es obligatorio%' then fallos := fallos || '[107] rechazar sin motivo: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  v_c2 := public.rechazar_cambio_nucleo(v_c2.id, 'Ventana en cierre contable', v_jefe, true);
+  if v_c2.estado <> 'rechazado' or v_c2.resultado <> 'Ventana en cierre contable' then fallos := fallos || '[107] el rechazo no guardo su motivo; '; end if;
+
+  -- cancelar: sin motivo solo desde borrador
+  v_c3 := public.crear_cambio_nucleo('Cambio a cancelar', 'normal', 'bajo', 's107c', 'd', null, null, null, false, v_tec, false);
+  v_c3 := public.transicionar_cambio_nucleo(v_c3.id, 'cancelado', null, v_tec, false);
+  if v_c3.estado <> 'cancelado' then fallos := fallos || '[107] un borrador no se cancelo sin motivo; '; end if;
+  v_c3 := public.crear_cambio_nucleo('Cambio a cancelar 2', 'normal', 'bajo', 's107c', 'd', 'Plan', now() + interval '1 day', now() + interval '2 days', true, v_tec, false);
+  begin perform public.transicionar_cambio_nucleo(v_c3.id, 'cancelado', null, v_tec, false); fallos := fallos || '[107] se cancelo un solicitado sin motivo; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%motivo es obligatorio%' then fallos := fallos || '[107] cancelar sin motivo: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  v_c3 := public.transicionar_cambio_nucleo(v_c3.id, 'cancelado', 'Ya no se necesita', v_tec, false);
+
+  -- revertir: motivo obligatorio, desde en_ejecucion o implementado
+  v_c4 := public.crear_cambio_nucleo('Cambio a revertir', 'normal', 'medio', 's107c', 'd', 'Plan', now() + interval '1 day', now() + interval '2 days', true, v_tec, false);
+  v_c4 := public.aprobar_cambio_nucleo(v_c4.id, null, v_jefe, true);
+  v_c4 := public.transicionar_cambio_nucleo(v_c4.id, 'en_ejecucion', null, v_tec, false);
+  v_c4 := public.transicionar_cambio_nucleo(v_c4.id, 'implementado', null, v_tec, false);
+  begin perform public.transicionar_cambio_nucleo(v_c4.id, 'revertido', null, v_tec, false); fallos := fallos || '[107] se revirtio sin motivo; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%motivo es obligatorio%' then fallos := fallos || '[107] revertir sin motivo: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  v_c4 := public.transicionar_cambio_nucleo(v_c4.id, 'revertido', 'Degrado la red de obra', v_tec, false);
+  if v_c4.estado <> 'revertido' or v_c4.resultado <> 'Degrado la red de obra' then fallos := fallos || '[107] la reversion no guardo su motivo; '; end if;
+
+  -- estandar: se envia y queda preautorizado, sin plan de retroceso y sin aprobador
+  v_est := public.crear_cambio_nucleo('Rotacion de respaldos', 'estandar', 'bajo', 's107c', 'Rutina mensual', null, now() + interval '1 day', now() + interval '1 day 1 hour', true, v_tec, false);
+  if v_est.estado <> 'aprobado' or v_est.aprobado_por is not null then fallos := fallos || '[107] el estandar no quedo preautorizado; '; end if;
+  if not exists (select 1 from public.cambio_eventos where cambio_id = v_est.id and evento = 'aprobado' and detalle like '%preautorizado%') then
+    fallos := fallos || '[107] el libro no dice que el estandar es preautorizado; ';
+  end if;
+  begin perform public.crear_cambio_nucleo('Estandar sin ventana', 'estandar', 'bajo', 's107c', 'd', null, null, null, true, v_tec, false); fallos := fallos || '[107] se envio un estandar sin ventana; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%ventana%' then fallos := fallos || '[107] estandar sin ventana: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+
+  -- transicion de un cambio inexistente y estado de destino inventado
+  begin perform public.transicionar_cambio_nucleo(gen_random_uuid(), 'solicitado', null, v_tec, false); fallos := fallos || '[107] transicionar un inexistente no fallo; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[107] transicionar inexistente lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.transicionar_cambio_nucleo(v_est.id, 'inventado', null, v_tec, false); fallos := fallos || '[107] se acepto un estado de destino inventado; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%destino no es v%' then fallos := fallos || '[107] destino inventado: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+
+  -- vincular / desvincular tickets
+  insert into public.tickets (codigo, token, titulo, descripcion, estado)
+    values ('__TESTCI-107C__', '__test_ci_107c_token__', 'Test CI 107c', 'Ticket de prueba', 'abierto') returning id into v_t;
+  v_vinc := public.vincular_cambio_ticket_nucleo(v_c.id, v_t, v_tec, false);
+  if v_vinc.cambio_id <> v_c.id or v_vinc.ticket_id <> v_t or v_vinc.vinculado_por is distinct from v_tec then fallos := fallos || '[107] el enlace no se registro bien; '; end if;
+  v_vinc := public.vincular_cambio_ticket_nucleo(v_c.id, v_t, v_tec, false);
+  select count(*) into v_n from public.cambio_tickets where cambio_id = v_c.id;
+  if v_n <> 1 then fallos := fallos || '[107] vincular dos veces duplico el enlace; '; end if;
+  select count(*) into v_n from public.cambio_eventos where cambio_id = v_c.id and evento = 'ticket_vinculado';
+  if v_n <> 1 then fallos := fallos || '[107] vincular dos veces repitio el evento; '; end if;
+  v_vinc := public.vincular_cambio_ticket_nucleo(v_c4.id, v_t, v_jefe, true);
+  select count(*) into v_n from public.cambio_tickets where ticket_id = v_t;
+  if v_n <> 2 then fallos := fallos || '[107] un ticket debe poder enlazar varios cambios; '; end if;
+  begin perform public.vincular_cambio_ticket_nucleo(v_c.id, gen_random_uuid(), v_tec, false); fallos := fallos || '[107] se enlazo un ticket inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[107] ticket inexistente lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.vincular_cambio_ticket_nucleo(gen_random_uuid(), v_t, v_tec, false); fallos := fallos || '[107] se enlazo a un cambio inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[107] cambio inexistente lanzo ' || sqlstate || '; '; end if; end;
+  v_ok := public.desvincular_cambio_ticket_nucleo(v_c.id, v_t, v_tec, false);
+  if v_ok is distinct from true then fallos := fallos || '[107] desvincular no devolvio true; '; end if;
+  v_ok := public.desvincular_cambio_ticket_nucleo(v_c.id, v_t, v_tec, false);
+  if v_ok is distinct from false then fallos := fallos || '[107] desvincular dos veces no devolvio false; '; end if;
+  select count(*) into v_n from public.cambio_eventos where cambio_id = v_c.id and evento = 'ticket_desvinculado';
+  if v_n <> 1 then fallos := fallos || '[107] desvincular debia dejar un solo evento; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [107c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [107c]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 107-d: emergencia (ejecucion sin aprobacion previa, plazo de 48 h, aprobacion
+-- a posteriori, no cierra sin ella), vistas v_cambios_aprobacion_vencida y
+-- v_kpi_cambios (security_invoker) y cambio_id de schema_migrations y
+-- function_deploys
+-- ------------------------------------------------------------
+do $$
+declare
+  v_jefe uuid;
+  v_tec uuid;
+  v_e public.cambios;
+  v_e2 public.cambios;
+  v_e3 public.cambios;
+  v_nor public.cambios;
+  v_opts text[];
+  v_k record;
+  v_n int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_107d_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_107d_tec@example.test') returning id into v_tec;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  update public.staff set activo = true where user_id = v_tec;
+  update public.servicios set deleted_at = now() where deleted_at is null;
+  insert into public.servicios (id, nombre) values ('s107d', '__TEST_CI__ Servicio 107d');
+
+  -- la emergencia tambien necesita plan de retroceso, pero no ventana
+  begin perform public.crear_cambio_nucleo('Caida del enlace', 'emergencia', 'alto', 's107d', 'Sin internet', null, null, null, true, v_tec, false); fallos := fallos || '[107] se envio una emergencia sin plan de retroceso; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%plan de retroceso%' then fallos := fallos || '[107] emergencia sin plan: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  v_e := public.crear_cambio_nucleo('Caida del enlace', 'emergencia', 'alto', 's107d', 'Sin internet', 'Volver al enlace de respaldo', null, null, true, v_tec, false);
+  if v_e.estado <> 'solicitado' then fallos := fallos || '[107] la emergencia enviada no quedo solicitada; '; end if;
+
+  -- se ejecuta sin esperar al jefe: plazo de 48 horas
+  v_e := public.transicionar_cambio_nucleo(v_e.id, 'en_ejecucion', null, v_tec, false);
+  if v_e.estado <> 'en_ejecucion' or v_e.aprobado_por is not null then fallos := fallos || '[107] la emergencia no se ejecuto sin aprobacion previa; '; end if;
+  if v_e.aprobacion_pendiente_hasta is distinct from now() + interval '48 hours' then fallos := fallos || '[107] el plazo de aprobacion no es de 48 horas: ' || coalesce(v_e.aprobacion_pendiente_hasta::text, 'NULL') || '; '; end if;
+  if not exists (select 1 from public.cambio_eventos where cambio_id = v_e.id and evento = 'iniciado' and detalle like '%Emergencia sin aprobaci%') then
+    fallos := fallos || '[107] el libro no avisa que la emergencia corre sin aprobacion; ';
+  end if;
+
+  -- la vista de vencidas solo la lista pasado el plazo
+  if exists (select 1 from public.v_cambios_aprobacion_vencida where cambio_id = v_e.id) then fallos := fallos || '[107] una emergencia dentro del plazo figura como vencida; '; end if;
+  update public.cambios set aprobacion_pendiente_hasta = now() - interval '2 hours' where id = v_e.id;
+  select * into v_k from public.v_cambios_aprobacion_vencida where cambio_id = v_e.id;
+  if v_k.cambio_id is null or v_k.codigo <> v_e.codigo or v_k.servicio <> '__TEST_CI__ Servicio 107d' or v_k.vencida_hace < interval '1 hour' then
+    fallos := fallos || '[107] la emergencia vencida no figura en la vista con sus datos; ';
+  end if;
+  select emergencias_sin_aprobar_vencidas, total_90d into v_k from public.v_kpi_cambios where tipo = 'emergencia';
+  if v_k.emergencias_sin_aprobar_vencidas < 1 or v_k.total_90d < 1 then fallos := fallos || '[107] v_kpi_cambios no cuenta la emergencia vencida; '; end if;
+
+  -- no se cierra sin la aprobacion a posteriori
+  v_e := public.transicionar_cambio_nucleo(v_e.id, 'implementado', 'Enlace restablecido', v_tec, false);
+  begin perform public.transicionar_cambio_nucleo(v_e.id, 'cerrado', null, v_jefe, true); fallos := fallos || '[107] una emergencia sin aprobar se cerro; ';
+  exception when others then if sqlerrm not like '%aprobaci_n a posteriori%' then fallos := fallos || '[107] cerrar la emergencia: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  begin perform public.aprobar_cambio_nucleo(v_e.id, null, v_tec, false); fallos := fallos || '[107] un tecnico dio la aprobacion a posteriori; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%Solo un jefe%' then fallos := fallos || '[107] aprobacion a posteriori como tecnico: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+
+  -- aprobacion a posteriori: sin cambio de estado, limpia el plazo, deja su evento
+  v_e := public.aprobar_cambio_nucleo(v_e.id, 'Se entiende la urgencia', v_jefe, true);
+  if v_e.estado <> 'implementado' or v_e.aprobado_por is distinct from v_jefe or v_e.aprobado_at is null or v_e.aprobacion_pendiente_hasta is not null then
+    fallos := fallos || '[107] la aprobacion a posteriori no quedo bien registrada; ';
+  end if;
+  if not exists (select 1 from public.cambio_eventos where cambio_id = v_e.id and evento = 'aprobado' and rol_actor = 'jefe' and detalle like '%a posteriori%') then
+    fallos := fallos || '[107] el libro no registra la aprobacion a posteriori; ';
+  end if;
+  if exists (select 1 from public.v_cambios_aprobacion_vencida where cambio_id = v_e.id) then fallos := fallos || '[107] una emergencia aprobada sigue como vencida; '; end if;
+  begin perform public.aprobar_cambio_nucleo(v_e.id, null, v_jefe, true); fallos := fallos || '[107] se aprobo dos veces la emergencia; ';
+  exception when others then if sqlstate <> 'P0001' then fallos := fallos || '[107] doble aprobacion de emergencia lanzo ' || sqlstate || '; '; end if; end;
+  v_e := public.transicionar_cambio_nucleo(v_e.id, 'cerrado', null, v_tec, false);
+  if v_e.estado <> 'cerrado' then fallos := fallos || '[107] la emergencia aprobada no cerro; '; end if;
+
+  -- emergencia aprobada ANTES de ejecutarse: sin plazo pendiente
+  v_e2 := public.crear_cambio_nucleo('Fuga en el cuarto de equipos', 'emergencia', 'medio', 's107d', 'Fuga', 'Apagar y aislar', null, null, true, v_tec, false);
+  v_e2 := public.aprobar_cambio_nucleo(v_e2.id, null, v_jefe, true);
+  v_e2 := public.transicionar_cambio_nucleo(v_e2.id, 'en_ejecucion', null, v_tec, false);
+  if v_e2.aprobacion_pendiente_hasta is not null then fallos := fallos || '[107] una emergencia ya aprobada tiene plazo pendiente; '; end if;
+
+  -- desde borrador: solo la emergencia se ejecuta directo, y la revertida sale de la vista
+  v_e3 := public.crear_cambio_nucleo('Emergencia desde borrador', 'emergencia', 'alto', 's107d', 'Urgente', 'Revertir', null, null, false, v_tec, false);
+  v_e3 := public.transicionar_cambio_nucleo(v_e3.id, 'en_ejecucion', null, v_tec, false);
+  if v_e3.aprobacion_pendiente_hasta is null then fallos := fallos || '[107] la emergencia desde borrador no registro su plazo; '; end if;
+  v_nor := public.crear_cambio_nucleo('Normal desde borrador', 'normal', 'bajo', 's107d', 'd', 'Plan', now() + interval '1 day', now() + interval '2 days', false, v_tec, false);
+  begin perform public.transicionar_cambio_nucleo(v_nor.id, 'en_ejecucion', null, v_tec, false); fallos := fallos || '[107] un normal en borrador se ejecuto; ';
+  exception when others then if sqlstate <> 'P0001' or sqlerrm not like '%no puede pasar%' then fallos := fallos || '[107] normal borrador -> en_ejecucion: ' || sqlstate || ' ' || sqlerrm || '; '; end if; end;
+  update public.cambios set aprobacion_pendiente_hasta = now() - interval '1 hour' where id = v_e3.id;
+  if not exists (select 1 from public.v_cambios_aprobacion_vencida where cambio_id = v_e3.id) then fallos := fallos || '[107] la emergencia vencida de prueba no figura; '; end if;
+  v_e3 := public.transicionar_cambio_nucleo(v_e3.id, 'revertido', 'Empeoro la caida', v_tec, false);
+  if exists (select 1 from public.v_cambios_aprobacion_vencida where cambio_id = v_e3.id) then fallos := fallos || '[107] una emergencia revertida sigue como vencida; '; end if;
+
+  -- v_kpi_cambios: siempre las tres filas, porcentajes coherentes, security_invoker, sin anon
+  select count(*) into v_n from public.v_kpi_cambios;
+  if v_n <> 3 then fallos := fallos || '[107] v_kpi_cambios debe devolver 3 filas y devuelve ' || v_n || '; '; end if;
+  select count(*) into v_n from public.v_kpi_cambios where tipo in ('estandar', 'normal', 'emergencia');
+  if v_n <> 3 then fallos := fallos || '[107] v_kpi_cambios no cubre los tres tipos; '; end if;
+  if (select sum(total_90d) from public.v_kpi_cambios) > 0
+     and (select sum(pct_del_total_90d) from public.v_kpi_cambios) not between 99 and 101 then
+    fallos := fallos || '[107] los porcentajes de v_kpi_cambios no suman 100; ';
+  end if;
+  select pct_revertidos_90d, revertidos_90d, ejecutados_90d into v_k from public.v_kpi_cambios where tipo = 'emergencia';
+  if v_k.revertidos_90d < 1 or v_k.pct_revertidos_90d <= 0 or v_k.ejecutados_90d < v_k.revertidos_90d then fallos := fallos || '[107] v_kpi_cambios no cuenta la reversion; '; end if;
+  select reloptions into v_opts from pg_class where oid = 'public.v_kpi_cambios'::regclass;
+  if v_opts is null or not ('security_invoker=true' = any (v_opts)) then fallos := fallos || '[107] v_kpi_cambios no es security_invoker; '; end if;
+  select reloptions into v_opts from pg_class where oid = 'public.v_cambios_aprobacion_vencida'::regclass;
+  if v_opts is null or not ('security_invoker=true' = any (v_opts)) then fallos := fallos || '[107] v_cambios_aprobacion_vencida no es security_invoker; '; end if;
+  if has_table_privilege('anon', 'public.v_kpi_cambios', 'select') or has_table_privilege('anon', 'public.v_cambios_aprobacion_vencida', 'select')
+     or not has_table_privilege('authenticated', 'public.v_kpi_cambios', 'select') or not has_table_privilege('authenticated', 'public.v_cambios_aprobacion_vencida', 'select') then
+    fallos := fallos || '[107] privilegios de las vistas de cambios incorrectos; ';
+  end if;
+
+  -- cambio_id en el tracking de despliegues: forma CHG-####, sin FK
+  insert into public.schema_migrations (version, nombre_archivo, checksum, aplicada_por, cambio_id)
+    values ('__t107ok', '__t107ok.sql', 'abc', 'test', 'CHG-0001');
+  insert into public.schema_migrations (version, nombre_archivo, checksum, aplicada_por, cambio_id)
+    values ('__t107ig', '__t107ig.sql', 'abc', 'test', 'CHG-12345');
+  insert into public.schema_migrations (version, nombre_archivo, checksum, aplicada_por)
+    values ('__t107nu', '__t107nu.sql', 'abc', 'test');
+  begin insert into public.schema_migrations (version, nombre_archivo, checksum, aplicada_por, cambio_id) values ('__t107ko', '__t107ko.sql', 'abc', 'test', 'chg-1');
+    fallos := fallos || '[107] schema_migrations admitio un cambio_id mal formado; ';
+  exception when check_violation then null; end;
+  insert into public.function_deploys (funcion, sha256, cambio_id) values ('__t107', 'abc', 'CHG-0002');
+  begin insert into public.function_deploys (funcion, sha256, cambio_id) values ('__t107', 'abc', 'CHG-1'); fallos := fallos || '[107] function_deploys admitio un cambio_id de 1 digito; ';
+  exception when check_violation then null; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [107d] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [107d]: %', fallos;
   end if;
 end $$;

@@ -597,6 +597,98 @@ async function escenarios(etiqueta) {
     afirmar('S14 106: el jefe si borra usos', (await uno(`select count(*)::int n from ticket_kb_usos where ticket_id = '${tk1}'`)).n === 0);
   }
 
+  // ---- S15 107: servicios y cambios con sesiones reales (RLS, permisos por rol, actor y rol en el libro, vistas)
+  if ((await uno("select to_regclass('public.cambios') as t")).t) {
+    const sv = `sv${sfx}`;
+    afirmar('S15 107: un asistente lee el catalogo de servicios sembrado (10)', (await como(U.asist, () => uno('select count(*)::int n from servicios'))).n === 10);
+    afirmar('S15 107: staff inactivo no lee servicios', (await como(U.inact, () => uno('select count(*)::int n from servicios'))).n === 0);
+    await falla('S15 107: anon no lee servicios', () => anonimo(() => db.exec('select * from servicios')), { code: '42501' });
+    await falla('S15 107: un asistente no inserta servicios (RLS 42501)', () => como(U.asist, () => db.exec(`insert into servicios (id, nombre) values ('${sv}', 'No')`)), { code: '42501' });
+    await como(U.asist, () => db.exec("update servicios set nombre = 'Hackeado' where id = 'correo'"));
+    afirmar('S15 107: un asistente no edita servicios (0 filas)', (await uno("select nombre from servicios where id = 'correo'")).nombre === 'Correo corporativo');
+    await como(U.asist, () => db.exec("delete from servicios where id = 'vpn'"));
+    afirmar('S15 107: un asistente no borra servicios (0 filas)', (await uno("select count(*)::int n from servicios where id = 'vpn'")).n === 1);
+    await como(U.jefe, () => db.exec(`insert into servicios (id, nombre, criticidad, horario) values ('${sv}', 'Servicio ${sfx}', 'alta', '24 x 7')`));
+    afirmar('S15 107: el jefe inserta servicios y queda como autor', (await uno(`select created_by from servicios where id = '${sv}'`)).created_by === U.jefe);
+    await como(U.jefe, () => db.exec(`update servicios set deleted_at = now() where id = '${sv}'`));
+    afirmar('S15 107: el jefe da de baja un servicio (queda como ultimo editor)', (await uno(`select updated_by, deleted_at from servicios where id = '${sv}'`)).updated_by === U.jefe);
+    afirmar('S15 107: cualquier staff lee la whitelist de transiciones; sin sesion de staff no', (await como(U.sinmod, () => uno('select count(*)::int n from transiciones_cambio_permitidas'))).n === 14 && (await como(U.inact, () => uno('select count(*)::int n from transiciones_cambio_permitidas'))).n === 0);
+
+    // ---- crear, permisos y lectura
+    const crear = (uid, extra = '') => como(uid, () => uno(`select * from crear_cambio('Cambio ${sfx}', 'normal', 'medio', 'correo', 'Descripcion', 'Plan de retroceso', now() + interval '1 day', now() + interval '2 days'${extra})`));
+    const ch = await crear(U.asist, ', true');
+    afirmar('S15 107: un asistente con el modulo tickets crea y solicita un cambio; queda como solicitante', ch.estado === 'solicitado' && ch.solicitado_por === U.asist && /^CHG-[0-9]{4,}$/.test(ch.codigo), JSON.stringify(ch));
+    await falla('S15 107: sin el modulo tickets crear_cambio da 42501', () => como(U.sinmod, () => db.exec("select crear_cambio('Titulo', 'normal', 'bajo', 'correo', 'd')")), { code: '42501', msg: 'No autorizado' });
+    await falla('S15 107: staff inactivo no crea cambios', () => como(U.inact, () => db.exec("select crear_cambio('Titulo', 'normal', 'bajo', 'correo', 'd')")), { code: '42501' });
+    await falla('S15 107: anon no ejecuta crear_cambio', () => anonimo(() => db.exec("select crear_cambio('Titulo', 'normal', 'bajo', 'correo', 'd')")), { code: '42501' });
+    await falla('S15 107: authenticated no ejecuta un nucleo (project_admin only)', () => como(U.jefe, () => db.exec("select crear_cambio_nucleo('Titulo', 'normal', 'bajo', 'correo', 'd', null, null, null, false, null, true)")), { code: '42501' });
+    await falla('S15 107: authenticated no escribe el libro directo', () => como(U.jefe, () => db.exec(`select registrar_evento_cambio('${ch.id}', 'editado', null, null, null, null, 'jefe')`)), { code: '42501' });
+    afirmar('S15 107: lee los cambios quien tiene tickets; sin el modulo no ve cambios, libro ni enlaces',
+      (await como(U.asist, () => uno('select count(*)::int n from cambios'))).n >= 1
+      && (await como(U.sinmod, () => uno('select count(*)::int n from cambios'))).n === 0
+      && (await como(U.sinmod, () => uno('select count(*)::int n from cambio_eventos'))).n === 0
+      && (await como(U.sinmod, () => uno('select count(*)::int n from cambio_tickets'))).n === 0);
+    await falla('S15 107: anon no lee cambios', () => anonimo(() => db.exec('select * from cambios')), { code: '42501' });
+    await falla('S15 107: un asistente no inserta en cambios (sin privilegio)', () => como(U.asist, () => db.exec(`insert into cambios (titulo, tipo, riesgo, servicio_id, descripcion) values ('Directo', 'normal', 'bajo', 'correo', 'd')`)), { code: '42501' });
+    await falla('S15 107: ni el jefe actualiza cambios directo', () => como(U.jefe, () => db.exec(`update cambios set resultado = 'x' where id = '${ch.id}'`)), { code: '42501' });
+    await falla('S15 107: ni el jefe borra cambios', () => como(U.jefe, () => db.exec(`delete from cambios where id = '${ch.id}'`)), { code: '42501' });
+    await falla('S15 107: nadie escribe el libro directo', () => como(U.jefe, () => db.exec(`insert into cambio_eventos (cambio_id, evento, rol_actor) values ('${ch.id}', 'editado', 'jefe')`)), { code: '42501' });
+
+    // ---- aprobar: solo el jefe, y el libro registra al de la sesion
+    await falla('S15 107: un asistente no aprueba (aprobar_cambio da 42501)', () => como(U.asist, () => db.exec(`select aprobar_cambio('${ch.id}')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S15 107: un asistente no rechaza (rechazar_cambio da 42501)', () => como(U.asist, () => db.exec(`select rechazar_cambio('${ch.id}', 'No')`)), { code: '42501' });
+    await falla('S15 107: transicionar a aprobado como asistente es P0001 (solo un jefe)', () => como(U.asist, () => db.exec(`select transicionar_cambio('${ch.id}', 'aprobado')`)), { code: 'P0001', msg: 'Solo un jefe' });
+    await falla('S15 107: sin el modulo tickets transicionar_cambio da 42501', () => como(U.sinmod, () => db.exec(`select transicionar_cambio('${ch.id}', 'cancelado', 'x')`)), { code: '42501' });
+    const ap = await como(U.jefe, () => uno(`select * from aprobar_cambio('${ch.id}', 'Autorizado')`));
+    afirmar('S15 107: el jefe aprueba y queda como aprobador', ap.estado === 'aprobado' && ap.aprobado_por === U.jefe && ap.aprobado_at !== null, JSON.stringify(ap));
+    await como(U.asist, () => db.exec(`select transicionar_cambio('${ch.id}', 'en_ejecucion')`));
+    const imp = await como(U.asist, () => uno(`select * from transicionar_cambio('${ch.id}', 'implementado', 'Todo en orden')`));
+    afirmar('S15 107: un asistente ejecuta e implementa; el resultado queda', imp.estado === 'implementado' && imp.resultado === 'Todo en orden' && imp.inicio_real_at !== null && imp.fin_real_at !== null, JSON.stringify(imp));
+    const evs = await q(`select evento, rol_actor, user_id from cambio_eventos where cambio_id = '${ch.id}' order by orden`);
+    afirmar('S15 107: el libro registra evento, actor y rol de cada sesion', evs.map((e) => e.evento).join() === 'creado,solicitado,aprobado,iniciado,implementado'
+      && evs[0].rol_actor === 'tecnico' && evs[0].user_id === U.asist && evs[2].rol_actor === 'jefe' && evs[2].user_id === U.jefe, JSON.stringify(evs));
+    await falla('S15 107: rechazar un cambio ya aprobado es P0001', () => como(U.jefe, () => db.exec(`select rechazar_cambio('${ch.id}', 'tarde')`)), { code: 'P0001' });
+
+    // ---- editar un borrador y vincular tickets
+    const bor = await crear(U.asist);
+    const ed = await como(U.asist, () => uno(`select * from actualizar_cambio('${bor.id}', 'Cambio editado ${sfx}', 'normal', 'alto', 'red', 'Nueva descripcion', 'Plan B', now() + interval '3 days', now() + interval '4 days')`));
+    afirmar('S15 107: un asistente edita su borrador', ed.titulo === `Cambio editado ${sfx}` && ed.servicio_id === 'red' && ed.riesgo === 'alto' && ed.estado === 'borrador', JSON.stringify(ed));
+    await falla('S15 107: sin el modulo tickets actualizar_cambio da 42501', () => como(U.sinmod, () => db.exec(`select actualizar_cambio('${bor.id}', 'T', 'normal', 'bajo', 'red', 'd')`)), { code: '42501' });
+    const tk = (await uno(`insert into tickets (codigo, token, titulo, descripcion, estado) values ('C${sfx}', '${('c' + sfx).padEnd(24, 'x')}', 'Ticket del cambio', 'Descripcion', 'abierto') returning id`)).id;
+    const vin = await como(U.asist, () => uno(`select * from vincular_cambio_ticket('${bor.id}', '${tk}')`));
+    afirmar('S15 107: vincular un ticket deja al de la sesion y no toca el ticket', vin.vinculado_por === U.asist && (await uno(`select estado from tickets where id = '${tk}'`)).estado === 'abierto', JSON.stringify(vin));
+    await falla('S15 107: sin el modulo tickets vincular_cambio_ticket da 42501', () => como(U.sinmod, () => db.exec(`select vincular_cambio_ticket('${bor.id}', '${tk}')`)), { code: '42501' });
+    afirmar('S15 107: el enlace se lee con el modulo tickets', (await como(U.asist, () => uno(`select count(*)::int n from cambio_tickets where cambio_id = '${bor.id}'`))).n === 1);
+    afirmar('S15 107: desvincular devuelve true y luego false', (await como(U.asist, () => uno(`select desvincular_cambio_ticket('${bor.id}', '${tk}') as v`))).v === true && (await como(U.asist, () => uno(`select desvincular_cambio_ticket('${bor.id}', '${tk}') as v`))).v === false);
+
+    // ---- emergencia: corre sin aprobacion, plazo de 48 h, vistas con RLS y aprobacion a posteriori
+    const em = await como(U.asist, () => uno(`select * from crear_cambio('Emergencia ${sfx}', 'emergencia', 'alto', 'red', 'Caida', 'Volver al enlace anterior')`));
+    const emE = await como(U.asist, () => uno(`select * from transicionar_cambio('${em.id}', 'en_ejecucion')`));
+    afirmar('S15 107: la emergencia corre sin aprobacion previa y queda con su plazo', emE.estado === 'en_ejecucion' && emE.aprobado_por === null && emE.aprobacion_pendiente_hasta !== null, JSON.stringify(emE));
+    afirmar('S15 107: dentro del plazo no figura como vencida', (await como(U.asist, () => uno(`select count(*)::int n from v_cambios_aprobacion_vencida where cambio_id = '${em.id}'`))).n === 0);
+    await db.exec(`update cambios set aprobacion_pendiente_hasta = now() - interval '1 hour' where id = '${em.id}'`);
+    afirmar('S15 107: vencido el plazo la vista la lista para quien tiene tickets y no para quien no lo tiene',
+      (await como(U.asist, () => uno(`select count(*)::int n from v_cambios_aprobacion_vencida where cambio_id = '${em.id}'`))).n === 1
+      && (await como(U.sinmod, () => uno('select count(*)::int n from v_cambios_aprobacion_vencida'))).n === 0);
+    afirmar('S15 107: v_kpi_cambios cuenta la emergencia vencida para el asistente y devuelve ceros sin el modulo',
+      (await como(U.asist, () => uno("select emergencias_sin_aprobar_vencidas::int n from v_kpi_cambios where tipo = 'emergencia'"))).n >= 1
+      && (await como(U.sinmod, () => uno('select coalesce(sum(total_90d), 0)::int n from v_kpi_cambios'))).n === 0
+      && (await como(U.sinmod, () => uno('select count(*)::int n from v_kpi_cambios'))).n === 3);
+    await falla('S15 107: anon no lee v_kpi_cambios', () => anonimo(() => db.exec('select * from v_kpi_cambios')), { code: '42501' });
+    await como(U.asist, () => db.exec(`select transicionar_cambio('${em.id}', 'implementado', 'Enlace restablecido')`));
+    await falla('S15 107: la emergencia sin aprobar no se cierra (P0001)', () => como(U.asist, () => db.exec(`select transicionar_cambio('${em.id}', 'cerrado')`)), { code: 'P0001', msg: 'a posteriori' });
+    await falla('S15 107: un asistente no da la aprobacion a posteriori (42501)', () => como(U.asist, () => db.exec(`select aprobar_cambio('${em.id}')`)), { code: '42501' });
+    const emA = await como(U.jefe, () => uno(`select * from aprobar_cambio('${em.id}', 'Se entiende la urgencia')`));
+    afirmar('S15 107: el jefe aprueba a posteriori sin cambiar el estado y se limpia el plazo', emA.estado === 'implementado' && emA.aprobado_por === U.jefe && emA.aprobacion_pendiente_hasta === null, JSON.stringify(emA));
+    const emC = await como(U.asist, () => uno(`select * from transicionar_cambio('${em.id}', 'cerrado')`));
+    afirmar('S15 107: aprobada, la emergencia cierra', emC.estado === 'cerrado');
+    afirmar('S15 107: ya no figura entre las vencidas', (await como(U.jefe, () => uno(`select count(*)::int n from v_cambios_aprobacion_vencida where cambio_id = '${em.id}'`))).n === 0);
+
+    // ---- tracking de despliegues: cambio_id texto, sin FK a cambios
+    await db.exec(`insert into schema_migrations (version, nombre_archivo, checksum, aplicada_por, cambio_id) values ('s15${sfx}', 's15.sql', 'x', 'harness', 'CHG-9999')`);
+    afirmar('S15 107: schema_migrations guarda un cambio_id aunque ese cambio no exista', (await uno(`select cambio_id from schema_migrations where version = 's15${sfx}'`)).cambio_id === 'CHG-9999');
+  }
+
   console.log(`   escenarios (${etiqueta}): ${esc.ok} afirmaciones OK, ${esc.mal.length} MAL`);
   reg(`escenarios integrados (${etiqueta}): ${esc.ok} afirmaciones`, esc.mal.length === 0, esc.mal.join(' || '));
 }
@@ -679,7 +771,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|108|110|111|112)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|110|111|112)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -757,6 +849,7 @@ if (!args.includes('--sin-dependencias')) {
     ['112', ['099']], ['112', ['102']], ['112', ['103']], ['112', ['104']],
     ['108', ['099']], ['108', ['101']], ['108', ['102']], ['108', ['103']],
     ['106', ['099']], ['106', ['101']],
+    ['107', ['099']], ['107', ['101']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });

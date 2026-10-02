@@ -22,7 +22,7 @@ export const ticketsApi = {
   async listCategoriasTicket() {
     const { data, error } = await getClient().database
       .from('categorias_ticket')
-      .select('id, nombre')
+      .select('id, nombre, servicio_id')
       .is('deleted_at', null)
       .order('nombre', { ascending: true });
     if (error) throw error;
@@ -44,8 +44,8 @@ export const ticketsApi = {
   async createCategoriaTicket(datos) {
     const { data, error } = await getClient().database
       .from('categorias_ticket')
-      .insert([{ id: datos.id, nombre: trimText(datos.nombre) }])
-      .select('id, nombre')
+      .insert([{ id: datos.id, nombre: trimText(datos.nombre), servicio_id: datos.servicio_id || null }])
+      .select('id, nombre, servicio_id')
       .single();
     if (error) throw error;
     return data;
@@ -54,9 +54,13 @@ export const ticketsApi = {
   async updateCategoriaTicket(id, datos) {
     const { data, error } = await getClient().database
       .from('categorias_ticket')
-      .update({ nombre: trimText(datos.nombre) })
+      .update({
+        nombre: trimText(datos.nombre),
+        // Servicio opcional (migración 107): solo se toca si el formulario lo manda.
+        ...('servicio_id' in datos ? { servicio_id: datos.servicio_id || null } : {}),
+      })
       .eq('id', id)
-      .select('id, nombre')
+      .select('id, nombre, servicio_id')
       .single();
     if (error) throw error;
     return data;

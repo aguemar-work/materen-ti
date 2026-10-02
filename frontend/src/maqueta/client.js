@@ -41,6 +41,8 @@ const FK_DE = {
   tickets: 'ticket_id',
   solicitudes: 'solicitud_id',
   solicitud_tipos: 'tipo_id',
+  servicios: 'servicio_id',
+  cambios: 'cambio_id',
   problemas: 'problema_id',
   encuestas: 'encuesta_id',
   encuesta_rondas: 'ronda_id',

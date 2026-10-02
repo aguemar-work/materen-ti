@@ -7,6 +7,7 @@ import { categoriaAccesoSensibleInfo } from './dominio-accesos-sensibles.js';
 import { estadoKbInfo } from './dominio-kb.js';
 import { estadoProblemaInfo, severidadProblemaInfo, estadoAccionInfo } from './dominio-problemas.js';
 import { estadoSolicitudInfo, estadoPasoInfo } from './dominio-solicitudes.js';
+import { estadoCambioInfo, tipoCambioInfo, riesgoCambioInfo, criticidadServicioInfo } from './dominio-cambios.js';
 import {
   claseBadge,
   TONO_TIPO_CUENTA,
@@ -58,6 +59,14 @@ export function badgeInfo(tipo, valor) {
       return estadoSolicitudInfo(valor);
     case 'paso_solicitud':
       return estadoPasoInfo(valor);
+    case 'cambio':
+      return estadoCambioInfo(valor);
+    case 'tipo_cambio':
+      return tipoCambioInfo(valor);
+    case 'riesgo_cambio':
+      return riesgoCambioInfo(valor);
+    case 'criticidad_servicio':
+      return criticidadServicioInfo(valor);
     case 'tipo_cuenta':
       return TIPOS_CUENTA[valor] || { label: valor, clase: 'badge--neutral' };
     case 'tipo_ubicacion':

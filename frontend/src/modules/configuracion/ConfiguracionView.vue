@@ -14,7 +14,8 @@ import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 const auth = useAuthStore();
 
 // Orden fijado por el JEFE (ago 2026): Empresas, Ubicaciones, Áreas/Obras,
-// Staff y roles, Plataformas, Tipos de equipo, Categorías de tickets.
+// Staff y roles, Plataformas, Tipos de equipo, Categorías de tickets y
+// Servicios (107, al final: catálogo transversal que las demás referencian).
 const TABS = computed(() => {
   const tabs = [
     { name: 'configuracion-empresas',    label: 'Empresas',    icon: 'ti ti-building' },
@@ -28,6 +29,7 @@ const TABS = computed(() => {
     { name: 'configuracion-plataformas',       label: 'Plataformas',           icon: 'ti ti-apps' },
     { name: 'configuracion-tipos-equipo',      label: 'Tipos de equipo',       icon: 'ti ti-devices' },
     { name: 'configuracion-categorias-ticket', label: 'Categorías de tickets', icon: 'ti ti-headset' },
+    { name: 'configuracion-servicios',         label: 'Servicios',             icon: 'ti ti-server-cog' },
   );
   return tabs;
 });

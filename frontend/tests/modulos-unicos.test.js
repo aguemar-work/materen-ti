@@ -75,7 +75,7 @@ describe('navegación del shell', () => {
     const grupos = AREAS_NAV[0].grupos.map((g) => [g.label, g.items.map((i) => i.label)]);
     expect(grupos).toEqual([
       ['', ['Inicio']],
-      ['Mesa de ayuda', ['Tickets', 'Conocimiento', 'Problemas']],
+      ['Mesa de ayuda', ['Tickets', 'Conocimiento', 'Problemas', 'Cambios']],
       ['Personas', ['Empleados', 'Solicitudes', 'Encuestas']],
       ['Custodia', ['Equipos', 'Licencias', 'Correos']],
       ['Administración', ['Registro de actividad', 'Accesos sensibles', 'Configuración']],
@@ -85,7 +85,8 @@ describe('navegación del shell', () => {
   // Solicitudes (migración 108) NO es un módulo: es un ítem extra que cuelga del
   // módulo `empleados` (mismo meta.modulo en su ruta). El CHECK de la 056 admite
   // 8 módulos y ninguno es «solicitudes».
-  const EXTRAS_DE_MODULO = ['/solicitudes'];
+  // Cambios (migración 107) tampoco lo es: cuelga del módulo `tickets`.
+  const EXTRAS_DE_MODULO = ['/solicitudes', '/cambios'];
 
   it('los ítems con módulo salen del registro y caen en el grupo que éste declara', () => {
     const conModulo = items.filter((i) => i.modulo && !EXTRAS_DE_MODULO.includes(i.path));
@@ -109,13 +110,26 @@ describe('navegación del shell', () => {
   });
 
   it('Solicitudes cuelga del módulo empleados, sin inventar un permiso nuevo', () => {
-    const extra = items.filter((i) => EXTRAS_DE_MODULO.includes(i.path));
+    const extra = items.filter((i) => i.path === '/solicitudes');
     expect(extra).toHaveLength(1);
     expect(extra[0]).toMatchObject({ label: 'Solicitudes', modulo: 'empleados', grupo: 'personas' });
     for (const ruta of RUTAS.filter((r) => r.path.startsWith('/solicitudes'))) {
       expect(ruta.meta?.modulo, ruta.path).toBe('empleados');
     }
     expect(MODULOS.map((m) => m.id)).not.toContain('solicitudes');
+  });
+
+  it('Cambios cuelga del módulo tickets, en Mesa de ayuda, sin inventar un permiso nuevo', () => {
+    const extra = items.filter((i) => i.path === '/cambios');
+    expect(extra).toHaveLength(1);
+    expect(extra[0]).toMatchObject({ label: 'Cambios', modulo: 'tickets', grupo: 'mesa-de-ayuda' });
+    expect(extra[0].soloJefe).toBeFalsy();
+    for (const ruta of RUTAS.filter((r) => r.path.startsWith('/cambios'))) {
+      expect(ruta.meta?.modulo, ruta.path).toBe('tickets');
+    }
+    expect(MODULOS.map((m) => m.id)).not.toContain('cambios');
+    expect(migasDeRuta('/cambios')).toEqual([{ label: 'Mesa de ayuda' }, { label: 'Cambios' }]);
+    expect(migasDeRuta('/cambios/c1')).toEqual([{ label: 'Mesa de ayuda' }, { label: 'Cambios', to: '/cambios' }]);
   });
 
   it('las migas usan los nombres nuevos', () => {

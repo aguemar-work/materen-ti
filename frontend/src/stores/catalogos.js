@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
 
-// Los 4 catálogos de Configuración (ubicaciones, áreas/obras, tipos de
-// equipo y categorías de ticket) comparten el mismo ciclo de vida:
+// Los 5 catálogos de Configuración (ubicaciones, áreas/obras, tipos de
+// equipo, categorías de ticket y servicios) comparten el mismo ciclo de vida:
 // listar, crear, actualizar y soft-delete sobre una lista ordenada por
 // nombre. Este factory genera un store Pinia con el patrón estándar
 // { lista, cargando, error } para cada uno.
@@ -79,6 +79,13 @@ export const useTiposEquipoStore = crearCatalogoStore('cat-tipos-equipo', {
   crear: insforgeApi.createTipoEquipo,
   actualizar: insforgeApi.updateTipoEquipo,
   softDelete: insforgeApi.softDeleteTipoEquipo,
+});
+
+export const useServiciosStore = crearCatalogoStore('cat-servicios', {
+  listar: insforgeApi.listServicios,
+  crear: insforgeApi.createServicio,
+  actualizar: insforgeApi.updateServicio,
+  softDelete: insforgeApi.softDeleteServicio,
 });
 
 export const useCategoriasTicketStore = crearCatalogoStore('cat-categorias-ticket', {

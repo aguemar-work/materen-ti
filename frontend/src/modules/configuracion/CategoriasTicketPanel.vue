@@ -5,7 +5,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { insforgeApi } from '../../api/insforge.js';
-import { useCategoriasTicketStore } from '../../stores/catalogos.js';
+import { useCategoriasTicketStore, useServiciosStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
 import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
@@ -22,6 +22,10 @@ import { infoNotificacion } from '../../core/notificacionInfo.js';
 // un detalle de este panel y se quedan locales (insforgeApi directo).
 const catStore = useCategoriasTicketStore();
 const { lista: categorias } = storeToRefs(catStore);
+// Servicio de TI de la categoría (opcional, migración 107): permite medir tickets por servicio.
+const serviciosStore = useServiciosStore();
+const { lista: servicios } = storeToRefs(serviciosStore);
+const nombreServicio = (id) => servicios.value.find((s) => s.id === id)?.nombre || '';
 const subcategorias = ref([]);
 const cargando = ref(true);
 const guardando = ref(false);
@@ -30,9 +34,10 @@ const expandidoId = ref(null);
 // Modal categoría
 const mostrarCatForm = ref(false);
 const catEditar = ref(null);
-const catForm = ref({ id: '', nombre: '' });
+const catForm = ref({ id: '', nombre: '', servicio_id: '' });
 const errorForm = ref('');
 const campoNombreCategoria = useCampoAccesible();
+const campoServicioCategoria = useCampoAccesible({ ayuda: () => 'Opcional' });
 const infoErrorForm = infoNotificacion('error');
 
 // Cerrar vía AppDialog.cerrar() reproduce la animación de salida;
@@ -73,14 +78,14 @@ function toggleExpandir(id) {
 
 function abrirNuevaCategoria() {
   catEditar.value = null;
-  catForm.value = { id: '', nombre: '' };
+  catForm.value = { id: '', nombre: '', servicio_id: '' };
   errorForm.value = '';
   mostrarCatForm.value = true;
 }
 
 function abrirEditarCategoria(cat) {
   catEditar.value = cat;
-  catForm.value = { id: cat.id, nombre: cat.nombre };
+  catForm.value = { id: cat.id, nombre: cat.nombre, servicio_id: cat.servicio_id || '' };
   errorForm.value = '';
   mostrarCatForm.value = true;
 }
@@ -93,7 +98,7 @@ async function guardarCategoria() {
       await catStore.actualizar(catEditar.value.id, catForm.value);
       showToast('Categoría actualizada');
     } else {
-      await catStore.crear({ id: slugDe(catForm.value.nombre), nombre: catForm.value.nombre });
+      await catStore.crear({ id: slugDe(catForm.value.nombre), nombre: catForm.value.nombre, servicio_id: catForm.value.servicio_id || null });
       showToast('Categoría creada');
     }
     modalCatForm.value?.cerrar();
@@ -173,6 +178,8 @@ onMounted(async () => {
     const [, subs] = await Promise.all([
       catStore.cargar(),
       insforgeApi.listSubcategoriasTicket(),
+      // El servicio es opcional: si el catálogo no carga, solo falta el selector.
+      serviciosStore.cargar().catch(() => {}),
     ]);
     subcategorias.value = subs;
   } catch (e) {
@@ -225,7 +232,7 @@ onMounted(async () => {
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium text-gray-900">{{ cat.nombre }}</span>
               <span class="block text-xs tabular-nums" :class="subsDe(cat.id).length ? 'text-gray-500' : 'text-gray-500'">
-                {{ subsDe(cat.id).length }} {{ subsDe(cat.id).length === 1 ? 'subcategoría' : 'subcategorías' }}
+                {{ subsDe(cat.id).length }} {{ subsDe(cat.id).length === 1 ? 'subcategoría' : 'subcategorías' }}<template v-if="nombreServicio(cat.servicio_id)"> · Servicio: {{ nombreServicio(cat.servicio_id) }}</template>
               </span>
             </span>
           </button>
@@ -303,6 +310,17 @@ onMounted(async () => {
               :aria-describedby="campoNombreCategoria.describedBy.value"
             >
           </div>
+        </div>
+        <div class="campo mt-4" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoServicioCategoria.id">Servicio de TI</label>
+          <div class="campo__caja">
+            <select :id="campoServicioCategoria.id" v-model="catForm.servicio_id" class="campo__control campo__control--select" :disabled="guardando">
+              <option value="">Sin servicio</option>
+              <option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+          <p :id="campoServicioCategoria.idAyuda" class="campo__pie">Opcional. Sirve para medir los tickets de cada servicio.</p>
         </div>
         <div v-if="errorForm" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
           <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>

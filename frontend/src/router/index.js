@@ -15,6 +15,7 @@ import soporteRoutes from './routes/soporte.routes.js';
 import actividadRoutes from './routes/actividad.routes.js';
 import encuestasRoutes from './routes/encuestas.routes.js';
 import solicitudesRoutes from './routes/solicitudes.routes.js';
+import cambiosRoutes from './routes/cambios.routes.js';
 
 const routes = [
   ...authRoutes,
@@ -29,6 +30,7 @@ const routes = [
   ...soporteRoutes,
   ...encuestasRoutes,
   ...solicitudesRoutes,
+  ...cambiosRoutes,
   // Catch-all: SIEMPRE al final para no interceptar ninguna ruta real.
   // Sin esto, una URL mal escrita no matchea nada y Vue Router no
   // renderiza componente alguno (pantalla en blanco).

@@ -77,6 +77,12 @@ const METODOS = [
   'listSolicitudesPage', 'conteosSolicitudesPorEstado', 'getSolicitud', 'solicitudesDeEmpleado',
   'solicitudDeBaja', 'objetivosDePasosSolicitud', 'crearSolicitud', 'completarPasoSolicitud',
   'omitirPasoSolicitud', 'cancelarSolicitud', 'convertirTicketEnSolicitud',
+  // cambios (migración 107): lectura con RLS y escritura por RPC
+  'listCambiosPage', 'conteosCambiosPorVista', 'getCambio', 'listEventosCambio', 'ticketsDeCambio',
+  'buscarTicketPorCodigo', 'kpiCambios', 'cambiosAprobacionVencida', 'crearCambio', 'actualizarCambio',
+  'transicionarCambio', 'aprobarCambio', 'rechazarCambio', 'vincularCambioTicket', 'desvincularCambioTicket',
+  // servicios (migración 107): catálogo de ≤ 15, lo escribe solo un JEFE
+  'listServicios', 'createServicio', 'updateServicio', 'softDeleteServicio',
   // notificaciones
   'listNotificaciones', 'listLecturas', 'marcarLeida', 'marcarVariasLeidas',
   // permisos de módulo (migración 056)

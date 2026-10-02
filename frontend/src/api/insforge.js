@@ -22,6 +22,8 @@ import { problemasApi } from './domains/problemas.js';
 import { encuestasApi } from './domains/encuestas.js';
 import { notificacionesApi } from './domains/notificaciones.js';
 import { solicitudesApi } from './domains/solicitudes.js';
+import { cambiosApi } from './domains/cambios.js';
+import { serviciosApi } from './domains/servicios.js';
 
 export const insforgeApi = {
   mode: 'insforge',
@@ -44,4 +46,6 @@ export const insforgeApi = {
   ...encuestasApi,
   ...notificacionesApi,
   ...solicitudesApi,
+  ...cambiosApi,
+  ...serviciosApi,
 };

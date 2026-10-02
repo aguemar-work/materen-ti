@@ -96,6 +96,11 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   `ticket_kb_usos` solo se escribe por `registrar_uso_kb_ticket`; publicar un workaround como JEFE
   deja el artículo `publicado`, otro rol lo deja `en_revision`; `crear_kb_desde_ticket` exige un
   ticket resuelto o cerrado y una solución.
+- **Cambios (107)**: permiso `tickets`, más `rol:jefe` para aprobar y rechazar (no hay módulo propio: el
+  CHECK de 056 admite 8). `cambios`, `cambio_eventos` y `cambio_tickets` solo se escriben por RPC. Un
+  cambio no se borra, se cancela; fuera de borrador su contenido se congela; una emergencia sin
+  aprobar no se cierra (plazo de 48 h). `servicios` lo escribe solo un JEFE (máximo 15 vivos).
+  `deploy.mjs --cambio` valida el formato y registra `cambio_id`, pero no bloquea si el cambio no existe.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

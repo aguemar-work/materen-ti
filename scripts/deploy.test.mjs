@@ -16,6 +16,8 @@ import {
   codigoCoincide,
   proyectoCoincide,
   prechequeos,
+  evaluarCambio,
+  FORMATO_CAMBIO,
   resumirPrechequeos,
   ejecutarMigracion,
   ejecutarFunction,
@@ -28,7 +30,18 @@ const RAIZ = resolve(import.meta.dirname, '..');
 // ── argumentos ────────────────────────────────────────────────────────────
 test('parsearArgumentos: migración con opciones', () => {
   const o = parsearArgumentos(['migracion', 'migrations/089_x.sql', '--entorno', 'v2', '--dry-run', '--forzar', '--proyecto', 'v2']);
-  assert.deepEqual(o, { tipo: 'migracion', objetivo: 'migrations/089_x.sql', entorno: 'v2', dryRun: true, forzar: true, soloRegistro: false, proyecto: 'v2' });
+  assert.deepEqual(o, { tipo: 'migracion', objetivo: 'migrations/089_x.sql', entorno: 'v2', dryRun: true, forzar: true, soloRegistro: false, proyecto: 'v2', cambio: null });
+});
+
+test('parsearArgumentos: --cambio se valida (CHG- y 4 o más dígitos) y se normaliza a mayúsculas', () => {
+  assert.equal(parsearArgumentos(['migracion', 'm.sql']).cambio, null);
+  assert.equal(parsearArgumentos(['migracion', 'm.sql', '--cambio', 'CHG-0001']).cambio, 'CHG-0001');
+  assert.equal(parsearArgumentos(['function', 'tickets', '--cambio', 'chg-00042', '--entorno', 'v2']).cambio, 'CHG-00042');
+  for (const malo of ['CHG-1', 'CHG-12a4', 'SOL-0001', '0001', '', 'CHG-']) {
+    assert.throws(() => parsearArgumentos(['migracion', 'm.sql', '--cambio', malo]), /--cambio requiere/, malo);
+  }
+  assert.throws(() => parsearArgumentos(['migracion', 'm.sql', '--cambio']), /--cambio requiere/);
+  assert.ok(FORMATO_CAMBIO.test('CHG-0001') && !FORMATO_CAMBIO.test('CHG-001'));
 });
 
 test('parsearArgumentos: rechaza tipo, función, entorno y opciones inválidas', () => {
@@ -105,6 +118,20 @@ test('construirInsertMigracion: solo columnas existentes; escapa comillas; forza
   assert.match(completo, /\(version, nombre_archivo, checksum, aplicada_por, commit_sha, entorno\)/);
   assert.match(completo, /'c0ffee', 'produccion'\) on conflict \(version\) do update set .*commit_sha = excluded\.commit_sha.*aplicada_en = now\(\)/);
   assert.ok(!completo.includes('\n'));
+});
+
+test('construirInsertMigracion / construirInsertDeploy: cambio_id solo si hay cambio y la columna existe', () => {
+  const con = construirInsertMigracion({ ...dato, columnas: new Set(['commit_sha', 'entorno', 'cambio_id']), forzar: false, cambio: 'CHG-0007' });
+  assert.match(con, /\(version, nombre_archivo, checksum, aplicada_por, commit_sha, entorno, cambio_id\) values \(.*'produccion', 'CHG-0007'\)$/);
+  const forzado = construirInsertMigracion({ ...dato, columnas: new Set(['cambio_id']), forzar: true, cambio: 'CHG-0007' });
+  assert.match(forzado, /on conflict \(version\) do update set .*cambio_id = excluded\.cambio_id/);
+  // sin la columna (107 sin aplicar) o sin --cambio no se agrega nada
+  assert.doesNotMatch(construirInsertMigracion({ ...dato, columnas: new Set(['commit_sha']), forzar: false, cambio: 'CHG-0007' }), /cambio_id|CHG/);
+  assert.doesNotMatch(construirInsertMigracion({ ...dato, columnas: new Set(['cambio_id']), forzar: false }), /cambio_id|CHG/);
+  const d = { funcion: 'tickets', sha256: 'f'.repeat(64), commitSha: 'c0ffee', desplegadoPor: 'a@b.pe', entorno: 'v2' };
+  assert.match(construirInsertDeploy({ ...d, columnas: new Set(['desplegado_por', 'cambio_id']), cambio: 'CHG-0009' }), /\(funcion, sha256, desplegado_por, cambio_id\) values \('tickets', .*'a@b\.pe', 'CHG-0009'\)$/);
+  assert.doesNotMatch(construirInsertDeploy({ ...d, columnas: new Set(['desplegado_por']), cambio: 'CHG-0009' }), /cambio_id|CHG/);
+  assert.doesNotMatch(construirInsertDeploy({ ...d, columnas: new Set(['cambio_id']) }), /cambio_id|CHG/);
 });
 
 test('construirInsertDeploy según columnas', () => {
@@ -226,6 +253,87 @@ test('prechequeos: sin conexión con la base bloquea; error SQL de schema_migrat
   };
   const r2 = await prechequeos(ctxMig(), dep);
   assert.equal(porId(r2, 'schema_migrations').severidad, 'aviso');
+});
+
+// ── cambio que autoriza el despliegue ────────────────────────────────────
+test('evaluarCambio: avisa si no existe o no autoriza ejecutar; la emergencia puede ir sin aprobación', () => {
+  assert.equal(evaluarCambio('CHG-0001', null).advertir, true);
+  assert.match(evaluarCambio('CHG-0001', null).mensaje, /no existe en la base.*se registra igual/);
+  assert.equal(evaluarCambio('CHG-0001', { tipo: 'normal', estado: 'aprobado' }).advertir, false);
+  assert.equal(evaluarCambio('CHG-0001', { tipo: 'normal', estado: 'en_ejecucion' }).advertir, false);
+  assert.equal(evaluarCambio('CHG-0001', { tipo: 'estandar', estado: 'aprobado' }).advertir, false);
+  for (const estado of ['borrador', 'solicitado', 'implementado', 'cerrado', 'rechazado', 'cancelado', 'revertido']) {
+    const r = evaluarCambio('CHG-0001', { tipo: 'normal', estado });
+    assert.equal(r.advertir, true, estado);
+    assert.match(r.mensaje, new RegExp(estado));
+  }
+  assert.equal(evaluarCambio('CHG-0002', { tipo: 'emergencia', estado: 'solicitado' }).advertir, false);
+  assert.equal(evaluarCambio('CHG-0002', { tipo: 'emergencia', estado: 'borrador' }).advertir, false);
+  assert.equal(evaluarCambio('CHG-0002', { tipo: 'emergencia', estado: 'cerrado' }).advertir, true);
+});
+
+test('prechequeos con --cambio: nunca bloquea (cambio inexistente, estado que no autoriza, tabla ausente o sin conexión)', async () => {
+  const dep = (respuesta) => {
+    const d = depsPre(gitFalso());
+    const migraciones = d.consultarSql;
+    d.consultarSql = async (sql) => {
+      if (!sql.includes('public.cambios')) return migraciones(sql);
+      return typeof respuesta === 'function' ? respuesta(sql) : respuesta;
+    };
+    return d;
+  };
+  const ctx = (extra = {}) => ctxMig({ cambio: 'CHG-0001', ...extra });
+
+  const ok = await prechequeos(ctx(), dep([{ tipo: 'normal', estado: 'aprobado' }]));
+  assert.equal(porId(ok, 'cambio_registrado').ok, true);
+  assert.equal(porId(ok, 'cambio_registrado').severidad, 'bloqueante', 'sin advertencia (el pre-chequeo no falla nunca)');
+  assert.match(porId(ok, 'cambio_registrado').mensaje, /CHG-0001 \(normal, aprobado\)/);
+  assert.equal(resumirPrechequeos(ok, { dryRun: false }).abortar, false);
+
+  const consultas = [];
+  await prechequeos(ctx(), dep((sql) => (consultas.push(sql), [])));
+  assert.deepEqual(consultas, ["select tipo, estado from public.cambios where codigo = 'CHG-0001'"]);
+
+  const noExiste = await prechequeos(ctx(), dep([]));
+  assert.equal(porId(noExiste, 'cambio_registrado').severidad, 'aviso');
+  assert.match(porId(noExiste, 'cambio_registrado').mensaje, /no existe en la base/);
+
+  const cerrado = await prechequeos(ctx(), dep([{ tipo: 'normal', estado: 'cerrado' }]));
+  assert.equal(porId(cerrado, 'cambio_registrado').severidad, 'aviso');
+
+  const sinTabla = await prechequeos(ctx(), dep(() => {
+    const e = new Error('relation "public.cambios" does not exist');
+    e.codigo = 'sql';
+    throw e;
+  }));
+  assert.equal(porId(sinTabla, 'cambio_registrado').severidad, 'aviso');
+  assert.match(porId(sinTabla, 'cambio_registrado').mensaje, /migración 107/);
+
+  const sinRed = await prechequeos(ctx(), dep(() => {
+    const e = new Error('sin sesión');
+    e.codigo = 'transporte';
+    throw e;
+  }));
+  assert.match(porId(sinRed, 'cambio_registrado').mensaje, /sin conexión/);
+  for (const r of [noExiste, cerrado, sinTabla, sinRed]) {
+    assert.equal(porId(r, 'cambio_registrado').ok, true);
+    assert.equal(resumirPrechequeos(r, { dryRun: false }).abortar, false);
+  }
+
+  // sin --cambio no se consulta public.cambios
+  const sin = await prechequeos(ctxMig(), dep(() => { throw new Error('no debe consultarse'); }));
+  assert.ok(!porId(sin, 'cambio_registrado'));
+});
+
+test('prechequeos de function con --cambio: también lo comprueba', async () => {
+  const d = depsPre(gitFalso());
+  d.consultarSql = async (sql) => {
+    assert.match(sql, /public\.cambios/);
+    return [{ tipo: 'normal', estado: 'solicitado' }];
+  };
+  const r = await prechequeos({ tipo: 'function', objetivo: 'tickets', entorno: 'produccion', forzar: false, cambio: 'CHG-0003' }, d);
+  assert.equal(porId(r, 'cambio_registrado').severidad, 'aviso');
+  assert.match(porId(r, 'cambio_registrado').mensaje, /solicitado/);
 });
 
 test('rutaDistFunction: se despliega el dist autocontenido, no la fuente', () => {
@@ -371,6 +479,27 @@ test('ejecutarMigracion: falla del registro => 1 con el SQL para hacerlo a mano'
   assert.match(llamadas.warn.join('\n'), /insert into public\.schema_migrations/);
 });
 
+test('ejecutarMigracion con --cambio: registra cambio_id si la columna existe; si no, lo omite y avisa', async () => {
+  const con = entornoFalso({ columnas: ['version', 'commit_sha', 'entorno', 'cambio_id'] });
+  assert.equal(await ejecutarMigracion(ctxMig({ dryRun: false, cambio: 'CHG-0042' }), con.deps), 0);
+  assert.match(insertsDe(con.llamadas)[0], /, 'produccion', 'CHG-0042'\)$/);
+  assert.match(con.llamadas.log.join('\n'), /cambio que autoriza: CHG-0042/);
+
+  const sin = entornoFalso({ columnas: ['version', 'commit_sha', 'entorno'] });
+  assert.equal(await ejecutarMigracion(ctxMig({ dryRun: false, cambio: 'CHG-0042' }), sin.deps), 0);
+  assert.doesNotMatch(insertsDe(sin.llamadas)[0], /cambio_id|CHG/);
+  assert.match(sin.llamadas.log.join('\n'), /columna cambio_id aún no existe en schema_migrations.*migración 107/);
+
+  const dry = entornoFalso({ columnas: ['cambio_id'] });
+  assert.equal(await ejecutarMigracion(ctxMig({ dryRun: true, cambio: 'CHG-0042' }), dry.deps), 0);
+  assert.equal(insertsDe(dry.llamadas).length, 0);
+  assert.match(dry.llamadas.log.join('\n'), /Registrar en schema_migrations:.*cambio_id.*CHG-0042/);
+
+  const sinFlag = entornoFalso({ columnas: ['cambio_id'] });
+  assert.equal(await ejecutarMigracion(ctxMig({ dryRun: false }), sinFlag.deps), 0);
+  assert.doesNotMatch(insertsDe(sinFlag.llamadas)[0], /cambio_id/);
+});
+
 const ctxFn = (extra = {}) => ({ tipo: 'function', objetivo: 'tickets', entorno: 'produccion', dryRun: false, ...extra });
 
 test('ejecutarFunction: deploy, comparación de código y registro con sha256 del archivo', async () => {
@@ -402,4 +531,16 @@ test('ejecutarFunction: dry-run no despliega; deploy fallido no registra; códig
   e.deps.leerArchivo = () => Buffer.from('otro contenido');
   assert.equal(await ejecutarFunction(ctxFn(), e.deps), 1);
   assert.match(e.llamadas.warn.join('\n'), /NO coincide/);
+});
+
+test('ejecutarFunction con --cambio: registra cambio_id en function_deploys solo si la columna existe', async () => {
+  const con = entornoFalso({ columnas: ['funcion', 'sha256', 'commit_sha', 'desplegado_por', 'entorno', 'cambio_id'] });
+  assert.equal(await ejecutarFunction(ctxFn({ cambio: 'CHG-0050' }), con.deps), 0);
+  assert.match(insertsDe(con.llamadas)[0], /'produccion', 'CHG-0050'\)$/);
+  assert.match(con.llamadas.log.join('\n'), /cambio que autoriza: CHG-0050/);
+
+  const sin = entornoFalso({ columnas: ['funcion', 'sha256', 'commit_sha', 'desplegado_por', 'entorno'] });
+  assert.equal(await ejecutarFunction(ctxFn({ cambio: 'CHG-0050' }), sin.deps), 0);
+  assert.doesNotMatch(insertsDe(sin.llamadas)[0], /cambio_id|CHG/);
+  assert.match(sin.llamadas.log.join('\n'), /columna cambio_id aún no existe en function_deploys/);
 });

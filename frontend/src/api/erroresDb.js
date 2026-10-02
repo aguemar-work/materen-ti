@@ -49,6 +49,9 @@ export const UNICOS = {
   solicitudes_una_abierta_por_tipo: 'Ya hay una solicitud abierta de ese tipo para esta persona.',
   solicitudes_ticket_unico: 'El ticket ya tiene una solicitud vinculada.',
   kb_articulos_workaround_por_problema: 'El problema ya tiene un artículo de workaround.',
+  servicios_nombre_unico: 'Ya existe un servicio con ese nombre.',
+  servicios_pkey: 'Ya existe un servicio con ese identificador.',
+  cambio_tickets_pkey: 'El ticket ya está enlazado a este cambio.',
 };
 
 // 23514 (CHECK).
@@ -60,6 +63,9 @@ export const CHEQUEOS = {
   chk_asig_equipo_destino: 'La asignación debe tener un destino válido.',
   problemas_workaround_largo: 'El workaround no puede superar los 5000 caracteres.',
   kb_articulos_tipo_check: 'El tipo de artículo no es válido.',
+  cambios_plan_retroceso_obligatorio: 'Un cambio necesita un plan de retroceso (salvo el estándar).',
+  cambios_ventana_obligatoria: 'Indique la ventana de ejecución del cambio (inicio y fin).',
+  cambios_ventana_coherente: 'La ventana de ejecución no es válida: indique inicio y fin, y que el fin sea posterior al inicio.',
 };
 
 export const CONSTRAINTS = { ...UNICOS, ...CHEQUEOS };

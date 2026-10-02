@@ -260,6 +260,45 @@ export const TONO_ESTADO_PASO = Object.freeze({
   omitido: 'neutro',
 });
 
+/**
+ * `cambios.estado` (migración 107). Pedir aprobación y esperar la ejecución son
+ * trabajo de TI (acción); implementado espera la verificación y el cierre.
+ * revertido es crítico: el cambio hizo daño y hubo que deshacerlo.
+ */
+export const TONO_ESTADO_CAMBIO = Object.freeze({
+  borrador: 'neutro',
+  solicitado: 'accion',
+  aprobado: 'accion',
+  en_ejecucion: 'trabajando',
+  implementado: 'espera',
+  cerrado: 'ok',
+  rechazado: 'neutro',
+  cancelado: 'neutro',
+  revertido: 'critico',
+});
+
+/** `cambios.tipo`: la emergencia es la única urgente. */
+export const TONO_TIPO_CAMBIO = Object.freeze({
+  estandar: 'categoria',
+  normal: 'categoria',
+  emergencia: 'critico',
+});
+
+/** `cambios.riesgo`: rango escrito, solo el alto en rojo (misma lógica que la prioridad). */
+export const TONO_RIESGO_CAMBIO = Object.freeze({
+  bajo: 'neutro',
+  medio: 'neutro',
+  alto: 'critico',
+});
+
+/** `servicios.criticidad`: rango escrito, solo la crítica en rojo. */
+export const TONO_CRITICIDAD_SERVICIO = Object.freeze({
+  baja: 'neutro',
+  media: 'neutro',
+  alta: 'neutro',
+  critica: 'critico',
+});
+
 // ── Categorías (teal): dicen de qué clase es algo, no en qué estado está ─────
 
 /** `cuentas.tipo`. */
@@ -315,6 +354,10 @@ export const MAPAS_DE_TONO = Object.freeze({
   accion_estado: TONO_ESTADO_ACCION,
   solicitud_estado: TONO_ESTADO_SOLICITUD,
   solicitud_paso_estado: TONO_ESTADO_PASO,
+  cambio_estado: TONO_ESTADO_CAMBIO,
+  cambio_tipo: TONO_TIPO_CAMBIO,
+  cambio_riesgo: TONO_RIESGO_CAMBIO,
+  servicio_criticidad: TONO_CRITICIDAD_SERVICIO,
   vencimiento_licencia: TONO_VENCIMIENTO_LICENCIA,
   tipo_cuenta: TONO_TIPO_CUENTA,
   tipo_ubicacion: TONO_TIPO_UBICACION,

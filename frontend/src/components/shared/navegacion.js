@@ -15,6 +15,10 @@ import { MODULO_POR_ID } from '../../core/modulos.js';
 // Accesos sensibles, Configuración). Cada grupo lleva un `id` fijo, no el
 // `label`. Solicitudes (migración 108) vive en Personas, entre Empleados y
 // Encuestas: es el trámite de la persona (alta, baja, accesos, equipos).
+// Cambios (migración 107) vive en Mesa de ayuda, tras Problemas: es un proceso
+// ITSM más (como tickets, problemas y conocimiento), lo usa quien tiene el
+// módulo `tickets` (aprobar es de un jefe, pero registrar y ejecutar no) y
+// Administración queda para lo exclusivo de JEFE y la configuración.
 //
 // Los 8 ítems con `modulo` salen de `core/modulos.js` (registro único con el
 // CHECK de la migración 056): acá solo se decide el orden y los extras.
@@ -59,6 +63,9 @@ export const AREAS_NAV = [
           itemModulo('tickets', { badgeSinAsignar: true }),
           itemModulo('base_conocimiento'),
           itemModulo('problemas'),
+          // Cambios (107) usa el módulo `tickets`: el CHECK de la 056 admite 8
+          // módulos y ninguno es «cambios»; su ruta declara el mismo meta.modulo.
+          { path: '/cambios', label: 'Cambios', icon: 'ti ti-arrows-exchange', modulo: 'tickets' },
         ],
       },
       {

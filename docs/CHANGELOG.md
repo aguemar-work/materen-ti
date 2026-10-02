@@ -23,6 +23,16 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-02** (**Ciclo 21 · H3-4 — Servicios y cambios**, migración 107, **aplicada por el dueño**) — Catálogo
+  `servicios` (≤15, `servicio_id` opcional en categorías, plataformas, licencias y tipos de equipo) y registro
+  de cambios `CHG-####` (estándar, normal, emergencia) con whitelist de estados, aprobación por JEFE,
+  emergencia con aprobación a posteriori en 48 h, libro inmutable `cambio_eventos`, enlace a tickets
+  (`cambio_tickets`) y vistas `v_kpi_cambios` / `v_cambios_aprobacion_vencida`.
+  `deploy.mjs --cambio CHG-xxxx` registra `cambio_id` (solo avisa si el cambio no existe). Módulo Cambios
+  (Mesa de ayuda, permiso `tickets`; aprobar y rechazar, `rol:jefe`) y Configuración › Servicios. Defecto
+  conocido, sin urgencia: no se puede borrar de `auth.users` a quien registró o aprobó un cambio (el
+  trigger `check_transicion_cambio` y el CHECK `cambios_aprobacion_coherente` lo rechazan); arreglo
+  previsto en una migración 113. Producción no tiene fila `107` en `schema_migrations`.
 - **2026-10-02** (**Ciclo 21 · H3-2 — KEDB**, migración 106 escrita, **sin aplicar**; cierra U-05) —
   `problemas` suma `workaround`, `error_conocido` y `kb_articulo_id`; `kb_articulos`, `tipo`
   (solucion/workaround/procedimiento) y `problema_id`; tabla `ticket_kb_usos` y vista `v_kpi_kb`

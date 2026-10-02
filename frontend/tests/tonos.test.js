@@ -33,6 +33,7 @@ import { ESTADOS_PROBLEMA, SEVERIDADES_PROBLEMA, ESTADOS_ACCION } from '../src/c
 import { CATEGORIAS_ACCESO_SENSIBLE } from '../src/core/dominio-accesos-sensibles.js';
 import { CLASE_VENCIMIENTO_LICENCIA } from '../src/core/dominio-licencias.js';
 import { ESTADOS_SOLICITUD, ESTADOS_PASO } from '../src/core/dominio-solicitudes.js';
+import { ESTADOS_CAMBIO, TIPOS_CAMBIO, RIESGOS_CAMBIO, CRITICIDADES_SERVICIO } from '../src/core/dominio-cambios.js';
 
 // dominio → [mapa de tono, claves que el dominio conoce, ¿es de rango?]
 const DOMINIOS = [
@@ -47,6 +48,10 @@ const DOMINIOS = [
   ['categoria_acceso_sensible', 'categoria_acceso_sensible', CATEGORIAS_ACCESO_SENSIBLE, false],
   ['solicitud', 'solicitud_estado', ESTADOS_SOLICITUD, false],
   ['paso_solicitud', 'solicitud_paso_estado', ESTADOS_PASO, false],
+  ['cambio', 'cambio_estado', ESTADOS_CAMBIO, false],
+  ['tipo_cambio', 'cambio_tipo', TIPOS_CAMBIO, false],
+  ['riesgo_cambio', 'cambio_riesgo', RIESGOS_CAMBIO, true],
+  ['criticidad_servicio', 'servicio_criticidad', CRITICIDADES_SERVICIO, true],
 ];
 
 describe('definición de los tonos', () => {

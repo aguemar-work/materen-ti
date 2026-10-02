@@ -17,6 +17,8 @@ import { RPC_EMPLEADOS } from './rpc-empleados.js';
 import { RPC_LICENCIAS } from './rpc-licencias.js';
 import { RPC_SOLICITUDES, definirActorSolicitudes } from './rpc-solicitudes.js';
 import { RPC_KB, definirActorKb, calcularKpiKb } from './rpc-kb.js';
+import { RPC_CAMBIOS, definirActorCambios } from './rpc-cambios.js';
+import { crearDatosCambios } from './cambios-datos.js';
 import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
 
@@ -41,6 +43,8 @@ export const USUARIO_MAQUETA = ESCENARIO === 'asistente'
 definirActorSolicitudes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
 // Lo mismo para la KEDB: un jefe publica el workaround; otro rol lo deja en revisión.
 definirActorKb({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
+// Y los Cambios (107): aprobar y rechazar son de un jefe; el libro anota el correo de quien actúa.
+definirActorCambios({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
 
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
@@ -115,11 +119,11 @@ const catalogo_almacen = [
 ];
 
 const categorias_ticket = [
-  { id: 'accesos_cuentas', nombre: 'Accesos y Cuentas', deleted_at: null },
-  { id: 'equipos', nombre: 'Equipos', deleted_at: null },
-  { id: 'software', nombre: 'Software y Licencias', deleted_at: null },
-  { id: 'red', nombre: 'Red y Conectividad', deleted_at: null },
-  { id: 'otro', nombre: 'Otro', deleted_at: null },
+  { id: 'accesos_cuentas', nombre: 'Accesos y Cuentas', servicio_id: 'accesos', deleted_at: null },
+  { id: 'equipos', nombre: 'Equipos', servicio_id: 'equipos', deleted_at: null },
+  { id: 'software', nombre: 'Software y Licencias', servicio_id: 'licencias', deleted_at: null },
+  { id: 'red', nombre: 'Red y Conectividad', servicio_id: 'red', deleted_at: null },
+  { id: 'otro', nombre: 'Otro', servicio_id: null, deleted_at: null },
 ];
 
 const subcategorias_ticket = [
@@ -922,6 +926,9 @@ pasosDe(5, {
 });
 pasosDe(6, {});
 
+// ── Servicios y Cambios (migración 107) ────────────────────────────────────
+const datosCambios = crearDatosCambios(hace);
+
 export const TABLAS = {
   staff, staff_modulos_permisos, staff_permisos,
   empresas, areas_obras, ubicaciones, plataformas, tipos_equipo, catalogo_almacen,
@@ -937,6 +944,7 @@ export const TABLAS = {
   accesos_log, notificaciones, notificaciones_lecturas, entregas,
   empleado_eventos, empleado_revisiones_acceso, v_empleado_ultima_revision_acceso,
   solicitud_tipos, solicitudes, solicitud_pasos,
+  ...datosCambios,
 };
 
 // ── RPC ─────────────────────────────────────────────────────────────────────
@@ -1006,6 +1014,8 @@ export const RPC = {
   ...RPC_LICENCIAS,
   // Solicitudes de servicio (108): maqueta/rpc-solicitudes.js (pasos, autocompletado y cierre).
   ...RPC_SOLICITUDES,
+  // Cambios (107): crear, editar, transicionar, aprobar, rechazar y enlazar tickets — maqueta/rpc-cambios.js.
+  ...RPC_CAMBIOS,
   // KEDB (106): publicar_workaround_problema, crear_kb_desde_ticket, registrar_uso_kb_ticket — maqueta/rpc-kb.js.
   ...RPC_KB,
   // Inicio (103): una sola RPC; escenarios por `?maqueta=...` en maqueta/inicio.js.
