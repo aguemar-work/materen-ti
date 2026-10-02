@@ -23,6 +23,17 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-02** (**Ciclo 21 · H3-2 — KEDB**, migración 106 escrita, **sin aplicar**; cierra U-05) —
+  `problemas` suma `workaround`, `error_conocido` y `kb_articulo_id`; `kb_articulos`, `tipo`
+  (solucion/workaround/procedimiento) y `problema_id`; tabla `ticket_kb_usos` y vista `v_kpi_kb`
+  (`security_invoker`). `check_problema_cierre` ampliado: un error conocido no se cierra sin workaround
+  o causa raíz. RPC `publicar_workaround_problema`, `crear_kb_desde_ticket` (exige ticket resuelto o
+  cerrado y una solución) y `registrar_uso_kb_ticket`; un workaround publicado por JEFE queda
+  `publicado`, por otro rol `en_revision`. Frontend: Problemas edita y publica el workaround, la KB
+  muestra tipo, problema de origen y uso en 90 días; `TicketKbSugeridos` y `TicketKbCrear` quedan sin
+  montar hasta el detalle de ticket de V2. **Efecto a tener en cuenta:** el check «KB» del diálogo de
+  resolver ya no crea un borrador vacío; mientras `tickets.nota_resolucion` (092 de V2) no exista,
+  falla con un aviso y el ticket se cierra igual.
 - **2026-10-02** (**Ciclo 21 · H3-3 — Solicitudes de servicio**, migración 108 escrita, **sin aplicar**; el dueño
   ya aplicó 111 y 112) — `solicitud_tipos` (7) y `solicitud_plantilla_pasos` (24), `solicitudes` (`SOL-####`) y
   `solicitud_pasos`; RPC `crear_solicitud` (el alta crea a la persona en la misma transacción),

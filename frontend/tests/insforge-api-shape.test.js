@@ -63,6 +63,8 @@ const METODOS = [
   // base de conocimiento
   'listKbPage', 'getKbArticulo', 'listArticulosRelacionados', 'conteosKbPorEstado',
   'crearKbArticulo', 'actualizarKbArticulo', 'softDeleteKbArticulo', 'votarKbArticulo',
+  // KEDB (migración 106): workaround de un problema, KB desde un ticket y usos
+  'publicarWorkaroundProblema', 'crearKbDesdeTicket', 'registrarUsoKbTicket', 'listUsosKbTicket', 'kpiKbArticulo',
   // gestión de problemas
   'listProblemasPage', 'conteosProblemasPorVista', 'getProblema', 'crearProblema', 'actualizarProblema', 'softDeleteProblema',
   'listTicketsVinculados', 'vincularTicket', 'desvincularTicket',

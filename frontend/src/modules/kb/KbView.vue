@@ -4,11 +4,12 @@ import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useKbStore } from '../../stores/kb.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { OPCIONES_ESTADO_KB } from '../../core/dominio-kb.js';
+import { OPCIONES_ESTADO_KB, tipoKbInfo } from '../../core/dominio-kb.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import KbArticuloForm from './KbArticuloForm.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
+import AppTag from '../../components/ui/AppTag.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppTable from '../../components/ui/AppTable.vue';
 import AppColumn from '../../components/ui/AppColumn.js';
@@ -209,6 +210,12 @@ onMounted(async () => {
                 </template>
               </AppColumn>
 
+              <AppColumn field="tipo" header="Tipo">
+                <template #body="{ data: fila }">
+                  <AppTag :tono="tipoKbInfo(fila.tipo).tono">{{ tipoKbInfo(fila.tipo).label }}</AppTag>
+                </template>
+              </AppColumn>
+
               <AppColumn field="feedback" header="¿Sirvió?">
                 <template #body="{ data: fila }">
                   <div class="flex items-center gap-4 text-sm tabular-nums">
@@ -267,7 +274,10 @@ onMounted(async () => {
                 @click.stop
               >{{ fila.titulo }}</RouterLink>
               <div class="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
-                <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
+                <div class="flex flex-wrap items-center gap-2">
+                  <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
+                  <AppTag v-if="fila.tipo !== 'solucion'" :tono="tipoKbInfo(fila.tipo).tono">{{ tipoKbInfo(fila.tipo).label }}</AppTag>
+                </div>
                 <div class="flex items-center gap-3 text-xs tabular-nums">
                   <span :class="fila.util_si ? 'text-green-700' : 'text-gray-300'" :aria-label="`${fila.util_si} le sirvió`"><i class="ti ti-thumb-up" aria-hidden="true"></i> {{ fila.util_si }}</span>
                   <span :class="fila.util_no ? 'text-red-700' : 'text-gray-300'" :aria-label="`${fila.util_no} no le sirvió`"><i class="ti ti-thumb-down" aria-hidden="true"></i> {{ fila.util_no }}</span>

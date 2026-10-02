@@ -530,6 +530,73 @@ async function escenarios(etiqueta) {
     afirmar('S13 108: el resumen del jefe no trae errores con solicitudes', (await como(U.jefe, () => uno('select dashboard_resumen() as d'))).d.errores.length === 0);
   }
 
+  // ---- S14 106: KEDB con sesiones reales (permisos por modulo, quien publica, RLS de usos y de la vista)
+  if ((await uno("select to_regclass('public.ticket_kb_usos') as t")).t) {
+    const uSinKb = await mkUser(`sinkb-${sfx}@t.test`, 'ASISTENTE', true, ['problemas', 'tickets']);
+    const uSoloKb = await mkUser(`solokb-${sfx}@t.test`, 'ASISTENTE', true, ['base_conocimiento', 'tickets']);
+    const prK = (await uno(`insert into problemas (titulo, descripcion) values ('Prob KEDB ${sfx}', 'Cortes de red') returning id`)).id;
+    const tkK = async (n, estado) => (await uno(`insert into tickets (codigo, token, titulo, descripcion, estado) values ('K${n}${sfx}', '${('k' + n + sfx).padEnd(24, 'x')}', 'Ticket KEDB ${n}', 'Descripcion ${n}', '${estado}') returning id`)).id;
+    const tk1 = await tkK('1', 'resuelto');
+    for (const sql of [`publicar_workaround_problema('${prK}', 'x')`, `crear_kb_desde_ticket('${tk1}', 'x')`, `registrar_uso_kb_ticket('${tk1}', gen_random_uuid())`]) {
+      await falla(`S14 106: sin modulos ${sql.split('(')[0]} da 42501`, () => como(U.sinmod, () => db.exec(`select ${sql}`)), { code: '42501', msg: 'No autorizado' });
+      await falla(`S14 106: anon no ejecuta ${sql.split('(')[0]}`, () => anonimo(() => db.exec(`select ${sql}`)), { code: '42501' });
+    }
+    await falla('S14 106: problemas sin base_conocimiento no publica el workaround (42501)', () => como(uSinKb, () => db.exec(`select publicar_workaround_problema('${prK}', 'x')`)), { code: '42501' });
+    await falla('S14 106: base_conocimiento sin problemas no publica el workaround (42501)', () => como(uSoloKb, () => db.exec(`select publicar_workaround_problema('${prK}', 'x')`)), { code: '42501' });
+    await falla('S14 106: tickets sin base_conocimiento no crea el articulo desde el ticket (42501)', () => como(uSinKb, () => db.exec(`select crear_kb_desde_ticket('${tk1}', 'x')`)), { code: '42501' });
+    await falla('S14 106: authenticated no ejecuta un nucleo (project_admin only)', () => como(U.jefe, () => db.exec(`select publicar_workaround_problema_nucleo('${prK}', 'x', null, null, true)`)), { code: '42501' });
+
+    // un asistente con ambos modulos publica: queda en revision a su nombre y los demas no lo ven
+    const wa = await como(U.asist, () => uno(`select * from publicar_workaround_problema('${prK}', 'Reiniciar el router')`));
+    afirmar('S14 106: un asistente deja el workaround en revision, a su nombre', wa.estado === 'en_revision' && wa.tipo === 'workaround' && wa.problema_id === prK && wa.created_by === U.asist, JSON.stringify(wa));
+    const pk = await uno(`select error_conocido, kb_articulo_id, workaround from problemas where id = '${prK}'`);
+    afirmar('S14 106: el problema queda como error conocido con su articulo', pk.error_conocido === true && pk.kb_articulo_id === wa.id && pk.workaround === 'Reiniciar el router', JSON.stringify(pk));
+    afirmar('S14 106: un articulo en revision no lo ve otro asistente (RLS de la 031)', (await como(uSoloKb, () => uno(`select count(*)::int n from kb_articulos where id = '${wa.id}'`))).n === 0);
+    const wj = await como(U.jefe, () => uno(`select * from publicar_workaround_problema('${prK}')`));
+    afirmar('S14 106: el jefe lo publica (mismo articulo)', wj.id === wa.id && wj.estado === 'publicado', JSON.stringify(wj));
+    afirmar('S14 106: publicado, lo ve otro asistente con la KB', (await como(uSoloKb, () => uno(`select count(*)::int n from kb_articulos where id = '${wa.id}'`))).n === 1);
+
+    // crear el articulo desde un ticket resuelto
+    const kb1 = await como(U.asist, () => uno(`select * from crear_kb_desde_ticket('${tk1}', 'Paso a paso de la solucion')`));
+    afirmar('S14 106: crear_kb_desde_ticket deja un borrador a nombre de quien lo pide', kb1.estado === 'borrador' && kb1.created_by === U.asist && kb1.tipo === 'solucion' && kb1.solucion === 'Paso a paso de la solucion' && kb1.sintoma === 'Descripcion 1', JSON.stringify(kb1));
+    await falla('S14 106: un segundo articulo para el mismo ticket es P0001', () => como(U.asist, () => db.exec(`select crear_kb_desde_ticket('${tk1}', 'otra')`)), { code: 'P0001', msg: 'ya tiene un art' });
+    const tk0 = await tkK('0', 'abierto');
+    await falla('S14 106: un ticket abierto no genera articulo (P0001)', () => como(U.asist, () => db.exec(`select crear_kb_desde_ticket('${tk0}', 'x')`)), { code: 'P0001', msg: 'resuelto o cerrado' });
+    // la nota de resolucion (092 de V2) sirve de solucion cuando la columna existe
+    await db.exec('alter table tickets add column nota_resolucion text');
+    try {
+      const tk2 = await tkK('2', 'cerrado');
+      await falla('S14 106: con la columna pero sin nota ni solucion sigue siendo P0001', () => como(U.asist, () => db.exec(`select crear_kb_desde_ticket('${tk2}')`)), { code: 'P0001', msg: 'nota de resoluci' });
+      await db.exec(`update tickets set nota_resolucion = 'Nota del tecnico' where id = '${tk2}'`);
+      const kb2 = await como(U.asist, () => uno(`select * from crear_kb_desde_ticket('${tk2}')`));
+      afirmar('S14 106: sin p_solucion se usa tickets.nota_resolucion', kb2.solucion === 'Nota del tecnico', JSON.stringify(kb2));
+    } finally { await db.exec('alter table tickets drop column nota_resolucion'); }
+
+    // registrar el uso de un articulo publicado
+    const uso = await como(U.asist, () => uno(`select * from registrar_uso_kb_ticket('${tk1}', '${wa.id}')`));
+    afirmar('S14 106: registrar_uso_kb_ticket deja al usuario de la sesion', uso.usado_por === U.asist && uso.ticket_id === tk1, JSON.stringify(uso));
+    await como(U.asist, () => db.exec(`select registrar_uso_kb_ticket('${tk1}', '${wa.id}')`));
+    afirmar('S14 106: marcarlo dos veces no duplica el uso', (await uno(`select count(*)::int n from ticket_kb_usos where ticket_id = '${tk1}' and kb_articulo_id = '${wa.id}'`)).n === 1);
+    await falla('S14 106: no se registra el uso de un articulo en borrador (P0001)', () => como(U.asist, () => db.exec(`select registrar_uso_kb_ticket('${tk1}', '${kb1.id}')`)), { code: 'P0001', msg: 'publicados' });
+    afirmar('S14 106: lee los usos quien tiene tickets o conocimiento; sin modulos, ninguno', (await como(uSoloKb, () => uno('select count(*)::int n from ticket_kb_usos'))).n >= 1 && (await como(U.sinmod, () => uno('select count(*)::int n from ticket_kb_usos'))).n === 0);
+    await falla('S14 106: anon no lee ticket_kb_usos', () => anonimo(() => db.exec('select * from ticket_kb_usos')), { code: '42501' });
+    await falla('S14 106: un asistente no inserta usos directo (sin privilegio)', () => como(U.asist, () => db.exec(`insert into ticket_kb_usos (ticket_id, kb_articulo_id) values ('${tk0}', '${wa.id}')`)), { code: '42501' });
+    await como(U.asist, () => db.exec(`delete from ticket_kb_usos where ticket_id = '${tk1}'`));
+    afirmar('S14 106: un asistente no borra usos (RLS: solo el jefe)', (await uno(`select count(*)::int n from ticket_kb_usos where ticket_id = '${tk1}'`)).n === 1);
+    const kpi = await como(U.asist, () => uno(`select usos_90d, usos_total from v_kpi_kb where kb_articulo_id = '${wa.id}'`));
+    afirmar('S14 106: v_kpi_kb cuenta el uso para quien tiene la KB', kpi && kpi.usos_90d === 1 && kpi.usos_total === 1, JSON.stringify(kpi));
+    afirmar('S14 106: v_kpi_kb hereda la RLS (sin modulos no ve ningun articulo)', (await como(U.sinmod, () => uno('select count(*)::int n from v_kpi_kb'))).n === 0);
+    await falla('S14 106: anon no lee v_kpi_kb', () => anonimo(() => db.exec('select * from v_kpi_kb')), { code: '42501' });
+
+    // cerrar un error conocido: el trigger responde igual con sesion
+    await como(U.asist, () => db.exec(`update problemas set estado = 'diagnostico' where id = '${prK}'`));
+    await como(U.asist, () => db.exec(`update problemas set estado = 'acciones' where id = '${prK}'`));
+    await como(U.asist, () => db.exec(`update problemas set estado = 'cerrado' where id = '${prK}'`));
+    afirmar('S14 106: un error conocido con workaround publicado se cierra', (await uno(`select estado from problemas where id = '${prK}'`)).estado === 'cerrado');
+    await como(U.jefe, () => db.exec(`delete from ticket_kb_usos where ticket_id = '${tk1}'`));
+    afirmar('S14 106: el jefe si borra usos', (await uno(`select count(*)::int n from ticket_kb_usos where ticket_id = '${tk1}'`)).n === 0);
+  }
+
   console.log(`   escenarios (${etiqueta}): ${esc.ok} afirmaciones OK, ${esc.mal.length} MAL`);
   reg(`escenarios integrados (${etiqueta}): ${esc.ok} afirmaciones`, esc.mal.length === 0, esc.mal.join(' || '));
 }
@@ -612,7 +679,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|108|110|111|112)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|108|110|111|112)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -689,6 +756,7 @@ if (!args.includes('--sin-dependencias')) {
     ['110', ['099']], ['110', ['101']], ['110', ['103']], ['110', ['101', '103']], ['111', ['099']], ['111', ['104']],
     ['112', ['099']], ['112', ['102']], ['112', ['103']], ['112', ['104']],
     ['108', ['099']], ['108', ['101']], ['108', ['102']], ['108', ['103']],
+    ['106', ['099']], ['106', ['101']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });

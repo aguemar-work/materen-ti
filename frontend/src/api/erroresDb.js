@@ -48,6 +48,7 @@ export const UNICOS = {
   idx_entregas_token_hash: 'Ya existe una entrega con ese enlace.',
   solicitudes_una_abierta_por_tipo: 'Ya hay una solicitud abierta de ese tipo para esta persona.',
   solicitudes_ticket_unico: 'El ticket ya tiene una solicitud vinculada.',
+  kb_articulos_workaround_por_problema: 'El problema ya tiene un artículo de workaround.',
 };
 
 // 23514 (CHECK).
@@ -57,6 +58,8 @@ export const CHEQUEOS = {
   accesos_sensibles_password_formato_cifrado: 'La contraseña no llegó cifrada. Vuelva a intentarlo.',
   equipos_fotos_max: 'Un equipo admite hasta 4 fotos.',
   chk_asig_equipo_destino: 'La asignación debe tener un destino válido.',
+  problemas_workaround_largo: 'El workaround no puede superar los 5000 caracteres.',
+  kb_articulos_tipo_check: 'El tipo de artículo no es válido.',
 };
 
 export const CONSTRAINTS = { ...UNICOS, ...CHEQUEOS };

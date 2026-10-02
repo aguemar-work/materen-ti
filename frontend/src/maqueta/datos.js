@@ -16,6 +16,7 @@ import { RPC_EQUIPOS } from './rpc-equipos.js';
 import { RPC_EMPLEADOS } from './rpc-empleados.js';
 import { RPC_LICENCIAS } from './rpc-licencias.js';
 import { RPC_SOLICITUDES, definirActorSolicitudes } from './rpc-solicitudes.js';
+import { RPC_KB, definirActorKb, calcularKpiKb } from './rpc-kb.js';
 import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
 
@@ -38,6 +39,8 @@ export const USUARIO_MAQUETA = ESCENARIO === 'asistente'
   : { id: 'u-jefe', email: 'jefe@materen.pe', emailVerified: true, profile: { name: 'Alejandro Guevara' } };
 // Las RPC de solicitudes necesitan saber si quien actúa es jefe (omitir un paso obligatorio).
 definirActorSolicitudes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
+// Lo mismo para la KEDB: un jefe publica el workaround; otro rol lo deja en revisión.
+definirActorKb({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
 
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
@@ -643,6 +646,21 @@ const kb_articulos = [
     solucion: 'Obsoleto: se migró a Microsoft 365, usar la guía nueva.',
     util_si: 21, util_no: 6, ticket_origen_id: null, created_by: 'u-jefe', created_at: hace(400), updated_at: hace(100), deleted_at: null,
   },
+  // KEDB (106): workaround publicado del problema p02 (error conocido).
+  {
+    id: 'kb07', titulo: 'Workaround: Laptops Lenovo IdeaPad sobrecalentándose', categoria_id: 'equipos', estado: 'publicado',
+    tipo: 'workaround', problema_id: 'p02',
+    sintoma: 'La laptop se apaga sola al abrir archivos pesados.',
+    solucion: '1. Panel de control > Opciones de energía > Cambiar la configuración del plan.\n2. Limitar el estado máximo del procesador al 80 %.\n3. Mantener la laptop sobre una superficie rígida hasta el cambio de pasta térmica.',
+    util_si: 3, util_no: 0, ticket_origen_id: 't112', created_by: 'u-jefe', created_at: hace(5), updated_at: hace(5), deleted_at: null,
+  },
+];
+
+// Artículos que sirvieron para resolver un ticket (106): alimentan v_kpi_kb.
+const ticket_kb_usos = [
+  { ticket_id: 't108', kb_articulo_id: 'kb01', usado_por: 'u-jefe', created_at: hace(13) },
+  { ticket_id: 't107', kb_articulo_id: 'kb02', usado_por: 'u-asis-1', created_at: hace(20) },
+  { ticket_id: 't112', kb_articulo_id: 'kb07', usado_por: 'u-jefe', created_at: hace(4) },
 ];
 
 // ── Problemas ───────────────────────────────────────────────────────────────
@@ -657,6 +675,8 @@ const problemas = [
     id: 'p02', titulo: 'Laptops Lenovo IdeaPad sobrecalentándose', severidad: 'media', estado: 'acciones',
     descripcion: 'Tres equipos del mismo lote presentan apagados por temperatura.',
     causa_raiz: 'Lote con pasta térmica defectuosa de fábrica.', responsable_id: 'u-asis-1', ticket_disparador_id: 't112', created_by: 'u-jefe',
+    workaround: '1. Panel de control > Opciones de energía > Cambiar la configuración del plan.\n2. Limitar el estado máximo del procesador al 80 %.\n3. Mantener la laptop sobre una superficie rígida hasta el cambio de pasta térmica.',
+    error_conocido: true, kb_articulo_id: 'kb07',
     created_at: hace(15), updated_at: hace(5), deleted_at: null,
   },
   {
@@ -911,6 +931,7 @@ export const TABLAS = {
   equipos, equipo_accesorios, asignaciones_equipo, eventos_equipo, actas, equipos_importacion,
   tickets, ticket_comentarios, ticket_eventos, ticket_satisfaccion,
   kb_articulos, problemas, problema_tickets, acciones_correctivas,
+  ticket_kb_usos, v_kpi_kb: calcularKpiKb(kb_articulos, ticket_kb_usos),
   encuestas, encuesta_rondas, encuesta_respuestas,
   accesos_sensibles, accesos_sensibles_permisos,
   accesos_log, notificaciones, notificaciones_lecturas, entregas,
@@ -985,6 +1006,8 @@ export const RPC = {
   ...RPC_LICENCIAS,
   // Solicitudes de servicio (108): maqueta/rpc-solicitudes.js (pasos, autocompletado y cierre).
   ...RPC_SOLICITUDES,
+  // KEDB (106): publicar_workaround_problema, crear_kb_desde_ticket, registrar_uso_kb_ticket — maqueta/rpc-kb.js.
+  ...RPC_KB,
   // Inicio (103): una sola RPC; escenarios por `?maqueta=...` en maqueta/inicio.js.
   dashboard_resumen: (db) => resumenInicio(db, { usuarioId: USUARIO_MAQUETA.id }),
 };

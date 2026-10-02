@@ -15,7 +15,7 @@ const SELECT_RESUMEN = `
   created_at, updated_at
 `;
 
-const SELECT_DETALLE = `${SELECT_RESUMEN}, descripcion, causa_raiz, created_by`;
+const SELECT_DETALLE = `${SELECT_RESUMEN}, descripcion, causa_raiz, workaround, error_conocido, kb_articulo_id, created_by`;
 
 const ORDEN_COLUMNAS = ['titulo', 'severidad', 'estado', 'created_at', 'updated_at'];
 const ORDEN_DEFECTO = { columna: 'updated_at', ascending: false };
@@ -324,6 +324,11 @@ function mapProblemaDetalle(row) {
     ...mapProblemaResumen(row),
     descripcion: row.descripcion,
     causa_raiz: row.causa_raiz || '',
+    // KEDB (migración 106): solución provisional, bandera de error conocido y
+    // artículo de la KB donde se publicó.
+    workaround: row.workaround || '',
+    error_conocido: !!row.error_conocido,
+    kb_articulo_id: row.kb_articulo_id || null,
     created_by: row.created_by,
   };
 }

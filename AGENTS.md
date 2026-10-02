@@ -92,6 +92,10 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
 - **Solicitudes (108)**: el trámite lo guarda el servidor; los pasos de otros módulos se marcan solos
   por triggers; permiso = `empleados` (el CHECK de 056 no admite otro). `solicitudes` no tiene
   INSERT/UPDATE de cliente: solo sus RPC. Un paso obligatorio solo lo omite un JEFE.
+- **KEDB (106)**: un problema con `error_conocido` no cierra sin `workaround` o `causa_raiz`;
+  `ticket_kb_usos` solo se escribe por `registrar_uso_kb_ticket`; publicar un workaround como JEFE
+  deja el artículo `publicado`, otro rol lo deja `en_revision`; `crear_kb_desde_ticket` exige un
+  ticket resuelto o cerrado y una solución.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

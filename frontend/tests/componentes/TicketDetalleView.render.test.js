@@ -29,7 +29,7 @@ vi.mock('../../src/api/insforge.js', () => ({
     actualizarTicket: vi.fn().mockResolvedValue(undefined),
     cerrarTicket: vi.fn(),
     crearComentarioTicket: vi.fn().mockResolvedValue(undefined),
-    crearKbArticulo: vi.fn().mockResolvedValue(undefined),
+    crearKbDesdeTicket: vi.fn().mockResolvedValue(undefined),
   },
 }));
 import { insforgeApi } from '../../src/api/insforge.js';

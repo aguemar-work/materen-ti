@@ -4265,3 +4265,389 @@ begin
     raise exception 'TESTS_FALLARON [108f]: %', fallos;
   end if;
 end $$;
+
+-- ------------------------------------------------------------
+-- 106-a: esquema de la KEDB (columnas, tipo por defecto y CHECK), tabla de
+-- usos (privilegios, policies, RLS), EXECUTE de RPC y núcleos, vista
+-- security_invoker, índice único del workaround y el guard 42501 sin sesión
+-- ------------------------------------------------------------
+do $$
+declare
+  v_n int;
+  v_f text;
+  v_id uuid;
+  v_opts text[];
+  fallos text := '';
+begin
+  select count(*) into v_n from information_schema.columns where table_schema = 'public'
+    and ((table_name = 'problemas' and column_name in ('workaround', 'error_conocido', 'kb_articulo_id'))
+      or (table_name = 'kb_articulos' and column_name in ('tipo', 'problema_id')));
+  if v_n <> 5 then fallos := fallos || '[106] se esperaban 5 columnas nuevas y hay ' || v_n || '; '; end if;
+
+  -- un artículo sin tipo explícito es 'solucion'; el CHECK rechaza lo demás
+  insert into public.kb_articulos (titulo) values ('__TEST_CI__ KB 106a') returning id into v_id;
+  if (select tipo from public.kb_articulos where id = v_id) is distinct from 'solucion' then
+    fallos := fallos || '[106] el tipo por defecto no es solucion; ';
+  end if;
+  begin update public.kb_articulos set tipo = 'otro' where id = v_id; fallos := fallos || '[106] el CHECK de tipo admitio un valor fuera de dominio; ';
+  exception when check_violation then null; end;
+  update public.kb_articulos set tipo = 'procedimiento' where id = v_id;
+  update public.kb_articulos set tipo = 'workaround' where id = v_id;
+
+  insert into public.problemas (titulo, descripcion) values ('__TEST_CI__ Problema 106a', 'd') returning id into v_id;
+  if (select error_conocido from public.problemas where id = v_id) is distinct from false then
+    fallos := fallos || '[106] error_conocido no nace en false; ';
+  end if;
+  begin update public.problemas set workaround = repeat('x', 5001) where id = v_id; fallos := fallos || '[106] el CHECK de largo admitio un workaround de 5001 caracteres; ';
+  exception when check_violation then null; end;
+  update public.problemas set workaround = repeat('x', 5000) where id = v_id;
+
+  -- ticket_kb_usos: RLS, el cliente solo lee y borra por RLS (jefe), anon nada
+  if not exists (select 1 from pg_class where oid = 'public.ticket_kb_usos'::regclass and relrowsecurity) then
+    fallos := fallos || '[106] ticket_kb_usos sin RLS; ';
+  end if;
+  if has_table_privilege('authenticated', 'public.ticket_kb_usos', 'insert')
+     or has_table_privilege('authenticated', 'public.ticket_kb_usos', 'update')
+     or not has_table_privilege('authenticated', 'public.ticket_kb_usos', 'select')
+     or has_table_privilege('anon', 'public.ticket_kb_usos', 'select')
+     or has_table_privilege('anon', 'public.ticket_kb_usos', 'insert') then
+    fallos := fallos || '[106] privilegios de ticket_kb_usos incorrectos; ';
+  end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'ticket_kb_usos'
+    and cmd = 'SELECT' and qual like '%puede_actual%tickets%' and qual like '%puede_actual%base_conocimiento%';
+  if v_n <> 1 then fallos := fallos || '[106] falta la policy SELECT con tickets o base_conocimiento; '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'ticket_kb_usos'
+    and cmd = 'DELETE' and qual like '%es_jefe%';
+  if v_n <> 1 then fallos := fallos || '[106] falta la policy DELETE es_jefe; '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'ticket_kb_usos' and cmd in ('INSERT', 'UPDATE', 'ALL');
+  if v_n <> 0 then fallos := fallos || '[106] ticket_kb_usos tiene policies de escritura; '; end if;
+
+  -- EXECUTE: RPC a authenticated; nucleos solo a project_admin
+  foreach v_f in array array[
+    'public.publicar_workaround_problema(uuid, text, text, text)',
+    'public.crear_kb_desde_ticket(uuid, text, text, text)',
+    'public.registrar_uso_kb_ticket(uuid, uuid)'] loop
+    if not has_function_privilege('authenticated', v_f, 'execute') or has_function_privilege('anon', v_f, 'execute') then
+      fallos := fallos || '[106] EXECUTE incorrecto en ' || v_f || '; ';
+    end if;
+  end loop;
+  foreach v_f in array array[
+    'public.publicar_workaround_problema_nucleo(uuid, text, text, text, boolean)',
+    'public.crear_kb_desde_ticket_nucleo(uuid, text, text, text)',
+    'public.registrar_uso_kb_ticket_nucleo(uuid, uuid)'] loop
+    if has_function_privilege('authenticated', v_f, 'execute') or has_function_privilege('anon', v_f, 'execute')
+       or not has_function_privilege('project_admin', v_f, 'execute') then
+      fallos := fallos || '[106] EXECUTE incorrecto en ' || v_f || '; ';
+    end if;
+  end loop;
+
+  -- vista security_invoker, sin acceso anonimo
+  select reloptions into v_opts from pg_class where oid = 'public.v_kpi_kb'::regclass;
+  if v_opts is null or not ('security_invoker=true' = any (v_opts)) then fallos := fallos || '[106] v_kpi_kb no es security_invoker; '; end if;
+  if has_table_privilege('anon', 'public.v_kpi_kb', 'select') or not has_table_privilege('authenticated', 'public.v_kpi_kb', 'select') then
+    fallos := fallos || '[106] privilegios de v_kpi_kb incorrectos; ';
+  end if;
+
+  -- un solo workaround vivo por problema
+  insert into public.kb_articulos (titulo, tipo, problema_id) values ('__TEST_CI__ WA 106a-1', 'workaround', v_id) returning id into v_id;
+  begin
+    insert into public.kb_articulos (titulo, tipo, problema_id)
+      values ('__TEST_CI__ WA 106a-2', 'workaround', (select problema_id from public.kb_articulos where id = v_id));
+    fallos := fallos || '[106] el indice permitio dos workaround vivos para un problema; ';
+  exception when unique_violation then null; end;
+  update public.kb_articulos set deleted_at = now() where id = v_id;
+  insert into public.kb_articulos (titulo, tipo, problema_id)
+    values ('__TEST_CI__ WA 106a-3', 'workaround', (select problema_id from public.kb_articulos where id = v_id));
+
+  -- sin sesion (auth.uid() NULL) cada RPC publica responde 42501
+  begin perform public.publicar_workaround_problema(gen_random_uuid()); fallos := fallos || '[106] publicar_workaround_problema respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[106] publicar_workaround_problema sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.crear_kb_desde_ticket(gen_random_uuid()); fallos := fallos || '[106] crear_kb_desde_ticket respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[106] crear_kb_desde_ticket sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.registrar_uso_kb_ticket(gen_random_uuid(), gen_random_uuid()); fallos := fallos || '[106] registrar_uso_kb_ticket respondio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[106] registrar_uso_kb_ticket sin sesion lanzo ' || sqlstate || '; '; end if; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [106a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [106a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 106-b: check_problema_cierre — un error conocido no se cierra (ni queda
+-- cerrado) sin workaround o causa raiz; el texto en blanco cuenta como vacio;
+-- la regla de la 033 (acciones pendientes) sigue vigente
+-- ------------------------------------------------------------
+do $$
+declare
+  v_p uuid;
+  v_q uuid;
+  v_r uuid;
+  fallos text := '';
+begin
+  -- error conocido sin documentar: no cierra
+  insert into public.problemas (titulo, descripcion, error_conocido) values ('__TEST_CI__ Problema 106b', 'd', true) returning id into v_p;
+  update public.problemas set estado = 'diagnostico' where id = v_p;
+  update public.problemas set estado = 'acciones' where id = v_p;
+  begin update public.problemas set estado = 'cerrado' where id = v_p; fallos := fallos || '[106] cerro un error conocido sin workaround ni causa raiz; ';
+  exception when others then if sqlerrm not like '%error conocido%' then fallos := fallos || '[106] cierre sin documentar rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- en blanco = vacio
+  update public.problemas set workaround = '   ', causa_raiz = chr(10) where id = v_p;
+  begin update public.problemas set estado = 'cerrado' where id = v_p; fallos := fallos || '[106] cerro con workaround y causa raiz en blanco; ';
+  exception when others then if sqlerrm not like '%error conocido%' then fallos := fallos || '[106] cierre con texto en blanco rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- con workaround, cierra
+  update public.problemas set workaround = 'Reiniciar el servicio' where id = v_p;
+  update public.problemas set estado = 'cerrado' where id = v_p;
+  if (select estado from public.problemas where id = v_p) <> 'cerrado' then fallos := fallos || '[106] no cerro con workaround; '; end if;
+
+  -- ya cerrado: no se puede vaciar el workaround si no hay causa raiz...
+  begin update public.problemas set workaround = null where id = v_p; fallos := fallos || '[106] se vacio el workaround de un error conocido cerrado; ';
+  exception when others then if sqlerrm not like '%error conocido%' then fallos := fallos || '[106] vaciar el workaround rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  -- ...ni marcar como error conocido uno cerrado sin documentacion
+  insert into public.problemas (titulo, descripcion) values ('__TEST_CI__ Problema 106b2', 'd') returning id into v_q;
+  update public.problemas set estado = 'diagnostico' where id = v_q;
+  update public.problemas set estado = 'acciones' where id = v_q;
+  update public.problemas set estado = 'cerrado' where id = v_q;
+  begin update public.problemas set error_conocido = true where id = v_q; fallos := fallos || '[106] marco error conocido un problema cerrado sin documentacion; ';
+  exception when others then if sqlerrm not like '%error conocido%' then fallos := fallos || '[106] marcar error conocido rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  -- con causa raiz documentada, si
+  update public.problemas set causa_raiz = 'Pasta termica defectuosa' where id = v_q;
+  update public.problemas set error_conocido = true where id = v_q;
+
+  -- un problema que NO es error conocido cierra sin workaround (comportamiento de siempre)
+  insert into public.problemas (titulo, descripcion) values ('__TEST_CI__ Problema 106b3', 'd') returning id into v_r;
+  update public.problemas set estado = 'diagnostico' where id = v_r;
+  update public.problemas set estado = 'acciones' where id = v_r;
+  insert into public.acciones_correctivas (problema_id, descripcion, fecha_limite) values (v_r, '__TEST_CI__ accion 106b', current_date + 5);
+  begin update public.problemas set estado = 'cerrado' where id = v_r; fallos := fallos || '[106] cerro con una accion correctiva pendiente; ';
+  exception when others then if sqlerrm not like '%acciones correctivas%' then fallos := fallos || '[106] la regla de la 033 cambio de mensaje: ' || sqlerrm || '; '; end if; end;
+  update public.acciones_correctivas set estado = 'completada' where problema_id = v_r;
+  update public.problemas set estado = 'cerrado' where id = v_r;
+  if (select estado from public.problemas where id = v_r) <> 'cerrado' then fallos := fallos || '[106] un problema comun no cerro; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [106b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [106b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 106-c: publicar_workaround_problema_nucleo — crea y actualiza UN articulo
+-- de workaround, marca el problema como error conocido, respeta la regla de
+-- publicacion (jefe publica; otro rol deja en revision) y valida la entrada
+-- ------------------------------------------------------------
+do $$
+declare
+  v_t uuid;
+  v_t2 uuid;
+  v_p uuid;
+  v_p2 uuid;
+  v_a public.kb_articulos;
+  v_b public.kb_articulos;
+  v_prob public.problemas;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.categorias_ticket (id, nombre) values ('__test_ci_106c__', '__TEST_CI__ Categoria 106c');
+  insert into public.categorias_ticket (id, nombre) values ('__test_ci_106c2__', '__TEST_CI__ Categoria 106c2');
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id)
+    values ('__TESTCI-106C1__', 'testci106ctoken0000001', '__TEST_CI__ T1', 'd', '__test_ci_106c__') returning id into v_t;
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id)
+    values ('__TESTCI-106C2__', 'testci106ctoken0000002', '__TEST_CI__ T2', 'd', '__test_ci_106c2__') returning id into v_t2;
+  insert into public.problemas (titulo, descripcion, ticket_disparador_id)
+    values ('__TEST_CI__ Caidas de internet', 'Cortes varias veces al mes', v_t) returning id into v_p;
+  insert into public.problema_tickets (problema_id, ticket_id) values (v_p, v_t2);
+
+  -- primera publicacion de un no-jefe: articulo nuevo en revision
+  v_a := public.publicar_workaround_problema_nucleo(v_p, 'Paso 1' || chr(10) || 'Paso 2', null, null, false);
+  if v_a.tipo <> 'workaround' or v_a.problema_id is distinct from v_p or v_a.estado <> 'en_revision' then
+    fallos := fallos || '[106] el articulo nuevo no es workaround/en_revision vinculado al problema; ';
+  end if;
+  if v_a.solucion is distinct from ('Paso 1' || chr(10) || 'Paso 2') then fallos := fallos || '[106] el workaround perdio sus saltos de linea; '; end if;
+  if v_a.titulo is distinct from 'Workaround: __TEST_CI__ Caidas de internet' or v_a.sintoma is distinct from 'Cortes varias veces al mes' then
+    fallos := fallos || '[106] titulo o sintoma por defecto incorrectos; ';
+  end if;
+  if v_a.ticket_origen_id is distinct from v_t then fallos := fallos || '[106] ticket_origen_id no es el disparador; '; end if;
+  if v_a.categoria_id is null or v_a.categoria_id not in ('__test_ci_106c__', '__test_ci_106c2__') then fallos := fallos || '[106] la categoria no sale de los tickets vinculados; '; end if;
+  select * into v_prob from public.problemas where id = v_p;
+  if v_prob.error_conocido is not true or v_prob.kb_articulo_id is distinct from v_a.id or v_prob.workaround is distinct from v_a.solucion then
+    fallos := fallos || '[106] el problema no quedo como error conocido con su articulo; ';
+  end if;
+
+  -- reenviar lo mismo: mismo articulo, mismo estado
+  v_b := public.publicar_workaround_problema_nucleo(v_p, null, null, null, false);
+  if v_b.id <> v_a.id or v_b.estado <> 'en_revision' then fallos := fallos || '[106] reenviar duplico el articulo o cambio su estado; '; end if;
+  select count(*) into v_n from public.kb_articulos where problema_id = v_p and tipo = 'workaround' and deleted_at is null;
+  if v_n <> 1 then fallos := fallos || '[106] hay ' || v_n || ' articulos de workaround vivos; '; end if;
+
+  -- un jefe lo publica
+  v_b := public.publicar_workaround_problema_nucleo(v_p, null, null, null, true);
+  if v_b.id <> v_a.id or v_b.estado <> 'publicado' then fallos := fallos || '[106] el jefe no publico el articulo; '; end if;
+  -- un no-jefe que no cambia nada no lo despublica; si cambia el texto, vuelve a revision
+  v_b := public.publicar_workaround_problema_nucleo(v_p, null, null, null, false);
+  if v_b.estado <> 'publicado' then fallos := fallos || '[106] reenviar lo mismo despublico el articulo; '; end if;
+  v_b := public.publicar_workaround_problema_nucleo(v_p, 'Texto nuevo', 'Titulo nuevo', null, false);
+  if v_b.estado <> 'en_revision' or v_b.solucion <> 'Texto nuevo' or v_b.titulo <> 'Titulo nuevo' then
+    fallos := fallos || '[106] cambiar el texto no devolvio el articulo a revision con el contenido nuevo; ';
+  end if;
+  if (select workaround from public.problemas where id = v_p) <> 'Texto nuevo' then fallos := fallos || '[106] el problema no guardo el workaround nuevo; '; end if;
+
+  -- validaciones
+  insert into public.problemas (titulo, descripcion) values ('__TEST_CI__ Problema sin workaround', 'd') returning id into v_p2;
+  begin perform public.publicar_workaround_problema_nucleo(v_p2, '   ', null, null, true); fallos := fallos || '[106] publico sin workaround; ';
+  exception when others then if sqlerrm not like '%Escriba el workaround%' then fallos := fallos || '[106] sin workaround rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.publicar_workaround_problema_nucleo(v_p2, repeat('x', 5001), null, null, true); fallos := fallos || '[106] publico un workaround de 5001 caracteres; ';
+  exception when others then if sqlerrm not like '%5000 caracteres%' then fallos := fallos || '[106] workaround largo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.publicar_workaround_problema_nucleo(v_p2, 'ok', repeat('t', 201), null, true); fallos := fallos || '[106] publico con un titulo de 201 caracteres; ';
+  exception when others then if sqlerrm not like '%200 caracteres%' then fallos := fallos || '[106] titulo largo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.publicar_workaround_problema_nucleo(gen_random_uuid(), 'ok', null, null, true); fallos := fallos || '[106] publico un problema inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[106] problema inexistente lanzo ' || sqlstate || '; '; end if; end;
+  update public.problemas set deleted_at = now() where id = v_p2;
+  begin perform public.publicar_workaround_problema_nucleo(v_p2, 'ok', null, null, true); fallos := fallos || '[106] publico un problema eliminado; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[106] problema eliminado lanzo ' || sqlstate || '; '; end if; end;
+  select count(*) into v_n from public.kb_articulos where problema_id = v_p2;
+  if v_n <> 0 then fallos := fallos || '[106] una publicacion rechazada dejo un articulo; '; end if;
+
+  -- si el articulo vigente se elimina, publicar crea otro (el indice solo mira los vivos)
+  update public.kb_articulos set deleted_at = now() where id = v_a.id;
+  v_b := public.publicar_workaround_problema_nucleo(v_p, null, null, null, true);
+  if v_b.id = v_a.id or (select kb_articulo_id from public.problemas where id = v_p) <> v_b.id then fallos := fallos || '[106] no creo un articulo nuevo tras eliminar el anterior; '; end if;
+
+  -- el error conocido documentado ya puede cerrarse
+  update public.problemas set estado = 'diagnostico' where id = v_p;
+  update public.problemas set estado = 'acciones' where id = v_p;
+  update public.problemas set estado = 'cerrado' where id = v_p;
+  if (select estado from public.problemas where id = v_p) <> 'cerrado' then fallos := fallos || '[106] el error conocido publicado no pudo cerrarse; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [106c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [106c]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 106-d: crear_kb_desde_ticket_nucleo — solo desde un ticket resuelto o
+-- cerrado, exige solucion, copia sintoma/titulo/categoria, nace borrador y no
+-- se duplica
+-- ------------------------------------------------------------
+do $$
+declare
+  v_t uuid;
+  v_t2 uuid;
+  v_a public.kb_articulos;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.categorias_ticket (id, nombre) values ('__test_ci_106d__', '__TEST_CI__ Categoria 106d');
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, estado)
+    values ('__TESTCI-106D0__', 'testci106dtoken0000000', '__TEST_CI__ Abierto', 'd', '__test_ci_106d__', 'abierto')
+    returning id into v_t;
+  begin perform public.crear_kb_desde_ticket_nucleo(v_t, 'Reiniciar el spooler'); fallos := fallos || '[106] creo un articulo desde un ticket abierto; ';
+  exception when others then if sqlerrm not like '%resuelto o cerrado%' then fallos := fallos || '[106] ticket abierto rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, estado)
+    values ('__TESTCI-106D1__', 'testci106dtoken0000001', '__TEST_CI__ No imprime', 'La impresora no responde', '__test_ci_106d__', 'resuelto')
+    returning id into v_t;
+  begin perform public.crear_kb_desde_ticket_nucleo(v_t); fallos := fallos || '[106] creo un articulo sin solucion; ';
+  exception when others then if sqlerrm not like '%no tiene nota de resolución%' then fallos := fallos || '[106] sin solucion rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.crear_kb_desde_ticket_nucleo(v_t, '   '); fallos := fallos || '[106] creo un articulo con solucion en blanco; ';
+  exception when others then if sqlerrm not like '%no tiene nota de resolución%' then fallos := fallos || '[106] solucion en blanco rechazada por otro motivo: ' || sqlerrm || '; '; end if; end;
+  select count(*) into v_n from public.kb_articulos where ticket_origen_id = v_t;
+  if v_n <> 0 then fallos := fallos || '[106] un intento rechazado dejo un articulo; '; end if;
+
+  v_a := public.crear_kb_desde_ticket_nucleo(v_t, 'Paso 1' || chr(10) || 'Paso 2');
+  if v_a.estado <> 'borrador' or v_a.tipo <> 'solucion' or v_a.ticket_origen_id is distinct from v_t or v_a.categoria_id is distinct from '__test_ci_106d__' then
+    fallos := fallos || '[106] el articulo desde ticket nacio mal; ';
+  end if;
+  if v_a.titulo is distinct from '__TEST_CI__ No imprime' or v_a.sintoma is distinct from 'La impresora no responde' then fallos := fallos || '[106] titulo o sintoma no se copiaron del ticket; '; end if;
+  if v_a.solucion is distinct from ('Paso 1' || chr(10) || 'Paso 2') then fallos := fallos || '[106] la solucion perdio sus saltos de linea; '; end if;
+
+  begin perform public.crear_kb_desde_ticket_nucleo(v_t, 'Otra solucion'); fallos := fallos || '[106] creo dos articulos de solucion para el mismo ticket; ';
+  exception when others then if sqlerrm not like '%ya tiene un artículo%' then fallos := fallos || '[106] segundo articulo rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+
+  -- eliminado el articulo, se puede volver a crear; titulo y sintoma propios
+  update public.kb_articulos set deleted_at = now() where id = v_a.id;
+  v_a := public.crear_kb_desde_ticket_nucleo(v_t, 'Solucion revisada', 'Impresora sin respuesta', 'No imprime nada');
+  if v_a.titulo <> 'Impresora sin respuesta' or v_a.sintoma <> 'No imprime nada' then fallos := fallos || '[106] titulo y sintoma propios ignorados; '; end if;
+
+  -- un ticket cerrado tambien vale; uno inexistente es P0002
+  insert into public.tickets (codigo, token, titulo, descripcion, estado)
+    values ('__TESTCI-106D2__', 'testci106dtoken0000002', '__TEST_CI__ Cerrado', 'd', 'cerrado') returning id into v_t2;
+  v_a := public.crear_kb_desde_ticket_nucleo(v_t2, 'Hecho');
+  if v_a.estado <> 'borrador' or v_a.categoria_id is not null then fallos := fallos || '[106] el articulo del ticket cerrado sin categoria nacio mal; '; end if;
+  begin perform public.crear_kb_desde_ticket_nucleo(gen_random_uuid(), 'x'); fallos := fallos || '[106] creo desde un ticket inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[106] ticket inexistente lanzo ' || sqlstate || '; '; end if; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [106d] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [106d]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 106-e: registrar_uso_kb_ticket_nucleo (idempotente, solo publicados) y
+-- v_kpi_kb (usos de 90 dias y totales)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_t uuid;
+  v_a uuid;
+  v_rev uuid;
+  v_sin uuid;
+  v_uso public.ticket_kb_usos;
+  v_k record;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.tickets (codigo, token, titulo, descripcion) values ('__TESTCI-106E1__', 'testci106etoken0000001', '__TEST_CI__ T', 'd') returning id into v_t;
+  insert into public.kb_articulos (titulo, estado, tipo) values ('__TEST_CI__ Publicado 106e', 'publicado', 'solucion') returning id into v_a;
+  insert into public.kb_articulos (titulo, estado) values ('__TEST_CI__ En revision 106e', 'en_revision') returning id into v_rev;
+  insert into public.kb_articulos (titulo, estado) values ('__TEST_CI__ Sin uso 106e', 'publicado') returning id into v_sin;
+
+  v_uso := public.registrar_uso_kb_ticket_nucleo(v_t, v_a);
+  if v_uso.ticket_id <> v_t or v_uso.kb_articulo_id <> v_a or v_uso.created_at is null then fallos := fallos || '[106] el uso no se registro bien; '; end if;
+  v_uso := public.registrar_uso_kb_ticket_nucleo(v_t, v_a);
+  select count(*) into v_n from public.ticket_kb_usos where ticket_id = v_t and kb_articulo_id = v_a;
+  if v_n <> 1 then fallos := fallos || '[106] registrar dos veces duplico el uso (' || v_n || '); '; end if;
+
+  begin perform public.registrar_uso_kb_ticket_nucleo(v_t, v_rev); fallos := fallos || '[106] registro el uso de un articulo en revision; ';
+  exception when others then if sqlerrm not like '%artículos publicados%' then fallos := fallos || '[106] articulo en revision rechazado por otro motivo: ' || sqlerrm || '; '; end if; end;
+  begin perform public.registrar_uso_kb_ticket_nucleo(gen_random_uuid(), v_a); fallos := fallos || '[106] registro el uso en un ticket inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[106] ticket inexistente lanzo ' || sqlstate || '; '; end if; end;
+  begin perform public.registrar_uso_kb_ticket_nucleo(v_t, gen_random_uuid()); fallos := fallos || '[106] registro el uso de un articulo inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[106] articulo inexistente lanzo ' || sqlstate || '; '; end if; end;
+
+  -- v_kpi_kb: 1 uso reciente; el articulo sin uso aparece en cero
+  select * into v_k from public.v_kpi_kb where kb_articulo_id = v_a;
+  if v_k.usos_90d is distinct from 1 or v_k.usos_total is distinct from 1 or v_k.ultimo_uso_at is null or v_k.tipo is distinct from 'solucion' then
+    fallos := fallos || '[106] v_kpi_kb no cuenta el uso reciente; ';
+  end if;
+  select * into v_k from public.v_kpi_kb where kb_articulo_id = v_sin;
+  if v_k.usos_90d is distinct from 0 or v_k.usos_total is distinct from 0 or v_k.ultimo_uso_at is not null then fallos := fallos || '[106] v_kpi_kb no muestra en cero al articulo sin uso; '; end if;
+
+  -- un uso de hace 100 dias cuenta en el total pero no en los 90 dias
+  update public.ticket_kb_usos set created_at = now() - interval '100 days' where ticket_id = v_t and kb_articulo_id = v_a;
+  select * into v_k from public.v_kpi_kb where kb_articulo_id = v_a;
+  if v_k.usos_90d is distinct from 0 or v_k.usos_total is distinct from 1 then fallos := fallos || '[106] v_kpi_kb no separa los 90 dias del total; '; end if;
+
+  -- un articulo eliminado sale de la vista
+  update public.kb_articulos set deleted_at = now() where id = v_sin;
+  if exists (select 1 from public.v_kpi_kb where kb_articulo_id = v_sin) then fallos := fallos || '[106] v_kpi_kb lista un articulo eliminado; '; end if;
+
+  -- eliminar el articulo (jefe, fisico) borra sus usos
+  delete from public.kb_articulos where id = v_a;
+  select count(*) into v_n from public.ticket_kb_usos where ticket_id = v_t;
+  if v_n <> 0 then fallos := fallos || '[106] borrar el articulo dejo usos huerfanos; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [106e] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [106e]: %', fallos;
+  end if;
+end $$;

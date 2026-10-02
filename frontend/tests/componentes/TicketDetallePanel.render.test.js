@@ -28,6 +28,7 @@ vi.mock('../../src/api/insforge.js', () => ({
     actualizarTicket: vi.fn().mockResolvedValue(undefined),
     cerrarTicket: vi.fn(),
     crearComentarioTicket: vi.fn().mockResolvedValue(undefined),
+    crearKbDesdeTicket: vi.fn().mockResolvedValue(undefined),
   },
 }));
 import { insforgeApi } from '../../src/api/insforge.js';
@@ -131,6 +132,8 @@ describe('TicketDetallePanel.vue — botones migrados a AppButton (Fase 2)', () 
     await flushPromises();
 
     expect(insforgeApi.cerrarTicket).toHaveBeenCalledWith('tck-1');
+    // KEDB (106): el borrador lo crea el servidor, no un insert de cliente.
+    expect(insforgeApi.crearKbDesdeTicket).toHaveBeenCalledWith('tck-1', { solucion: null, titulo: null, sintoma: null });
   });
 
   it('estado "abierto": Rechazar vía ConfirmDialog con motivo llama a actualizarTicket(rechazado)', async () => {

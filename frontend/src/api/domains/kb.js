@@ -7,9 +7,10 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { trimText } from '../../core/formatters.js';
+import { TIPO_KB_POR_DEFECTO } from '../../core/dominio-kb.js';
 
 const SELECT_RESUMEN = `
-  id, titulo, categoria_id, sintoma, estado, util_si, util_no,
+  id, titulo, categoria_id, sintoma, estado, tipo, problema_id, util_si, util_no,
   ticket_origen_id, created_by, created_at, updated_at,
   categorias_ticket(nombre)
 `;
@@ -106,6 +107,7 @@ export const kbApi = {
         solucion: trimText(datos.solucion),
         ticket_origen_id: datos.ticket_origen_id || null,
         estado: datos.estado || 'borrador',
+        tipo: datos.tipo || TIPO_KB_POR_DEFECTO,
       }])
       .select(SELECT_DETALLE)
       .single();
@@ -143,7 +145,83 @@ export const kbApi = {
     if (error) throw error;
     return this.getKbArticulo(id);
   },
+
+  // ── KEDB (migración 106) ──────────────────────────────────────────────
+  // Escritura solo por RPC; los rechazos (42501 sin permiso, P0001 regla de
+  // negocio en español, P0002 no existe) se relanzan crudos y los traduce
+  // quien los muestra (api/erroresDb.js).
+
+  // Crea o actualiza el artículo de tipo workaround del problema y lo deja
+  // como error conocido. Lo publica un jefe; otro rol lo deja en revisión (el
+  // estado del artículo devuelto lo dice). `workaround` omitido = el ya
+  // guardado en el problema.
+  async publicarWorkaroundProblema(problemaId, { workaround = null, titulo = null, sintoma = null } = {}) {
+    const { data, error } = await getClient().database.rpc('publicar_workaround_problema', {
+      p_problema_id: problemaId,
+      p_workaround: textoLargo(workaround),
+      p_titulo: trimText(titulo),
+      p_sintoma: trimText(sintoma),
+    });
+    if (error) throw error;
+    return mapKbDetalle(data);
+  },
+
+  // Borrador de KB desde un ticket resuelto o cerrado. La solución sale de
+  // `solucion` o, si no llega, de la nota de resolución del ticket.
+  async crearKbDesdeTicket(ticketId, { solucion = null, titulo = null, sintoma = null } = {}) {
+    const { data, error } = await getClient().database.rpc('crear_kb_desde_ticket', {
+      p_ticket_id: ticketId,
+      p_solucion: textoLargo(solucion),
+      p_titulo: trimText(titulo),
+      p_sintoma: trimText(sintoma),
+    });
+    if (error) throw error;
+    return mapKbDetalle(data);
+  },
+
+  // "Este artículo ayudó a resolver este ticket". Idempotente.
+  async registrarUsoKbTicket(ticketId, articuloId) {
+    const { data, error } = await getClient().database.rpc('registrar_uso_kb_ticket', {
+      p_ticket_id: ticketId,
+      p_kb_articulo_id: articuloId,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  // Ids de los artículos ya marcados como usados en un ticket.
+  async listUsosKbTicket(ticketId) {
+    const { data, error } = await getClient().database
+      .from('ticket_kb_usos')
+      .select('kb_articulo_id, usado_por, created_at')
+      .eq('ticket_id', ticketId);
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Usos de un artículo (v_kpi_kb): { usos_90d, usos_total, ultimo_uso_at }.
+  // Sin fila (artículo no visible) devuelve ceros.
+  async kpiKbArticulo(articuloId) {
+    const { data, error } = await getClient().database
+      .from('v_kpi_kb')
+      .select('usos_90d, usos_total, ultimo_uso_at')
+      .eq('kb_articulo_id', articuloId)
+      .maybeSingle();
+    if (error) throw error;
+    return {
+      usos_90d: data?.usos_90d || 0,
+      usos_total: data?.usos_total || 0,
+      ultimo_uso_at: data?.ultimo_uso_at || null,
+    };
+  },
 };
+
+// Texto de varias líneas (pasos de un workaround o de una solución): se
+// recortan los extremos pero se conservan los saltos de línea; vacío = null.
+function textoLargo(valor) {
+  const t = String(valor ?? '').trim();
+  return t || null;
+}
 
 function mapKbResumen(row) {
   return {
@@ -153,6 +231,8 @@ function mapKbResumen(row) {
     categoria_nombre: row.categorias_ticket?.nombre || '',
     sintoma: row.sintoma || '',
     estado: row.estado,
+    tipo: row.tipo || TIPO_KB_POR_DEFECTO,
+    problema_id: row.problema_id || null,
     util_si: row.util_si || 0,
     util_no: row.util_no || 0,
     ticket_origen_id: row.ticket_origen_id,

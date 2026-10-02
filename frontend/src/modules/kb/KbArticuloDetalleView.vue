@@ -5,6 +5,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
 import { formatFechaHora } from '../../core/formatters.js';
+import { tipoKbInfo } from '../../core/dominio-kb.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
@@ -13,6 +14,7 @@ import AppButton from '../../components/ui/AppButton.vue';
 import AppSeccion from '../../components/ui/AppSeccion.vue';
 import AppListaDatos from '../../components/ui/AppListaDatos.vue';
 import AppTag from '../../components/ui/AppTag.vue';
+import KbArticuloVinculos from './KbArticuloVinculos.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -215,6 +217,7 @@ onMounted(async () => {
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
             <BadgeEstado tipo="kb_estado" :valor="articulo.estado" />
+            <AppTag v-if="articulo.tipo !== 'solucion'" :tono="tipoKbInfo(articulo.tipo).tono">{{ tipoKbInfo(articulo.tipo).label }}</AppTag>
             <span v-if="articulo.categoria_nombre" class="inline-flex items-center gap-1"><i class="ti ti-folder" aria-hidden="true"></i>{{ articulo.categoria_nombre }}</span>
             <span class="inline-flex items-center gap-1 tabular-nums"><i class="ti ti-clock" aria-hidden="true"></i>Actualizado {{ formatFechaHora(articulo.updated_at) }}</span>
           </div>
@@ -368,6 +371,8 @@ onMounted(async () => {
             </template>
             <p v-else class="text-sm text-gray-500">Todavía sin votos.</p>
           </AppSeccion>
+
+          <KbArticuloVinculos :articulo="articulo" />
 
           <AppSeccion titulo="Detalle">
             <AppListaDatos :datos="datosDetalle" />

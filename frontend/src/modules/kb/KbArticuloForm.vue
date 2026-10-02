@@ -4,6 +4,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useKbStore } from '../../stores/kb.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { OPCIONES_TIPO_KB, TIPO_KB_POR_DEFECTO } from '../../core/dominio-kb.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -20,10 +21,11 @@ const guardando = ref(false);
 const error = ref('');
 const categorias = ref([]);
 
-const form = ref({ titulo: '', categoria_id: '', sintoma: '', solucion: '' });
+const form = ref({ titulo: '', tipo: TIPO_KB_POR_DEFECTO, categoria_id: '', sintoma: '', solucion: '' });
 const infoError = infoNotificacion('error');
 
 const campoTitulo = useCampoAccesible();
+const campoTipo = useCampoAccesible();
 const campoCategoria = useCampoAccesible();
 const campoSintoma = useCampoAccesible();
 const campoSolucion = useCampoAccesible();
@@ -42,6 +44,7 @@ async function guardar() {
   try {
     const articulo = await store.crear({
       titulo: form.value.titulo,
+      tipo: form.value.tipo,
       categoria_id: form.value.categoria_id || null,
       sintoma: form.value.sintoma,
       solucion: form.value.solucion,
@@ -82,6 +85,22 @@ onMounted(async () => {
             placeholder="Ej.: No conecta a la VPN institucional"
             :disabled="guardando"
           >
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoTipo.id">Tipo</label>
+        <div class="campo__caja">
+          <select
+            :id="campoTipo.id"
+            class="campo__control campo__control--select"
+            :value="form.tipo"
+            :disabled="guardando"
+            @change="form.tipo = $event.target.value"
+          >
+            <option v-for="t in OPCIONES_TIPO_KB" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
         </div>
       </div>
 

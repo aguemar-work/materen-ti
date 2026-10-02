@@ -17,6 +17,7 @@ import AppVacio from '../../components/ui/AppVacio.vue';
 import AppSelect from '../../components/ui/AppSelect.vue';
 import AppTag from '../../components/ui/AppTag.vue';
 import SeveridadProblema from './SeveridadProblema.vue';
+import ProblemaWorkaround from './ProblemaWorkaround.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const route = useRoute();
@@ -278,6 +279,7 @@ onUnmounted(() => store.limpiar());
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ problema.titulo }}</h1>
             <BadgeEstado tipo="problema_estado" :valor="problema.estado" />
+            <AppTag v-if="problema.error_conocido" tono="categoria">Error conocido</AppTag>
           </div>
           <ul class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-gray-500">
             <li class="inline-flex items-center gap-1.5"><span class="sr-only">Severidad:</span><SeveridadProblema :valor="problema.severidad" /></li>
@@ -408,6 +410,9 @@ onUnmounted(() => store.limpiar());
               </div>
             </div>
           </AppSeccion>
+
+          <!-- Workaround y error conocido (KEDB, migración 106) -->
+          <ProblemaWorkaround />
 
           <!-- Acciones correctivas -->
           <AppSeccion titulo="Acciones correctivas" :conteo="accionesCorrectivas.length" :descripcion="resumenAcciones" sin-padding>
