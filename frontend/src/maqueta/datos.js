@@ -14,6 +14,7 @@
 
 import { RPC_EQUIPOS } from './rpc-equipos.js';
 import { RPC_EMPLEADOS } from './rpc-empleados.js';
+import { RPC_LICENCIAS } from './rpc-licencias.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
 
 const DIA_MS = 86400000;
@@ -478,7 +479,8 @@ function ticket(n, titulo, estado, prioridad, extra = {}) {
     vinculado: true,
     contacto_ingresado: null,
     asignado_a: 'u-jefe',
-    adjunto_url: null,
+    // Captura en bucket privado (migración 111): solo la key; la URL firmada la da la function.
+    adjunto_key: null,
     empleado_id: 'e01',
     categoria_id: 'otro',
     subcategoria_id: null,
@@ -495,6 +497,7 @@ const tickets = [
   ticket(118, 'No puedo ingresar al correo desde el celular', 'abierto', 'urgente', {
     asignado_a: null, empleado_id: 'e02', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-01', cuenta_id: 'c03', tipo: 'incidente',
     descripcion: 'Desde esta mañana Gmail me pide verificar la cuenta y no me llega el código. Necesito revisar planos que me enviaron.',
+    adjunto_key: 'tickets/t118/captura.png',
     created_at: hace(0, 3), updated_at: hace(0, 3),
   }),
   ticket(117, 'VPN desconecta cada 10 minutos', 'abierto', 'alta', {
@@ -908,6 +911,8 @@ export const RPC = {
   // Cuentas (101) y ciclo de vida del empleado (102): maqueta/rpc-empleados.js
   // (incluye revocar_cuenta_personal y dar_baja_empleado con motivo).
   ...RPC_EMPLEADOS,
+  // Licencias (101): crear_licencia_con_cuenta — maqueta/rpc-licencias.js.
+  ...RPC_LICENCIAS,
   // Inicio (103): una sola RPC; escenarios por `?maqueta=...` en maqueta/inicio.js.
   dashboard_resumen: (db) => resumenInicio(db, { usuarioId: USUARIO_MAQUETA.id }),
 };

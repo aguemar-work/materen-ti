@@ -58,7 +58,7 @@ function ticketBase(overrides = {}) {
     equipo_desc: null,
     cuenta_desc: null,
     licencia_desc: null,
-    adjunto_url: null,
+    tiene_adjunto: false,
     token: 'tok-abc',
     ...overrides,
   };

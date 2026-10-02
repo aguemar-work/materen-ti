@@ -9,12 +9,24 @@
 // Acciones (POST { action, ... }):
 //   catalogo       público          → { categorias[], subcategorias[] }
 //   crear          público o staff  → { codigo, token, vinculado }
-//   seguimiento    público          → { codigo, titulo, estado, comentarios[] }
+//   seguimiento    público          → { codigo, titulo, estado, comentarios[], adjuntoUrl? }
+//   adjuntoStaff   staff            → { url, expiraSegundos } (URL firmada de la captura de un ticket)
 //   buscarPorDni   público          → { tickets[] } (solo tickets ACTIVOS; limitado por IP)
 //   encuestaEstado público          → { respondida } (para no mostrar el formulario tras refrescar)
 //   encuesta       público          → { ok }
 //   version        staff            → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 //   ping           público          → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
+//
+// Adjuntos (migración 111): el bucket `tickets-adjuntos` es PRIVADO. La captura
+// se guarda en `tickets/<ticket.id>/captura.<ext>` (antes `<token>/…`, que dejaba
+// el token de seguimiento en la URL del objeto) y solo se abre con una URL
+// firmada de corta vida: `seguimiento` (el dueño del enlace) y `adjuntoStaff`
+// (staff con el módulo `tickets`, verificado por la RPC `puede`). Los metadatos
+// (EXIF/XMP/ICC/comentarios) se eliminan en el servidor antes de subir.
+//
+// `crear` delega en la RPC `crear_ticket_publico` (ticket + evento + intento en
+// UNA transacción, ver migración 111): ya no hay un insert suelto de
+// `ticket_eventos` que pueda fallar en silencio.
 //
 // Nota: el sistema no envía avisos/notificaciones por correo (se
 // retiró intencionalmente; ver docs/HISTORIAL-AUDITORIAS.md). El
@@ -93,10 +105,15 @@ const ADJUNTO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const TITULO_MAX_LEN = 200;
 const DESCRIPCION_MAX_LEN = 5000;
 
-// Solo aplica a creación SIN sesión de staff (ver uso más abajo): un staff
-// autenticado ya pasó por su propio login y no necesita este freno.
-const CREACION_MAX_IP = 8;         // creaciones públicas permitidas por ventana
-const CREACION_VENTANA_MIN = 10;   // minutos
+// El rate-limit de la creación pública (8 por IP y 5 por DNI cada 10 min) vive
+// DENTRO de la RPC crear_ticket_publico (migración 111), en la misma
+// transacción que el ticket: un staff autenticado no lo consume.
+
+// Adjuntos privados (migración 111): URL firmada de corta vida, 300 s.
+const ADJUNTOS_BUCKET = 'tickets-adjuntos';
+const ADJUNTO_URL_SEGUNDOS = 300;
+const ADJUNTO_STAFF_MAX_USUARIO = 120; // urls firmadas por usuario y ventana
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Rate-limits de las acciones públicas de solo lectura/respuesta (Ciclo 21),
 // por IP y sobre `intentos_publicos` (migración 104). Mismos 10 min de ventana.
@@ -135,6 +152,18 @@ async function excedeLimite(
   return false;
 }
 
+// URL firmada de corta vida para una captura del bucket privado (111). null si
+// no se puede firmar (objeto ausente, falla de red): nunca rompe la respuesta
+// que la incluye.
+async function urlFirmadaAdjunto(admin: ClienteAdmin, key: string): Promise<string | null> {
+  try {
+    const { data, error } = await admin.storage.from(ADJUNTOS_BUCKET).createSignedUrl(key, ADJUNTO_URL_SEGUNDOS);
+    return !error && data?.signedUrl ? data.signedUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 // Usuario dueño del token de sesión (Ciclo 21). Distingue "no hay usuario"
 // (token inválido/expirado/anónimo → null) de "falló la consulta" (caída de
 // red, 5xx, 408/429 → LANZA → error_interno 500). Antes se ignoraba el
@@ -168,6 +197,101 @@ export function sniffImagen(b: Uint8Array): string | null {
 const MIME_POR_EXT: Record<string, string> = {
   jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
 };
+
+// ── Limpieza de metadatos (EXIF, XMP, IPTC, ICC, comentarios) ────────────────
+// Una foto del celular trae ubicación GPS, fecha, modelo y número de serie del
+// aparato. El navegador ya re-codifica la imagen (core/imagenes.js), pero el
+// cliente no es de confianza: el servidor recorre el contenedor y descarta los
+// bloques de metadatos SIN decodificar ni re-comprimir los píxeles (el
+// resultado se ve idéntico). Devuelve los bytes limpios, o null si el archivo
+// no se puede recorrer con seguridad (truncado, corrupto): FAIL-CLOSED, quien
+// llama debe rechazar la imagen. GIF no lleva EXIF y se devuelve tal cual.
+//   JPEG: APP1 (EXIF/XMP), APP2 (ICC/MPF), APP13 (IPTC) y COM, hasta el SOS.
+//   PNG:  eXIf, tEXt, iTXt, zTXt y tIME; lo que sigue a IEND se descarta.
+//   WebP: EXIF y XMP, con el tamaño RIFF y las banderas de VP8X corregidos.
+// Duplicado a propósito en functions/tickets.ts y functions/equipos-fotos.ts
+// (sin imports entre edge functions); probado en frontend/tests/exif.test.js.
+const JPEG_A_QUITAR = new Set([0xe1, 0xe2, 0xed, 0xfe]);
+const PNG_A_QUITAR = new Set(['eXIf', 'tEXt', 'iTXt', 'zTXt', 'tIME']);
+const WEBP_A_QUITAR = new Set(['EXIF', 'XMP ']);
+
+function unir(partes: Uint8Array[]): Uint8Array<ArrayBuffer> {
+  const salida = new Uint8Array(partes.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of partes) {
+    salida.set(p, o);
+    o += p.length;
+  }
+  return salida;
+}
+
+export function stripExif(b: Uint8Array<ArrayBuffer>, mime: string): Uint8Array<ArrayBuffer> | null {
+  const tipo4 = (i: number) => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+  const partes: Uint8Array[] = [];
+  if (mime === 'image/jpeg') {
+    if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
+    partes.push(b.subarray(0, 2));
+    let i = 2;
+    while (i < b.length) {
+      if (b[i] !== 0xff) return null;
+      while (b[i + 1] === 0xff) i++; // bytes de relleno antes del marcador
+      const m = b[i + 1];
+      if (m === undefined) return null;
+      if (m === 0x01 || m === 0xd9 || (m >= 0xd0 && m <= 0xd8)) { // marcadores sin longitud
+        partes.push(b.subarray(i, i + 2));
+        i += 2;
+        continue;
+      }
+      if (m === 0xda) { // SOS: desde aquí es el flujo de píxeles hasta EOI, no se toca
+        partes.push(b.subarray(i));
+        return unir(partes);
+      }
+      if (i + 4 > b.length) return null;
+      const fin = i + 2 + ((b[i + 2] << 8) | b[i + 3]);
+      if (fin > b.length || fin < i + 4) return null;
+      if (!JPEG_A_QUITAR.has(m)) partes.push(b.subarray(i, fin));
+      i = fin;
+    }
+    return null; // sin SOS no es una imagen completa
+  }
+  if (mime === 'image/png') {
+    const firma = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    if (b.length < 8 || firma.some((v, k) => b[k] !== v)) return null;
+    partes.push(b.subarray(0, 8));
+    for (let i = 8; i + 12 <= b.length;) {
+      const fin = i + 12 + (((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0);
+      if (fin > b.length) return null;
+      const tipo = tipo4(i + 4);
+      if (!PNG_A_QUITAR.has(tipo)) partes.push(b.subarray(i, fin));
+      if (tipo === 'IEND') return unir(partes);
+      i = fin;
+    }
+    return null; // sin IEND está truncado
+  }
+  if (mime === 'image/webp') {
+    if (b.length < 12 || tipo4(0) !== 'RIFF' || tipo4(8) !== 'WEBP') return null;
+    const chunks: Uint8Array[] = [];
+    for (let i = 12; i + 8 <= b.length;) {
+      const len = (b[i + 4] | (b[i + 5] << 8) | (b[i + 6] << 16) | (b[i + 7] << 24)) >>> 0;
+      if (i + 8 + len > b.length) return null;
+      const fin = i + 8 + len + (len & 1); // los chunks se alinean a par
+      const tipo = tipo4(i);
+      if (!WEBP_A_QUITAR.has(tipo)) {
+        const chunk = new Uint8Array(8 + len + (len & 1)); // copia (rellena el byte de alineación si faltara)
+        chunk.set(b.subarray(i, Math.min(fin, b.length)));
+        if (tipo === 'VP8X') chunk[8] &= ~0x0c; // apaga las banderas EXIF (0x08) y XMP (0x04)
+        chunks.push(chunk);
+      }
+      i = fin;
+    }
+    const cabecera = new Uint8Array(12);
+    cabecera.set(b.subarray(0, 4)); // "RIFF"
+    new DataView(cabecera.buffer).setUint32(4, 4 + chunks.reduce((n, c) => n + c.length, 0), true);
+    cabecera.set(b.subarray(8, 12), 8); // "WEBP"
+    return unir([cabecera, ...chunks]);
+  }
+  return b;
+}
 
 export function esEmail(valor: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
@@ -301,6 +425,14 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
   }
 
   // ── crear: público (empleado) o staff (interno / a nombre de un empleado) ──
+  // Orden (migración 111): validación rápida → sesión de staff (opcional) →
+  // adjunto decodificado, validado y SIN metadatos (en memoria) → RPC
+  // `crear_ticket_publico` (rate-limit público, vinculación por DNI, código,
+  // ticket, evento `creado` e intento, TODO en una transacción) → recién entonces
+  // se sube la captura a `tickets/<ticket.id>/captura.<ext>` y se enlaza con
+  // `adjuntar_captura_ticket`. Así un cliente bloqueado por el rate-limit no
+  // puede subir archivos al bucket, y un fallo de la subida nunca deja un
+  // ticket sin hoja de vida.
   if (body.action === 'crear') {
     const titulo = String(body.titulo || '').trim();
     const descripcion = String(body.descripcion || '').trim();
@@ -314,143 +446,98 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     }
 
     const staff = await staffDeSesion();
-    const origen = staff && body.origen === 'staff_interno' ? 'staff_interno' : 'empleado';
-
-    // Rate-limit por IP, solo para creación pública (sin sesión de staff):
-    // mismo patrón que buscarPorDni (migración 017), tabla propia
-    // (migración 037) para no mezclar el conteo con la búsqueda por DNI.
-    // Fail-closed (Ciclo 20): si no se puede contar ni registrar el intento,
-    // se bloquea (error_interno) — antes un error de BD daba data=null →
-    // "0 intentos" y el tope quedaba desactivado justo cuando la BD fallaba.
-    if (!staff) {
-      const desde = new Date(Date.now() - CREACION_VENTANA_MIN * 60 * 1000).toISOString();
-      const { data: intentos, error: eIntentos } = await admin.database
-        .from('ticket_creacion_intentos')
-        .select('id')
-        .eq('ip', ip)
-        .gte('created_at', desde);
-      if (eIntentos) throw new Error(`No se pudo contar ticket_creacion_intentos: ${eIntentos.message}`);
-      if ((intentos?.length || 0) >= CREACION_MAX_IP) {
-        return json({ ok: false, code: 'demasiados_intentos' }, 429);
-      }
-      const { error: eRegistro } = await admin.database.from('ticket_creacion_intentos').insert([{ ip }]);
-      if (eRegistro) throw new Error(`No se pudo registrar el intento de creación: ${eRegistro.message}`);
-    }
-
-    let empleadoId: string | null = null;
-    let vinculado = true;
     const contacto = body.contacto ? String(body.contacto).trim() : null;
 
-    if (staff && body.empleadoIdManual) {
-      empleadoId = String(body.empleadoIdManual);
-    } else if (origen === 'empleado' && contacto) {
-      // Identificación SOLO por DNI: un correo puede repetirse entre
-      // empleados o una persona tener varios, el DNI no. La UI ya valida
-      // 8 dígitos, pero esta rama es la autoridad real (endpoint público).
-      const { data: coincidencias } = await admin.database
-        .from('empleados').select('id').is('deleted_at', null)
-        .eq('dni', soloDigitos(contacto));
-      if (coincidencias?.length === 1) {
-        empleadoId = coincidencias[0].id;
-        vinculado = true;
-      } else {
-        empleadoId = null;
-        vinculado = false; // sin match o ambiguo: no bloquea, queda para revisión
-      }
-    } else if (origen === 'empleado') {
-      // Sin contacto (ni asignación manual de staff): no hay forma de identificar al empleado
-      vinculado = false;
-    }
-
-    const { data: codigo, error: eCodigo } = await admin.database.rpc('siguiente_codigo_ticket');
-    if (eCodigo || !codigo) return json({ ok: false, code: 'error_codigo' }, 500);
-
-    const token = randomToken();
-
-    // Adjunto opcional (captura de pantalla), ya comprimido en el cliente
-    let adjuntoUrl: string | null = null;
-    let adjuntoKey: string | null = null;
+    // Adjunto opcional (captura de pantalla), ya comprimido en el cliente. El
+    // cliente no es de confianza: tamaño acotado, tipo real por magic bytes y
+    // metadatos (EXIF/GPS…) eliminados aquí. Si algo falla, el ticket se crea
+    // igual sin adjunto.
+    let adjuntoBytes: Uint8Array<ArrayBuffer> | null = null;
+    let adjuntoExt: string | null = null;
     const adjunto = body.adjunto as { nombre?: string; tipo?: string; contenidoBase64?: string } | undefined;
     if (adjunto?.contenidoBase64) {
       try {
         const binario = atob(adjunto.contenidoBase64);
-        // Tamaño acotado en servidor (no se confía en el cliente)
         if (binario.length > 0 && binario.length <= ADJUNTO_MAX_BYTES) {
           const bytes = new Uint8Array(binario.length);
           for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
-          // Tipo real por magic bytes, ignorando el `tipo` declarado por el cliente
           const ext = sniffImagen(bytes);
-          if (ext) {
-            const blob = new Blob([bytes], { type: MIME_POR_EXT[ext] });
-            // Nombre de archivo fijo y seguro: el token es la carpeta, la
-            // extensión la marca el formato real. Nada del cliente entra en la key.
-            const key = `${token}/captura.${ext}`;
-            const { data: subida, error: eSubida } = await admin.storage.from('tickets-adjuntos').upload(key, blob);
-            if (!eSubida && subida) {
-              adjuntoUrl = subida.url;
-              adjuntoKey = subida.key;
-            }
+          const limpio = ext ? stripExif(bytes, MIME_POR_EXT[ext]) : null;
+          if (ext && limpio) {
+            adjuntoBytes = limpio;
+            adjuntoExt = ext;
           }
         }
       } catch {
-        // El adjunto es opcional: si falla la subida, el ticket se crea igual
+        // El adjunto es opcional: si no se puede leer, el ticket se crea igual
       }
     }
 
-    // Clasificación incidente/solicitud: se hereda del default de la
-    // subcategoría (nunca del cliente, mismo criterio que categoria_id/
-    // subcategoria_id). Si no hay subcategoría, o la elegida es una de las
-    // ambiguas a propósito (tipo_sugerido NULL — "Otro", "Accesorio dañado
-    // o faltante", "Seguridad...backup"), el ticket entra sin clasificar:
-    // check_iniciar_completo() ya exige tipo antes de pasar a en_progreso.
-    let tipoTicket: string | null = null;
-    if (subcategoriaId) {
-      const { data: subcategoria } = await admin.database
-        .from('subcategorias_ticket')
-        .select('tipo_sugerido')
-        .eq('id', subcategoriaId)
-        .maybeSingle();
-      tipoTicket = subcategoria?.tipo_sugerido || null;
-    }
-    // El staff que crea un ticket interno puede corregir la clasificación
-    // sugerida por la subcategoría (TicketInternoForm.vue). El formulario
-    // público nunca manda `tipo` — si lo mandara, se ignora igual porque
-    // `staff` es null sin sesión.
-    if (staff && (body.tipo === 'incidente' || body.tipo === 'solicitud')) {
-      tipoTicket = body.tipo;
-    }
-
-    const { data: ticket, error: eInsert } = await admin.database
-      .from('tickets')
-      .insert([{
-        codigo,
-        token,
+    // Solo con sesión de staff viajan origen, tipo, vínculos a activos y el
+    // empleado elegido a mano; sin sesión la RPC además los ignora.
+    const datosStaff = staff
+      ? {
+          staff_id: staff.id,
+          origen: body.origen === 'staff_interno' ? 'staff_interno' : 'empleado',
+          tipo: body.tipo === 'incidente' || body.tipo === 'solicitud' ? body.tipo : null,
+          empleado_id_manual: body.empleadoIdManual ? String(body.empleadoIdManual) : null,
+          equipo_id: body.equipoId ? String(body.equipoId) : null,
+          cuenta_id: body.cuentaId ? String(body.cuentaId) : null,
+          licencia_id: body.licenciaId ? String(body.licenciaId) : null,
+        }
+      : {};
+    const { data: creado, error: eCrear } = await admin.database.rpc('crear_ticket_publico', {
+      p_datos: {
         titulo,
         descripcion,
-        origen,
-        empleado_id: empleadoId,
-        vinculado,
-        contacto_ingresado: contacto,
-        creado_por: staff?.id || null,
         categoria_id: categoriaId,
         subcategoria_id: subcategoriaId,
-        tipo: tipoTicket,
-        // Ciclo 21: el vínculo a equipo/cuenta/licencia lo puede fijar solo el
-        // staff. En el formulario público (sin sesión) se IGNORAN: eran ids
-        // sin validar que un tercero podía apuntar a activos ajenos.
-        equipo_id: staff ? (body.equipoId || null) : null,
-        cuenta_id: staff ? (body.cuentaId || null) : null,
-        licencia_id: staff ? (body.licenciaId || null) : null,
-        adjunto_url: adjuntoUrl,
-        adjunto_key: adjuntoKey,
-      }])
-      .select('id')
-      .single();
-    if (eInsert || !ticket) return json({ ok: false, code: 'error_creando' }, 500);
+        contacto,
+        token: randomToken(),
+        ip,
+        ...datosStaff,
+      },
+    });
+    if (eCrear) {
+      // Solo el mensaje al log: el payload puede traer DNI y contacto.
+      console.error('[tickets] crear_ticket_publico falló:', eCrear.message);
+      return json({ ok: false, code: 'error_creando' }, 500);
+    }
+    const resultado = (Array.isArray(creado) ? creado[0] : creado) as {
+      ok?: boolean; code?: string; id?: string; codigo?: string; token?: string; vinculado?: boolean;
+    } | null;
+    if (!resultado?.ok) {
+      if (resultado?.code === 'demasiados_intentos') return json({ ok: false, code: 'demasiados_intentos' }, 429);
+      if (resultado?.code) return json({ ok: false, code: resultado.code });
+      return json({ ok: false, code: 'error_creando' }, 500);
+    }
+    if (!resultado.id || !resultado.codigo || !resultado.token) {
+      return json({ ok: false, code: 'error_creando' }, 500);
+    }
 
-    await log(ticket.id, 'creado', `Origen: ${origen}${vinculado ? '' : ' (sin vincular)'}`, staff?.id || null, staff?.email || null);
+    if (adjuntoBytes && adjuntoExt) {
+      // Nombre fijo y seguro: la carpeta es el id del ticket (no el token de
+      // seguimiento) y la extensión la marca el formato real.
+      const key = `tickets/${resultado.id}/captura.${adjuntoExt}`;
+      try {
+        const blob = new Blob([adjuntoBytes], { type: MIME_POR_EXT[adjuntoExt] });
+        const { data: subida, error: eSubida } = await admin.storage.from(ADJUNTOS_BUCKET).upload(key, blob);
+        if (!eSubida && subida) {
+          const { data: enlazada, error: eEnlace } = await admin.database.rpc('adjuntar_captura_ticket', {
+            p_ticket_id: resultado.id,
+            p_key: key,
+          });
+          if (eEnlace || enlazada !== true) {
+            // Sin fila enlazada no debe quedar un objeto huérfano en el bucket.
+            await admin.storage.from(ADJUNTOS_BUCKET).remove(key).catch(() => null);
+          }
+        }
+      } catch {
+        // El adjunto es opcional: si falla la subida, el ticket ya está creado
+      }
+    }
 
-    return json({ ok: true, codigo, token, vinculado });
+    return json({ ok: true, codigo: resultado.codigo, token: resultado.token, vinculado: resultado.vinculado !== false });
   }
 
   // ── seguimiento: público, dado el token del ticket ──────────────────
@@ -464,7 +551,7 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
 
     const { data: ticket } = await admin.database
       .from('tickets')
-      .select('id, codigo, titulo, descripcion, estado, created_at, updated_at, categorias_ticket(nombre), subcategorias_ticket(nombre)')
+      .select('id, codigo, titulo, descripcion, estado, adjunto_key, created_at, updated_at, categorias_ticket(nombre), subcategorias_ticket(nombre)')
       .eq('token', token)
       .maybeSingle();
     if (!ticket) return json({ ok: false, code: 'no_existe' });
@@ -476,12 +563,19 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       .eq('interno', false)
       .order('created_at', { ascending: true });
 
+    // La captura es del propio solicitante: se entrega una URL firmada de corta
+    // vida, nunca la key (el bucket es privado, migración 111). Si no se puede
+    // firmar, la respuesta sale igual sin adjunto.
+    const adjuntoUrl = ticket.adjunto_key ? await urlFirmadaAdjunto(admin, ticket.adjunto_key) : null;
+
     return json({
       ok: true,
       codigo: ticket.codigo,
       titulo: ticket.titulo,
       descripcion: ticket.descripcion,
       estado: ticket.estado,
+      adjuntoUrl,
+      adjuntoExpiraSegundos: adjuntoUrl ? ADJUNTO_URL_SEGUNDOS : null,
       categoria: uno(ticket.categorias_ticket)?.nombre || '',
       subcategoria: uno(ticket.subcategorias_ticket)?.nombre || '',
       creado: ticket.created_at,
@@ -489,6 +583,43 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       // No se exponen nombres de staff: cara pública única, "Soporte TI"
       comentarios: (comentarios || []).map((c) => ({ mensaje: c.mensaje, fecha: c.created_at, autor: 'Soporte TI' })),
     });
+  }
+
+  // ── adjuntoStaff: staff con el módulo `tickets` abre la captura de un ticket ──
+  // El bucket es privado: la autorización se comprueba al emitir la URL firmada
+  // (sesión de staff ACTIVO + `puede(modulo:tickets)` por RPC, fail-closed: un
+  // error de la RPC se lanza → 500, solo un `false` explícito niega con 403).
+  // La key no sale de la function.
+  if (body.action === 'adjuntoStaff') {
+    const staff = await staffDeSesion();
+    if (!staff) return json({ ok: false, code: 'no_autenticado' }, 401);
+
+    const ticketId = String(body.ticketId || '');
+    if (!UUID_RE.test(ticketId)) return json({ ok: false, code: 'no_existe' });
+
+    const { data: permitido, error: ePermiso } = await admin.database
+      .rpc('puede', { p_user: staff.id, p_permiso: 'modulo:tickets' });
+    if (ePermiso) throw new Error(`No se pudo verificar el permiso modulo:tickets: ${ePermiso.message}`);
+    if (permitido !== true) return json({ ok: false, code: 'no_autorizado' }, 403);
+
+    if (await excedeLimite(admin, 'tickets.adjuntoStaff', staff.id, ADJUNTO_STAFF_MAX_USUARIO, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+
+    const { data: ticket, error: eTicket } = await admin.database
+      .from('tickets').select('adjunto_key').eq('id', ticketId).maybeSingle();
+    if (eTicket) throw new Error(`No se pudo leer el ticket: ${eTicket.message}`);
+    if (!ticket?.adjunto_key) return json({ ok: false, code: 'no_existe' });
+
+    const { data: firmada, error: eUrl } = await admin.storage
+      .from(ADJUNTOS_BUCKET)
+      .createSignedUrl(ticket.adjunto_key, ADJUNTO_URL_SEGUNDOS);
+    if (eUrl || !firmada?.signedUrl) {
+      // Objeto ausente en el bucket (404) ≠ falla al firmar.
+      const faltante = (eUrl as { statusCode?: number } | null)?.statusCode === 404;
+      return json({ ok: false, code: faltante ? 'no_existe' : 'error_url' }, faltante ? 200 : 500);
+    }
+    return json({ ok: true, url: firmada.signedUrl, expiraSegundos: ADJUNTO_URL_SEGUNDOS });
   }
 
   // ── buscarPorDni: público, para quien perdió el enlace de seguimiento ──

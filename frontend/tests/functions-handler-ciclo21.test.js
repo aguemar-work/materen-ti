@@ -22,6 +22,8 @@ const { default: equiposFotos } = await import('../../functions/equipos-fotos.ts
 
 const ORIGEN = 'http://localhost:5173';
 const FALLA_BD = { data: null, error: { message: 'falla simulada de BD' } };
+// JPEG mínimo que el servidor sabe recorrer: SOI, SOS (longitud 2) y EOI.
+const JPEG_MINIMO_B64 = btoa('\xff\xd8\xff\xda\x00\x02\xff\xd9');
 
 function peticion(body, { token = 'token-de-prueba', ip = null } = {}) {
   const headers = { 'Content-Type': 'application/json', Origin: ORIGEN };
@@ -194,7 +196,7 @@ describe('credenciales — permisos por RPC `puede` (fail-closed)', () => {
 });
 
 describe('equipos-fotos — permiso de módulo por RPC', () => {
-  const subir = () => equiposFotos(peticion({ action: 'subirFoto', contenidoBase64: btoa('\xff\xd8\xffxxxx') }));
+  const subir = () => equiposFotos(peticion({ action: 'subirFoto', contenidoBase64: JPEG_MINIMO_B64 }));
 
   it('ASISTENTE con permiso: consulta modulo:equipos por RPC y la subida sigue (falla después en el storage del stub)', async () => {
     sdk.responder = responderCon({ rol: 'ASISTENTE' });
@@ -274,25 +276,33 @@ describe('sesión: "sin usuario" (401) distinto de "falló la consulta" (500)', 
   });
 });
 
+// Desde la migración 111 `crear` delega en la RPC `crear_ticket_publico` (ticket +
+// evento + intento en una transacción): estos tests miran el `p_datos` que le
+// llega, no inserts sueltos. El detalle del rate-limit y de la vinculación vive
+// en tests/db/triggers.test.sql (bloque 111-a).
+const TOKEN_RPC = 'T'.repeat(24);
+const creadoOk = { data: { ok: true, id: 't-1', codigo: 'TCK-0001', token: TOKEN_RPC, vinculado: true }, error: null };
+const datosRpc = () => consultasDe('crear_ticket_publico', 'rpc')[0].payload.p_datos;
+
 describe('tickets.staffDeSesion (crear): sin sesión/anónimo = público; error de BD no degrada a público', () => {
   const cuerpo = { action: 'crear', titulo: 't', descripcion: 'd', categoriaId: 'cat-1' };
   const baseCrear = (extra = {}) =>
     responderCon({
       extra: {
-        'ticket_creacion_intentos:select': () => ({ data: [], error: null }),
-        'siguiente_codigo_ticket:rpc': () => ({ data: 'TCK-0001', error: null }),
-        'tickets:insert': () => ({ data: { id: 't-1' }, error: null }),
+        'crear_ticket_publico:rpc': () => creadoOk,
         ...extra,
       },
     });
-  const origenInsertado = () => consultasDe('tickets', 'insert')[0].payload[0].origen;
 
-  it('sin cabecera Authorization: público (como hoy), con rate-limit de creación', async () => {
+  it('sin cabecera Authorization: público (como hoy), sin campos de staff en la RPC', async () => {
     sdk.responder = baseCrear();
-    const r = await tickets(peticion({ ...cuerpo, origen: 'staff_interno' }, { token: null }));
+    const r = await tickets(peticion({ ...cuerpo, origen: 'staff_interno' }, { token: null, ip: '10.0.0.7' }));
     expect((await r.json()).ok).toBe(true);
-    expect(origenInsertado()).toBe('empleado');
-    expect(consultasDe('ticket_creacion_intentos', 'select')).toHaveLength(1);
+    expect(datosRpc()).not.toHaveProperty('staff_id');
+    expect(datosRpc()).not.toHaveProperty('origen');
+    expect(datosRpc().ip).toBe('10.0.0.7');
+    expect(consultasDe('ticket_creacion_intentos')).toHaveLength(0);
+    expect(consultasDe('tickets', 'insert')).toHaveLength(0);
   });
 
   it('token anónimo (sin usuario): público', async () => {
@@ -300,22 +310,22 @@ describe('tickets.staffDeSesion (crear): sin sesión/anónimo = público; error 
     sdk.responder = baseCrear();
     const r = await tickets(peticion({ ...cuerpo, origen: 'staff_interno' }));
     expect((await r.json()).ok).toBe(true);
-    expect(origenInsertado()).toBe('empleado');
+    expect(datosRpc()).not.toHaveProperty('staff_id');
   });
 
   it('usuario autenticado que no es staff activo: público', async () => {
     sdk.responder = baseCrear({ 'staff:select': () => ({ data: { activo: false }, error: null }) });
     const r = await tickets(peticion({ ...cuerpo, origen: 'staff_interno' }));
     expect((await r.json()).ok).toBe(true);
-    expect(origenInsertado()).toBe('empleado');
+    expect(datosRpc()).not.toHaveProperty('staff_id');
+    expect(datosRpc()).not.toHaveProperty('origen');
   });
 
-  it('staff activo: origen staff_interno', async () => {
+  it('staff activo: staff_id y origen staff_interno viajan a la RPC', async () => {
     sdk.responder = baseCrear({ 'staff:select': () => ({ data: { activo: true }, error: null }) });
     const r = await tickets(peticion({ ...cuerpo, origen: 'staff_interno' }));
     expect((await r.json()).ok).toBe(true);
-    expect(origenInsertado()).toBe('staff_interno');
-    expect(consultasDe('ticket_creacion_intentos')).toHaveLength(0);
+    expect(datosRpc()).toMatchObject({ staff_id: 'u-1', origen: 'staff_interno' });
   });
 
   it('usuario autenticado y la consulta de staff FALLA: 500, NO degrada a público ni crea el ticket', async () => {
@@ -323,8 +333,7 @@ describe('tickets.staffDeSesion (crear): sin sesión/anónimo = público; error 
     const r = await tickets(peticion({ ...cuerpo, origen: 'staff_interno' }));
     expect(r.status).toBe(500);
     expect((await r.json()).code).toBe('error_interno');
-    expect(consultasDe('tickets', 'insert')).toHaveLength(0);
-    expect(consultasDe('ticket_creacion_intentos')).toHaveLength(0);
+    expect(consultasDe('crear_ticket_publico', 'rpc')).toHaveLength(0);
   });
 
   it('getCurrentUser falla (5xx): 500, no público', async () => {
@@ -332,36 +341,38 @@ describe('tickets.staffDeSesion (crear): sin sesión/anónimo = público; error 
     sdk.responder = baseCrear();
     const r = await tickets(peticion(cuerpo));
     expect(r.status).toBe(500);
-    expect(consultasDe('tickets', 'insert')).toHaveLength(0);
+    expect(consultasDe('crear_ticket_publico', 'rpc')).toHaveLength(0);
   });
 });
 
 // ── crear público: ids de activos ───────────────────────────────────────
 
 describe('tickets.crear — equipoId/cuentaId/licenciaId solo con sesión de staff', () => {
-  const cuerpo = { action: 'crear', titulo: 't', descripcion: 'd', categoriaId: 'cat-1', equipoId: 'eq-1', cuentaId: 'cu-1', licenciaId: 'li-1' };
+  const cuerpo = { action: 'crear', titulo: 't', descripcion: 'd', categoriaId: 'cat-1', equipoId: 'eq-1', cuentaId: 'cu-1', licenciaId: 'li-1', tipo: 'incidente', empleadoIdManual: 'em-1' };
   const responder = (esStaff) =>
     responderCon({
       extra: {
         'staff:select': () => ({ data: { activo: esStaff }, error: null }),
-        'ticket_creacion_intentos:select': () => ({ data: [], error: null }),
-        'siguiente_codigo_ticket:rpc': () => ({ data: 'TCK-0001', error: null }),
-        'tickets:insert': () => ({ data: { id: 't-1' }, error: null }),
+        'crear_ticket_publico:rpc': () => creadoOk,
       },
     });
 
-  it('público: los tres ids se IGNORAN (se guardan null)', async () => {
+  it('público: los ids, el tipo y el empleado a mano NO viajan a la RPC', async () => {
     sdk.responder = responder(false);
     const r = await tickets(peticion(cuerpo, { token: null }));
     expect((await r.json()).ok).toBe(true);
-    expect(consultasDe('tickets', 'insert')[0].payload[0]).toMatchObject({ equipo_id: null, cuenta_id: null, licencia_id: null });
+    for (const k of ['equipo_id', 'cuenta_id', 'licencia_id', 'tipo', 'empleado_id_manual', 'staff_id']) {
+      expect(datosRpc()).not.toHaveProperty(k);
+    }
   });
 
-  it('staff: los tres ids se aceptan como hoy', async () => {
+  it('staff: los tres ids, el tipo y el empleado se aceptan como hoy', async () => {
     sdk.responder = responder(true);
     const r = await tickets(peticion(cuerpo));
     expect((await r.json()).ok).toBe(true);
-    expect(consultasDe('tickets', 'insert')[0].payload[0]).toMatchObject({ equipo_id: 'eq-1', cuenta_id: 'cu-1', licencia_id: 'li-1' });
+    expect(datosRpc()).toMatchObject({
+      equipo_id: 'eq-1', cuenta_id: 'cu-1', licencia_id: 'li-1', tipo: 'incidente', empleado_id_manual: 'em-1',
+    });
   });
 });
 

@@ -312,8 +312,8 @@ una decisión para pedir, no para completar.
   Administración (Registro de actividad, Accesos sensibles, Configuración).
   "Solicitudes" entra a Mesa de ayuda cuando exista su ruta.
 - **Diálogos**: `AppDialog` es el diálogo único de formularios y paneles
-  (centrado o `lateral`); `Modal.vue` está en desuso hasta migrar sus últimos
-  consumidores, y las clases `.modal-*` se retiran con él.
+  (centrado o `lateral`); `Modal.vue` y sus clases `.modal-*` se retiraron
+  (2026-10-02): todo diálogo es `AppDialog`.
 - **Barra de la hoja** (48px): botón de menú (en desktop alterna el riel, en
   móvil abre el panel), migas, búsqueda global (`AppSearch`: un campo a la
   vista con el atajo Ctrl/⌘K desde `sm`, lupa en móvil) y campana.
@@ -353,7 +353,7 @@ una decisión para pedir, no para completar.
 Componentes compartidos que siguen vigentes: `BadgeEstado` (estados del
 dominio: el tono sale de `core/badges.js` → `core/tagRol.js` y el render es
 `AppTag` por dentro — un solo look de tag en todo el sistema),
-`MenuAcciones`, `ConfirmDialog`, `Modal` (formularios existentes),
+`MenuAcciones`, `ConfirmDialog`, `AppDialog` (formularios),
 `SelectorVista`, `BuscadorCombo`.
 
 Tags: un estado del dominio va con `BadgeEstado`; cualquier otro tag, con
@@ -506,7 +506,7 @@ atado a otra pieza:
   `.notif--inline`, `.notif__texto`/`__titulo`/`__detalle`/`__cerrar`.
 - **Botón solo-ícono**: `.icon-btn` (+ `.danger`).
 - **Atadas a un componente** (se tocan solo junto con él): `.modal-*` y las
-  transiciones `modal-anim*` (`Modal.vue`), `.combo-*` (`BuscadorCombo`),
+  transiciones de `AppDialog`, `.combo-*` (`BuscadorCombo`),
   `.selector-vista*` (`SelectorVista`), `.solo-escritorio`.
 - **Revelado de contraseñas**: `.cred*` — su marcado NO se toca (lo audita
   `useRevelado`).
@@ -640,7 +640,7 @@ hoja es tan ancha como la ventana, igual que el Listado. El texto largo
   (`target="_blank" rel="noopener noreferrer"`).
 
 ### 4.6 Formularios
-- En modal (`Modal`/`AppDialog`): título que nombra la acción ("Editar
+- En modal (`AppDialog`): título que nombra la acción ("Editar
   empleado"), `.form-grid` de 2 columnas (1 en móvil), secciones con
   `.section-label`, pie con [Cancelar outline] [Guardar sólido] — botones y
   campos a 36px, la misma escala.
@@ -658,7 +658,7 @@ hoja es tan ancha como la ventana, igual que el Listado. El texto largo
   texto; íconos decorativos `aria-hidden="true"`.
 - Controles de filtro con etiqueta (visible o `sr-only`).
 - Focos visibles: `focus-visible:ring-2 focus-visible:ring-primary-500`.
-- Todo modal pasa por `Modal.vue`/`AppDialog.vue` (foco atrapado, Escape).
+- Todo modal pasa por `AppDialog.vue` (foco atrapado, Escape).
 - El botón de menú de la barra dice la verdad en cada ancho: "Abrir/Cerrar
   menú" en móvil, "Expandir/Contraer navegación" en desktop, con
   `aria-expanded` acorde. Las migas son un `<nav aria-label="Ubicación">`

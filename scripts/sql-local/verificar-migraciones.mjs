@@ -13,8 +13,10 @@ const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] :
 const verbose = args.includes('--verbose');
 const REPO = opt('--repo', join(aqui, '..', '..'));
 const MIG = join(REPO, 'migrations');
-const NUEVAS = ['099', '100', '101', '102', '103', '104', '110'];
-const ROLLBACK_ORDEN = ['110', '103', '102', '101', '100', '104', '099'];
+// Todas las migraciones desde la 099 que existan en migrations/ (una migracion nueva entra sola).
+const NUEVAS = readdirSync(MIG).filter((f) => /^\d{3}_.*\.sql$/.test(f) && Number(f.slice(0, 3)) >= 99).map((f) => f.slice(0, 3)).sort();
+// Rollback: de la mas nueva a la mas vieja, con la 104 (independiente) justo antes de la 099.
+const ROLLBACK_ORDEN = [...NUEVAS].reverse().filter((n) => n !== '104' && n !== '099').concat(NUEVAS.includes('104') ? ['104'] : [], ['099']).filter((n, i, a) => NUEVAS.includes(n) && a.indexOf(n) === i);
 const lee = (p) => readFileSync(p, 'utf8');
 const archivoMig = (n) => readdirSync(MIG).find((f) => f.startsWith(n + '_') && f.endsWith('.sql'));
 
@@ -498,7 +500,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|110)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|110|111)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -572,7 +574,7 @@ if (!args.includes('--sin-dependencias')) {
   console.log('=== (f) orden incorrecto (informativo: cada caso usa una base nueva)');
   const casos = [
     ['100', ['099']], ['101', ['099']], ['101', ['100']], ['102', ['099']], ['103', ['099']],
-    ['110', ['099']], ['110', ['101']], ['110', ['103']], ['110', ['101', '103']],
+    ['110', ['099']], ['110', ['101']], ['110', ['103']], ['110', ['101', '103']], ['111', ['099']], ['111', ['104']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });

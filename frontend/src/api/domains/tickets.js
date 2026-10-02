@@ -161,7 +161,7 @@ export const ticketsApi = {
       .select(`
         id, codigo, token, titulo, descripcion, estado, prioridad, nivel_atencion, tipo, origen, vinculado,
         contacto_ingresado, asignado_a,
-        adjunto_url, created_at, updated_at,
+        adjunto_key, created_at, updated_at,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
         categoria_id, categorias_ticket(nombre),
         subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido),
@@ -376,7 +376,9 @@ function mapTicketDetalle(row) {
     vinculado: row.vinculado,
     contacto_ingresado: row.contacto_ingresado || '',
     asignado_a: row.asignado_a,
-    adjunto_url: row.adjunto_url,
+    // La captura vive en un bucket privado (111): la key no se usa en el
+    // cliente, solo si existe; la URL firmada se pide a la edge function.
+    tiene_adjunto: Boolean(row.adjunto_key),
     created_at: row.created_at,
     updated_at: row.updated_at,
     empleado_id: row.empleado_id,

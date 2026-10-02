@@ -47,6 +47,10 @@
 --   [099] (bloques 9 a 11) puede()/puede_actual()/exigir_permiso(),
 --         ticket_token_existe con validacion de forma, accesos_log_accion_check
 --         ampliado y trigger del ultimo JEFE con permiso sobre un acceso sensible
+--   [111] (bloques 111-a y 111-b) crear_ticket_publico (ticket + evento +
+--         intento atomicos, vinculacion por DNI, vinculos a activos solo con
+--         staff, rate-limit por IP y DNI, guards 22023/42501) y
+--         adjuntar_captura_ticket (solo la key tickets/<id>/captura.<ext>)
 --
 -- OJO — esta conexión (project_admin, ver AGENTS.md) tiene BYPASSRLS y el
 -- CLI bloquea los cambios de rol y de configuración de sesión ("Changing SQL session configuration
@@ -2806,5 +2810,232 @@ begin
     raise exception 'TESTS_OK [110c] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [110c]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 111-a: crear_ticket_publico — ticket + evento + intento en una
+-- transaccion, vinculacion por DNI, clasificacion heredada, vinculos a
+-- activos SOLO con staff, rate-limit por IP y por DNI, guards y privilegios.
+-- OJO: cada llamada exitosa consume un codigo TCK-XXXX de la secuencia (la
+-- secuencia no se revierte): este bloque hace solo 3 creaciones; los limites
+-- se prueban sembrando intentos_publicos, sin crear tickets.
+-- ------------------------------------------------------------
+do $$
+declare
+  v_staff uuid;
+  v_inactivo uuid;
+  v_empresa uuid;
+  v_emp uuid;
+  v_equipo uuid;
+  v_sub uuid;
+  v_cat text := '__test_ci_111a__';
+  v_cat2 text := '__test_ci_111a2__';
+  v_sub2 uuid;
+  r jsonb;
+  t public.tickets;
+  v_n int;
+  v_i int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_111a_staff@example.test') returning id into v_staff;
+  insert into auth.users (email) values ('__test_ci_111a_inactivo@example.test') returning id into v_inactivo;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_staff;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 111a') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 111a', '99111001', v_empresa) returning id into v_emp;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_111a__', '__TEST_CI__ Tipo 111a');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_111A__', '__test_ci_111a__') returning id into v_equipo;
+  insert into public.categorias_ticket (id, nombre) values (v_cat, '__TEST_CI__ Categoria 111a');
+  insert into public.categorias_ticket (id, nombre) values (v_cat2, '__TEST_CI__ Categoria 111a2');
+  insert into public.subcategorias_ticket (categoria_id, nombre, tipo_sugerido) values (v_cat, '__TEST_CI__ Sub 111a', 'solicitud') returning id into v_sub;
+  insert into public.subcategorias_ticket (categoria_id, nombre) values (v_cat2, '__TEST_CI__ Sub 111a2') returning id into v_sub2;
+
+  -- 1) creacion publica: se ignora todo lo que es de staff
+  r := public.crear_ticket_publico(jsonb_build_object(
+    'titulo', ' Impresora ', 'descripcion', 'No imprime', 'categoria_id', v_cat, 'subcategoria_id', v_sub,
+    'contacto', '99.111.001', 'token', lpad('1', 24, 'T'), 'ip', '10.111.0.1',
+    'origen', 'staff_interno', 'tipo', 'incidente', 'equipo_id', v_equipo, 'empleado_id_manual', v_emp));
+  if r ->> 'ok' <> 'true' or (r ->> 'vinculado') <> 'true' or (r ->> 'codigo') not like 'TCK-%' or (r ->> 'token') <> lpad('1', 24, 'T') then
+    fallos := fallos || '[111] la creacion publica no devolvio ok/vinculado/codigo/token: ' || r::text || '; ';
+  end if;
+  select * into t from public.tickets where id = (r ->> 'id')::uuid;
+  if t.origen <> 'empleado' or t.creado_por is not null then fallos := fallos || '[111] un ticket publico salio con origen de staff; '; end if;
+  if t.tipo is distinct from 'solicitud' then fallos := fallos || '[111] el tipo no se heredo de la subcategoria (' || coalesce(t.tipo, 'null') || '); '; end if;
+  if t.equipo_id is not null or t.cuenta_id is not null or t.licencia_id is not null then fallos := fallos || '[111] el ticket publico acepto un vinculo a activos; '; end if;
+  if t.empleado_id is distinct from v_emp or t.vinculado is not true or t.contacto_ingresado is distinct from '99.111.001' or t.titulo <> 'Impresora' then
+    fallos := fallos || '[111] la vinculacion por DNI o el recorte del titulo fallaron; ';
+  end if;
+  select count(*) into v_n from public.ticket_eventos where ticket_id = t.id and evento = 'creado' and detalle = 'Origen: empleado' and user_id is null;
+  if v_n <> 1 then fallos := fallos || '[111] falta el evento creado del ticket publico; '; end if;
+  select count(*) into v_n from public.intentos_publicos where ambito = 'tickets.crear' and clave = '10.111.0.1';
+  if v_n <> 1 then fallos := fallos || '[111] no se registro el intento por IP; '; end if;
+  select count(*) into v_n from public.intentos_publicos where ambito = 'tickets.crear.dni' and clave = '99111001';
+  if v_n <> 1 then fallos := fallos || '[111] no se registro el intento por DNI; '; end if;
+
+  -- 2) DNI sin coincidencia: entra sin vincular, con su evento
+  r := public.crear_ticket_publico(jsonb_build_object(
+    'titulo', 'Otro', 'descripcion', 'd', 'categoria_id', v_cat, 'contacto', '00000000', 'token', lpad('2', 24, 'T'), 'ip', '10.111.0.2'));
+  select * into t from public.tickets where id = (r ->> 'id')::uuid;
+  if r ->> 'vinculado' <> 'false' or t.empleado_id is not null or t.vinculado is not false or t.tipo is not null then
+    fallos := fallos || '[111] un DNI sin coincidencia no quedo sin vincular y sin tipo; ';
+  end if;
+  select count(*) into v_n from public.ticket_eventos where ticket_id = t.id and evento = 'creado' and detalle = 'Origen: empleado (sin vincular)';
+  if v_n <> 1 then fallos := fallos || '[111] falta el evento creado (sin vincular); '; end if;
+
+  -- 3) staff: origen, tipo corregido, vinculos y empleado a mano; no consume el limite publico
+  r := public.crear_ticket_publico(jsonb_build_object(
+    'titulo', 'Interno', 'descripcion', 'd', 'categoria_id', v_cat, 'subcategoria_id', v_sub, 'token', lpad('3', 24, 'T'), 'ip', '10.111.0.3',
+    'staff_id', v_staff, 'origen', 'staff_interno', 'tipo', 'incidente', 'equipo_id', v_equipo, 'empleado_id_manual', v_emp));
+  select * into t from public.tickets where id = (r ->> 'id')::uuid;
+  if t.origen <> 'staff_interno' or t.creado_por is distinct from v_staff or t.tipo is distinct from 'incidente'
+     or t.equipo_id is distinct from v_equipo or t.empleado_id is distinct from v_emp or t.vinculado is not true then
+    fallos := fallos || '[111] el ticket de staff no conservo origen/tipo/equipo/empleado; ';
+  end if;
+  select count(*) into v_n from public.ticket_eventos where ticket_id = t.id and evento = 'creado' and user_id = v_staff and user_email = '__test_ci_111a_staff@example.test';
+  if v_n <> 1 then fallos := fallos || '[111] el evento del ticket de staff no lleva autor y correo; '; end if;
+  select count(*) into v_n from public.intentos_publicos where clave = '10.111.0.3';
+  if v_n <> 0 then fallos := fallos || '[111] el staff consumio cupo del rate-limit publico; '; end if;
+
+  -- 4) rechazos de negocio: no lanzan, no crean y NO cuentan como intento
+  if public.crear_ticket_publico(jsonb_build_object('titulo', '', 'descripcion', 'd', 'categoria_id', v_cat, 'token', lpad('4', 24, 'T'), 'ip', '10.111.0.4')) ->> 'code' is distinct from 'datos_requeridos' then
+    fallos := fallos || '[111] titulo vacio no dio datos_requeridos; ';
+  end if;
+  if public.crear_ticket_publico(jsonb_build_object('titulo', repeat('x', 201), 'descripcion', 'd', 'categoria_id', v_cat, 'token', lpad('4', 24, 'T'), 'ip', '10.111.0.4')) ->> 'code' is distinct from 'texto_muy_largo' then
+    fallos := fallos || '[111] titulo de 201 caracteres no dio texto_muy_largo; ';
+  end if;
+  if public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'contacto', repeat('9', 101), 'token', lpad('4', 24, 'T'), 'ip', '10.111.0.4')) ->> 'code' is distinct from 'texto_muy_largo' then
+    fallos := fallos || '[111] contacto de 101 caracteres no dio texto_muy_largo; ';
+  end if;
+  if public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', '__no_existe__', 'token', lpad('4', 24, 'T'), 'ip', '10.111.0.4')) ->> 'code' is distinct from 'categoria_invalida' then
+    fallos := fallos || '[111] categoria inexistente no dio categoria_invalida; ';
+  end if;
+  if public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'subcategoria_id', v_sub2, 'token', lpad('4', 24, 'T'), 'ip', '10.111.0.4')) ->> 'code' is distinct from 'categoria_invalida' then
+    fallos := fallos || '[111] subcategoria de otra categoria no dio categoria_invalida; ';
+  end if;
+  if public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'token', lpad('4', 24, 'T'), 'ip', '10.111.0.4',
+       'staff_id', v_staff, 'equipo_id', gen_random_uuid())) ->> 'code' is distinct from 'vinculo_invalido' then
+    fallos := fallos || '[111] equipo inexistente no dio vinculo_invalido; ';
+  end if;
+  if public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'token', lpad('4', 24, 'T'), 'ip', '10.111.0.4',
+       'staff_id', v_staff, 'empleado_id_manual', gen_random_uuid())) ->> 'code' is distinct from 'empleado_invalido' then
+    fallos := fallos || '[111] empleado a mano inexistente no dio empleado_invalido; ';
+  end if;
+  select count(*) into v_n from public.intentos_publicos where clave = '10.111.0.4';
+  if v_n <> 0 then fallos := fallos || '[111] un rechazo de negocio se registro como intento; '; end if;
+
+  -- 5) entradas imposibles: 22023; staff que no es staff activo: 42501
+  begin
+    perform public.crear_ticket_publico('[]'::jsonb);
+    fallos := fallos || '[111] acepto un p_datos que no es objeto; ';
+  exception when others then if sqlstate <> '22023' then fallos := fallos || '[111] p_datos invalido lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'token', 'corto', 'ip', '10.111.0.5'));
+    fallos := fallos || '[111] acepto un token de forma invalida; ';
+  exception when others then if sqlstate <> '22023' then fallos := fallos || '[111] token invalido lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'token', lpad('5', 24, 'T'), 'staff_id', 'no-es-uuid'));
+    fallos := fallos || '[111] acepto un staff_id que no es uuid; ';
+  exception when others then if sqlstate <> '22023' then fallos := fallos || '[111] staff_id mal formado lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'token', lpad('5', 24, 'T'), 'staff_id', v_inactivo));
+    fallos := fallos || '[111] acepto un staff inactivo; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[111] staff inactivo lanzo ' || sqlstate || ' en vez de 42501; '; end if;
+  end;
+  begin
+    perform public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'token', lpad('5', 24, 'T'), 'staff_id', gen_random_uuid()));
+    fallos := fallos || '[111] acepto un staff_id inexistente; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[111] staff inexistente lanzo ' || sqlstate || ' en vez de 42501; '; end if;
+  end;
+
+  -- 6) rate-limit por IP: con 8 intentos sembrados, el siguiente se bloquea sin crear ni registrar
+  for v_i in 1..8 loop
+    insert into public.intentos_publicos (ambito, clave) values ('tickets.crear', '10.111.0.9');
+  end loop;
+  select count(*) into v_n from public.tickets;
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'token', lpad('6', 24, 'T'), 'ip', '10.111.0.9'));
+  if r ->> 'code' is distinct from 'demasiados_intentos' or (select count(*) from public.tickets) <> v_n
+     or (select count(*) from public.intentos_publicos where ambito = 'tickets.crear' and clave = '10.111.0.9') <> 8 then
+    fallos := fallos || '[111] el noveno intento por IP no se bloqueo limpiamente; ';
+  end if;
+
+  -- 7) rate-limit por DNI: 5 intentos sembrados (de IP distintas), el siguiente se bloquea y no cuenta para su IP
+  for v_i in 1..5 loop
+    insert into public.intentos_publicos (ambito, clave) values ('tickets.crear.dni', '99111999');
+  end loop;
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'contacto', '99111999', 'token', lpad('7', 24, 'T'), 'ip', '10.111.0.10'));
+  if r ->> 'code' is distinct from 'demasiados_intentos'
+     or (select count(*) from public.intentos_publicos where clave = '10.111.0.10') <> 0 then
+    fallos := fallos || '[111] el sexto intento por DNI no se bloqueo limpiamente; ';
+  end if;
+
+  -- 8) privilegios
+  if has_function_privilege('authenticated', 'public.crear_ticket_publico(jsonb)', 'execute')
+     or has_function_privilege('anon', 'public.crear_ticket_publico(jsonb)', 'execute')
+     or not has_function_privilege('project_admin', 'public.crear_ticket_publico(jsonb)', 'execute') then
+    fallos := fallos || '[111] privilegios de crear_ticket_publico incorrectos; ';
+  end if;
+  if not (select prosecdef from pg_proc where oid = 'public.crear_ticket_publico(jsonb)'::regprocedure) then
+    fallos := fallos || '[111] crear_ticket_publico no es SECURITY DEFINER; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [111a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [111a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 111-b: adjuntar_captura_ticket — solo la key tickets/<id>/captura.<ext>,
+-- solo el primer adjunto, adjunto_url queda en NULL y privilegios
+-- ------------------------------------------------------------
+do $$
+declare
+  v_id uuid;
+  v_otro uuid := gen_random_uuid();
+  t public.tickets;
+  fallos text := '';
+begin
+  insert into public.tickets (codigo, token, titulo, descripcion)
+    values ('__TEST_CI_111B__', lpad('B', 24, 'T'), 'Para adjuntar', 'd') returning id into v_id;
+
+  -- keys que no corresponden: no tocan nada
+  if public.adjuntar_captura_ticket(v_id, 'tickets/' || v_otro::text || '/captura.jpg') then fallos := fallos || '[111] acepto la key de OTRO ticket; '; end if;
+  if public.adjuntar_captura_ticket(v_id, 'tickets/' || v_id::text || '/otro.jpg') then fallos := fallos || '[111] acepto un nombre de archivo distinto de captura; '; end if;
+  if public.adjuntar_captura_ticket(v_id, 'tickets/' || v_id::text || '/captura.exe') then fallos := fallos || '[111] acepto una extension no permitida; '; end if;
+  if public.adjuntar_captura_ticket(v_id, 'tickets/' || v_id::text || '/../x/captura.jpg') then fallos := fallos || '[111] acepto una key con puntos; '; end if;
+  if public.adjuntar_captura_ticket(v_id, lpad('B', 24, 'T') || '/captura.jpg') then fallos := fallos || '[111] acepto la key legada con el token; '; end if;
+  if public.adjuntar_captura_ticket(null, 'tickets/x/captura.jpg') or public.adjuntar_captura_ticket(v_id, null) then fallos := fallos || '[111] acepto argumentos nulos; '; end if;
+  if public.adjuntar_captura_ticket(v_otro, 'tickets/' || v_otro::text || '/captura.jpg') then fallos := fallos || '[111] adjunto a un ticket inexistente; '; end if;
+  select * into t from public.tickets where id = v_id;
+  if t.adjunto_key is not null then fallos := fallos || '[111] una key rechazada igual quedo guardada; '; end if;
+
+  -- la valida se guarda, con adjunto_url en NULL
+  if not public.adjuntar_captura_ticket(v_id, 'tickets/' || v_id::text || '/captura.webp') then fallos := fallos || '[111] rechazo la key valida; '; end if;
+  select * into t from public.tickets where id = v_id;
+  if t.adjunto_key is distinct from 'tickets/' || v_id::text || '/captura.webp' or t.adjunto_url is not null then
+    fallos := fallos || '[111] la key valida no quedo guardada con adjunto_url en NULL; ';
+  end if;
+
+  -- un segundo adjunto no pisa el primero
+  if public.adjuntar_captura_ticket(v_id, 'tickets/' || v_id::text || '/captura.png') then fallos := fallos || '[111] un segundo adjunto piso el primero; '; end if;
+  select * into t from public.tickets where id = v_id;
+  if t.adjunto_key is distinct from 'tickets/' || v_id::text || '/captura.webp' then fallos := fallos || '[111] la key original cambio; '; end if;
+
+  -- privilegios
+  if has_function_privilege('authenticated', 'public.adjuntar_captura_ticket(uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.adjuntar_captura_ticket(uuid,text)', 'execute')
+     or not has_function_privilege('project_admin', 'public.adjuntar_captura_ticket(uuid,text)', 'execute') then
+    fallos := fallos || '[111] privilegios de adjuntar_captura_ticket incorrectos; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [111b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [111b]: %', fallos;
   end if;
 end $$;

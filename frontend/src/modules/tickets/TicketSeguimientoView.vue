@@ -19,6 +19,7 @@ const estado = ref('cargando');
 const error = ref('');
 const ticket = ref(null);
 const copiado = ref(null);
+const errorCaptura = ref('');
 
 async function cargar() {
   try {
@@ -46,6 +47,25 @@ async function copiar(texto, id) {
     copiado.value = id;
     setTimeout(() => { if (copiado.value === id) copiado.value = null; }, 1500);
   } catch { /* portapapeles no disponible */ }
+}
+
+// La captura vive en un bucket privado (migración 111): `seguimiento` entrega una
+// URL firmada que vence en 5 minutos, así que al hacer clic se vuelve a pedir
+// una fresca. La pestaña se abre en el clic (antes del `await`) para que el
+// navegador no la bloquee como ventana emergente.
+async function verCaptura() {
+  const ventana = window.open('', '_blank');
+  if (ventana) ventana.opener = null;
+  errorCaptura.value = '';
+  try {
+    const fresco = await seguimientoTicket(route.params.token);
+    if (!fresco.adjuntoUrl) throw new Error('sin captura');
+    if (ventana) ventana.location.href = fresco.adjuntoUrl;
+    else window.open(fresco.adjuntoUrl, '_blank', 'noopener');
+  } catch {
+    ventana?.close();
+    errorCaptura.value = 'No se pudo abrir la captura. Intente de nuevo.';
+  }
 }
 
 function enlaceSeguimiento() {
@@ -117,6 +137,19 @@ const mensajeCopiado = computed(() => {
         />
       </div>
       <p class="sr-only" role="status" aria-live="polite">{{ mensajeCopiado }}</p>
+
+      <div v-if="ticket.adjuntoUrl" class="mt-3">
+        <AppButton
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-camera"
+          label="Ver captura adjunta"
+          block
+          data-captura="ver"
+          @click="verCaptura"
+        />
+        <p v-if="errorCaptura" class="mt-2 text-xs text-red-700" role="alert">{{ errorCaptura }}</p>
+      </div>
 
       <section v-if="ticket.comentarios.length" class="mt-6 border-t border-gray-100 pt-5" aria-labelledby="segui-actualizaciones">
         <h2 id="segui-actualizaciones" class="text-sm font-semibold text-gray-900">Actualizaciones</h2>

@@ -14,6 +14,7 @@
 // acciones responde { ok:false, code:'maqueta' }.
 import { TABLAS, RPC, USUARIO_MAQUETA } from './datos.js';
 import { funcionEquiposFotos, alActualizarFila } from './rpc-equipos.js';
+import { funcionTickets } from './rpc-tickets.js';
 
 const clonar = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 
@@ -333,6 +334,11 @@ function respuestaFuncion(nombre, body = {}) {
   if (nombre === 'tickets' && accion === 'catalogo') {
     const vivos = (t) => (db[t] || []).filter((r) => !r.deleted_at);
     return { ok: true, categorias: clonar(vivos('categorias_ticket')), subcategorias: clonar(vivos('subcategorias_ticket')) };
+  }
+  // Seguimiento por token y captura adjunta privada (URL firmada): ./rpc-tickets.js
+  if (nombre === 'tickets') {
+    const resultado = funcionTickets(db, body);
+    if (resultado) return clonar(resultado);
   }
   // Fire-and-forget de auditoría: el llamador lo ignora; responder ok evita ruido.
   if (nombre === 'credenciales' && accion === 'accesoDenegado') return { ok: true };

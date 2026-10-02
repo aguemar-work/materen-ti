@@ -318,15 +318,15 @@ describe('rate-limits fail-closed en funciones públicas', () => {
     expect(consultasDe('empleados')).toHaveLength(0);
   });
 
-  it('tickets.crear (público): si no se puede registrar el intento, no crea el ticket', async () => {
-    sdk.responder = responderCon({
-      'ticket_creacion_intentos:select': () => ({ data: [], error: null }),
-      'ticket_creacion_intentos:insert': () => FALLA_BD,
-    });
-    const r = await tickets(peticion({ action: 'crear', titulo: 't', descripcion: 'd', categoriaId: 'c' }, { token: null }));
+  it('tickets.crear (público): si la RPC (rate-limit + ticket + evento) falla, no se sube ninguna captura', async () => {
+    sdk.responder = responderCon({ 'crear_ticket_publico:rpc': () => FALLA_BD });
+    const adjunto = { contenidoBase64: btoa('\xff\xd8\xff\xda\x00\x02\xff\xd9') };
+    const r = await tickets(peticion({ action: 'crear', titulo: 't', descripcion: 'd', categoriaId: 'c', adjunto }, { token: null }));
     expect(r.status).toBe(500);
-    expect(consultasDe('siguiente_codigo_ticket', 'rpc')).toHaveLength(0);
+    expect((await r.json()).code).toBe('error_creando');
     expect(consultasDe('tickets', 'insert')).toHaveLength(0);
+    expect(consultasDe('ticket_eventos', 'insert')).toHaveLength(0);
+    expect(sdk.almacenamiento).toHaveLength(0);
   });
 
   it('encuestas.abrir: si no se puede contar, bloquea; y responde con no-store', async () => {

@@ -17,6 +17,14 @@ export const MENSAJES_ERROR_TICKETS = {
   error_creando: 'No se pudo registrar el ticket',
   dni_invalido: 'Ingrese un DNI válido (8 dígitos)',
   demasiados_intentos: 'Demasiados intentos. Espere unos minutos e intente de nuevo',
+  texto_muy_largo: 'El texto es demasiado largo. Acórtelo e intente de nuevo',
+  categoria_invalida: 'Seleccione una categoría válida',
+  empleado_invalido: 'El empleado seleccionado no existe',
+  vinculo_invalido: 'El equipo, la cuenta o la licencia vinculada no es válida',
+  // Captura adjunta privada (acción adjuntoStaff, migración 111)
+  no_autenticado: 'Sesión expirada — vuelva a iniciar sesión',
+  no_autorizado: 'Sin permiso sobre el módulo Tickets',
+  error_url: 'No se pudo generar el enlace de la captura',
 };
 
 function mensajeError(code) {
@@ -36,11 +44,22 @@ export async function crearTicket(datos) {
   return { codigo: data.codigo, token: data.token, vinculado: data.vinculado };
 }
 
-// Estado + comentarios visibles de un ticket, por su token
+// Estado + comentarios visibles de un ticket, por su token. Si tiene captura,
+// trae `adjuntoUrl`: URL firmada que vence en `adjuntoExpiraSegundos` (300);
+// para abrirla más tarde se vuelve a llamar a esta función.
 export async function seguimientoTicket(token) {
   const data = await invoke({ action: 'seguimiento', token });
   const { ok, ...resto } = data;
   return resto;
+}
+
+// URL firmada de la captura adjunta de un ticket, para el STAFF (migración 111).
+// El bucket `tickets-adjuntos` es privado: la URL vive 300 s y se pide al
+// momento de mostrar o abrir la captura, nunca se guarda. La autorización
+// (sesión + módulo tickets) la comprueba la edge function.
+export async function urlAdjuntoTicket(ticketId) {
+  const data = await invoke({ action: 'adjuntoStaff', ticketId });
+  return { url: data.url, expiraSegundos: data.expiraSegundos };
 }
 
 // Si ya se respondió antes (ej. el usuario refresca la página tras enviar),

@@ -42,9 +42,8 @@
   diálogo único (decisión del dueño, 2026-10-01): superconjunto de la API del
   antiguo `Modal` (`lateral`, `confirmarCierre`, `size`, slots `titulo`/`acciones`)
   y emite `cerrado` en todo cierre. Migrar es cambiar `<Modal>` por `<AppDialog>` y
-  `@close` por `@cerrado`. Tickets ya migró; `components/shared/Modal.vue` queda
-  en desuso mientras queden consumidores en otros módulos (23 al 2026-10-01);
-  se migra cada módulo junto con su rediseño y no se crea un tercero.
+  `@close` por `@cerrado`. Todos los módulos migraron (2026-10-02) y `Modal.vue`
+  se eliminó: no se reintroduce ni se crea un tercer diálogo.
 - **Tonos de estado**: salen de `core/tonos.js`; un estado nuevo se agrega ahí y
   en su `core/dominio-*.js` (`tests/tonos.test.js` lo exige).
 - **Errores de base**: `api/erroresDb.js` (`traducirErrorDb`) traduce 42501, P0001,
