@@ -21,6 +21,10 @@
 // Acciones (POST { action, ... }):
 //   subirFoto   staff { contenidoBase64, equipoId? } → { url, key }
 //   eliminarFoto staff { key }            → { ok }
+//   subirActa   staff { asignacionId, tipo, archivo (base64 de un PDF), nombre?, firmadoAt? }
+//               → { ok, acta: { id, tipo, tamanoBytes, firmadoAt, creadaEn } }
+//               (acta firmada en físico, migración 110; bucket PRIVADO actas-firmadas)
+//   urlActa     staff { actaId }          → { ok, url, expiraEn, expiraSegundos }
 //   version     staff  {}                 → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 //   ping        público {}                → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
 // ============================================================
@@ -147,6 +151,52 @@ export function sniffImagen(b: Uint8Array): string | null {
 const MIME_POR_EXT: Record<string, string> = {
   jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
 };
+
+// ── Actas firmadas (migración 110) ──────────────────────────────────────────
+// Bucket PRIVADO: contiene nombre, DNI y firma. Se crea a mano
+// (`insforge storage create-bucket actas-firmadas --private`); nunca público.
+const ACTAS_BUCKET = 'actas-firmadas';
+
+// Tope del PDF ya escaneado (el frontend convierte la foto a PDF antes de subir).
+const ACTA_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
+// Rate-limit por usuario: subirActa 30 / 10 min (§3.7 del plan); urlActa es
+// lectura y admite más: 60 / 10 min.
+const ACTAS_MAX_USUARIO = 30;
+const ACTAS_URL_MAX_USUARIO = 60;
+const ACTAS_VENTANA_MIN = 10;
+
+// Vida de la URL firmada: lo justo para abrir el PDF en una pestaña nueva.
+const ACTA_URL_SEGUNDOS = 120;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// PDF por sus primeros bytes ("%PDF-"), nunca por el tipo ni el nombre que
+// declare el cliente. Estricto: la cabecera debe estar al inicio del archivo
+// (la especificación tolera basura previa, un escáner normal no la deja).
+// export: probado en frontend/tests/functions-handler-actas.test.js
+export function esPdf(b: Uint8Array): boolean {
+  return b.length >= 5 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 && b[4] === 0x2d;
+}
+
+// SHA-256 en hex minúsculas (el CHECK de actas.sha256 exige 64 [0-9a-f]).
+export async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const huella = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return Array.from(huella, (x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+// Fecha de hoy en Lima (UTC-5 todo el año, sin horario de verano), AAAA-MM-DD.
+function hoyLima(): string {
+  return new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+// ¿Es una fecha AAAA-MM-DD real? (rechaza 2026-02-31)
+function fechaValida(s: string): boolean {
+  if (!FECHA_RE.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
 
 // Envoltorio de primer nivel (Ciclo 20): toda excepción no controlada
 // termina en { ok:false, code:'error_interno' } (500) con las cabeceras CORS
@@ -339,6 +389,164 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     if (error) return json({ ok: false, code: 'error_eliminando' }, 500);
 
     return json({ ok: true });
+  }
+
+  // subirActa (migración 110, plan §3.7): acta de entrega/devolución firmada en
+  // físico. El navegador convierte la foto a PDF ANTES de subir, así que acá
+  // solo se acepta PDF (magic bytes `%PDF-`, hasta 10 MB); un JPEG/PNG se
+  // rechaza con archivo_invalido. Nada del cliente decide dónde queda: la key
+  // sale de la asignación leída en la base, nunca del `nombre` que envíe.
+  // Orden (fail-closed): forma de la petición → módulo equipos → rate-limit →
+  // tamaño y PDF → asignación válida → subir al bucket → registrar_acta (RPC:
+  // retira la vigente y crea la nueva en UNA transacción). Si el registro
+  // falla, el objeto recién subido se borra (best-effort).
+  if (body.action === 'subirActa') {
+    const archivo = String(body.archivo || '').replace(/^data:[^;,]*;base64,/, '').replace(/\s+/g, '');
+    if (!archivo) return json({ ok: false, code: 'archivo_requerido' });
+
+    const asignacionId = String(body.asignacionId || '');
+    const tipo = String(body.tipo || '');
+    if (!UUID_RE.test(asignacionId) || (tipo !== 'entrega' && tipo !== 'devolucion')) {
+      return json({ ok: false, code: 'asignacion_invalida' });
+    }
+
+    const firmadoAt = body.firmadoAt ? String(body.firmadoAt) : null;
+    if (firmadoAt !== null && (!fechaValida(firmadoAt) || firmadoAt > hoyLima())) {
+      return json({ ok: false, code: 'fecha_invalida' });
+    }
+
+    if (!(await tienePermisoModulo(staffRow.rol, user.id, 'equipos'))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
+    if (await excedeLimite(admin, 'equipos-fotos.subirActa', user.id, ACTAS_MAX_USUARIO, ACTAS_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+
+    // Tamaño: se estima desde el base64 ANTES de decodificar (no se asigna
+    // memoria para un archivo que ya se sabe que sobra).
+    const relleno = archivo.endsWith('==') ? 2 : archivo.endsWith('=') ? 1 : 0;
+    if (Math.floor((archivo.length * 3) / 4) - relleno > ACTA_MAX_BYTES) {
+      return json({ ok: false, code: 'archivo_muy_grande' });
+    }
+    let bytes: Uint8Array<ArrayBuffer>;
+    try {
+      const binario = atob(archivo);
+      if (!binario.length) return json({ ok: false, code: 'archivo_invalido' });
+      if (binario.length > ACTA_MAX_BYTES) return json({ ok: false, code: 'archivo_muy_grande' });
+      bytes = new Uint8Array(binario.length);
+      for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+    } catch {
+      return json({ ok: false, code: 'archivo_invalido' });
+    }
+    if (!esPdf(bytes)) return json({ ok: false, code: 'archivo_invalido' });
+
+    // La asignación manda: debe existir, ser a una persona y, para la
+    // devolución, estar cerrada. (La misma regla vive en registrar_acta, que
+    // es la que garantiza; acá se valida antes para no subir un PDF huérfano.)
+    const { data: asignacion, error: eAsig } = await admin.database
+      .from('asignaciones_equipo')
+      .select('id, empleado_id, fecha_fin')
+      .eq('id', asignacionId)
+      .maybeSingle();
+    if (eAsig) throw new Error(`No se pudo leer la asignación: ${eAsig.message}`);
+    if (!asignacion) return json({ ok: false, code: 'no_existe' });
+    if (!asignacion.empleado_id || (tipo === 'devolucion' && !asignacion.fecha_fin)) {
+      return json({ ok: false, code: 'asignacion_invalida' });
+    }
+
+    // Un reemplazo NO pisa el PDF anterior (que queda como evidencia): la
+    // primera subida usa la key del plan, `<asignacion>-<tipo>.pdf`, y las
+    // siguientes `-2`, `-3`... según las actas ya registradas (vigentes o no).
+    const { data: previas, error: ePrevias } = await admin.database
+      .from('actas')
+      .select('id')
+      .eq('asignacion_equipo_id', asignacionId)
+      .eq('tipo', tipo);
+    if (ePrevias) throw new Error(`No se pudo contar las actas previas: ${ePrevias.message}`);
+    const version = (previas?.length || 0) + 1;
+    const key = `actas/${asignacion.empleado_id}/${asignacionId}-${tipo}${version > 1 ? `-${version}` : ''}.pdf`;
+
+    const sha256 = await sha256Hex(bytes);
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const { data: subida, error: eSubida } = await admin.storage.from(ACTAS_BUCKET).upload(key, blob);
+    if (eSubida || !subida) return json({ ok: false, code: 'error_subiendo' }, 500);
+
+    const { data: registro, error: eRegistro } = await admin.database.rpc('registrar_acta', {
+      p_asignacion_id: asignacionId,
+      p_tipo: tipo,
+      p_pdf_key: key,
+      p_tamano_bytes: bytes.length,
+      p_sha256: sha256,
+      p_firmado_at: firmadoAt,
+      p_subido_por: user.id,
+    });
+    if (eRegistro) {
+      // Sin acta registrada no debe quedar un PDF suelto en el bucket.
+      await admin.storage.from(ACTAS_BUCKET).remove(key).catch(() => null);
+      const codigoSql = (eRegistro as { code?: string }).code;
+      if (codigoSql === 'P0002' || codigoSql === '22023') return json({ ok: false, code: 'asignacion_invalida' });
+      console.error('[equipos-fotos] registrar_acta falló:', eRegistro.message);
+      return json({ ok: false, code: 'error_subiendo' }, 500);
+    }
+
+    const acta = (Array.isArray(registro) ? registro[0] : registro) as {
+      id: string; tipo: string; tamano_bytes: number; firmado_at: string | null; created_at: string;
+    } | null;
+    if (!acta?.id) return json({ ok: false, code: 'error_subiendo' }, 500);
+
+    // Sin pdf_key ni sha256: la key no sale nunca de la function.
+    return json({
+      ok: true,
+      acta: {
+        id: acta.id,
+        tipo: acta.tipo,
+        tamanoBytes: acta.tamano_bytes,
+        firmadoAt: acta.firmado_at,
+        creadaEn: acta.created_at,
+      },
+    });
+  }
+
+  // urlActa: URL firmada de corta vida (120 s) para abrir el PDF. El bucket es
+  // privado y la key no se envía al cliente: la autorización se comprueba acá,
+  // al emitir la URL (sesión de staff + módulo equipos). Solo actas vigentes.
+  if (body.action === 'urlActa') {
+    const actaId = String(body.actaId || '');
+    if (!UUID_RE.test(actaId)) return json({ ok: false, code: 'no_existe' });
+
+    if (!(await tienePermisoModulo(staffRow.rol, user.id, 'equipos'))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+
+    if (await excedeLimite(admin, 'equipos-fotos.urlActa', user.id, ACTAS_URL_MAX_USUARIO, ACTAS_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+
+    const { data: acta, error: eActa } = await admin.database
+      .from('actas')
+      .select('id, pdf_key')
+      .eq('id', actaId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (eActa) throw new Error(`No se pudo leer el acta: ${eActa.message}`);
+    if (!acta?.pdf_key) return json({ ok: false, code: 'no_existe' });
+
+    const { data: firmada, error: eUrl } = await admin.storage
+      .from(ACTAS_BUCKET)
+      .createSignedUrl(acta.pdf_key, ACTA_URL_SEGUNDOS);
+    if (eUrl || !firmada?.signedUrl) {
+      // Objeto ausente en el bucket (404) ≠ falla al firmar.
+      const faltante = (eUrl as { statusCode?: number } | null)?.statusCode === 404;
+      return json({ ok: false, code: faltante ? 'no_existe' : 'error_url' }, faltante ? 200 : 500);
+    }
+
+    return json({
+      ok: true,
+      url: firmada.signedUrl,
+      expiraEn: firmada.expiresAt || null,
+      expiraSegundos: ACTA_URL_SEGUNDOS,
+    });
   }
 
   return json({ ok: false, code: 'accion_desconocida' }, 400);

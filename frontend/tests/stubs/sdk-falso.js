@@ -16,11 +16,19 @@
 // `sdk.errorUsuario` simula que `auth.getCurrentUser()` FALLA (ej.
 // { message: 'x', statusCode: 500 }); con `sdk.usuario = null` y sin error se
 // simula un token anónimo/inválido (sin usuario).
+//
+// Storage (opcional, aditivo): cada llamada a `storage.from(bucket).<op>()` se
+// registra en `sdk.almacenamiento` ({ op, bucket, key, ... }) y, si el test
+// definió `sdk.storage.<op>` (upload, remove, createSignedUrl), responde lo que
+// éste devuelva; si no, los valores por defecto de siempre (upload falla,
+// remove y createSignedUrl devuelven error nulo/'no disponible').
 export const sdk = {
   consultas: [],
   usuario: null,
   errorUsuario: null,
   responder: () => ({ data: null, error: null }),
+  almacenamiento: [],
+  storage: {},
 };
 
 export function reiniciarSdk() {
@@ -28,6 +36,8 @@ export function reiniciarSdk() {
   sdk.usuario = null;
   sdk.errorUsuario = null;
   sdk.responder = () => ({ data: null, error: null });
+  sdk.almacenamiento = [];
+  sdk.storage = {};
 }
 
 // ¿La consulta tiene este filtro? (ej. tieneFiltro(q, 'is', 'deleted_at', null))
@@ -112,9 +122,22 @@ export function createAdminClient() {
       },
     },
     storage: {
-      from: () => ({
-        upload: async () => ({ data: null, error: { message: 'storage no disponible en tests' } }),
-        remove: async () => ({ error: null }),
+      from: (bucket) => ({
+        upload: async (key, blob) => {
+          sdk.almacenamiento.push({ op: 'upload', bucket, key, blob });
+          if (sdk.storage.upload) return sdk.storage.upload({ bucket, key, blob });
+          return { data: null, error: { message: 'storage no disponible en tests' } };
+        },
+        remove: async (key) => {
+          sdk.almacenamiento.push({ op: 'remove', bucket, key });
+          if (sdk.storage.remove) return sdk.storage.remove({ bucket, key });
+          return { error: null };
+        },
+        createSignedUrl: async (key, expiresIn) => {
+          sdk.almacenamiento.push({ op: 'createSignedUrl', bucket, key, expiresIn });
+          if (sdk.storage.createSignedUrl) return sdk.storage.createSignedUrl({ bucket, key, expiresIn });
+          return { data: null, error: { message: 'storage no disponible en tests' } };
+        },
       }),
     },
   };

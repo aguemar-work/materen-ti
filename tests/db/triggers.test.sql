@@ -990,3 +990,1821 @@ begin
     raise exception 'TESTS_FALLARON [099c]: %', fallos;
   end if;
 end $$;
+
+-- ------------------------------------------------------------
+-- 102-a: migracion 102 (ciclo de vida del empleado). empleado_eventos
+-- registra creado y cambios de area/contacto/estado sin guardar valores de
+-- contacto, ignora UPDATEs sin cambio real; la whitelist rechaza Inactivo a
+-- Suspendido; la tabla es inmutable. Modo compatibilidad forzado (el
+-- interruptor puede estar activo en la base; todo se revierte).
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_a1 uuid;
+  v_a2 uuid;
+  v_emp uuid;
+  v_ev record;
+  v_n int;
+  v_n2 int;
+  fallos text := '';
+begin
+  update public.empleados_ajustes set valor = false where clave = 'exigir_contexto_rpc';
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 102a') returning id into v_empresa;
+  insert into public.areas_obras (nombre) values ('__TEST_CI__ Area 102A') returning id into v_a1;
+  insert into public.areas_obras (nombre) values ('__TEST_CI__ Area 102B') returning id into v_a2;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, area_obra_id)
+    values ('Test', 'CI 102a', '99010201', v_empresa, v_a1) returning id into v_emp;
+
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'creado' and rol_actor = 'sistema';
+  if v_n <> 1 then fallos := fallos || '[102] el alta no registro un evento creado; '; end if;
+
+  update public.empleados set area_obra_id = v_a2 where id = v_emp;
+  select * into v_ev from public.empleado_eventos where empleado_id = v_emp and evento = 'area_cambiada';
+  if v_ev.valor_anterior is distinct from '__TEST_CI__ Area 102A' or v_ev.valor_nuevo is distinct from '__TEST_CI__ Area 102B' then
+    fallos := fallos || '[102] area_cambiada no guardo los nombres legibles; ';
+  end if;
+
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp;
+  update public.empleados set notas = 'solo una nota' where id = v_emp;
+  select count(*) into v_n2 from public.empleado_eventos where empleado_id = v_emp;
+  if v_n2 <> v_n then fallos := fallos || '[102] un UPDATE sin cambio rastreado genero eventos; '; end if;
+
+  update public.empleados set telefono = '999111222' where id = v_emp;
+  select * into v_ev from public.empleado_eventos where empleado_id = v_emp and evento = 'contacto_cambiado';
+  if v_ev.campo is distinct from 'telefono' or v_ev.valor_anterior is not null or v_ev.valor_nuevo is not null or v_ev.detalle is distinct from 'actualizado' then
+    fallos := fallos || '[102] contacto_cambiado guardo valores o no indico la columna; ';
+  end if;
+
+  update public.empleados set estado = 'Suspendido' where id = v_emp;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'estado_cambiado' and valor_anterior = 'Activo' and valor_nuevo = 'Suspendido';
+  if v_n <> 1 then fallos := fallos || '[102] el cambio directo de estado no quedo registrado; '; end if;
+
+  update public.empleados set estado = 'Inactivo' where id = v_emp;
+  begin
+    update public.empleados set estado = 'Suspendido' where id = v_emp;
+    fallos := fallos || '[102] permitio Inactivo a Suspendido; ';
+  exception when others then
+    if sqlerrm not like '%no permitida%' then fallos := fallos || '[102] Inactivo a Suspendido se rechazo por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  begin
+    update public.empleado_eventos set detalle = 'manipulado' where empleado_id = v_emp;
+    fallos := fallos || '[102] empleado_eventos admitio un UPDATE; ';
+  exception when others then
+    if sqlerrm not like '%inmutable%' then fallos := fallos || '[102] el UPDATE se rechazo por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+  begin
+    delete from public.empleado_eventos where empleado_id = v_emp;
+    fallos := fallos || '[102] empleado_eventos admitio un DELETE; ';
+  exception when others then
+    if sqlerrm not like '%inmutable%' then fallos := fallos || '[102] el DELETE se rechazo por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [102a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [102a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 102-b: con exigir_contexto_rpc = true, el estado solo cambia bajo el
+-- contexto rpc_empleado (SQLSTATE 42501 si no); marcar/restaurar_contexto;
+-- mientras hay contexto el trigger de eventos no escribe estado_cambiado y la
+-- whitelist sigue aplicando.
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_o text;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 102b') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    values ('Test', 'CI 102b', '99010202', v_empresa) returning id into v_emp;
+  update public.empleados_ajustes set valor = true where clave = 'exigir_contexto_rpc';
+
+  begin
+    update public.empleados set estado = 'Suspendido' where id = v_emp;
+    fallos := fallos || '[102] modo estricto permitio un cambio de estado sin contexto; ';
+  exception when insufficient_privilege then
+    null;
+  when others then
+    fallos := fallos || '[102] modo estricto rechazo con otro error: ' || sqlerrm || '; ';
+  end;
+
+  update public.empleados set estado = 'Activo', cargo = 'Operario' where id = v_emp;
+
+  perform public.marcar_contexto('sistema', 'rpc_empleado');
+  select origen into v_o from public.contexto_actual();
+  if v_o is distinct from 'rpc_empleado' then fallos := fallos || '[102] contexto_actual no devolvio el contexto marcado; '; end if;
+
+  update public.empleados set estado = 'Suspendido' where id = v_emp;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'estado_cambiado';
+  if v_n <> 0 then fallos := fallos || '[102] con contexto rpc_empleado se registro estado_cambiado; '; end if;
+
+  update public.empleados set estado = 'Inactivo' where id = v_emp;
+  begin
+    update public.empleados set estado = 'Suspendido' where id = v_emp;
+    fallos := fallos || '[102] con contexto se salto la whitelist; ';
+  exception when others then
+    if sqlerrm not like '%no permitida%' then fallos := fallos || '[102] con contexto la whitelist rechazo por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  perform public.restaurar_contexto(null, null);
+  select count(*) into v_n from public.contexto_actual();
+  if v_n <> 0 then fallos := fallos || '[102] restaurar_contexto no borro el contexto; '; end if;
+  begin
+    update public.empleados set estado = 'Activo' where id = v_emp;
+    fallos := fallos || '[102] tras restaurar el contexto se permitio un cambio de estado; ';
+  exception when insufficient_privilege then
+    null;
+  when others then
+    fallos := fallos || '[102] tras restaurar rechazo con otro error: ' || sqlerrm || '; ';
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [102b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [102b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 102-c: suspender/reactivar (funciones internas, la conexion no tiene
+-- auth.uid() y el guard solo se prueba en 102-e). En modo estricto: prueba
+-- que las RPC marcan el contexto. Suspender marca rotacion en la cuenta
+-- reutilizable, no en la personal, SIN cerrar asignaciones.
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_cr uuid;
+  v_cp uuid;
+  v_fecha date;
+  v_fecha2 date;
+  v_rot_r boolean;
+  v_rot_p boolean;
+  v_n int;
+  v_ev record;
+  fallos text := '';
+begin
+  update public.empleados_ajustes set valor = true where clave = 'exigir_contexto_rpc';
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 102c') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, fecha_alta)
+    values ('Test', 'CI 102c', '99010203', v_empresa, '2020-01-15') returning id into v_emp;
+  insert into public.plataformas (id, nombre) values ('__test_ci_102c__', '__TEST_CI__ Plataforma 102c');
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_102c__', '__test_ci_102c_r__@correo.test', 'reutilizable') returning id into v_cr;
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_102c__', '__test_ci_102c_p__@correo.test', 'personal') returning id into v_cp;
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cr, v_emp);
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cp, v_emp);
+
+  begin
+    perform public.empleado_suspender_interno(v_emp, '   ');
+    fallos := fallos || '[102] suspender acepto un motivo vacio; ';
+  exception when others then
+    if sqlerrm not like '%motivo%' then fallos := fallos || '[102] motivo vacio rechazado por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  perform public.empleado_suspender_interno(v_emp, 'Investigacion interna');
+  if (select estado::text from public.empleados where id = v_emp) <> 'Suspendido' then fallos := fallos || '[102] suspender no dejo Suspendido; '; end if;
+  select requiere_rotacion into v_rot_r from public.cuentas where id = v_cr;
+  select requiere_rotacion into v_rot_p from public.cuentas where id = v_cp;
+  if v_rot_r is distinct from true then fallos := fallos || '[102] la cuenta reutilizable no quedo con requiere_rotacion; '; end if;
+  if v_rot_p is distinct from false then fallos := fallos || '[102] la cuenta personal quedo marcada para rotar; '; end if;
+  select count(*) into v_n from public.asignaciones_cuenta where empleado_id = v_emp and fecha_fin is null;
+  if v_n <> 2 then fallos := fallos || '[102] suspender cerro asignaciones de cuenta; '; end if;
+
+  select * into v_ev from public.empleado_eventos where empleado_id = v_emp and evento = 'suspendido';
+  if v_ev.detalle is distinct from 'Investigacion interna' or v_ev.valor_anterior is distinct from 'Activo' or v_ev.valor_nuevo is distinct from 'Suspendido' or v_ev.rol_actor is distinct from 'sistema' then
+    fallos := fallos || '[102] evento suspendido incompleto; ';
+  end if;
+  select count(*) into v_n from public.notificaciones where tipo = 'empleado_suspendido' and entidad_id = v_emp;
+  if v_n <> 1 then fallos := fallos || '[102] suspender no genero la notificacion; '; end if;
+  select count(*) into v_n from public.contexto_actual();
+  if v_n <> 0 then fallos := fallos || '[102] suspender dejo el contexto marcado; '; end if;
+
+  begin
+    perform public.empleado_suspender_interno(v_emp, 'otra vez');
+    fallos := fallos || '[102] suspender acepto a un Suspendido; ';
+  exception when others then
+    if sqlerrm not like '%Solo se puede suspender%' then fallos := fallos || '[102] doble suspension rechazada por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  select fecha_alta into v_fecha from public.empleados where id = v_emp;
+  perform public.empleado_reactivar_interno(v_emp, 'Sin cargos');
+  select fecha_alta into v_fecha2 from public.empleados where id = v_emp;
+  if (select estado::text from public.empleados where id = v_emp) <> 'Activo' then fallos := fallos || '[102] reactivar no dejo Activo; '; end if;
+  if v_fecha2 is distinct from v_fecha then fallos := fallos || '[102] reactivar toco fecha_alta; '; end if;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'reactivado' and detalle = 'Sin cargos';
+  if v_n <> 1 then fallos := fallos || '[102] falta el evento reactivado; '; end if;
+  begin
+    perform public.empleado_reactivar_interno(v_emp);
+    fallos := fallos || '[102] reactivar acepto a un Activo; ';
+  exception when others then
+    if sqlerrm not like '%ya est% Activo%' then fallos := fallos || '[102] reactivar un Activo rechazado por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [102c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [102c]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 102-d: dar_baja (un solo argumento: mismo comportamiento que la 086, mas
+-- evento) con y sin motivo, y reingresar_empleado. Modo estricto.
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_area uuid;
+  v_emp uuid;
+  v_cr uuid;
+  v_cp uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_n int;
+  v_ev record;
+  fallos text := '';
+begin
+  update public.empleados_ajustes set valor = true where clave = 'exigir_contexto_rpc';
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 102d') returning id into v_empresa;
+  insert into public.areas_obras (nombre) values ('__TEST_CI__ Area 102d') returning id into v_area;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, fecha_alta)
+    values ('Test', 'CI 102d', '99010204', v_empresa, '2020-01-15') returning id into v_emp;
+  insert into public.plataformas (id, nombre) values ('__test_ci_102d__', '__TEST_CI__ Plataforma 102d');
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_102d__', '__test_ci_102d_r__@correo.test', 'reutilizable') returning id into v_cr;
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_102d__', '__test_ci_102d_p__@correo.test', 'personal') returning id into v_cp;
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cr, v_emp);
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cp, v_emp);
+
+  perform public.empleado_dar_baja_interno(v_emp);
+  if (select estado::text from public.empleados where id = v_emp) <> 'Inactivo' then fallos := fallos || '[102] la baja no dejo Inactivo; '; end if;
+  select count(*) into v_n from public.asignaciones_cuenta where empleado_id = v_emp and fecha_fin is null;
+  if v_n <> 0 then fallos := fallos || '[102] la baja dejo asignaciones de cuenta abiertas; '; end if;
+  select count(*) into v_n from public.asignaciones_cuenta where empleado_id = v_emp and fecha_fin = v_hoy and notas = 'Baja del empleado';
+  if v_n <> 2 then fallos := fallos || '[102] la baja no cerro con fecha de Lima y nota; '; end if;
+  if (select deleted_at from public.cuentas where id = v_cp) is null then fallos := fallos || '[102] la baja no dio de baja la cuenta personal; '; end if;
+  if (select deleted_at from public.cuentas where id = v_cr) is not null or (select requiere_rotacion from public.cuentas where id = v_cr) is not true then
+    fallos := fallos || '[102] la cuenta reutilizable debia quedar viva y por rotar; ';
+  end if;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'baja_ejecutada' and detalle is null and valor_nuevo = 'Inactivo';
+  if v_n <> 1 then fallos := fallos || '[102] falta el evento baja_ejecutada sin motivo; '; end if;
+
+  perform public.empleado_dar_baja_interno(v_emp);
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'baja_ejecutada';
+  if v_n <> 1 then fallos := fallos || '[102] una segunda baja repitio el evento; '; end if;
+
+  begin
+    perform public.dar_baja_empleado(v_emp);
+    fallos := fallos || '[102] dar_baja_empleado de un argumento no rechazo la llamada sin sesion; ';
+  exception when insufficient_privilege then
+    null;
+  when others then
+    fallos := fallos || '[102] dar_baja_empleado de un argumento fallo con otro error: ' || sqlerrm || '; ';
+  end;
+
+  perform public.empleado_dar_baja_interno(v_emp, 'Fin de contrato');
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'baja_ejecutada' and detalle = 'Fin de contrato';
+  if v_n <> 0 then fallos := fallos || '[102] una baja repetida sobre un Inactivo registro un evento; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [102d] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [102d]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 102-d2: reingresar_empleado (interna) con datos, con la baja con motivo.
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_area uuid;
+  v_emp uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_n int;
+  v_ev record;
+  fallos text := '';
+begin
+  update public.empleados_ajustes set valor = true where clave = 'exigir_contexto_rpc';
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 102d2') returning id into v_empresa;
+  insert into public.areas_obras (nombre) values ('__TEST_CI__ Area 102d') returning id into v_area;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, fecha_alta)
+    values ('Test', 'CI 102d2', '99010205', v_empresa, '2020-01-15') returning id into v_emp;
+  perform public.empleado_dar_baja_interno(v_emp, 'Fin de contrato');
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'baja_ejecutada' and detalle = 'Fin de contrato';
+  if v_n <> 1 then fallos := fallos || '[102] la baja con motivo no registro el motivo; '; end if;
+
+  perform public.empleado_reingresar_interno(v_emp, jsonb_build_object('cargo', 'Operario', 'area_obra_id', v_area, 'clave_ignorada', 'x'));
+  select * into v_ev from public.empleados where id = v_emp;
+  if v_ev.estado::text <> 'Activo' or v_ev.fecha_alta is distinct from v_hoy or v_ev.cargo is distinct from 'Operario' or v_ev.area_obra_id is distinct from v_area then
+    fallos := fallos || '[102] el reingreso no dejo Activo con fecha de hoy y los datos; ';
+  end if;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'reingreso';
+  if v_n <> 1 then fallos := fallos || '[102] falta el evento reingreso; '; end if;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp
+    and ((evento = 'cargo_cambiado' and valor_nuevo = 'Operario') or (evento = 'area_cambiada' and valor_nuevo = '__TEST_CI__ Area 102d'));
+  if v_n <> 2 then fallos := fallos || '[102] el reingreso no registro cargo y area; '; end if;
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'estado_cambiado';
+  if v_n <> 0 then fallos := fallos || '[102] el reingreso duplico el estado en estado_cambiado; '; end if;
+
+  begin
+    perform public.empleado_reingresar_interno(v_emp);
+    fallos := fallos || '[102] reingresar acepto a un Activo; ';
+  exception when others then
+    if sqlerrm not like '%Solo se puede reingresar%' then fallos := fallos || '[102] reingresar un Activo rechazado por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  perform public.empleado_dar_baja_interno(v_emp, 'Segunda baja');
+  select count(*) into v_n from public.empleado_eventos where empleado_id = v_emp and evento = 'baja_ejecutada' and detalle = 'Segunda baja';
+  if v_n <> 1 then fallos := fallos || '[102] la baja con motivo no registro el motivo; '; end if;
+  begin
+    perform public.empleado_reingresar_interno(v_emp, jsonb_build_object('area_obra_id', gen_random_uuid()));
+    fallos := fallos || '[102] reingresar acepto un area inexistente; ';
+  exception when others then
+    if sqlerrm not like '%no existe%' then fallos := fallos || '[102] area inexistente rechazada por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [102d2] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [102d2]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 102-e: guards sin sesion (SQLSTATE 42501) de las 5 RPC publicas, EXECUTE y
+-- privilegios de tabla, firma unica de dar_baja_empleado, whitelist.
+-- ------------------------------------------------------------
+do $$
+declare
+  v_sql text;
+  fallos text := '';
+begin
+  foreach v_sql in array array[
+    'select public.suspender_empleado(gen_random_uuid(), ''x'')',
+    'select public.reactivar_empleado(gen_random_uuid())',
+    'select public.reingresar_empleado(gen_random_uuid())',
+    'select public.dar_baja_empleado(gen_random_uuid(), ''x'')',
+    'select public.registrar_revision_accesos(gen_random_uuid())'
+  ] loop
+    begin
+      execute v_sql;
+      fallos := fallos || '[102] sin sesion no se rechazo: ' || v_sql || '; ';
+    exception when insufficient_privilege then
+      null;
+    when others then
+      fallos := fallos || '[102] rechazo con otro error (' || sqlstate || ') en ' || v_sql || '; ';
+    end;
+  end loop;
+
+  if to_regprocedure('public.dar_baja_empleado(uuid)') is not null then
+    fallos := fallos || '[102] sigue existiendo dar_baja_empleado(uuid); ';
+  end if;
+  if has_function_privilege('authenticated', 'public.marcar_contexto(text,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.contexto_actual()', 'execute')
+     or has_function_privilege('authenticated', 'public.empleado_dar_baja_interno(uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.dar_baja_empleado(uuid,text)', 'execute') then
+    fallos := fallos || '[102] EXECUTE abierto donde no corresponde; ';
+  end if;
+  if not has_function_privilege('authenticated', 'public.suspender_empleado(uuid,text)', 'execute') then
+    fallos := fallos || '[102] suspender_empleado sin EXECUTE para authenticated; ';
+  end if;
+  if has_table_privilege('authenticated', 'public.empleado_eventos', 'insert')
+     or has_table_privilege('authenticated', 'public.empleado_eventos', 'update')
+     or has_table_privilege('authenticated', 'public.empleado_eventos', 'delete')
+     or has_table_privilege('authenticated', 'public.contexto_transaccion', 'select')
+     or has_table_privilege('anon', 'public.empleado_eventos', 'select') then
+    fallos := fallos || '[102] privilegios de tabla abiertos donde no corresponde; ';
+  end if;
+  if (select count(*) from public.transiciones_empleado_permitidas) <> 5
+     or exists (select 1 from public.transiciones_empleado_permitidas where origen = 'Inactivo' and destino = 'Suspendido') then
+    fallos := fallos || '[102] whitelist de transiciones inesperada; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [102e] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [102e]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 102-f: notificaciones_tipo_check ampliado conservando los valores previos,
+-- vista del ultimo control de accesos y backfill idempotente.
+-- ------------------------------------------------------------
+do $$
+declare
+  v_empresa uuid;
+  v_emp uuid;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino)
+    values ('empleado_suspendido', 'empleado', gen_random_uuid(), 't', '/x');
+  insert into public.notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino)
+    values ('ticket_correo_fallido', 'ticket', gen_random_uuid(), 't', '/x');
+  begin
+    insert into public.notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino)
+      values ('tipo_inventado', 'empleado', gen_random_uuid(), 't', '/x');
+    fallos := fallos || '[102] notificaciones acepto un tipo inventado; ';
+  exception when check_violation then
+    null;
+  end;
+
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 102f') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    values ('Test', 'CI 102f', '99010206', v_empresa) returning id into v_emp;
+  insert into public.empleado_revisiones_acceso (empleado_id, revisado_at, nota) values (v_emp, now() - interval '30 days', 'primera');
+  insert into public.empleado_revisiones_acceso (empleado_id, revisado_at, nota) values (v_emp, now(), 'segunda');
+  select count(*) into v_n from public.v_empleado_ultima_revision_acceso where empleado_id = v_emp and nota = 'segunda';
+  if v_n <> 1 then fallos := fallos || '[102] la vista no devolvio la ultima revision; '; end if;
+
+  select count(*) into v_n from public.empleados e where not exists (
+    select 1 from public.empleado_eventos x where x.empleado_id = e.id and x.evento = 'creado');
+  if v_n <> 0 then fallos := fallos || '[102] hay empleados sin evento creado; '; end if;
+  insert into public.empleado_eventos (empleado_id, evento, user_id, rol_actor, detalle, created_at)
+    select e.id, 'creado', e.created_by, 'legado', 'Registro anterior a la auditoria', e.created_at
+      from public.empleados e
+     where not exists (select 1 from public.empleado_eventos x where x.empleado_id = e.id and x.evento = 'creado');
+  get diagnostics v_n = row_count;
+  if v_n <> 0 then fallos := fallos || '[102] el backfill no es idempotente; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [102f] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [102f]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- Bloques 101-a a 101-i — migración 101 (RPC transaccionales de cuentas,
+-- equipos y licencias, auditoría CRUD de cuentas, eventos de equipo).
+-- Agregados 2026-10-01 (Ciclo 21, H2). Requieren 099, 100 y 101 aplicadas:
+-- contra una base sin ellas fallan (es lo esperado).
+--
+-- Esta conexión (project_admin) no tiene auth.uid() y el CLI prohíbe
+-- SET/set_config, así que NO puede llamar a las RPC públicas con un permiso
+-- válido: cada RPC pública es guard (exigir_permiso) + función núcleo
+-- <nombre>_nucleo con TODA la lógica, y estos bloques ejercen los núcleos
+-- (caso feliz y rechazos con datos sintéticos) y las RPC públicas solo para
+-- verificar el rechazo 42501 sin sesión (101-i). Mismo límite que el resto
+-- del archivo: la CARRERA real entre dos sesiones no se prueba aquí.
+-- Un bloque por tema por el límite de línea de comandos de los anteriores.
+-- Los empleados dados de baja se insertan YA 'Inactivo' (no se actualizan:
+-- la migración 102 restringe el UPDATE de estado a la RPC de baja).
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- Bloque 101-a — [101] crear_cuenta_asignada: caso feliz, rechazos,
+-- atomicidad y auditoría de alta (trigger cuentas_log_evento)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_emp uuid;
+  v_baja uuid;
+  v_asig public.asignaciones_cuenta;
+  v_c public.cuentas;
+  v_n int;
+  v_det text;
+  v_plat text;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 101a');
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    select 'Test', 'CI 101a', '98101001', e.id from public.empresas e where e.nombre = '__TEST_CI__ Empresa 101a'
+    returning id into v_emp;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado)
+    select 'Test', 'CI 101a Baja', '98101002', e.id, 'Inactivo' from public.empresas e where e.nombre = '__TEST_CI__ Empresa 101a'
+    returning id into v_baja;
+  insert into public.plataformas (id, nombre) values ('__test_ci_101a__', '__TEST_CI__ Plataforma 101a');
+
+  v_asig := public.crear_cuenta_asignada_nucleo('__test_ci_101a__', '  __TEST_CI_101A__@Correo.TEST ', v_emp,
+    'enc2:AAAA:BBBB', '  https://x.test  ', 'una' || repeat(' ', 3) || 'nota', 'reutilizable');
+  select * into v_c from public.cuentas where id = v_asig.cuenta_id;
+  if v_c.usuario <> '__test_ci_101a__@correo.test' then fallos := fallos || '[101] el usuario no se normalizó; '; end if;
+  if v_c.password <> 'enc2:AAAA:BBBB' or v_c.last_password_change is null then fallos := fallos || '[101] password o last_password_change mal; '; end if;
+  if v_c.url <> 'https://x.test' or v_c.notas <> 'una nota' or v_c.tipo_cuenta <> 'reutilizable' then fallos := fallos || '[101] url/notas/tipo mal; '; end if;
+  if v_asig.empleado_id <> v_emp or v_asig.fecha_fin is not null
+     or v_asig.fecha_inicio <> (now() at time zone 'America/Lima')::date then fallos := fallos || '[101] la asignación inicial es incorrecta; '; end if;
+
+  -- auditoría de alta: una fila, sin la contraseña
+  select count(*), max(detalle), max(plataforma) into v_n, v_det, v_plat
+    from public.accesos_log where cuenta_id = v_c.id and accion = 'creado';
+  if v_n <> 1 then fallos := fallos || '[101] el alta no dejó una fila creado en accesos_log (' || v_n || '); '; end if;
+  if v_det like '%enc2%' or v_det like '%AAAA%' then fallos := fallos || '[101] accesos_log guardó la contraseña; '; end if;
+  if v_plat <> '__TEST_CI__ Plataforma 101a' then fallos := fallos || '[101] accesos_log sin el nombre de la plataforma; '; end if;
+
+  -- personal por defecto y sin contraseña: last_password_change NULL
+  v_asig := public.crear_cuenta_asignada_nucleo('__test_ci_101a__', '__test_ci_101a_b__@correo.test', v_emp);
+  select * into v_c from public.cuentas where id = v_asig.cuenta_id;
+  if v_c.tipo_cuenta <> 'personal' or v_c.password is not null or v_c.last_password_change is not null then
+    fallos := fallos || '[101] la cuenta por defecto no es personal sin contraseña; ';
+  end if;
+
+  -- rechazos (cada uno debe dejar 0 cuentas nuevas: todo o nada)
+  begin
+    perform public.crear_cuenta_asignada_nucleo('__test_ci_101a__', '__test_ci_101a__@correo.test', v_emp);
+    fallos := fallos || '[101] permitió un usuario duplicado en la plataforma; ';
+  exception when unique_violation then null;
+  when others then fallos := fallos || '[101] el duplicado falló con otro error (' || sqlstate || '); ';
+  end;
+  begin
+    perform public.crear_cuenta_asignada_nucleo('__test_ci_101a__', '__test_ci_101a_c__@correo.test', v_emp, 'en claro');
+    fallos := fallos || '[101] aceptó una contraseña sin cifrar; ';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%cifrada%' then fallos := fallos || '[101] contraseña en claro: error inesperado ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.crear_cuenta_asignada_nucleo('__test_ci_101a__', '__test_ci_101a_d__@correo.test', v_baja);
+    fallos := fallos || '[101] asignó una cuenta a un empleado dado de baja; ';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%baja%' then fallos := fallos || '[101] empleado de baja: error inesperado ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.crear_cuenta_asignada_nucleo('__test_ci_101a__', '__test_ci_101a_e__@correo.test', gen_random_uuid());
+    fallos := fallos || '[101] aceptó un empleado inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] empleado inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.crear_cuenta_asignada_nucleo('__no_existe__', '__test_ci_101a_f__@correo.test', v_emp);
+    fallos := fallos || '[101] aceptó una plataforma inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] plataforma inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.crear_cuenta_asignada_nucleo('__test_ci_101a__', '   ', v_emp);
+    fallos := fallos || '[101] aceptó un usuario vacío; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[101] usuario vacío: error ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.crear_cuenta_asignada_nucleo('__test_ci_101a__', '__test_ci_101a_g__@correo.test', v_emp, null, null, null, 'inventado');
+    fallos := fallos || '[101] aceptó un tipo de cuenta inventado; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[101] tipo inventado: error ' || sqlstate || '; '; end if;
+  end;
+  select count(*) into v_n from public.cuentas where usuario like '__test_ci_101a_%' and usuario not in ('__test_ci_101a__@correo.test', '__test_ci_101a_b__@correo.test');
+  if v_n <> 0 then fallos := fallos || '[101] un alta rechazada dejó ' || v_n || ' cuenta(s) a medias; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- Bloque 101-b — [101] traspasar_cuenta: rotación, rechazos y atomicidad
+-- ------------------------------------------------------------
+do $$
+declare
+  v_e1 uuid;
+  v_e2 uuid;
+  v_baja uuid;
+  v_a1 public.asignaciones_cuenta;
+  v_a2 public.asignaciones_cuenta;
+  v_a3 public.asignaciones_cuenta;
+  v_p public.asignaciones_cuenta;
+  v_c public.cuentas;
+  v_old public.asignaciones_cuenta;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 101b');
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    select 'Test', 'CI 101b Uno', '98101011', id from public.empresas where nombre = '__TEST_CI__ Empresa 101b' returning id into v_e1;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    select 'Test', 'CI 101b Dos', '98101012', id from public.empresas where nombre = '__TEST_CI__ Empresa 101b' returning id into v_e2;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado)
+    select 'Test', 'CI 101b Baja', '98101013', id, 'Inactivo' from public.empresas where nombre = '__TEST_CI__ Empresa 101b' returning id into v_baja;
+  insert into public.plataformas (id, nombre) values ('__test_ci_101b__', '__TEST_CI__ Plataforma 101b');
+
+  v_a1 := public.crear_cuenta_asignada_nucleo('__test_ci_101b__', '__test_ci_101b__@correo.test', v_e1, 'enc2:AAAA:BBBB', null, null, 'compartida');
+  v_p := public.crear_cuenta_asignada_nucleo('__test_ci_101b__', '__test_ci_101b_p__@correo.test', v_e1);
+
+  -- rechazos que no deben tocar la asignación vigente (todo o nada)
+  begin
+    perform public.traspasar_cuenta_nucleo(v_a1.id, v_baja, null, null);
+    fallos := fallos || '[101] traspasó a un empleado de baja; ';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%no está activo%' then fallos := fallos || '[101] destino de baja: error ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.traspasar_cuenta_nucleo(v_a1.id, v_e1, null, null);
+    fallos := fallos || '[101] traspasó al mismo empleado; ';
+  exception when others then null;
+  end;
+  begin
+    perform public.traspasar_cuenta_nucleo(v_a1.id, v_e2, null, 'en claro');
+    fallos := fallos || '[101] aceptó una contraseña sin cifrar en el traspaso; ';
+  exception when others then
+    if sqlerrm not like '%cifrada%' then fallos := fallos || '[101] password en claro: error inesperado; '; end if;
+  end;
+  begin
+    perform public.traspasar_cuenta_nucleo(v_p.id, v_e2, null, null);
+    fallos := fallos || '[101] traspasó una cuenta personal; ';
+  exception when others then
+    if sqlerrm not like '%personal%' then fallos := fallos || '[101] personal: error inesperado; '; end if;
+  end;
+  begin
+    perform public.traspasar_cuenta_nucleo(gen_random_uuid(), v_e2, null, null);
+    fallos := fallos || '[101] traspasó una asignación inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] asignación inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  select * into v_old from public.asignaciones_cuenta where id = v_a1.id;
+  if v_old.fecha_fin is not null then fallos := fallos || '[101] un traspaso rechazado cerró la asignación; '; end if;
+
+  -- traspaso con contraseña nueva: cierra, rota (marca limpia) y abre la nueva
+  v_a2 := public.traspasar_cuenta_nucleo(v_a1.id, v_e2, null, 'enc2:EEEE:FFFF');
+  select * into v_old from public.asignaciones_cuenta where id = v_a1.id;
+  select * into v_c from public.cuentas where id = v_a1.cuenta_id;
+  if v_old.fecha_fin <> v_hoy or v_old.notas <> 'Traspaso a otro empleado' then fallos := fallos || '[101] la asignación vieja no quedó cerrada con la nota por defecto; '; end if;
+  if v_a2.empleado_id <> v_e2 or v_a2.fecha_fin is not null or v_a2.cuenta_id <> v_a1.cuenta_id then fallos := fallos || '[101] la asignación nueva es incorrecta; '; end if;
+  if v_c.password <> 'enc2:EEEE:FFFF' or v_c.requiere_rotacion then fallos := fallos || '[101] la rotación no dejó password nueva y marca limpia; '; end if;
+
+  -- traspaso sin contraseña: la marca de rotación queda como aviso
+  v_a3 := public.traspasar_cuenta_nucleo(v_a2.id, v_e1, 'cambio de obra', null);
+  select * into v_old from public.asignaciones_cuenta where id = v_a2.id;
+  select * into v_c from public.cuentas where id = v_a1.cuenta_id;
+  if v_old.notas <> 'cambio de obra' then fallos := fallos || '[101] el traspaso no conservó las notas; '; end if;
+  if v_c.requiere_rotacion is distinct from true then fallos := fallos || '[101] el traspaso sin password no dejó requiere_rotacion; '; end if;
+
+  -- la asignación ya cerrada no se traspasa
+  begin
+    perform public.traspasar_cuenta_nucleo(v_a1.id, v_e2, null, null);
+    fallos := fallos || '[101] traspasó una asignación cerrada; ';
+  exception when others then
+    if sqlerrm not like '%cerrada%' then fallos := fallos || '[101] asignación cerrada: error inesperado; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- Bloque 101-c — [101] cerrar_asignacion_cuenta, revocar_cuenta_personal
+-- (delegación) y auditoría de edición/baja de cuentas
+-- ------------------------------------------------------------
+do $$
+declare
+  v_e1 uuid;
+  v_a public.asignaciones_cuenta;
+  v_r public.asignaciones_cuenta;
+  v_cuenta uuid;
+  v_n1 int;
+  v_n2 int;
+  v_det text;
+  v_sec boolean;
+  v_delega boolean;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 101c');
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    select 'Test', 'CI 101c', '98101021', id from public.empresas where nombre = '__TEST_CI__ Empresa 101c' returning id into v_e1;
+  insert into public.plataformas (id, nombre) values ('__test_ci_101c__', '__TEST_CI__ Plataforma 101c');
+  v_a := public.crear_cuenta_asignada_nucleo('__test_ci_101c__', '__test_ci_101c__@correo.test', v_e1, 'enc2:AAAA:BBBB', null, 'orig', 'reutilizable');
+  v_cuenta := v_a.cuenta_id;
+
+  -- editar: una fila editado con los campos, sin valores de contraseña
+  update public.cuentas set notas = 'otra', password = 'enc2:CCCC:DDDD' where id = v_cuenta;
+  select count(*), max(detalle) into v_n1, v_det from public.accesos_log where cuenta_id = v_cuenta and accion = 'editado';
+  if v_n1 <> 1 or v_det not like '%notas%' or v_det not like '%contraseña cambiada%' or v_det like '%CCCC%' then
+    fallos := fallos || '[101] la edición no se auditó bien (' || v_n1 || ', ' || coalesce(v_det, 'sin detalle') || '); ';
+  end if;
+
+  -- cerrar: fecha de Lima y notas; el UPDATE anidado de requiere_rotacion NO genera ruido
+  v_r := public.cerrar_asignacion_cuenta_nucleo(v_a.id, '  fin de contrato  ');
+  select count(*) into v_n2 from public.accesos_log where cuenta_id = v_cuenta and accion = 'editado';
+  if v_r.fecha_fin <> v_hoy or v_r.notas <> 'fin de contrato' then fallos := fallos || '[101] el cierre no dejó fecha de Lima y notas; '; end if;
+  if v_n2 <> v_n1 then fallos := fallos || '[101] el aviso de rotación anidado generó una fila editado; '; end if;
+  if not (select requiere_rotacion from public.cuentas where id = v_cuenta) then fallos := fallos || '[101] el cierre no marcó requiere_rotacion; '; end if;
+
+  -- cerrar otra vez: sin cambios (ni fecha ni notas)
+  v_r := public.cerrar_asignacion_cuenta_nucleo(v_a.id, 'otra nota');
+  if v_r.notas <> 'fin de contrato' then fallos := fallos || '[101] cerrar una asignación cerrada pisó las notas; '; end if;
+  begin
+    perform public.cerrar_asignacion_cuenta_nucleo(gen_random_uuid(), null);
+    fallos := fallos || '[101] cerró una asignación inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] cerrar inexistente: error ' || sqlstate || '; '; end if;
+  end;
+
+  -- baja lógica: una fila eliminado
+  update public.cuentas set deleted_at = now() where id = v_cuenta;
+  select count(*) into v_n2 from public.accesos_log where cuenta_id = v_cuenta and accion = 'eliminado';
+  if v_n2 <> 1 then fallos := fallos || '[101] la baja lógica no dejó una fila eliminado (' || v_n2 || '); '; end if;
+
+  -- un UPDATE directo sin cambios relevantes no genera fila
+  update public.cuentas set updated_at = now() where id = v_cuenta;
+  select count(*) into v_n2 from public.accesos_log where cuenta_id = v_cuenta;
+  if v_n2 <> 3 then fallos := fallos || '[101] un UPDATE sin cambios relevantes generó ruido (' || v_n2 || ' filas en total); '; end if;
+
+  -- revocar_cuenta_personal conserva su forma y delega el cierre
+  select prosecdef, position('cerrar_asignacion_cuenta' in prosrc) > 0 into v_sec, v_delega
+    from pg_proc where pronamespace = 'public'::regnamespace and proname = 'revocar_cuenta_personal';
+  if v_sec then fallos := fallos || '[101] revocar_cuenta_personal pasó a SECURITY DEFINER; '; end if;
+  if not v_delega then fallos := fallos || '[101] revocar_cuenta_personal no delega en cerrar_asignacion_cuenta; '; end if;
+  begin
+    perform public.revocar_cuenta_personal(v_a.id);
+    fallos := fallos || '[101] revocar_cuenta_personal no rechazó una llamada sin sesión de staff; ';
+  exception when others then null;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101c]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- Bloque 101-d — [101] mover_equipo y asignar_equipo
+-- ------------------------------------------------------------
+do $$
+declare
+  v_e1 uuid;
+  v_e2 uuid;
+  v_baja uuid;
+  v_u1 uuid;
+  v_u2 uuid;
+  v_a uuid;
+  v_b uuid;
+  v_c uuid;
+  v_m public.asignaciones_equipo;
+  v_x public.asignaciones_equipo;
+  v_old public.asignaciones_equipo;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 101d');
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    select 'Test', 'CI 101d Uno', '98101031', id from public.empresas where nombre = '__TEST_CI__ Empresa 101d' returning id into v_e1;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    select 'Test', 'CI 101d Dos', '98101032', id from public.empresas where nombre = '__TEST_CI__ Empresa 101d' returning id into v_e2;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado)
+    select 'Test', 'CI 101d Baja', '98101033', id, 'Inactivo' from public.empresas where nombre = '__TEST_CI__ Empresa 101d' returning id into v_baja;
+  insert into public.ubicaciones (nombre, tipo) values ('__TEST_CI__ Ubicación 101d 1', 'otro') returning id into v_u1;
+  insert into public.ubicaciones (nombre, tipo) values ('__TEST_CI__ Ubicación 101d 2', 'otro') returning id into v_u2;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_101d__', '__TEST_CI__ Tipo 101d');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_101D_A__', '__test_ci_101d__') returning id into v_a;
+  insert into public.equipos (codigo, tipo_id, estado) values ('__TEST_CI_101D_B__', '__test_ci_101d__', 'en_reparacion') returning id into v_b;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_101D_C__', '__test_ci_101d__') returning id into v_c;
+
+  -- mover: libre a ubicación, y de ubicación a otra (cierra con motivo movimiento)
+  v_m := public.mover_equipo_nucleo(v_a, v_u1);
+  if v_m.ubicacion_id <> v_u1 or v_m.empleado_id is not null or v_m.fecha_fin is not null then fallos := fallos || '[101] mover no creó la asignación a ubicación; '; end if;
+  v_x := public.mover_equipo_nucleo(v_a, v_u2);
+  select * into v_old from public.asignaciones_equipo where id = v_m.id;
+  if v_old.fecha_fin <> v_hoy or v_old.motivo_cierre <> 'movimiento' then fallos := fallos || '[101] mover no cerró la ubicación previa con motivo movimiento; '; end if;
+
+  -- asignar a persona: retira la ubicación con entrega_a_empleado
+  v_m := public.asignar_equipo_nucleo(v_a, v_e1, 'buen' || repeat(' ', 3) || 'estado');
+  select * into v_old from public.asignaciones_equipo where id = v_x.id;
+  if v_old.fecha_fin <> v_hoy or v_old.motivo_cierre <> 'entrega_a_empleado' then fallos := fallos || '[101] asignar no retiró la ubicación con entrega_a_empleado; '; end if;
+  if v_m.empleado_id <> v_e1 or v_m.condicion_entrega <> 'buen estado' or v_m.fecha_inicio <> v_hoy then fallos := fallos || '[101] la asignación a persona es incorrecta; '; end if;
+  if not (select tiene_asignacion_activa from public.equipos where id = v_a) then fallos := fallos || '[101] la disponibilidad derivada no se actualizó; '; end if;
+
+  -- rechazos
+  begin
+    perform public.asignar_equipo_nucleo(v_a, v_e2, null);
+    fallos := fallos || '[101] asignó un equipo que ya tiene portador; ';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%portador activo%' then fallos := fallos || '[101] portador activo: error inesperado ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.mover_equipo_nucleo(v_a, v_u1);
+    fallos := fallos || '[101] movió un equipo que tiene una persona; ';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%lo tiene una persona%' then fallos := fallos || '[101] mover con persona: error inesperado ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.asignar_equipo_nucleo(v_b, v_e1, null);
+    fallos := fallos || '[101] asignó un equipo no operativo; ';
+  exception when others then
+    if sqlerrm not like '%no está operativo%' then fallos := fallos || '[101] no operativo: error inesperado; '; end if;
+  end;
+  begin
+    perform public.mover_equipo_nucleo(v_b, v_u1);
+    fallos := fallos || '[101] movió un equipo no operativo; ';
+  exception when others then null;
+  end;
+  begin
+    perform public.asignar_equipo_nucleo(v_c, v_baja, null);
+    fallos := fallos || '[101] asignó un equipo a un empleado de baja; ';
+  exception when others then
+    if sqlerrm not like '%no está activo%' then fallos := fallos || '[101] empleado de baja: error inesperado; '; end if;
+  end;
+  begin
+    perform public.asignar_equipo_nucleo(gen_random_uuid(), v_e1, null);
+    fallos := fallos || '[101] asignó un equipo inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] equipo inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.mover_equipo_nucleo(v_c, gen_random_uuid());
+    fallos := fallos || '[101] movió a una ubicación inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] ubicación inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  if exists (select 1 from public.asignaciones_equipo where equipo_id = v_c) then fallos := fallos || '[101] un rechazo dejó una asignación a medias; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101d] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101d]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- Bloque 101-e — [101] devolver_equipo
+-- ------------------------------------------------------------
+do $$
+declare
+  v_e1 uuid;
+  v_u1 uuid;
+  v_a uuid;
+  v_b uuid;
+  v_c uuid;
+  v_asig_a public.asignaciones_equipo;
+  v_asig_b public.asignaciones_equipo;
+  v_asig_c public.asignaciones_equipo;
+  v_ub public.asignaciones_equipo;
+  v_eq public.equipos;
+  v_old public.asignaciones_equipo;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 101e');
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    select 'Test', 'CI 101e', '98101041', id from public.empresas where nombre = '__TEST_CI__ Empresa 101e' returning id into v_e1;
+  insert into public.ubicaciones (nombre, tipo) values ('__TEST_CI__ Ubicación 101e', 'otro') returning id into v_u1;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_101e__', '__TEST_CI__ Tipo 101e');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_101E_A__', '__test_ci_101e__') returning id into v_a;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_101E_B__', '__test_ci_101e__') returning id into v_b;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_101E_C__', '__test_ci_101e__') returning id into v_c;
+  v_asig_a := public.asignar_equipo_nucleo(v_a, v_e1, null);
+  v_asig_b := public.asignar_equipo_nucleo(v_b, v_e1, null);
+  v_asig_c := public.asignar_equipo_nucleo(v_c, v_e1, null);
+
+  -- motivo fuera del dominio y asignación inexistente
+  begin
+    perform public.devolver_equipo_nucleo(v_asig_a.id, null, 'movimiento', false);
+    fallos := fallos || '[101] aceptó el motivo movimiento en una devolución; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[101] motivo inválido: error ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.devolver_equipo_nucleo(gen_random_uuid(), null, 'devolucion', false);
+    fallos := fallos || '[101] devolvió una asignación inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] asignación inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  select * into v_old from public.asignaciones_equipo where id = v_asig_a.id;
+  if v_old.fecha_fin is not null then fallos := fallos || '[101] un rechazo cerró la asignación; '; end if;
+
+  -- devolución normal por defecto: queda operativo y libre
+  v_eq := public.devolver_equipo_nucleo(v_asig_a.id, '  sin   daños ');
+  select * into v_old from public.asignaciones_equipo where id = v_asig_a.id;
+  if v_old.fecha_fin <> v_hoy or v_old.motivo_cierre <> 'devolucion' or v_old.condicion_devolucion <> 'sin daños' then fallos := fallos || '[101] la devolución por defecto es incorrecta; '; end if;
+  if v_eq.estado <> 'operativo' or v_eq.tiene_asignacion_activa then fallos := fallos || '[101] el equipo devuelto no quedó operativo y libre; '; end if;
+
+  -- cerrada: no se devuelve dos veces
+  begin
+    perform public.devolver_equipo_nucleo(v_asig_a.id, null, 'devolucion', false);
+    fallos := fallos || '[101] devolvió dos veces la misma asignación; ';
+  exception when others then
+    if sqlerrm not like '%cerrada%' then fallos := fallos || '[101] doble devolución: error inesperado; '; end if;
+  end;
+
+  -- a reparación
+  v_eq := public.devolver_equipo_nucleo(v_asig_b.id, 'no enciende', 'cambio_equipo', true);
+  if v_eq.estado <> 'en_reparacion' then fallos := fallos || '[101] p_a_reparacion no dejó el equipo en reparación; '; end if;
+
+  -- pérdida tiene prioridad sobre reparación
+  v_eq := public.devolver_equipo_nucleo(v_asig_c.id, null, 'perdida', true);
+  if v_eq.estado <> 'perdido' then fallos := fallos || '[101] perdida no dejó el equipo perdido (prioridad sobre reparación); '; end if;
+  if not exists (select 1 from public.eventos_equipo where equipo_id = v_c and evento = 'estado_cambiado') then fallos := fallos || '[101] la pérdida no dejó evento estado_cambiado; '; end if;
+
+  -- una asignación a ubicación no es una devolución de persona
+  v_ub := public.mover_equipo_nucleo(v_a, v_u1);
+  begin
+    perform public.devolver_equipo_nucleo(v_ub.id, null, 'devolucion', false);
+    fallos := fallos || '[101] devolvió una asignación a ubicación; ';
+  exception when others then
+    if sqlerrm not like '%persona%' then fallos := fallos || '[101] ubicación como devolución: error inesperado; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101e] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101e]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- Bloque 101-f — [101] migrar_importacion_equipo (una fila)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_e1 uuid;
+  v_baja uuid;
+  v_u1 uuid;
+  v_f uuid;
+  v_eq public.equipos;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 101f');
+  insert into public.empleados (nombres, apellidos, dni, empresa_id)
+    select 'Test', 'CI 101f', '98101051', id from public.empresas where nombre = '__TEST_CI__ Empresa 101f' returning id into v_e1;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado)
+    select 'Test', 'CI 101f Baja', '98101052', id, 'Inactivo' from public.empresas where nombre = '__TEST_CI__ Empresa 101f' returning id into v_baja;
+  insert into public.ubicaciones (nombre, tipo) values ('__TEST_CI__ Ubicación 101f', 'otro') returning id into v_u1;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_101f__', '__TEST_CI__ Tipo 101f');
+
+  -- a una persona: equipo normalizado, asignado y fila de la bandeja borrada
+  insert into public.equipos_importacion (codigo, tipo_id, marca, modelo, serie, costo, notas, modo, empleado_id)
+    values ('  __test_ci_101f_a__ ', '__test_ci_101f__', 'hp' || repeat(' ', 2) || 'pRObook', ' 450' || repeat(' ', 2) || 'g8 ', '__SERIE_101F_A__', 1500, ' obs ', 'empleado', v_e1)
+    returning id into v_f;
+  v_eq := public.migrar_importacion_equipo_nucleo(v_f);
+  if v_eq.codigo <> '__TEST_CI_101F_A__' or v_eq.marca <> 'Hp Probook' or v_eq.modelo <> '450 g8' or v_eq.notas <> 'obs' then fallos := fallos || '[101] el equipo migrado no se normalizó; '; end if;
+  if v_eq.moneda <> 'PEN' or v_eq.costo <> 1500 or v_eq.estado <> 'operativo' then fallos := fallos || '[101] costo, moneda o estado mal; '; end if;
+  if not exists (select 1 from public.asignaciones_equipo where equipo_id = v_eq.id and empleado_id = v_e1 and fecha_fin is null) then fallos := fallos || '[101] no quedó asignado a la persona; '; end if;
+  if exists (select 1 from public.equipos_importacion where id = v_f) then fallos := fallos || '[101] la fila de la bandeja no se borró; '; end if;
+
+  -- p_datos pisa lo guardado: de disponible a ubicación, sin costo
+  insert into public.equipos_importacion (codigo, tipo_id, modo) values ('__TEST_CI_101F_B__', '__test_ci_101f__', 'disponible') returning id into v_f;
+  v_eq := public.migrar_importacion_equipo_nucleo(v_f,
+    jsonb_build_object('modo', 'ubicacion', 'ubicacion_id', v_u1, 'serie', ' __SERIE_101F_B__ '));
+  if v_eq.serie <> '__SERIE_101F_B__' or v_eq.moneda is not null then fallos := fallos || '[101] p_datos no se aplicó; '; end if;
+  if not exists (select 1 from public.asignaciones_equipo where equipo_id = v_eq.id and ubicacion_id = v_u1 and fecha_fin is null) then fallos := fallos || '[101] no quedó en la ubicación; '; end if;
+
+  -- estado no operativo sin asignación: se cambia al final
+  insert into public.equipos_importacion (codigo, tipo_id, estado, modo) values ('__TEST_CI_101F_C__', '__test_ci_101f__', 'en_reparacion', 'disponible') returning id into v_f;
+  v_eq := public.migrar_importacion_equipo_nucleo(v_f);
+  if v_eq.estado <> 'en_reparacion' then fallos := fallos || '[101] el estado de la bandeja no se aplicó; '; end if;
+
+  -- rechazos: cada uno deja la fila en la bandeja y ningún equipo nuevo
+  insert into public.equipos_importacion (codigo, tipo_id, modo) values ('__TEST_CI_101F_A__', '__test_ci_101f__', 'disponible') returning id into v_f;
+  begin
+    perform public.migrar_importacion_equipo_nucleo(v_f);
+    fallos := fallos || '[101] migró un código duplicado; ';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%Ya existe un equipo con el código%' then fallos := fallos || '[101] código duplicado: error ' || sqlstate || '; '; end if;
+  end;
+  update public.equipos_importacion set codigo = '__TEST_CI_101F_D__', tipo_id = null where id = v_f;
+  begin
+    perform public.migrar_importacion_equipo_nucleo(v_f);
+    fallos := fallos || '[101] migró sin tipo; ';
+  exception when others then
+    if sqlerrm not like '%tipo%' then fallos := fallos || '[101] sin tipo: error inesperado; '; end if;
+  end;
+  update public.equipos_importacion set tipo_id = '__test_ci_101f__', estado = 'de_baja', modo = 'empleado', empleado_id = v_e1 where id = v_f;
+  begin
+    perform public.migrar_importacion_equipo_nucleo(v_f);
+    fallos := fallos || '[101] migró un equipo no operativo asignado; ';
+  exception when others then
+    if sqlerrm not like '%no está operativo%' then fallos := fallos || '[101] no operativo asignado: error inesperado; '; end if;
+  end;
+  update public.equipos_importacion set estado = 'operativo', empleado_id = v_baja where id = v_f;
+  begin
+    perform public.migrar_importacion_equipo_nucleo(v_f);
+    fallos := fallos || '[101] migró asignado a un empleado de baja; ';
+  exception when others then
+    if sqlerrm not like '%no está activo%' then fallos := fallos || '[101] empleado de baja: error inesperado; '; end if;
+  end;
+  begin
+    perform public.migrar_importacion_equipo_nucleo(gen_random_uuid());
+    fallos := fallos || '[101] migró una fila inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] fila inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  select count(*) into v_n from public.equipos where codigo = '__TEST_CI_101F_D__';
+  if v_n <> 0 or not exists (select 1 from public.equipos_importacion where id = v_f) then fallos := fallos || '[101] un rechazo dejó estado a medias; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101f] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101f]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- Bloque 101-g — [101] migrar_importacion_equipos (lote todo o nada)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_f1 uuid;
+  v_f2 uuid;
+  v_f3 uuid;
+  v_f4 uuid;
+  v_r jsonb;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_101g__', '__TEST_CI__ Tipo 101g');
+  insert into public.equipos_importacion (codigo, tipo_id, serie) values ('__TEST_CI_101G_1__', '__test_ci_101g__', '__SERIE_101G_1__') returning id into v_f1;
+  insert into public.equipos_importacion (codigo, tipo_id) values ('__TEST_CI_101G_2__', '__test_ci_101g__') returning id into v_f2;
+  insert into public.equipos_importacion (codigo, tipo_id) values ('__TEST_CI_101G_3__', '__test_ci_101g__') returning id into v_f3;
+  insert into public.equipos_importacion (codigo, tipo_id) values ('__TEST_CI_101G_X__', null) returning id into v_f4;
+
+  -- una bloqueada: no se migra ninguna y se informa cuál y por qué
+  v_r := public.migrar_importacion_equipos_nucleo(array[v_f1, v_f2, v_f3, v_f4]);
+  if (v_r->>'ok')::boolean or (v_r->>'migrados')::int <> 0 or jsonb_array_length(v_r->'bloqueados') <> 1 then fallos := fallos || '[101] el lote con una bloqueada no devolvió ok=false con 1 bloqueado: ' || v_r::text || '; '; end if;
+  if (v_r->'bloqueados'->0->>'id')::uuid <> v_f4 or (v_r->'bloqueados'->0->>'motivo') not like '%tipo%' then fallos := fallos || '[101] la fila bloqueada o su motivo no son los esperados; '; end if;
+  select count(*) into v_n from public.equipos where codigo like '__TEST_CI_101G_%';
+  if v_n <> 0 then fallos := fallos || '[101] un lote bloqueado migró ' || v_n || ' equipo(s); '; end if;
+
+  -- sin la bloqueada: migra las 3 y las borra de la bandeja
+  v_r := public.migrar_importacion_equipos_nucleo(array[v_f1, v_f2, v_f3, v_f1]);
+  if not (v_r->>'ok')::boolean or (v_r->>'migrados')::int <> 3 then fallos := fallos || '[101] el lote válido no migró 3: ' || v_r::text || '; '; end if;
+  select count(*) into v_n from public.equipos where codigo like '__TEST_CI_101G_%';
+  if v_n <> 3 then fallos := fallos || '[101] el lote válido creó ' || v_n || ' equipos; '; end if;
+  if exists (select 1 from public.equipos_importacion where id in (v_f1, v_f2, v_f3)) then fallos := fallos || '[101] el lote no borró las filas migradas; '; end if;
+
+  -- ya migradas: bloqueadas por no estar en la bandeja
+  v_r := public.migrar_importacion_equipos_nucleo(array[v_f1]);
+  if (v_r->>'ok')::boolean or (v_r->'bloqueados'->0->>'motivo') not like '%bandeja%' then fallos := fallos || '[101] una fila ya migrada no quedó bloqueada: ' || v_r::text || '; '; end if;
+
+  -- repetidos dentro del lote: se bloquean los dos
+  insert into public.equipos_importacion (codigo, tipo_id) values ('__TEST_CI_101G_R1__', '__test_ci_101g__') returning id into v_f1;
+  insert into public.equipos_importacion (codigo, tipo_id) values ('__test_ci_101g_r1__', '__test_ci_101g__') returning id into v_f2;
+  v_r := public.migrar_importacion_equipos_nucleo(array[v_f1, v_f2]);
+  if (v_r->>'ok')::boolean or jsonb_array_length(v_r->'bloqueados') <> 2 or (v_r->'bloqueados'->0->>'motivo') not like '%repetido%' then fallos := fallos || '[101] los códigos repetidos del lote no se bloquearon: ' || v_r::text || '; '; end if;
+
+  -- vacío y tope de 100
+  v_r := public.migrar_importacion_equipos_nucleo('{}'::uuid[]);
+  if not (v_r->>'ok')::boolean or (v_r->>'migrados')::int <> 0 then fallos := fallos || '[101] el lote vacío no devolvió ok con 0; '; end if;
+  begin
+    perform public.migrar_importacion_equipos_nucleo(array(select gen_random_uuid() from generate_series(1, 101)));
+    fallos := fallos || '[101] aceptó más de 100 filas por lote; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[101] tope de lote: error ' || sqlstate || '; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101g] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101g]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- Bloque 101-h — [101] crear_licencia_con_cuenta
+-- ------------------------------------------------------------
+do $$
+declare
+  v_l public.licencias;
+  v_c public.cuentas;
+  v_n int;
+  fallos text := '';
+begin
+  insert into public.plataformas (id, nombre) values ('__test_ci_101h__', '__TEST_CI__ Plataforma 101h');
+
+  -- licencia con correo nuevo: normaliza como licenciaToRow y deja la cuenta sin asignar
+  v_l := public.crear_licencia_con_cuenta_nucleo(
+    '{"software":"  __TEST_CI__ Lic 101h ","tipo":"perpetua","cantidad":2,"fecha_vencimiento":"2030-01-01","renovacion_meses":12,"costo":100,"clave":"enc2:AAAA:BBBB"}'::jsonb,
+    '{"plataforma_id":"__test_ci_101h__","usuario":"__TEST_CI_101H__@Correo.test","password":"enc2:CCCC:DDDD"}'::jsonb);
+  select * into v_c from public.cuentas where id = v_l.cuenta_id;
+  if v_l.software <> '__TEST_CI__ Lic 101h' or v_l.fecha_vencimiento is not null or v_l.renovacion_meses is not null or v_l.moneda <> 'PEN' or v_l.cantidad <> 2 then fallos := fallos || '[101] la licencia no se normalizó (perpetua, moneda, cantidad); '; end if;
+  if v_c.usuario <> '__test_ci_101h__@correo.test' or v_c.tipo_cuenta <> 'compartida' or v_c.password <> 'enc2:CCCC:DDDD' then fallos := fallos || '[101] la cuenta nueva es incorrecta; '; end if;
+  if exists (select 1 from public.asignaciones_cuenta where cuenta_id = v_c.id) then fallos := fallos || '[101] la cuenta del login quedó asignada; '; end if;
+
+  -- sin cuenta nueva y con una existente
+  v_l := public.crear_licencia_con_cuenta_nucleo(jsonb_build_object('software', '__TEST_CI__ Lic 101h b', 'cuenta_id', v_c.id));
+  if v_l.cuenta_id <> v_c.id or v_l.tipo <> 'suscripcion' or v_l.cantidad <> 1 then fallos := fallos || '[101] la licencia con cuenta existente es incorrecta; '; end if;
+
+  -- rechazos: ninguno deja una cuenta suelta (todo o nada)
+  begin
+    perform public.crear_licencia_con_cuenta_nucleo('{"software":"x"}'::jsonb,
+      '{"plataforma_id":"__test_ci_101h__","usuario":"__test_ci_101h_x__@correo.test","password":"en claro"}'::jsonb);
+    fallos := fallos || '[101] aceptó una contraseña de cuenta sin cifrar; ';
+  exception when others then null;
+  end;
+  begin
+    perform public.crear_licencia_con_cuenta_nucleo('{"software":"x","clave":"en claro"}'::jsonb,
+      '{"plataforma_id":"__test_ci_101h__","usuario":"__test_ci_101h_y__@correo.test"}'::jsonb);
+    fallos := fallos || '[101] aceptó una clave de licencia sin cifrar; ';
+  exception when others then null;
+  end;
+  begin
+    perform public.crear_licencia_con_cuenta_nucleo(jsonb_build_object('software', 'x', 'cuenta_id', v_c.id),
+      '{"plataforma_id":"__test_ci_101h__","usuario":"__test_ci_101h_z__@correo.test"}'::jsonb);
+    fallos := fallos || '[101] aceptó cuenta existente y nueva a la vez; ';
+  exception when others then null;
+  end;
+  begin
+    perform public.crear_licencia_con_cuenta_nucleo('{"software":"x"}'::jsonb,
+      '{"plataforma_id":"__test_ci_101h__","usuario":"__test_ci_101h_w__@correo.test","tipo_cuenta":"personal"}'::jsonb);
+    fallos := fallos || '[101] aceptó una cuenta personal como login; ';
+  exception when others then null;
+  end;
+  begin
+    perform public.crear_licencia_con_cuenta_nucleo('{"software":"  "}'::jsonb);
+    fallos := fallos || '[101] aceptó una licencia sin software; ';
+  exception when others then null;
+  end;
+  begin
+    perform public.crear_licencia_con_cuenta_nucleo(jsonb_build_object('software', 'x', 'cuenta_id', gen_random_uuid()));
+    fallos := fallos || '[101] aceptó una cuenta inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] cuenta inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  select count(*) into v_n from public.cuentas where usuario like '__test_ci_101h_%' and usuario <> '__test_ci_101h__@correo.test';
+  if v_n <> 0 then fallos := fallos || '[101] un rechazo dejó ' || v_n || ' cuenta(s) suelta(s); '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101h] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101h]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- Bloque 101-i — [101] verificar_equipo, CHECK de eventos_equipo, rechazo
+-- 42501 de las 10 RPC públicas sin sesión y EXECUTE de núcleos/apoyo
+-- ------------------------------------------------------------
+do $$
+declare
+  v_ub uuid;
+  v_eq uuid;
+  v_ev public.eventos_equipo;
+  v_n int;
+  v_f text;
+  v_rpc text[] := array[
+    'crear_cuenta_asignada(''x'', ''y'', ''00000000-0000-4000-8000-000000000001'')',
+    'traspasar_cuenta(''00000000-0000-4000-8000-000000000001'', ''00000000-0000-4000-8000-000000000002'')',
+    'cerrar_asignacion_cuenta(''00000000-0000-4000-8000-000000000001'')',
+    'asignar_equipo(''00000000-0000-4000-8000-000000000001'', ''00000000-0000-4000-8000-000000000002'')',
+    'devolver_equipo(''00000000-0000-4000-8000-000000000001'')',
+    'mover_equipo(''00000000-0000-4000-8000-000000000001'', ''00000000-0000-4000-8000-000000000002'')',
+    'migrar_importacion_equipo(''00000000-0000-4000-8000-000000000001'')',
+    'migrar_importacion_equipos(array[''00000000-0000-4000-8000-000000000001''::uuid])',
+    'crear_licencia_con_cuenta(''{"software":"x"}''::jsonb)',
+    'verificar_equipo(''00000000-0000-4000-8000-000000000001'')'
+  ];
+  fallos text := '';
+begin
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_101i__', '__TEST_CI__ Tipo 101i');
+  insert into public.ubicaciones (nombre, tipo) values ('__TEST_CI__ Ubicación 101i', 'otro') returning id into v_ub;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_101I__', '__test_ci_101i__') returning id into v_eq;
+
+  -- verificar_equipo: solo deja el evento, no mueve ni cambia nada
+  v_ev := public.verificar_equipo_nucleo(v_eq, v_ub, '  todo bien ');
+  if v_ev.evento <> 'verificado' or v_ev.equipo_id <> v_eq or v_ev.detalle <> 'Verificado físicamente en __TEST_CI__ Ubicación 101i — todo bien' then fallos := fallos || '[101] el evento verificado es incorrecto: ' || coalesce(v_ev.detalle, 'sin detalle') || '; '; end if;
+  v_ev := public.verificar_equipo_nucleo(v_eq);
+  if v_ev.detalle <> 'Verificado físicamente' then fallos := fallos || '[101] verificar sin ubicación ni nota mal; '; end if;
+  if exists (select 1 from public.asignaciones_equipo where equipo_id = v_eq) or (select estado from public.equipos where id = v_eq) <> 'operativo' then fallos := fallos || '[101] verificar modificó el equipo; '; end if;
+  begin
+    perform public.verificar_equipo_nucleo(gen_random_uuid());
+    fallos := fallos || '[101] verificó un equipo inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] verificar inexistente: error ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.verificar_equipo_nucleo(v_eq, gen_random_uuid());
+    fallos := fallos || '[101] verificó con una ubicación inexistente; ';
+  exception when others then
+    if sqlstate <> 'P0002' then fallos := fallos || '[101] ubicación inexistente: error ' || sqlstate || '; '; end if;
+  end;
+
+  -- CHECK de eventos_equipo: los nuevos y los viejos pasan, uno inventado no
+  foreach v_f in array array['acta_adjuntada', 'recepcion_confirmada', 'verificado', 'registrado', 'asignado', 'devuelto', 'estado_cambiado'] loop
+    begin
+      insert into public.eventos_equipo (equipo_id, evento) values (v_eq, v_f);
+    exception when others then
+      fallos := fallos || '[101] eventos_equipo rechazó ' || v_f || '; ';
+    end;
+  end loop;
+  begin
+    insert into public.eventos_equipo (equipo_id, evento) values (v_eq, 'inventado');
+    fallos := fallos || '[101] eventos_equipo aceptó un evento inventado; ';
+  exception when check_violation then null;
+  end;
+
+  -- las 10 RPC públicas rechazan sin sesión con 42501
+  foreach v_f in array v_rpc loop
+    begin
+      execute 'select public.' || v_f;
+      fallos := fallos || '[101] ' || split_part(v_f, '(', 1) || ' no rechazó sin sesión; ';
+    exception when others then
+      if sqlstate <> '42501' then fallos := fallos || '[101] ' || split_part(v_f, '(', 1) || ' lanzó ' || sqlstate || ' en vez de 42501; '; end if;
+    end;
+  end loop;
+
+  -- EXECUTE: las 10 públicas a authenticated; ningún núcleo ni función de apoyo
+  select count(*) into v_n from pg_proc p
+   where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
+     and p.proname in ('crear_cuenta_asignada','traspasar_cuenta','cerrar_asignacion_cuenta','asignar_equipo','devolver_equipo','mover_equipo','migrar_importacion_equipo','migrar_importacion_equipos','crear_licencia_con_cuenta','verificar_equipo');
+  if v_n <> 10 then fallos := fallos || '[101] solo ' || v_n || ' de 10 RPC públicas tienen EXECUTE para authenticated; '; end if;
+  select count(*) into v_n from pg_proc p
+   where p.pronamespace = 'public'::regnamespace
+     and (has_function_privilege('authenticated', p.oid, 'execute') or has_function_privilege('anon', p.oid, 'execute'))
+     and (p.proname like '%\_nucleo' or p.proname in ('texto_limpio','cuenta_insertar_validada','importacion_motivo_bloqueo','cuentas_log_evento'));
+  if v_n <> 0 then fallos := fallos || '[101] ' || v_n || ' núcleo(s) o función(es) de apoyo expuestas a authenticated/anon; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [101i] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [101i]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 103-a: config_parametros — semillas, validación del valor, privilegios,
+-- policies y lectura (parametro_entero, contacto_ti_publico)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_n int;
+  r record;
+  fallos text := '';
+begin
+  select count(*) into v_n from public.config_parametros
+   where clave in ('dias_ventana_alta', 'dias_por_vencer_licencia', 'dias_por_vencer_garantia',
+                   'umbral_recurrencia_tickets', 'dias_ticket_viejo', 'dias_autocierre_resuelto',
+                   'max_reavisos', 'dias_acta_sin_adjuntar', 'dias_verificacion_equipo', 'contacto_ti');
+  if v_n <> 10 then fallos := fallos || '[103] faltan parametros sembrados (' || v_n || ' de 10); '; end if;
+  if public.parametro_entero('clave_que_no_existe', 7) <> 7 then fallos := fallos || '[103] parametro_entero no devolvio el defecto; '; end if;
+  if public.parametro_entero('umbral_recurrencia_tickets', 0, 'n') < 1 then fallos := fallos || '[103] parametro_entero no leyo el campo n del umbral; '; end if;
+
+  -- el valor solo cambia dentro del mismo tipo y con rango sensato
+  for r in select * from (values
+      ('dias_ventana_alta', '"treinta"', '%de tipo%'),
+      ('dias_ventana_alta', '-5', '%entero mayor o igual a 0%'),
+      ('dias_ventana_alta', '2.5', '%entero mayor o igual a 0%'),
+      ('umbral_recurrencia_tickets', '{"n":0,"dias":30}', '%umbral de recurrencia%'),
+      ('contacto_ti', '{"otro":"x"}', '%contacto de TI%')) as t(clave, valor, patron)
+  loop
+    begin
+      update public.config_parametros set valor = r.valor::jsonb where clave = r.clave;
+      fallos := fallos || '[103] acepto ' || r.clave || ' = ' || r.valor || '; ';
+    exception when others then
+      if sqlerrm not like r.patron then
+        fallos := fallos || '[103] ' || r.clave || ' se rechazo por otro motivo: ' || sqlerrm || '; ';
+      end if;
+    end;
+  end loop;
+  begin
+    update public.config_parametros set clave = 'otra_clave' where clave = 'max_reavisos';
+    fallos := fallos || '[103] permitio cambiar la clave de un parametro; ';
+  exception when others then
+    if sqlerrm not like '%clave%' then fallos := fallos || '[103] el cambio de clave se rechazo por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  -- cambios validos: quedan y se leen (updated_by lo fija auth.uid(): no se prueba aqui, el CLI no simula sesion)
+  update public.config_parametros set valor = '45'::jsonb where clave = 'dias_ventana_alta';
+  update public.config_parametros set valor = '{"n":4,"dias":10}'::jsonb where clave = 'umbral_recurrencia_tickets';
+  update public.config_parametros set valor = '{"texto":"Anexo 123","correo":"ti@example.test","telefono":""}'::jsonb where clave = 'contacto_ti';
+  if public.parametro_entero('dias_ventana_alta', 0) <> 45 then fallos := fallos || '[103] parametro_entero no leyo el valor nuevo; '; end if;
+  if public.parametro_entero('umbral_recurrencia_tickets', 0, 'n') <> 4 or public.parametro_entero('umbral_recurrencia_tickets', 0, 'dias') <> 10 then
+    fallos := fallos || '[103] parametro_entero no leyo n/dias del umbral; ';
+  end if;
+  if public.contacto_ti_publico() ->> 'correo' is distinct from 'ti@example.test' or not (public.contacto_ti_publico() ?& array['texto', 'correo', 'telefono']) then
+    fallos := fallos || '[103] contacto_ti_publico no devolvio el contacto; ';
+  end if;
+
+  -- privilegios y policies: staff lee, solo el jefe edita, nadie inserta ni borra
+  if not has_table_privilege('authenticated', 'public.config_parametros', 'select')
+     or has_table_privilege('authenticated', 'public.config_parametros', 'insert')
+     or has_table_privilege('authenticated', 'public.config_parametros', 'delete')
+     or has_table_privilege('anon', 'public.config_parametros', 'select')
+     or not has_column_privilege('authenticated', 'public.config_parametros', 'valor', 'update')
+     or has_column_privilege('authenticated', 'public.config_parametros', 'clave', 'update') then
+    fallos := fallos || '[103] privilegios de config_parametros incorrectos; ';
+  end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'config_parametros'
+    and ((cmd = 'SELECT' and qual like '%es_staff%') or (cmd = 'UPDATE' and qual like '%es_jefe%' and with_check like '%es_jefe%'));
+  if v_n <> 2 then fallos := fallos || '[103] faltan las policies SELECT es_staff / UPDATE es_jefe; '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'config_parametros' and cmd in ('INSERT', 'DELETE', 'ALL');
+  if v_n <> 0 then fallos := fallos || '[103] config_parametros tiene policies de INSERT/DELETE; '; end if;
+  if not has_function_privilege('anon', 'public.contacto_ti_publico()', 'execute')
+     or has_function_privilege('anon', 'public.dashboard_resumen()', 'execute')
+     or not has_function_privilege('authenticated', 'public.dashboard_resumen()', 'execute')
+     or has_function_privilege('authenticated', 'public.dashboard_resumen_de(uuid)', 'execute')
+     or not has_function_privilege('project_admin', 'public.dashboard_resumen_de(uuid)', 'execute') then
+    fallos := fallos || '[103] EXECUTE de contacto_ti_publico / dashboard_resumen(_de) incorrecto; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [103a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [103a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 103-b: dashboard_resumen — guard 42501, forma completa para el JEFE y
+-- secciones en null (no error) para un ASISTENTE con solo el módulo tickets
+-- ------------------------------------------------------------
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  r jsonb;
+  k text;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_103b_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_103b_asis@example.test') returning id into v_asis;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  update public.staff set activo = true where user_id = v_asis;
+  delete from public.staff_modulos_permisos where staff_user_id = v_asis and modulo <> 'tickets';
+
+  -- sin sesión (usuario NULL) y con un usuario que no es staff: 42501
+  begin
+    perform public.dashboard_resumen_de(null);
+    fallos := fallos || '[103] dashboard_resumen respondio sin sesion; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[103] sin sesion lanzo ' || sqlstate || ' en vez de 42501; '; end if;
+  end;
+  begin
+    perform public.dashboard_resumen_de(gen_random_uuid());
+    fallos := fallos || '[103] dashboard_resumen respondio a un usuario sin staff; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[103] usuario sin staff lanzo ' || sqlstate || ' en vez de 42501; '; end if;
+  end;
+
+  -- ASISTENTE solo con tickets: sin permiso = null, y no cuenta como error
+  r := public.dashboard_resumen_de(v_asis);
+  if not (r ?& array['generado_en', 'kpis', 'tickets', 'rotaciones_pendientes', 'cuentas_sin_password', 'equipos_sin_devolver',
+                     'licencias_por_vencer', 'garantias_por_vencer', 'altas_incompletas', 'problemas', 'encuestas_sin_responder',
+                     'custodia_hoy', 'actas_pendientes', 'solicitudes_abiertas', 'errores']) then
+    fallos := fallos || '[103] faltan claves en el resumen del ASISTENTE; ';
+  end if;
+  if jsonb_typeof(r -> 'tickets') <> 'object' or jsonb_typeof(r -> 'encuestas_sin_responder') <> 'number' then
+    fallos := fallos || '[103] el ASISTENTE no recibio la seccion de su modulo tickets; ';
+  end if;
+  foreach k in array array['rotaciones_pendientes', 'cuentas_sin_password', 'equipos_sin_devolver', 'licencias_por_vencer',
+                           'garantias_por_vencer', 'altas_incompletas', 'problemas', 'custodia_hoy', 'actas_pendientes'] loop
+    if jsonb_typeof(r -> k) <> 'null' then fallos := fallos || '[103] ' || k || ' no es null sin el modulo; '; end if;
+  end loop;
+  if jsonb_typeof(r -> 'kpis' -> 'tickets_abiertos') <> 'number' or jsonb_typeof(r -> 'kpis' -> 'equipos_total') <> 'null'
+     or jsonb_typeof(r -> 'kpis' -> 'empleados_activos') <> 'null' then
+    fallos := fallos || '[103] los kpis no se filtran por modulo; ';
+  end if;
+  if r -> 'errores' <> '[]'::jsonb then fallos := fallos || '[103] una seccion sin permiso conto como error: ' || (r ->> 'errores') || '; '; end if;
+
+  -- JEFE: todas las secciones, sin errores
+  r := public.dashboard_resumen_de(v_jefe);
+  foreach k in array array['kpis', 'tickets', 'problemas'] loop
+    if jsonb_typeof(r -> k) <> 'object' then fallos := fallos || '[103] ' || k || ' no es un objeto para el JEFE; '; end if;
+  end loop;
+  foreach k in array array['rotaciones_pendientes', 'cuentas_sin_password', 'equipos_sin_devolver', 'licencias_por_vencer',
+                           'garantias_por_vencer', 'altas_incompletas', 'custodia_hoy', 'solicitudes_abiertas'] loop
+    if jsonb_typeof(r -> k) <> 'array' then fallos := fallos || '[103] ' || k || ' no es un arreglo para el JEFE; '; end if;
+  end loop;
+  if jsonb_typeof(r -> 'actas_pendientes') not in ('array', 'null') then fallos := fallos || '[103] actas_pendientes invalida; '; end if;
+  if not ((r -> 'tickets') ?& array['sin_asignar', 'sin_vincular', 'viejos', 'mios', 'mios_total', 'vigentes', 'vencidos', 'por_vencer'])
+     or not ((r -> 'problemas') ?& array['acciones_vencidas', 'recurrentes'])
+     or not ((r -> 'kpis') ?& array['empleados_activos', 'empleados_total', 'cuentas_asignadas', 'correos_compartidos',
+                                    'cuentas_por_rotar', 'licencias_por_vencer', 'equipos_total', 'tickets_abiertos']) then
+    fallos := fallos || '[103] faltan claves anidadas en el resumen del JEFE; ';
+  end if;
+  if r -> 'errores' <> '[]'::jsonb then fallos := fallos || '[103] el JEFE recibio errores: ' || (r ->> 'errores') || '; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [103b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [103b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 103-c: v_licencias_cupo (cuenta vs asignación directa) y su reflejo en
+-- dashboard_resumen (licencias por vencer, cuentas sin contraseña)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_jefe uuid;
+  v_empresa uuid;
+  v_e1 uuid;
+  v_e2 uuid;
+  v_cuenta uuid;
+  v_l1 uuid;
+  v_l2 uuid;
+  v_a2 uuid;
+  v_e3 uuid;
+  v_eq uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  r jsonb;
+  c record;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_103c_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 103c') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 103c Uno', '99010301', v_empresa) returning id into v_e1;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 103c Dos', '99010302', v_empresa) returning id into v_e2;
+  insert into public.plataformas (id, nombre) values ('__test_ci_103__', '__TEST_CI__ Plataforma 103');
+  insert into public.cuentas (plataforma_id, usuario, tipo_cuenta) values ('__test_ci_103__', '__test_ci_103c__@correo.test', 'compartida') returning id into v_cuenta;
+
+  -- L1: login por la cuenta (cantidad 2, vence en 5 dias); L2: sin cuenta (cantidad 3, dos directas)
+  insert into public.licencias (software, cantidad, cuenta_id, fecha_vencimiento) values ('__TEST_CI__ Lic 103c uno', 2, v_cuenta, v_hoy + 5) returning id into v_l1;
+  insert into public.licencias (software, cantidad) values ('__TEST_CI__ Lic 103c dos', 3) returning id into v_l2;
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_cuenta, v_e1);
+  insert into public.asignaciones_licencia (licencia_id, empleado_id) values (v_l2, v_e1);
+  insert into public.asignaciones_licencia (licencia_id, empleado_id) values (v_l2, v_e2) returning id into v_a2;
+
+  select * into c from public.v_licencias_cupo where licencia_id = v_l1;
+  if c.origen is distinct from 'cuenta' or c.usados is distinct from 1 or c.libres is distinct from 1 or c.usados_cuenta is distinct from 1 or c.usados_directos is distinct from 0 then
+    fallos := fallos || '[103] cupo de la licencia con cuenta incorrecto; ';
+  end if;
+  select * into c from public.v_licencias_cupo where licencia_id = v_l2;
+  if c.origen is distinct from 'licencia' or c.usados is distinct from 2 or c.libres is distinct from 1 or c.cantidad is distinct from 3 then
+    fallos := fallos || '[103] cupo de la licencia directa incorrecto; ';
+  end if;
+  update public.asignaciones_licencia set fecha_fin = v_hoy where id = v_a2;
+  select * into c from public.v_licencias_cupo where licencia_id = v_l2;
+  if c.usados is distinct from 1 or c.libres is distinct from 2 then fallos := fallos || '[103] cerrar una asignacion no libero el asiento; '; end if;
+  update public.licencias set deleted_at = now() where id = v_l2;
+  if exists (select 1 from public.v_licencias_cupo where licencia_id = v_l2) then fallos := fallos || '[103] la vista muestra una licencia eliminada; '; end if;
+  if not (select reloptions @> array['security_invoker=true'] from pg_class where oid = 'public.v_licencias_cupo'::regclass) then
+    fallos := fallos || '[103] v_licencias_cupo no es security_invoker; ';
+  end if;
+
+  -- reflejo en el Inicio
+  r := public.dashboard_resumen_de(v_jefe);
+  if not (r -> 'licencias_por_vencer' @> jsonb_build_array(jsonb_build_object('licencia_id', v_l1, 'vencida', false, 'cantidad', 2))) then
+    fallos := fallos || '[103] licencias_por_vencer no trae la licencia que vence en 5 dias; ';
+  end if;
+  if not (r -> 'cuentas_sin_password' @> jsonb_build_array(jsonb_build_object('cuenta_id', v_cuenta, 'tipo_cuenta', 'compartida',
+        'titulares', jsonb_build_array(jsonb_build_object('id', v_e1))))) then
+    fallos := fallos || '[103] cuentas_sin_password no trae la cuenta sin contrasena con su titular; ';
+  end if;
+  update public.licencias set fecha_vencimiento = v_hoy - 1 where id = v_l1;
+  r := public.dashboard_resumen_de(v_jefe);
+  if not (r -> 'licencias_por_vencer' @> jsonb_build_array(jsonb_build_object('licencia_id', v_l1, 'vencida', true))) then
+    fallos := fallos || '[103] una licencia ya vencida no figura como vencida; ';
+  end if;
+
+  -- equipos: equipo_id en custodia_hoy y empleado_baja_at en equipos_sin_devolver
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, estado) values ('Test', 'CI 103c Baja', '99010303', v_empresa, 'Inactivo') returning id into v_e3;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_103c__', '__TEST_CI__ Tipo 103c');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_103C__', '__test_ci_103c__') returning id into v_eq;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_eq, v_e3);
+  r := public.dashboard_resumen_de(v_jefe);
+  if not (r -> 'custodia_hoy' @> jsonb_build_array(jsonb_build_object('equipo_id', v_eq, 'evento', 'entregado', 'equipo_codigo', '__TEST_CI_103C__'))) then
+    fallos := fallos || '[103] custodia_hoy no trae equipo_id; ';
+  end if;
+  if not (r -> 'equipos_sin_devolver' @> jsonb_build_array(jsonb_build_object('empleado_id', v_e3, 'codigo', '__TEST_CI_103C__')))
+     or jsonb_typeof((select x -> 'empleado_baja_at' from jsonb_array_elements(r -> 'equipos_sin_devolver') x where x ->> 'empleado_id' = v_e3::text)) is distinct from 'string' then
+    fallos := fallos || '[103] equipos_sin_devolver no trae empleado_baja_at; ';
+  end if;
+
+  if r -> 'errores' <> '[]'::jsonb then fallos := fallos || '[103] el resumen trajo errores: ' || (r ->> 'errores') || '; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [103c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [103c]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 103-d: tickets en dashboard_resumen (sin asignar, sin vincular, viejos,
+-- mios por prioridad) y recurrencia de categorias / acciones vencidas
+-- ------------------------------------------------------------
+do $$
+declare
+  v_jefe uuid;
+  v_t1 uuid;
+  v_t2 uuid;
+  v_t3 uuid;
+  v_t4 uuid;
+  v_prob uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  r jsonb;
+  c record;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_103d_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  insert into public.categorias_ticket (id, nombre) values ('__test_ci_103d__', '__TEST_CI__ Categoria 103d');
+
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, categoria_id, vinculado, created_at)
+    values ('__TESTCI-103D1__', 'testci103dtoken0000001', '__TEST_CI__ T1 viejo sin asignar', 'd', 'abierto', '__test_ci_103d__', false, now() - interval '10 days')
+    returning id into v_t1;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, categoria_id, asignado_a, prioridad)
+    values ('__TESTCI-103D2__', 'testci103dtoken0000002', '__TEST_CI__ T2 baja mio', 'd', 'abierto', '__test_ci_103d__', v_jefe, 'baja')
+    returning id into v_t2;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, categoria_id, asignado_a, prioridad)
+    values ('__TESTCI-103D3__', 'testci103dtoken0000003', '__TEST_CI__ T3 urgente mio', 'd', 'abierto', '__test_ci_103d__', v_jefe, 'urgente')
+    returning id into v_t3;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, asignado_a, prioridad)
+    values ('__TESTCI-103D4__', 'testci103dtoken0000004', '__TEST_CI__ T4 cerrado mio', 'd', 'cerrado', v_jefe, 'alta')
+    returning id into v_t4;
+
+  r := public.dashboard_resumen_de(v_jefe);
+  if not (r -> 'tickets' -> 'sin_asignar' @> jsonb_build_array(jsonb_build_object('ticket_id', v_t1, 'codigo', '__TESTCI-103D1__')))
+     or (r -> 'tickets' -> 'sin_asignar' @> jsonb_build_array(jsonb_build_object('ticket_id', v_t2))) then
+    fallos := fallos || '[103] sin_asignar incorrecto; ';
+  end if;
+  if not (r -> 'tickets' -> 'sin_vincular' @> jsonb_build_array(jsonb_build_object('ticket_id', v_t1)))
+     or (r -> 'tickets' -> 'sin_vincular' @> jsonb_build_array(jsonb_build_object('ticket_id', v_t2))) then
+    fallos := fallos || '[103] sin_vincular incorrecto; ';
+  end if;
+  if not (r -> 'tickets' -> 'viejos' @> jsonb_build_array(jsonb_build_object('ticket_id', v_t1)))
+     or (r -> 'tickets' -> 'viejos' @> jsonb_build_array(jsonb_build_object('ticket_id', v_t3))) then
+    fallos := fallos || '[103] viejos incorrecto (10 dias si, recien creado no); ';
+  end if;
+  if (r -> 'tickets' -> 'mios' -> 0 ->> 'codigo') is distinct from '__TESTCI-103D3__'
+     or (r -> 'tickets' -> 'mios' -> 1 ->> 'codigo') is distinct from '__TESTCI-103D2__'
+     or (r -> 'tickets' ->> 'mios_total')::int <> 2 or jsonb_array_length(r -> 'tickets' -> 'mios') <> 2 then
+    fallos := fallos || '[103] mios no ordena por prioridad (urgente antes que baja) o cuenta mal; ';
+  end if;
+  if r -> 'tickets' -> 'mios' @> jsonb_build_array(jsonb_build_object('id', v_t4)) then
+    fallos := fallos || '[103] un ticket cerrado figura en mios; ';
+  end if;
+
+  -- recurrencia: 3 tickets sin problema -> la categoria aparece; vincular uno -> deja de aparecer
+  select * into c from public.v_categorias_recurrentes where categoria_id = '__test_ci_103d__';
+  if c.total is distinct from 3 or jsonb_array_length(c.tickets) is distinct from 3 or c.categoria_nombre is distinct from '__TEST_CI__ Categoria 103d' then
+    fallos := fallos || '[103] v_categorias_recurrentes no agrupo los 3 tickets; ';
+  end if;
+  if not (r -> 'problemas' -> 'recurrentes' @> jsonb_build_array(jsonb_build_object('categoria_id', '__test_ci_103d__', 'total', 3))) then
+    fallos := fallos || '[103] problemas.recurrentes no trae la categoria; ';
+  end if;
+  insert into public.problemas (titulo, descripcion) values ('__TEST_CI__ Problema 103d', 'd') returning id into v_prob;
+  insert into public.problema_tickets (problema_id, ticket_id) values (v_prob, v_t1);
+  if exists (select 1 from public.v_categorias_recurrentes where categoria_id = '__test_ci_103d__') then
+    fallos := fallos || '[103] la categoria sigue siendo recurrente con 2 tickets sin problema; ';
+  end if;
+
+  -- acciones correctivas vencidas
+  insert into public.acciones_correctivas (problema_id, descripcion, fecha_limite) values (v_prob, '__TEST_CI__ accion vencida', v_hoy - 2);
+  r := public.dashboard_resumen_de(v_jefe);
+  if not (r -> 'problemas' -> 'acciones_vencidas' @> jsonb_build_array(jsonb_build_object('problema_id', v_prob,
+        'problema_titulo', '__TEST_CI__ Problema 103d', 'descripcion', '__TEST_CI__ accion vencida'))) then
+    fallos := fallos || '[103] acciones_vencidas no trae la accion con fecha_limite pasada; ';
+  end if;
+
+  if r -> 'errores' <> '[]'::jsonb then fallos := fallos || '[103] el resumen trajo errores: ' || (r ->> 'errores') || '; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [103d] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [103d]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 110-a: actas — registrar_acta (reemplazo logico atomico), unicidad,
+-- reglas por tipo de asignacion y evento acta_adjuntada
+-- ------------------------------------------------------------
+do $$
+declare
+  v_user uuid;
+  v_empresa uuid;
+  v_emp uuid;
+  v_equipo uuid;
+  v_equipo2 uuid;
+  v_ubic uuid;
+  v_asig uuid;
+  v_asig_ub uuid;
+  v_a1 public.actas;
+  v_a2 public.actas;
+  v_n int;
+  v_sha text := repeat('a', 64);
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_110a@example.test') returning id into v_user;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 110a') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 110a', '99011001', v_empresa) returning id into v_emp;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_110a__', '__TEST_CI__ Tipo 110a');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_110A__', '__test_ci_110a__') returning id into v_equipo;
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_110B__', '__test_ci_110a__') returning id into v_equipo2;
+  insert into public.ubicaciones (nombre) values ('__TEST_CI__ Ubicacion 110a') returning id into v_ubic;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_equipo, v_emp) returning id into v_asig;
+  insert into public.asignaciones_equipo (equipo_id, ubicacion_id) values (v_equipo2, v_ubic) returning id into v_asig_ub;
+
+  -- alta: empleado y equipo salen de la asignacion; el evento queda en la hoja de vida
+  v_a1 := public.registrar_acta(v_asig, 'entrega', 'actas/x/a-entrega.pdf', 1000, v_sha, null, v_user);
+  if v_a1.empleado_id is distinct from v_emp or v_a1.equipo_id is distinct from v_equipo or v_a1.deleted_at is not null then
+    fallos := fallos || '[110] registrar_acta no derivo empleado/equipo de la asignacion; ';
+  end if;
+  select count(*) into v_n from public.eventos_equipo where equipo_id = v_equipo and evento = 'acta_adjuntada' and user_id = v_user;
+  if v_n <> 1 then fallos := fallos || '[110] el alta no registro el evento acta_adjuntada del autor; '; end if;
+
+  -- reemplazo: la vigente se retira y la nueva queda; siempre una sola vigente
+  v_a2 := public.registrar_acta(v_asig, 'entrega', 'actas/x/a-entrega-2.pdf', 2000, v_sha, null, v_user);
+  select count(*) into v_n from public.actas where asignacion_equipo_id = v_asig and tipo = 'entrega' and deleted_at is null;
+  if v_n <> 1 or (select deleted_at from public.actas where id = v_a1.id) is null or v_a2.deleted_at is not null then
+    fallos := fallos || '[110] el reemplazo no dejo exactamente una acta vigente; ';
+  end if;
+  select count(*) into v_n from public.actas where asignacion_equipo_id = v_asig and tipo = 'entrega';
+  if v_n <> 2 then fallos := fallos || '[110] el reemplazo borro la acta anterior en vez de retirarla; '; end if;
+  begin
+    insert into public.actas (asignacion_equipo_id, tipo, empleado_id, equipo_id, pdf_key, tamano_bytes, sha256)
+      values (v_asig, 'entrega', v_emp, v_equipo, 'actas/x/a-entrega-3.pdf', 10, v_sha);
+    fallos := fallos || '[110] permitio dos actas vigentes del mismo tipo; ';
+  exception when unique_violation then null;
+  end;
+
+  -- reglas de registrar_acta
+  begin
+    perform public.registrar_acta(v_asig, 'devolucion', 'actas/x/a-devolucion.pdf', 10, v_sha, null, v_user);
+    fallos := fallos || '[110] acta de devolucion con la asignacion vigente; ';
+  exception when others then if sqlstate <> '22023' then fallos := fallos || '[110] devolucion vigente lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.registrar_acta(v_asig_ub, 'entrega', 'actas/x/b-entrega.pdf', 10, v_sha, null, v_user);
+    fallos := fallos || '[110] acta de una asignacion a ubicacion; ';
+  exception when others then if sqlstate <> '22023' then fallos := fallos || '[110] asignacion a ubicacion lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.registrar_acta(gen_random_uuid(), 'entrega', 'actas/x/c.pdf', 10, v_sha, null, v_user);
+    fallos := fallos || '[110] acta de una asignacion inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[110] asignacion inexistente lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.registrar_acta(v_asig, 'baja', 'actas/x/d.pdf', 10, v_sha, null, v_user);
+    fallos := fallos || '[110] tipo de acta inventado; ';
+  exception when others then if sqlstate <> '22023' then fallos := fallos || '[110] tipo inventado lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.registrar_acta(v_asig, 'entrega', 'actas/x/e.pdf', 10, v_sha, v_hoy + 3, v_user);
+    fallos := fallos || '[110] fecha de firma futura; ';
+  exception when others then if sqlstate <> '22023' then fallos := fallos || '[110] fecha futura lanzo ' || sqlstate || '; '; end if;
+  end;
+  update public.asignaciones_equipo set fecha_fin = v_hoy where id = v_asig;
+  begin
+    perform public.registrar_acta(v_asig, 'devolucion', 'actas/x/a-devolucion.pdf', 10, v_sha, v_hoy, v_user);
+  exception when others then fallos := fallos || '[110] rechazo la devolucion de una asignacion cerrada: ' || sqlerrm || '; ';
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [110a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [110a]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 110-b: actas — CHECKs, inmutabilidad (solo deleted_at cambia), FK sin
+-- borrado fisico, privilegios y policies (sin INSERT para clientes)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_user uuid;
+  v_empresa uuid;
+  v_emp uuid;
+  v_equipo uuid;
+  v_asig uuid;
+  v_a2 public.actas;
+  v_n int;
+  v_sha text := repeat('a', 64);
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_110c@example.test') returning id into v_user;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 110c') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 110c', '99011003', v_empresa) returning id into v_emp;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_110c__', '__TEST_CI__ Tipo 110c');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_110D__', '__test_ci_110c__') returning id into v_equipo;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_equipo, v_emp) returning id into v_asig;
+  v_a2 := public.registrar_acta(v_asig, 'entrega', 'actas/x/h-entrega.pdf', 1000, v_sha, v_hoy, v_user);
+
+  -- CHECKs de la tabla
+  begin perform public.registrar_acta(v_asig, 'entrega', 'otro/x.pdf', 10, v_sha, null, v_user); fallos := fallos || '[110] pdf_key fuera de actas/; ';
+  exception when check_violation then null; end;
+  begin perform public.registrar_acta(v_asig, 'entrega', 'actas/x/f.pdf', 10, 'XYZ', null, v_user); fallos := fallos || '[110] sha256 invalido; ';
+  exception when check_violation then null; end;
+  begin perform public.registrar_acta(v_asig, 'entrega', 'actas/x/g.pdf', 0, v_sha, null, v_user); fallos := fallos || '[110] tamano 0; ';
+  exception when check_violation then null; end;
+
+  -- inmutabilidad: solo deleted_at cambia
+  begin
+    update public.actas set pdf_key = 'actas/x/otro.pdf' where id = v_a2.id;
+    fallos := fallos || '[110] permitio cambiar pdf_key; ';
+  exception when others then if sqlerrm not like '%no se puede modificar%' then fallos := fallos || '[110] pdf_key se rechazo por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+  begin
+    update public.actas set sha256 = repeat('b', 64) where id = v_a2.id;
+    fallos := fallos || '[110] permitio cambiar sha256; ';
+  exception when others then if sqlerrm not like '%no se puede modificar%' then fallos := fallos || '[110] sha256 se rechazo por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+  update public.actas set deleted_at = now() where id = v_a2.id;
+  update public.actas set deleted_at = null where id = v_a2.id;
+
+  -- las FK no permiten borrar fisicamente una asignacion con acta
+  begin
+    delete from public.asignaciones_equipo where id = v_asig;
+    fallos := fallos || '[110] permitio borrar una asignacion con acta; ';
+  exception when foreign_key_violation then null; end;
+
+  -- privilegios y policies
+  if not has_table_privilege('authenticated', 'public.actas', 'select') or has_table_privilege('authenticated', 'public.actas', 'insert')
+     or has_table_privilege('anon', 'public.actas', 'select')
+     or has_column_privilege('authenticated', 'public.actas', 'pdf_key', 'update')
+     or not has_column_privilege('authenticated', 'public.actas', 'deleted_at', 'update')
+     or has_function_privilege('authenticated', 'public.registrar_acta(uuid,text,text,integer,text,date,uuid)', 'execute')
+     or not has_function_privilege('project_admin', 'public.registrar_acta(uuid,text,text,integer,text,date,uuid)', 'execute') then
+    fallos := fallos || '[110] privilegios de actas / registrar_acta incorrectos; ';
+  end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'actas'
+    and ((cmd = 'SELECT' and qual like '%puede_actual%') or (cmd = 'UPDATE' and qual like '%puede_actual%') or (cmd = 'DELETE' and qual like '%es_jefe%'));
+  if v_n <> 3 then fallos := fallos || '[110] faltan las policies SELECT/UPDATE puede_actual y DELETE es_jefe; '; end if;
+  select count(*) into v_n from pg_policies where schemaname = 'public' and tablename = 'actas' and cmd in ('INSERT', 'ALL');
+  if v_n <> 0 then fallos := fallos || '[110] actas tiene policy de INSERT; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [110b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [110b]: %', fallos;
+  end if;
+end $$;
+
+-- ------------------------------------------------------------
+-- 110-c: v_actas_pendientes — umbral de dias, fecha de corte, acta vigente,
+-- y su reflejo en dashboard_resumen (solo asignaciones activas)
+-- ------------------------------------------------------------
+do $$
+declare
+  v_jefe uuid;
+  v_empresa uuid;
+  v_emp uuid;
+  v_equipo uuid;
+  v_asig uuid;
+  v_acta public.actas;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  c record;
+  r jsonb;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_110b_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 110b') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 110b', '99011002', v_empresa) returning id into v_emp;
+  insert into public.tipos_equipo (id, nombre) values ('__test_ci_110b__', '__TEST_CI__ Tipo 110b');
+  insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_110C__', '__test_ci_110b__') returning id into v_equipo;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id, fecha_inicio) values (v_equipo, v_emp, v_hoy - 10) returning id into v_asig;
+  update public.config_parametros set valor = to_jsonb((v_hoy - 30)::text) where clave = 'actas_pendientes_desde';
+
+  select * into c from public.v_actas_pendientes where asignacion_id = v_asig;
+  if c.asignacion_id is null or c.dias is distinct from 10 or c.activa is not true or c.empleado_id is distinct from v_emp or c.equipo_codigo is distinct from '__TEST_CI_110C__' then
+    fallos := fallos || '[110] la entrega de hace 10 dias sin acta no figura como pendiente; ';
+  end if;
+  if not (select reloptions @> array['security_invoker=true'] from pg_class where oid = 'public.v_actas_pendientes'::regclass) then
+    fallos := fallos || '[110] v_actas_pendientes no es security_invoker; ';
+  end if;
+
+  r := public.dashboard_resumen_de(v_jefe);
+  if not (r -> 'actas_pendientes' @> jsonb_build_array(jsonb_build_object('asignacion_id', v_asig, 'dias', 10, 'equipo_codigo', '__TEST_CI_110C__'))) then
+    fallos := fallos || '[110] dashboard_resumen no trae actas_pendientes; ';
+  end if;
+  if r -> 'errores' <> '[]'::jsonb then fallos := fallos || '[110] el resumen trajo errores: ' || (r ->> 'errores') || '; '; end if;
+
+  -- con acta de entrega vigente deja de ser pendiente; si se retira, vuelve
+  v_acta := public.registrar_acta(v_asig, 'entrega', 'actas/x/p-entrega.pdf', 10, repeat('c', 64), null, v_jefe);
+  if exists (select 1 from public.v_actas_pendientes where asignacion_id = v_asig) then fallos := fallos || '[110] sigue pendiente con acta vigente; '; end if;
+  update public.actas set deleted_at = now() where id = v_acta.id;
+  if not exists (select 1 from public.v_actas_pendientes where asignacion_id = v_asig) then fallos := fallos || '[110] no volvio a pendiente al retirar el acta; '; end if;
+
+  -- un acta de devolucion no cubre la entrega
+  update public.asignaciones_equipo set fecha_fin = v_hoy where id = v_asig;
+  perform public.registrar_acta(v_asig, 'devolucion', 'actas/x/p-devolucion.pdf', 10, repeat('d', 64), null, v_jefe);
+  select * into c from public.v_actas_pendientes where asignacion_id = v_asig;
+  if c.asignacion_id is null or c.activa is not false then fallos := fallos || '[110] la devolucion cubrio la entrega o activa no es false; '; end if;
+  r := public.dashboard_resumen_de(v_jefe);
+  if r -> 'actas_pendientes' @> jsonb_build_array(jsonb_build_object('asignacion_id', v_asig)) then
+    fallos := fallos || '[110] el Inicio lista una asignacion ya cerrada; ';
+  end if;
+
+  -- umbral de dias y fecha de corte
+  update public.asignaciones_equipo set fecha_inicio = v_hoy - 1, fecha_fin = null where id = v_asig;
+  if exists (select 1 from public.v_actas_pendientes where asignacion_id = v_asig) then fallos := fallos || '[110] una entrega de ayer ya es pendiente (umbral 3 dias); '; end if;
+  update public.asignaciones_equipo set fecha_inicio = v_hoy - 10 where id = v_asig;
+  update public.config_parametros set valor = to_jsonb((v_hoy - 5)::text) where clave = 'actas_pendientes_desde';
+  if exists (select 1 from public.v_actas_pendientes where asignacion_id = v_asig) then fallos := fallos || '[110] la fecha de corte no excluyo una entrega anterior; '; end if;
+  begin
+    update public.config_parametros set valor = '"no-es-fecha"'::jsonb where clave = 'actas_pendientes_desde';
+    fallos := fallos || '[110] actas_pendientes_desde acepto un valor que no es fecha; ';
+  exception when others then if sqlerrm not like '%fecha%' then fallos := fallos || '[110] fecha de corte invalida se rechazo por otro motivo: ' || sqlerrm || '; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [110c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [110c]: %', fallos;
+  end if;
+end $$;
