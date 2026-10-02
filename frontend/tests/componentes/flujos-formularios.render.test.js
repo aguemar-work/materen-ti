@@ -6,7 +6,7 @@
 //     requiere_rotacion), formulario con foco en "Nueva contraseña", sin
 //     precargarla, y segmento "Requieren rotación" server-side.
 //   - AsignarEquipoModal / AsignarLicenciaModal: estados vacíos con salida,
-//     y acta de entrega automática al entregar un equipo.
+//     y oferta de "Ver acta" (ruta imprimible) al entregar un equipo.
 //
 // Mismo arnés que las vistas: se mockea solo api/insforge.js; Pinia, router
 // y Modal.vue (Teleport a <body>) son reales.
@@ -220,38 +220,39 @@ describe('AsignarEquipoModal — estado vacío y acta de entrega', () => {
     expect(document.querySelector('a[href="/equipos?nuevo=1"]')?.textContent).toContain('Registrar un equipo');
   });
 
-  it('al entregar abre el acta: ventana reservada antes del await, luego la ficha completa del empleado', async () => {
-    const orden = [];
-    const win = { document: { write: vi.fn(), open: vi.fn(), close: vi.fn() }, close: vi.fn() };
-    const open = vi.spyOn(window, 'open').mockImplementation(() => { orden.push('open'); return win; });
+  it('al entregar usa la RPC y ofrece "Ver acta" (enlace a la ruta imprimible, sin ventana reservada)', async () => {
+    const open = vi.spyOn(window, 'open');
     insforgeApi.listEquipos.mockResolvedValue([
       { id: 'q1', codigo: 'EQ-0001', situacion: 'disponible', tipo_nombre: 'Laptop', marca: 'Dell', modelo: 'X' },
     ]);
-    insforgeApi.asignarEquipo.mockImplementation(async () => { orden.push('asignar'); });
-    insforgeApi.getEmpleado.mockResolvedValue({ id: 'e01', nombres: 'Rosa', apellidos: 'Quispe', dni: '45871236' });
+    insforgeApi.asignarEquipo.mockResolvedValue({ id: 'asig-1' });
     const { w } = await montar(AsignarEquipoModal, { props: { empleadoId: 'e01', empleadoNombre: 'Rosa' } });
     w.vm.equipoSelId = 'q1';
+    w.vm.condicionEntrega = 'con cargador';
     await w.vm.confirmar();
     await flushPromises();
-    expect(orden).toEqual(['open', 'asignar']);
-    expect(insforgeApi.getEmpleado).toHaveBeenCalledWith('e01');
-    expect(win.document.write.mock.calls.map((c) => c[0]).join('')).toContain('45871236');
+    expect(insforgeApi.asignarEquipo).toHaveBeenCalledWith('q1', 'e01', 'con cargador');
     expect(w.emitted('asignado')).toBeTruthy();
+    expect(cuerpo()).toContain('EQ-0001 quedó a cargo de Rosa');
+    const enlace = document.querySelector('a[href="/equipos/q1/acta/asig-1?tipo=entrega"]');
+    expect(enlace?.textContent).toContain('Ver acta');
+    expect(enlace.getAttribute('target')).toBe('_blank');
+    expect(open).not.toHaveBeenCalled();
     open.mockRestore();
+    w.unmount();
   });
 
-  it('si la entrega falla, cierra la ventana y muestra el error en el modal', async () => {
-    const win = { document: { write: vi.fn(), open: vi.fn(), close: vi.fn() }, close: vi.fn() };
-    const open = vi.spyOn(window, 'open').mockReturnValue(win);
+  it('si la entrega falla, muestra el rechazo del servidor en el diálogo y no ofrece el acta', async () => {
     insforgeApi.listEquipos.mockResolvedValue([{ id: 'q1', codigo: 'EQ-0001', situacion: 'disponible' }]);
-    insforgeApi.asignarEquipo.mockRejectedValue(new Error('Equipo no operativo'));
+    insforgeApi.asignarEquipo.mockRejectedValue(new Error('El equipo EQ-0001 no está operativo.'));
     const { w } = await montar(AsignarEquipoModal, { props: { empleadoId: 'e01' } });
     w.vm.equipoSelId = 'q1';
     await w.vm.confirmar();
     await flushPromises();
-    expect(win.close).toHaveBeenCalled();
-    expect(cuerpo()).toContain('Equipo no operativo');
-    open.mockRestore();
+    expect(cuerpo()).toContain('El equipo EQ-0001 no está operativo.');
+    expect(cuerpo()).not.toContain('Ver acta');
+    expect(w.emitted('asignado')).toBeFalsy();
+    w.unmount();
   });
 });
 
