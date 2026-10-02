@@ -146,10 +146,13 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   `schema_migrations`); `apply-migration.mjs` es un alias en desuso. Nunca
   `db query` con cuerpos `$$`. Verificar siempre después.
 - **Updates masivos en Windows**: un solo `UPDATE ... FROM (VALUES ...)` por lote.
-- **Edge functions** (4; un archivo cada una, sin imports entre ellas — por eso
-  los helpers se repiten a propósito). Deploy:
-  `node scripts/deploy.mjs function <nombre>` (compara el código desplegado con
-  el archivo y registra en `function_deploys`).
+- **Edge functions** (4). El runtime exige UN archivo por function, así que los
+  helpers comunes viven en `functions/_shared/*.ts` y se inlinan con
+  `// @inline ./_shared/<modulo>.ts`: se edita la fuente (`functions/<nombre>.ts` o
+  `_shared`), se corre `npm run build:functions` y se **commitea** `functions/dist/`
+  (nunca se edita a mano; CI corre `check:functions`). Deploy:
+  `node scripts/deploy.mjs function <nombre>` (despliega `dist/`, compara el código
+  desplegado y registra en `function_deploys`).
 
   | Function | Qué hace | Notas |
   | --- | --- | --- |

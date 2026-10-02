@@ -2,16 +2,19 @@
 // que suben las edge functions `tickets` (captura del ticket) y `equipos-fotos`
 // (fotos del equipo). Plan de mejora Ciclo 21, §5 "EXIF" (migración 111).
 //
-// La función está duplicada a propósito en las dos functions (no hay imports
-// entre ellas): el mismo conjunto de casos corre contra las dos copias, así una
-// copia que diverge falla aquí.
+// Una sola fuente: functions/_shared/imagenes.ts, que scripts/build-functions.mjs
+// inlina en functions/dist/tickets.ts y functions/dist/equipos-fotos.ts (lo que se
+// despliega). El mismo conjunto de casos corre contra los dos dist para comprobar
+// que lo desplegado incluye la limpieza; que ambas copias sean el mismo código es
+// ahora trivial (ver la última prueba) y lo exige también build-functions.test.mjs.
 //
 // Los fixtures se arman byte a byte: no hay imágenes binarias en el repo. Lo que
 // se comprueba es el CONTENEDOR (qué bloques quedan), no la decodificación de
 // los píxeles, que la función nunca toca.
 import { describe, it, expect } from 'vitest';
-import { stripExif as stripTickets } from '../../functions/tickets.ts';
-import { stripExif as stripEquipos } from '../../functions/equipos-fotos.ts';
+import { stripExif as stripTickets } from '../../functions/dist/tickets.ts';
+import { stripExif as stripEquipos } from '../../functions/dist/equipos-fotos.ts';
+import { stripExif as stripFuente } from '../../functions/_shared/imagenes.ts';
 
 const enc = (s) => Array.from(s, (c) => c.charCodeAt(0));
 const bytes = (...partes) => new Uint8Array(partes.flat());
@@ -98,8 +101,9 @@ const marcadoresJpeg = (u8) => {
 };
 
 describe.each([
-  ['tickets.ts', stripTickets],
-  ['equipos-fotos.ts', stripEquipos],
+  ['dist/tickets.ts', stripTickets],
+  ['dist/equipos-fotos.ts', stripEquipos],
+  ['_shared/imagenes.ts (fuente)', stripFuente],
 ])('stripExif — %s', (_nombre, stripExif) => {
   describe('JPEG', () => {
     it('quita APP1 (EXIF y XMP), APP2, APP13 y COM; conserva APP0, DQT y SOF', () => {
@@ -204,7 +208,12 @@ describe.each([
   });
 });
 
-describe('las dos copias de stripExif producen exactamente el mismo resultado', () => {
+describe('tickets y equipos-fotos comparten UNA sola implementación de stripExif (_shared/imagenes.ts)', () => {
+  it('el código desplegado en los dos dist es literalmente el mismo', () => {
+    expect(stripTickets.toString()).toBe(stripEquipos.toString());
+    expect(stripTickets.toString()).toBe(stripFuente.toString());
+  });
+
   it.each([
     ['image/jpeg', jpegConMetadatos()],
     ['image/png', pngConMetadatos(enc('cola'))],

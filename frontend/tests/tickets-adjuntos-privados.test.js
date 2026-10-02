@@ -14,8 +14,8 @@ import { sdk, reiniciarSdk, consultasDe } from './stubs/sdk-falso.js';
 
 vi.mock('./stubs/insforge-sdk.js', () => import('./stubs/sdk-falso.js'));
 
-const { default: tickets } = await import('../../functions/tickets.ts');
-const { default: equiposFotos } = await import('../../functions/equipos-fotos.ts');
+const { default: tickets } = await import('../../functions/dist/tickets.ts');
+const { default: equiposFotos } = await import('../../functions/dist/equipos-fotos.ts');
 
 const ORIGEN = 'http://localhost:5173';
 const FALLA_BD = { data: null, error: { message: 'falla simulada de BD' } };

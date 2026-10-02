@@ -1,4 +1,20 @@
 // ============================================================
+// ARCHIVO GENERADO — NO EDITAR A MANO.
+// Fuente: functions/equipos-fotos.ts
+//         + functions/_shared/http.ts
+//         + functions/_shared/errores.ts
+//         + functions/_shared/cors.ts
+//         + functions/_shared/auth.ts
+//         + functions/_shared/tipos.ts
+//         + functions/_shared/permisos.ts
+//         + functions/_shared/ratelimit.ts
+//         + functions/_shared/imagenes.ts
+//         + functions/_shared/version.ts
+// Regenerar: npm run build:functions (scripts/build-functions.mjs).
+// CI verifica que coincida: npm run check:functions.
+// ============================================================
+
+// ============================================================
 // Edge function: equipos-fotos
 // Único punto por donde se sube/elimina una foto del bucket público
 // "equipos-fotos". Antes, el navegador llamaba directo a
@@ -30,18 +46,388 @@
 //   ping        público {}                → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
 // ============================================================
 
-import { createAdminClient } from 'npm:@insforge/sdk@1.5.2';
+import { createAdminClient, createClient } from 'npm:@insforge/sdk@1.5.2';
 
 // Helpers compartidos (functions/_shared/): scripts/build-functions.mjs pega
 // cada bloque aquí para generar functions/dist/equipos-fotos.ts, que es lo que
 // se despliega (el runtime exige UN archivo por function). No editar el dist.
-// @inline ./_shared/http.ts
-// @inline ./_shared/errores.ts
-// @inline ./_shared/auth.ts
-// @inline ./_shared/permisos.ts
-// @inline ./_shared/ratelimit.ts
-// @inline ./_shared/imagenes.ts
-// @inline ./_shared/version.ts
+
+// ── _shared/http.ts (inlinado por scripts/build-functions.mjs) ──
+// Respuestas HTTP y utilidades de petición comunes a las edge functions.
+// Fuente única: scripts/build-functions.mjs inlina este archivo en el dist de
+// cada function (un solo archivo, sin imports).
+
+// Sin una clave `error` (string) en el body, el SDK del cliente descarta el
+// body completo en toda respuesta no-2xx y arma un InsForgeError genérico
+// ("Request failed: <statusText>") — `code` nunca llega al frontend
+// (`"error" in data` es el único gate que usa @insforge/sdk para conservar
+// las claves del body). Se espeja `code` en `error` solo para status >= 400.
+// `Cache-Control: no-store` en TODA respuesta: pueden llevar contraseñas,
+// tokens de ticket, datos de contacto o plantillas que no deben quedar en la
+// caché del navegador ni de un proxy.
+export function respuesta(cors: Record<string, string>, body: unknown, status = 200): Response {
+  const payload =
+    status >= 400 && body && typeof body === 'object' && 'code' in body && !('error' in body)
+      ? { ...body, error: (body as { code: string }).code }
+      : body;
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
+}
+
+// El SDK (postgrest-js sin Database schema generado) tipa toda relación
+// embebida en un select() como arreglo, aunque en runtime sea un solo
+// objeto cuando el embed es por FK 1:1 desde la fila consultada (ej.
+// tickets.categoria_id → categorias_ticket.id). Sin esto, TS marca
+// `.nombre` como inexistente en un arreglo — el dato real siempre fue
+// un objeto.
+export function uno<T>(rel: T | T[] | null | undefined): T | null {
+  return (Array.isArray(rel) ? rel[0] : rel) ?? null;
+}
+
+// IP de confianza del cliente. cf-connecting-ip / x-real-ip los pone el
+// edge (un solo valor, no falsificables). x-forwarded-for es el último
+// recurso y se toma su ÚLTIMO valor: los proxies AGREGAN la IP real al
+// final; el primero lo controla el cliente (auditoría H-02).
+export function ipDesdeHeaders(headers: Headers): string {
+  const xff = (headers.get('x-forwarded-for') || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  return (
+    headers.get('cf-connecting-ip') ||
+    headers.get('x-real-ip') ||
+    xff[xff.length - 1] ||
+    'desconocida'
+  );
+}
+
+// ── _shared/errores.ts (inlinado por scripts/build-functions.mjs) ──
+// Envoltorio de primer nivel de las edge functions. Fuente única:
+// scripts/build-functions.mjs inlina este archivo en el dist de cada function.
+
+// ── _shared/cors.ts (inlinado por scripts/build-functions.mjs) ──
+// CORS de las edge functions. Fuente única: scripts/build-functions.mjs inlina
+// este archivo en el dist de cada function (un solo archivo, sin imports).
+
+// Solo el frontend de producción y los puertos de desarrollo local.
+// Un origen no listado no recibe cabeceras CORS: el navegador bloquea.
+export const ORIGENES_PERMITIDOS = new Set([
+  'https://materen-ti.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:4173',
+]);
+
+// Cabeceras CORS calculadas POR PETICIÓN (Ciclo 20): antes vivían en un
+// `let CORS` global de módulo, reasignado al entrar cada petición — con
+// peticiones concurrentes en el mismo isolate, una podía pisar el valor de
+// otra entre dos `await`. Viajan como argumento, nunca como estado global.
+export function corsPara(origin: string | null): Record<string, string> {
+  if (!origin || !ORIGENES_PERMITIDOS.has(origin)) return {};
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
+  };
+}
+
+// Ciclo 20: toda excepción no controlada — una falla de red hacia la BD, un
+// error del SDK, o una falla fail-closed que lanza la propia function (rate-limit
+// que no se pudo contar/registrar, auditoría que no se pudo escribir) — termina
+// en { ok:false, code:'error_interno' } (500) con las cabeceras CORS de ESTA
+// petición, en vez de un 500 opaco sin CORS de la plataforma (el navegador lo
+// veía como un error de red). Al log solo va el mensaje, nunca el body (puede
+// traer DNI, contacto, contenido de archivos o un valor descifrado).
+export async function conEnvoltorio(
+  funcion: string,
+  req: Request,
+  manejar: (req: Request, cors: Record<string, string>) => Promise<Response>,
+): Promise<Response> {
+  const cors = corsPara(req.headers.get('Origin'));
+  try {
+    return await manejar(req, cors);
+  } catch (e) {
+    console.error(`[${funcion}] error no controlado:`, e instanceof Error ? e.message : String(e));
+    return respuesta(cors, { ok: false, code: 'error_interno' }, 500);
+  }
+}
+
+// ── _shared/auth.ts (inlinado por scripts/build-functions.mjs) ──
+// Autenticación de staff por sesión (Bearer). Fuente única:
+// scripts/build-functions.mjs inlina este archivo en el dist de cada function.
+
+// ── _shared/tipos.ts (inlinado por scripts/build-functions.mjs) ──
+// Tipos compartidos del SDK. Fuente única: scripts/build-functions.mjs inlina
+// este archivo en el dist de cada edge function (que se despliega como UN solo
+// archivo, sin imports locales). No editar los dist a mano.
+
+export type ClienteAdmin = ReturnType<typeof createAdminClient>;
+
+
+export type UsuarioSesion = { id: string; email: string | null };
+
+// Usuario dueño del token de sesión (Ciclo 21). Distingue "no hay usuario"
+// (token inválido/expirado/anónimo → null → 401 no_autenticado) de "falló la
+// consulta" (caída de red, 5xx, 408/429 → LANZA → error_interno 500). Antes se
+// ignoraba el `error` y una caída de la plataforma se veía como sesión expirada.
+export async function usuarioDeToken(
+  userClient: ReturnType<typeof createClient>,
+): Promise<UsuarioSesion | null> {
+  const { data, error } = await userClient.auth.getCurrentUser();
+  if (error) {
+    const sc = (error as { statusCode?: number }).statusCode;
+    if (typeof sc === 'number' && sc >= 400 && sc < 500 && sc !== 408 && sc !== 429) return null;
+    throw new Error(`No se pudo verificar la sesión: ${error.message}`);
+  }
+  const user = data?.user;
+  if (!user?.id) return null;
+  return { id: user.id, email: user.email || null };
+}
+
+export type ResultadoStaff =
+  | { ok: true; user: UsuarioSesion; rol: string }
+  | { ok: false; code: 'no_autenticado'; status: 401 }
+  | { ok: false; code: 'no_es_staff'; status: 403 };
+
+// Staff ACTIVO dueño de la sesión de la petición. FAIL-CLOSED (Ciclo 21):
+//   - sin cabecera Authorization / token inválido o anónimo → no_autenticado 401
+//   - usuario autenticado sin fila de staff activa → no_es_staff 403
+//   - la consulta de la sesión o de la tabla `staff` FALLA → se LANZA (el
+//     envoltorio de primer nivel responde error_interno 500). Nunca se degrada
+//     un error de BD a "no es staff" ni a "es público".
+export async function autenticarStaff(
+  req: Request,
+  admin: ClienteAdmin,
+  baseUrl: string,
+): Promise<ResultadoStaff> {
+  const authHeader = req.headers.get('Authorization');
+  const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
+  if (!userToken) return { ok: false, code: 'no_autenticado', status: 401 };
+
+  const userClient = createClient({ baseUrl, accessToken: userToken });
+  const user = await usuarioDeToken(userClient);
+  if (!user) return { ok: false, code: 'no_autenticado', status: 401 };
+
+  const { data: staffRow, error: eStaff } = await admin.database
+    .from('staff')
+    .select('rol, activo')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (eStaff) throw new Error(`No se pudo leer la fila de staff: ${eStaff.message}`);
+  if (!staffRow?.activo) return { ok: false, code: 'no_es_staff', status: 403 };
+  return { ok: true, user, rol: staffRow.rol };
+}
+
+// Variante para acciones con sesión OPCIONAL (tickets.crear): "sin cabecera /
+// token anónimo o inválido / usuario que no es staff activo" son público (null);
+// si HAY un usuario autenticado y la consulta de sesión o de `staff` FALLA, se
+// LANZA igual que en autenticarStaff (fail-closed).
+export async function staffDeSesion(
+  req: Request,
+  admin: ClienteAdmin,
+  baseUrl: string,
+): Promise<{ id: string; email: string | null; rol: string } | null> {
+  const r = await autenticarStaff(req, admin, baseUrl);
+  return r.ok ? { id: r.user.id, email: r.user.email, rol: r.rol } : null;
+}
+
+// ── _shared/permisos.ts (inlinado por scripts/build-functions.mjs) ──
+// Permisos vía la RPC `public.puede`. Fuente única: scripts/build-functions.mjs
+// inlina este archivo en el dist de cada function.
+// Ciclo 21 (migración 099): `public.puede(p_user, p_permiso)` es la fuente de
+// verdad (activo + JEFE + modulo:<id> + credenciales.ver + acceso_sensible:<uuid>);
+// las policies de RLS usan la misma función vía puede_actual(). Se llama por RPC
+// con el cliente ADMIN pasando el user id del JWT (auth.uid() sería NULL en este
+// contexto; EXECUTE solo para el cliente admin).
+//
+// FAIL-CLOSED y sin confundir causas: un error de la RPC se LANZA (→ error_interno
+// 500 por el envoltorio de primer nivel) en vez de contarse como "sin permiso";
+// solo un `false` explícito niega con 403 no_autorizado, y cualquier valor
+// distinto de `true` también niega. El atajo de JEFE (solo si el llamador pasa
+// `rol`, leído de la fila de staff ya validada como activa en esta petición)
+// coincide con la semántica de la RPC y evita una llamada.
+export async function puede(
+  admin: ClienteAdmin,
+  userId: string,
+  permiso: string,
+  rol?: string,
+): Promise<boolean> {
+  if (rol === 'JEFE') return true;
+  const { data, error } = await admin.database.rpc('puede', { p_user: userId, p_permiso: permiso });
+  if (error) throw new Error(`No se pudo verificar el permiso ${permiso}: ${error.message}`);
+  return data === true;
+}
+
+// ── _shared/ratelimit.ts (inlinado por scripts/build-functions.mjs) ──
+// Rate-limit genérico sobre `intentos_publicos` (migración 104). Fuente única:
+// scripts/build-functions.mjs inlina este archivo en el dist de cada function.
+// Cuenta los intentos recientes del par (ámbito, clave) y, si todavía hay cupo,
+// registra este. Devuelve true cuando YA se alcanzó el tope (el llamador
+// responde 429 `demasiados_intentos`; un intento bloqueado no se registra).
+// FAIL-CLOSED: si no se puede contar o registrar se LANZA (→ error_interno),
+// nunca se asume "0 intentos".
+export async function excedeLimite(
+  admin: ClienteAdmin,
+  ambito: string,
+  clave: string,
+  max: number,
+  ventanaMin: number,
+): Promise<boolean> {
+  const desde = new Date(Date.now() - ventanaMin * 60 * 1000).toISOString();
+  const { data, error } = await admin.database
+    .from('intentos_publicos')
+    .select('id')
+    .eq('ambito', ambito)
+    .eq('clave', clave)
+    .gte('created_at', desde)
+    .limit(max);
+  if (error) throw new Error(`No se pudo contar intentos_publicos (${ambito}): ${error.message}`);
+  if ((data?.length || 0) >= max) return true;
+  const { error: eRegistro } = await admin.database.from('intentos_publicos').insert([{ ambito, clave }]);
+  if (eRegistro) throw new Error(`No se pudo registrar el intento en intentos_publicos (${ambito}): ${eRegistro.message}`);
+  return false;
+}
+
+// ── _shared/imagenes.ts (inlinado por scripts/build-functions.mjs) ──
+// Validación y limpieza de imágenes subidas por clientes no confiables.
+// Fuente única: scripts/build-functions.mjs inlina este archivo en el dist de
+// tickets y equipos-fotos (antes estaba duplicado a mano en ambos).
+
+// Devuelve la extensión canónica si los primeros bytes son de una imagen
+// soportada; null si no lo es (no se sube). Se ignora el `tipo` que declare el
+// cliente: manda el contenido real (magic bytes).
+// export: probado en frontend/tests/tickets-validaciones.test.js
+export function sniffImagen(b: Uint8Array): string | null {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
+  if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'gif';
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'webp';
+  return null;
+}
+
+export const MIME_POR_EXT: Record<string, string> = {
+  jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+};
+
+// ── Limpieza de metadatos (EXIF, XMP, IPTC, ICC, comentarios) ────────────────
+// Una foto del celular trae ubicación GPS, fecha, modelo y número de serie del
+// aparato. El navegador ya re-codifica la imagen (core/imagenes.js), pero el
+// cliente no es de confianza: el servidor recorre el contenedor y descarta los
+// bloques de metadatos SIN decodificar ni re-comprimir los píxeles (el
+// resultado se ve idéntico). Devuelve los bytes limpios, o null si el archivo
+// no se puede recorrer con seguridad (truncado, corrupto): FAIL-CLOSED, quien
+// llama debe rechazar la imagen. GIF no lleva EXIF y se devuelve tal cual.
+//   JPEG: APP1 (EXIF/XMP), APP2 (ICC/MPF), APP13 (IPTC) y COM, hasta el SOS.
+//   PNG:  eXIf, tEXt, iTXt, zTXt y tIME; lo que sigue a IEND se descarta.
+//   WebP: EXIF y XMP, con el tamaño RIFF y las banderas de VP8X corregidos.
+// Una sola fuente (esta); probado en frontend/tests/exif.test.js.
+const JPEG_A_QUITAR = new Set([0xe1, 0xe2, 0xed, 0xfe]);
+const PNG_A_QUITAR = new Set(['eXIf', 'tEXt', 'iTXt', 'zTXt', 'tIME']);
+const WEBP_A_QUITAR = new Set(['EXIF', 'XMP ']);
+
+function unir(partes: Uint8Array[]): Uint8Array<ArrayBuffer> {
+  const salida = new Uint8Array(partes.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of partes) {
+    salida.set(p, o);
+    o += p.length;
+  }
+  return salida;
+}
+
+export function stripExif(b: Uint8Array<ArrayBuffer>, mime: string): Uint8Array<ArrayBuffer> | null {
+  const tipo4 = (i: number) => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+  const partes: Uint8Array[] = [];
+  if (mime === 'image/jpeg') {
+    if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
+    partes.push(b.subarray(0, 2));
+    let i = 2;
+    while (i < b.length) {
+      if (b[i] !== 0xff) return null;
+      while (b[i + 1] === 0xff) i++; // bytes de relleno antes del marcador
+      const m = b[i + 1];
+      if (m === undefined) return null;
+      if (m === 0x01 || m === 0xd9 || (m >= 0xd0 && m <= 0xd8)) { // marcadores sin longitud
+        partes.push(b.subarray(i, i + 2));
+        i += 2;
+        continue;
+      }
+      if (m === 0xda) { // SOS: desde aquí es el flujo de píxeles hasta EOI, no se toca
+        partes.push(b.subarray(i));
+        return unir(partes);
+      }
+      if (i + 4 > b.length) return null;
+      const fin = i + 2 + ((b[i + 2] << 8) | b[i + 3]);
+      if (fin > b.length || fin < i + 4) return null;
+      if (!JPEG_A_QUITAR.has(m)) partes.push(b.subarray(i, fin));
+      i = fin;
+    }
+    return null; // sin SOS no es una imagen completa
+  }
+  if (mime === 'image/png') {
+    const firma = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    if (b.length < 8 || firma.some((v, k) => b[k] !== v)) return null;
+    partes.push(b.subarray(0, 8));
+    for (let i = 8; i + 12 <= b.length;) {
+      const fin = i + 12 + (((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0);
+      if (fin > b.length) return null;
+      const tipo = tipo4(i + 4);
+      if (!PNG_A_QUITAR.has(tipo)) partes.push(b.subarray(i, fin));
+      if (tipo === 'IEND') return unir(partes);
+      i = fin;
+    }
+    return null; // sin IEND está truncado
+  }
+  if (mime === 'image/webp') {
+    if (b.length < 12 || tipo4(0) !== 'RIFF' || tipo4(8) !== 'WEBP') return null;
+    const chunks: Uint8Array[] = [];
+    for (let i = 12; i + 8 <= b.length;) {
+      const len = (b[i + 4] | (b[i + 5] << 8) | (b[i + 6] << 16) | (b[i + 7] << 24)) >>> 0;
+      if (i + 8 + len > b.length) return null;
+      const fin = i + 8 + len + (len & 1); // los chunks se alinean a par
+      const tipo = tipo4(i);
+      if (!WEBP_A_QUITAR.has(tipo)) {
+        const chunk = new Uint8Array(8 + len + (len & 1)); // copia (rellena el byte de alineación si faltara)
+        chunk.set(b.subarray(i, Math.min(fin, b.length)));
+        if (tipo === 'VP8X') chunk[8] &= ~0x0c; // apaga las banderas EXIF (0x08) y XMP (0x04)
+        chunks.push(chunk);
+      }
+      i = fin;
+    }
+    const cabecera = new Uint8Array(12);
+    cabecera.set(b.subarray(0, 4)); // "RIFF"
+    new DataView(cabecera.buffer).setUint32(4, 4 + chunks.reduce((n, c) => n + c.length, 0), true);
+    cabecera.set(b.subarray(8, 12), 8); // "WEBP"
+    return unir([cabecera, ...chunks]);
+  }
+  return b;
+}
+
+// ── _shared/version.ts (inlinado por scripts/build-functions.mjs) ──
+// Acción `version` (staff) común a las 4 edge functions: qué versión de
+// esquema/SDK/deploy tiene ESTA instancia desplegada (migraciones 069/070).
+// Fuente única: scripts/build-functions.mjs inlina este archivo en el dist de
+// cada function. El pin del SDK vive en los imports `npm:@insforge/sdk@<versión>`;
+// el build falla si un dist mezcla versiones distintas.
+export const SDK_VERSION = '1.5.2';
+
+export async function datosVersion(admin: ClienteAdmin, funcion: string) {
+  const [{ data: migracion }, { data: deploy }] = await Promise.all([
+    admin.database.from('schema_migrations').select('version, nombre_archivo, aplicada_en')
+      .order('version', { ascending: false }).limit(1).maybeSingle(),
+    admin.database.from('function_deploys').select('sha256, commit_sha, desplegado_en')
+      .eq('funcion', funcion).order('desplegado_en', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  return {
+    ok: true,
+    funcion,
+    sdkVersion: SDK_VERSION,
+    ultimaMigracion: migracion || null,
+    ultimoDeploy: deploy || null,
+  };
+}
 
 // Tamaño máximo del archivo YA COMPRIMIDO por el cliente (frontend/src/core/
 // imagenes.js deja ~150-250KB) — mismo tope que adjuntos de tickets, margen

@@ -1,11 +1,12 @@
-// Tests del cifrado de credenciales (functions/credenciales.ts).
+// Tests del cifrado de credenciales (functions/credenciales.ts, probado vía
+// functions/dist/credenciales.ts: el archivo autocontenido que se despliega).
 // Cubre: roundtrip enc2, IV aleatorio, formato legacy enc:, y (Ciclo 21) que un
 // valor sin prefijo conocido o ilegible LANZA ErrorDescifrado tipado en vez de
 // devolverse como texto plano / como el literal '(error al descifrar)'.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { encryptV2, decryptAny, decryptSensible, hashToken, ErrorDescifrado } from '../../functions/credenciales.ts';
+import { encryptV2, decryptAny, decryptSensible, hashToken, ErrorDescifrado } from '../../functions/dist/credenciales.ts';
 
 // Réplica mínima del cifrado legacy (enc:) para fabricar un valor histórico
 // con la clave CRED_KEY_LEGACY del setup y verificar que decryptAny lo lee.
@@ -120,7 +121,7 @@ describe('hashToken', () => {
 // que este bug no pueda reintroducirse en silencio.
 describe('entregaCrear no persiste token en claro (regresión P0 2026-08-19)', () => {
   const fuente = readFileSync(
-    fileURLToPath(new URL('../../functions/credenciales.ts', import.meta.url)),
+    fileURLToPath(new URL('../../functions/dist/credenciales.ts', import.meta.url)),
     'utf8',
   );
   const bloque = fuente.match(/\.from\('entregas'\)\.insert\(\[\{([\s\S]*?)\}\]\)/);

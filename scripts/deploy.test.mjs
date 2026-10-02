@@ -20,6 +20,7 @@ import {
   ejecutarMigracion,
   ejecutarFunction,
   sha256Texto,
+  rutaDistFunction,
 } from './deploy.mjs';
 
 const RAIZ = resolve(import.meta.dirname, '..');
@@ -153,6 +154,7 @@ const depsPre = (git, registradas = ['085'], existe = true, versiones = ['085', 
   existe: () => existe,
   listarVersiones: () => versiones,
   consultarSql: async () => registradas.map((version) => ({ version })),
+  distActualizado: () => ({ ok: true, mensaje: '' }),
 });
 const porId = (r, id) => r.find((x) => x.id === id);
 
@@ -224,6 +226,50 @@ test('prechequeos: sin conexión con la base bloquea; error SQL de schema_migrat
   };
   const r2 = await prechequeos(ctxMig(), dep);
   assert.equal(porId(r2, 'schema_migrations').severidad, 'aviso');
+});
+
+test('rutaDistFunction: se despliega el dist autocontenido, no la fuente', () => {
+  assert.equal(rutaDistFunction('tickets'), 'functions/dist/tickets.ts');
+});
+
+test('prechequeos de function: el archivo a comitear y comprobar es el dist', async () => {
+  const consultados = [];
+  const dep = depsPre(gitFalso());
+  dep.existe = (rel) => (consultados.push(rel), true);
+  const git = dep.git;
+  const rutasGit = [];
+  dep.git = (args) => (rutasGit.push(args.join(' ')), git(args));
+  await prechequeos({ tipo: 'function', objetivo: 'tickets', entorno: 'produccion', forzar: false }, dep);
+  assert.deepEqual([...new Set(consultados)], ['functions/dist/tickets.ts']);
+  assert.ok(rutasGit.some((a) => a.includes('ls-files') && a.includes('functions/dist/tickets.ts')));
+  assert.ok(rutasGit.some((a) => a.includes('cat-file') && a.includes('HEAD:functions/dist/tickets.ts')));
+});
+
+test('prechequeos de function: dist desactualizado BLOQUEA (también en dry-run); al día pasa', async () => {
+  const dep = depsPre(gitFalso());
+  dep.distActualizado = (nombre) => ({ ok: false, mensaje: `functions/dist/${nombre}.ts no coincide con el build (primera diferencia en la línea 12).` });
+  const r = await prechequeos({ tipo: 'function', objetivo: 'credenciales', entorno: 'produccion', forzar: false }, dep);
+  const d = porId(r, 'dist_actualizado');
+  assert.equal(d.ok, false);
+  assert.equal(d.severidad, 'bloqueante');
+  assert.match(d.mensaje, /credenciales.ts no coincide.*npm run build:functions/);
+  assert.equal(resumirPrechequeos(r, { dryRun: true }).abortar, true);
+  assert.equal(resumirPrechequeos(r, { dryRun: false }).abortar, true);
+
+  const ok = await prechequeos({ tipo: 'function', objetivo: 'credenciales', entorno: 'produccion', forzar: false }, depsPre(gitFalso()));
+  assert.equal(porId(ok, 'dist_actualizado').ok, true);
+  assert.equal(resumirPrechequeos(ok, { dryRun: false }).abortar, false);
+});
+
+test('prechequeos de migración: no comprueba el dist', async () => {
+  const r = await prechequeos(ctxMig(), depsPre(gitFalso()));
+  assert.ok(!porId(r, 'dist_actualizado'));
+});
+
+test('prechequeos de function: exige la dependencia distActualizado', async () => {
+  const dep = depsPre(gitFalso());
+  delete dep.distActualizado;
+  await assert.rejects(prechequeos({ tipo: 'function', objetivo: 'tickets', entorno: 'produccion', forzar: false }, dep), /distActualizado/);
 });
 
 test('prechequeos de function: no consulta schema_migrations', async () => {
@@ -329,8 +375,13 @@ const ctxFn = (extra = {}) => ({ tipo: 'function', objetivo: 'tickets', entorno:
 
 test('ejecutarFunction: deploy, comparación de código y registro con sha256 del archivo', async () => {
   const { deps, llamadas } = entornoFalso({ columnas: ['funcion', 'sha256', 'commit_sha', 'desplegado_por', 'entorno'] });
+  const leidos = [];
+  const leer = deps.leerArchivo;
+  deps.leerArchivo = (abs) => (leidos.push(abs.replace(/\\/g, '/')), leer(abs));
   assert.equal(await ejecutarFunction(ctxFn(), deps), 0);
-  assert.deepEqual(llamadas.comandos[0], ['functions', 'deploy', 'tickets', '--file', 'functions/tickets.ts']);
+  assert.equal(leidos.length, 1);
+  assert.ok(leidos[0].endsWith('/functions/dist/tickets.ts'), 'el sha256 se calcula sobre el archivo de dist');
+  assert.deepEqual(llamadas.comandos[0], ['functions', 'deploy', 'tickets', '--file', 'functions/dist/tickets.ts']);
   assert.match(llamadas.log.join('\n'), /coincide con el archivo/);
   const [ins] = insertsDe(llamadas);
   assert.ok(ins.includes(sha256Texto(Buffer.from(SQL_MIG))));

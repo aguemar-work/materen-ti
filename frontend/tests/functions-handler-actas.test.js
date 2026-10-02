@@ -14,7 +14,7 @@ import { sdk, reiniciarSdk, tieneFiltro, consultasDe } from './stubs/sdk-falso.j
 
 vi.mock('./stubs/insforge-sdk.js', () => import('./stubs/sdk-falso.js'));
 
-const { default: equiposFotos, esPdf, sha256Hex } = await import('../../functions/equipos-fotos.ts');
+const { default: equiposFotos, esPdf, sha256Hex } = await import('../../functions/dist/equipos-fotos.ts');
 
 const ORIGEN = 'http://localhost:5173';
 const FALLA_BD = { data: null, error: { message: 'falla simulada de BD' } };

@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# Excepción: functions/dist/ SÍ se versiona (edge functions autocontenidas que genera
+# scripts/build-functions.mjs; es lo que se despliega y CI exige que esté al día).
+!functions/dist/
 .vite/
 .env
 .env.local

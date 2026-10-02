@@ -15,10 +15,10 @@ import { sdk, reiniciarSdk, tieneFiltro, consultasDe } from './stubs/sdk-falso.j
 
 vi.mock('./stubs/insforge-sdk.js', () => import('./stubs/sdk-falso.js'));
 
-const { default: credenciales, encryptV2 } = await import('../../functions/credenciales.ts');
-const { default: tickets } = await import('../../functions/tickets.ts');
-const { default: encuestas } = await import('../../functions/encuestas.ts');
-const { default: equiposFotos } = await import('../../functions/equipos-fotos.ts');
+const { default: credenciales, encryptV2 } = await import('../../functions/dist/credenciales.ts');
+const { default: tickets } = await import('../../functions/dist/tickets.ts');
+const { default: encuestas } = await import('../../functions/dist/encuestas.ts');
+const { default: equiposFotos } = await import('../../functions/dist/equipos-fotos.ts');
 
 const ORIGEN = 'http://localhost:5173';
 const FALLA_BD = { data: null, error: { message: 'falla simulada de BD' } };

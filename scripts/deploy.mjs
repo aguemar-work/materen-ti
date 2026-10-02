@@ -11,6 +11,8 @@
 //   - HEAD no está contenido en origin/main (origin/release/v2 con --entorno v2;
 //     `git merge-base --is-ancestor`); si el ref remoto no se puede resolver, aborta;
 //   - la migración/función no está comiteada (`git ls-files --error-unmatch` + HEAD);
+//   - (functions) functions/dist/<f>.ts no coincide con lo que generaría
+//     scripts/build-functions.mjs (`--check` interno): se despliega el dist, nunca la fuente;
 //   - la versión de la migración ya figura en public.schema_migrations (salvo --forzar).
 // Con --dry-run solo ejecuta los pre-chequeos y consultas de SOLO LECTURA, imprime
 // todo lo que haría y sale con 0 si ningún chequeo "bloqueante" falla (los chequeos
@@ -25,9 +27,11 @@
 // entorno. Un `db import` que crashea con "Assertion failed" queda como PENDIENTE:
 // no se registra y se pide verificar a mano (--solo-registro registra tras verificar).
 //
-// Functions: `functions deploy <f> --file functions/<f>.ts`, compara el código
-// desplegado (`functions code`) con el archivo y registra en public.function_deploys
-// (sha256 del archivo, commit_sha, desplegado_por, entorno si existe la columna).
+// Functions: `functions deploy <f> --file functions/dist/<f>.ts` (el archivo autocontenido
+// que genera scripts/build-functions.mjs a partir de functions/<f>.ts + functions/_shared/),
+// compara el código desplegado (`functions code`) con ese archivo y registra en
+// public.function_deploys (sha256 DEL ARCHIVO DE DIST, commit_sha, desplegado_por, entorno
+// si existe la columna).
 //
 // Variables: INSFORGE_CLI_CWD (carpeta enlazada al proyecto, donde está .insforge/;
 // útil desde un worktree sin enlazar). Ver docs/CONTINUIDAD.md.
@@ -40,8 +44,12 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { userInfo } from 'node:os';
 import { crearTransporte, literalSql } from './lib/insforge-sql.mjs';
+import { verificarDist } from './build-functions.mjs';
 
 export const FUNCIONES_PERMITIDAS = ['credenciales', 'tickets', 'encuestas', 'equipos-fotos'];
+// Archivo que se despliega: el dist autocontenido, no la fuente (que tiene marcadores
+// de inlinado y no corre en el runtime de InsForge).
+export const rutaDistFunction = (nombre) => `functions/dist/${nombre}.ts`;
 export const REF_POR_ENTORNO = { produccion: 'origin/main', v2: 'origin/release/v2' };
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -195,15 +203,25 @@ export function proyectoCoincide(lineaProyecto, fragmento) {
 }
 
 // ── Pre-chequeos (con dependencias inyectadas) ────────────────────────────
-// deps: { git(args)->{status,stdout}, consultarSql(sql), existe(relativa)->bool, listarVersiones()->string[] }
+// deps: { git(args)->{status,stdout}, consultarSql(sql), existe(relativa)->bool, listarVersiones()->string[],
+//         distActualizado(nombre)->{ ok, mensaje } (solo functions) }
 // Devuelve [{ id, ok, severidad: 'bloqueante'|'al_desplegar'|'aviso', mensaje }].
 // 'bloqueante' aborta incluso en --dry-run; 'al_desplegar' solo en la corrida real.
 export async function prechequeos(ctx, deps) {
   const r = [];
   const agregar = (id, ok, severidad, mensaje) => r.push({ id, ok, severidad, mensaje });
-  const rel = ctx.tipo === 'migracion' ? ctx.migracion.rel : `functions/${ctx.objetivo}.ts`;
+  const rel = ctx.tipo === 'migracion' ? ctx.migracion.rel : rutaDistFunction(ctx.objetivo);
 
   agregar('archivo_existe', deps.existe(rel), 'bloqueante', deps.existe(rel) ? `${rel} existe` : `No existe ${rel}.`);
+
+  // Dist de la function al día respecto de las fuentes (functions/<f>.ts + _shared/):
+  // 'bloqueante' (también en --dry-run), porque desplegar un dist viejo es desplegar
+  // código distinto del que está en el repositorio.
+  if (ctx.tipo === 'function') {
+    if (typeof deps.distActualizado !== 'function') throw new Error('prechequeos: falta la dependencia distActualizado para functions.');
+    const d = deps.distActualizado(ctx.objetivo);
+    agregar('dist_actualizado', d.ok, 'bloqueante', d.ok ? `${rel} coincide con el build de functions/${ctx.objetivo}.ts` : `${d.mensaje} Ejecute "npm run build:functions" y comitee el resultado.`);
+  }
 
   // Árbol de trabajo
   const st = deps.git(['status', '--porcelain']);
@@ -386,7 +404,7 @@ async function correrVerificacion(sentencias, transporte, log, warn) {
 export async function ejecutarFunction(ctx, deps) {
   const { log, warn, transporte } = deps;
   const nombre = ctx.objetivo;
-  const rel = `functions/${nombre}.ts`;
+  const rel = rutaDistFunction(nombre);
   const abs = resolve(deps.raiz || RAIZ, rel);
   const contenido = deps.leerArchivo(abs);
   const sha = sha256Texto(contenido);
@@ -443,6 +461,15 @@ function crearDepsReales() {
     git,
     raiz: RAIZ,
     existe: (rel) => existsSync(resolve(RAIZ, rel)),
+    distActualizado: (nombre) => {
+      try {
+        const r = verificarDist(RAIZ, { nombres: [nombre] });
+        const d = r.detalle[0];
+        return { ok: r.ok, mensaje: d && d.motivo ? `${d.motivo}.` : '' };
+      } catch (e) {
+        return { ok: false, mensaje: `No se pudo generar el build de ${nombre}: ${e.message}.` };
+      }
+    },
     listarVersiones: () => readdirSync(resolve(RAIZ, 'migrations')).map((f) => (f.match(/^(\d{3,})_.*\.sql$/) || [])[1]).filter(Boolean),
     leerArchivo: (abs) => readFileSync(abs),
     aplicadaPor: () => (git(['config', 'user.email']).stdout || '').trim() || process.env.GITHUB_ACTOR || userInfo().username,
@@ -495,7 +522,7 @@ export async function principal(argv, depsExtra = {}) {
 
   let resultados;
   try {
-    resultados = await prechequeos(ctx, { git: deps.git, consultarSql: (s) => transporte.consultarSql(s), existe: deps.existe, listarVersiones: deps.listarVersiones });
+    resultados = await prechequeos(ctx, { git: deps.git, consultarSql: (s) => transporte.consultarSql(s), existe: deps.existe, listarVersiones: deps.listarVersiones, distActualizado: deps.distActualizado });
   } catch (e) {
     warn(`Error en los pre-chequeos: ${e.message}`);
     return e.codigo === 'transporte' ? 2 : 1;

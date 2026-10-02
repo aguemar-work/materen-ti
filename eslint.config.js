@@ -58,10 +58,10 @@ export default [
   // resolver imports `npm:`/globals `Deno`) ──────────────────────────────
   ...tseslint.configs.recommended.map((cfg) => ({
     ...cfg,
-    files: ['functions/*.ts'],
+    files: ['functions/**/*.ts'],
   })),
   {
-    files: ['functions/*.ts'],
+    files: ['functions/**/*.ts'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',

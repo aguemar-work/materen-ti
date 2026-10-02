@@ -1,8 +1,9 @@
-// Tests de las validaciones de servidor de functions/tickets.ts:
+// Tests de las validaciones de servidor de functions/tickets.ts (se prueba el dist,
+// que es lo que se despliega; los helpers vienen de functions/_shared/):
 // adjuntos por magic bytes (H-03), identificación de contacto y la
 // extracción de IP de confianza para el rate-limit (H-02).
 import { describe, it, expect } from 'vitest';
-import { sniffImagen, esEmail, soloDigitos, ipDesdeHeaders } from '../../functions/tickets.ts';
+import { sniffImagen, esEmail, soloDigitos, ipDesdeHeaders } from '../../functions/dist/tickets.ts';
 
 const JPG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
