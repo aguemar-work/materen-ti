@@ -43,6 +43,15 @@
     line-height: 1.4;
   }
 
+  /* Hoja de etiquetas QR (EtiquetasEquiposView): la única página con otros
+     márgenes. 5 mm a los lados deja 200 mm = 4 etiquetas de 50 mm; 8,5 mm
+     arriba y abajo deja 280 mm = 11 filas de 25 mm. Se activa con la
+     propiedad `page: etiquetas` de esa hoja, no toca a ningún otro impreso. */
+  @page etiquetas {
+    size: A4;
+    margin: 8.5mm 5mm;
+  }
+
   /* Ninguna sombra ni anillo en papel (la hoja se apoya en pantalla; en papel
      ya está apoyada). */
   *,

@@ -51,6 +51,15 @@ export default [
     component: () => import('../../modules/encuestas/EncuestaPublicaView.vue'),
     meta: { public: true },
   },
+  {
+    // Destino del QR de la etiqueta de un equipo. Sin sesión no consulta nada
+    // (solo el aviso "Si lo encontró, comuníquese con TI"); con sesión de
+    // staff con el módulo equipos redirige a la hoja de vida.
+    path: '/e/:codigo',
+    name: 'equipo-qr',
+    component: () => import('../../modules/equipos/EquipoQrView.vue'),
+    meta: { public: true },
+  },
   // Compat /ticket/* → /soporte/*: hay enlaces viejos ya enviados por
   // correo (functions/tickets.ts) y copiados/impresos por el staff que
   // no se pueden actualizar. Params y query (?entrega=) se conservan.

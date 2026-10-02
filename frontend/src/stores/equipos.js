@@ -1,6 +1,11 @@
 import { insforgeApi } from '../api/insforge.js';
 import { crearStorePaginado } from './crearStorePaginado.js';
 
+// Entregar, devolver, mover, cambiar el estado y verificar ya no pasan por el
+// store: son RPC de una sola llamada (migración 101) que ejecuta
+// modules/equipos/useEquiposAcciones.js, igual en el listado y en la hoja de
+// vida; el listado recarga su página con `cargar()` tras cada una.
+//
 // Paginación server-side en la lista (esqueleto común en
 // crearStorePaginado.js); tipos y ubicaciones se cachean en el propio store
 // (catálogos pequeños, no cambian con cada página) y se piden en la MISMA
@@ -37,42 +42,10 @@ export const useEquiposStore = crearStorePaginado('equipos', {
       await this.cargar();
     },
 
-    async cambiarEstado(id, estado) {
-      this.error = null;
-      await insforgeApi.cambiarEstadoEquipo(id, estado);
-      await this.cargar();
-    },
-
     async softDelete(id) {
       this.error = null;
       await insforgeApi.softDeleteEquipo(id);
       await this.cargar();
-    },
-
-    async asignar(equipoId, empleadoId, condicionEntrega) {
-      this.error = null;
-      await insforgeApi.asignarEquipo(equipoId, empleadoId, condicionEntrega);
-      await this.cargar();
-    },
-
-    async devolver(asignacionId, equipoId, datos) {
-      this.error = null;
-      await insforgeApi.devolverEquipo(asignacionId, equipoId, datos);
-      await this.cargar();
-    },
-
-    async mover(equipoId, ubicacionId) {
-      this.error = null;
-      await insforgeApi.moverEquipo(equipoId, ubicacionId);
-      await this.cargar();
-    },
-
-    async crearUbicacion(nombre) {
-      this.error = null;
-      const ubicacion = await insforgeApi.createUbicacion(nombre);
-      this.ubicaciones.push(ubicacion);
-      this.ubicaciones.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-      return ubicacion;
     },
   },
 });

@@ -3,7 +3,7 @@
 // ÚNICO lugar donde se escribe el nombre. Consumidores: AppLayout (logo +
 // título de topbar), AppPortal (portal público y páginas de error: alt del
 // logo), pdfReporte (pie de los PDFs),
-// acta-base (actas imprimibles de equipos), DesignSystem y StyleLab.
+// ActaView (actas imprimibles de equipos), DesignSystem y StyleLab.
 //
 // EXCEPCIÓN CONOCIDA — `frontend/index.html` (`<title>`): es HTML estático
 // servido antes de que corra cualquier JS, así que no puede importar de acá.
@@ -19,3 +19,12 @@ export const NOMBRE_PRODUCTO = 'Materen — Sistema TI';
 // llegó. El disparador está escrito en el plan: el primer módulo no-TI real.
 export const NOMBRE_CORTO = 'Sistema TI';
 export const NOMBRE_MARCA = 'Materen';
+
+// Contacto del área de TI que ve quien escanea la etiqueta QR de un equipo SIN
+// sesión (/e/:codigo). Lo completa el dueño: es un dato de la empresa, no un
+// secreto, pero no se inventa. Con las dos claves vacías la página pública
+// muestra solo el mensaje genérico. (El plan prevé leerlo de `config_parametros`;
+// mientras no exista ese parámetro público, vive acá.)
+//   texto:   "Mesa de ayuda: 987 654 321 · ti@materen.pe"
+//   enlace:  URL opcional (wa.me, mailto:, tel:) para convertirlo en enlace.
+export const CONTACTO_TI = Object.freeze({ texto: '', enlace: '' });

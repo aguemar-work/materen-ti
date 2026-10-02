@@ -16,6 +16,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createRouter, createMemoryHistory } from 'vue-router';
+import PrimeVue from 'primevue/config';
 import EquiposView from '../../src/modules/equipos/EquiposView.vue';
 
 vi.mock('../../src/api/insforge.js', () => ({
@@ -26,6 +27,10 @@ vi.mock('../../src/api/insforge.js', () => ({
     conteosEquiposPorSituacion: vi.fn(),
     listEmpresas: vi.fn().mockResolvedValue([]),
     listEmpleados: vi.fn().mockResolvedValue([]),
+    asignarEquipo: vi.fn(),
+    devolverEquipo: vi.fn(),
+    moverEquipo: vi.fn(),
+    cambiarEstadoEquipo: vi.fn(),
   },
 }));
 import { insforgeApi } from '../../src/api/insforge.js';
@@ -75,6 +80,9 @@ function crearRouter() {
       { path: '/equipos', name: 'equipos', component: { template: '<div />' } },
       { path: '/equipos/importar', name: 'equipos-importar', component: { template: '<div />' } },
       { path: '/empleados/:id', name: 'empleado-detalle', component: { template: '<div />' } },
+      { path: '/equipos/etiquetas', name: 'equipos-etiquetas', component: { template: '<div />' } },
+      { path: '/equipos/:id', name: 'equipo-detalle', component: { template: '<div />' } },
+      { path: '/equipos/:id/acta/:asignacionId', name: 'equipo-acta', component: { template: '<div />' } },
     ],
   });
   return router;
@@ -86,8 +94,8 @@ async function montar() {
   await router.isReady();
   const w = mount(EquiposView, {
     global: {
-      plugins: [router],
-      stubs: { EquipoForm: true, Modal: true, ConfirmDialog: true },
+      plugins: [router, [PrimeVue, { unstyled: true }]],
+      stubs: { EquipoForm: true, ConfirmDialog: true },
     },
   });
   await flushPromises();
@@ -124,8 +132,10 @@ describe('EquiposView.vue — listado migrado a AppTable/AppColumn/AppButton', (
   // "Asignación"). Mismo contrato: cada AppColumn sigue siendo un <th>.
   it('las 5 columnas declaradas con AppColumn se renderizan como <th>', async () => {
     const w = await montar();
-    const headers = w.findAll('th').map((th) => th.text());
+    // La primera columna (casilla de selección para imprimir etiquetas) no lleva texto.
+    const headers = w.findAll('th').map((th) => th.text()).filter(Boolean);
     expect(headers).toEqual(['Equipo', 'Serie', 'Estado', 'Asignación', 'Acciones']);
+    expect(w.find('thead input[type="checkbox"]').exists()).toBe(true);
   });
 
   it('celdas con contenido custom (#body) siguen renderizando lo mismo que antes', async () => {
@@ -184,7 +194,7 @@ describe('EquiposView.vue — listado migrado a AppTable/AppColumn/AppButton', (
     router.push('/equipos');
     await router.isReady();
     const w = mount(EquiposView, {
-      global: { plugins: [router], stubs: { EquipoForm: true, Modal: true, ConfirmDialog: true } },
+      global: { plugins: [router, [PrimeVue, { unstyled: true }]], stubs: { EquipoForm: true, ConfirmDialog: true } },
     });
     await Promise.resolve();
     expect(w.find('table').exists()).toBe(true);
@@ -194,55 +204,103 @@ describe('EquiposView.vue — listado migrado a AppTable/AppColumn/AppButton', (
   });
 });
 
-// Acta de ENTREGA automática al entregar a un empleado (2026-09-24), mismo
-// patrón que la de devolución: ventana reservada en el clic, antes del await.
-describe('EquiposView.vue — acta de entrega al entregar', () => {
-  const EMPLEADO = {
-    id: 'emp-9', nombres: 'Rosa', apellidos: 'Quispe', dni: '45871236', cargo: 'Asistente',
-    empresa_nombre: 'Materen', estado: 'Activo',
-  };
+// La fila abre la hoja de vida (ya no un modal) y las acciones salen a
+// EquipoAccionesModales sobre las RPC de la migración 101.
+describe('EquiposView.vue — hoja de vida y acciones', () => {
+  const EMPLEADO = { id: 'emp-9', nombres: 'Rosa', apellidos: 'Quispe', dni: '45871236', estado: 'Activo' };
+  const LIBRE = { ...EQUIPOS_FIXTURE[1], id: 'eq-3', codigo: 'EQ-0003', estado: 'operativo', situacion: 'disponible', asignacion_id: null };
 
-  function ventanaFalsa() {
-    return { document: { write: vi.fn(), open: vi.fn(), close: vi.fn() }, close: vi.fn() };
-  }
-
-  async function prepararEntrega(w) {
-    w.vm.equipoAsignar = { ...EQUIPOS_FIXTURE[1], id: 'eq-3', codigo: 'EQ-0003', situacion: 'disponible' };
-    w.vm.empleadosActivos = [EMPLEADO];
-    w.vm.empleadoSelId = 'emp-9';
-    w.vm.condicionEntrega = 'con cargador';
-  }
-
-  it('reserva la ventana ANTES de registrar la entrega y escribe el acta con los datos del empleado', async () => {
-    const orden = [];
-    const win = ventanaFalsa();
-    const open = vi.spyOn(window, 'open').mockImplementation(() => { orden.push('open'); return win; });
-    insforgeApi.asignarEquipo = vi.fn(async () => { orden.push('asignar'); });
-    const w = await montar();
-    await prepararEntrega(w);
-    await w.vm.confirmarAsignar();
+  it('un clic en la fila navega a /equipos/:id', async () => {
+    const router = crearRouter();
+    router.push('/equipos');
+    await router.isReady();
+    const w = mount(EquiposView, { global: { plugins: [router, [PrimeVue, { unstyled: true }]], stubs: { EquipoForm: true, ConfirmDialog: true } } });
     await flushPromises();
-    expect(orden).toEqual(['open', 'asignar']);
-    const html = win.document.write.mock.calls.map((c) => c[0]).join('');
-    expect(html).toContain('Acta de Entrega de Equipo');
-    expect(html).toContain('45871236');
-    expect(html).toContain('con cargador');
-    expect(win.close).not.toHaveBeenCalled();
-    open.mockRestore();
+    await w.findAll('tbody tr')[0].trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/equipos/eq-1');
   });
 
-  it('si la entrega falla, cierra la ventana reservada y no escribe ningún acta', async () => {
-    const win = ventanaFalsa();
-    const open = vi.spyOn(window, 'open').mockReturnValue(win);
-    insforgeApi.asignarEquipo = vi.fn().mockRejectedValue(new Error('El equipo ya tiene portador'));
+  it('entregar usa la RPC y ofrece "Ver acta" con la asignación creada (sin ventana reservada)', async () => {
+    insforgeApi.listEquiposPage.mockResolvedValue({ items: [LIBRE], total: 1 });
+    insforgeApi.listEmpleados.mockResolvedValue([EMPLEADO]);
+    insforgeApi.asignarEquipo.mockResolvedValue({ id: 'asig-77' });
+    const open = vi.spyOn(window, 'open');
     const w = await montar();
-    await prepararEntrega(w);
-    await w.vm.confirmarAsignar();
+    await w.vm.acciones.abrirEntregar(LIBRE);
     await flushPromises();
-    expect(win.close).toHaveBeenCalled();
-    expect(win.document.write.mock.calls.map((c) => c[0]).join('')).not.toContain('Acta de Entrega');
-    expect(w.vm.errorAsignar).toBe('El equipo ya tiene portador');
+    w.vm.acciones.form.empleadoId = 'emp-9';
+    w.vm.acciones.form.condicion = 'con cargador';
+    await w.vm.acciones.confirmarEntregar();
+    await flushPromises();
+    expect(insforgeApi.asignarEquipo).toHaveBeenCalledWith('eq-3', 'emp-9', 'con cargador');
+    // La lista se recarga tras la acción.
+    expect(insforgeApi.listEquiposPage.mock.calls.length).toBeGreaterThan(1);
+    const enlace = [...document.querySelectorAll('a')].find((a) => a.textContent.includes('Ver acta'));
+    expect(enlace.getAttribute('href')).toBe('/equipos/eq-3/acta/asig-77?tipo=entrega');
+    expect(enlace.getAttribute('target')).toBe('_blank');
+    // El enlace abre la pestaña en el clic: nada de window.open tras un await.
+    expect(open).not.toHaveBeenCalled();
     open.mockRestore();
+    w.unmount();
+  });
+
+  it('si el servidor rechaza la entrega, el motivo aparece dentro del diálogo y no hay "Ver acta"', async () => {
+    insforgeApi.listEmpleados.mockResolvedValue([EMPLEADO]);
+    insforgeApi.asignarEquipo.mockRejectedValue(Object.assign(new Error('El equipo EQ-0003 ya tiene un portador activo.'), { code: 'P0001', tipo: 'validacion', original: {} }));
+    const w = await montar();
+    await w.vm.acciones.abrirEntregar(LIBRE);
+    await flushPromises();
+    w.vm.acciones.form.empleadoId = 'emp-9';
+    await w.vm.acciones.confirmarEntregar();
+    await flushPromises();
+    expect(w.vm.acciones.error).toBe('El equipo EQ-0003 ya tiene un portador activo.');
+    expect(document.body.textContent).toContain('ya tiene un portador activo');
+    expect([...document.querySelectorAll('a')].some((a) => a.textContent.includes('Ver acta'))).toBe(false);
+    w.unmount();
+  });
+
+  it('devolver llama a devolver_equipo con la asignación y ofrece el acta de devolución', async () => {
+    insforgeApi.devolverEquipo.mockResolvedValue({ id: 'eq-1' });
+    const w = await montar();
+    await w.vm.acciones.abrirDevolver({ ...EQUIPOS_FIXTURE[0], asignacion_id: 'asig-5' });
+    w.vm.acciones.form.condicion = 'pantalla rota';
+    w.vm.acciones.cambiarMotivo('cambio_equipo');
+    w.vm.acciones.form.aReparacion = true;
+    await w.vm.acciones.confirmarDevolver();
+    await flushPromises();
+    expect(insforgeApi.devolverEquipo).toHaveBeenCalledWith('asig-5', 'eq-1', { condicion: 'pantalla rota', motivo: 'cambio_equipo', aReparacion: true });
+    const enlace = [...document.querySelectorAll('a')].find((a) => a.textContent.includes('Ver acta'));
+    expect(enlace.getAttribute('href')).toBe('/equipos/eq-1/acta/asig-5?tipo=devolucion');
+    w.unmount();
+  });
+
+  it('elegir "pérdida" apaga la casilla de reparación (se contradicen)', async () => {
+    const w = await montar();
+    await w.vm.acciones.abrirDevolver({ ...EQUIPOS_FIXTURE[0], asignacion_id: 'asig-5' });
+    w.vm.acciones.form.aReparacion = true;
+    w.vm.acciones.cambiarMotivo('perdida');
+    expect(w.vm.acciones.form.aReparacion).toBe(false);
+    w.unmount();
+  });
+
+  it('la selección de filas habilita "Imprimir etiquetas" con los ids en la URL', async () => {
+    const router = crearRouter();
+    router.push('/equipos');
+    await router.isReady();
+    const w = mount(EquiposView, { global: { plugins: [router, [PrimeVue, { unstyled: true }]], stubs: { EquipoForm: true, ConfirmDialog: true } } });
+    await flushPromises();
+    expect(w.text()).not.toContain('Imprimir etiquetas');
+    const casillas = w.findAll('tbody input[type="checkbox"]');
+    expect(casillas.length).toBe(2);
+    await casillas[0].setValue(true);
+    await casillas[1].setValue(true);
+    await flushPromises();
+    expect(w.text()).toContain('2 seleccionados');
+    await w.findAll('button').find((b) => b.text().includes('Imprimir etiquetas')).trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/equipos/etiquetas');
+    expect(router.currentRoute.value.query.ids).toBe('eq-1,eq-2');
   });
 });
 
@@ -252,7 +310,7 @@ describe('EquiposView.vue — /equipos?nuevo=1', () => {
     router.push('/equipos?nuevo=1');
     await router.isReady();
     const w = mount(EquiposView, {
-      global: { plugins: [router], stubs: { EquipoForm: true, Modal: true, ConfirmDialog: true } },
+      global: { plugins: [router, [PrimeVue, { unstyled: true }]], stubs: { EquipoForm: true, ConfirmDialog: true } },
     });
     await flushPromises();
     expect(w.findComponent({ name: 'EquipoForm' }).exists()).toBe(true);
@@ -279,7 +337,7 @@ describe('EquiposView.vue — vistas y filtros en la URL', () => {
     const router = crearRouter();
     router.push('/equipos');
     await router.isReady();
-    const w = mount(EquiposView, { global: { plugins: [router], stubs: { EquipoForm: true, Modal: true, ConfirmDialog: true } } });
+    const w = mount(EquiposView, { global: { plugins: [router, [PrimeVue, { unstyled: true }]], stubs: { EquipoForm: true, ConfirmDialog: true } } });
     await flushPromises();
     await vista(w, 'Libres').trigger('click');
     await flushPromises();
@@ -292,7 +350,7 @@ describe('EquiposView.vue — vistas y filtros en la URL', () => {
     const router = crearRouter();
     router.push('/equipos?situacion=en_reparacion&tipo=laptop,desktop');
     await router.isReady();
-    mount(EquiposView, { global: { plugins: [router], stubs: { EquipoForm: true, Modal: true, ConfirmDialog: true } } });
+    mount(EquiposView, { global: { plugins: [router, [PrimeVue, { unstyled: true }]], stubs: { EquipoForm: true, ConfirmDialog: true } } });
     await flushPromises();
     expect(insforgeApi.listEquiposPage.mock.calls.at(-1)[0]).toMatchObject({
       situacion: 'en_reparacion',

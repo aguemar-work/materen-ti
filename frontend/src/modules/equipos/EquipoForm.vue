@@ -2,10 +2,11 @@
 import { ref, computed, watch, nextTick, useTemplateRef } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEquiposStore } from '../../stores/equipos.js';
-import { comprimirImagen } from '../../core/imagenes.js';
+import { MAX_FOTOS_EQUIPO as MAX_FOTOS } from '../../core/dominio-equipos.js';
+import EquipoFotos from './EquipoFotos.vue';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
@@ -17,9 +18,8 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Migrado a Modal.vue (mismo patrón que EmpleadoForm.vue/AccesoSensibleForm.vue):
-// Teleport, bloqueo de scroll del body, atrapamiento de foco y Escape los
-// resuelve el componente compartido.
+// Sobre AppDialog (2026-10-01, unificación Modal → AppDialog): bloqueo de scroll
+// del body, atrapamiento de foco y Escape los resuelve el diálogo compartido.
 let resultado = false;
 
 const store = useEquiposStore();
@@ -98,47 +98,8 @@ const { termino: busquedaAcc, cargando: buscandoAcc } = useBusqueda({
 
 const nuevaLinea = ref({ codigo: '', descripcion: '', cantidad: 1 });
 
-// ── Fotos: comprimir y subir al seleccionar ───────────────────
-// ⚠️ MAX_FOTOS está duplicado a propósito como MAX_FOTOS_POR_EQUIPO en
-// functions/equipos-fotos.ts (2026-08-31): acá oculta el botón y avisa antes
-// de subir, allá es el tope real (esta pantalla se puede saltear con
-// DevTools). Los dos valores tienen que moverse JUNTOS.
-const MAX_FOTOS = 4;
-const subiendoFoto = ref(false);
-const inputFotos = ref(null);
-
-async function onFotosSeleccionadas(e) {
-  const files = Array.from(e.target.files || []);
-  e.target.value = '';
-  if (!files.length) return;
-  const disponibles = MAX_FOTOS - form.value.fotos.length;
-  if (disponibles <= 0) {
-    error.value = `Máximo ${MAX_FOTOS} fotos por equipo`;
-    return;
-  }
-  subiendoFoto.value = true;
-  error.value = '';
-  try {
-    for (const file of files.slice(0, disponibles)) {
-      const comprimida = await comprimirImagen(file);
-      // props.equipo?.id: en alta todavía no hay equipo al que contarle
-      // fotos guardadas, el servidor lo sabe y no aplica el tope ahí.
-      const foto = await insforgeApi.subirFotoEquipo(comprimida, props.equipo?.id || null);
-      form.value.fotos.push(foto);
-    }
-  } catch (err) {
-    error.value = err?.message || 'Error al subir la foto';
-  } finally {
-    subiendoFoto.value = false;
-  }
-}
-
-async function quitarFoto(foto) {
-  form.value.fotos = form.value.fotos.filter((f) => f.key !== foto.key);
-  try {
-    await insforgeApi.eliminarFotoEquipo(foto.key);
-  } catch { /* si falla, la referencia igual ya no se guardará */ }
-}
+// ── Fotos: subir y quitar las resuelve EquipoFotos.vue (compartido con la hoja
+// de vida); acá solo se guarda la lista al pulsar Guardar.
 
 const tipoActual = computed(() => store.tipos.find((t) => t.id === form.value.tipo_id));
 const camposSpec = computed(() => tipoActual.value?.campos_spec || []);
@@ -336,13 +297,13 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal
+  <AppDialog
     ref="modal"
     size="lg"
     :titulo="esEdicion ? 'Editar equipo' : 'Nuevo equipo'"
     :confirmar-cierre="confirmarCierre"
     :cerrar-en-backdrop="false"
-    @close="emit('cerrar', resultado)"
+    @cerrado="emit('cerrar', resultado)"
   >
     <form id="eq-form" class="form-grid" @submit.prevent="guardar">
       <!-- ── Identificación ── -->
@@ -647,42 +608,7 @@ async function guardar() {
         <span class="rounded-full bg-gray-100 px-1.5 font-medium normal-case tracking-normal text-gray-600 tabular-nums">{{ form.fotos.length }}/{{ MAX_FOTOS }}</span>
       </div>
       <div class="full">
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div v-for="foto in form.fotos" :key="foto.key" class="group relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-            <a :href="foto.url" target="_blank" rel="noopener noreferrer" class="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500">
-              <img :src="foto.url" alt="Foto del equipo" class="h-full w-full object-cover">
-            </a>
-            <button
-              class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-md bg-white/90 text-gray-600 ring-1 ring-gray-200 transition-colors hover:bg-white hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
-              type="button"
-              title="Quitar foto"
-              aria-label="Quitar foto"
-              :disabled="guardando"
-              @click="quitarFoto(foto)"
-            >
-              <i class="ti ti-x" aria-hidden="true"></i>
-            </button>
-          </div>
-          <button
-            v-if="form.fotos.length < MAX_FOTOS"
-            class="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 bg-white text-sm text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
-            type="button"
-            :disabled="guardando || subiendoFoto"
-            @click="inputFotos?.click()"
-          >
-            <i class="text-2xl" :class="subiendoFoto ? 'ti ti-loader-2 animate-spin' : 'ti ti-camera-plus'" aria-hidden="true"></i>
-            <span>{{ subiendoFoto ? 'Subiendo...' : 'Agregar foto' }}</span>
-          </button>
-        </div>
-        <input
-          ref="inputFotos"
-          type="file"
-          accept="image/*"
-          multiple
-          class="hidden"
-          @change="onFotosSeleccionadas"
-        >
-        <p class="mt-2 text-xs text-gray-500">Se comprimen automáticamente (~200 KB c/u) para no llenar el almacenamiento.</p>
+        <EquipoFotos v-model="form.fotos" :equipo-id="props.equipo?.id || null" :disabled="guardando" @error="(m) => (error = m)" />
       </div>
 
       <div class="section-label">
@@ -707,7 +633,7 @@ async function guardar() {
       <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
       <AppButton type="submit" form="eq-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"

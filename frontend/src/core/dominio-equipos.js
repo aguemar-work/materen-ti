@@ -24,3 +24,25 @@ export const ESTADOS_FISICO_EQUIPO = {
 export function situacionInfo(situacion) {
   return SITUACIONES_EQUIPO[situacion] || { label: situacion, clase: '' };
 }
+
+// Tope de fotos por equipo. ⚠️ Duplicado a propósito como MAX_FOTOS_POR_EQUIPO en
+// functions/equipos-fotos.ts (ahí es el tope real; acá oculta el botón): los dos
+// valores se mueven JUNTOS.
+export const MAX_FOTOS_EQUIPO = 4;
+
+/** "Laptop Dell Latitude 5440": tipo, marca y modelo en una línea. */
+export function nombreEquipo(equipo) {
+  return [equipo.tipo_nombre, equipo.marca, equipo.modelo].filter(Boolean).join(' ') || 'Equipo sin descripción';
+}
+
+/** Etiqueta y clase de tag del estado físico de un equipo (`equipos.estado`). */
+export function estadoFisicoInfo(equipo) {
+  return ESTADOS_FISICO_EQUIPO[equipo.estado] || { label: equipo.estado, clase: '' };
+}
+
+/** ¿Estado terminal que se sella en la carátula? (de baja, perdido). */
+export function selloDeEquipo(equipo) {
+  if (equipo.estado === 'de_baja') return { tono: 'neutro', texto: 'De baja' };
+  if (equipo.estado === 'perdido') return { tono: 'critico', texto: 'Perdido o robado' };
+  return null;
+}

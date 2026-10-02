@@ -5,8 +5,9 @@ import { crearInvocador } from '../invocarFuncion.js';
 import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
-import { toTitleCase, trimText, fechaLocalISO } from '../../core/formatters.js';
+import { toTitleCase, trimText } from '../../core/formatters.js';
 import { archivoABase64 } from '../../core/imagenes.js';
+import { anotarErrorDb } from '../erroresDb.js';
 
 // Fotos: única vía a la edge function "equipos-fotos", por crearInvocador
 // (api/invocarFuncion.js) igual que passwords.js/ticketsPublicos.js/
@@ -21,7 +22,13 @@ function mensajeErrorFotos(code) {
     no_es_staff: 'Sin permisos para esta acción',
     no_autorizado: 'Sin permiso sobre el módulo Equipos',
     archivo_requerido: 'Seleccione una imagen',
-    archivo_invalido: 'El archivo no es una imagen válida (JPG, PNG, GIF o WebP)',
+    archivo_invalido: 'El archivo no es válido: use una imagen JPG, PNG, GIF o WebP (las actas, solo PDF)',
+    // Actas firmadas (acciones subirActa / urlActa, migración 110)
+    archivo_muy_grande: 'El acta supera el tope de 10 MB. Escanéela con menor resolución.',
+    asignacion_invalida: 'La asignación no admite esta acta (debe ser a una persona y, para la devolución, estar cerrada)',
+    fecha_invalida: 'La fecha de firma no es válida o es futura',
+    no_existe: 'El registro no existe o ya no está vigente',
+    error_url: 'No se pudo generar el enlace al acta. Intente de nuevo.',
     // limite_fotos: el tope real lo aplica el servidor sobre las fotos YA
     // guardadas del equipo. La segunda frase cubre el único caso en que el
     // contador del formulario y el del servidor pueden discrepar: quitar
@@ -194,29 +201,18 @@ export const equiposApi = {
     return data;
   },
 
-  // Mover a una ubicación. Solo si está libre o en otra ubicación:
-  // si lo tiene una PERSONA, se exige registrar la devolución primero.
+  // Mover a una ubicación: RPC mover_equipo (migración 101). Todo en una
+  // transacción en el servidor: si lo tiene una PERSONA se rechaza (P0001,
+  // "registre la devolución antes de moverlo"); si estaba en otra ubicación,
+  // esa asignación se cierra con motivo 'movimiento'. Devuelve la asignación
+  // nueva (la de ubicación). Un error sale ya traducido (api/erroresDb.js).
   async moverEquipo(equipoId, ubicacionId) {
-    const db = getClient().database;
-    // Antes `this.asignacionActivaEquipo`: se referencia el propio objeto del dominio.
-    const activa = await equiposApi.asignacionActivaEquipo(equipoId);
-    if (activa?.empleado_id) {
-      throw new Error('El equipo lo tiene una persona. Registra la devolución antes de moverlo.');
-    }
-    if (activa) {
-      const { error: e1 } = await db
-        .from('asignaciones_equipo')
-        .update({ fecha_fin: fechaLocalISO(), motivo_cierre: 'movimiento' })
-        .eq('id', activa.id);
-      if (e1) throw e1;
-    }
-    const { error: e2 } = await db
-      .from('asignaciones_equipo')
-      // fecha_inicio explícito: el default `current_date` de la columna
-      // corre en el servidor (GMT) y sufre el mismo corte de T-01 pasadas
-      // las 19:00 hora Perú si se deja implícito.
-      .insert([{ equipo_id: equipoId, ubicacion_id: ubicacionId, fecha_inicio: fechaLocalISO() }]);
-    if (e2) throw e2;
+    const { data, error } = await getClient().database.rpc('mover_equipo', {
+      p_equipo_id: equipoId,
+      p_ubicacion_id: ubicacionId,
+    });
+    if (error) throw anotarErrorDb(error, { entidad: 'equipo' });
+    return data;
   },
 
   async createEquipo(datos) {
@@ -258,60 +254,107 @@ export const equiposApi = {
     if (error) throw error;
   },
 
+  // Entrega a una persona: RPC asignar_equipo (migración 101). Si estaba en
+  // una ubicación se retira de allí; si lo tiene otra persona o no está
+  // operativo, el servidor rechaza con P0001 (mensaje en español). Devuelve la
+  // fila de asignaciones_equipo creada (su `id` es lo que necesita el acta).
   async asignarEquipo(equipoId, empleadoId, condicionEntrega) {
-    const db = getClient().database;
-    // Si está en una ubicación (almacén, área...), se retira de ahí
-    // automáticamente. Si lo tiene otra persona, el trigger lo bloquea.
-    // Antes `this.asignacionActivaEquipo`: se referencia el propio objeto del dominio.
-    const activa = await equiposApi.asignacionActivaEquipo(equipoId);
-    if (activa?.ubicacion_id) {
-      const { error: e0 } = await db
-        .from('asignaciones_equipo')
-        .update({ fecha_fin: fechaLocalISO(), motivo_cierre: 'entrega_a_empleado' })
-        .eq('id', activa.id);
-      if (e0) throw e0;
-    }
-    const { error } = await db
-      .from('asignaciones_equipo')
-      .insert([{
-        equipo_id: equipoId,
-        empleado_id: empleadoId,
-        fecha_inicio: fechaLocalISO(),
-        condicion_entrega: trimText(condicionEntrega),
-      }]);
-    if (error) throw error;
+    const { data, error } = await getClient().database.rpc('asignar_equipo', {
+      p_equipo_id: equipoId,
+      p_empleado_id: empleadoId,
+      p_condicion_entrega: trimText(condicionEntrega) || null,
+    });
+    if (error) throw anotarErrorDb(error, { entidad: 'equipo' });
+    return data;
   },
 
-  // Devolución física: cierra la asignación y, si volvió dañado,
-  // pasa el equipo a reparación en el mismo acto
-  async devolverEquipo(asignacionId, equipoId, { condicion, motivo, aReparacion }) {
-    const db = getClient().database;
-    const { error: e1 } = await db
-      .from('asignaciones_equipo')
-      .update({
-        fecha_fin: fechaLocalISO(),
-        condicion_devolucion: trimText(condicion),
-        motivo_cierre: motivo || 'devolucion',
-      })
-      .eq('id', asignacionId)
-      .is('fecha_fin', null);
-    if (e1) throw e1;
+  // Devolución física: RPC devolver_equipo (migración 101). Cierra la
+  // asignación y, según el motivo (pérdida/robo → 'perdido') o `aReparacion`,
+  // cambia el estado del equipo, todo en una transacción. `_equipoId` se
+  // conserva en la firma por los llamadores existentes; el servidor lo deduce
+  // de la asignación. Devuelve la fila de `equipos` ya actualizada.
+  async devolverEquipo(asignacionId, _equipoId, { condicion, motivo, aReparacion } = {}) {
+    const { data, error } = await getClient().database.rpc('devolver_equipo', {
+      p_asignacion_id: asignacionId,
+      p_condicion: trimText(condicion) || null,
+      p_motivo: motivo || 'devolucion',
+      p_a_reparacion: !!aReparacion,
+    });
+    if (error) throw anotarErrorDb(error, { entidad: 'equipo' });
+    return data;
+  },
 
-    // Pérdida/robo prevalece sobre "volvió dañado": si el equipo ya no está
-    // en posesión de la empresa, no tiene sentido marcarlo en reparación.
-    if (motivo === 'perdida') {
-      const { error: e2 } = await db
+  // Conciliación física (plan §3.6): deja el evento `verificado` en el kardex
+  // con actor y fecha. No mueve ni cambia nada del equipo. `ubicacionId` =
+  // dónde se encontró (opcional). Devuelve la fila de eventos_equipo.
+  async verificarEquipo(equipoId, { ubicacionId = null, nota = '' } = {}) {
+    const { data, error } = await getClient().database.rpc('verificar_equipo', {
+      p_equipo_id: equipoId,
+      p_ubicacion_id: ubicacionId || null,
+      p_nota: trimText(nota) || null,
+    });
+    if (error) throw anotarErrorDb(error, { entidad: 'equipo' });
+    return data;
+  },
+
+  // Un equipo por id con el mismo shape que las filas del listado, o `null`
+  // si no existe o está eliminado (la vista distingue "no encontrado" de un
+  // error de red porque este último SÍ lanza).
+  async getEquipo(id) {
+    const { data, error } = await getClient().database
+      .from('equipos')
+      .select(SELECT_EQUIPO)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapEquipo(data) : null;
+  },
+
+  // Resuelve un código de inventario (el que codifica el QR de la etiqueta) a
+  // {id, codigo}. La RLS decide qué ve cada sesión; `null` si no hay
+  // coincidencia visible. Los códigos se guardan en mayúsculas.
+  async buscarEquipoPorCodigo(codigo) {
+    const limpio = String(codigo || '').trim().toUpperCase();
+    if (!limpio) return null;
+    const { data, error } = await getClient().database
+      .from('equipos')
+      .select('id, codigo')
+      .eq('codigo', limpio)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  // Varios equipos por id (hoja de etiquetas). En tandas: una lista larga de
+  // uuid en la URL de PostgREST revienta con 414 (mismo límite que documenta
+  // queryEquipos). Conserva el orden pedido.
+  async listEquiposPorIds(ids) {
+    const unicos = [...new Set((ids || []).filter(Boolean))];
+    const TANDA = 40;
+    const filas = [];
+    for (let i = 0; i < unicos.length; i += TANDA) {
+      const { data, error } = await getClient().database
         .from('equipos')
-        .update({ estado: 'perdido' })
-        .eq('id', equipoId);
-      if (e2) throw e2;
-    } else if (aReparacion) {
-      const { error: e2 } = await db
-        .from('equipos')
-        .update({ estado: 'en_reparacion' })
-        .eq('id', equipoId);
-      if (e2) throw e2;
+        .select(SELECT_EQUIPO)
+        .in('id', unicos.slice(i, i + TANDA))
+        .is('deleted_at', null);
+      if (error) throw error;
+      filas.push(...(data || []).map(mapEquipo));
     }
+    const porId = new Map(filas.map((e) => [e.id, e]));
+    return unicos.map((id) => porId.get(id)).filter(Boolean);
+  },
+
+  // Persiste SOLO la lista de fotos ({url, key}) de un equipo ya guardado: la
+  // hoja de vida sube y quita fotos sin pasar por el formulario completo.
+  async guardarFotosEquipo(id, fotos) {
+    const { error } = await getClient().database
+      .from('equipos')
+      .update({ fotos: fotos || [] })
+      .eq('id', id);
+    if (error) throw error;
   },
 
   // Fotos: se suben comprimidas al bucket público "equipos-fotos", pero ya
@@ -340,11 +383,61 @@ export const equiposApi = {
   async eventosEquipo(equipoId) {
     const { data, error } = await getClient().database
       .from('eventos_equipo')
-      .select('id, evento, detalle, user_email, created_at')
+      .select('id, evento, detalle, user_id, user_email, created_at')
       .eq('equipo_id', equipoId)
       .order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];
+  },
+
+  // Asignaciones (a personas y a ubicaciones) de UN equipo, la más reciente
+  // primero: con ellas el kardex enlaza cada entrega/devolución a su acta.
+  async asignacionesDeEquipo(equipoId) {
+    const { data, error } = await getClient().database
+      .from('asignaciones_equipo')
+      .select('id, empleado_id, ubicacion_id, fecha_inicio, fecha_fin, condicion_entrega, condicion_devolucion, motivo_cierre, created_at, empleados(nombres, apellidos), ubicaciones(nombre)')
+      .eq('equipo_id', equipoId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Actas firmadas VIGENTES de un equipo (tabla `actas`, migración 110;
+  // PostgREST nunca devuelve la key del PDF). Una por (asignación, tipo).
+  async listActasEquipo(equipoId) {
+    const { data, error } = await getClient().database
+      .from('actas')
+      .select('id, asignacion_equipo_id, tipo, empleado_id, equipo_id, tamano_bytes, firmado_at, subido_por, created_at')
+      .eq('equipo_id', equipoId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapActa);
+  },
+
+  // Sube el acta firmada (PDF) de una asignación: edge function equipos-fotos,
+  // acción `subirActa`. `archivo` es un File/Blob PDF (una foto se convierte a
+  // PDF en el navegador antes: core/pdfActa.js). Devuelve el acta creada.
+  async subirActa({ asignacionId, tipo, archivo, nombre, firmadoAt }) {
+    const contenido = await archivoABase64(archivo);
+    const data = await invocarFotos({
+      action: 'subirActa',
+      asignacionId,
+      tipo,
+      archivo: contenido,
+      nombre: nombre || undefined,
+      firmadoAt: firmadoAt || undefined,
+    });
+    // La function no devuelve la asignación (la conoce quien llama): se completa
+    // para que la acta nueva reemplace a la anterior de la MISMA asignación y tipo.
+    return mapActa({ ...data.acta, asignacionId });
+  },
+
+  // URL firmada de corta vida (120 s) para abrir el PDF de un acta. El bucket
+  // es privado: solo la function emite la URL, tras comprobar sesión y módulo.
+  async urlActa(actaId) {
+    const data = await invocarFotos({ action: 'urlActa', actaId });
+    return data.url;
   },
 
   // Últimos movimientos de TODO el inventario (para el reporte PDF, sección
@@ -409,6 +502,21 @@ export const equiposApi = {
       }));
   },
 };
+
+// Acta firmada: la tabla (snake_case) y la respuesta de la function
+// (camelCase) llegan a la UI con la misma forma.
+function mapActa(row) {
+  return {
+    id: row.id,
+    asignacionId: row.asignacion_equipo_id ?? row.asignacionId ?? null,
+    tipo: row.tipo,
+    empleadoId: row.empleado_id ?? row.empleadoId ?? null,
+    equipoId: row.equipo_id ?? row.equipoId ?? null,
+    tamanoBytes: row.tamano_bytes ?? row.tamanoBytes ?? null,
+    firmadoAt: row.firmado_at ?? row.firmadoAt ?? null,
+    creadaEn: row.created_at ?? row.creadaEn ?? null,
+  };
+}
 
 function mapEquipo(row) {
   const activa = (row.asignaciones_equipo || []).find((a) => !a.fecha_fin);

@@ -22,6 +22,30 @@ export default [
     path: '/equipos/importar',
     name: 'equipos-importar',
     component: () => import('../../modules/equipos/ImportarEquiposView.vue'),
-    meta: { modulo: 'equipos' },
+    // Pantalla de escritorio (plan §3.9): en móvil muestra el aviso.
+    meta: { modulo: 'equipos', movil: false },
+  },
+  {
+    // Hoja de etiquetas QR para imprimir: ?ids=a,b,c (la selección del
+    // listado) o ?todos=1 con los mismos filtros del listado. Va antes de
+    // `/equipos/:id` por claridad (el router ya prefiere la ruta estática).
+    path: '/equipos/etiquetas',
+    name: 'equipos-etiquetas',
+    component: () => import('../../modules/equipos/EtiquetasEquiposView.vue'),
+    meta: { modulo: 'equipos', imprimible: true, movil: false },
+  },
+  {
+    // Hoja de vida del equipo (antes un modal del listado): expediente con URL.
+    path: '/equipos/:id',
+    name: 'equipo-detalle',
+    component: () => import('../../modules/equipos/EquipoDetalleView.vue'),
+    meta: { modulo: 'equipos', imprimible: true },
+  },
+  {
+    // Acta de entrega o devolución imprimible (?tipo=entrega|devolucion).
+    path: '/equipos/:id/acta/:asignacionId',
+    name: 'equipo-acta',
+    component: () => import('../../modules/equipos/ActaView.vue'),
+    meta: { modulo: 'equipos', imprimible: true },
   },
 ];
