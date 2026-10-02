@@ -2592,7 +2592,7 @@ begin
   insert into public.tipos_equipo (id, nombre) values ('__test_ci_110a__', '__TEST_CI__ Tipo 110a');
   insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_110A__', '__test_ci_110a__') returning id into v_equipo;
   insert into public.equipos (codigo, tipo_id) values ('__TEST_CI_110B__', '__test_ci_110a__') returning id into v_equipo2;
-  insert into public.ubicaciones (nombre) values ('__TEST_CI__ Ubicacion 110a') returning id into v_ubic;
+  insert into public.ubicaciones (nombre, tipo) values ('__TEST_CI__ Ubicacion 110a', 'otro') returning id into v_ubic;
   insert into public.asignaciones_equipo (equipo_id, empleado_id) values (v_equipo, v_emp) returning id into v_asig;
   insert into public.asignaciones_equipo (equipo_id, ubicacion_id) values (v_equipo2, v_ubic) returning id into v_asig_ub;
 

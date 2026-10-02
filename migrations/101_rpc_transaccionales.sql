@@ -134,6 +134,22 @@
 
 
 -- ============================================================
+-- Precondición: la 099 debe estar aplicada
+-- Las RPC de esta migración llaman a exigir_permiso() en su primera línea,
+-- pero plpgsql resuelve el nombre al ejecutar: sin la 099 la migración se
+-- aplicaría sin error y TODAS las RPC fallarían después con "function
+-- exigir_permiso does not exist". Mismo guard que 102, 103 y 110.
+-- ============================================================
+
+do $$
+begin
+  if to_regprocedure('public.exigir_permiso(text)') is null then
+    raise exception 'La migración 101 requiere la 099 (exigir_permiso). Aplíquela primero.';
+  end if;
+end $$;
+
+
+-- ============================================================
 -- 0) Funciones de apoyo (solo project_admin)
 -- ============================================================
 

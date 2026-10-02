@@ -28,7 +28,14 @@ drop table if exists public.actas;
 drop function if exists public.evento_acta_adjuntada();
 drop function if exists public.actas_inmutables();
 
-delete from public.config_parametros where clave = 'actas_pendientes_desde';
+-- Guarda: si la 103 ya se revirtió (config_parametros no existe), re-ejecutar este archivo no debe fallar.
+do $$
+begin
+  if to_regclass('public.config_parametros') is not null then
+    delete from public.config_parametros where clave = 'actas_pendientes_desde';
+  end if;
+end
+$$;
 
 -- ============================================================
 -- FIN DEL ROLLBACK DE LA MIGRACIÓN 110
