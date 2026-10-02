@@ -23,6 +23,14 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-01** (**Ciclo 21 · verificación local del SQL**) — `scripts/sql-local/verificar-migraciones.mjs`
+  (`npm run test:sql-local`, devDependency `@electric-sql/pglite`): aplica `001…089` y las migraciones
+  nuevas (099 a 104 y 110) sobre un Postgres en memoria con los roles y el esquema simulados como
+  producción, las reaplica, ejecuta los 34 bloques de `tests/db/triggers.test.sql` y los rollbacks,
+  compara el esquema y corre escenarios con `SET ROLE`. Encontró y se corrigieron tres errores: un
+  bloque de prueba con una ubicación sin `tipo` (NOT NULL en producción), la 101 sin guard de la 099 y
+  un rollback de la 110 no idempotente. 61 comprobaciones, 0 fallas. Límites: no prueba RLS con los
+  roles reales de InsForge, realtime, `set_config` ni concurrencia real.
 - **2026-10-01** (**Ciclo 21 · H2 (parte 1) — Expedientes, Inicio y reglas al servidor, todo en local**) —
   Por indicación del dueño todo se desarrolla y revisa en local: ninguna migración
   se aplicó ni ninguna function se desplegó. (1) Migraciones escritas, validadas

@@ -13,9 +13,11 @@
     "verify:db": "node scripts/snapshot-esquema.mjs --verificar",
     "snapshot": "node scripts/snapshot-esquema.mjs --escribir",
     "deploy": "node scripts/deploy.mjs",
+    "test:sql-local": "node scripts/sql-local/verificar-migraciones.mjs",
     "test:scripts": "node --test \"scripts/**/*.test.mjs\""
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",

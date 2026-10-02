@@ -171,6 +171,11 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
 ## Verificación
 
 - `npm run lint` (raíz; cubre `frontend/src` y `functions/`).
+- `npm run test:sql-local` (raíz; aplica `001…089` más las migraciones nuevas, las
+  reaplica, corre `tests/db/triggers.test.sql` y los rollbacks sobre un Postgres
+  en memoria con `@electric-sql/pglite`: no toca ninguna base). Obligatorio al
+  escribir o cambiar una migración, antes de pedir que se aplique. No prueba RLS
+  con los roles reales de InsForge, realtime ni concurrencia real.
 - `npm run test:scripts` (raíz; pruebas de `deploy.mjs`, `snapshot-esquema.mjs`
   y el transporte SQL).
 - `npm run verify:db` (raíz; snapshot de esquema contra producción, 0
