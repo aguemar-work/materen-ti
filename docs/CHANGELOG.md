@@ -23,6 +23,10 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-02** (**Ciclo 21 · migración 113**, escrita, **sin aplicar**; requiere la 107) — Corrige el defecto de la 107:
+  borrar de `auth.users` a quien registró o aprobó un cambio ya no se bloquea (`check_transicion_cambio` deja pasar
+  `solicitado_por` a NULL y `cambios_aprobacion_coherente` pasa a `aprobado_por is null or aprobado_at is not null`,
+  así la fecha de aprobación sobrevive al aprobador borrado). Con prueba 113a y rollback idempotente.
 - **2026-10-02** (**Ciclo 21 · H3-5 — Portal del empleado sin cuentas**, migración 109, **sin aplicar**; se
   aplica DESPUÉS de la 112 porque extiende su purga) — Enlace personal firmado `/mi/<token>` (144 bits, solo
   se guarda el `sha256`; vigencia de 7 días, rango 1 a 30; un enlace activo por empleado; revocable y se

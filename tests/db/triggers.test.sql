@@ -5640,3 +5640,56 @@ begin
     raise exception 'TESTS_FALLARON [109c]: %', fallos;
   end if;
 end $$;
+
+-- ============================================================
+-- BLOQUE 113a — borrar a quien registró o aprobó un cambio (migración 113).
+-- ============================================================
+do $$
+declare
+  v_sol uuid;
+  v_jefe uuid;
+  v_c uuid;
+  v_codigo text;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_113a_sol@example.test') returning id into v_sol;
+  insert into auth.users (email) values ('__test_ci_113a_jefe@example.test') returning id into v_jefe;
+  update public.servicios set deleted_at = now() where deleted_at is null;
+  insert into public.servicios (id, nombre) values ('s113a', '__TEST_CI__ Servicio 113a');
+
+  insert into public.cambios (titulo, tipo, riesgo, servicio_id, descripcion, solicitado_por, aprobado_por, aprobado_at)
+    values ('__TEST_CI__ Estandar 113a', 'estandar', 'bajo', 's113a', 'Descripcion', v_sol, v_jefe, now())
+    returning id, codigo into v_c, v_codigo;
+
+  -- una aprobación sin fecha sigue prohibida
+  begin
+    update public.cambios set aprobado_at = null where id = v_c;
+    fallos := fallos || '[113] se admitio un aprobado_por sin aprobado_at; ';
+  exception when check_violation then null; end;
+
+  -- borrar al solicitante y al aprobador ya no se bloquea
+  begin delete from auth.users where id = v_sol;
+  exception when others then fallos := fallos || '[113] no se pudo borrar al solicitante: ' || sqlerrm || '; '; end;
+  begin delete from auth.users where id = v_jefe;
+  exception when others then fallos := fallos || '[113] no se pudo borrar al aprobador: ' || sqlerrm || '; '; end;
+  if exists (select 1 from public.cambios where id = v_c and (solicitado_por is not null or aprobado_por is not null)) then
+    fallos := fallos || '[113] las claves foraneas no quedaron en NULL; ';
+  end if;
+  if exists (select 1 from public.cambios where id = v_c and aprobado_at is null) then
+    fallos := fallos || '[113] se perdio la fecha de aprobacion; ';
+  end if;
+
+  -- el solicitante nunca pasa a otra persona, ni el codigo cambia
+  begin update public.cambios set solicitado_por = gen_random_uuid() where id = v_c;
+    fallos := fallos || '[113] se reasigno el solicitante a otro usuario; ';
+  exception when others then null; end;
+  begin update public.cambios set codigo = 'CHG-9999' where id = v_c;
+    fallos := fallos || '[113] se cambio el codigo; ';
+  exception when others then null; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [113a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [113a]: %', fallos;
+  end if;
+end $$;
