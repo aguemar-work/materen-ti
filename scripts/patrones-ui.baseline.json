@@ -59,8 +59,6 @@
     "modules/staff/StaffNombreForm.vue",
     "modules/staff/StaffView.vue",
     "modules/tickets/EncuestaSatisfaccionForm.vue",
-    "modules/tickets/ReporteSatisfaccionView.vue",
-    "modules/tickets/ReporteTicketsModal.vue",
     "modules/tickets/TicketBuscarView.vue",
     "modules/tickets/TicketInternoForm.vue",
     "modules/tickets/TicketNuevoView.vue",
@@ -69,8 +67,7 @@
   ],
   "historial-a-mano": [
     "modules/encuestas/EncuestaDetalleView.vue",
-    "modules/problemas/ProblemaDetalleView.vue",
-    "modules/tickets/ReporteTicketsModal.vue"
+    "modules/problemas/ProblemaDetalleView.vue"
   ],
   "mono-fuera-de-credenciales": [
     "modules/accesosSensibles/AccesosSensiblesView.vue",
@@ -94,8 +91,6 @@
     "modules/kb/KbArticuloDetalleView.vue",
     "modules/problemas/ProblemaDetalleView.vue",
     "modules/staff/StaffView.vue",
-    "modules/tickets/ReporteSatisfaccionView.vue",
-    "modules/tickets/ReporteTicketsModal.vue",
     "modules/tickets/TicketsView.vue"
   ]
 }

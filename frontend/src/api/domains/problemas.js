@@ -240,35 +240,27 @@ export const problemasApi = {
   // Mismo espíritu que dashboardApi.pendientesTickets(): se computa en vivo
   // en cada carga, sin tabla de notificaciones — ver migración 033.
 
-  // Sugerencia de apertura de problema: 3+ tickets de la misma categoría en
-  // los últimos 30 días que TODAVÍA no están vinculados a ningún problema
-  // (una vez que un ticket entra a problema_tickets, ya no cuenta para la
-  // sugerencia — se considera "ya atendido").
-  async listCategoriasRecurrentes({ dias = 30, minimo = 3 } = {}) {
-    const db = getClient().database;
-    const [{ data: recientes, error: e1 }, { data: vinculados, error: e2 }] = await Promise.all([
-      db.from('tickets')
-        .select('id, codigo, titulo, categoria_id, categorias_ticket(nombre), created_at')
-        .gte('created_at', fechaHaceDias(dias))
-        .not('categoria_id', 'is', null),
-      db.from('problema_tickets').select('ticket_id'),
-    ]);
-    if (e1) throw e1;
-    if (e2) throw e2;
-    const yaVinculados = new Set((vinculados || []).map((v) => v.ticket_id));
-    const sinAtender = (recientes || []).filter((t) => !yaVinculados.has(t.id));
-
-    const porCategoria = new Map();
-    for (const t of sinAtender) {
-      const clave = t.categoria_id;
-      if (!porCategoria.has(clave)) {
-        porCategoria.set(clave, { categoria_id: clave, categoria_nombre: t.categorias_ticket?.nombre || '', tickets: [] });
-      }
-      porCategoria.get(clave).tickets.push({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at });
-    }
-    return [...porCategoria.values()]
-      .filter((c) => c.tickets.length >= minimo)
-      .sort((a, b) => b.tickets.length - a.tickets.length);
+  // Sugerencia de apertura de problema: categorías con n+ tickets en los
+  // últimos `dias` días que TODAVÍA no están vinculados a ningún problema. La
+  // regla (umbral_recurrencia_tickets en config_parametros, días en hora de
+  // Lima) vive en la vista `v_categorias_recurrentes` (migración 103), la
+  // misma que lee el Inicio: hasta el 2026-10-03 este método la replicaba en
+  // el cliente con literales (30 días / 3 tickets) y hora del navegador, y un
+  // cambio del umbral solo afectaba al Inicio.
+  async listCategoriasRecurrentes() {
+    const { data, error } = await getClient().database
+      .from('v_categorias_recurrentes')
+      .select('categoria_id, categoria_nombre, total, primer_ticket_at, ultimo_ticket_at, tickets')
+      .order('total', { ascending: false });
+    if (error) throw error;
+    return (data || []).map((c) => ({
+      categoria_id: c.categoria_id,
+      categoria_nombre: c.categoria_nombre || '',
+      total: c.total,
+      primer_ticket_at: c.primer_ticket_at,
+      ultimo_ticket_at: c.ultimo_ticket_at,
+      tickets: c.tickets || [],
+    }));
   },
 
   async listAccionesCorrectivasVencidas() {

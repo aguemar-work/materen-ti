@@ -105,7 +105,7 @@ describe('construirDatosReporteEquipos — antigüedad promedio', () => {
 });
 
 describe('construirDatosReporteEquipos — garantías por vencer', () => {
-  it('incluye desde hoy hasta el borde de los 90 días, excluye antes y después', () => {
+  it('incluye desde hoy hasta el borde de la ventana (90 días pedidos), excluye antes y después', () => {
     const datos = construirDatosReporteEquipos([
       equipo({ codigo: 'EQ-HOY', garantia_hasta: '2026-08-22' }),        // = hoy: incluido
       equipo({ codigo: 'EQ-DENTRO', garantia_hasta: '2026-09-15' }),     // dentro: incluido
@@ -113,15 +113,25 @@ describe('construirDatosReporteEquipos — garantías por vencer', () => {
       equipo({ codigo: 'EQ-PASADO', garantia_hasta: '2026-08-21' }),     // ayer: excluido
       equipo({ codigo: 'EQ-LEJOS', garantia_hasta: '2026-11-21' }),      // 91 días: excluido
       equipo({ codigo: 'EQ-SIN', garantia_hasta: null }),                // sin garantía: excluido
-    ], HOY);
+    ], HOY, { diasGarantia: 90 });
     expect(datos.garantias.map((g) => g.codigo)).toEqual(['EQ-HOY', 'EQ-DENTRO', 'EQ-BORDE']);
+    expect(datos.diasGarantia).toBe(90);
+  });
+
+  it('sin ventana explícita usa el defecto del parámetro dias_por_vencer_garantia (30 días, como el Inicio)', () => {
+    const datos = construirDatosReporteEquipos([
+      equipo({ codigo: 'EQ-DENTRO', garantia_hasta: '2026-09-15' }),     // 24 días: incluido
+      equipo({ codigo: 'EQ-LEJOS', garantia_hasta: '2026-11-20' }),      // 90 días: fuera de la ventana de 30
+    ], HOY);
+    expect(datos.diasGarantia).toBe(30);
+    expect(datos.garantias.map((g) => g.codigo)).toEqual(['EQ-DENTRO']);
   });
 
   it('ordena de fecha más próxima a más lejana', () => {
     const datos = construirDatosReporteEquipos([
       equipo({ codigo: 'EQ-LEJOS', garantia_hasta: '2026-11-01' }),
       equipo({ codigo: 'EQ-CERCA', garantia_hasta: '2026-08-25' }),
-    ], HOY);
+    ], HOY, { diasGarantia: 90 });
     expect(datos.garantias.map((g) => g.codigo)).toEqual(['EQ-CERCA', 'EQ-LEJOS']);
   });
 

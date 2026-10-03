@@ -5,6 +5,20 @@ import { sanitizarTermino } from '../sanitizar.js';
 import { toTitleCase, onlyDigits, trimText } from '../../core/formatters.js';
 
 export const catalogosApi = {
+  // Parámetro de negocio entero de config_parametros (migración 103): la misma
+  // fuente que usan dashboard_resumen() y las vistas KPI. Si la clave no existe
+  // o no es un entero, el valor por defecto (nunca falla una pantalla por esto).
+  async parametroEntero(clave, defecto) {
+    const { data, error } = await getClient().database
+      .from('config_parametros')
+      .select('valor')
+      .eq('clave', clave)
+      .maybeSingle();
+    if (error) throw error;
+    const valor = data?.valor;
+    return Number.isInteger(valor) && valor >= 0 ? valor : defecto;
+  },
+
   async listEmpresas() {
     const { data, error } = await getClient().database
       .from('empresas')

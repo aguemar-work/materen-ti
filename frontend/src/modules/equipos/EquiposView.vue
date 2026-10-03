@@ -15,7 +15,7 @@ import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composabl
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
 import { situacionInfo } from '../../core/dominio-equipos.js';
-import { construirDatosReporteEquipos, generarReporteEquipos, LIMITE_MOVIMIENTOS_PDF } from './reporteEquipos.js';
+import { construirDatosReporteEquipos, generarReporteEquipos, LIMITE_MOVIMIENTOS_PDF, DIAS_VENTANA_GARANTIA_DEFECTO } from './reporteEquipos.js';
 import { useEquiposAcciones } from './useEquiposAcciones.js';
 import EquipoForm from './EquipoForm.vue';
 import EquipoAccionesModales from './EquipoAccionesModales.vue';
@@ -153,11 +153,13 @@ const generandoPdf = ref(false);
 async function descargarPdf() {
   generandoPdf.value = true;
   try {
-    const [equipos, movimientos] = await Promise.all([
+    // La ventana de garantías es la misma del Inicio (config_parametros).
+    const [equipos, movimientos, diasGarantia] = await Promise.all([
       insforgeApi.listEquiposFiltrados({}),
       insforgeApi.ultimosMovimientos(LIMITE_MOVIMIENTOS_PDF),
+      insforgeApi.parametroEntero('dias_por_vencer_garantia', DIAS_VENTANA_GARANTIA_DEFECTO).catch(() => DIAS_VENTANA_GARANTIA_DEFECTO),
     ]);
-    await generarReporteEquipos({ ...construirDatosReporteEquipos(equipos), movimientos });
+    await generarReporteEquipos({ ...construirDatosReporteEquipos(equipos, new Date(), { diasGarantia }), movimientos });
   } catch (e) {
     showToast(mensajeDe(e, 'No se pudo generar el PDF'), 'error');
   } finally {

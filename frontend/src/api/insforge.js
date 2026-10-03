@@ -11,7 +11,7 @@ import { equiposApi } from './domains/equipos.js';
 import { equiposImportacionApi } from './domains/equiposImportacion.js';
 import { catalogosApi } from './domains/catalogos.js';
 import { ticketsApi } from './domains/tickets.js';
-import { reportesTicketsApi } from './domains/reportesTickets.js';
+import { reportesApi } from './domains/reportes.js';
 import { dashboardApi } from './domains/dashboard.js';
 import { staffApi } from './domains/staff.js';
 import { accesosSensiblesApi } from './domains/accesosSensibles.js';
@@ -36,7 +36,7 @@ export const insforgeApi = {
   ...equiposImportacionApi,
   ...catalogosApi,
   ...ticketsApi,
-  ...reportesTicketsApi,
+  ...reportesApi,
   ...dashboardApi,
   ...staffApi,
   ...accesosSensiblesApi,

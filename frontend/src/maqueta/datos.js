@@ -19,6 +19,7 @@ import { RPC_SOLICITUDES, definirActorSolicitudes } from './rpc-solicitudes.js';
 import { RPC_KB, definirActorKb, calcularKpiKb } from './rpc-kb.js';
 import { RPC_CAMBIOS, definirActorCambios } from './rpc-cambios.js';
 import { RPC_PORTAL } from './rpc-portal.js';
+import { RPC_REPORTES, definirActorReportes } from './rpc-reportes.js';
 import { crearDatosCambios } from './cambios-datos.js';
 import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
@@ -46,6 +47,8 @@ definirActorSolicitudes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asisten
 definirActorKb({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
 // Y los Cambios (107): aprobar y rechazar son de un jefe; el libro anota el correo de quien actúa.
 definirActorCambios({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
+// Reportes (115): la RPC solo entrega "por técnico" al jefe y el alcance de otro técnico exige ese rol.
+definirActorReportes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
 
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
@@ -509,6 +512,9 @@ function ticket(n, titulo, estado, prioridad, extra = {}) {
     licencia_id: null,
     created_at: hace(1),
     updated_at: hace(0, 2),
+    // Solo la escribe el trigger tickets_resuelto_at (089): acá se fija a mano
+    // en los resueltos/cerrados, igual a su evento de resolución.
+    resuelto_at: null,
     ...extra,
   };
 }
@@ -557,23 +563,23 @@ const tickets = [
   }),
   ticket(110, 'Crear cuenta de Bitrix24 para asistente de TI', 'resuelto', 'media', {
     asignado_a: 'u-asis-1', empleado_id: 'e12', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-02', tipo: 'solicitud', cuenta_id: 'c15',
-    descripcion: 'Nuevo ingreso del área de TI.', created_at: hace(4, 8), updated_at: hace(3),
+    descripcion: 'Nuevo ingreso del área de TI.', created_at: hace(4, 8), updated_at: hace(3), resuelto_at: hace(3),
   }),
   ticket(109, 'Excel muestra error al abrir macros', 'resuelto', 'baja', {
     empleado_id: 'e03', categoria_id: 'software', subcategoria_id: 'sub-06', nivel_atencion: 'N2',
-    descripcion: 'Aparece "contenido bloqueado" en los formatos de planilla.', created_at: hace(11), updated_at: hace(8),
+    descripcion: 'Aparece "contenido bloqueado" en los formatos de planilla.', created_at: hace(11), updated_at: hace(8), resuelto_at: hace(8),
   }),
   ticket(108, 'Restablecer contraseña del ERP', 'cerrado', 'alta', {
     empleado_id: 'e05', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-01', tipo: 'solicitud', cuenta_id: 'c07',
-    created_at: hace(14), updated_at: hace(12),
+    created_at: hace(14), updated_at: hace(12), resuelto_at: hace(13),
   }),
   ticket(107, 'Sin internet en Obra Miraflores', 'cerrado', 'urgente', {
     asignado_a: 'u-asis-1', empleado_id: 'e02', categoria_id: 'red', subcategoria_id: 'sub-07', nivel_atencion: 'N2',
-    created_at: hace(20), updated_at: hace(19),
+    created_at: hace(20), updated_at: hace(19), resuelto_at: hace(19, 12),
   }),
   ticket(106, 'Configurar correo en Outlook', 'cerrado', 'baja', {
     asignado_a: 'u-asis-2', empleado_id: 'e01', categoria_id: 'accesos_cuentas', tipo: 'solicitud',
-    created_at: hace(26), updated_at: hace(25),
+    created_at: hace(26), updated_at: hace(25), resuelto_at: hace(25, 6),
   }),
   ticket(105, 'Quiero instalar juegos en la laptop', 'rechazado', 'baja', {
     empleado_id: 'e04', categoria_id: 'software', subcategoria_id: 'sub-05', tipo: 'solicitud',
@@ -581,7 +587,7 @@ const tickets = [
   }),
   ticket(104, 'Acceso al ERP bloqueado tras cambio de clave', 'cerrado', 'media', {
     empleado_id: 'e08', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-01', tipo: 'solicitud', cuenta_id: 'c16',
-    created_at: hace(60), updated_at: hace(59),
+    created_at: hace(60), updated_at: hace(59), resuelto_at: hace(59),
   }),
   ticket(103, 'Coordinar el recojo del celular corporativo', 'abierto', 'media', {
     empleado_id: 'e06', categoria_id: 'equipos', subcategoria_id: 'sub-03', tipo: 'solicitud', equipo_id: 'q08',
@@ -625,6 +631,66 @@ const ticket_satisfaccion = [
   { id: 'ts03', ticket_id: 't106', nivel: 4, comentario: null, fecha_envio: hace(24), created_at: hace(25) },
   { id: 'ts04', ticket_id: 't109', nivel: null, comentario: null, fecha_envio: null, created_at: hace(8) },
   { id: 'ts05', ticket_id: 't110', nivel: 2, comentario: 'Tardaron en enviarme el enlace.', fecha_envio: hace(2), created_at: hace(3) },
+];
+
+// ── Mes anterior completo (reportes, 115) ───────────────────────────────────
+// Ocho tickets resueltos el mes pasado, con su evento de resolución, técnico,
+// encuesta y una reapertura dentro del corte: así la hoja de /reportes del mes
+// anterior publica un CSAT con n ≥ 5, una tasa de reapertura y un arrastrado,
+// y la del mes en curso muestra "n insuficiente" y el sello PERÍODO EN CURSO.
+// Las fechas se arman sobre el mes de calendario anterior al de hoy (no sobre
+// "hace N días") para que el mes cerrado sea siempre el mismo al abrir la maqueta.
+{
+  const hoy = new Date();
+  const mesPasado = (dia, hora = 10) => new Date(hoy.getFullYear(), hoy.getMonth() - 1, dia, hora).toISOString();
+  const CERRADOS = [
+    // [n, día creado, horas hasta resolver, técnico, categoría, sub, prioridad, empleado, nivel encuesta (null = sin responder)]
+    [97, 3, 2, 'u-jefe', 'accesos_cuentas', 'sub-01', 'alta', 'e05', 5],
+    [96, 5, 6, 'u-asis-1', 'red', 'sub-07', 'urgente', 'e02', 4],
+    [95, 8, 30, 'u-asis-1', 'equipos', 'sub-03', 'media', 'e04', 5],
+    [94, 10, 1, 'u-asis-2', 'software', 'sub-05', 'baja', 'e03', 3],
+    [93, 12, 50, 'u-jefe', 'equipos', 'sub-04', 'media', 'e07', 4],
+    [92, 15, 4, 'u-asis-1', 'accesos_cuentas', 'sub-02', 'media', 'e11', 5],
+    [91, 18, 72, 'u-asis-2', 'red', 'sub-08', 'alta', 'e02', 2],
+    [90, 20, 3, 'u-jefe', 'software', 'sub-06', 'media', 'e01', null],
+  ];
+  for (const [n, dia, horas, tecnico, categoria, sub, prioridad, empleado, nivel] of CERRADOS) {
+    const creado = mesPasado(dia, 9);
+    const resuelto = new Date(new Date(creado).getTime() + horas * 3600000).toISOString();
+    const cerrado = new Date(new Date(resuelto).getTime() + 1000).toISOString();
+    tickets.push(ticket(n, `Atención del mes pasado ${n}`, 'cerrado', prioridad, {
+      asignado_a: tecnico, empleado_id: empleado, categoria_id: categoria, subcategoria_id: sub,
+      tipo: ['sub-01', 'sub-02', 'sub-04', 'sub-05'].includes(sub) ? 'solicitud' : 'incidente', nivel_atencion: horas > 24 ? 'N2' : 'N1',
+      created_at: creado, updated_at: cerrado, resuelto_at: resuelto,
+    }));
+    ticket_eventos.push(
+      { id: `te-mp-${n}-1`, ticket_id: `t${String(n).padStart(3, '0')}`, evento: 'estado_cambiado', detalle: 'De "abierto" a "en_progreso"', user_email: null, user_id: tecnico, created_at: new Date(new Date(creado).getTime() + 1800000).toISOString() },
+      { id: `te-mp-${n}-2`, ticket_id: `t${String(n).padStart(3, '0')}`, evento: 'estado_cambiado', detalle: 'De "en_progreso" a "resuelto"', user_email: null, user_id: tecnico, created_at: resuelto },
+      { id: `te-mp-${n}-3`, ticket_id: `t${String(n).padStart(3, '0')}`, evento: 'estado_cambiado', detalle: 'De "resuelto" a "cerrado"', user_email: null, user_id: tecnico, created_at: cerrado },
+    );
+    ticket_comentarios.push({ id: `tc-mp-${n}`, ticket_id: `t${String(n).padStart(3, '0')}`, mensaje: 'Estamos revisando su caso.', interno: false, autor_id: tecnico, created_at: new Date(new Date(creado).getTime() + 2700000).toISOString() });
+    ticket_satisfaccion.push({
+      id: `ts-mp-${n}`, ticket_id: `t${String(n).padStart(3, '0')}`, nivel, comentario: nivel != null && nivel <= 2 ? 'La solución tardó demasiado.' : null,
+      fecha_envio: nivel == null ? null : new Date(new Date(cerrado).getTime() + 86400000).toISOString(), created_at: cerrado,
+    });
+  }
+  // El 91 se reabrió a los 5 días del cierre y se volvió a resolver: cuenta como reapertura dentro del corte.
+  const t91 = tickets.find((t) => t.id === 't091');
+  const reabierto = new Date(new Date(t91.resuelto_at).getTime() + 5 * 86400000).toISOString();
+  const resuelto2 = new Date(new Date(reabierto).getTime() + 6 * 3600000).toISOString();
+  ticket_eventos.push(
+    { id: 'te-mp-91-4', ticket_id: 't091', evento: 'estado_cambiado', detalle: 'De "cerrado" a "reabierto"', user_email: null, user_id: 'u-jefe', created_at: reabierto },
+    { id: 'te-mp-91-5', ticket_id: 't091', evento: 'estado_cambiado', detalle: 'De "reabierto" a "resuelto"', user_email: null, user_id: 'u-asis-2', created_at: resuelto2 },
+    { id: 'te-mp-91-6', ticket_id: 't091', evento: 'estado_cambiado', detalle: 'De "resuelto" a "cerrado"', user_email: null, user_id: 'u-asis-2', created_at: new Date(new Date(resuelto2).getTime() + 1000).toISOString() },
+  );
+  t91.resuelto_at = resuelto2;
+}
+
+// Parámetros de negocio (103 + 115): los mismos que lee el servidor.
+const config_parametros = [
+  { clave: 'dias_ventana_alta', valor: 30 }, { clave: 'dias_por_vencer_licencia', valor: 30 }, { clave: 'dias_por_vencer_garantia', valor: 30 },
+  { clave: 'umbral_recurrencia_tickets', valor: { n: 3, dias: 30 } }, { clave: 'dias_ticket_viejo', valor: 3 },
+  { clave: 'csat_muestra_minima', valor: 5 }, { clave: 'dias_corte_reapertura', valor: 30 },
 ];
 
 // ── Base de conocimiento ────────────────────────────────────────────────────
@@ -952,6 +1018,9 @@ export const TABLAS = {
   licencias, asignaciones_licencia,
   equipos, equipo_accesorios, asignaciones_equipo, eventos_equipo, actas, equipos_importacion,
   tickets, ticket_comentarios, ticket_eventos, ticket_satisfaccion,
+  config_parametros,
+  // v_categorias_recurrentes (103): categorías con n+ tickets en `dias` días sin problema vinculado.
+  v_categorias_recurrentes: categoriasRecurrentes(tickets, problema_tickets, categorias_ticket),
   kb_articulos, problemas, problema_tickets, acciones_correctivas,
   ticket_kb_usos, v_kpi_kb: calcularKpiKb(kb_articulos, ticket_kb_usos),
   encuestas, encuesta_rondas, encuesta_respuestas,
@@ -963,56 +1032,33 @@ export const TABLAS = {
   ...datosCambios,
 };
 
-// ── RPC ─────────────────────────────────────────────────────────────────────
-// Cada entrada recibe la base en memoria (y los argumentos) y devuelve `data`.
-function satisfaccionConsolidada(db) {
-  const ticketPorId = Object.fromEntries(db.tickets.map((t) => [t.id, t]));
-  const empPorId = Object.fromEntries(db.empleados.map((e) => [e.id, e]));
-  const respuestas = db.ticket_satisfaccion.map((s) => {
-    const t = ticketPorId[s.ticket_id] || {};
-    const e = empPorId[t.empleado_id];
-    return {
-      id: s.id,
-      ticket_id: s.ticket_id,
-      ticket_codigo: t.codigo || '',
-      ticket_titulo: t.titulo || '',
-      empleado_id: t.empleado_id || null,
-      solicitante: e ? `${e.nombres} ${e.apellidos}` : (t.contacto_ingresado || 'Sin vincular'),
-      tecnico_id: t.asignado_a || null,
-      nivel: s.nivel,
-      comentario: s.comentario,
-      fecha_envio: s.fecha_envio,
-      created_at: s.created_at,
-      respondida: s.fecha_envio != null,
-    };
-  });
-  const agrupar = (clave, extra) => {
-    const mapa = new Map();
-    for (const r of respuestas) {
-      const k = r[clave];
-      if (!mapa.has(k)) mapa.set(k, { [clave]: k, ...extra(r), encuestasGeneradas: 0, encuestasRespondidas: 0, niveles: [] });
-      const f = mapa.get(k);
-      f.encuestasGeneradas += 1;
-      if (r.respondida) f.encuestasRespondidas += 1;
-      if (r.nivel != null) f.niveles.push(r.nivel);
-    }
-    return [...mapa.values()].map(({ niveles, ...f }) => ({
-      ...f,
-      promedio: niveles.length ? niveles.reduce((a, b) => a + b, 0) / niveles.length : null,
-      muestra: niveles.length,
-    }));
-  };
-  return {
-    respuestas,
-    porSolicitante: agrupar('empleado_id', (r) => ({ nombre: r.solicitante })),
-    porTecnico: agrupar('tecnico_id', () => ({})),
-  };
+// v_categorias_recurrentes de la maqueta: misma regla que la vista de la 103
+// (n y dias de umbral_recurrencia_tickets, tickets de cualquier estado con
+// categoría, sin problema vinculado), en días de Lima.
+function categoriasRecurrentes(filas, vinculos, categorias) {
+  const vinculados = new Set(vinculos.map((v) => v.ticket_id));
+  const desde = new Date(Date.now() - 30 * DIA_MS);
+  const mapa = new Map();
+  for (const t of filas) {
+    if (!t.categoria_id || vinculados.has(t.id) || new Date(t.created_at) < desde) continue;
+    if (!mapa.has(t.categoria_id)) mapa.set(t.categoria_id, []);
+    mapa.get(t.categoria_id).push({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at });
+  }
+  return [...mapa.entries()].filter(([, ts]) => ts.length >= 3).map(([categoria_id, ts]) => ({
+    categoria_id, categoria_nombre: categorias.find((c) => c.id === categoria_id)?.nombre || '', total: ts.length,
+    primer_ticket_at: ts.map((t) => t.desde).sort()[0], ultimo_ticket_at: ts.map((t) => t.desde).sort().at(-1),
+    tickets: ts.sort((a, b) => a.desde.localeCompare(b.desde)),
+  }));
 }
 
+// ── RPC ─────────────────────────────────────────────────────────────────────
+// Cada entrada recibe la base en memoria (y los argumentos) y devuelve `data`.
 export const RPC = {
   ...RPC_EQUIPOS,
   staff_nombres: (db) => db.staff.filter((s) => s.activo).map((s) => ({ user_id: s.user_id, nombre: s.nombre })),
-  reporte_satisfaccion_consolidado: satisfaccionConsolidada,
+  // Reportes (115): reporte_tickets y reporte_satisfaccion_consolidado con la
+  // misma aritmética que el SQL — maqueta/rpc-reportes.js.
+  ...RPC_REPORTES,
   cerrar_ticket: (db, args) => {
     const t = db.tickets.find((x) => x.id === args?.p_ticket_id);
     if (t) t.estado = 'cerrado';

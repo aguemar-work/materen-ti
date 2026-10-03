@@ -11,7 +11,6 @@ import { showToast } from '../../core/toast.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { CABECERA_CSV_TICKETS, filaCsvTicket } from '../../core/exportar-tickets.js';
 import TicketInternoForm from './TicketInternoForm.vue';
-import ReporteTicketsModal from './ReporteTicketsModal.vue';
 import TicketDetallePanel from './TicketDetallePanel.vue';
 import PrioridadTicket from './PrioridadTicket.vue';
 import TarjetaTicket from './TarjetaTicket.vue';
@@ -153,7 +152,6 @@ function limpiarFiltros() {
 watch(filtrosServidor, (f) => { store.aplicarFiltros(f).catch(() => {}); }, { deep: true });
 
 const mostrarNuevo = ref(false);
-const mostrarReporte = ref(false);
 const staffPorId = computed(() => {
   const mapa = {};
   for (const s of staffLista.value) mapa[s.user_id] = s.nombre;
@@ -444,7 +442,8 @@ async function copiarEnlaceSoporte() {
 // Reporte → Satisfacción → Exportar datos.
 const accionesMas = computed(() => [
   { icono: 'ti-link', label: 'Enlace soporte', onClick: copiarEnlaceSoporte },
-  { icono: 'ti-report', label: 'Reporte', onClick: () => { mostrarReporte.value = true; } },
+  // El reporte es su propia hoja (/reportes, migración 115): sin modal.
+  { icono: 'ti-report', label: 'Reporte', onClick: () => router.push('/reportes') },
   { icono: 'ti-mood-smile', label: 'Satisfacción', onClick: () => router.push('/tickets/satisfaccion') },
   {
     icono: exportando.value ? 'ti-loader-2 animate-spin' : 'ti-download',
@@ -835,7 +834,6 @@ onMounted(async () => {
     </div>
 
     <TicketInternoForm v-if="mostrarNuevo" @cerrar="onNuevoCerrado" />
-    <ReporteTicketsModal v-if="mostrarReporte" :staff-por-id="staffPorId" @cerrar="mostrarReporte = false" />
 
     <!-- Acciones masivas: mostrar la lista real afectada antes de confirmar,
          no un "¿está seguro? (N tickets)" ciego. -->

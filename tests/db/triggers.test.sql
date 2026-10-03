@@ -55,6 +55,11 @@
 --         entregas, notificaciones leidas, ip/user_agent de accesos_log, auditoria
 --         purga_ejecutada), anonimizar_empleado (plazo, que se anonimiza y que se
 --         conserva) y entorno / es_branch()
+--   [115] (bloques 115-a a 115-f) reportes: v_ticket_hechos, vistas KPI mensuales,
+--         backlog_tramos_en y reporte_tickets_de / reporte_satisfaccion_consolidado_de
+--         (doble cuenta eliminada, rechazados aparte, reapertura desde rechazado no
+--         cuenta, CSAT con n < minimo insuficiente, periodo en curso sin comparacion,
+--         guard 42501 por modulo y por tecnico ajeno, paridad RPC vs vistas)
 --   [108] (bloques 108-a a 108-f) solicitudes de servicio: catalogo y privilegios,
 --         crear_solicitud (alta con persona nueva en la misma transaccion, validaciones,
 --         una sola abierta por tipo), AUTOCOMPLETADO por cuenta/entrega abierta/equipo/
@@ -444,16 +449,12 @@ begin
     null; -- esperado
   end;
 
+  -- Fechas de calendario: valen para la firma de la 053 (timestamptz, por
+  -- cast implícito) y para la de la 115 (date, date, uuid); en las dos el
+  -- guard rechaza sin sesión. reporte_tickets_resumen dejó de existir en la 115.
   begin
-    perform public.reporte_tickets(now() - interval '30 days', now());
-    fallos := fallos || '[053] reporte_tickets no rechazó una llamada sin sesión de staff; ';
-  exception when others then
-    null; -- esperado
-  end;
-
-  begin
-    perform public.reporte_tickets_resumen(now() - interval '30 days', now());
-    fallos := fallos || '[053] reporte_tickets_resumen no rechazó una llamada sin sesión de staff; ';
+    perform public.reporte_tickets(current_date - 30, current_date);
+    fallos := fallos || '[053/115] reporte_tickets no rechazó una llamada sin sesión de staff; ';
   exception when others then
     null; -- esperado
   end;
@@ -466,7 +467,7 @@ begin
   end;
 
   if fallos = '' then
-    raise exception 'TESTS_OK [051/061/053] — 5 invariantes verificados, todo revertido';
+    raise exception 'TESTS_OK [051/061/053] — 4 invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [051/061/053]: %', fallos;
   end if;
@@ -5768,5 +5769,635 @@ begin
     raise exception 'TESTS_OK [114a] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [114a]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 115a — reportes (migración 115): un ticket cuenta como resuelto en UN
+-- solo período (el de su resolución vigente), el rechazado va aparte y fuera de
+-- los tiempos, los arrastrados se distinguen de los del período, y la primera
+-- respuesta se mide con el primer comentario visible de un staff.
+-- Fixtures con fechas explícitas en marzo/abril de 2015 (un período que ninguna
+-- base real tiene poblado: así los conteos exactos valen también contra
+-- producción). El trigger tickets_resuelto_at se desactiva solo durante la
+-- siembra (igual que el backfill de la 089); los triggers de autor/estado de
+-- los comentarios también, porque esta conexión no tiene auth.uid(). Todo se
+-- revierte con el raise final.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_empresa uuid;
+  v_area uuid;
+  v_e1 uuid;
+  v_a uuid;
+  v_b uuid;
+  v_r uuid;
+  v_m date := date '2015-03-01'; -- mes fijo y vacío en cualquier base: los conteos exactos no dependen de los datos reales
+  v_n date;
+  v_m_fin date;
+  v_n_fin date;
+  r jsonb;
+  r2 jsonb;
+  fila record;
+  fallos text := '';
+begin
+  v_n := (v_m + interval '1 month')::date;
+  v_m_fin := v_n - 1;
+  v_n_fin := (v_n + interval '1 month')::date - 1;
+  insert into auth.users (email) values ('__test_ci_115a_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_115a_asis@example.test') returning id into v_asis;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 115a' where user_id = v_jefe;
+  update public.staff set activo = true, nombre = 'Asistente 115a' where user_id = v_asis;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 115a') returning id into v_empresa;
+  insert into public.areas_obras (nombre) values ('__TEST_CI__ Obra 115a') returning id into v_area;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, area_obra_id) values ('Test', 'CI 115a', '99011501', v_empresa, v_area) returning id into v_e1;
+
+  alter table public.tickets disable trigger tickets_resuelto_at;
+  -- A: creado el 10 de M, resuelto el 12 de M por el jefe, reabierto el 20, vuelto a resolver el 2 de N por el asistente
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_115A_A', lpad('115aA', 24, 'x'), 'Ticket A', 'd', 'cerrado', 'alta', v_e1,
+            ((v_m + 9) + time '10:00') at time zone 'America/Lima', ((v_n + 1) + time '09:00') at time zone 'America/Lima')
+    returning id into v_a;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_a, 'estado_cambiado', 'De "abierto" a "en_progreso"', ((v_m + 9) + time '11:00') at time zone 'America/Lima', v_jefe),
+    (v_a, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + 11) + time '10:00') at time zone 'America/Lima', v_jefe),
+    (v_a, 'estado_cambiado', 'De "resuelto" a "cerrado"', ((v_m + 11) + time '10:00:01') at time zone 'America/Lima', v_jefe),
+    (v_a, 'estado_cambiado', 'De "cerrado" a "reabierto"', ((v_m + 19) + time '10:00') at time zone 'America/Lima', null),
+    (v_a, 'estado_cambiado', 'De "reabierto" a "resuelto"', ((v_n + 1) + time '09:00') at time zone 'America/Lima', v_asis),
+    (v_a, 'estado_cambiado', 'De "resuelto" a "cerrado"', ((v_n + 1) + time '09:00:01') at time zone 'America/Lima', v_asis);
+  -- R: rechazado en M (cuenta como creado y rechazado, nunca como resuelto ni en tiempos)
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_115A_R', lpad('115aR', 24, 'x'), 'Ticket R', 'd', 'rechazado', 'baja', v_e1,
+            ((v_m + 3) + time '10:00') at time zone 'America/Lima', null)
+    returning id into v_r;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_r, 'estado_cambiado', 'De "abierto" a "rechazado"', ((v_m + 3) + time '12:00') at time zone 'America/Lima', v_jefe);
+  -- B: creado y resuelto el 14 de M por el asistente (4 horas), con respuesta a la media hora
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_115A_B', lpad('115aB', 24, 'x'), 'Ticket B', 'd', 'cerrado', 'media', v_e1,
+            ((v_m + 13) + time '08:00') at time zone 'America/Lima', ((v_m + 13) + time '12:00') at time zone 'America/Lima')
+    returning id into v_b;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_b, 'estado_cambiado', 'De "abierto" a "en_progreso"', ((v_m + 13) + time '09:00') at time zone 'America/Lima', v_asis),
+    (v_b, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + 13) + time '12:00') at time zone 'America/Lima', v_asis),
+    (v_b, 'estado_cambiado', 'De "resuelto" a "cerrado"', ((v_m + 13) + time '12:00:01') at time zone 'America/Lima', v_asis);
+  alter table public.tickets enable trigger tickets_resuelto_at;
+  alter table public.ticket_comentarios disable trigger trg_check_ticket_no_cerrado;
+  alter table public.ticket_comentarios disable trigger trg_ticket_comentarios_by;
+  insert into public.ticket_comentarios (ticket_id, autor_id, interno, mensaje, created_at) values
+    (v_b, v_asis, true,  'nota interna (no cuenta)', ((v_m + 13) + time '08:10') at time zone 'America/Lima'),
+    (v_b, v_asis, false, 'respuesta visible', ((v_m + 13) + time '08:30') at time zone 'America/Lima'),
+    (v_b, null,   false, 'respuesta del solicitante (no cuenta)', ((v_m + 13) + time '08:05') at time zone 'America/Lima');
+  alter table public.ticket_comentarios enable trigger trg_check_ticket_no_cerrado;
+  alter table public.ticket_comentarios enable trigger trg_ticket_comentarios_by;
+
+  -- v_ticket_hechos: resolución vigente, técnico que resolvió y primera respuesta
+  select * into fila from public.v_ticket_hechos where ticket_id = v_a;
+  if not fila.resuelto_vigente or fila.dia_resuelto <> v_n + 1 or fila.tecnico_resolvio_id is distinct from v_asis
+     or fila.n_resoluciones <> 2 or fila.n_reaperturas <> 1 or fila.dia_primera_resolucion <> v_m + 11 then
+    fallos := fallos || '[115] hechos del ticket A incorrectos (vigente=' || fila.resuelto_vigente || ', tecnico asis=' || (fila.tecnico_resolvio_id = v_asis) || ', resoluciones=' || fila.n_resoluciones || '); ';
+  end if;
+  select * into fila from public.v_ticket_hechos where ticket_id = v_r;
+  if not fila.rechazado or fila.resuelto_vigente or fila.horas_resolucion is not null then
+    fallos := fallos || '[115] el rechazado figura como resuelto o con tiempo; ';
+  end if;
+  select * into fila from public.v_ticket_hechos where ticket_id = v_b;
+  if round(fila.horas_resolucion, 2) <> 4 or round(fila.horas_primera_respuesta, 2) <> 0.5 or fila.area_obra_id is distinct from v_area then
+    fallos := fallos || '[115] horas o area del ticket B incorrectas (' || coalesce(fila.horas_resolucion::text, 'null') || ', ' || coalesce(fila.horas_primera_respuesta::text, 'null') || '); ';
+  end if;
+
+  -- Mes M: 3 creados (1 rechazado), 1 resuelto (B); A NO cuenta aunque se resolvió por primera vez en M
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin);
+  if (r -> 'volumen' ->> 'creados')::int <> 3 or (r -> 'volumen' ->> 'rechazados')::int <> 1
+     or (r -> 'volumen' ->> 'resueltos')::int <> 1 or (r -> 'volumen' ->> 'resueltos_mismo_periodo')::int <> 1
+     or (r -> 'volumen' ->> 'resueltos_arrastrados')::int <> 0 then
+    fallos := fallos || '[115] volumen de M incorrecto: ' || (r ->> 'volumen') || '; ';
+  end if;
+  if (r -> 'atencion' -> 'resolucion' ->> 'n')::int <> 1 or (r -> 'atencion' -> 'resolucion' ->> 'mediana_horas')::numeric <> 4
+     or (r -> 'atencion' -> 'primera_respuesta' ->> 'n')::int <> 1 or (r -> 'atencion' -> 'primera_respuesta' ->> 'mediana_horas')::numeric <> 0.5
+     or (r -> 'atencion' ->> 'unidad') <> 'horas corridas' then
+    fallos := fallos || '[115] atencion de M incorrecta: ' || (r ->> 'atencion') || '; ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r -> 'tickets') t where t ->> 'codigo' = '__TEST_CI_115A_R' and t ->> 'en_periodo' = 'creado') then
+    fallos := fallos || '[115] el detalle de M no trae al rechazado como creado; ';
+  end if;
+  if exists (select 1 from jsonb_array_elements(r -> 'tickets') t where t ? 'dni' or t ? 'contacto_ingresado') then
+    fallos := fallos || '[115] el detalle expone DNI o contacto; ';
+  end if;
+
+  -- Mes N: A cuenta una vez, como arrastrado, atribuido al asistente; la suma M+N = tickets resueltos distintos
+  r2 := public.reporte_tickets_de(v_jefe, v_n, v_n_fin);
+  if (r2 -> 'volumen' ->> 'creados')::int <> 0 or (r2 -> 'volumen' ->> 'resueltos')::int <> 1
+     or (r2 -> 'volumen' ->> 'resueltos_arrastrados')::int <> 1 then
+    fallos := fallos || '[115] volumen de N incorrecto: ' || (r2 ->> 'volumen') || '; ';
+  end if;
+  if (r -> 'volumen' ->> 'resueltos')::int + (r2 -> 'volumen' ->> 'resueltos')::int
+     <> (select count(*) from public.tickets where codigo like '__TEST_CI_115A_%' and estado in ('resuelto', 'cerrado')) then
+    fallos := fallos || '[115] la suma de resueltos por mes no da los tickets resueltos (doble cuenta); ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r2 -> 'anexos' -> 'arrastrados') a
+                  where a ->> 'codigo' = '__TEST_CI_115A_A' and (a ->> 'tecnico_id')::uuid = v_asis and (a ->> 'dias_abierto')::int >= 20) then
+    fallos := fallos || '[115] el anexo de arrastrados de N no trae al ticket A: ' || (r2 -> 'anexos' ->> 'arrastrados') || '; ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r2 -> 'por_tecnico') t where (t ->> 'tecnico_id')::uuid = v_asis and (t ->> 'resueltos')::int = 1 and (t ->> 'arrastrados')::int = 1) then
+    fallos := fallos || '[115] por_tecnico de N no atribuye A al asistente: ' || (r2 ->> 'por_tecnico') || '; ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r -> 'por' -> 'area') a where (a ->> 'clave')::uuid = v_area and (a ->> 'creados')::int = 3 and (a ->> 'resueltos')::int = 1) then
+    fallos := fallos || '[115] por area de M incorrecto: ' || (r -> 'por' ->> 'area') || '; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [115a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [115a]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 115b — reaperturas: una reapertura desde "rechazado" no cuenta; la
+-- tasa usa el mismo conjunto (tickets con primera resolución en el período) y
+-- el corte de dias_corte_reapertura; los eventos se atribuyen al mes en que
+-- ocurrieron.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_empresa uuid;
+  v_e1 uuid;
+  v_x uuid;
+  v_y uuid;
+  v_z uuid;
+  v_m date := date '2015-03-01'; -- mes fijo y vacío en cualquier base: los conteos exactos no dependen de los datos reales
+  v_n date;
+  v_m_fin date;
+  v_n_fin date;
+  r jsonb;
+  fila record;
+  fallos text := '';
+begin
+  v_n := (v_m + interval '1 month')::date;
+  v_m_fin := v_n - 1;
+  v_n_fin := (v_n + interval '1 month')::date - 1;
+  insert into auth.users (email) values ('__test_ci_115b_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 115b') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 115b', '99011502', v_empresa) returning id into v_e1;
+
+  alter table public.tickets disable trigger tickets_resuelto_at;
+  -- X: rechazado y reabierto DESDE rechazado (050 lo permite): no es una reapertura del reporte
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at)
+    values ('__TEST_CI_115B_X', lpad('115bX', 24, 'x'), 'Ticket X', 'd', 'reabierto', 'media', v_e1, ((v_m + 2) + time '10:00') at time zone 'America/Lima')
+    returning id into v_x;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_x, 'estado_cambiado', 'De "abierto" a "rechazado"', ((v_m + 2) + time '12:00') at time zone 'America/Lima', v_jefe),
+    (v_x, 'estado_cambiado', 'De "rechazado" a "reabierto"', ((v_m + 3) + time '12:00') at time zone 'America/Lima', v_jefe);
+  -- Y: resuelto el 5 de M y reabierto el 10 de M (dentro del corte)
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at)
+    values ('__TEST_CI_115B_Y', lpad('115bY', 24, 'x'), 'Ticket Y', 'd', 'reabierto', 'media', v_e1, ((v_m + 4) + time '10:00') at time zone 'America/Lima')
+    returning id into v_y;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_y, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + 4) + time '15:00') at time zone 'America/Lima', v_jefe),
+    (v_y, 'estado_cambiado', 'De "resuelto" a "cerrado"', ((v_m + 4) + time '15:00:01') at time zone 'America/Lima', v_jefe),
+    (v_y, 'estado_cambiado', 'De "cerrado" a "reabierto"', ((v_m + 9) + time '10:00') at time zone 'America/Lima', null);
+  -- Z: resuelto el 6 de M y reabierto 40 días después (fuera del corte de 30; el evento cae en N)
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at)
+    values ('__TEST_CI_115B_Z', lpad('115bZ', 24, 'x'), 'Ticket Z', 'd', 'reabierto', 'media', v_e1, ((v_m + 5) + time '10:00') at time zone 'America/Lima')
+    returning id into v_z;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_z, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + 5) + time '15:00') at time zone 'America/Lima', v_jefe),
+    (v_z, 'estado_cambiado', 'De "resuelto" a "cerrado"', ((v_m + 5) + time '15:00:01') at time zone 'America/Lima', v_jefe),
+    (v_z, 'estado_cambiado', 'De "cerrado" a "reabierto"', ((v_m + 45) + time '10:00') at time zone 'America/Lima', null);
+  alter table public.tickets enable trigger tickets_resuelto_at;
+
+  select * into fila from public.v_ticket_hechos where ticket_id = v_x;
+  if fila.n_reaperturas <> 0 or fila.reabierto_en_corte or fila.primera_resolucion_at is not null then
+    fallos := fallos || '[115] la reapertura desde rechazado conto como reapertura; ';
+  end if;
+  select * into fila from public.v_ticket_hechos where ticket_id = v_y;
+  if fila.n_reaperturas <> 1 or not fila.reabierto_en_corte or fila.resuelto_vigente then
+    fallos := fallos || '[115] el ticket Y deberia estar reabierto dentro del corte y sin resolucion vigente; ';
+  end if;
+  select * into fila from public.v_ticket_hechos where ticket_id = v_z;
+  if fila.n_reaperturas <> 1 or fila.reabierto_en_corte then
+    fallos := fallos || '[115] el ticket Z (reabierto a los 40 dias) no debe contar dentro del corte; ';
+  end if;
+
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin);
+  if (r -> 'calidad' -> 'reaperturas' ->> 'base')::int <> 2 or (r -> 'calidad' -> 'reaperturas' ->> 'reabiertos')::int <> 1
+     or (r -> 'calidad' -> 'reaperturas' ->> 'tasa_pct')::int <> 50 or (r -> 'calidad' -> 'reaperturas' ->> 'eventos')::int <> 1
+     or (r -> 'calidad' -> 'reaperturas' ->> 'corte_dias')::int <> 30 then
+    fallos := fallos || '[115] reaperturas de M incorrectas: ' || (r -> 'calidad' ->> 'reaperturas') || '; ';
+  end if;
+  if (r -> 'volumen' ->> 'resueltos')::int <> 0 then
+    fallos := fallos || '[115] un ticket reabierto figura como resuelto en M; ';
+  end if;
+  r := public.reporte_tickets_de(v_jefe, v_n, v_n_fin);
+  if (r -> 'calidad' -> 'reaperturas' ->> 'base')::int <> 0 or (r -> 'calidad' -> 'reaperturas' -> 'tasa_pct') <> 'null'::jsonb
+     or (r -> 'calidad' -> 'reaperturas' ->> 'eventos')::int <> 1 then
+    fallos := fallos || '[115] reaperturas de N incorrectas (base 0, tasa null, 1 evento): ' || (r -> 'calidad' ->> 'reaperturas') || '; ';
+  end if;
+  select * into fila from public.v_kpi_reaperturas where mes = v_m;
+  if fila.base <> 2 or fila.reabiertos <> 1 or fila.tasa_pct <> 50 or fila.eventos <> 1 then
+    fallos := fallos || '[115] v_kpi_reaperturas de M no coincide con la RPC; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [115b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [115b]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 115c — CSAT: con menos respuestas que csat_muestra_minima el promedio
+-- viaja NULL e insuficiente = true; "insatisfecho" es nivel <= 2 (el 3 ya no
+-- cuenta); los cerrados sin encuesta se listan aparte; el mínimo es un
+-- parámetro editable.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_empresa uuid;
+  v_e1 uuid;
+  v_t uuid;
+  v_m date := date '2015-03-01'; -- mes fijo y vacío en cualquier base: los conteos exactos no dependen de los datos reales
+  v_m_fin date;
+  v_niveles int[] := array[5, 4, 4, 3, 2];
+  i int;
+  r jsonb;
+  fallos text := '';
+begin
+  v_m_fin := (v_m + interval '1 month')::date - 1;
+  insert into auth.users (email) values ('__test_ci_115c_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 115c') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 115c', '99011503', v_empresa) returning id into v_e1;
+
+  alter table public.tickets disable trigger tickets_resuelto_at;
+  -- 4 encuestas respondidas (5, 4, 4, 3) + 1 cerrado sin encuesta + 1 encuesta pendiente
+  for i in 1..4 loop
+    insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+      values ('__TEST_CI_115C_' || i, lpad('115c' || i, 24, 'x'), 'Ticket ' || i, 'd', 'cerrado', 'media', v_e1,
+              ((v_m + i) + time '08:00') at time zone 'America/Lima', ((v_m + i) + time '10:00') at time zone 'America/Lima')
+      returning id into v_t;
+    insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id)
+      values (v_t, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + i) + time '10:00') at time zone 'America/Lima', v_jefe);
+    insert into public.ticket_satisfaccion (ticket_id, nivel, comentario, fecha_envio, created_at)
+      values (v_t, v_niveles[i], case when v_niveles[i] <= 2 then 'Mal' end, ((v_m + i + 1) + time '10:00') at time zone 'America/Lima', ((v_m + i) + time '10:00:01') at time zone 'America/Lima');
+  end loop;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_115C_SIN', lpad('115cS', 24, 'x'), 'Sin encuesta', 'd', 'cerrado', 'media', null,
+            ((v_m + 10) + time '08:00') at time zone 'America/Lima', ((v_m + 10) + time '10:00') at time zone 'America/Lima')
+    returning id into v_t;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id)
+    values (v_t, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + 10) + time '10:00') at time zone 'America/Lima', v_jefe);
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_115C_PEN', lpad('115cP', 24, 'x'), 'Pendiente', 'd', 'cerrado', 'media', v_e1,
+            ((v_m + 11) + time '08:00') at time zone 'America/Lima', ((v_m + 11) + time '10:00') at time zone 'America/Lima')
+    returning id into v_t;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id)
+    values (v_t, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + 11) + time '10:00') at time zone 'America/Lima', v_jefe);
+  insert into public.ticket_satisfaccion (ticket_id, nivel, comentario, fecha_envio, created_at)
+    values (v_t, null, null, null, ((v_m + 11) + time '10:00:01') at time zone 'America/Lima');
+  alter table public.tickets enable trigger tickets_resuelto_at;
+
+  -- n = 4 < 5: promedio NULL, insuficiente; generadas 5, respondidas 4 (80 %); 1 cerrado sin encuesta
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin);
+  if (r -> 'calidad' -> 'csat' ->> 'n')::int <> 4 or (r -> 'calidad' -> 'csat' -> 'promedio') <> 'null'::jsonb
+     or (r -> 'calidad' -> 'csat' ->> 'insuficiente')::boolean is not true or (r -> 'calidad' -> 'csat' ->> 'minimo')::int <> 5
+     or (r -> 'calidad' -> 'csat' ->> 'generadas')::int <> 5 or (r -> 'calidad' -> 'csat' ->> 'respondidas')::int <> 4
+     or (r -> 'calidad' -> 'csat' ->> 'tasa_respuesta_pct')::int <> 80 then
+    fallos := fallos || '[115] csat con n=4 incorrecto: ' || (r -> 'calidad' ->> 'csat') || '; ';
+  end if;
+  if (r -> 'calidad' -> 'csat' ->> 'insatisfechos')::int <> 0 or (r -> 'calidad' -> 'csat' -> 'niveles' ->> '3')::int <> 1 then
+    fallos := fallos || '[115] el nivel 3 conto como insatisfecho; ';
+  end if;
+  if (r -> 'volumen' ->> 'cerrados_sin_encuesta')::int <> 1
+     or not exists (select 1 from jsonb_array_elements(r -> 'anexos' -> 'cerrados_sin_encuesta') a where a ->> 'codigo' = '__TEST_CI_115C_SIN' and a ->> 'motivo' = 'sin_solicitante') then
+    fallos := fallos || '[115] cerrados sin encuesta incorrecto: ' || (r -> 'anexos' ->> 'cerrados_sin_encuesta') || '; ';
+  end if;
+
+  -- quinta respuesta (nivel 2): n = 5 publica el promedio 3.6, 1 insatisfecho y 1 comentario bajo
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_115C_5', lpad('115c5', 24, 'x'), 'Ticket 5', 'd', 'cerrado', 'media', v_e1,
+            ((v_m + 5) + time '08:00') at time zone 'America/Lima', ((v_m + 5) + time '10:00') at time zone 'America/Lima')
+    returning id into v_t;
+  alter table public.tickets disable trigger tickets_resuelto_at;
+  update public.tickets set resuelto_at = ((v_m + 5) + time '10:00') at time zone 'America/Lima' where id = v_t;
+  alter table public.tickets enable trigger tickets_resuelto_at;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id)
+    values (v_t, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + 5) + time '10:00') at time zone 'America/Lima', v_jefe);
+  insert into public.ticket_satisfaccion (ticket_id, nivel, comentario, fecha_envio, created_at)
+    values (v_t, 2, 'Tardaron mucho', ((v_m + 6) + time '10:00') at time zone 'America/Lima', ((v_m + 5) + time '10:00:01') at time zone 'America/Lima');
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin);
+  if (r -> 'calidad' -> 'csat' ->> 'n')::int <> 5 or (r -> 'calidad' -> 'csat' ->> 'promedio')::numeric <> 3.6
+     or (r -> 'calidad' -> 'csat' ->> 'insuficiente')::boolean is not false or (r -> 'calidad' -> 'csat' ->> 'insatisfechos')::int <> 1
+     or (r -> 'calidad' ->> 'comentarios_bajos_total')::int <> 1 then
+    fallos := fallos || '[115] csat con n=5 incorrecto: ' || (r -> 'calidad' ->> 'csat') || ' bajos=' || (r -> 'calidad' ->> 'comentarios_bajos_total') || '; ';
+  end if;
+  if (select sum(n) from public.v_kpi_csat where mes = v_m) <> 5 or (select sum(insatisfechos) from public.v_kpi_csat where mes = v_m) <> 1 then
+    fallos := fallos || '[115] v_kpi_csat de M no coincide con la RPC; ';
+  end if;
+
+  -- el mínimo es un parámetro: con 6 la misma muestra vuelve a ser insuficiente
+  update public.config_parametros set valor = '6'::jsonb where clave = 'csat_muestra_minima';
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin);
+  if (r -> 'calidad' -> 'csat' -> 'promedio') <> 'null'::jsonb or (r -> 'parametros' ->> 'csat_muestra_minima')::int <> 6 then
+    fallos := fallos || '[115] el minimo de CSAT no sale de config_parametros; ';
+  end if;
+  r := public.reporte_satisfaccion_consolidado_de(v_jefe);
+  if (r ->> 'muestraMinima')::int <> 6 or (r -> 'resumen' -> 'promedio') <> 'null'::jsonb
+     or not exists (select 1 from jsonb_array_elements(r -> 'porTecnico') t where (t ->> 'tecnico_id')::uuid = v_jefe and (t ->> 'insuficiente')::boolean and (t ->> 'insatisfechos')::int = 1) then
+    fallos := fallos || '[115] el consolidado de satisfaccion no aplica la misma muestra minima: ' || (r ->> 'resumen') || '; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [115c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [115c]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 115d — período: el período en curso nunca lleva comparación ni
+-- "backlog al cierre"; un mes completo se compara con el mes de calendario
+-- anterior; un rango de 7 días con los 7 anteriores; el alcance técnico no
+-- compara; rangos inválidos se rechazan.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_m date := date '2015-03-01'; -- mes fijo y vacío en cualquier base: los conteos exactos no dependen de los datos reales
+  v_m_fin date;
+  r jsonb;
+  fallos text := '';
+begin
+  v_m_fin := (v_m + interval '1 month')::date - 1;
+  insert into auth.users (email) values ('__test_ci_115d_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+
+  r := public.reporte_tickets_de(v_jefe, date_trunc('month', v_hoy)::date, (date_trunc('month', v_hoy) + interval '1 month - 1 day')::date);
+  if (r ->> 'periodo_completo')::boolean is not false or (r -> 'periodo' ->> 'en_curso')::boolean is not true
+     or r -> 'comparacion' <> 'null'::jsonb or (r -> 'volumen' -> 'backlog' ->> 'referencia') <> 'ahora' then
+    fallos := fallos || '[115] el periodo en curso lleva comparacion o backlog al cierre: ' || (r ->> 'periodo') || '; ';
+  end if;
+  if r ->> 'definiciones_version' is null or r -> 'generado_por' ->> 'user_id' <> v_jefe::text or r ->> 'generado_en' is null then
+    fallos := fallos || '[115] faltan generado_en / generado_por / definiciones_version; ';
+  end if;
+
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin);
+  if (r ->> 'periodo_completo')::boolean is not true or r -> 'comparacion' = 'null'::jsonb
+     or (r -> 'comparacion' -> 'periodo' ->> 'desde')::date <> (v_m - interval '1 month')::date
+     or (r -> 'comparacion' -> 'periodo' ->> 'hasta')::date <> v_m - 1
+     or (r -> 'volumen' -> 'backlog' ->> 'referencia') <> 'cierre'
+     or not (r -> 'comparacion' ?& array['volumen', 'atencion', 'csat', 'reaperturas', 'parcial']) then
+    fallos := fallos || '[115] un mes completo no compara con el mes anterior: ' || coalesce(r -> 'comparacion' ->> 'periodo', 'null') || '; ';
+  end if;
+  r := public.reporte_tickets_de(v_jefe, v_m + 7, v_m + 13);
+  if (r -> 'comparacion' -> 'periodo' ->> 'desde')::date <> v_m or (r -> 'comparacion' -> 'periodo' ->> 'hasta')::date <> v_m + 6 then
+    fallos := fallos || '[115] una semana no compara con los 7 dias anteriores: ' || coalesce(r -> 'comparacion' ->> 'periodo', 'null') || '; ';
+  end if;
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin, v_jefe);
+  if r -> 'comparacion' <> 'null'::jsonb or (r -> 'alcance' ->> 'tipo') <> 'tecnico' or r -> 'volumen' -> 'creados' <> 'null'::jsonb then
+    fallos := fallos || '[115] el alcance tecnico compara o atribuye creados; ';
+  end if;
+
+  begin
+    perform public.reporte_tickets_de(v_jefe, v_m_fin, v_m);
+    fallos := fallos || '[115] se acepto un rango invertido; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[115] rango invertido lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.reporte_tickets_de(v_jefe, v_m - 400, v_m);
+    fallos := fallos || '[115] se acepto un rango de mas de 366 dias; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[115] rango largo lanzo ' || sqlstate || '; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [115d] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [115d]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 115e — autorización: sin sesión o sin módulo tickets 42501; un
+-- asistente recibe el reporte sin "por técnico" y puede pedir su propio
+-- alcance, pero no el de otro técnico; el jefe recibe "por técnico". Las
+-- vistas son security_invoker, las RPC viejas ya no existen y los EXECUTE son
+-- los declarados.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_sinmod uuid;
+  v_m date := date '2015-03-01'; -- mes fijo y vacío en cualquier base: los conteos exactos no dependen de los datos reales
+  v_m_fin date;
+  r jsonb;
+  v text;
+  fallos text := '';
+begin
+  v_m_fin := (v_m + interval '1 month')::date - 1;
+  insert into auth.users (email) values ('__test_ci_115e_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_115e_asis@example.test') returning id into v_asis;
+  insert into auth.users (email) values ('__test_ci_115e_sinmod@example.test') returning id into v_sinmod;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  update public.staff set activo = true where user_id in (v_asis, v_sinmod);
+  delete from public.staff_modulos_permisos where staff_user_id = v_asis and modulo <> 'tickets';
+  delete from public.staff_modulos_permisos where staff_user_id = v_sinmod;
+
+  begin
+    perform public.reporte_tickets_de(null, v_m, v_m_fin);
+    fallos := fallos || '[115] reporte_tickets respondio sin sesion; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[115] sin sesion lanzo ' || sqlstate || ' en vez de 42501; '; end if;
+  end;
+  begin
+    perform public.reporte_tickets_de(v_sinmod, v_m, v_m_fin);
+    fallos := fallos || '[115] reporte_tickets respondio sin el modulo tickets; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[115] sin modulo lanzo ' || sqlstate || ' en vez de 42501; '; end if;
+  end;
+  begin
+    perform public.reporte_tickets_de(v_asis, v_m, v_m_fin, v_jefe);
+    fallos := fallos || '[115] un asistente obtuvo el reporte de otro tecnico; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[115] tecnico ajeno lanzo ' || sqlstate || ' en vez de 42501; '; end if;
+  end;
+  begin
+    perform public.reporte_satisfaccion_consolidado_de(null);
+    fallos := fallos || '[115] reporte_satisfaccion_consolidado respondio sin sesion; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[115] consolidado sin sesion lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.reporte_satisfaccion_consolidado_de(v_sinmod);
+    fallos := fallos || '[115] reporte_satisfaccion_consolidado respondio sin el modulo; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[115] consolidado sin modulo lanzo ' || sqlstate || '; '; end if;
+  end;
+
+  r := public.reporte_tickets_de(v_asis, v_m, v_m_fin);
+  if r -> 'por_tecnico' <> 'null'::jsonb or (r -> 'alcance' ->> 'tipo') <> 'equipo' then
+    fallos := fallos || '[115] un asistente recibio la seccion por tecnico; ';
+  end if;
+  r := public.reporte_tickets_de(v_asis, v_m, v_m_fin, v_asis);
+  if (r -> 'alcance' ->> 'tecnico_id')::uuid <> v_asis or r -> 'por_tecnico' <> 'null'::jsonb then
+    fallos := fallos || '[115] un asistente no pudo pedir su propio alcance; ';
+  end if;
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin);
+  if jsonb_typeof(r -> 'por_tecnico') <> 'array' then
+    fallos := fallos || '[115] el jefe no recibio la seccion por tecnico; ';
+  end if;
+  if not (r ?& array['generado_en', 'generado_por', 'definiciones_version', 'periodo', 'periodo_completo', 'alcance', 'parametros',
+                     'volumen', 'por', 'atencion', 'calidad', 'por_tecnico', 'anexos', 'tickets', 'comparacion']) then
+    fallos := fallos || '[115] faltan claves de primer nivel en el reporte; ';
+  end if;
+
+  foreach v in array array['v_ticket_hechos', 'v_kpi_volumen', 'v_kpi_tiempos', 'v_kpi_reaperturas', 'v_kpi_csat', 'v_backlog_tramos'] loop
+    if not (select reloptions @> array['security_invoker=true'] from pg_class where oid = ('public.' || v)::regclass) then
+      fallos := fallos || '[115] ' || v || ' no es security_invoker; ';
+    end if;
+    if not has_table_privilege('authenticated', 'public.' || v, 'select') or has_table_privilege('anon', 'public.' || v, 'select') then
+      fallos := fallos || '[115] privilegios de ' || v || ' incorrectos; ';
+    end if;
+  end loop;
+  if to_regprocedure('public.reporte_tickets(timestamptz, timestamptz)') is not null
+     or to_regprocedure('public.reporte_tickets_resumen(timestamptz, timestamptz)') is not null then
+    fallos := fallos || '[115] las RPC de la 053 siguen existiendo; ';
+  end if;
+  if not has_function_privilege('authenticated', 'public.reporte_tickets(date, date, uuid)', 'execute')
+     or has_function_privilege('anon', 'public.reporte_tickets(date, date, uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.reporte_tickets_de(uuid, date, date, uuid, boolean)', 'execute')
+     or has_function_privilege('authenticated', 'public.reporte_satisfaccion_consolidado_de(uuid)', 'execute')
+     or not has_function_privilege('authenticated', 'public.reporte_satisfaccion_consolidado()', 'execute') then
+    fallos := fallos || '[115] EXECUTE de las RPC de reportes incorrecto; ';
+  end if;
+  if (select valor from public.config_parametros where clave = 'csat_muestra_minima') <> '5'::jsonb
+     or (select valor from public.config_parametros where clave = 'dias_corte_reapertura') <> '30'::jsonb then
+    fallos := fallos || '[115] faltan los parametros sembrados; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [115e] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [115e]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 115f — paridad interna: para un mes completo la RPC devuelve lo mismo
+-- que las vistas mensuales (volumen, tiempos, csat) y el backlog "al cierre"
+-- reconstruye el estado de cada ticket a ese instante.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_empresa uuid;
+  v_e1 uuid;
+  v_t uuid;
+  v_m date := date '2015-03-01'; -- mes fijo y vacío en cualquier base: los conteos exactos no dependen de los datos reales
+  v_n date;
+  v_m_fin date;
+  v_cierre timestamptz;
+  r jsonb;
+  fila record;
+  i int;
+  fallos text := '';
+begin
+  v_n := (v_m + interval '1 month')::date;
+  v_m_fin := v_n - 1;
+  v_cierre := v_n::timestamp at time zone 'America/Lima';
+  insert into auth.users (email) values ('__test_ci_115f_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true where user_id = v_jefe;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 115f') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'CI 115f', '99011506', v_empresa) returning id into v_e1;
+
+  alter table public.tickets disable trigger tickets_resuelto_at;
+  -- 3 resueltos en M con 2, 6 y 10 horas (mediana 6, promedio 6) y encuesta 4, 4, 5
+  for i in 1..3 loop
+    insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+      values ('__TEST_CI_115F_' || i, lpad('115f' || i, 24, 'x'), 'Ticket ' || i, 'd', 'cerrado', case when i = 1 then 'alta' else 'media' end, v_e1,
+              ((v_m + i) + time '08:00') at time zone 'America/Lima', ((v_m + i) + time '08:00') at time zone 'America/Lima' + make_interval(hours => 4 * i - 2))
+      returning id into v_t;
+    insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id)
+      values (v_t, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + i) + time '08:00') at time zone 'America/Lima' + make_interval(hours => 4 * i - 2), v_jefe);
+    insert into public.ticket_satisfaccion (ticket_id, nivel, fecha_envio, created_at)
+      values (v_t, case when i = 3 then 5 else 4 end, ((v_m + i + 1) + time '10:00') at time zone 'America/Lima', ((v_m + i) + time '12:00') at time zone 'America/Lima');
+  end loop;
+  -- vigente al cierre de M: creado el 20 de M, resuelto recién en N (al cierre seguia abierto, 11 dias)
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_115F_V', lpad('115fV', 24, 'x'), 'Vigente al cierre', 'd', 'cerrado', 'media', v_e1,
+            ((v_m + 19) + time '08:00') at time zone 'America/Lima', ((v_n + 4) + time '08:00') at time zone 'America/Lima')
+    returning id into v_t;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_t, 'estado_cambiado', 'De "abierto" a "en_progreso"', ((v_m + 19) + time '09:00') at time zone 'America/Lima', v_jefe),
+    (v_t, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_n + 4) + time '08:00') at time zone 'America/Lima', v_jefe);
+  -- rechazado antes del cierre: no es backlog
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at)
+    values ('__TEST_CI_115F_R', lpad('115fR', 24, 'x'), 'Rechazado', 'd', 'rechazado', 'media', v_e1, ((v_m + 2) + time '08:00') at time zone 'America/Lima')
+    returning id into v_t;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id)
+    values (v_t, 'estado_cambiado', 'De "abierto" a "rechazado"', ((v_m + 2) + time '09:00') at time zone 'America/Lima', v_jefe);
+  -- creado despues del cierre: no cuenta en M
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at)
+    values ('__TEST_CI_115F_N', lpad('115fN', 24, 'x'), 'De N', 'd', 'abierto', 'media', v_e1, ((v_n + 1) + time '08:00') at time zone 'America/Lima');
+  alter table public.tickets enable trigger tickets_resuelto_at;
+
+  r := public.reporte_tickets_de(v_jefe, v_m, v_m_fin);
+  select * into fila from public.v_kpi_volumen where mes = v_m;
+  if fila.creados <> (r -> 'volumen' ->> 'creados')::int or fila.resueltos <> (r -> 'volumen' ->> 'resueltos')::int
+     or fila.rechazados <> (r -> 'volumen' ->> 'rechazados')::int or fila.resueltos_arrastrados <> (r -> 'volumen' ->> 'resueltos_arrastrados')::int then
+    fallos := fallos || '[115] v_kpi_volumen y la RPC difieren en M; ';
+  end if;
+  if fila.creados <> 5 or fila.resueltos <> 3 or fila.rechazados <> 1 then
+    fallos := fallos || '[115] volumen de M inesperado: creados=' || fila.creados || ' resueltos=' || fila.resueltos || ' rechazados=' || fila.rechazados || '; ';
+  end if;
+  select * into fila from public.v_kpi_tiempos where mes = v_m and prioridad is null;
+  if fila.n_resolucion <> 3 or fila.mediana_horas_resolucion <> 6 or fila.promedio_horas_resolucion <> 6
+     or fila.mediana_horas_resolucion <> (r -> 'atencion' -> 'resolucion' ->> 'mediana_horas')::numeric
+     or fila.promedio_horas_resolucion <> (r -> 'atencion' -> 'resolucion' ->> 'promedio_horas')::numeric
+     or fila.n_resolucion <> (r -> 'atencion' -> 'resolucion' ->> 'n')::int then
+    fallos := fallos || '[115] v_kpi_tiempos y la RPC difieren en M (mediana ' || fila.mediana_horas_resolucion || ' vs ' || (r -> 'atencion' -> 'resolucion' ->> 'mediana_horas') || '); ';
+  end if;
+  if not exists (select 1 from public.v_kpi_tiempos where mes = v_m and prioridad = 'alta' and n_resolucion = 1 and mediana_horas_resolucion = 2)
+     or not exists (select 1 from jsonb_array_elements(r -> 'atencion' -> 'por_prioridad') p where p ->> 'prioridad' = 'alta' and (p ->> 'mediana_horas')::numeric = 2) then
+    fallos := fallos || '[115] el corte por prioridad difiere entre la vista y la RPC; ';
+  end if;
+  if (select sum(n) from public.v_kpi_csat where mes = v_m) <> (r -> 'calidad' -> 'csat' ->> 'n')::int
+     or (select sum(suma_nivel) from public.v_kpi_csat where mes = v_m) <> 13 then
+    fallos := fallos || '[115] v_kpi_csat y la RPC difieren en M; ';
+  end if;
+
+  -- backlog al cierre de M: solo el vigente (11 dias); ni el rechazado, ni los resueltos, ni el creado en N
+  if (r -> 'volumen' -> 'backlog' ->> 'referencia') <> 'cierre' or (r -> 'volumen' -> 'backlog' ->> 'total')::int <> 1
+     or not exists (select 1 from jsonb_array_elements(r -> 'volumen' -> 'backlog' -> 'tramos') t where t ->> 'clave' = 'de_8_a_30' and (t ->> 'cantidad')::int = 1) then
+    fallos := fallos || '[115] backlog al cierre de M incorrecto: ' || (r -> 'volumen' ->> 'backlog') || '; ';
+  end if;
+  if (select sum(cantidad) from public.backlog_tramos_en(v_cierre)) <> 1
+     or (select sum(cantidad) from public.backlog_tramos_en(((v_m + 1) + time '00:00') at time zone 'America/Lima')) <> 0
+     or (select sum(cantidad) from public.backlog_tramos_en(((v_m + 2) + time '08:30') at time zone 'America/Lima')) <> 2 then
+    fallos := fallos || '[115] backlog_tramos_en no reconstruye el estado al instante pedido; ';
+  end if;
+  if (select count(*) from public.v_backlog_tramos) <> 4 then
+    fallos := fallos || '[115] v_backlog_tramos no devuelve los 4 tramos; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [115f] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [115f]: %', fallos;
   end if;
 end $$;

@@ -4,16 +4,13 @@
 // El Inicio y el contador del menú leen TODO de `getResumen()` (RPC
 // `dashboard_resumen`, migración 103): una sola llamada. Los métodos
 // `getEstadisticas`, `listPendientes`, `pendientesTickets` y `misTickets`
-// que siguen más abajo ya no los llama ninguna pantalla (fueron el origen de
-// las ≈25 requests del Inicio); se conservan solo porque la prueba de forma
-// del API los lista y son candidatos a retiro (ver CHANGELOG).
+// (origen de las ≈25 requests del Inicio) se retiraron el 2026-10-03 junto con
+// el modal de reporte: sus cifras viven en `dashboard_resumen` y en las vistas
+// KPI de la migración 115.
 import { getClient } from '../client.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { anotarErrorDb } from '../erroresDb.js';
 import { normalizarResumen } from '../../core/resumen-inicio.js';
-import { fechaLocalISO } from '../../core/formatters.js';
-import { ordenarPorUrgencia } from '../../core/dominio-tickets.js';
-import { DIAS_POR_VENCER_LICENCIA } from '../../core/dominio-licencias.js';
 
 export const dashboardApi = {
   // Resumen del Inicio: una sola RPC (`dashboard_resumen`, migración 103) con
@@ -97,173 +94,6 @@ export const dashboardApi = {
     };
   },
 
-  async getEstadisticas() {
-    const db = getClient().database;
-    // count+head (Supabase-style, soportado por @insforge/sdk): solo pide
-    // el número de filas al backend, sin descargarlas — antes cada query
-    // traía la tabla completa solo para medir .length (P-01).
-    const CONTEO = { count: 'exact', head: true };
-    // empleadosActivos necesita el estado real: única query que sigue
-    // trayendo filas (mínimas: solo la columna que se filtra).
-    const [empRes, asigRes, compartidaRes, rotacionRes, licVencenRes, equiposRes, ticketsRes] = await Promise.all([
-      db.from('empleados').select('id, estado').is('deleted_at', null),
-      db.from('asignaciones_cuenta').select('id', CONTEO).is('fecha_fin', null),
-      db.from('cuentas').select('id', CONTEO).eq('tipo_cuenta', 'compartida').is('deleted_at', null),
-      db.from('cuentas').select('id', CONTEO).eq('requiere_rotacion', true).is('deleted_at', null),
-      db.from('licencias').select('id', CONTEO)
-        .lte('fecha_vencimiento', fechaEnDias(DIAS_POR_VENCER_LICENCIA))
-        .is('deleted_at', null),
-      db.from('equipos').select('id', CONTEO).is('deleted_at', null),
-      db.from('tickets').select('id', CONTEO).not('estado', 'in', '("resuelto","cerrado","rechazado")'),
-    ]);
-
-    return {
-      empleadosActivos: (empRes.data || []).filter((e) => e.estado === 'Activo').length,
-      empleadosTotal: (empRes.data || []).length,
-      cuentasAsignadas: asigRes.count || 0,
-      correosCompartidos: compartidaRes.count || 0,
-      cuentasPorRotar: rotacionRes.count || 0,
-      licenciasPorVencer: licVencenRes.count || 0,
-      equiposTotal: equiposRes.count || 0,
-      ticketsAbiertos: ticketsRes.count || 0,
-    };
-  },
-
-  // Pendientes accionables del dashboard: cuentas por rotar, sin contraseña
-  // y licencias que vencen en los próximos 30 días
-  async listPendientes() {
-    const db = getClient().database;
-    const select = 'id, usuario, tipo_cuenta, plataformas(nombre), asignaciones_cuenta(fecha_fin, empleado_id, empleados(nombres, apellidos))';
-    const [rotarRes, sinPwRes, licRes, equiposRes, garantiaRes] = await Promise.all([
-      db.from('cuentas').select(select).eq('requiere_rotacion', true).is('deleted_at', null),
-      db.from('cuentas').select(select).is('password', null).is('deleted_at', null),
-      db.from('licencias')
-        .select('id, software, cantidad, fecha_vencimiento, empresas(nombre)')
-        .lte('fecha_vencimiento', fechaEnDias(DIAS_POR_VENCER_LICENCIA))
-        .is('deleted_at', null)
-        .order('fecha_vencimiento', { ascending: true }),
-      db.from('asignaciones_equipo')
-        .select('id, equipos(id, codigo, marca, modelo, deleted_at), empleados(id, nombres, apellidos, estado)')
-        .is('fecha_fin', null),
-      db.from('equipos')
-        .select('id, codigo, marca, modelo, garantia_hasta')
-        .lte('garantia_hasta', fechaEnDias(30))
-        .is('deleted_at', null)
-        .in('estado', ['operativo', 'en_reparacion'])
-        .order('garantia_hasta', { ascending: true }),
-    ]);
-    if (rotarRes.error) throw rotarRes.error;
-    if (sinPwRes.error) throw sinPwRes.error;
-    if (licRes.error) throw licRes.error;
-    if (equiposRes.error) throw equiposRes.error;
-    if (garantiaRes.error) throw garantiaRes.error;
-
-    const mapItem = (c) => {
-      const titulares = (c.asignaciones_cuenta || [])
-        .filter((a) => !a.fecha_fin && a.empleados)
-        .map((a) => ({
-          id: a.empleado_id,
-          nombre: `${a.empleados.nombres} ${a.empleados.apellidos}`.trim(),
-        }));
-      return {
-        cuenta_id: c.id,
-        usuario: c.usuario,
-        tipo_cuenta: c.tipo_cuenta || 'personal',
-        plataforma: c.plataformas?.nombre || '',
-        titulares,
-      };
-    };
-
-    return {
-      porRotar: (rotarRes.data || []).map(mapItem),
-      sinPassword: (sinPwRes.data || []).map(mapItem),
-      licenciasPorVencer: (licRes.data || []).map((l) => ({
-        licencia_id: l.id,
-        software: l.software,
-        cantidad: l.cantidad,
-        fecha_vencimiento: l.fecha_vencimiento,
-        empresa: l.empresas?.nombre || '',
-        vencida: l.fecha_vencimiento < fechaLocalISO(),
-      })),
-      // Lo más urgente: equipos que siguen en manos de empleados dados de baja
-      equiposSinDevolver: (equiposRes.data || [])
-        .filter((a) => a.empleados?.estado === 'Inactivo' && a.equipos && !a.equipos.deleted_at)
-        .map((a) => ({
-          asignacion_id: a.id,
-          codigo: a.equipos.codigo,
-          equipo: `${a.equipos.marca || ''} ${a.equipos.modelo || ''}`.trim(),
-          empleado: `${a.empleados.nombres} ${a.empleados.apellidos}`.trim(),
-          empleado_id: a.empleados.id,
-        })),
-      garantiasPorVencer: (garantiaRes.data || []).map((e) => ({
-        equipo_id: e.id,
-        codigo: e.codigo,
-        equipo: `${e.marca || ''} ${e.modelo || ''}`.trim(),
-        garantia_hasta: e.garantia_hasta,
-        vencida: e.garantia_hasta < fechaLocalISO(),
-      })),
-    };
-  },
-
-  // Pendientes accionables de tickets, para el Dashboard.
-  // Antes: 3 round-trips a "tickets" repitiendo el mismo filtro base
-  // (estado abierto) — P-04. Ahora: 1 query trae los tickets abiertos una
-  // sola vez, con las columnas que las 3 listas necesitan para clasificar
-  // en memoria; un ticket que califica en más de un bucket (ej. viejo Y
-  // sin asignar) sigue apareciendo en ambos, igual que antes.
-  async pendientesTickets() {
-    const db = getClient().database;
-    const { data, error } = await db.from('tickets')
-      .select('id, codigo, titulo, created_at, asignado_a, vinculado')
-      .not('estado', 'in', '("resuelto","cerrado","rechazado")')
-      .order('created_at', { ascending: true });
-    if (error) throw error;
-    const abiertos = data || [];
-    const cortesViejos = fechaEnDias(-3);
-    const aItem = (t) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at });
-    return {
-      sinAsignar: abiertos.filter((t) => !t.asignado_a).map(aItem),
-      // === false explícito (no !t.vinculado): igual que el .eq('vinculado',
-      // false) original, un valor null no debe contar como "sin vincular".
-      sinVincular: abiertos.filter((t) => t.vinculado === false).map(aItem),
-      abiertosViejos: abiertos.filter((t) => t.created_at <= cortesViejos).map(aItem),
-    };
-  },
-
-  // Mis tickets: los vigentes asignados a mí. Es lo que un técnico abre la
-  // app para ver, y hasta 2026-09-02 no estaba en ninguna parte del
-  // Dashboard — el feed de pendientes solo cubre lo que NADIE tomó todavía
-  // (sin asignar, sin vincular) o lo que se está pasando de tiempo (+3 días).
-  // Un ticket asignado a mí, en curso y de ayer no aparecía en pantalla.
-  //
-  // El orden lo pone ordenarPorUrgencia() (core/dominio-tickets.js), no esta
-  // consulta: es la misma regla que usa la bandeja de Tickets y no debe
-  // existir dos veces.
-  //
-  // Trae TODOS los asignados vigentes y recorta en memoria, en vez de pedir
-  // .limit(5) al servidor: PostgREST no puede ordenar por la escala de
-  // prioridad (es text+check, no un enum ordenado), así que un limit del
-  // servidor recortaría por el orden equivocado. Con el volumen actual
-  // (decenas de tickets por técnico) el costo es despreciable; si algún día
-  // un técnico acumula cientos, la salida es un índice y un ORDER BY con
-  // CASE en un RPC, no ordenar acá.
-  async misTickets(userId, limite = 5) {
-    if (!userId) return { lista: [], total: 0 };
-    const { data, error, count } = await getClient().database
-      .from('tickets')
-      .select('id, codigo, titulo, prioridad, estado, created_at', { count: 'exact' })
-      .eq('asignado_a', userId)
-      .not('estado', 'in', '("resuelto","cerrado","rechazado")');
-    if (error) throw error;
-    const ordenados = ordenarPorUrgencia(data || []);
-    return {
-      lista: ordenados.slice(0, limite),
-      // El total es de TODOS los vigentes asignados, no de los mostrados:
-      // el enlace "ver todos" tiene que decir la verdad.
-      total: count ?? ordenados.length,
-    };
-  },
-
   // ── Auditoría (solo JEFE por RLS) ────────────────────────────────────────────
 
   async listActividad(limit = 200) {
@@ -276,8 +106,3 @@ export const dashboardApi = {
     return data || [];
   },
 };
-
-// Fecha de hoy + N días en formato YYYY-MM-DD local (para filtros de vencimiento)
-function fechaEnDias(dias) {
-  return fechaLocalISO(dias);
-}

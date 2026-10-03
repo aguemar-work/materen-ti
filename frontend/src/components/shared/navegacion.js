@@ -66,6 +66,9 @@ export const AREAS_NAV = [
           // Cambios (107) usa el módulo `tickets`: el CHECK de la 056 admite 8
           // módulos y ninguno es «cambios»; su ruta declara el mismo meta.modulo.
           { path: '/cambios', label: 'Cambios', icon: 'ti ti-arrows-exchange', modulo: 'tickets' },
+          // Reportes (115) también usa el módulo `tickets`: es la bandeja agregada
+          // por período; la sección "por técnico" la decide el servidor (JEFE).
+          { path: '/reportes', label: 'Reportes', icon: 'ti ti-report', modulo: 'tickets' },
         ],
       },
       {

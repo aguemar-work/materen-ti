@@ -809,8 +809,125 @@ async function escenarios(etiqueta) {
     afirmar('S16 109: los 5 tokens emitidos son distintos', new Set(tokens).size === 5);
   }
 
+  // ---- S17 115: la maqueta de Reportes calcula lo MISMO que la RPC. El fixture de frontend/src/maqueta/datos.js se carga
+  // en PGlite (ids traducidos a uuid) y reporte_tickets_de() se compara, numero a numero, con reporteTicketsDe() de
+  // maqueta/rpc-reportes.js sobre el mismo objeto en memoria: si la maqueta y el servidor divergen, el dueno veria en la
+  // maqueta un reporte que el servidor no devolveria.
+  if ((await uno("select to_regprocedure('public.reporte_tickets_de(uuid, date, date, uuid, boolean)') as t")).t) {
+    await paridadMaquetaReportes(sfx);
+  }
+
   console.log(`   escenarios (${etiqueta}): ${esc.ok} afirmaciones OK, ${esc.mal.length} MAL`);
   reg(`escenarios integrados (${etiqueta}): ${esc.ok} afirmaciones`, esc.mal.length === 0, esc.mal.join(' || '));
+}
+
+async function paridadMaquetaReportes(sfx) {
+  let TABLAS, reporteTicketsDe;
+  try {
+    ({ TABLAS } = await import(pathToFileURL(join(REPO, 'frontend/src/maqueta/datos.js')).href));
+    ({ reporteTicketsDe } = await import(pathToFileURL(join(REPO, 'frontend/src/maqueta/rpc-reportes.js')).href));
+  } catch (e) {
+    afirmar('S17 115: la maqueta se puede importar en node', false, e.message.slice(0, 160));
+    return;
+  }
+  const maq = JSON.parse(JSON.stringify(TABLAS));
+  const lit = (v) => (v == null ? 'null' : `'${String(v).replace(/'/g, "''")}'`);
+  // jsonb ordena las claves (largo y luego alfabeto); la maqueta las deja en orden de insercion: se comparan canonicas.
+  const canon = (x) => JSON.stringify(x, (k, val) => (val && typeof val === 'object' && !Array.isArray(val) ? Object.fromEntries(Object.keys(val).sort().map((c) => [c, val[c]])) : val));
+  // Todo el fixture vive dentro de una transaccion que se revierte: los tests de tests/db y los demas escenarios no lo ven.
+  await db.exec('begin');
+  try {
+  const ids = { user: new Map(), emp: new Map(), area: new Map(), ubic: new Map(), sub: new Map(), ticket: new Map() };
+  // staff: un auth.users por integrante de la maqueta (el trigger crea el staff), con su rol, actividad y modulos
+  for (const s of maq.staff) {
+    const id = (await uno(`insert into auth.users (email) values ('maq-${s.user_id}-${sfx}@t.test') returning id`)).id;
+    ids.user.set(s.user_id, id);
+    await db.exec('alter table staff disable trigger trg_staff_autoedicion_solo_nombre');
+    await db.exec(`update staff set activo = ${s.activo}, rol = '${s.rol}', nombre = ${lit(s.nombre)} where user_id = '${id}'`);
+    await db.exec('alter table staff enable trigger trg_staff_autoedicion_solo_nombre');
+    const modulos = maq.staff_modulos_permisos.filter((m) => m.staff_user_id === s.user_id).map((m) => m.modulo);
+    await db.exec(`delete from staff_modulos_permisos where staff_user_id = '${id}' and modulo <> all (array[${modulos.map((m) => `'${m}'`).join(',') || "''"}])`);
+  }
+  const empresa = (await uno(`insert into empresas (nombre) values ('Maqueta ${sfx}') returning id`)).id;
+  for (const a of maq.areas_obras) ids.area.set(a.id, (await uno(`insert into areas_obras (nombre) values (${lit(a.nombre)}) returning id`)).id);
+  for (const u of maq.ubicaciones) ids.ubic.set(u.id, (await uno(`insert into ubicaciones (nombre, tipo) values (${lit(u.nombre)}, ${lit(u.tipo || 'otro')}) returning id`)).id);
+  for (const e of maq.empleados) {
+    const dni = String(Math.floor(10000000 + Math.random() * 89999999));
+    ids.emp.set(e.id, (await uno(`insert into empleados (nombres, apellidos, dni, empresa_id, area_obra_id, ubicacion_id, estado) values (${lit(e.nombres)}, ${lit(e.apellidos)}, '${dni}', '${empresa}', ${lit(ids.area.get(e.area_obra_id))}, ${lit(ids.ubic.get(e.ubicacion_id))}, ${lit(e.estado === 'Suspendido' ? 'Activo' : e.estado)}) returning id`)).id);
+  }
+  for (const c of maq.categorias_ticket) await db.exec(`insert into categorias_ticket (id, nombre) values (${lit(c.id)}, ${lit(c.nombre)}) on conflict (id) do update set nombre = excluded.nombre, deleted_at = null`);
+  for (const s of maq.subcategorias_ticket) ids.sub.set(s.id, (await uno(`insert into subcategorias_ticket (categoria_id, nombre) values (${lit(s.categoria_id)}, ${lit(s.nombre)}) returning id`)).id);
+  await db.exec('alter table tickets disable trigger tickets_resuelto_at');
+  for (const t of maq.tickets) {
+    const id = (await uno(`insert into tickets (codigo, token, titulo, descripcion, estado, prioridad, tipo, nivel_atencion, origen, vinculado, empleado_id, categoria_id, subcategoria_id, asignado_a, created_at, updated_at, resuelto_at)
+      values (${lit(t.codigo)}, ${lit(String(t.token).padEnd(24, 'x').slice(0, 24))}, ${lit(t.titulo)}, ${lit(t.descripcion || 'd')}, ${lit(t.estado)}, ${lit(t.prioridad)}, ${lit(t.tipo)}, ${lit(t.nivel_atencion)}, ${lit(t.origen || 'empleado')}, ${t.vinculado !== false}, ${lit(ids.emp.get(t.empleado_id))}, ${lit(t.categoria_id)}, ${lit(ids.sub.get(t.subcategoria_id))}, ${lit(ids.user.get(t.asignado_a))}, ${lit(t.created_at)}, ${lit(t.updated_at || t.created_at)}, ${lit(t.resuelto_at)}) returning id`)).id;
+    ids.ticket.set(t.id, id);
+  }
+  await db.exec('alter table tickets enable trigger tickets_resuelto_at');
+  for (const e of maq.ticket_eventos) {
+    if (!ids.ticket.has(e.ticket_id)) continue;
+    await db.exec(`insert into ticket_eventos (ticket_id, evento, detalle, user_id, created_at) values ('${ids.ticket.get(e.ticket_id)}', ${lit(e.evento)}, ${lit(e.detalle)}, ${lit(ids.user.get(e.user_id))}, ${lit(e.created_at)})`);
+  }
+  await db.exec('alter table ticket_comentarios disable trigger trg_check_ticket_no_cerrado');
+  await db.exec('alter table ticket_comentarios disable trigger trg_ticket_comentarios_by');
+  for (const c of maq.ticket_comentarios) {
+    if (!ids.ticket.has(c.ticket_id)) continue;
+    await db.exec(`insert into ticket_comentarios (ticket_id, autor_id, interno, mensaje, created_at) values ('${ids.ticket.get(c.ticket_id)}', ${lit(ids.user.get(c.autor_id))}, ${!!c.interno}, ${lit(c.mensaje)}, ${lit(c.created_at)})`);
+  }
+  await db.exec('alter table ticket_comentarios enable trigger trg_check_ticket_no_cerrado');
+  await db.exec('alter table ticket_comentarios enable trigger trg_ticket_comentarios_by');
+  for (const s of maq.ticket_satisfaccion) {
+    if (!ids.ticket.has(s.ticket_id)) continue;
+    await db.exec(`insert into ticket_satisfaccion (ticket_id, nivel, comentario, fecha_envio, created_at) values ('${ids.ticket.get(s.ticket_id)}', ${s.nivel == null ? 'null' : s.nivel}, ${lit(s.comentario)}, ${lit(s.fecha_envio)}, ${lit(s.created_at)})`);
+  }
+  // Solo los tickets de la maqueta: los de otros escenarios de este arnes se dejan fuera de la comparacion (la RPC no filtra).
+  const codigos = new Set(maq.tickets.map((t) => t.codigo));
+  const porNombre = (a, b) => String(a.nombre).localeCompare(String(b.nombre));
+  const norm = (r) => ({
+    atencion: r.atencion,
+    calidad: { reaperturas: r.calidad.reaperturas, csat: r.calidad.csat, comentarios_bajos_total: r.calidad.comentarios_bajos_total },
+    por: Object.fromEntries(Object.entries(r.por).map(([k, v]) => [k, v.map(({ nombre, creados, resueltos }) => ({ nombre, creados, resueltos })).sort(porNombre)])),
+    por_tecnico: (r.por_tecnico || []).map(({ nombre, resueltos, mismo_periodo, arrastrados, tiempos, csat, reaperturas }) => ({ nombre, resueltos, mismo_periodo, arrastrados, tiempos, csat, reaperturas })).sort(porNombre),
+    anexos: { arrastrados: r.anexos.arrastrados.map(({ codigo, dias_abierto }) => ({ codigo, dias_abierto })), cerrados_sin_encuesta: r.anexos.cerrados_sin_encuesta.map(({ codigo, motivo }) => ({ codigo, motivo })) },
+    tickets: r.tickets.filter((t) => codigos.has(t.codigo)).map(({ codigo, en_periodo, horas_resolucion, encuesta_nivel, categoria, area, solicitante }) => ({ codigo, en_periodo, horas_resolucion, encuesta_nivel, categoria, area, solicitante })).sort((a, b) => a.codigo.localeCompare(b.codigo)),
+    volumen: { creados: r.volumen.creados, rechazados: r.volumen.rechazados, resueltos: r.volumen.resueltos, resueltos_mismo_periodo: r.volumen.resueltos_mismo_periodo, resueltos_arrastrados: r.volumen.resueltos_arrastrados, cerrados_sin_encuesta: r.volumen.cerrados_sin_encuesta },
+    comparacion: r.comparacion && { periodo: r.comparacion.periodo, volumen: r.comparacion.volumen, atencion: r.comparacion.atencion, csat: r.comparacion.csat },
+  });
+  const hoy = new Date();
+  const mes = (k) => {
+    const d = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth() + k, 1));
+    return { desde: d.toISOString().slice(0, 10), hasta: new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) };
+  };
+  const jefe = ids.user.get(maq.staff.find((s) => s.rol === 'JEFE').user_id);
+  // El arnes ya tiene tickets de otros escenarios (siembra, S14, S15): la comparacion se hace sobre los agregados que
+  // solo dependen de los tickets de la maqueta cuando el resto no cae en el periodo. Para aislar, los tickets ajenos se
+  // mueven fuera de cualquier periodo comparado (creados hace 3 anos, sin eventos en el rango).
+  await db.exec(`update tickets set created_at = created_at - interval '3 years', updated_at = updated_at - interval '3 years' where codigo not in (${[...codigos].map(lit).join(',')})`);
+  await db.exec(`update ticket_eventos set created_at = created_at - interval '3 years' where ticket_id in (select id from tickets where codigo not in (${[...codigos].map(lit).join(',')}))`);
+  await db.exec(`update ticket_satisfaccion set created_at = created_at - interval '3 years', fecha_envio = fecha_envio - interval '3 years' where ticket_id in (select id from tickets where codigo not in (${[...codigos].map(lit).join(',')}))`);
+  await db.exec('alter table tickets disable trigger tickets_resuelto_at');
+  await db.exec(`update tickets set resuelto_at = resuelto_at - interval '3 years' where resuelto_at is not null and codigo not in (${[...codigos].map(lit).join(',')})`);
+  await db.exec('alter table tickets enable trigger tickets_resuelto_at');
+  for (const [k, etq] of [[-1, 'mes pasado'], [0, 'mes en curso']]) {
+    const p = mes(k);
+    const sql = (await uno(`select reporte_tickets_de('${jefe}', '${p.desde}', '${p.hasta}') as r`)).r;
+    const js = reporteTicketsDe(maq, { user: 'u-jefe', desde: p.desde, hasta: p.hasta, ahora: new Date() });
+    const a = norm(sql), b = norm(js);
+    const dif = [];
+    for (const clave of Object.keys(a)) if (canon(a[clave]) !== canon(b[clave])) dif.push(`${clave}: sql=${canon(a[clave]).slice(0, 220)} js=${canon(b[clave]).slice(0, 220)}`);
+    afirmar(`S17 115: la maqueta y la RPC coinciden para el ${etq} (${p.desde}..${p.hasta})`, dif.length === 0, dif.join(' | ').slice(0, 900));
+    console.log(`   (informativo) S17 ${etq}: creados=${a.volumen.creados} resueltos=${a.volumen.resueltos} mediana=${a.atencion.resolucion.mediana_horas} csat=${a.calidad.csat.promedio} (n=${a.calidad.csat.n})`);
+  }
+  const satSql = (await uno(`select reporte_satisfaccion_consolidado_de('${jefe}') as r`)).r;
+  const { satisfaccionConsolidadaDe } = await import(pathToFileURL(join(REPO, 'frontend/src/maqueta/rpc-reportes.js')).href);
+  const satJs = satisfaccionConsolidadaDe(maq, { user: 'u-jefe' });
+  const resumenSql = { ...satSql.resumen }, resumenJs = { ...satJs.resumen };
+  afirmar('S17 115: el consolidado de satisfaccion de la maqueta coincide con la RPC (resumen y muestra minima)',
+    canon(resumenSql) === canon(resumenJs) && satSql.muestraMinima === satJs.muestraMinima
+    && satSql.porTecnico.length === satJs.porTecnico.length, `sql=${canon(resumenSql)} js=${canon(resumenJs)}`);
+  } finally {
+    await db.exec('rollback');
+  }
 }
 
 // ---------------------------------------------------------------- siembra "tipo produccion" ANTES de aplicar las nuevas
@@ -891,7 +1008,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -971,10 +1088,13 @@ if (!args.includes('--sin-dependencias')) {
     ['106', ['099']], ['106', ['101']],
     ['107', ['099']], ['107', ['101']],
     ['109', ['099']], ['109', ['101']], ['109', ['103']], ['109', ['104']], ['109', ['112']],
+    // 115 depende de la 089 (historica: se excluye de la base), la 099 y la 103
+    ['115', ['089']], ['115', ['099']], ['115', ['103']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });
-    await construirBase(inst);
+    // una dependencia historica (<= 089) se omite de la base; las nuevas, del bucle de abajo
+    await construirBase(inst, [...EXCLUIR_HIST, ...omitir.filter((n) => Number(n) <= 89)]);
     const guardado = db; db = inst;
     let res = '';
     try {

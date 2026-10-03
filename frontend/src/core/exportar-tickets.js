@@ -1,12 +1,10 @@
-// Forma del CSV de tickets — una sola definición, compartida por los TRES
-// lugares que exportan la misma entidad: el botón "Exportar" de la toolbar de
-// TicketsView.vue (bandeja con los filtros puestos) y las dos exportaciones de
-// ReporteTicketsModal.vue (periodo del reporte y bandeja).
+// Forma del CSV de la BANDEJA de tickets (botón "Exportar datos" de
+// TicketsView.vue, con los filtros puestos). El CSV del reporte por período
+// es otro archivo con otras columnas (modules/reportes/csv.js): sale del
+// jsonb de reporte_tickets y lleva horas, área y encuesta, nunca DNI.
 //
-// Estaba solo dentro del modal (CABECERA_CSV + filaCsv locales). Al sumar el
-// botón de la toolbar habrían quedado dos definiciones de la misma cabecera
-// que se desincronizan a la primera columna nueva — que es exactamente lo que
-// acaba de pasar con "Nivel".
+// Hasta el 2026-10-03 esta cabecera la compartían la bandeja y las dos
+// exportaciones del modal de reporte, que se retiró con la migración 115.
 import { formatFechaHora } from './formatters.js';
 import { estadoInfo, prioridadInfo } from './dominio-tickets.js';
 

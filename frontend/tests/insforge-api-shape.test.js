@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { insforgeApi } from '../src/api/insforge.js';
 
 const METODOS = [
-  'buscarGlobal', 'misTickets',
+  'buscarGlobal',
   // empleados
   'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
   'getEmpleado', 'createEmpleado', 'buscarPorDni',
@@ -26,8 +26,9 @@ const METODOS = [
   // cuentas
   'listCuentasPorEmpleado', 'createCuenta', 'updateCuenta', 'traspasarCuenta',
   'historialCuenta', 'cerrarAsignacion', 'revocarCuentaPersonal',
-  // dashboard / actividad
-  'getEstadisticas', 'listPendientes', 'pendientesTickets', 'listActividad', 'getResumen',
+  // dashboard / actividad (getEstadisticas, listPendientes, pendientesTickets y
+  // misTickets se retiraron el 2026-10-03: todo sale de getResumen)
+  'listActividad', 'getResumen',
   // correos
   'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados', 'conteosCorreosPorVista',
   'createCorreo', 'updateCorreo',
@@ -54,7 +55,10 @@ const METODOS = [
   'listTickets', 'listTicketsPage', 'listTicketsFiltrados', 'contarTickets',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
-  'obtenerReporteTickets', 'obtenerResumenTickets', 'obtenerSatisfaccionConsolidado', 'listarTicketsDelPeriodo',
+  // reportes (migración 115): solo RPC, nada se agrega en el cliente
+  'obtenerReporteTickets', 'obtenerSatisfaccionConsolidado',
+  // parámetros de negocio (config_parametros, 103): lectura de un entero
+  'parametroEntero',
   // staff
   'listStaff', 'updateStaff', 'nombresStaff',
   // accesos sensibles

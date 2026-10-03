@@ -69,7 +69,7 @@ describe('construirReporteEquipos', () => {
     const datos = construirDatosReporteEquipos(sinGarantias, HOY);
     const { doc } = await construirReporteEquipos(datos);
     const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
-    expect(crudo).toContain('Sin garant\xEDas por vencer en los pr\xF3ximos 90 d\xEDas');
+    expect(crudo).toContain('Sin garant\xEDas por vencer en los pr\xF3ximos 30 d\xEDas');
   });
 
   it('genera igual un inventario completamente vacío', async () => {

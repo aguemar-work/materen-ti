@@ -23,6 +23,23 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-03** (**Reportes — migración 115**, escrita, **sin aplicar**; requiere 089, 099 y 103. La 089 se aplicó
+  y registró hoy; `schema_migrations` quedó reconciliada con 086–114) — Parte del análisis
+  `docs/auditorias/ciclo-21/analisis-reportes.md`. Una sola fuente de verdad por métrica: `v_ticket_hechos`
+  (una fila por ticket; única lectura de `ticket_eventos`), vistas mensuales `v_kpi_volumen`, `v_kpi_tiempos`,
+  `v_kpi_reaperturas`, `v_kpi_csat`, `v_backlog_tramos`, y la RPC `reporte_tickets(p_desde date, p_hasta date,
+  p_tecnico uuid)` (guard `modulo:tickets`; sección por técnico solo JEFE; rangos en hora de Lima; comparación
+  solo entre períodos completos). Parámetros `csat_muestra_minima` (5) y `dias_corte_reapertura` (30).
+  `reporte_satisfaccion_consolidado` reescrita sobre las mismas vistas; se eliminan `reporte_tickets(timestamptz,
+  timestamptz)` y `reporte_tickets_resumen` (053/086). Definiciones versionadas `reportes-2026-10-03` (glosario
+  en `modules/reportes/glosario.js` y al pie de la hoja). Frontend: módulo `/reportes` (Mesa de ayuda) como hoja
+  imprimible con carátula, sello «PERÍODO EN CURSO», tablas y CSV desde el mismo jsonb; se retiran
+  `ReporteTicketsModal`, `reporte.js`, `reportePeriodo.js`, `api/domains/reportesTickets.js`, los métodos muertos
+  del dashboard y la recurrencia en cliente (Problemas lee `v_categorias_recurrentes`); Satisfacción histórica y
+  el PDF de equipos leen los parámetros del servidor. `scripts/paridad-reporte-tickets.mjs` compara la RPC con
+  el cálculo del modal retirado (en la maqueta: 10 diferencias, todas explicadas por un reabierto contado como
+  resuelto y por un ticket fechado con `updated_at`); correrlo contra producción tras aplicar la 115 y guardar la
+  salida. `patrones-ui` baja de 81 a 76.
 - **2026-10-02** (**migración 114 — Aviso al solicitante por categoría de ticket**, escrita, **sin aplicar**; pedido
   del dueño) — `categorias_ticket.aviso` y `subcategorias_ticket.aviso` (texto plano ≤ 600, blanco → NULL por
   trigger, CHECK sin HTML). Gana el aviso de la subcategoría; si es NULL, el de la categoría

@@ -106,6 +106,10 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   siempre `no_existe`. `confirmado_por_empleado_at` solo lo escribe `portal_confirmar_equipo`;
   `portal_abrir` y `portal_confirmar_equipo` son solo `project_admin`. `functions/portal.ts` proyecta los
   campos uno a uno: un campo nuevo se agrega en la RPC, en la proyección y en el test 109b.
+- **Reportes (115)**: ninguna métrica de tickets se calcula en el cliente. La fórmula vive en
+  `v_ticket_hechos`; `v_kpi_*` son su corte mensual y `reporte_tickets()` la compone para un rango.
+  `maqueta/rpc-reportes.js` sigue la misma aritmética (el escenario S17 del arnés lo exige). El reporte
+  por técnico lo decide la RPC (solo JEFE). Un cambio de definición sube `definiciones_version`.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

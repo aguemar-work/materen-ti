@@ -1,14 +1,15 @@
 <script setup>
 // Consolidado histórico de satisfacción de tickets (todo el tiempo, sin
-// recorte de periodo — a diferencia del modal "Reporte", que sí está
-// acotado a un día/semana/mes). Se trae una sola vez desde
-// obtenerSatisfaccionConsolidado() y todo el orden/paginación de la tabla
-// principal es en el cliente: los dos resúmenes ya necesitan el histórico
-// completo, así que no tiene sentido pedirlo de nuevo por página.
+// recorte de período — el reporte por período vive en /reportes). Todo lo
+// agregado llega de reporte_satisfaccion_consolidado (migración 115): promedio
+// general, por solicitante, por técnico y por mes, cada uno con su muestra y
+// con el promedio en NULL cuando no alcanza la muestra mínima
+// (csat_muestra_minima). Acá no se promedia ni se cuenta nada: solo se filtra
+// y ordena la tabla de respuestas en el cliente (ya está completa en memoria).
 import { ref, computed, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
-import { MIN_MUESTRA_PROMEDIO } from '../../api/domains/reportesTickets.js';
-import { formatFechaHora } from '../../core/formatters.js';
+import { traducirErrorDb } from '../../api/erroresDb.js';
+import { formatFechaHora, formatFecha } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
@@ -17,7 +18,6 @@ import { generarReporteSatisfaccion } from './reporteSatisfaccion.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppButton from '../../components/ui/AppButton.vue';
-import AppKpi from '../../components/ui/AppKpi.vue';
 import AppSeccion from '../../components/ui/AppSeccion.vue';
 import AppBuscador from '../../components/ui/AppBuscador.vue';
 import AppSegmentado from '../../components/ui/AppSegmentado.vue';
@@ -32,27 +32,30 @@ const { esMovil } = useEsMovil();
 
 const cargando = ref(true);
 const error = ref('');
+const muestraMinima = ref(5);
+const resumen = ref(null);
 const respuestas = ref([]);
 const porSolicitante = ref([]);
 const porTecnico = ref([]);
-const staffPorId = ref({});
+const porMes = ref([]);
 
-function nombreTecnico(tecnicoId) {
-  if (!tecnicoId) return 'Sin asignar';
-  return staffPorId.value[tecnicoId] || 'Staff';
+const nombreTecnico = (fila) => fila?.nombre || 'Sin registrar';
+const tecnicoDeRespuesta = (r) => porTecnico.value.find((t) => t.tecnico_id === r.tecnico_id)?.nombre || (r.tecnico_id ? 'Sin registrar' : 'Sin registrar');
+
+// "n insuficiente (k)" cuando el servidor no publicó el promedio.
+function textoPromedio(f) {
+  if (!f || f.promedio == null) return f?.muestra ? `n insuficiente (${f.muestra})` : 'Sin respuestas';
+  return `${Number(f.promedio).toFixed(1)}/5`;
 }
 
-// Búsqueda 100% client-side: el histórico completo ya está en memoria
-// (ver comentario de arriba), así que no hay red que ahorrar con debounce.
+// Búsqueda 100% client-side: el histórico completo ya está en memoria.
 const { termino: busqueda } = useBusqueda({ debounceMs: 0, umbralMinimo: 0, sanitizar: false });
 
-// Chip "Solo insatisfechos" (nivel ≤ 3, incluye "Neutral" — decisión del
-// usuario 2026-08-19): mismo patrón que los chips de TicketsView, se
-// combina con el buscador de texto (AND entre ambos).
+// Chip "Solo insatisfechas" (nivel ≤ 2, misma definición que el reporte por
+// período y que la columna `insatisfechos` del servidor; hasta el 2026-10-03
+// incluía el 3).
 const soloInsatisfechos = ref(false);
-function esBaja(r) {
-  return r.nivel !== null && r.nivel <= 3;
-}
+const esBaja = (r) => r.nivel !== null && r.nivel <= 2;
 
 const respuestasFiltradas = computed(() => {
   const q = busqueda.value.trim().toLowerCase();
@@ -61,67 +64,16 @@ const respuestasFiltradas = computed(() => {
     if (!q) return true;
     return r.ticket_codigo.toLowerCase().includes(q) ||
       r.solicitante.toLowerCase().includes(q) ||
-      nombreTecnico(r.tecnico_id).toLowerCase().includes(q) ||
+      tecnicoDeRespuesta(r).toLowerCase().includes(q) ||
       (r.comentario || '').toLowerCase().includes(q);
   });
 });
 
-// Mismo par orden+paginación client-side que el resto de las vistas
-// (useOrdenTabla + usePaginacion) en vez de reimplementarlo acá; 'desc'
-// inicial porque un reporte se lee de más reciente a más antiguo.
 const { columna, direccion, ordenarPor, listaOrdenada: respuestasOrdenadas } = useOrdenTabla(respuestasFiltradas, 'created_at', 'desc');
 const { paginaActual, listaPaginada: respuestasPagina, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(respuestasOrdenadas);
 
-// KPIs generales del PDF (independientes del buscador/orden de la tabla:
-// siempre sobre el histórico completo, igual que "Todas las respuestas"
-// antes de filtrar).
-const resumenGeneral = computed(() => {
-  const conNivel = respuestas.value.filter((r) => r.nivel !== null);
-  return {
-    encuestasGeneradas: respuestas.value.length,
-    encuestasRespondidas: respuestas.value.filter((r) => r.respondida).length,
-    promedioGeneral: conNivel.length ? conNivel.reduce((acc, r) => acc + r.nivel, 0) / conNivel.length : null,
-  };
-});
-
-// Desglose 1-5 por solicitante/técnico: la RPC ya devuelve generadas/
-// respondidas/promedio/muestra pre-agregados (`porSolicitante`/`porTecnico`),
-// pero no un conteo por nivel — como `respuestas` ya trae CADA fila
-// individual con su empleado_id/tecnico_id y su nivel (histórico completo,
-// ya en memoria), el desglose se arma acá agrupando ese mismo array en vez
-// de pedirle un campo nuevo a la RPC.
-function contarNivelesPorClave(items, claveFn) {
-  const mapa = new Map();
-  for (const r of items) {
-    if (r.nivel === null) continue;
-    const clave = claveFn(r);
-    if (!mapa.has(clave)) mapa.set(clave, { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
-    const conteo = mapa.get(clave);
-    conteo[r.nivel] += 1;
-  }
-  return mapa;
-}
-
-function niveles(mapa, clave) {
-  return mapa.get(clave) || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-}
-
-const nivelesPorSolicitante = computed(() => contarNivelesPorClave(respuestas.value, (r) => r.empleado_id));
-const nivelesPorTecnico = computed(() => contarNivelesPorClave(respuestas.value, (r) => r.tecnico_id));
-
-// Filas ya enriquecidas con su desglose 1-5 (y, para técnico, el nombre
-// resuelto) — una sola vez acá, en vez de recalcularlo en cada celda del
-// template o de nuevo al armar el PDF.
-const porSolicitanteConNiveles = computed(() =>
-  porSolicitante.value.map((f) => ({ ...f, conteos: niveles(nivelesPorSolicitante.value, f.empleado_id) }))
-);
-const porTecnicoConNiveles = computed(() =>
-  porTecnico.value.map((f) => ({ ...f, nombre: nombreTecnico(f.tecnico_id), conteos: niveles(nivelesPorTecnico.value, f.tecnico_id) }))
-);
-
-// El PDF no puede cargar miles de filas (mismo motivo que MAX_COMENTARIOS en
-// reportesTickets.js): se recorta a las más recientes/relevantes y se avisa
-// el total real en una nota, no en silencio.
+// El PDF no puede cargar miles de filas: se recorta a las más recientes y se
+// avisa el total real en una nota, no en silencio.
 const MAX_RESPUESTAS_PDF = 40;
 const MAX_RESPUESTAS_BAJAS_PDF = 60;
 
@@ -129,7 +81,7 @@ function mapRespuestaParaPdf(r) {
   return {
     ticketCodigo: r.ticket_codigo,
     solicitante: r.solicitante,
-    tecnico: nombreTecnico(r.tecnico_id),
+    tecnico: tecnicoDeRespuesta(r),
     nivel: r.nivel,
     respondida: r.respondida,
     comentario: r.comentario,
@@ -141,66 +93,58 @@ const exportandoPdf = ref(false);
 async function descargarPdf() {
   exportandoPdf.value = true;
   try {
-    const ordenadasPorFecha = [...respuestas.value].sort(
-      (a, b) => new Date(b.fecha_envio || b.created_at) - new Date(a.fecha_envio || a.created_at),
-    );
-    // Baja satisfacción: peor nivel primero (el objetivo es entender el
-    // porqué, no leer en orden cronológico) y, a igual nivel, la más
-    // reciente primero.
-    const bajas = respuestas.value
-      .filter(esBaja)
-      .sort((a, b) => a.nivel - b.nivel || new Date(b.fecha_envio || b.created_at) - new Date(a.fecha_envio || a.created_at));
-
+    const porFecha = (a, b) => new Date(b.fecha_envio || b.created_at) - new Date(a.fecha_envio || a.created_at);
+    const bajas = respuestas.value.filter(esBaja).sort((a, b) => a.nivel - b.nivel || porFecha(a, b));
     await generarReporteSatisfaccion({
-      ...resumenGeneral.value,
-      porSolicitante: porSolicitanteConNiveles.value,
-      porTecnico: porTecnicoConNiveles.value,
+      muestraMinima: muestraMinima.value,
+      resumen: resumen.value,
+      porSolicitante: porSolicitante.value,
+      porTecnico: porTecnico.value.map((f) => ({ ...f, nombre: nombreTecnico(f) })),
+      porMes: porMes.value,
       respuestasTotal: respuestas.value.length,
-      respuestas: ordenadasPorFecha.slice(0, MAX_RESPUESTAS_PDF).map(mapRespuestaParaPdf),
+      respuestas: [...respuestas.value].sort(porFecha).slice(0, MAX_RESPUESTAS_PDF).map(mapRespuestaParaPdf),
       respuestasBajasTotal: bajas.length,
       respuestasBajas: bajas.slice(0, MAX_RESPUESTAS_BAJAS_PDF).map(mapRespuestaParaPdf),
     });
   } catch (e) {
-    showToast(e?.message || 'No se pudo generar el PDF', 'error');
+    showToast(traducirErrorDb(e, { porDefecto: 'No se pudo generar el PDF' }).mensaje, 'error');
   } finally {
     exportandoPdf.value = false;
   }
 }
 
-// ── Presentación (rediseño 2026-09-23) ──
 const FILTRO_SATISFACCION = [
   { valor: false, label: 'Todas' },
-  { valor: true, label: 'Solo insatisfechas (nivel ≤ 3)', icono: 'ti ti-mood-sad' },
+  { valor: true, label: 'Solo insatisfechas (nivel 1 o 2)', icono: 'ti ti-mood-sad' },
 ];
 
-const insatisfechas = computed(() => respuestas.value.filter(esBaja).length);
-const tasaRespuestaGeneral = computed(() => {
-  const g = resumenGeneral.value.encuestasGeneradas;
-  return g ? Math.round((resumenGeneral.value.encuestasRespondidas / g) * 100) : 0;
-});
-
-// Tono del nivel 1–5: 1-2 mal, 3 regular (cuenta como insatisfecho, ver
-// esBaja), 4-5 bien.
+// Tono del nivel 1–5: 1-2 insatisfecho, 3 neutral, 4-5 satisfecho.
 function tonoNivel(n) {
   if (n <= 2) return 'danger';
-  if (n === 3) return 'warning';
+  if (n === 3) return 'neutral';
   return 'success';
 }
+
+const subtitulo = computed(() => {
+  if (cargando.value) return 'Cargando encuestas…';
+  const r = resumen.value || {};
+  const tasa = r.tasaRespuestaPct == null ? '' : ` (${r.tasaRespuestaPct} %)`;
+  return `${r.encuestasRespondidas ?? 0} de ${r.encuestasGeneradas ?? 0} encuestas respondidas${tasa} · histórico completo · promedio general ${textoPromedio(r)}`;
+});
 
 async function cargar() {
   cargando.value = true;
   error.value = '';
   try {
-    const [consolidado, staff] = await Promise.all([
-      insforgeApi.obtenerSatisfaccionConsolidado(),
-      insforgeApi.nombresStaff(),
-    ]);
+    const consolidado = await insforgeApi.obtenerSatisfaccionConsolidado();
+    muestraMinima.value = consolidado.muestraMinima;
+    resumen.value = consolidado.resumen;
     respuestas.value = consolidado.respuestas;
     porSolicitante.value = consolidado.porSolicitante;
     porTecnico.value = consolidado.porTecnico;
-    staffPorId.value = Object.fromEntries(staff.map((s) => [s.user_id, s.nombre]));
+    porMes.value = consolidado.porMes;
   } catch (e) {
-    error.value = e?.message || 'Error al cargar la satisfacción de tickets';
+    error.value = traducirErrorDb(e, { porDefecto: 'No se pudo cargar la satisfacción de tickets.' }).mensaje;
     showToast(error.value, 'error');
   } finally {
     cargando.value = false;
@@ -212,11 +156,9 @@ onMounted(cargar);
 
 <template>
   <div class="w-full pb-10">
-    <AppEncabezado
-      titulo="Satisfacción de tickets"
-      :subtitulo="cargando ? 'Cargando encuestas…' : `${resumenGeneral.encuestasRespondidas} de ${resumenGeneral.encuestasGeneradas} encuestas respondidas · histórico completo`"
-    >
+    <AppEncabezado titulo="Satisfacción de tickets" :subtitulo="subtitulo">
       <template #acciones>
+        <AppButton variant="outline" severity="secondary" icon="ti ti-report" label="Reporte por período" to="/reportes" />
         <AppButton
           :icon="exportandoPdf ? 'ti ti-loader-2' : 'ti ti-download'"
           :loading="exportandoPdf"
@@ -241,42 +183,16 @@ onMounted(cargar);
       />
 
       <template v-else>
-        <!-- ══ Indicadores: cómo va el servicio, de un vistazo ══ -->
-        <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <AppKpi
-            icono="ti ti-mood-smile"
-            tono="primary"
-            label="Promedio general"
-            :valor="resumenGeneral.promedioGeneral === null ? '—' : `${resumenGeneral.promedioGeneral.toFixed(1)}/5`"
-            detalle="Sobre las respuestas con nivel"
-          />
-          <AppKpi icono="ti ti-send" label="Encuestas generadas" :valor="resumenGeneral.encuestasGeneradas" detalle="Una por ticket cerrado con solicitante" />
-          <AppKpi
-            icono="ti ti-message-check"
-            tono="success"
-            label="Respondidas"
-            :valor="resumenGeneral.encuestasRespondidas"
-            :detalle="`${tasaRespuestaGeneral}% de respuesta`"
-          />
-          <AppKpi
-            icono="ti ti-mood-sad"
-            :tono="insatisfechas ? 'warning' : 'neutral'"
-            label="Insatisfechas"
-            :valor="insatisfechas"
-            detalle="Nivel 3 o menos"
-          />
-        </div>
+        <p class="text-sm text-gray-500">
+          Un promedio se publica solo con {{ muestraMinima }} o más respuestas con nivel; con menos se muestra «n insuficiente». Insatisfecho es nivel 1 o 2.
+          <template v-if="resumen"> Insatisfechas en total: {{ resumen.insatisfechos }}.</template>
+        </p>
 
-        <!-- ══ Desglose por solicitante y por técnico ══ -->
+        <!-- ══ Por solicitante, por técnico y por mes ══ -->
         <div class="grid items-start gap-6 lg:grid-cols-2">
-          <AppSeccion
-            titulo="Por solicitante"
-            :conteo="porSolicitanteConNiveles.length"
-            :descripcion="`Promedio en gris con menos de ${MIN_MUESTRA_PROMEDIO} respuestas con nivel.`"
-            sin-padding
-          >
+          <AppSeccion titulo="Por solicitante" :conteo="porSolicitante.length" sin-padding>
             <div class="overflow-hidden rounded-b-lg">
-            <AppTable :value="porSolicitanteConNiveles" :lazy="false" :loading="cargando" data-key="empleado_id" aria-label="Satisfacción por solicitante">
+            <AppTable :value="porSolicitante" :lazy="false" :loading="cargando" data-key="empleado_id" aria-label="Satisfacción por solicitante">
               <AppColumn field="nombre" header="Solicitante">
                 <template #body="{ data: f }">
                   <div class="min-w-0">
@@ -287,15 +203,12 @@ onMounted(cargar);
                   </div>
                 </template>
               </AppColumn>
-              <AppColumn field="conteos" header="Respuestas 1–5">
-                <template #body="{ data: f }">
-                  <DistribucionNiveles :conteos="f.conteos" />
-                </template>
+              <AppColumn field="niveles" header="Respuestas 1–5">
+                <template #body="{ data: f }"><DistribucionNiveles :conteos="f.niveles" /></template>
               </AppColumn>
               <AppColumn field="promedio" header="Promedio">
                 <template #body="{ data: f }">
-                  <span v-if="f.promedio === null" class="text-gray-500">Sin respuestas</span>
-                  <span v-else class="font-medium tabular-nums" :class="f.muestra < MIN_MUESTRA_PROMEDIO ? 'text-gray-500' : 'text-gray-900'">{{ f.promedio.toFixed(1) }}/5</span>
+                  <span class="tabular-nums" :class="f.promedio == null ? 'text-gray-500' : 'font-medium text-gray-900'">{{ textoPromedio(f) }}</span>
                 </template>
               </AppColumn>
               <template #empty><p class="py-6 text-center text-sm text-gray-500">Todavía no hay encuestas generadas.</p></template>
@@ -305,38 +218,57 @@ onMounted(cargar);
 
           <AppSeccion
             titulo="Por técnico"
-            :conteo="porTecnicoConNiveles.length"
+            :conteo="porTecnico.length"
             descripcion="Es quien marcó el ticket como resuelto por última vez, no necesariamente el asignado actual."
             sin-padding
           >
             <div class="overflow-hidden rounded-b-lg">
-            <AppTable :value="porTecnicoConNiveles" :lazy="false" :loading="cargando" data-key="tecnico_id" aria-label="Satisfacción por técnico">
+            <AppTable :value="porTecnico" :lazy="false" :loading="cargando" data-key="tecnico_id" aria-label="Satisfacción por técnico">
               <AppColumn field="nombre" header="Técnico">
                 <template #body="{ data: f }">
                   <div class="min-w-0">
-                    <div class="truncate font-medium text-gray-900">{{ f.nombre }}</div>
+                    <div class="truncate font-medium text-gray-900">{{ nombreTecnico(f) }}</div>
                     <div class="text-xs tabular-nums text-gray-500">{{ f.encuestasRespondidas }} de {{ f.encuestasGeneradas }} respondidas</div>
                   </div>
                 </template>
               </AppColumn>
-              <AppColumn field="conteos" header="Respuestas 1–5">
-                <template #body="{ data: f }">
-                  <DistribucionNiveles :conteos="f.conteos" />
-                </template>
+              <AppColumn field="niveles" header="Respuestas 1–5">
+                <template #body="{ data: f }"><DistribucionNiveles :conteos="f.niveles" /></template>
               </AppColumn>
               <AppColumn field="promedio" header="Promedio">
                 <template #body="{ data: f }">
-                  <span v-if="f.promedio === null" class="text-gray-500">Sin respuestas</span>
-                  <span v-else class="font-medium tabular-nums" :class="f.muestra < MIN_MUESTRA_PROMEDIO ? 'text-gray-500' : 'text-gray-900'">{{ f.promedio.toFixed(1) }}/5</span>
+                  <span class="tabular-nums" :class="f.promedio == null ? 'text-gray-500' : 'font-medium text-gray-900'">{{ textoPromedio(f) }}</span>
                 </template>
               </AppColumn>
               <template #empty><p class="py-6 text-center text-sm text-gray-500">Todavía no hay encuestas generadas.</p></template>
             </AppTable>
             </div>
           </AppSeccion>
+
+          <AppSeccion titulo="Por mes de resolución" :conteo="porMes.length" descripcion="Encuestas de los tickets resueltos en cada mes (hora de Lima)." sin-padding class="lg:col-span-2">
+            <div class="overflow-hidden rounded-b-lg">
+            <AppTable :value="porMes" :lazy="false" :loading="cargando" data-key="mes" aria-label="Satisfacción por mes">
+              <AppColumn field="mes" header="Mes">
+                <template #body="{ data: f }"><span class="tabular-nums text-gray-900">{{ formatFecha(f.mes).slice(3) }}</span></template>
+              </AppColumn>
+              <AppColumn field="encuestasGeneradas" header="Generadas / respondidas">
+                <template #body="{ data: f }"><span class="tabular-nums text-gray-700">{{ f.encuestasGeneradas }} / {{ f.encuestasRespondidas }}</span></template>
+              </AppColumn>
+              <AppColumn field="niveles" header="Respuestas 1–5">
+                <template #body="{ data: f }"><DistribucionNiveles :conteos="f.niveles" /></template>
+              </AppColumn>
+              <AppColumn field="promedio" header="Promedio">
+                <template #body="{ data: f }">
+                  <span class="tabular-nums" :class="f.promedio == null ? 'text-gray-500' : 'font-medium text-gray-900'">{{ textoPromedio(f) }}</span>
+                </template>
+              </AppColumn>
+              <template #empty><p class="py-6 text-center text-sm text-gray-500">Todavía no hay tickets resueltos con encuesta.</p></template>
+            </AppTable>
+            </div>
+          </AppSeccion>
         </div>
 
-        <!-- ══ Todas las respuestas: barra de filtros fuera de la card ══ -->
+        <!-- ══ Todas las respuestas ══ -->
         <section class="space-y-3" aria-labelledby="sat-respuestas">
           <h2 id="sat-respuestas" class="text-sm font-semibold text-gray-900">
             Respuestas
@@ -347,12 +279,7 @@ onMounted(cargar);
             <AppSegmentado v-model="soloInsatisfechos" :opciones="FILTRO_SATISFACCION" label="Filtrar por satisfacción" />
           </div>
 
-          <AppVacio
-            v-if="!cargando && respuestasOrdenadas.length === 0"
-            icono="ti ti-search"
-            titulo="Sin resultados"
-            mensaje="No hay respuestas con esos filtros."
-          />
+          <AppVacio v-if="!cargando && respuestasOrdenadas.length === 0" icono="ti ti-search" titulo="Sin resultados" mensaje="No hay respuestas con esos filtros." />
 
           <template v-else>
             <p v-if="cargando" class="sr-only" role="status">Cargando satisfacción de tickets…</p>
@@ -370,16 +297,13 @@ onMounted(cargar);
                 <AppColumn field="solicitante" header="Ticket y solicitante" sortable>
                   <template #body="{ data: f }">
                     <div class="min-w-0">
-                      <RouterLink
-                        class="text-xs font-medium tabular-nums text-gray-600 hover:text-primary-700 hover:underline"
-                        :to="`/tickets/${f.ticket_id}`"
-                      >{{ f.ticket_codigo }}</RouterLink>
+                      <RouterLink class="text-xs font-medium tabular-nums text-gray-600 hover:text-primary-700 hover:underline" :to="`/tickets/${f.ticket_id}`">{{ f.ticket_codigo }}</RouterLink>
                       <div class="truncate text-gray-900">{{ f.solicitante }}</div>
                     </div>
                   </template>
                 </AppColumn>
                 <AppColumn field="tecnico" header="Técnico">
-                  <template #body="{ data: f }"><span class="text-gray-700">{{ nombreTecnico(f.tecnico_id) }}</span></template>
+                  <template #body="{ data: f }"><span class="text-gray-700">{{ tecnicoDeRespuesta(f) }}</span></template>
                 </AppColumn>
                 <AppColumn field="nivel" header="Nivel" sortable :header-style="{ width: '110px' }">
                   <template #body="{ data: f }">
@@ -417,7 +341,7 @@ onMounted(cargar);
                     <div class="min-w-0">
                       <RouterLink class="text-xs font-medium tabular-nums text-gray-600" :to="`/tickets/${f.ticket_id}`">{{ f.ticket_codigo }}</RouterLink>
                       <div class="truncate font-medium text-gray-900">{{ f.solicitante }}</div>
-                      <div class="text-xs text-gray-500">Atendió {{ nombreTecnico(f.tecnico_id) }}</div>
+                      <div class="text-xs text-gray-500">Atendió {{ tecnicoDeRespuesta(f) }}</div>
                     </div>
                     <AppTag v-if="f.nivel !== null" :tono="tonoNivel(f.nivel)" class="tabular-nums">{{ f.nivel }}/5</AppTag>
                     <span v-else class="text-xs text-gray-500">{{ f.respondida ? 'Sin nivel' : 'Pendiente' }}</span>
@@ -426,14 +350,7 @@ onMounted(cargar);
                   <p class="mt-2 text-xs tabular-nums text-gray-500">{{ formatFechaHora(f.fecha_envio || f.created_at) }}</p>
                 </li>
               </ul>
-              <AppPaginacion
-                v-if="!cargando"
-                variante="compacta"
-                :pagina="paginaActual"
-                :tam-pagina="tamPagina"
-                :total="totalItems"
-                @update:pagina="paginaActual = $event"
-              />
+              <AppPaginacion v-if="!cargando" variante="compacta" :pagina="paginaActual" :tam-pagina="tamPagina" :total="totalItems" @update:pagina="paginaActual = $event" />
             </div>
           </template>
         </section>

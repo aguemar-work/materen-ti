@@ -87,7 +87,7 @@ async function montar() {
   const w = mount(TicketsView, {
     global: {
       plugins: [router, [PrimeVue, { unstyled: true }]],
-      stubs: { TicketDetallePanel: true, TicketInternoForm: true, ReporteTicketsModal: true, ConfirmDialog: true },
+      stubs: { TicketDetallePanel: true, TicketInternoForm: true, ConfirmDialog: true },
     },
   });
   await flushPromises();
@@ -189,7 +189,7 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
     const w = mount(TicketsView, {
       global: {
         plugins: [router, [PrimeVue, { unstyled: true }]],
-        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ReporteTicketsModal: true, ConfirmDialog: true },
+        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ConfirmDialog: true },
       },
     });
     await Promise.resolve();
@@ -213,7 +213,7 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     const w = mount(TicketsView, {
       global: {
         plugins: [router, [PrimeVue, { unstyled: true }]],
-        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ReporteTicketsModal: true, ConfirmDialog: true },
+        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ConfirmDialog: true },
       },
     });
     await flushPromises();
@@ -305,7 +305,7 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     const w = mount(TicketsView, {
       global: {
         plugins: [router, [PrimeVue, { unstyled: true }]],
-        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ReporteTicketsModal: true, ConfirmDialog: true },
+        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ConfirmDialog: true },
       },
     });
     await flushPromises();
