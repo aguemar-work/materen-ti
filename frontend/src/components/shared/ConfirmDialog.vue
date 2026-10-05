@@ -1,12 +1,44 @@
 <script setup>
-// Diálogo de confirmación de dos tiers (auditoría UX/UI, hallazgo CNF-1 y §3.1).
-// Reemplaza los 16 confirm() nativos y unifica la confirmación destructiva.
+// Diálogo de confirmación de dos tiers (auditoría UX/UI, hallazgo CNF-1 y
+// §3.1). Reemplaza los 16 confirm() nativos y unifica la confirmación
+// destructiva.
 //   - Tier base: nombre de la entidad en el título + foco inicial en Cancelar.
 //   - Tier auditable (requiereMotivo): motivo obligatorio (>= motivoMin),
 //     formaliza el patrón de "rechazar ticket".
-// Construido sobre <Modal>, así hereda foco atrapado / Escape / aria-modal.
-import { ref, useId } from 'vue';
-import Modal from './Modal.vue';
+//
+// Reescrito 2026-09-07 sobre primevue/dialog (Unstyled + Tailwind, ver
+// pt/dialog.pt.js) + AppButton — antes sobre un <Modal> propio (retirado el 2026-10-02). La API PÚBLICA
+// (props/emits/expose) NO cambió: las ~31 vistas que usan <ConfirmDialog>
+// siguen funcionando sin tocarlas. Dialog trae su propio focus-trap,
+// Escape, aria-modal y backdrop — no hace falta reimplementar nada de eso
+// (a diferencia del antiguo Modal.vue, que lo hacía a mano, y que fue
+// reemplazado por AppDialog.vue para modales de contenido libre — este cambio es solo de
+// ConfirmDialog).
+//
+// Diferencia de comportamiento aceptada a propósito: el antiguo Modal esperaba a
+// que la animación de salida terminara (@after-leave) antes de emitir
+// 'cancel', para que el padre desmontara con v-if recién ahí y la salida se
+// viera completa. PrimeVue Dialog no expone un hook público equivalente
+// (@update:visible dispara al INICIO del cierre, no al final) — 'cancel' se
+// emite ahí. Con un padre que desmonta con v-if apenas recibe 'cancel', la
+// animación de salida puede cortarse. Es un recorte visual menor, no un
+// cambio de comportamiento de negocio — ningún otro comportamiento cambió:
+// cerrar() sigue sin emitir 'cancel' (para el camino de éxito), Escape/X/
+// backdrop siguen cerrando libremente incluso con `cargando` (igual que
+// antes: ese guard nunca existió, solo los botones del footer se
+// deshabilitaban).
+//
+// 'cerrado' (2026-09-24): se emite SIEMPRE que el diálogo deja de verse, por
+// cualquier camino (cancelar o cerrar() tras un éxito). Es el evento con el
+// que el padre debe desmontar (`@cerrado="pendiente = null"`). Antes los
+// padres solo escuchaban 'cancel': tras un cerrar() exitoso su estado quedaba
+// asignado con el diálogo oculto, y la SIGUIENTE confirmación de la misma
+// pantalla (otro correo a eliminar, otro lote a cerrar) nunca aparecía.
+import { ref } from 'vue';
+import Dialog from 'primevue/dialog';
+import AppButton from '../ui/AppButton.vue';
+import { buildDialogPT } from '../ui/pt/dialog.pt.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const props = defineProps({
   titulo: { type: String, required: true },
@@ -20,27 +52,32 @@ const props = defineProps({
   motivoLabel: { type: String, default: 'Motivo' },
   cargando: { type: Boolean, default: false },
 });
-const emit = defineEmits(['confirm', 'cancel']);
+const emit = defineEmits(['confirm', 'cancel', 'cerrado']);
 
-const motivoId = useId();
-const motivoErrorId = useId();
 const motivo = ref('');
 const error = ref('');
+const campoMotivo = useCampoAccesible({ error: () => error.value });
 
-// Cancelar cierra con animación: Modal emite 'close' al terminar la salida
-// y eso ya está mapeado a 'cancel'. Confirmar no cierra acá — el padre
-// mantiene el diálogo abierto mientras procesa (cargando); al terminar debe
-// llamar cerrar() (expuesto abajo) en vez de desmontar con v-if, para que
-// la salida anime igual que Cancelar/X/Escape. El 'cancel' que se emite al
-// final de esa animación es quien baja el v-if del padre.
-const modalRef = ref(null);
+const visible = ref(true);
+const pt = buildDialogPT();
 
-defineExpose({ cerrar: () => modalRef.value?.cerrar() });
+// cerrar() != cancelar(): el padre llama cerrar() tras un confirm exitoso
+// (no es un cancel); Escape/X/backdrop/botón Cancelar sí cancelan.
+function ocultar() {
+  visible.value = false;
+  emit('cerrado');
+}
+defineExpose({ cerrar: ocultar });
+
+function cancelar() {
+  emit('cancel');
+  ocultar();
+}
 
 function confirmar() {
   if (props.requiereMotivo) {
     if (motivo.value.trim().length < props.motivoMin) {
-      error.value = `Escribe al menos ${props.motivoMin} caracteres.`;
+      error.value = `Escriba al menos ${props.motivoMin} caracteres.`;
       return;
     }
     emit('confirm', motivo.value.trim());
@@ -51,60 +88,50 @@ function confirmar() {
 </script>
 
 <template>
-  <Modal
-    ref="modalRef"
-    :titulo="titulo"
-    size="sm"
-    transicion="modal-anim-rapida"
-    :overlay-class="destructivo ? 'confirm-dialog--destructive' : ''"
-    @close="emit('cancel')"
+  <Dialog
+    v-model:visible="visible"
+    modal
+    dismissable-mask
+    :pt="pt"
+    @update:visible="(v) => { if (!v) cancelar(); }"
   >
-    <template v-if="destructivo" #titulo>
-      <span class="confirm-titulo">
-        <span class="modal-icon"><i :class="`ti ${icono}`" aria-hidden="true"></i></span>
-        {{ titulo }}
+    <template #header>
+      <span v-if="destructivo" class="flex items-center gap-2">
+        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+          <i :class="`ti ${icono}`" aria-hidden="true"></i>
+        </span>
+        <span class="text-base font-semibold text-gray-900">{{ titulo }}</span>
       </span>
+      <span v-else class="text-base font-semibold text-gray-900">{{ titulo }}</span>
     </template>
 
-    <p v-if="mensaje" class="confirm-mensaje">{{ mensaje }}</p>
+    <p v-if="mensaje" class="mb-3 text-sm text-gray-600">{{ mensaje }}</p>
     <slot />
 
-    <div v-if="requiereMotivo" class="form-group full">
-      <label :for="motivoId">{{ motivoLabel }}</label>
+    <div v-if="requiereMotivo" class="mt-3">
+      <label class="mb-1 block text-sm font-medium text-gray-700" :for="campoMotivo.id">{{ motivoLabel }}</label>
       <textarea
-        :id="motivoId"
-        v-model="motivo"
-        rows="3"
+        :id="campoMotivo.id"
+        class="w-full rounded-md border px-3 py-2 text-sm text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
+        :class="campoMotivo.invalido.value ? 'border-red-300' : 'border-gray-300'"
+        :rows="3"
+        :value="motivo"
         :disabled="cargando"
-        :aria-describedby="error ? motivoErrorId : undefined"
-        :aria-invalid="error ? 'true' : undefined"
+        :aria-invalid="campoMotivo.invalido.value"
+        :aria-describedby="campoMotivo.describedBy.value"
+        @input="motivo = $event.target.value"
       ></textarea>
+      <p v-if="error" :id="campoMotivo.idAyuda" class="mt-1 text-sm text-red-600" role="alert">{{ error }}</p>
     </div>
-    <p v-if="error" :id="motivoErrorId" class="form-error" role="alert">{{ error }}</p>
 
-    <template #acciones>
-      <button class="btn" type="button" :disabled="cargando" @click="modalRef?.cerrar()">
-        {{ cancelarLabel }}
-      </button>
-      <button
-        :class="destructivo ? 'btn btn-danger' : 'btn btn-primary'"
-        type="button"
-        :disabled="cargando"
+    <template #footer>
+      <AppButton variant="text" severity="secondary" :label="cancelarLabel" :disabled="cargando" @click="cancelar" />
+      <AppButton
+        :severity="destructivo ? 'danger' : 'primary'"
+        :label="cargando ? 'Procesando...' : confirmarLabel"
+        :loading="cargando"
         @click="confirmar"
-      >
-        <i v-if="cargando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-        {{ cargando ? 'Procesando...' : confirmarLabel }}
-      </button>
+      />
     </template>
-  </Modal>
+  </Dialog>
 </template>
-
-<style scoped>
-.confirm-titulo { display: flex; align-items: center; gap: 10px; }
-.confirm-mensaje {
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 4px;
-}
-</style>

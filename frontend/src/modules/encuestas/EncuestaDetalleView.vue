@@ -3,16 +3,18 @@
 // respuestas son estado local de esta vista (no se comparten con otra
 // pantalla, no necesitan vivir en el store de Pinia).
 import { ref, computed, onMounted } from 'vue';
-import { useRoute, RouterLink } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha } from '../../core/formatters.js';
+import { formatFecha, formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { exportarCSV } from '../../core/exportar.js';
-import { resumenPregunta } from '../../core/dominio-encuestas.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
+import { resumenPregunta, tipoPreguntaInfo } from '../../core/dominio-encuestas.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppSeccion from '../../components/ui/AppSeccion.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppTag from '../../components/ui/AppTag.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -94,7 +96,7 @@ async function copiarLink(ronda) {
     await navigator.clipboard.writeText(linkRonda(ronda));
     showToast('Link copiado');
   } catch {
-    showToast('No se pudo copiar. Selecciónalo manualmente', 'error');
+    showToast('No se pudo copiar. Selecciónelo manualmente', 'error');
   }
 }
 
@@ -134,166 +136,218 @@ function exportar() {
   );
 }
 
-onMounted(cargar);
+// ── Presentación (rediseño 2026-09-23) ──────────────────────────────────
+function porcentaje(cant, total) {
+  return total ? Math.round((cant / total) * 100) : 0;
+}
+
+// Filas de barras por pregunta cerrada: [{ label, cant }] — la vista pinta
+// todas igual (etiqueta · barra · cifra), sea opción única, sí/no o escala.
+function barrasDe(resumen) {
+  if (resumen.tipo === 'opcion_unica') return Object.entries(resumen.conteos).map(([label, cant]) => ({ label, cant }));
+  if (resumen.tipo === 'si_no') return [{ label: 'Sí', cant: resumen.si }, { label: 'No', cant: resumen.no }];
+  if (resumen.tipo === 'escala_1_5') return [5, 4, 3, 2, 1].map((n) => ({ label: String(n), cant: resumen.conteos[n] }));
+  return [];
+}
+
+const totalRespuestas = computed(() => rondas.value.reduce((acc, r) => acc + (r.n_respuestas || 0), 0));
+
+// Una pantalla de resultados que abre vacía obliga a un clic que siempre es
+// el mismo: se preselecciona la ronda más reciente con respuestas (o la más
+// reciente a secas). Usa el mismo verResultados() del clic manual.
+onMounted(async () => {
+  await cargar();
+  const inicial = rondas.value.find((r) => r.n_respuestas > 0) || rondas.value[0];
+  if (inicial) verResultados(inicial);
+});
 </script>
 
 <template>
-  <div class="encuesta-detalle-page vista-modulo">
-    <PageHeader :titulo="encuesta?.titulo || 'Encuesta'" icono="ti ti-clipboard-list">
-      <template #acciones>
-        <RouterLink class="btn" to="/encuestas"><i class="ti ti-arrow-left" aria-hidden="true"></i> Volver</RouterLink>
-        <button v-if="auth.esJefe" class="btn btn-primary" type="button" :disabled="creandoRonda" @click="nuevaRonda">
-          <i :class="creandoRonda ? 'ti ti-loader-2 spinner-icon' : 'ti ti-circle-plus'" aria-hidden="true"></i>
-          {{ creandoRonda ? 'Abriendo...' : 'Nueva ronda' }}
-        </button>
-      </template>
-    </PageHeader>
+  <div class="w-full px-4 pb-10 pt-5 sm:px-6">
+    <RouterLink
+      to="/encuestas"
+      class="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 text-sm text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+    >
+      <i class="ti ti-arrow-left" aria-hidden="true"></i>
+      Encuestas
+    </RouterLink>
 
-    <main class="page">
-      <div v-if="error" class="card no-results">{{ error }}</div>
+    <div v-if="error" class="notif notif--danger mt-4" role="alert">
+      <i class="ti ti-alert-circle" aria-hidden="true"></i>
+      <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
+    </div>
 
-      <template v-else-if="!cargando">
-        <p v-if="encuesta?.descripcion" class="encuesta-descripcion">{{ encuesta.descripcion }}</p>
+    <p v-else-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando encuesta...</p>
 
-        <div class="card card--fill">
-          <EmptyState
+    <template v-else>
+      <!-- ══ Encabezado ════════════════════════════════════════════ -->
+      <header class="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
+        <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-2xl text-gray-500">
+          <i class="ti ti-clipboard-list" aria-hidden="true"></i>
+        </span>
+        <div class="min-w-0 flex-1">
+          <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ encuesta?.titulo || 'Encuesta' }}</h1>
+          <p v-if="encuesta?.descripcion" class="mt-1 max-w-prose text-sm text-gray-600">{{ encuesta.descripcion }}</p>
+          <ul class="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-gray-500 tabular-nums">
+            <li class="inline-flex items-center gap-1.5"><i class="ti ti-list-details" aria-hidden="true"></i>{{ encuesta?.preguntas?.length || 0 }} preguntas</li>
+            <li class="inline-flex items-center gap-1.5"><i class="ti ti-repeat" aria-hidden="true"></i>{{ rondas.length }} {{ rondas.length === 1 ? 'ronda' : 'rondas' }}</li>
+            <li class="inline-flex items-center gap-1.5"><i class="ti ti-message-circle" aria-hidden="true"></i>{{ totalRespuestas }} respuestas en total</li>
+          </ul>
+        </div>
+        <div v-if="auth.esJefe" class="flex shrink-0 flex-wrap gap-2">
+          <AppButton
+            :icon="creandoRonda ? 'ti ti-loader-2' : 'ti ti-circle-plus'"
+            :label="creandoRonda ? 'Abriendo...' : 'Nueva ronda'"
+            :loading="creandoRonda"
+            :disabled="creandoRonda"
+            @click="nuevaRonda"
+          />
+        </div>
+      </header>
+
+      <!-- ══ Rondas (maestro) + resultados de la elegida (detalle) ═══ -->
+      <div class="mt-6 grid items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <AppSeccion titulo="Rondas" :conteo="rondas.length" descripcion="Elija una para ver sus resultados" sin-padding class="lg:sticky lg:top-6">
+          <AppVacio
             v-if="rondas.length === 0"
-            icono="ti ti-circle-plus"
+            variante="seccion"
             titulo="Sin rondas todavía"
             :mensaje="auth.esJefe ? 'Abra una ronda para generar el link que va a compartir.' : 'Todavía no se abrió ninguna ronda de esta encuesta.'"
           />
-
-          <template v-else>
-          <div class="table-wrap solo-escritorio">
-            <table aria-label="Rondas de la encuesta">
-              <thead>
-                <tr>
-                  <th scope="col">Abierta</th>
-                  <th scope="col">Estado</th>
-                  <th scope="col">Respuestas</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="r in rondas" :key="r.id" :class="{ 'fila-activa': rondaSeleccionada?.id === r.id }">
-                  <td>{{ formatFecha(r.abierta_en) }}</td>
-                  <td>
-                    <span class="badge" :class="r.cerrada ? 'badge--neutral' : 'badge--success'">
-                      {{ r.cerrada ? 'Cerrada' : 'Abierta' }}
-                    </span>
-                  </td>
-                  <td>{{ r.n_respuestas }}</td>
-                  <td>
-                    <div class="actions">
-                      <button class="icon-btn" type="button" title="Copiar link" aria-label="Copiar link" :disabled="r.cerrada" @click="copiarLink(r)">
-                        <i class="ti ti-link"></i>
-                      </button>
-                      <button class="icon-btn" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(r)">
-                        <i class="ti ti-chart-bar"></i>
-                      </button>
-                      <button
-                        v-if="auth.esJefe && !r.cerrada"
-                        class="icon-btn"
-                        type="button"
-                        title="Cerrar ronda"
-                        aria-label="Cerrar ronda"
-                        :disabled="cerrandoId === r.id"
-                        @click="pedirCerrarRonda(r)"
-                      >
-                        <i class="ti ti-lock"></i>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Render móvil: misma lista, como tarjetas apiladas -->
-          <ul class="lista-tarjetas solo-movil" aria-label="Rondas de la encuesta">
-            <li v-for="r in rondas" :key="r.id" class="tarjeta-fila" :class="{ 'fila-activa': rondaSeleccionada?.id === r.id }">
-              <div class="tarjeta-fila__principal">{{ formatFecha(r.abierta_en) }}</div>
-              <div class="tarjeta-fila__sec">
-                <span>{{ r.n_respuestas }} respuestas</span>
-              </div>
-              <div class="tarjeta-fila__pie">
-                <span class="badge" :class="r.cerrada ? 'badge--neutral' : 'badge--success'">
-                  {{ r.cerrada ? 'Cerrada' : 'Abierta' }}
+          <ul v-else class="divide-y divide-gray-100" aria-label="Rondas de la encuesta">
+            <li
+              v-for="fila in rondas"
+              :key="fila.id"
+              class="flex items-center gap-2 px-3.5 py-3 transition-colors duration-150"
+              :class="rondaSeleccionada?.id === fila.id ? 'bg-primary-50' : 'hover:bg-gray-50'"
+            >
+              <button
+                type="button"
+                class="min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                :aria-pressed="rondaSeleccionada?.id === fila.id"
+                :aria-label="`Ver resultados de la ronda abierta el ${formatFecha(fila.abierta_en)}`"
+                @click="verResultados(fila)"
+              >
+                <span class="flex items-center gap-2">
+                  <span class="text-sm font-medium text-gray-900 tabular-nums" :title="formatFechaHora(fila.abierta_en)">{{ formatFecha(fila.abierta_en) }}</span>
+                  <AppTag :tono="fila.cerrada ? 'neutral' : 'success'" :punto="!fila.cerrada">{{ fila.cerrada ? 'Cerrada' : 'Abierta' }}</AppTag>
                 </span>
-                <div class="actions">
-                  <button class="icon-btn" type="button" title="Copiar link" aria-label="Copiar link" :disabled="r.cerrada" @click="copiarLink(r)">
-                    <i class="ti ti-link"></i>
-                  </button>
-                  <button class="icon-btn" type="button" title="Ver resultados" aria-label="Ver resultados" @click="verResultados(r)">
-                    <i class="ti ti-chart-bar"></i>
-                  </button>
-                  <button
-                    v-if="auth.esJefe && !r.cerrada"
-                    class="icon-btn"
-                    type="button"
-                    title="Cerrar ronda"
-                    aria-label="Cerrar ronda"
-                    :disabled="cerrandoId === r.id"
-                    @click="pedirCerrarRonda(r)"
-                  >
-                    <i class="ti ti-lock"></i>
-                  </button>
-                </div>
-              </div>
+                <span class="mt-0.5 block text-xs text-gray-500 tabular-nums">
+                  {{ fila.n_respuestas }} {{ fila.n_respuestas === 1 ? 'respuesta' : 'respuestas' }} · {{ formatAntiguedad(fila.abierta_en) }}
+                </span>
+              </button>
+              <button
+                class="icon-btn"
+                type="button"
+                title="Copiar link"
+                aria-label="Copiar link"
+                :disabled="fila.cerrada"
+                @click="copiarLink(fila)"
+              >
+                <i class="ti ti-link" aria-hidden="true"></i>
+              </button>
+              <button
+                v-if="auth.esJefe && !fila.cerrada"
+                class="icon-btn"
+                type="button"
+                title="Cerrar ronda"
+                aria-label="Cerrar ronda"
+                :disabled="cerrandoId === fila.id"
+                @click="pedirCerrarRonda(fila)"
+              >
+                <i class="ti ti-lock" aria-hidden="true"></i>
+              </button>
             </li>
           </ul>
+        </AppSeccion>
+
+        <!-- ── Resultados ── -->
+        <AppSeccion
+          v-if="rondaSeleccionada"
+          :titulo="`Resultados de la ronda del ${formatFecha(rondaSeleccionada.abierta_en)}`"
+          :descripcion="cargandoRespuestas ? 'Cargando…' : `${respuestas.length} ${respuestas.length === 1 ? 'persona respondió' : 'personas respondieron'}`"
+          sin-padding
+        >
+          <template #acciones>
+            <AppButton
+              size="sm"
+              variant="text"
+              severity="secondary"
+              icon="ti ti-table-export"
+              label="Exportar"
+              :disabled="cargandoRespuestas || !respuestas.length"
+              @click="exportar"
+            />
           </template>
-        </div>
 
-        <div v-if="rondaSeleccionada" class="card card--fill resultados-card">
-          <div class="card-toolbar">
-            <div class="toolbar-title">Resultados — {{ formatFecha(rondaSeleccionada.abierta_en) }}</div>
-            <button class="btn" type="button" :disabled="cargandoRespuestas || !respuestas.length" @click="exportar">
-              <i class="ti ti-table-export" aria-hidden="true"></i> Exportar
-            </button>
-          </div>
-
-          <p v-if="cargandoRespuestas" class="sr-only" role="status">Cargando respuestas…</p>
-          <EmptyState
+          <p v-if="cargandoRespuestas" class="px-4 py-10 text-center text-sm text-gray-500" role="status">Cargando respuestas…</p>
+          <AppVacio
             v-else-if="!respuestas.length"
-            icono="ti ti-chart-bar"
+            variante="seccion"
             titulo="Sin respuestas todavía"
             mensaje="Comparta el link de esta ronda para empezar a recibir respuestas."
           />
 
-          <div v-else class="resumenes">
-            <div v-for="({ pregunta, resumen }) in resumenes" :key="pregunta.id" class="resumen-bloque">
-              <p class="resumen-etiqueta">{{ pregunta.etiqueta }}</p>
-              <p class="resumen-total">{{ resumen.total }} de {{ respuestas.length }} respondieron</p>
-
-              <div v-if="resumen.tipo === 'opcion_unica'" class="resumen-opciones">
-                <div v-for="(cant, opcion) in resumen.conteos" :key="opcion" class="resumen-opcion">
-                  <span>{{ opcion }}</span>
-                  <span class="resumen-cant">{{ cant }}</span>
-                </div>
+          <ol v-else class="divide-y divide-gray-100">
+            <li v-for="({ pregunta, resumen }, idx) in resumenes" :key="pregunta.id" class="px-4 py-5 sm:px-5">
+              <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+                <h3 class="min-w-0 flex-1 text-sm font-semibold text-gray-900">
+                  <span class="mr-1 text-gray-500 tabular-nums">{{ idx + 1 }}.</span>{{ pregunta.etiqueta }}
+                </h3>
+                <span class="text-xs text-gray-500">{{ tipoPreguntaInfo(pregunta.tipo).label }}</span>
               </div>
+              <p class="mt-0.5 text-xs text-gray-500 tabular-nums">{{ resumen.total }} de {{ respuestas.length }} respondieron</p>
 
-              <div v-else-if="resumen.tipo === 'si_no'" class="resumen-opciones">
-                <div class="resumen-opcion"><span>Sí</span><span class="resumen-cant">{{ resumen.si }}</span></div>
-                <div class="resumen-opcion"><span>No</span><span class="resumen-cant">{{ resumen.no }}</span></div>
-              </div>
+              <!-- Escala: el promedio es la cifra que se lee primero -->
+              <p v-if="resumen.tipo === 'escala_1_5'" class="mt-3 flex items-baseline gap-1.5">
+                <span class="text-2xl font-semibold tracking-tight text-gray-900 tabular-nums">{{ resumen.promedio.toFixed(1) }}</span>
+                <span class="text-sm text-gray-500">promedio sobre 5</span>
+              </p>
 
-              <div v-else-if="resumen.tipo === 'escala_1_5'" class="resumen-opciones">
-                <p class="resumen-promedio">Promedio: <strong>{{ resumen.promedio.toFixed(1) }}</strong> / 5</p>
-                <div v-for="n in [1, 2, 3, 4, 5]" :key="n" class="resumen-opcion">
-                  <span>{{ n }}</span>
-                  <span class="resumen-cant">{{ resumen.conteos[n] }}</span>
-                </div>
-              </div>
-
-              <ul v-else class="resumen-textos">
-                <li v-for="(t, i) in resumen.textos" :key="i">{{ t }}</li>
+              <!-- Preguntas cerradas: una barra por opción, con cifra y porcentaje -->
+              <ul
+                v-if="resumen.tipo === 'opcion_unica' || resumen.tipo === 'si_no' || resumen.tipo === 'escala_1_5'"
+                class="mt-3 max-w-2xl space-y-2"
+              >
+                <li
+                  v-for="barra in barrasDe(resumen)"
+                  :key="barra.label"
+                  class="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm"
+                >
+                  <span class="truncate text-gray-700" :title="barra.label">{{ barra.label }}</span>
+                  <span class="h-2 overflow-hidden rounded-full bg-gray-100" aria-hidden="true">
+                    <span class="block h-full rounded-full bg-primary-500" :style="{ width: `${porcentaje(barra.cant, resumen.total)}%` }"></span>
+                  </span>
+                  <span class="text-right text-gray-900 tabular-nums">
+                    {{ barra.cant }}
+                    <span class="text-xs text-gray-500">· {{ porcentaje(barra.cant, resumen.total) }}%</span>
+                  </span>
+                </li>
               </ul>
-            </div>
-          </div>
-        </div>
-      </template>
-    </main>
+
+              <!-- Preguntas abiertas: las respuestas tal cual -->
+              <template v-else>
+                <p v-if="!resumen.textos.length" class="mt-3 text-sm text-gray-500">Nadie respondió esta pregunta.</p>
+                <ul v-else class="mt-3 max-w-prose space-y-2">
+                  <li
+                    v-for="(t, i) in resumen.textos"
+                    :key="i"
+                    class="whitespace-pre-line rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700"
+                  >{{ t }}</li>
+                </ul>
+              </template>
+            </li>
+          </ol>
+        </AppSeccion>
+
+        <AppVacio
+          v-else-if="rondas.length"
+          icono="ti ti-chart-bar"
+          titulo="Elija una ronda"
+          mensaje="Los resultados de la ronda seleccionada aparecen acá, pregunta por pregunta."
+        />
+      </div>
+    </template>
 
     <ConfirmDialog
       v-if="rondaPorCerrar"
@@ -304,39 +358,8 @@ onMounted(cargar);
       mensaje="¿Cerrar esta ronda? Deja de recibir respuestas y no se puede reabrir desde la interfaz."
       confirmar-label="Cerrar ronda"
       :cargando="cerrandoId === rondaPorCerrar?.id"
-      @cancel="rondaPorCerrar = null"
+      @cerrado="rondaPorCerrar = null"
       @confirm="cerrarRonda"
     />
   </div>
 </template>
-
-<style scoped>
-.encuesta-descripcion {
-  color: var(--color-text-secondary);
-  margin: -8px 0 16px;
-}
-
-.fila-activa { background: var(--color-bg-hover); }
-
-.resultados-card { margin-top: 16px; }
-
-.resumenes {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 16px 20px;
-}
-
-.resumen-bloque { border-top: 1px solid var(--color-border-subtle); padding-top: 14px; }
-.resumen-bloque:first-child { border-top: none; padding-top: 0; }
-
-.resumen-etiqueta { font-weight: 600; margin: 0 0 2px; }
-.resumen-total { font-size: var(--fs-sm); color: var(--color-text-tertiary); margin: 0 0 8px; }
-
-.resumen-opciones { display: flex; flex-direction: column; gap: 4px; max-width: 320px; }
-.resumen-opcion { display: flex; justify-content: space-between; font-size: var(--fs-base); }
-.resumen-cant { font-weight: 600; }
-.resumen-promedio { margin: 0 0 6px; font-size: var(--fs-base); }
-
-.resumen-textos { margin: 0; padding-left: 18px; font-size: var(--fs-base); display: flex; flex-direction: column; gap: 4px; }
-</style>

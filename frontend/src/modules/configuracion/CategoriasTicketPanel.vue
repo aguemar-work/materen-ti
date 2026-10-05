@@ -5,18 +5,38 @@
 import { ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { insforgeApi } from '../../api/insforge.js';
-import { useCategoriasTicketStore } from '../../stores/catalogos.js';
+import { useAuthStore } from '../../stores/auth.js';
+import { useCategoriasTicketStore, useServiciosStore } from '../../stores/catalogos.js';
 import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
 import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import EncabezadoCatalogo from './EncabezadoCatalogo.vue';
+import CampoAvisoCategoria from './CampoAvisoCategoria.vue';
+import SubcategoriaTicketForm from './SubcategoriaTicketForm.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+
+// Quién escribe este catálogo lo decide la RLS: INSERT/UPDATE de categorías
+// (099) y subcategorías (082) exigen el módulo `tickets` (el JEFE está exento).
+// El resto del staff solo lee; no se le ofrecen acciones que el servidor
+// rechazaría (frontend/AGENTS.md). El aviso al solicitante (114) es una
+// columna más de esas filas: lo edita quien edita la categoría.
+const auth = useAuthStore();
+const puedeEditar = computed(() => auth.puedeVerModulo('tickets'));
 
 // Las categorías viven en el store de catálogos; las subcategorías son
 // un detalle de este panel y se quedan locales (insforgeApi directo).
 const catStore = useCategoriasTicketStore();
 const { lista: categorias } = storeToRefs(catStore);
+// Servicio de TI de la categoría (opcional, migración 107): permite medir tickets por servicio.
+const serviciosStore = useServiciosStore();
+const { lista: servicios } = storeToRefs(serviciosStore);
+const nombreServicio = (id) => servicios.value.find((s) => s.id === id)?.nombre || '';
 const subcategorias = ref([]);
 const cargando = ref(true);
 const guardando = ref(false);
@@ -25,11 +45,16 @@ const expandidoId = ref(null);
 // Modal categoría
 const mostrarCatForm = ref(false);
 const catEditar = ref(null);
-const catForm = ref({ id: '', nombre: '' });
+const catForm = ref({ id: '', nombre: '', servicio_id: '', aviso: '' });
 const errorForm = ref('');
+// Edición de una subcategoría (nombre, tipo y aviso): su propio diálogo.
+const subEditar = ref(null);
+const campoNombreCategoria = useCampoAccesible();
+const campoServicioCategoria = useCampoAccesible({ ayuda: () => 'Opcional' });
+const infoErrorForm = infoNotificacion('error');
 
-// Cerrar vía Modal.cerrar() reproduce la animación de salida;
-// el @close del Modal es quien baja mostrarCatForm.
+// Cerrar vía AppDialog.cerrar() reproduce la animación de salida;
+// el @cerrado del AppDialog es quien baja mostrarCatForm.
 const modalCatForm = ref(null);
 
 // Alta rápida de subcategoría (inline, sin modal)
@@ -66,14 +91,14 @@ function toggleExpandir(id) {
 
 function abrirNuevaCategoria() {
   catEditar.value = null;
-  catForm.value = { id: '', nombre: '' };
+  catForm.value = { id: '', nombre: '', servicio_id: '', aviso: '' };
   errorForm.value = '';
   mostrarCatForm.value = true;
 }
 
 function abrirEditarCategoria(cat) {
   catEditar.value = cat;
-  catForm.value = { id: cat.id, nombre: cat.nombre };
+  catForm.value = { id: cat.id, nombre: cat.nombre, servicio_id: cat.servicio_id || '', aviso: cat.aviso || '' };
   errorForm.value = '';
   mostrarCatForm.value = true;
 }
@@ -86,7 +111,12 @@ async function guardarCategoria() {
       await catStore.actualizar(catEditar.value.id, catForm.value);
       showToast('Categoría actualizada');
     } else {
-      await catStore.crear({ id: slugDe(catForm.value.nombre), nombre: catForm.value.nombre });
+      await catStore.crear({
+        id: slugDe(catForm.value.nombre),
+        nombre: catForm.value.nombre,
+        servicio_id: catForm.value.servicio_id || null,
+        aviso: catForm.value.aviso,
+      });
       showToast('Categoría creada');
     }
     modalCatForm.value?.cerrar();
@@ -110,7 +140,7 @@ async function agregarSubcategoria(categoriaId) {
   if (!nombre) return;
   const tipoSugerido = nuevoTipoPorCategoria.value[categoriaId] || '';
   if (!tipoSugerido) {
-    showToast('Selecciona si es Incidente o Solicitud', 'error');
+    showToast('Seleccione si es Incidente o Solicitud', 'error');
     return;
   }
   try {
@@ -125,6 +155,14 @@ async function agregarSubcategoria(categoriaId) {
 
 function pedirEliminarSubcategoria(sub) {
   pendienteEliminar.value = { tipo: 'subcategoria', item: sub };
+}
+
+// La fila editada vuelve del diálogo ya guardada (o null si se canceló).
+function onSubcategoriaCerrada(fila) {
+  subEditar.value = null;
+  if (!fila) return;
+  subcategorias.value = subcategorias.value.map((s) => (s.id === fila.id ? fila : s));
+  showToast('Subcategoría actualizada');
 }
 
 async function confirmarEliminarPendiente() {
@@ -148,11 +186,26 @@ async function confirmarEliminarPendiente() {
   }
 }
 
+// ── Presentación (rediseño 2026-09-23) ──────────────────────────────────
+function tipoLabel(valor) {
+  return TIPOS.find((t) => t.valor === valor)?.label || '';
+}
+
+// Acciones de la categoría en el menú ⋮ (antes, íconos sueltos).
+function accionesCategoria(cat) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditarCategoria(cat) },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => pedirEliminarCategoria(cat) },
+  ];
+}
+
 onMounted(async () => {
   try {
     const [, subs] = await Promise.all([
       catStore.cargar(),
       insforgeApi.listSubcategoriasTicket(),
+      // El servicio es opcional: si el catálogo no carga, solo falta el selector.
+      serviciosStore.cargar().catch(() => {}),
     ]);
     subcategorias.value = subs;
   } catch (e) {
@@ -164,102 +217,167 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="page">
-    <div class="card card--fill">
-      <div class="card-toolbar">
-        <div class="toolbar-title">
-          Categorías de tickets
-          <span class="badge-count">{{ categorias.length }}</span>
-        </div>
-        <button class="btn btn-primary" type="button" @click="abrirNuevaCategoria">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva categoría
-        </button>
-      </div>
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Categorías de tickets"
+      :conteo="categorias.length"
+      descripcion="Clasifican cada ticket; sus subcategorías sugieren si es un incidente o una solicitud."
+    >
+      <template v-if="puedeEditar" #acciones>
+        <AppButton icon="ti ti-plus" label="Nueva categoría" @click="abrirNuevaCategoria" />
+      </template>
+    </EncabezadoCatalogo>
 
-      <div v-if="cargando" class="no-results">Cargando categorías...</div>
+    <p v-if="!puedeEditar" class="text-sm text-gray-500" data-solo-modulo>Solo el staff con el módulo Tickets puede crear, editar o eliminar categorías y sus avisos.</p>
 
-      <EmptyState
-        v-else-if="categorias.length === 0"
-        icono="ti ti-headset"
-        titulo="Sin categorías"
-        mensaje="Crea la primera categoría para clasificar los tickets."
-      >
-        <button class="btn" type="button" @click="abrirNuevaCategoria">
-          <i class="ti ti-plus"></i> Nueva categoría
-        </button>
-      </EmptyState>
-
-      <div v-else class="cat-lista">
-        <div v-for="cat in categorias" :key="cat.id" class="cat-item">
-          <div class="cat-fila">
-            <button
-              type="button"
-              class="cat-fila-toggle"
-              :aria-expanded="expandidoId === cat.id"
-              @click="toggleExpandir(cat.id)"
-            >
-              <i class="ti cat-chevron" :class="expandidoId === cat.id ? 'ti-chevron-down' : 'ti-chevron-right'"></i>
-              <span class="user-name">{{ cat.nombre }}</span>
-              <span class="cat-count">{{ subsDe(cat.id).length }} subcategorías</span>
-            </button>
-            <div class="actions">
-              <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditarCategoria(cat)">
-                <i class="ti ti-pencil"></i>
-              </button>
-              <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="pedirEliminarCategoria(cat)">
-                <i class="ti ti-trash"></i>
-              </button>
-            </div>
-          </div>
-
-          <div v-if="expandidoId === cat.id" class="cat-subs">
-            <div v-for="sub in subsDe(cat.id)" :key="sub.id" class="cat-sub-fila">
-              <span>{{ sub.nombre }}</span>
-              <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="pedirEliminarSubcategoria(sub)">
-                <i class="ti ti-trash"></i>
-              </button>
-            </div>
-            <div class="cat-sub-nueva">
-              <input
-                v-model="nuevaSubPorCategoria[cat.id]"
-                placeholder="Nueva subcategoría..."
-                aria-label="Nombre de la subcategoría"
-                @keydown.enter.prevent="agregarSubcategoria(cat.id)"
-              >
-              <select v-model="nuevoTipoPorCategoria[cat.id]" aria-label="Tipo sugerido">
-                <option value="" disabled>Tipo</option>
-                <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-              </select>
-              <button class="btn" type="button" @click="agregarSubcategoria(cat.id)">Agregar</button>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div v-if="cargando" class="rounded-lg border border-gray-200 bg-white py-10 text-center text-sm text-gray-500" role="status">
+      Cargando categorías...
     </div>
 
-    <!-- Formulario de categoría (Modal accesible compartido) -->
-    <Modal
+    <AppVacio
+      v-else-if="categorias.length === 0"
+      icono="ti ti-headset"
+      titulo="Sin categorías todavía"
+      :mensaje="puedeEditar ? 'Cree la primera categoría para clasificar los tickets.' : 'Todavía no hay categorías registradas.'"
+    >
+      <AppButton v-if="puedeEditar" variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar categoría" @click="abrirNuevaCategoria" />
+    </AppVacio>
+
+    <ul v-else class="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white" aria-label="Categorías de tickets">
+      <li v-for="cat in categorias" :key="cat.id">
+        <div class="flex items-center gap-2 pr-3">
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+            :aria-expanded="expandidoId === cat.id"
+            @click="toggleExpandir(cat.id)"
+          >
+            <i
+              class="ti text-base text-gray-500"
+              :class="expandidoId === cat.id ? 'ti-chevron-down' : 'ti-chevron-right'"
+              aria-hidden="true"
+            ></i>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-medium text-gray-900">{{ cat.nombre }}</span>
+              <span class="block text-xs tabular-nums text-gray-500">
+                {{ subsDe(cat.id).length }} {{ subsDe(cat.id).length === 1 ? 'subcategoría' : 'subcategorías' }}<template v-if="nombreServicio(cat.servicio_id)"> · Servicio: {{ nombreServicio(cat.servicio_id) }}</template><template v-if="cat.aviso"> · Con aviso</template>
+              </span>
+            </span>
+          </button>
+          <MenuAcciones v-if="puedeEditar" :acciones="accionesCategoria(cat)" :label="`Acciones de ${cat.nombre}`" />
+        </div>
+
+        <div v-if="expandidoId === cat.id" class="border-t border-gray-100 bg-gray-50/60 px-4 py-3 sm:pl-11">
+          <ul v-if="subsDe(cat.id).length" class="mb-3 divide-y divide-gray-100 rounded-md border border-gray-200 bg-white" :aria-label="`Subcategorías de ${cat.nombre}`">
+            <li v-for="sub in subsDe(cat.id)" :key="sub.id" class="flex items-center gap-3 py-1.5 pl-3 pr-1.5">
+              <span class="min-w-0 flex-1 truncate text-sm text-gray-900">{{ sub.nombre }}</span>
+              <span v-if="sub.aviso" class="shrink-0 text-xs text-gray-500">Con aviso</span>
+              <span v-if="tipoLabel(sub.tipo_sugerido)" class="shrink-0 text-xs text-gray-500">{{ tipoLabel(sub.tipo_sugerido) }}</span>
+              <template v-if="puedeEditar">
+                <button
+                  class="icon-btn"
+                  type="button"
+                  title="Editar subcategoría"
+                  :aria-label="`Editar la subcategoría ${sub.nombre}`"
+                  @click="subEditar = sub"
+                >
+                  <i class="ti ti-pencil" aria-hidden="true"></i>
+                </button>
+                <button
+                  class="icon-btn danger"
+                  type="button"
+                  title="Eliminar subcategoría"
+                  :aria-label="`Eliminar la subcategoría ${sub.nombre}`"
+                  @click="pedirEliminarSubcategoria(sub)"
+                >
+                  <i class="ti ti-trash" aria-hidden="true"></i>
+                </button>
+              </template>
+            </li>
+          </ul>
+          <p v-else class="mb-3 text-sm text-gray-500">{{ puedeEditar ? 'Sin subcategorías. Agregue la primera abajo.' : 'Sin subcategorías.' }}</p>
+
+          <!-- Alta rápida de subcategoría (inline, sin modal) -->
+          <div v-if="puedeEditar" class="flex flex-wrap items-center gap-2">
+            <div class="campo min-w-0 flex-1 basis-48">
+              <div class="campo__caja">
+                <input
+                  v-model="nuevaSubPorCategoria[cat.id]"
+                  class="campo__control"
+                  type="text"
+                  placeholder="Nueva subcategoría..."
+                  aria-label="Nombre de la subcategoría"
+                  @keydown.enter.prevent="agregarSubcategoria(cat.id)"
+                >
+              </div>
+            </div>
+            <div class="campo w-40">
+              <div class="campo__caja">
+                <select v-model="nuevoTipoPorCategoria[cat.id]" class="campo__control campo__control--select" aria-label="Tipo sugerido">
+                  <option value="" disabled>Tipo</option>
+                  <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+                </select>
+                <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+              </div>
+            </div>
+            <AppButton variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar" @click="agregarSubcategoria(cat.id)" />
+          </div>
+        </div>
+      </li>
+    </ul>
+
+    <!-- Formulario de categoría (AppDialog compartido) -->
+    <AppDialog
       v-if="mostrarCatForm"
       ref="modalCatForm"
       :titulo="catEditar ? 'Editar categoría' : 'Nueva categoría'"
       size="sm"
-      @close="mostrarCatForm = false"
+      @cerrado="mostrarCatForm = false"
     >
       <form id="cat-form" @submit.prevent="guardarCategoria">
-        <div class="form-group">
-          <label for="cat-nombre">Nombre *</label>
-          <input id="cat-nombre" v-model="catForm.nombre" required placeholder="ej: Accesos y Cuentas" :disabled="guardando">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNombreCategoria.id">Nombre<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoNombreCategoria.id"
+              v-model="catForm.nombre"
+              class="campo__control"
+              type="text"
+              placeholder="ej: Accesos y Cuentas"
+              required
+              :disabled="guardando"
+              :aria-invalid="campoNombreCategoria.invalido.value"
+              :aria-describedby="campoNombreCategoria.describedBy.value"
+            >
+          </div>
         </div>
-        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+        <div class="campo mt-4" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoServicioCategoria.id">Servicio de TI</label>
+          <div class="campo__caja">
+            <select :id="campoServicioCategoria.id" v-model="catForm.servicio_id" class="campo__control campo__control--select" :disabled="guardando">
+              <option value="">Sin servicio</option>
+              <option v-for="s in servicios" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+          <p :id="campoServicioCategoria.idAyuda" class="campo__pie">Opcional. Sirve para medir los tickets de cada servicio.</p>
+        </div>
+        <CampoAvisoCategoria v-model="catForm.aviso" class="mt-4" :disabled="guardando" />
+        <div v-if="errorForm" class="notif mt-4" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+          <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorForm }}</p>
+          </div>
+        </div>
       </form>
       <template #acciones>
-        <button class="btn" type="button" :disabled="guardando" @click="modalCatForm?.cerrar()">Cancelar</button>
-        <button class="btn btn-primary" type="submit" form="cat-form" :disabled="guardando">
-          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-          {{ guardando ? 'Guardando...' : 'Guardar' }}
-        </button>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalCatForm?.cerrar()" />
+        <AppButton type="submit" form="cat-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
+
+    <!-- Edición de subcategoría: nombre, tipo sugerido y aviso al solicitante (114) -->
+    <SubcategoriaTicketForm v-if="subEditar" :subcategoria="subEditar" @cerrar="onSubcategoriaCerrada" />
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -271,85 +389,10 @@ onMounted(async () => {
       :mensaje="mensajeEliminar"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="pendienteEliminar = null"
+      @cerrado="pendienteEliminar = null"
       @confirm="confirmarEliminarPendiente"
     />
-  </main>
+  </div>
 </template>
 
-<style scoped>
-.cat-lista {
-  display: flex;
-  flex-direction: column;
-}
 
-.cat-item {
-  border-bottom: 1px solid var(--color-border);
-}
-
-.cat-item:last-child { border-bottom: none; }
-
-.cat-fila {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.cat-fila-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-  padding: 12px 0 12px 16px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-}
-
-.cat-fila-toggle:hover { background: var(--color-bg-hover); }
-
-.cat-fila-toggle:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-}
-
-.cat-fila .actions {
-  padding-right: 16px;
-}
-
-.cat-chevron { color: var(--color-text-secondary); font-size: 15px; }
-
-.cat-count {
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  margin-left: auto;
-}
-
-.cat-subs {
-  padding: 4px 16px 14px 42px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.cat-sub-fila {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: var(--fs-base);
-  padding: 4px 0;
-}
-
-.cat-sub-nueva {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.cat-sub-nueva input { flex: 1; }
-</style>

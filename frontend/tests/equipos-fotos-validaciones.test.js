@@ -1,9 +1,10 @@
 // Tests de la validación de servidor de functions/equipos-fotos.ts:
-// magic bytes, mismo criterio que functions/tickets.ts (H-03) — antes la
+// magic bytes, el MISMO sniffImagen que tickets (functions/_shared/imagenes.ts,
+// una sola fuente inlinada en los dos dist; H-03) — antes la
 // subida iba directo del navegador al bucket sin validar el contenido
 // real (verificación de auditoría externa, 2026-08-17).
 import { describe, it, expect } from 'vitest';
-import { sniffImagen } from '../../functions/equipos-fotos.ts';
+import { sniffImagen } from '../../functions/dist/equipos-fotos.ts';
 
 const JPG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

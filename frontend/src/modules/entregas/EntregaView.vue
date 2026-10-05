@@ -2,10 +2,11 @@
 // Página PÚBLICA (sin sesión): el empleado abre el enlace que recibió
 // por WhatsApp y ve sus credenciales UNA sola vez. Al revelarlas, el
 // enlace se autodestruye en el servidor.
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { abrirEntrega } from '../../api/passwords.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const route = useRoute();
 
@@ -36,285 +37,161 @@ async function copiar(texto, id) {
     setTimeout(() => { if (copiado.value === id) copiado.value = null; }, 1500);
   } catch { /* portapapeles no disponible */ }
 }
+
+// ── Solo presentación (rediseño 2026-09-24, receta 4.5) ──────────────────
+const titulo = computed(() => {
+  if (estado.value === 'revelado') return `Accesos de ${empleadoNombre.value}`;
+  if (estado.value === 'error') return 'Enlace no disponible';
+  return 'Accesos listos para entrega';
+});
+
+// El ícono del botón copiar cambia a ✓, pero eso solo lo ve quien mira:
+// este texto va a una región `aria-live` para que el lector de pantalla
+// también confirme la copia.
+const mensajeCopiado = computed(() => {
+  if (!copiado.value) return '';
+  return copiado.value.startsWith('p') ? 'Contraseña copiada' : 'Usuario copiado';
+});
 </script>
 
 <template>
-  <div class="public-page">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Entrega de accesos" />
+  <AppPortal
+    seccion="Entrega de accesos"
+    :titulo="titulo"
+    :icono="estado === 'error' ? 'ti ti-link-off' : estado === 'revelado' ? '' : 'ti ti-lock'"
+    :tono="estado === 'error' ? 'neutral' : 'primary'"
+  >
+    <!-- Estado inicial: advertir antes de revelar -->
+    <template v-if="estado === 'inicial' || estado === 'cargando'">
+      <p class="text-center text-sm text-gray-600">
+        Este enlace se puede abrir <strong class="font-semibold text-gray-900">una sola vez</strong>. Antes de continuar,
+        asegúrese de poder guardar las credenciales (anótelas o tome una
+        captura de pantalla).
+      </p>
+      <AppButton
+        class="mt-6"
+        size="lg"
+        block
+        icon="ti ti-lock-open"
+        icon-pos="right"
+        :label="estado === 'cargando' ? 'Abriendo entrega...' : 'Ver accesos'"
+        :loading="estado === 'cargando'"
+        @click="revelar"
+      />
+      <p v-if="estado === 'cargando'" class="sr-only" role="status">Abriendo entrega...</p>
+    </template>
 
-      <!-- Estado inicial: advertir antes de revelar -->
-      <template v-if="estado === 'inicial'">
-        <div class="entrega-centro">
-          <h2 class="entrega-title">Accesos listos para entrega</h2>
-          <p class="entrega-texto">
-            Este enlace se puede abrir <strong>una sola vez</strong>. Antes de continuar,
-            asegúrese de poder guardar las credenciales (anótelas o tome una
-            captura de pantalla).
-          </p>
-        </div>
-        <button class="btn btn-primary entrega-btn" type="button" @click="revelar">
-          <i class="ti ti-lock-open" aria-hidden="true"></i> Ver accesos
-        </button>
-      </template>
+    <!-- Credenciales reveladas -->
+    <template v-else-if="estado === 'revelado'">
+      <p class="notif notif--warning">
+        <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+        <span class="notif__texto">Guarde estos datos ahora: al cerrar esta página no será posible volver a verlos.</span>
+      </p>
 
-      <div v-else-if="estado === 'cargando'" class="entrega-cargando" role="status">
-        Abriendo entrega...
-      </div>
-
-      <!-- Credenciales reveladas -->
-      <template v-else-if="estado === 'revelado'">
-        <h2 class="entrega-title">Accesos de {{ empleadoNombre }}</h2>
-        <p class="entrega-texto entrega-aviso">
-          <i class="ti ti-alert-triangle" aria-hidden="true"></i>
-          Guarde estos datos ahora: al cerrar esta página no será posible volver a verlos.
-        </p>
-
-        <div class="cred-lista">
-          <div v-for="(c, i) in credenciales" :key="i" class="cred-item">
-            <div class="cred-plataforma">{{ c.plataforma || 'Cuenta' }}</div>
-            <div class="cred-fila">
-              <span class="cred-label">Usuario</span>
-              <span class="cred-valor">{{ c.usuario }}</span>
-              <button class="icon-btn" type="button" title="Copiar usuario" aria-label="Copiar usuario" @click="copiar(c.usuario, `u${i}`)">
-                <i :class="copiado === `u${i}` ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i>
-              </button>
+      <ul class="mt-5 flex flex-col gap-3">
+        <li v-for="(c, i) in credenciales" :key="i" class="rounded-lg border border-gray-200">
+          <h2 class="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-900">{{ c.plataforma || 'Cuenta' }}</h2>
+          <dl class="divide-y divide-gray-100">
+            <div class="px-4 py-3">
+              <dt class="text-xs font-medium text-gray-500">Usuario</dt>
+              <dd class="mt-1 flex items-center gap-2">
+                <span class="min-w-0 flex-1 select-all break-all font-mono text-sm text-gray-900">{{ c.usuario }}</span>
+                <AppButton
+                  class="w-10 shrink-0 px-0"
+                  variant="outline"
+                  severity="secondary"
+                  :icon="copiado === `u${i}` ? 'ti ti-check' : 'ti ti-copy'"
+                  :title="`Copiar usuario de ${c.plataforma || 'la cuenta'}`"
+                  :aria-label="`Copiar usuario de ${c.plataforma || 'la cuenta'}`"
+                  @click="copiar(c.usuario, `u${i}`)"
+                />
+              </dd>
             </div>
-            <div v-if="c.password" class="cred-fila">
-              <span class="cred-label">Contraseña</span>
-              <span class="cred-valor">{{ c.password }}</span>
-              <button class="icon-btn" type="button" title="Copiar contraseña" aria-label="Copiar contraseña" @click="copiar(c.password, `p${i}`)">
-                <i :class="copiado === `p${i}` ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i>
-              </button>
+            <div v-if="c.password" class="px-4 py-3">
+              <dt class="text-xs font-medium text-gray-500">Contraseña</dt>
+              <dd class="mt-1 flex items-center gap-2">
+                <span class="min-w-0 flex-1 select-all break-all font-mono text-sm text-gray-900">{{ c.password }}</span>
+                <AppButton
+                  class="w-10 shrink-0 px-0"
+                  variant="outline"
+                  severity="secondary"
+                  :icon="copiado === `p${i}` ? 'ti ti-check' : 'ti ti-copy'"
+                  :title="`Copiar contraseña de ${c.plataforma || 'la cuenta'}`"
+                  :aria-label="`Copiar contraseña de ${c.plataforma || 'la cuenta'}`"
+                  @click="copiar(c.password, `p${i}`)"
+                />
+              </dd>
             </div>
-            <div v-if="c.url" class="cred-fila">
-              <span class="cred-label">URL</span>
-              <a class="cred-valor cred-url" :href="c.url" target="_blank" rel="noopener noreferrer">{{ c.url }}</a>
+            <div v-if="c.url" class="px-4 py-3">
+              <dt class="text-xs font-medium text-gray-500">URL</dt>
+              <dd class="mt-1">
+                <a
+                  class="break-all text-sm text-primary-600 underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  :href="c.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ c.url }}<span class="sr-only"> (se abre en una pestaña nueva)</span></a>
+              </dd>
             </div>
-          </div>
-        </div>
+          </dl>
+        </li>
+      </ul>
+      <p class="sr-only" role="status" aria-live="polite">{{ mensajeCopiado }}</p>
 
-      </template>
-
-      <!-- Error: enlace usado, expirado o inexistente -->
-      <template v-else>
-        <div class="entrega-centro">
-          <div class="entrega-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
-          <h2 class="entrega-title">Enlace no disponible</h2>
-          <p class="entrega-texto">{{ error }}</p>
-        </div>
-        <div class="entrega-acciones">
-          <p class="entrega-texto entrega-acciones-texto">
-            Si las credenciales no fueron guardadas o se requiere un nuevo enlace,
-            cree un ticket de soporte. Si el caso ya fue reportado, puede consultarse por DNI.
-          </p>
-          <RouterLink
-            class="btn btn-primary entrega-accion-primaria"
-            :to="{ name: 'ticket-nuevo' }"
-          >
-            <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
-          </RouterLink>
-          <RouterLink class="entrega-accion-secundaria" :to="{ name: 'ticket-buscar' }">
-            <i class="ti ti-search" aria-hidden="true"></i> Buscar ticket por DNI
-          </RouterLink>
-        </div>
-      </template>
-
-      <!-- Aviso de soporte (solo tras revelar credenciales) -->
-      <div v-if="estado === 'revelado'" class="soporte-aviso">
-        <p class="soporte-texto">
-          <strong><i class="ti ti-alert-triangle" aria-hidden="true"></i> IMPORTANTE:</strong> Toda solicitud de soporte debe realizarse
+      <!-- Aviso de soporte. Abre en pestaña nueva A PROPÓSITO: navegar en
+           esta misma pestaña descartaría las credenciales ya reveladas, y el
+           enlace de entrega no se puede volver a abrir. -->
+      <div class="mt-6 border-t border-gray-100 pt-5">
+        <p class="text-sm text-gray-600">
+          <strong class="font-semibold text-gray-900">Importante:</strong> toda solicitud de soporte debe realizarse
           exclusivamente a través de ticket. No se atenderán consultas por WhatsApp
           ni por ningún otro canal.
         </p>
-        <RouterLink class="soporte-btn" :to="{ name: 'ticket-nuevo' }">
-          <i class="ti ti-ticket" aria-hidden="true"></i> Crear ticket de soporte
-        </RouterLink>
+        <AppButton
+          class="mt-4"
+          size="lg"
+          block
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-external-link"
+          icon-pos="right"
+          :to="{ name: 'ticket-nuevo' }"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Crear ticket de soporte
+          <span class="sr-only">(se abre en una pestaña nueva)</span>
+        </AppButton>
       </div>
-    </div>
-  </div>
+    </template>
+
+    <!-- Error: enlace usado, expirado o inexistente -->
+    <template v-else>
+      <p class="text-center text-sm text-gray-600">{{ error }}</p>
+      <p class="mt-4 text-center text-sm text-gray-600">
+        Si las credenciales no fueron guardadas o se requiere un nuevo enlace,
+        cree un ticket de soporte. Si el caso ya fue reportado, puede consultarse por DNI.
+      </p>
+      <div class="mt-6 flex flex-col gap-3">
+        <AppButton
+          size="lg"
+          block
+          icon="ti ti-ticket"
+          icon-pos="right"
+          label="Crear ticket de soporte"
+          :to="{ name: 'ticket-nuevo' }"
+        />
+        <AppButton
+          size="lg"
+          block
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-search"
+          icon-pos="right"
+          label="Buscar ticket por DNI"
+          :to="{ name: 'ticket-buscar' }"
+        />
+      </div>
+    </template>
+  </AppPortal>
 </template>
-
-<style scoped>
-.entrega-centro {
-  text-align: center;
-}
-
-.entrega-title {
-  font-size: var(--fs-2xl);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin: 0 0 8px;
-}
-
-.entrega-texto {
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 12px;
-}
-
-.entrega-btn {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
-  margin-top: 4px;
-}
-
-.entrega-cargando {
-  text-align: center;
-  padding: 24px 0;
-  color: var(--color-text-secondary);
-  font-size: var(--fs-base);
-}
-
-.entrega-aviso {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--color-warning-text-strong);
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-}
-
-.entrega-aviso i { font-size: 16px; flex-shrink: 0; }
-
-.cred-lista {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.cred-item {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
-}
-
-.cred-plataforma {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-primary, var(--color-accent));
-  margin-bottom: 6px;
-}
-
-.cred-fila {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
-  min-width: 0;
-}
-
-.cred-label {
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  width: 82px;
-  flex-shrink: 0;
-}
-
-.cred-valor {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-base);
-  color: var(--color-text-primary);
-  overflow-wrap: anywhere;
-  min-width: 0;
-  flex: 1;
-}
-
-.cred-url {
-  color: var(--color-primary, var(--color-accent));
-  text-decoration: none;
-}
-
-.cred-url:hover { text-decoration: underline; }
-
-.entrega-error-icon {
-  font-size: 40px;
-  color: var(--color-text-secondary);
-  text-align: center;
-  margin-bottom: 8px;
-}
-
-.entrega-acciones {
-  margin-top: 4px;
-}
-
-.entrega-acciones-texto {
-  margin-bottom: 14px;
-  text-align: center;
-}
-
-.entrega-accion-primaria {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
-  margin-bottom: 8px;
-  text-decoration: none;
-}
-
-.entrega-accion-secundaria {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 9px 14px;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  color: var(--color-primary, var(--color-accent));
-  border: 1.5px solid var(--color-primary, var(--color-accent));
-  border-radius: var(--radius-md);
-  text-decoration: none;
-  transition: background 0.15s;
-}
-
-.entrega-accion-secundaria:hover {
-  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent);
-}
-
-.soporte-aviso {
-  margin-top: 16px;
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
-}
-
-.soporte-texto {
-  font-size: var(--fs-sm);
-  line-height: 1.5;
-  text-align: center;
-  color: var(--color-warning-text-strong);
-  background: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  margin: 0 0 10px;
-}
-
-.soporte-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 9px 14px;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  color: var(--color-primary, var(--color-accent));
-  border: 1.5px solid var(--color-primary, var(--color-accent));
-  border-radius: var(--radius-md);
-  text-decoration: none;
-  transition: background 0.15s;
-}
-
-.soporte-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, var(--color-accent)) 8%, transparent);
-}
-</style>

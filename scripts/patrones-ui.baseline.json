@@ -1,0 +1,96 @@
+{
+  "animacion-no-permitida": [
+    "modules/actividad/ActividadView.vue"
+  ],
+  "azul-decorativo": [
+    "components/shared/AppNotifications.vue",
+    "modules/soporte/SoporteView.vue",
+    "modules/tickets/TicketsView.vue"
+  ],
+  "caja-de-icono": [
+    "components/shared/ConfirmDialog.vue",
+    "components/ui/AppKpi.vue",
+    "modules/accesosSensibles/AccesosSensiblesView.vue",
+    "modules/actividad/ActividadView.vue",
+    "modules/configuracion/AreasObrasPanel.vue",
+    "modules/configuracion/TiposEquipoPanel.vue",
+    "modules/configuracion/UbicacionesPanel.vue",
+    "modules/correos/CorreosView.vue",
+    "modules/empresas/EmpresasView.vue",
+    "modules/encuestas/EncuestaDetalleView.vue",
+    "modules/encuestas/EncuestasView.vue",
+    "modules/kb/KbArticuloDetalleView.vue",
+    "modules/kb/KbView.vue",
+    "modules/plataformas/PlataformasView.vue",
+    "modules/problemas/ProblemaDetalleView.vue",
+    "modules/problemas/ProblemasView.vue",
+    "modules/soporte/SoporteView.vue",
+    "modules/tickets/EncuestaSatisfaccionForm.vue"
+  ],
+  "codigo-sin-tabular": [
+    "components/shared/AppSearch.vue",
+    "modules/empleados/EmpleadoForm.vue",
+    "modules/equipos/AsignarEquipoModal.vue"
+  ],
+  "error-crudo": [
+    "modules/accesosSensibles/AccesoSensibleForm.vue",
+    "modules/accesosSensibles/AccesosSensiblesView.vue",
+    "modules/actividad/ActividadView.vue",
+    "modules/auth/LoginView.vue",
+    "modules/configuracion/CategoriasTicketPanel.vue",
+    "modules/configuracion/TiposEquipoPanel.vue",
+    "modules/correos/CorreoForm.vue",
+    "modules/correos/CorreosView.vue",
+    "modules/empresas/EmpresasView.vue",
+    "modules/encuestas/EncuestaDetalleView.vue",
+    "modules/encuestas/EncuestaPublicaView.vue",
+    "modules/encuestas/EncuestasView.vue",
+    "modules/entregas/EntregaView.vue",
+    "modules/equipos/EquipoForm.vue",
+    "modules/kb/KbArticuloDetalleView.vue",
+    "modules/kb/KbArticuloForm.vue",
+    "modules/licencias/AsignarLicenciaModal.vue",
+    "modules/licencias/LicenciaForm.vue",
+    "modules/licencias/LicenciasView.vue",
+    "modules/plataformas/PlataformasView.vue",
+    "modules/problemas/ProblemaDetalleView.vue",
+    "modules/problemas/ProblemaForm.vue",
+    "modules/staff/StaffModulosForm.vue",
+    "modules/staff/StaffNombreForm.vue",
+    "modules/staff/StaffView.vue",
+    "modules/tickets/EncuestaSatisfaccionForm.vue",
+    "modules/tickets/TicketBuscarView.vue",
+    "modules/tickets/TicketInternoForm.vue",
+    "modules/tickets/TicketNuevoView.vue",
+    "modules/tickets/TicketSeguimientoView.vue",
+    "modules/tickets/TicketsView.vue"
+  ],
+  "historial-a-mano": [
+    "modules/encuestas/EncuestaDetalleView.vue",
+    "modules/problemas/ProblemaDetalleView.vue"
+  ],
+  "mono-fuera-de-credenciales": [
+    "modules/accesosSensibles/AccesosSensiblesView.vue",
+    "modules/auth/LoginView.vue",
+    "modules/cuentas/CuentaForm.vue",
+    "modules/plataformas/PlataformasView.vue",
+    "modules/tickets/TicketBuscarView.vue",
+    "modules/tickets/TicketNuevoView.vue",
+    "modules/tickets/TicketSeguimientoView.vue"
+  ],
+  "punto-de-color": [
+    "modules/problemas/SeveridadProblema.vue",
+    "modules/tickets/TicketTimelineUnificado.vue"
+  ],
+  "vue-mayor-400-lineas": [
+    "modules/accesosSensibles/AccesosSensiblesView.vue",
+    "modules/correos/CorreosView.vue",
+    "modules/empleados/EmpleadoForm.vue",
+    "modules/empleados/EmpleadosView.vue",
+    "modules/equipos/EquipoForm.vue",
+    "modules/kb/KbArticuloDetalleView.vue",
+    "modules/problemas/ProblemaDetalleView.vue",
+    "modules/staff/StaffView.vue",
+    "modules/tickets/TicketsView.vue"
+  ]
+}

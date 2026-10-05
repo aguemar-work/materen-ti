@@ -9,7 +9,10 @@ const CALIDAD_JPEG = 0.8;
 // de esto ni siquiera se intenta decodificar.
 const MAX_BYTES_ENTRADA = 20 * 1024 * 1024; // 20MB
 
-export async function comprimirImagen(file) {
+// `maxLado`/`calidad` (opcionales): una foto de equipo se queda en 1280 px y
+// JPEG 0.8; un acta escaneada pide más lado largo para que la firma y el
+// manuscrito se lean (core/pdfActa.js usa 2000).
+export async function comprimirImagen(file, { maxLado = MAX_LADO, calidad = CALIDAD_JPEG } = {}) {
   // Chequeo barato y síncrono antes de decodificar: con un archivo que no
   // es imagen o es desmesurado, createImageBitmap puede colgar el
   // navegador varios segundos antes de fallar.
@@ -20,8 +23,8 @@ export async function comprimirImagen(file) {
   const bitmap = await createImageBitmap(file);
 
   let { width, height } = bitmap;
-  if (width > MAX_LADO || height > MAX_LADO) {
-    const escala = MAX_LADO / Math.max(width, height);
+  if (width > maxLado || height > maxLado) {
+    const escala = maxLado / Math.max(width, height);
     width = Math.round(width * escala);
     height = Math.round(height * escala);
   }
@@ -33,7 +36,7 @@ export async function comprimirImagen(file) {
   bitmap.close();
 
   const blob = await new Promise((resolve) =>
-    canvas.toBlob(resolve, 'image/jpeg', CALIDAD_JPEG)
+    canvas.toBlob(resolve, 'image/jpeg', calidad)
   );
   if (!blob) throw new Error('No se pudo procesar la imagen');
 

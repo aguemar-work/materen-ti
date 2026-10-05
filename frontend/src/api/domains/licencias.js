@@ -8,7 +8,8 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { cifrarPassword } from '../passwords.js';
-import { trimText, fechaLocalISO } from '../../core/formatters.js';
+import { trimText, toLower, fechaLocalISO } from '../../core/formatters.js';
+import { DIAS_POR_VENCER_LICENCIA } from '../../core/dominio-licencias.js';
 import { cuentasApi } from './cuentas.js';
 import { correosApi } from './correos.js';
 
@@ -27,11 +28,54 @@ const SELECT_LICENCIA = `
   asignaciones_licencia(id, fecha_fin, empleado_id, empleados(nombres, apellidos))
 `;
 
-async function queryLicencias({ q = '', orden } = {}, { conteo = false } = {}) {
+// Filtro de situación del listado (segmentado de LicenciasView). Mismo
+// criterio que `estadoVencimientoLicencia()` (core/dominio-licencias.js):
+// una perpetua o sin fecha nunca vence; "vencida" = antes de hoy; "por
+// vencer" = de hoy a DIAS_POR_VENCER_LICENCIA días, inclusive.
+//
+// No hay "sin cupo": "asientos usados" se cuenta sobre dos embeds distintos
+// (asignaciones_licencia activas, o asignaciones_cuenta activas del correo
+// vinculado) y PostgREST no puede comparar un conteo contra la columna
+// `cantidad` sin una vista/columna calculada en la base.
+// 'perpetuas' (vista V2, 2026-09-25): las que nunca vencen — tipo perpetua
+// o sin fecha, el mismo criterio de estadoVencimientoLicencia().
+const SITUACIONES_LICENCIA = ['vencidas', 'por_vencer', 'perpetuas'];
+
+function filtrarSituacion(query, situacion) {
+  if (!SITUACIONES_LICENCIA.includes(situacion)) return query;
+  if (situacion === 'perpetuas') return query.or('tipo.eq.perpetua,fecha_vencimiento.is.null');
+  const hoy = fechaLocalISO();
+  const base = query.neq('tipo', 'perpetua').not('fecha_vencimiento', 'is', null);
+  if (situacion === 'vencidas') return base.lt('fecha_vencimiento', hoy);
+  return base.gte('fecha_vencimiento', hoy).lte('fecha_vencimiento', fechaLocalISO(DIAS_POR_VENCER_LICENCIA));
+}
+
+// Chip "Acceso" (filtros V2): cómo se entra al software. 'correo' = con un
+// correo compartido vinculado (cuenta_id), 'clave' = con clave de producto
+// (tiene_clave, columna generada), 'ninguno' = sin ninguna de las dos.
+// Varios valores = O entre ellos.
+function filtrarAccesos(query, accesos) {
+  const set = new Set(accesos);
+  if (!set.size || set.size === 3) return query;
+  if (set.size === 1 && set.has('ninguno')) return query.is('cuenta_id', null).eq('tiene_clave', false);
+  const terminos = [];
+  if (set.has('correo')) terminos.push('cuenta_id.not.is.null');
+  if (set.has('clave')) terminos.push('tiene_clave.is.true');
+  if (set.has('ninguno')) terminos.push('and(cuenta_id.is.null,tiene_clave.is.false)');
+  return query.or(terminos.join(','));
+}
+
+async function queryLicencias(
+  { q = '', situacion = '', empresaIds = [], accesos = [], orden } = {},
+  { conteo = false, soloConteo = false } = {},
+) {
   let query = getClient().database
     .from('licencias')
-    .select(SELECT_LICENCIA, conteo ? { count: 'exact' } : undefined)
+    .select(soloConteo ? 'id' : SELECT_LICENCIA, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
+  query = filtrarSituacion(query, situacion);
+  if (empresaIds.length) query = query.in('empresa_id', empresaIds);
+  query = filtrarAccesos(query, accesos);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     const db = getClient().database;
@@ -55,16 +99,29 @@ async function queryLicencias({ q = '', orden } = {}, { conteo = false } = {}) {
 // ── Licencias ────────────────────────────────────────────────────────────────
 
 export const licenciasApi = {
-  async listLicenciasPage({ pagina = 1, tamPagina = 20, q = '', orden } = {}) {
+  async listLicenciasPage({ pagina = 1, tamPagina = 20, orden, ...filtros } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryLicencias({ q, orden }, { conteo: true });
+    const { qb } = await queryLicencias({ ...filtros, orden }, { conteo: true });
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapLicencia), total: count ?? 0 };
   },
 
-  async listLicenciasFiltrados({ q = '' } = {}) {
-    const { qb } = await queryLicencias({ q });
+  // Conteo de cada vista del listado (filtros V2) con los mismos chips y
+  // búsqueda: el número es el que se verá al hacer clic en la pestaña.
+  async conteosLicenciasPorSituacion(filtros = {}) {
+    const situaciones = ['', 'por_vencer', 'vencidas', 'perpetuas'];
+    const resultados = await Promise.all(situaciones.map(async (situacion) => {
+      const { qb } = await queryLicencias({ ...filtros, situacion }, { conteo: true, soloConteo: true });
+      const { count, error } = await qb.range(0, 0);
+      if (error) throw error;
+      return [situacion || 'todas', count ?? 0];
+    }));
+    return Object.fromEntries(resultados);
+  },
+
+  async listLicenciasFiltrados(filtros = {}) {
+    const { qb } = await queryLicencias(filtros);
     const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapLicencia);
@@ -83,6 +140,30 @@ export const licenciasApi = {
       .insert([await licenciaToRow(datos)])
       .select('id')
       .single();
+    if (error) throw error;
+    return data.id;
+  },
+
+  // Licencia + correo NUEVO que será su login, en UNA transacción (RPC
+  // crear_licencia_con_cuenta, migración 101; guards `licencias` y `correos`).
+  // Antes el formulario creaba el correo y después la licencia: si la segunda
+  // fallaba quedaba un correo huérfano. La clave y la contraseña del correo
+  // viajan YA cifradas (invariante 2: cifrarPassword → edge function
+  // `credenciales`); la RPC rechaza texto plano. `datos.cuenta_id` se ignora a
+  // propósito: la RPC rechaza cuenta existente y nueva a la vez. La cuenta nueva
+  // queda sin asignar (como createCorreo). Los rechazos (23505 de usuario
+  // duplicado, P0001, 42501) llegan crudos: los traduce api/erroresDb.js.
+  async createLicenciaConCuenta(datos, cuentaNueva) {
+    const p_licencia = await licenciaToRow({ ...datos, cuenta_id: null });
+    const p_cuenta = {
+      plataforma_id: cuentaNueva.plataforma_id,
+      usuario: toLower(cuentaNueva.usuario),
+      password: cuentaNueva.password ? await cifrarPassword(cuentaNueva.password) : null,
+      url: trimText(cuentaNueva.url),
+      notas: trimText(cuentaNueva.notas),
+      tipo_cuenta: cuentaNueva.tipo_cuenta || 'compartida',
+    };
+    const { data, error } = await getClient().database.rpc('crear_licencia_con_cuenta', { p_licencia, p_cuenta });
     if (error) throw error;
     return data.id;
   },

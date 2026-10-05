@@ -1,5 +1,3 @@
-import { fechaLocalISO } from './formatters.js';
-
 export function esc(str) {
   if (str == null) return '';
   return String(str)
@@ -8,16 +6,6 @@ export function esc(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-export function getInitials(name) {
-  return (name || '')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(w => w[0])
-    .join('')
-    .toUpperCase();
 }
 
 // "Cámara de seguridad" → "camara_de_seguridad" (ids-slug de catálogos)
@@ -35,11 +23,12 @@ export function uid() {
 }
 
 // DNI peruano: 8 dígitos. Usado en los formularios que identifican a una
-// persona por DNI (tickets públicos, pre-registro de personal).
+// persona por DNI (tickets públicos).
 export function esDniValido(dni) {
   return /^\d{8}$/.test(dni || '');
 }
 
-export function todayISO() {
-  return fechaLocalISO();
-}
+// "La fecha de hoy" NO vive acá: es `fechaLocalISO()` de core/formatters.js,
+// el único punto del proyecto para eso. Este archivo tenía un `todayISO()`
+// que solo la reexportaba con otro nombre y sin un solo consumidor
+// (ARQ-18, ver docs/HISTORIAL-AUDITORIAS.md).

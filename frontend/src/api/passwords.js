@@ -1,31 +1,9 @@
 // Todas las operaciones con contraseñas pasan por la edge function
 // "credenciales": la clave de cifrado vive en el servidor y cada
 // revelado queda registrado en la auditoría (accesos_log).
-import { getClient } from './insforge.js';
-import { esErrorRed, esperarReintento, MENSAJE_ERROR_RED } from '../core/error-red.js';
+import { crearInvocador } from './invocarFuncion.js';
 
-// reintentarRed: false para llamadas en segundo plano (ej. auditoría fire
-// and forget) que no deben disparar el fallback global de "sin conexión".
-async function invoke(body, { reintentarRed = true } = {}) {
-  const { data, error } = await getClient().functions.invoke('credenciales', { body });
-  if (error) {
-    // Fallo de transporte (sin red, DNS caído, timeout): fallback global
-    // con reintento de ESTA misma petición (core/error-red.js). Distinto
-    // de un error de negocio { ok:false, code }, que maneja cada vista.
-    if (esErrorRed(error)) {
-      if (!reintentarRed) throw new Error(MENSAJE_ERROR_RED);
-      try {
-        await esperarReintento();
-      } catch {
-        throw new Error(MENSAJE_ERROR_RED);
-      }
-      return invoke(body);
-    }
-    throw new Error(error.message || 'Error en el servidor de credenciales');
-  }
-  if (!data?.ok) throw new Error(mensajeError(data?.code));
-  return data;
-}
+const invoke = crearInvocador('credenciales', mensajeError);
 
 function mensajeError(code) {
   const mensajes = {
@@ -38,6 +16,9 @@ function mensajeError(code) {
     demasiados_revelados: 'Demasiadas contraseñas reveladas en poco tiempo. Espere unos minutos.',
     demasiadas_cuentas: 'Se puede entregar como máximo 20 cuentas por enlace.',
     cuentas_no_asignadas: 'Ninguna de las cuentas seleccionadas está asignada a ese empleado.',
+    empleado_inactivo: 'El empleado no está activo: no se le pueden entregar credenciales.',
+    error_descifrado: 'No se pudo descifrar la credencial. Avise al administrador.',
+    demasiados_intentos: 'Demasiados intentos. Espere unos minutos e intente de nuevo.',
   };
   return mensajes[code] || `Error de credenciales (${code || 'desconocido'})`;
 }

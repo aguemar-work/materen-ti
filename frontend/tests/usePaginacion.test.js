@@ -9,7 +9,9 @@ describe('usePaginacion', () => {
   it('pagina de a 20 por defecto', () => {
     const lista = ref(filas(45));
     const { listaPaginada, totalItems, tamPagina } = usePaginacion(lista);
-    expect(tamPagina).toBe(20);
+    // tamPagina es reactivo desde que CarbonPagination puede cambiarlo
+    // ("Filas por página"), de ahí el .value.
+    expect(tamPagina.value).toBe(20);
     expect(totalItems.value).toBe(45);
     expect(listaPaginada.value).toHaveLength(20);
     expect(listaPaginada.value[0].id).toBe(1);
@@ -37,5 +39,15 @@ describe('usePaginacion', () => {
     const lista = ref(filas(7));
     const { listaPaginada } = usePaginacion(lista, 5);
     expect(listaPaginada.value).toHaveLength(5);
+  });
+
+  it('cambiarTamPagina actualiza el tamaño y vuelve a la página 1', () => {
+    const lista = ref(filas(45));
+    const { paginaActual, listaPaginada, tamPagina, cambiarTamPagina } = usePaginacion(lista);
+    paginaActual.value = 3;
+    cambiarTamPagina(10);
+    expect(tamPagina.value).toBe(10);
+    expect(paginaActual.value).toBe(1);
+    expect(listaPaginada.value).toHaveLength(10);
   });
 });

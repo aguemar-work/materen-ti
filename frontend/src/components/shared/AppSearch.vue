@@ -1,32 +1,48 @@
 <script setup>
-// Buscador global del sidebar. Extraído de AppLayout.vue (A-06): el estado
-// de colapso del sidebar vive en el layout raíz, así que este componente
-// solo emite intención ('expandir-sidebar', 'navegado') en vez de mutar
-// sidebarColapsado/localStorage o cerrar el drawer por su cuenta.
+// Búsqueda global del header del shell.
+//
+// Vive en el header y no en el SideNav (desde el 2026-09-02): la búsqueda
+// global es una acción del header, no de la navegación. Buscar un ticket no
+// es navegar a un módulo. Estilos: Tailwind + components/shared/shellClases.js.
+//
+// Patrón (heredado del shell de Carbon): colapsado es un botón de lupa igual que
+// cualquier otra acción global; expandido es un campo que crece a la
+// izquierda desde ese mismo botón, con una X para cerrar. No hay estado
+// intermedio ni "campo siempre visible" — en un header de 56px un campo
+// permanente le come el nombre del producto en cuanto la ventana se angosta.
+//
+// El panel de resultados se teletransporta a <body> vía
+// usePopoverFlotante (el mismo mecanismo de MenuAcciones y
+// NotificacionesCampana). Antes era `position: absolute` dentro del
+// contenedor del campo; dentro del header eso lo dejaba en el contexto de
+// apilamiento del header, por debajo del SideNav. Teletransportado el
+// problema no existe, y de paso se reusa el cierre por Escape/click-afuera
+// que ese composable ya resuelve en vez de la lógica propia de blur con
+// setTimeout que este componente tenía.
 import { ref, computed, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { insforgeApi } from '../../api/insforge.js';
 import { estadoInfo } from '../../core/dominio-tickets.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { usePopoverFlotante } from '../../composables/usePopoverFlotante.js';
+import { ACCION_HEADER, PANEL_FLOTANTE, ITEM_PANEL, ROTULO_GRUPO } from './shellClases.js';
 
-const emit = defineEmits(['expandir-sidebar', 'navegado']);
+const VACIO = 'px-3 py-6 text-center text-sm text-gray-500';
+
+// Desde sm el botón colapsado se dibuja como un campo (fondo gris tenue,
+// texto de ayuda y el atajo); por debajo sigue siendo el botón de lupa.
+const CAMPO_COLAPSADO =
+  'sm:w-56 sm:justify-start sm:gap-2 sm:bg-gray-100 sm:px-2.5 sm:text-base sm:text-gray-500 sm:hover:bg-gray-200/70';
+const atajo = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K';
+
+const emit = defineEmits(['navegado']);
 
 const router = useRouter();
 const inputBusqueda = ref(null);
-
-async function expandirYBuscar() {
-  emit('expandir-sidebar');
-  await nextTick();
-  inputBusqueda.value?.focus();
-}
-
-// Expuesto para el atajo global Ctrl/Cmd+K (AppLayout.vue) — mismo método
-// que ya usa el botón de lupa cuando el sidebar está colapsado.
-defineExpose({ enfocar: expandirYBuscar });
+const expandido = ref(false);
 
 const SIN_RESULTADOS = { empleados: [], cuentas: [], equipos: [], tickets: [], licencias: [] };
 const resultados = ref({ ...SIN_RESULTADOS });
-const busquedaAbierta = ref(false);
 
 const hayResultados = computed(() =>
   resultados.value.empleados.length ||
@@ -35,6 +51,25 @@ const hayResultados = computed(() =>
   resultados.value.tickets.length ||
   resultados.value.licencias.length
 );
+
+// El panel se ancla al CAMPO, no al botón: alineado a su borde derecho y
+// con su mismo ancho mínimo, para que se lea como una extensión del campo.
+// `trigger` del composable apunta al contenedor del campo (ver template).
+const {
+  abierto: panelAbierto,
+  trigger: anclaPanel,
+  panel,
+  coords,
+  abrir: abrirPanel,
+  cerrar: cerrarPanel,
+  posicionar,
+} = usePopoverFlotante({
+  alinear(r, m) {
+    const left = Math.max(8, Math.min(r.right - m.width, window.innerWidth - m.width - 8));
+    return { top: r.bottom + 1, left };
+  },
+  cerrarConScroll: true,
+});
 
 // peticionId descarta respuestas obsoletas: si dos búsquedas se
 // superponen (red desordenada), solo se aplica la más reciente.
@@ -51,315 +86,221 @@ const { termino: busqueda, cargando: buscando } = useBusqueda({
     }
   },
 });
-watch(busqueda, (q) => { busquedaAbierta.value = q.trim().length >= 2; });
 
-const resultadosEl = ref(null);
+// Dos caracteres es el umbral para abrir el panel (una sola letra devuelve
+// media base de datos). Cuando ya está abierto, se reposiciona en vez de
+// reabrir: el panel cambia de alto al llegar los resultados y sin esto
+// quedaba anclado al alto que tenía vacío.
+watch(busqueda, async (q) => {
+  if (q.trim().length >= 2) {
+    if (panelAbierto.value) { await nextTick(); posicionar(); }
+    else abrirPanel();
+  } else {
+    cerrarPanel();
+  }
+});
 
-// El cierre se retrasa: si el blur vino de un Tab hacia un resultado (en vez
-// de un click), el foco ya está dentro de `.sb-resultados` cuando el timeout
-// corre — no cerrar en ese caso, o el v-if desmontaría el botón enfocado.
-function cerrarBusqueda() {
-  setTimeout(() => {
-    if (resultadosEl.value?.contains(document.activeElement)) return;
-    busquedaAbierta.value = false;
-  }, 150);
+watch([hayResultados, buscando], async () => {
+  if (!panelAbierto.value) return;
+  await nextTick();
+  posicionar();
+});
+
+async function expandir() {
+  expandido.value = true;
+  await nextTick();
+  inputBusqueda.value?.focus();
 }
 
-function limpiarBusqueda() {
+function colapsar() {
+  cerrarPanel();
   busqueda.value = '';
-  busquedaAbierta.value = false;
+  resultados.value = { ...SIN_RESULTADOS };
+  expandido.value = false;
+}
+
+// Expuesto para el atajo global Ctrl/Cmd+K (AppLayout.vue) — mismo camino
+// que el botón de lupa.
+defineExpose({ enfocar: expandir });
+
+// Escape con el panel cerrado colapsa el campo. Con el panel abierto,
+// usePopoverFlotante ya consumió el Escape para cerrarlo (y devolvió el
+// foco), así que hacen falta dos pulsaciones: cerrar resultados, cerrar
+// campo. Es el comportamiento que evita perder el término
+// escrito por accidente.
+function onEscape() {
+  if (!panelAbierto.value) colapsar();
+}
+
+function irA(destino) {
+  colapsar();
   emit('navegado');
+  router.push(destino);
 }
 
 function irAEmpleado(emp) {
-  limpiarBusqueda();
-  router.push(`/empleados/${emp.id}`);
+  irA(`/empleados/${emp.id}`);
 }
 
 function irACuenta(cuenta) {
-  limpiarBusqueda();
   // Personal con titular → su ficha; compartida/reutilizable → Correos
   // prefiltrado con el usuario de la cuenta
   if (cuenta.tipo_cuenta === 'personal' && cuenta.titular_id) {
-    router.push(`/empleados/${cuenta.titular_id}`);
+    irA(`/empleados/${cuenta.titular_id}`);
   } else {
-    router.push({ path: '/correos', query: { q: cuenta.usuario } });
+    irA({ path: '/correos', query: { q: cuenta.usuario } });
   }
 }
 
 // Deep-links: la vista de lista lee ?q= y precarga su buscador, dejando
 // visible el registro concreto (no hay vistas de detalle para estos).
 function irAEquipo(eq) {
-  limpiarBusqueda();
-  router.push({ path: '/equipos', query: { q: eq.codigo } });
+  irA({ path: '/equipos', query: { q: eq.codigo } });
 }
 
 function irATicket(t) {
-  limpiarBusqueda();
-  router.push(`/tickets/${t.id}`);
+  irA(`/tickets/${t.id}`);
 }
 
 function irALicencia(lic) {
-  limpiarBusqueda();
-  router.push({ path: '/licencias', query: { q: lic.software } });
+  irA({ path: '/licencias', query: { q: lic.software } });
 }
 </script>
 
 <template>
-  <!-- Búsqueda global (colapsado: solo un botón que expande y enfoca) -->
-  <div class="sb-busqueda sb-busqueda--colapsada">
+  <div ref="anclaPanel" class="flex items-center">
+    <!-- Colapsado: en pantallas chicas un botón de lupa; desde sm se ve como
+         un campo (con el atajo a la vista), que es lo que el usuario busca
+         con la mirada cuando quiere encontrar algo. -->
     <button
-      class="sb-logout"
+      v-if="!expandido"
+      :class="[ACCION_HEADER, CAMPO_COLAPSADO]"
       type="button"
-      title="Buscar en todo"
-      @click="expandirYBuscar"
+      title="Buscar en todo (Ctrl+K)"
+      aria-label="Buscar en todo"
+      @click="expandir"
     >
       <i class="ti ti-search" aria-hidden="true"></i>
+      <span class="hidden flex-1 text-left text-sm sm:inline">Buscar…</span>
+      <kbd class="hidden rounded bg-white px-1.5 font-sans text-[11px] font-medium leading-5 text-gray-500 shadow-xs ring-1 ring-gray-900/10 sm:inline">{{ atajo }}</kbd>
     </button>
-  </div>
-  <div class="sb-busqueda sb-busqueda--full">
-    <i class="ti ti-search sb-busqueda-icon" aria-hidden="true"></i>
-    <input
-      ref="inputBusqueda"
-      v-model="busqueda"
-      type="text"
-      placeholder="Buscar en todo..."
-      aria-label="Búsqueda global"
-      @focus="busqueda.trim().length >= 2 && (busquedaAbierta = true)"
-      @blur="cerrarBusqueda"
+
+    <div
+      v-else
+      class="flex h-8 w-56 items-center gap-2 rounded-md bg-white px-2.5 text-gray-500 ring-1 ring-gray-300 focus-within:ring-2 focus-within:ring-primary-500 sm:w-72"
     >
-    <div v-if="busquedaAbierta" ref="resultadosEl" class="sb-resultados">
-      <div v-if="buscando" class="sb-res-vacio">Buscando...</div>
-      <template v-else-if="hayResultados">
-        <template v-if="resultados.empleados.length">
-          <div class="sb-res-grupo">Empleados</div>
-          <button
-            v-for="e in resultados.empleados"
-            :key="e.id"
-            type="button"
-            class="sb-res-item"
-            @mousedown.prevent
-            @click="irAEmpleado(e)"
-          >
-            <i class="ti ti-user"></i>
-            <span class="sb-res-main">{{ e.nombres }} {{ e.apellidos }}</span>
-            <span class="sb-res-sec">{{ e.dni }}</span>
-          </button>
-        </template>
-        <template v-if="resultados.cuentas.length">
-          <div class="sb-res-grupo">Cuentas</div>
-          <button
-            v-for="c in resultados.cuentas"
-            :key="c.id"
-            type="button"
-            class="sb-res-item"
-            @mousedown.prevent
-            @click="irACuenta(c)"
-          >
-            <i class="ti ti-key"></i>
-            <span class="sb-res-main">{{ c.usuario }}</span>
-            <span class="sb-res-sec">{{ c.plataforma_nombre }}</span>
-          </button>
-        </template>
-        <template v-if="resultados.equipos.length">
-          <div class="sb-res-grupo">Equipos</div>
-          <button
-            v-for="eq in resultados.equipos"
-            :key="eq.id"
-            type="button"
-            class="sb-res-item"
-            @mousedown.prevent
-            @click="irAEquipo(eq)"
-          >
-            <i class="ti ti-devices"></i>
-            <span class="sb-res-main">{{ eq.codigo }}</span>
-            <span class="sb-res-sec">{{ eq.descripcion }}</span>
-          </button>
-        </template>
-        <template v-if="resultados.tickets.length">
-          <div class="sb-res-grupo">Tickets</div>
-          <button
-            v-for="t in resultados.tickets"
-            :key="t.id"
-            type="button"
-            class="sb-res-item"
-            @mousedown.prevent
-            @click="irATicket(t)"
-          >
-            <i class="ti ti-headset"></i>
-            <span class="sb-res-main">{{ t.titulo }}</span>
-            <span class="sb-res-sec">{{ t.codigo }} · {{ estadoInfo(t.estado).label }}</span>
-          </button>
-        </template>
-        <template v-if="resultados.licencias.length">
-          <div class="sb-res-grupo">Licencias</div>
-          <button
-            v-for="lic in resultados.licencias"
-            :key="lic.id"
-            type="button"
-            class="sb-res-item"
-            @mousedown.prevent
-            @click="irALicencia(lic)"
-          >
-            <i class="ti ti-license"></i>
-            <span class="sb-res-main">{{ lic.software }}</span>
-            <span class="sb-res-sec">{{ lic.proveedor }}</span>
-          </button>
-        </template>
-      </template>
-      <div v-else class="sb-res-vacio">Sin resultados para "{{ busqueda }}"</div>
+      <i class="ti ti-search shrink-0" aria-hidden="true"></i>
+      <input
+        ref="inputBusqueda"
+        v-model="busqueda"
+        type="text"
+        class="min-w-0 flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+        placeholder="Buscar en todo..."
+        aria-label="Búsqueda global"
+        @keydown.esc="onEscape"
+      >
+      <button
+        class="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        type="button"
+        title="Cerrar búsqueda"
+        aria-label="Cerrar búsqueda"
+        @click="colapsar"
+      >
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="panelAbierto"
+        ref="panel"
+        :class="[PANEL_FLOTANTE, 'max-h-[70vh] w-[min(24rem,calc(100vw-1rem))]']"
+        role="listbox"
+        aria-label="Resultados de la búsqueda"
+        :style="{ top: coords.top + 'px', left: coords.left + 'px' }"
+      >
+        <div v-if="buscando" :class="VACIO">Buscando...</div>
+        <template v-else-if="hayResultados">
+          <template v-if="resultados.empleados.length">
+            <div :class="ROTULO_GRUPO">Empleados</div>
+            <button
+              v-for="e in resultados.empleados"
+              :key="e.id"
+              type="button"
+              :class="ITEM_PANEL"
+              role="option"
+              @click="irAEmpleado(e)"
+            >
+              <i class="ti ti-user shrink-0 text-base text-gray-500" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ e.nombres }} {{ e.apellidos }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ e.dni }}</span>
+            </button>
+          </template>
+          <template v-if="resultados.cuentas.length">
+            <div :class="ROTULO_GRUPO">Cuentas</div>
+            <button
+              v-for="c in resultados.cuentas"
+              :key="c.id"
+              type="button"
+              :class="ITEM_PANEL"
+              role="option"
+              @click="irACuenta(c)"
+            >
+              <i class="ti ti-key shrink-0 text-base text-gray-500" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ c.usuario }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ c.plataforma_nombre }}</span>
+            </button>
+          </template>
+          <template v-if="resultados.equipos.length">
+            <div :class="ROTULO_GRUPO">Equipos</div>
+            <button
+              v-for="eq in resultados.equipos"
+              :key="eq.id"
+              type="button"
+              :class="ITEM_PANEL"
+              role="option"
+              @click="irAEquipo(eq)"
+            >
+              <i class="ti ti-devices shrink-0 text-base text-gray-500" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ eq.codigo }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ eq.descripcion }}</span>
+            </button>
+          </template>
+          <template v-if="resultados.tickets.length">
+            <div :class="ROTULO_GRUPO">Tickets</div>
+            <button
+              v-for="t in resultados.tickets"
+              :key="t.id"
+              type="button"
+              :class="ITEM_PANEL"
+              role="option"
+              @click="irATicket(t)"
+            >
+              <i class="ti ti-headset shrink-0 text-base text-gray-500" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ t.titulo }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ t.codigo }} · {{ estadoInfo(t.estado).label }}</span>
+            </button>
+          </template>
+          <template v-if="resultados.licencias.length">
+            <div :class="ROTULO_GRUPO">Licencias</div>
+            <button
+              v-for="lic in resultados.licencias"
+              :key="lic.id"
+              type="button"
+              :class="ITEM_PANEL"
+              role="option"
+              @click="irALicencia(lic)"
+            >
+              <i class="ti ti-license shrink-0 text-base text-gray-500" aria-hidden="true"></i>
+              <span class="min-w-0 flex-1 truncate">{{ lic.software }}</span>
+              <span class="shrink-0 truncate text-xs text-gray-500">{{ lic.proveedor }}</span>
+            </button>
+          </template>
+        </template>
+        <div v-else :class="VACIO">Sin resultados para "{{ busqueda }}"</div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
-<style scoped>
-/* Botón de búsqueda visible solo cuando el sidebar está colapsado (desktop);
-   mismo estilo que los otros iconos del footer del layout raíz (sb-logout),
-   duplicado acá porque este botón vive en un componente distinto. */
-.sb-logout {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--sb-text, var(--color-text-secondary));
-  padding: 8px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  font-size: 18px;
-  transition: background 0.12s, color 0.12s;
-  flex-shrink: 0;
-}
 
-.sb-logout:hover {
-  background: var(--color-bg-hover);
-  color: var(--sb-text-strong, var(--color-text-primary));
-}
-
-.sb-busqueda--colapsada {
-  display: none;
-}
-
-.sb-busqueda {
-  position: relative;
-  padding: 10px 14px 4px;
-  flex-shrink: 0;
-}
-
-.sb-busqueda-icon {
-  position: absolute;
-  left: 26px;
-  top: 50%;
-  transform: translateY(calc(-50% + 3px));
-  color: var(--sb-text, var(--color-text-secondary));
-  font-size: 14px;
-  pointer-events: none;
-}
-
-.sb-busqueda input {
-  width: 100%;
-  padding: 8px 10px 8px 34px;
-  font-size: 13px;
-  color: var(--sb-text-strong, var(--color-text-primary));
-  background: var(--color-bg-hover);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  outline: none;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.sb-busqueda input::placeholder { color: var(--color-text-tertiary); }
-
-.sb-busqueda input:focus {
-  background: var(--color-bg-elevated);
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--mat-ring);
-}
-
-.sb-resultados {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 14px;
-  right: 14px;
-  z-index: var(--z-popover);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg);
-  max-height: 340px;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.sb-res-grupo {
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-secondary);
-  padding: 8px 10px 3px;
-}
-
-.sb-res-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  background: none;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-  font-size: 13px;
-}
-
-.sb-res-item:hover { background: var(--color-accent-subtle); }
-
-.sb-res-item i {
-  color: var(--color-accent-soft);
-  font-size: 15px;
-  flex-shrink: 0;
-}
-
-.sb-res-main {
-  color: var(--color-text-primary);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.sb-res-sec {
-  font-size: 11.5px;
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.sb-res-vacio {
-  padding: 14px 10px;
-  font-size: 12.5px;
-  color: var(--color-text-secondary);
-  text-align: center;
-}
-</style>
-
-<!-- Sin scoped: .sidebar--colapsado vive en el <aside> del layout raíz
-     (AppLayout.vue), un componente distinto — el pseudo-selector :global()
-     de Vue no propaga el descendiente de esta regla (probado: lo pierde al
-     compilar), así que va en un bloque de estilos global. -->
-<style>
-@media (min-width: 769px) {
-  .sidebar--colapsado .sb-busqueda--full {
-    display: none;
-  }
-
-  .sidebar--colapsado .sb-busqueda--colapsada {
-    display: flex;
-    justify-content: center;
-    padding: 4px 0;
-  }
-}
-</style>

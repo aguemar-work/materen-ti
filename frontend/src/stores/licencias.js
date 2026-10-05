@@ -1,82 +1,28 @@
-import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
+import { crearStorePaginado } from './crearStorePaginado.js';
 
-// Paginación server-side (mismo patrón que empleados/tickets).
-export const useLicenciasStore = defineStore('licencias', {
-  state: () => ({
-    lista: [],
-    total: 0,
-    pagina: 1,
-    tamPagina: 20,
-    filtros: { q: '' },
-    orden: null,
-    cargando: false,
-    error: null,
-    _peticionId: 0,
-  }),
+// Paginación server-side (el esqueleto común vive en crearStorePaginado.js).
+export const useLicenciasStore = crearStorePaginado('licencias', {
+  listarPagina: (params) => insforgeApi.listLicenciasPage(params),
+  // situacion: '' | 'vencidas' | 'por_vencer' (ver SITUACIONES_LICENCIA en
+  // api/domains/licencias.js). Se resetea en cada montaje de la vista, igual
+  // que `q` (gotcha de resetearFiltros(), ver frontend/AGENTS.md).
+  filtrosIniciales: () => ({ q: '', situacion: '' }),
+  mensajeError: 'Error al cargar licencias',
+  entidad: 'licencia',
 
   actions: {
-    // _peticionId descarta respuestas obsoletas: si dos cargar() se
-    // superponen (búsqueda con debounce + cambio de página/filtro rápido),
-    // solo se aplica el resultado de la petición más reciente.
-    async cargar() {
-      const peticionId = ++this._peticionId;
-      this.cargando = true;
-      this.error = null;
-      try {
-        const { items, total } = await insforgeApi.listLicenciasPage({
-          pagina: this.pagina,
-          tamPagina: this.tamPagina,
-          ...this.filtros,
-          orden: this.orden,
-        });
-        if (peticionId !== this._peticionId) return;
-        this.lista = items;
-        this.total = total;
-      } catch (e) {
-        if (peticionId !== this._peticionId) return;
-        this.error = e?.message || 'Error al cargar licencias';
-        throw e;
-      } finally {
-        if (peticionId === this._peticionId) this.cargando = false;
-      }
-    },
-
-    async irAPagina(pagina) {
-      this.pagina = pagina;
-      await this.cargar();
-    },
-
-    async aplicarFiltros(filtros) {
-      this.filtros = { ...this.filtros, ...filtros };
-      this.pagina = 1;
-      await this.cargar();
-    },
-
-    // Se llama al montar la vista: ver nota en stores/empleados.js.
-    resetearFiltros() {
-      this.filtros = { q: '' };
-      this.orden = null;
-      this.pagina = 1;
-    },
-
-    async ordenarPor(columna) {
-      if (this.orden?.columna === columna) {
-        this.orden = { columna, direccion: this.orden.direccion === 'asc' ? 'desc' : 'asc' };
-      } else {
-        this.orden = { columna, direccion: 'asc' };
-      }
-      this.pagina = 1;
-      await this.cargar();
-    },
-
     async listaParaExportar() {
       return insforgeApi.listLicenciasFiltrados(this.filtros);
     },
 
-    async crear(datos) {
+    // cuentaNueva (opcional): correo que se crea junto con la licencia, en una
+    // sola transacción (RPC crear_licencia_con_cuenta, migración 101).
+    async crear(datos, cuentaNueva = null) {
       this.error = null;
-      const id = await insforgeApi.createLicencia(datos);
+      const id = cuentaNueva
+        ? await insforgeApi.createLicenciaConCuenta(datos, cuentaNueva)
+        : await insforgeApi.createLicencia(datos);
       await this.cargar();
       return id;
     },

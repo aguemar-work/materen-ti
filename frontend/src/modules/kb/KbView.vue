@@ -4,44 +4,110 @@ import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useKbStore } from '../../stores/kb.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { OPCIONES_ESTADO_KB } from '../../core/dominio-kb.js';
-import { formatFechaHora } from '../../core/formatters.js';
+import { OPCIONES_ESTADO_KB, tipoKbInfo } from '../../core/dominio-kb.js';
+import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
 import KbArticuloForm from './KbArticuloForm.vue';
-import Pagination from '../../components/shared/Pagination.vue';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
+import { useAuthStore } from '../../stores/auth.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useEsMovil } from '../../composables/useEsMovil.js';
 
 const router = useRouter();
 const store = useKbStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
+const { esMovil } = useEsMovil();
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
-const filtroCategoria = ref('');
-const filtroEstado = ref('');
+const auth = useAuthStore();
 const mostrarForm = ref(false);
-const categorias = ref([]);
 
-watch(
-  [filtroCategoria, filtroEstado],
-  ([categoriaId, estado]) => store.aplicarFiltros({ categoriaId, estado }),
-);
-
-const paginaActual = computed({
-  get: () => store.pagina,
-  set: (p) => store.irAPagina(p),
+// ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
+// Estado del artículo = VISTA (pestañas con conteo); categoría y autor, chips.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  estado: { tipo: 'valor', defecto: '' },
+  q: { tipo: 'texto' },
+  categoria: { tipo: 'lista' },
+  autor: { tipo: 'lista' },
 });
+const CLAVES_FILTRO = ['q', 'categoria', 'autor'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
+const filtrosSinVista = computed(() => ({ q: filtros.q, categoriaIds: filtros.categoria, autorIds: filtros.autor }));
+const filtrosServidor = computed(() => ({ ...filtrosSinVista.value, estado: filtros.estado }));
+
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
+  try {
+    conteos.value = await insforgeApi.conteosKbPorEstado(filtrosSinVista.value);
+  } catch {
+    // Sin conteos, las pestañas se muestran igual (sin número).
+  }
+}
+// Orden de lectura: lo que se consulta (publicados) primero.
+const VISTAS = computed(() => [
+  { valor: '', label: 'Todos', conteo: conteos.value?.todos },
+  { valor: 'publicado', label: 'Publicados', conteo: conteos.value?.publicado },
+  { valor: 'en_revision', label: 'En revisión', conteo: conteos.value?.en_revision },
+  { valor: 'borrador', label: 'Borradores', conteo: conteos.value?.borrador },
+  { valor: 'obsoleto', label: 'Obsoletos', conteo: conteos.value?.obsoleto },
+]);
+
+const categorias = ref([]);
+const staff = ref([]);
+const DIMENSIONES = computed(() => {
+  const yo = auth.user?.id;
+  const autores = [
+    ...staff.value.filter((s) => s.user_id === yo).map((s) => ({ valor: s.user_id, label: `${s.nombre} (usted)` })),
+    ...staff.value.filter((s) => s.user_id !== yo).map((s) => ({ valor: s.user_id, label: s.nombre })),
+  ];
+  return [
+    { id: 'categoria', label: 'Categoría', icono: 'ti ti-category', opciones: categorias.value.map((c) => ({ valor: c.id, label: c.nombre })) },
+    { id: 'autor', label: 'Autor', icono: 'ti ti-user-edit', opciones: autores },
+  ];
+});
+const chips = computed({
+  get: () => ({ categoria: filtros.categoria, autor: filtros.autor }),
+  set: (v) => { filtros.categoria = v.categoria; filtros.autor = v.autor; },
+});
+
+function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
+  busqueda.value = '';
+}
+
+watch(filtrosServidor, (f) => { store.aplicarFiltros(f).catch(() => {}); }, { deep: true });
+watch(filtrosSinVista, refrescarConteos, { deep: true });
 
 function verArticulo(articulo) {
   router.push(`/base-conocimiento/${articulo.id}`);
 }
+
+const subtitulo = computed(() => {
+  const n = total.value;
+  const base = `${n} ${n === 1 ? 'artículo' : 'artículos'}`;
+  const est = OPCIONES_ESTADO_KB.find((e) => e.valor === filtros.estado);
+  const detalle = `${est ? ` en estado ${est.label.toLowerCase()}` : ''}${hayFiltros.value ? ', con los filtros aplicados' : ''}`;
+  return `${base}${detalle} · soluciones reutilizables para tickets recurrentes`;
+});
+
+// Una vista vacía con artículos en otras pestañas no es "Sin artículos todavía".
+const vistaVacia = computed(() => !hayFiltros.value && !!filtros.estado && conteos.value?.todos > 0);
 
 function onFormCerrado(creado) {
   mostrarForm.value = false;
@@ -53,8 +119,10 @@ function onFormCerrado(creado) {
 
 onMounted(async () => {
   store.resetearFiltros();
+  refrescarConteos();
+  insforgeApi.nombresStaff().then((s) => { staff.value = s; }).catch(() => {});
   try {
-    const [, cats] = await Promise.all([store.cargar(), insforgeApi.listCategoriasTicket()]);
+    const [, cats] = await Promise.all([store.aplicarFiltros(filtrosServidor.value), insforgeApi.listCategoriasTicket()]);
     categorias.value = cats;
   } catch {
     showToast(error.value || 'Error al cargar la base de conocimiento', 'error');
@@ -63,147 +131,173 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="kb-page vista-modulo">
-    <PageHeader titulo="Base de Conocimiento" icono="ti ti-books" :conteo="total">
+  <div class="flex h-full min-h-0 flex-col">
+    <AppEncabezado titulo="Base de conocimiento" :subtitulo="subtitulo">
       <template #acciones>
-        <button class="btn btn-primary" type="button" @click="mostrarForm = true">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo artículo
-        </button>
+        <AppButton icon="ti ti-plus" label="Nuevo artículo" @click="mostrarForm = true" />
       </template>
-    </PageHeader>
+    </AppEncabezado>
 
-    <main class="page">
-      <div class="card card--fill">
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input v-model="busqueda" type="text" placeholder="Buscar por título o síntoma...">
-          </div>
-          <div class="filter-field">
-            <label for="filtro-categoria">Categoría</label>
-            <select id="filtro-categoria" v-model="filtroCategoria">
-              <option value="">Todas las categorías</option>
-              <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-            </select>
-          </div>
-          <div class="filter-field">
-            <label for="filtro-estado">Estado</label>
-            <select id="filtro-estado" v-model="filtroEstado">
-              <option value="">Todos los estados</option>
-              <option v-for="e in OPCIONES_ESTADO_KB" :key="e.valor" :value="e.valor">{{ e.label }}</option>
-            </select>
-          </div>
-        </div>
+    <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
+    <AppVistas v-model="filtros.estado" :opciones="VISTAS" label="Vista de artículos" />
+    <AppBarraFiltros class="pt-3">
+      <AppBuscador v-model="busqueda" label="Buscar artículos" placeholder="Buscar por título o síntoma" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+    </AppBarraFiltros>
 
-        <div v-if="error" class="no-results kb-error">{{ error }}</div>
-
-        <EmptyState
-          v-else-if="!cargando && total === 0"
-          icono="ti ti-books"
-          titulo="Sin artículos"
-          :mensaje="busqueda || filtroCategoria || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Registra la primera solución reutilizable de la base de conocimiento.'"
-        >
-          <button v-if="!busqueda && !filtroCategoria && !filtroEstado" class="btn" type="button" @click="mostrarForm = true">
-            <i class="ti ti-plus"></i> Nuevo artículo
-          </button>
-        </EmptyState>
-
-        <template v-else-if="cargando || total > 0">
-        <p v-if="cargando" class="sr-only" role="status">Cargando artículos…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Artículos de la base de conocimiento">
-            <thead>
-              <tr>
-                <ThOrdenable clave="titulo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Título</ThOrdenable>
-                <th scope="col">Categoría</th>
-                <ThOrdenable clave="estado" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Estado</ThOrdenable>
-                <th scope="col">¿Sirvió?</th>
-                <ThOrdenable clave="updated_at" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Actualizado</ThOrdenable>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="5" />
-              <template v-else>
-              <tr v-for="a in lista" :key="a.id" class="fila-kb" @click="verArticulo(a)">
-                <td>
-                  <RouterLink class="kb-titulo-link" :to="`/base-conocimiento/${a.id}`" @click.stop>{{ a.titulo }}</RouterLink>
-                  <div v-if="a.sintoma" class="kb-sintoma">{{ a.sintoma }}</div>
-                </td>
-                <td>
-                  <span v-if="a.categoria_nombre" class="badge badge--accent">{{ a.categoria_nombre }}</span>
-                  <TextoVacio v-else />
-                </td>
-                <td><BadgeEstado tipo="kb_estado" :valor="a.estado" /></td>
-                <td class="kb-feedback">
-                  <span title="Le sirvió"><i class="ti ti-thumb-up" aria-hidden="true"></i> {{ a.util_si }}</span>
-                  <span title="No le sirvió"><i class="ti ti-thumb-down" aria-hidden="true"></i> {{ a.util_no }}</span>
-                </td>
-                <td class="fecha-cell">{{ formatFechaHora(a.updated_at) }}</td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Artículos de la base de conocimiento">
-          <li v-for="a in lista" :key="a.id" class="tarjeta-fila tarjeta-fila--clic" @click="verArticulo(a)">
-            <div class="tarjeta-fila__principal">{{ a.titulo }}</div>
-            <div v-if="a.sintoma" class="tarjeta-fila__sec kb-sintoma">{{ a.sintoma }}</div>
-            <div class="tarjeta-fila__sec">
-              <span v-if="a.categoria_nombre">{{ a.categoria_nombre }}</span>
-              <TextoVacio v-else placeholder="Sin categoría" />
-              <span aria-hidden="true">·</span>
-              <span>{{ formatFechaHora(a.updated_at) }}</span>
-            </div>
-            <div class="tarjeta-fila__badges">
-              <BadgeEstado tipo="kb_estado" :valor="a.estado" />
-              <span class="kb-feedback" title="Le sirvió / no le sirvió">
-                <i class="ti ti-thumb-up" aria-hidden="true"></i> {{ a.util_si }}
-                <i class="ti ti-thumb-down" aria-hidden="true"></i> {{ a.util_no }}
-              </span>
-            </div>
-          </li>
-        </ul>
-
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
-        </template>
+    <!-- ══ Contenido ═══════════════════════════════════════════════ -->
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <div v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
       </div>
-    </main>
+
+      <AppVacio
+        v-else-if="!cargando && total === 0"
+        icono="ti ti-books"
+        :titulo="hayFiltros ? 'Sin resultados' : vistaVacia ? 'Sin artículos en esta vista' : 'Sin artículos todavía'"
+        :mensaje="hayFiltros ? 'No hay artículos con los filtros aplicados.' : vistaVacia ? 'Las demás pestañas muestran el resto de la base de conocimiento.' : 'Registre la primera solución reutilizable de la base de conocimiento.'"
+      >
+        <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
+        <AppButton v-else-if="!vistaVacia" variant="outline" severity="secondary" icon="ti ti-plus" label="Nuevo artículo" @click="mostrarForm = true" />
+      </AppVacio>
+
+      <template v-else>
+        <p v-if="cargando" class="sr-only" role="status">Cargando artículos…</p>
+
+        <!-- ── Tabla (escritorio): la fila abre el artículo ── -->
+        <AppMarcoTabla v-if="!esMovil">
+          <div class="min-h-0 flex-1 overflow-auto">
+            <AppTable
+              :value="lista"
+              :loading="cargando"
+              :total-records="total"
+              :rows="store.tamPagina"
+              :orden="orden"
+              :row-class="() => 'cursor-pointer'"
+              aria-label="Artículos de la base de conocimiento"
+              @ordenar="store.ordenarPor"
+              @row-click="({ data }) => verArticulo(data)"
+            >
+              <AppColumn field="titulo" header="Artículo" sortable>
+                <template #body="{ data: fila }">
+                  <div class="flex min-w-0 items-start gap-3">
+                    <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                      <i class="ti ti-file-text" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0">
+                      <!-- Enlace real (además del clic de fila) para Ctrl/Cmd-clic
+                           y "abrir en pestaña nueva". -->
+                      <RouterLink
+                        :to="`/base-conocimiento/${fila.id}`"
+                        class="line-clamp-2 font-medium text-gray-900 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        @click.stop
+                      >{{ fila.titulo }}</RouterLink>
+                      <div v-if="fila.categoria_nombre || fila.sintoma" class="mt-0.5 truncate text-xs text-gray-500">
+                        <span v-if="fila.categoria_nombre" class="font-medium text-gray-600">{{ fila.categoria_nombre }}</span>
+                        <template v-if="fila.categoria_nombre && fila.sintoma"> · </template>
+                        <template v-if="fila.sintoma">{{ fila.sintoma }}</template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="estado" header="Estado" sortable>
+                <template #body="{ data: fila }">
+                  <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
+                </template>
+              </AppColumn>
+
+              <AppColumn field="tipo" header="Tipo">
+                <template #body="{ data: fila }">
+                  <AppTag :tono="tipoKbInfo(fila.tipo).tono">{{ tipoKbInfo(fila.tipo).label }}</AppTag>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="feedback" header="¿Sirvió?">
+                <template #body="{ data: fila }">
+                  <div class="flex items-center gap-4 text-sm tabular-nums">
+                    <span
+                      class="inline-flex items-center gap-1"
+                      :class="fila.util_si ? 'text-green-700' : 'text-gray-300'"
+                      :title="`${fila.util_si} le sirvió`"
+                      :aria-label="`${fila.util_si} le sirvió`"
+                    ><i class="ti ti-thumb-up" aria-hidden="true"></i>{{ fila.util_si }}</span>
+                    <span
+                      class="inline-flex items-center gap-1"
+                      :class="fila.util_no ? 'text-red-700' : 'text-gray-300'"
+                      :title="`${fila.util_no} no le sirvió`"
+                      :aria-label="`${fila.util_no} no le sirvió`"
+                    ><i class="ti ti-thumb-down" aria-hidden="true"></i>{{ fila.util_no }}</span>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="updated_at" header="Actualizado" sortable>
+                <template #body="{ data: fila }">
+                  <span class="whitespace-nowrap text-gray-600 tabular-nums" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
+                </template>
+              </AppColumn>
+            </AppTable>
+          </div>
+
+          <AppPaginacion
+            v-if="!cargando && total > 0"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+            @update:tam-pagina="store.cambiarTamPagina"
+          />
+        </AppMarcoTabla>
+
+        <!-- ── Lista (móvil) ── -->
+        <div v-else class="min-h-0 flex-1 overflow-y-auto">
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando artículos...</p>
+          <ul v-else class="grid grid-cols-1 gap-3" aria-label="Artículos de la base de conocimiento">
+            <li
+              v-for="fila in lista"
+              :key="fila.id"
+              class="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300"
+              @click="verArticulo(fila)"
+            >
+              <div v-if="fila.categoria_nombre || fila.sintoma" class="truncate text-xs text-gray-500">
+                <span v-if="fila.categoria_nombre" class="font-medium text-gray-600">{{ fila.categoria_nombre }}</span>
+                <template v-if="fila.categoria_nombre && fila.sintoma"> · </template>
+                <template v-if="fila.sintoma">{{ fila.sintoma }}</template>
+              </div>
+              <RouterLink
+                :to="`/base-conocimiento/${fila.id}`"
+                class="mt-1 line-clamp-2 block font-medium text-gray-900"
+                @click.stop
+              >{{ fila.titulo }}</RouterLink>
+              <div class="mt-3 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <BadgeEstado tipo="kb_estado" :valor="fila.estado" />
+                  <AppTag v-if="fila.tipo !== 'solucion'" :tono="tipoKbInfo(fila.tipo).tono">{{ tipoKbInfo(fila.tipo).label }}</AppTag>
+                </div>
+                <div class="flex items-center gap-3 text-xs tabular-nums">
+                  <span :class="fila.util_si ? 'text-green-700' : 'text-gray-300'" :aria-label="`${fila.util_si} le sirvió`"><i class="ti ti-thumb-up" aria-hidden="true"></i> {{ fila.util_si }}</span>
+                  <span :class="fila.util_no ? 'text-red-700' : 'text-gray-300'" :aria-label="`${fila.util_no} no le sirvió`"><i class="ti ti-thumb-down" aria-hidden="true"></i> {{ fila.util_no }}</span>
+                  <span class="text-gray-500" :title="formatFechaHora(fila.updated_at)">{{ formatAntiguedad(fila.updated_at) }}</span>
+                </div>
+              </div>
+            </li>
+          </ul>
+          <AppPaginacion
+            v-if="!cargando"
+            variante="compacta"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+          />
+        </div>
+      </template>
+    </div>
 
     <KbArticuloForm v-if="mostrarForm" @cerrar="onFormCerrado" />
   </div>
 </template>
-
-<style scoped>
-.kb-error { color: var(--color-danger); }
-
-.fila-kb { cursor: pointer; }
-.fila-kb:hover td { background: var(--color-bg-hover); }
-
-.kb-titulo-link {
-  color: var(--color-text-primary);
-  text-decoration: none;
-  font-weight: 600;
-}
-.kb-titulo-link:hover,
-.kb-titulo-link:focus-visible {
-  text-decoration: underline;
-}
-
-.kb-sintoma {
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  margin-top: 2px;
-}
-
-.kb-feedback {
-  display: flex;
-  gap: 12px;
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  white-space: nowrap;
-}
-
-.fecha-cell { white-space: nowrap; }
-</style>

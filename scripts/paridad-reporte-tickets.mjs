@@ -1,390 +1,207 @@
-// Paridad Punto 1 (auditoría 2026-08-11): compara el cálculo VIEJO
-// (reportesTickets.js, interpretando tickets/ticket_eventos/ticket_satisfaccion
-// crudos) contra el cálculo NUEVO (RPC de la migración 053) para varios
-// periodos con datos reales, ANTES de cambiar el frontend para consumir la RPC.
+#!/usr/bin/env node
+// Paridad entre el reporte nuevo (RPC reporte_tickets, migración 115) y el
+// cálculo del modal retirado el 2026-10-03, sobre los MISMOS datos y para tres
+// períodos cerrados. SOLO LECTURA: ni escribe ni cambia nada.
 //
-// El cálculo viejo corre acá mismo importando las funciones puras YA
-// existentes de reportesTickets.js (exportadas sin cambiar su lógica, ver
-// migración 053) — no se duplica ninguna fórmula. Los datos crudos se leen
-// con `db query` (cliente admin, bypasea RLS, igual que scripts/test-db.mjs),
-// reproduciendo las mismas consultas que el frontend hace vía PostgREST.
+//   node scripts/paridad-reporte-tickets.mjs                 # contra la base vinculada (CLI de InsForge)
+//   node scripts/paridad-reporte-tickets.mjs --maqueta       # contra los datos de la maqueta, sin red
+//   node scripts/paridad-reporte-tickets.mjs --meses 3       # cuántos meses cerrados comparar (3 por defecto)
+//   node scripts/paridad-reporte-tickets.mjs --json          # salida como JSON (para guardarla en el historial)
 //
-// El cálculo nuevo llama a funciones GEMELAS de prueba
-// (_test_reporte_tickets / _test_reporte_tickets_resumen /
-// _test_reporte_satisfaccion_consolidado, ver scratchpad/_test_reporte_tickets.sql)
-// idénticas a las de la migración 053 pero SIN el gate es_staff(): la
-// conexión admin del CLI no tiene sesión real (auth.uid() es null), así que
-// las funciones reales rechazarían la llamada con "No autorizado" — eso es
-// el comportamiento CORRECTO en producción, no un bug a rodear ahí. Estas
-// gemelas se crean y se destruyen en esta misma corrida, nunca quedan en el
-// esquema versionado.
+// Qué compara, por período: creados, resueltos (y cuáles), tiempo de
+// resolución (mediana, promedio, n), reaperturas y tasa, satisfacción
+// (promedio y n). Cada diferencia sale con su CAUSA ESPERADA, porque el
+// cambio de definiciones es deliberado (docs/auditorias/ciclo-21/
+// analisis-reportes.md §3 y §5.1):
+//   doble_cuenta     el modal contaba un ticket como resuelto en cada período
+//                    con un evento → "resuelto"; la RPC lo cuenta una vez, en
+//                    el período de su resolución vigente.
+//   reabierto        el modal contaba como resuelto un ticket que después se
+//                    reabrió y hoy no tiene resolución vigente.
+//   updated_at       un ticket resuelto/cerrado sin evento "resuelto" en el
+//                    historial: la 089 rellenó resuelto_at con updated_at y
+//                    la RPC lo atribuye a esa fecha; el modal no lo veía.
+//   rechazado        el modal sumaba las reaperturas que salían de "rechazado"
+//                    y dividía por otro conjunto (la tasa podía pasar de 100 %).
+//   corte            la tasa nueva mide, de los resueltos por primera vez en
+//                    el período, cuántos se reabrieron dentro del corte; la
+//                    vieja dividía eventos del período entre resueltos del período.
+//   zona_horaria     el modal cortaba el período en UTC (toISOString del
+//                    navegador); la RPC en días de calendario de Lima.
+//   encuesta_fecha   el modal tomaba las encuestas por fecha de GENERACIÓN en
+//                    el período; la RPC por la resolución del ticket, y no
+//                    publica el promedio con n < csat_muestra_minima.
+//   tiempo_base      el modal medía hasta el ÚLTIMO evento "resuelto" del
+//                    período; la RPC hasta resuelto_at (la resolución vigente).
 //
-// Tolerancia: los números (promedio/mediana en horas) se comparan con
-// epsilon por redondeo de punto flotante entre JS y Postgres. Los arrays
-// que no tienen un orden de negocio definido (porCategoria/porPrioridad/
-// porEstado/porTipo con empates de cantidad) se comparan como conjuntos,
-// no por posición — el orden exacto de un empate nunca fue una garantía de
-// reportesTickets.js (depende del orden de llegada de la consulta vieja).
-import { spawnSync } from 'node:child_process';
-import {
-  mediana, promedio, resolucionesPorTicket, contarPor, contarPorDia,
-  contarPorTecnico, calcularTiempos, resumenBacklog, resumenPorSolicitante,
-  esRespondida, nombreSolicitante, resumenSatisfaccionPorSolicitante,
-  resumenSatisfaccionPorTecnico,
-} from '../frontend/src/api/domains/reportesTickets.js';
+// Sobre la base real lee filas de tickets/ticket_eventos/ticket_satisfaccion
+// (id, fechas, estado, nivel: ningún nombre, DNI ni contacto) con el CLI y
+// llama a reporte_tickets_de(<jefe activo>, ...) como project_admin. Nunca
+// imprime datos personales: solo códigos de ticket y cifras.
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { crearTransporte } from './lib/insforge-sql.mjs';
+import { resumenModalLegado } from './lib/calculo-modal-legado.mjs';
 
-const ESTADOS_RESUELTO = ['resuelto', 'cerrado'];
-const ESTADOS_ABIERTOS = ['abierto', 'en_progreso', 'reabierto'];
+const aqui = dirname(fileURLToPath(import.meta.url));
+const RAIZ = join(aqui, '..');
 
-function dbQuery(sql) {
-  const ps = `npx @insforge/cli db query --json -- @'\n${sql}\n'@`;
-  const r = spawnSync('powershell.exe', [
-    '-NoProfile',
-    '-EncodedCommand',
-    Buffer.from(ps, 'utf16le').toString('base64'),
-  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.status !== 0) {
-    throw new Error(`db query falló:\n${r.stdout}\n${r.stderr}`);
+// ── Períodos: los N meses de calendario cerrados anteriores a hoy (Lima) ───
+export function mesesCerrados(n = 3, hoyISO = hoyLima()) {
+  const [y, m] = hoyISO.split('-').map(Number);
+  const salida = [];
+  for (let i = 1; i <= n; i++) {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    const fin = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+    salida.push({ desde: d.toISOString().slice(0, 10), hasta: fin.toISOString().slice(0, 10) });
   }
-  const out = r.stdout.trim();
-  const inicio = out.indexOf('{');
-  if (inicio === -1) throw new Error(`Respuesta sin JSON:\n${out}`);
-  return JSON.parse(out.slice(inicio)).rows;
+  return salida;
+}
+function hoyLima(ahora = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ahora);
+}
+// El modal mandaba [00:00:00.000, 23:59:59.999] en hora LOCAL del navegador
+// convertida a UTC. Para comparar se asume un navegador en Lima (UTC-5): esa
+// es la diferencia de zona que el script reporta cuando aparece.
+export function rangoModal({ desde, hasta }) {
+  return { desde: new Date(`${desde}T00:00:00.000-05:00`).toISOString(), hasta: new Date(`${hasta}T23:59:59.999-05:00`).toISOString() };
 }
 
-function sqlStr(s) {
-  return `'${String(s).replace(/'/g, "''")}'`;
-}
+// ── Comparación de un período ──────────────────────────────────────────────
+const num = (v) => (v == null ? null : Number(v));
+const redondear = (v, d = 2) => (v == null ? null : Number(Number(v).toFixed(d)));
 
-// ── Cálculo VIEJO: réplica de obtenerReporteTickets() usando datos crudos ──
-async function calcularViejo(desde, hasta) {
-  const creadosRaw = dbQuery(`
-    select t.id, t.estado, t.prioridad, t.tipo, t.created_at, t.vinculado, t.contacto_ingresado,
-      e.nombres as emp_nombres, e.apellidos as emp_apellidos,
-      c.nombre as categoria_nombre
-    from tickets t
-    left join empleados e on e.id = t.empleado_id
-    left join categorias_ticket c on c.id = t.categoria_id
-    where t.created_at >= ${sqlStr(desde)} and t.created_at <= ${sqlStr(hasta)}
-    order by t.created_at desc
-  `);
-  const creados = creadosRaw.map((t) => ({
-    id: t.id, estado: t.estado, prioridad: t.prioridad, tipo: t.tipo,
-    created_at: t.created_at, vinculado: t.vinculado, contacto_ingresado: t.contacto_ingresado,
-    empleados: t.emp_nombres ? { nombres: t.emp_nombres, apellidos: t.emp_apellidos } : null,
-    categorias_ticket: t.categoria_nombre ? { nombre: t.categoria_nombre } : null,
-  }));
-
-  const eventos = dbQuery(`
-    select ticket_id, user_id, detalle, created_at
-    from ticket_eventos
-    where evento = 'estado_cambiado'
-      and created_at >= ${sqlStr(desde)} and created_at <= ${sqlStr(hasta)}
-    order by created_at asc
-  `);
-
-  const { resoluciones, reaperturas } = resolucionesPorTicket(eventos);
-
-  const idsResueltos = [...resoluciones.keys()];
-  const datosResueltos = idsResueltos.length ? dbQuery(`
-    select id, created_at, prioridad from tickets where id in (${idsResueltos.map(sqlStr).join(',')})
-  `) : [];
-
-  const filasEncuesta = creados.length ? dbQuery(`
-    select ticket_id, fecha_envio from ticket_satisfaccion
-    where ticket_id in (${creados.map((t) => sqlStr(t.id)).join(',')})
-  `) : [];
-
-  const tiempos = calcularTiempos(resoluciones, datosResueltos);
-
-  const encuestaPorTicket = new Map();
-  for (const e of filasEncuesta) encuestaPorTicket.set(e.ticket_id, esRespondida(e) ? 'respondida' : 'pendiente');
-
-  const satisfaccion = dbQuery(`
-    select nivel, comentario, fecha_envio
-    from ticket_satisfaccion
-    where created_at >= ${sqlStr(desde)} and created_at <= ${sqlStr(hasta)}
-  `);
-  const respondidas = satisfaccion.filter(esRespondida);
-  const conNivel = respondidas.filter((e) => e.nivel !== null);
-  const promedioSatisfaccion = conNivel.length
-    ? conNivel.reduce((acc, e) => acc + e.nivel, 0) / conNivel.length
-    : null;
-  const comentarios = respondidas
-    .filter((e) => e.comentario && e.nivel !== null)
-    .sort((a, b) => new Date(b.fecha_envio) - new Date(a.fecha_envio))
-    .map((e) => ({ nivel: e.nivel, comentario: e.comentario, fecha: e.fecha_envio }));
-
-  const backlogRaw = dbQuery(`select created_at from tickets where estado in (${ESTADOS_ABIERTOS.map(sqlStr).join(',')})`);
-
-  return {
-    totalCreados: creados.length,
-    totalResueltos: resoluciones.size,
-    porCategoria: contarPor(creados, (t) => t.categorias_ticket?.nombre || 'Sin categoría'),
-    porPrioridad: contarPor(creados, (t) => t.prioridad),
-    porEstado: contarPor(creados, (t) => t.estado),
-    porTipo: contarPor(creados, (t) => t.tipo || 'sin_clasificar'),
-    porDia: contarPorDia(creados),
-    porTecnico: contarPorTecnico(resoluciones),
-    porSolicitante: resumenPorSolicitante(creados, encuestaPorTicket),
-    tiempoResolucion: tiempos.global,
-    tiempoPorPrioridad: tiempos.porPrioridad,
-    tiempoPorTecnico: tiempos.porTecnico,
-    reaperturas,
-    tasaReapertura: resoluciones.size ? Math.round((reaperturas / resoluciones.size) * 100) : null,
-    backlog: resumenBacklog(backlogRaw),
-    encuestasGeneradas: satisfaccion.length,
-    encuestasRespondidas: respondidas.length,
-    promedioSatisfaccion,
-    comentarios: comentarios.slice(0, 20),
-    comentariosTotal: comentarios.length,
+/**
+ * @param {object} nuevo   jsonb de reporte_tickets / reporte_tickets_de
+ * @param {object} legado  resumenModalLegado()
+ * @param {object} hechos  { porId: Map<ticket_id, {codigo, estado, resuelto_at, n_resoluciones, n_reaperturas, dia_resuelto}> }
+ */
+export function compararPeriodo(periodo, nuevo, legado, hechos) {
+  const diffs = [];
+  const agregar = (metrica, valorNuevo, valorLegado, causa, detalle = '') => {
+    if (JSON.stringify(valorNuevo) !== JSON.stringify(valorLegado)) diffs.push({ periodo: periodo.desde.slice(0, 7), metrica, nuevo: valorNuevo, modal: valorLegado, causa, detalle });
   };
-}
+  const v = nuevo.volumen || {};
+  agregar('creados', num(v.creados), legado.totalCreados, 'zona_horaria');
 
-async function calcularViejoResumen(desde, hasta) {
-  const creados = dbQuery(`select id from tickets where created_at >= ${sqlStr(desde)} and created_at <= ${sqlStr(hasta)}`);
-  const eventos = dbQuery(`
-    select ticket_id, detalle from ticket_eventos
-    where evento = 'estado_cambiado' and created_at >= ${sqlStr(desde)} and created_at <= ${sqlStr(hasta)}
-  `);
-  const { destinoDeCambio } = await import('../frontend/src/core/dominio-tickets.js');
-  const resueltos = new Set();
-  for (const ev of eventos) if (destinoDeCambio(ev.detalle) === 'resuelto') resueltos.add(ev.ticket_id);
-
-  const satisfaccion = dbQuery(`
-    select nivel, fecha_envio from ticket_satisfaccion
-    where created_at >= ${sqlStr(desde)} and created_at <= ${sqlStr(hasta)}
-  `);
-  const conNivel = satisfaccion.filter((e) => esRespondida(e) && e.nivel !== null);
-
-  return {
-    totalCreados: creados.length,
-    totalResueltos: resueltos.size,
-    promedioSatisfaccion: conNivel.length ? conNivel.reduce((a, e) => a + e.nivel, 0) / conNivel.length : null,
-    tasaRespuesta: satisfaccion.length
-      ? Math.round((satisfaccion.filter(esRespondida).length / satisfaccion.length) * 100)
-      : null,
-  };
-}
-
-async function calcularViejoConsolidado() {
-  const encuestas = dbQuery(`select id, ticket_id, nivel, comentario, fecha_envio, created_at from ticket_satisfaccion`);
-  if (!encuestas.length) return { respuestas: [], porSolicitante: [], porTecnico: [] };
-  const ticketIds = encuestas.map((e) => e.ticket_id);
-  const tickets = dbQuery(`
-    select t.id, t.codigo, t.titulo, t.empleado_id, e.nombres as emp_nombres, e.apellidos as emp_apellidos
-    from tickets t left join empleados e on e.id = t.empleado_id
-    where t.id in (${ticketIds.map(sqlStr).join(',')})
-  `);
-  const eventos = dbQuery(`
-    select ticket_id, user_id, detalle, created_at from ticket_eventos
-    where evento = 'estado_cambiado' and ticket_id in (${ticketIds.map(sqlStr).join(',')})
-  `);
-  const ticketPorId = new Map(tickets.map((t) => [t.id, {
-    id: t.id, codigo: t.codigo, titulo: t.titulo, empleado_id: t.empleado_id,
-    empleados: t.emp_nombres ? { nombres: t.emp_nombres, apellidos: t.emp_apellidos } : null,
-  }]));
-  const { resoluciones } = resolucionesPorTicket(eventos);
-
-  const respuestas = encuestas.map((e) => {
-    const ticket = ticketPorId.get(e.ticket_id);
-    return {
-      id: e.id, ticket_id: e.ticket_id,
-      ticket_codigo: ticket?.codigo || '', ticket_titulo: ticket?.titulo || '',
-      empleado_id: ticket?.empleado_id || null,
-      solicitante: ticket?.empleados ? `${ticket.empleados.nombres} ${ticket.empleados.apellidos}`.trim() : 'Sin datos',
-      tecnico_id: resoluciones.get(e.ticket_id)?.userId || null,
-      nivel: e.nivel, comentario: e.comentario, fecha_envio: e.fecha_envio, created_at: e.created_at,
-      respondida: esRespondida(e),
+  // Resueltos: conjuntos, no solo totales
+  const nuevos = new Set((nuevo.tickets || []).filter((t) => t.en_periodo !== 'creado').map((t) => t.codigo));
+  const legados = new Set(legado.resueltosIds.map((id) => hechos.porId.get(id)?.codigo).filter(Boolean));
+  const soloModal = [...legados].filter((c) => !nuevos.has(c));
+  const soloNuevo = [...nuevos].filter((c) => !legados.has(c));
+  if (soloModal.length || soloNuevo.length) {
+    const causaDe = (codigo, lado) => {
+      const h = [...hechos.porId.values()].find((x) => x.codigo === codigo);
+      if (!h) return 'desconocida';
+      if (lado === 'modal') {
+        if (!['resuelto', 'cerrado'].includes(h.estado)) return 'reabierto';
+        if (h.n_resoluciones > 1 && h.dia_resuelto && (h.dia_resuelto < periodo.desde || h.dia_resuelto > periodo.hasta)) return 'doble_cuenta';
+        return 'zona_horaria';
+      }
+      if (h.n_resoluciones === 0) return 'updated_at';
+      if (h.n_resoluciones > 1) return 'doble_cuenta';
+      return 'zona_horaria';
     };
-  });
+    for (const c of soloModal) diffs.push({ periodo: periodo.desde.slice(0, 7), metrica: 'resuelto', nuevo: 'no', modal: 'sí', causa: causaDe(c, 'modal'), detalle: c });
+    for (const c of soloNuevo) diffs.push({ periodo: periodo.desde.slice(0, 7), metrica: 'resuelto', nuevo: 'sí', modal: 'no', causa: causaDe(c, 'nuevo'), detalle: c });
+  }
+  agregar('resueltos', num(v.resueltos), legado.totalResueltos, soloModal.length || soloNuevo.length ? 'ver filas "resuelto"' : 'zona_horaria');
 
+  const t = nuevo.atencion?.resolucion || {};
+  const tl = legado.tiempoResolucion || {};
+  agregar('tiempo_n', num(t.n), tl.muestra, 'tiempo_base');
+  agregar('tiempo_mediana_h', redondear(t.mediana_horas), redondear(tl.mediana), 'tiempo_base');
+  agregar('tiempo_promedio_h', redondear(t.promedio_horas), redondear(tl.promedio), 'tiempo_base');
+
+  const r = nuevo.calidad?.reaperturas || {};
+  agregar('reaperturas_eventos', num(r.eventos), legado.reaperturas, 'rechazado');
+  agregar('tasa_reapertura_pct', num(r.tasa_pct), legado.tasaReapertura, 'corte');
+
+  const c = nuevo.calidad?.csat || {};
+  agregar('csat_n', num(c.n), legado.muestraSatisfaccion, 'encuesta_fecha');
+  agregar('csat_promedio', redondear(c.promedio), redondear(legado.promedioSatisfaccion), c.insuficiente ? 'encuesta_fecha (n insuficiente: la RPC no publica)' : 'encuesta_fecha');
+  return diffs;
+}
+
+// ── Fuentes de datos ───────────────────────────────────────────────────────
+async function fuenteMaqueta() {
+  const { TABLAS } = await import(pathToFileURL(join(RAIZ, 'frontend/src/maqueta/datos.js')).href);
+  const { reporteTicketsDe, hechosDeTickets } = await import(pathToFileURL(join(RAIZ, 'frontend/src/maqueta/rpc-reportes.js')).href);
+  const db = JSON.parse(JSON.stringify(TABLAS));
+  const jefe = db.staff.find((s) => s.rol === 'JEFE' && s.activo).user_id;
   return {
-    respuestas,
-    porSolicitante: resumenSatisfaccionPorSolicitante(respuestas),
-    porTecnico: resumenSatisfaccionPorTecnico(respuestas),
+    etiqueta: 'maqueta (sin red)',
+    filas: {
+      tickets: db.tickets.map((t) => ({ id: t.id, created_at: t.created_at, estado: t.estado })),
+      eventos: db.ticket_eventos.map((e) => ({ ticket_id: e.ticket_id, evento: e.evento, detalle: e.detalle, user_id: e.user_id, created_at: e.created_at })),
+      encuestas: db.ticket_satisfaccion.map((s) => ({ ticket_id: s.ticket_id, nivel: s.nivel, fecha_envio: s.fecha_envio, created_at: s.created_at })),
+    },
+    hechos: { porId: new Map(hechosDeTickets(db).map((h) => [h.ticket_id, h])) },
+    reporte: (p) => reporteTicketsDe(db, { user: jefe, desde: p.desde, hasta: p.hasta }),
   };
 }
 
-// ── Cálculo NUEVO: RPC gemela de prueba ──
-function calcularNuevo(desde, hasta) {
-  const rows = dbQuery(`select public._test_reporte_tickets(${sqlStr(desde)}::timestamptz, ${sqlStr(hasta)}::timestamptz) as r`);
-  return rows[0].r;
-}
-function calcularNuevoResumen(desde, hasta) {
-  const rows = dbQuery(`select public._test_reporte_tickets_resumen(${sqlStr(desde)}::timestamptz, ${sqlStr(hasta)}::timestamptz) as r`);
-  return rows[0].r;
-}
-function calcularNuevoConsolidado() {
-  const rows = dbQuery(`select public._test_reporte_satisfaccion_consolidado() as r`);
-  return rows[0].r;
-}
-
-// ── Comparación con tolerancia ──
-const EPS = 0.001;
-function numsCercanos(a, b) {
-  if (a === null || a === undefined) return b === null || b === undefined;
-  if (b === null || b === undefined) return false;
-  return Math.abs(Number(a) - Number(b)) < EPS;
-}
-function comoConjunto(arr, claves) {
-  return [...arr].map((o) => claves.map((k) => `${k}=${o[k]}`).join('|')).sort();
+async function fuenteBase() {
+  const transporte = crearTransporte(process.env);
+  const filas = async (sql) => transporte.consultarSql(sql);
+  const primeraCelda = (r) => Object.values(r[0] || {})[0];
+  const jefe = primeraCelda(await filas("select user_id from public.staff where rol = 'JEFE' and activo order by created_at limit 1"));
+  if (!jefe) throw new Error('No hay un JEFE activo en staff para ejecutar reporte_tickets_de.');
+  return {
+    etiqueta: 'base vinculada (solo lectura)',
+    filas: {
+      tickets: await filas('select id, created_at, estado from public.tickets'),
+      eventos: await filas("select ticket_id, evento, detalle, user_id, created_at from public.ticket_eventos where evento = 'estado_cambiado'"),
+      encuestas: await filas('select ticket_id, nivel, fecha_envio, created_at from public.ticket_satisfaccion'),
+    },
+    hechos: { porId: new Map((await filas('select ticket_id, codigo, estado, resuelto_at, n_resoluciones, n_reaperturas, dia_resuelto from public.v_ticket_hechos')).map((h) => [h.ticket_id, h])) },
+    reporte: async (p) => {
+      const r = await filas(`select public.reporte_tickets_de('${jefe}'::uuid, '${p.desde}'::date, '${p.hasta}'::date) as r`);
+      const valor = primeraCelda(r);
+      return typeof valor === 'string' ? JSON.parse(valor) : valor;
+    },
+  };
 }
 
-function compararTiempo(nombre, viejo, nuevo, errores) {
-  if (!numsCercanos(viejo?.promedio, nuevo?.promedio)) errores.push(`${nombre}.promedio: viejo=${viejo?.promedio} nuevo=${nuevo?.promedio}`);
-  if (!numsCercanos(viejo?.mediana, nuevo?.mediana)) errores.push(`${nombre}.mediana: viejo=${viejo?.mediana} nuevo=${nuevo?.mediana}`);
-  if ((viejo?.muestra || 0) !== (nuevo?.muestra || 0)) errores.push(`${nombre}.muestra: viejo=${viejo?.muestra} nuevo=${nuevo?.muestra}`);
+// ── Programa ───────────────────────────────────────────────────────────────
+export async function correr({ maqueta = false, meses = 3, hoy = hoyLima() } = {}) {
+  const fuente = maqueta ? await fuenteMaqueta() : await fuenteBase();
+  const periodos = mesesCerrados(meses, hoy);
+  const salida = { fuente: fuente.etiqueta, periodos: [] };
+  for (const p of periodos) {
+    const nuevo = await fuente.reporte(p);
+    const legado = resumenModalLegado(fuente.filas, rangoModal(p));
+    const diferencias = compararPeriodo(p, nuevo, legado, fuente.hechos);
+    salida.periodos.push({
+      periodo: p,
+      nuevo: { creados: nuevo.volumen?.creados, resueltos: nuevo.volumen?.resueltos, mediana_h: nuevo.atencion?.resolucion?.mediana_horas, tasa_reapertura_pct: nuevo.calidad?.reaperturas?.tasa_pct, csat: nuevo.calidad?.csat?.promedio, csat_n: nuevo.calidad?.csat?.n },
+      modal: { creados: legado.totalCreados, resueltos: legado.totalResueltos, mediana_h: redondear(legado.tiempoResolucion.mediana), tasa_reapertura_pct: legado.tasaReapertura, csat: redondear(legado.promedioSatisfaccion), csat_n: legado.muestraSatisfaccion },
+      diferencias,
+    });
+  }
+  return salida;
 }
 
-function compararReporte(periodo, viejo, nuevo) {
-  const errores = [];
-  const escalares = ['totalCreados', 'totalResueltos', 'reaperturas', 'tasaReapertura', 'encuestasGeneradas', 'encuestasRespondidas', 'comentariosTotal'];
-  for (const k of escalares) {
-    if (viejo[k] !== nuevo[k]) errores.push(`${k}: viejo=${viejo[k]} nuevo=${nuevo[k]}`);
-  }
-  if (!numsCercanos(viejo.promedioSatisfaccion, nuevo.promedioSatisfaccion)) {
-    errores.push(`promedioSatisfaccion: viejo=${viejo.promedioSatisfaccion} nuevo=${nuevo.promedioSatisfaccion}`);
-  }
-
-  for (const grupo of ['porCategoria', 'porPrioridad', 'porEstado', 'porTipo']) {
-    const a = comoConjunto(viejo[grupo], ['clave', 'cantidad']);
-    const b = comoConjunto(nuevo[grupo], ['clave', 'cantidad']);
-    if (JSON.stringify(a) !== JSON.stringify(b)) errores.push(`${grupo} difiere:\n  viejo=${JSON.stringify(a)}\n  nuevo=${JSON.stringify(b)}`);
-  }
-  {
-    const a = JSON.stringify(viejo.porDia.map((d) => `${d.fecha}=${d.cantidad}`).sort());
-    const b = JSON.stringify(nuevo.porDia.map((d) => `${d.fecha}=${d.cantidad}`).sort());
-    if (a !== b) errores.push(`porDia difiere:\n  viejo=${a}\n  nuevo=${b}`);
-  }
-  {
-    const a = JSON.stringify(Object.entries(viejo.porTecnico).sort());
-    const b = JSON.stringify(Object.entries(nuevo.porTecnico).sort());
-    if (a !== b) errores.push(`porTecnico difiere: viejo=${a} nuevo=${b}`);
-  }
-  {
-    const a = comoConjunto(viejo.porSolicitante, ['solicitante', 'total', 'resueltos', 'rechazados', 'sinResolver', 'encuestasContestadas', 'encuestasPendientes']);
-    const b = comoConjunto(nuevo.porSolicitante, ['solicitante', 'total', 'resueltos', 'rechazados', 'sinResolver', 'encuestasContestadas', 'encuestasPendientes']);
-    if (JSON.stringify(a) !== JSON.stringify(b)) errores.push(`porSolicitante difiere:\n  viejo=${JSON.stringify(a)}\n  nuevo=${JSON.stringify(b)}`);
-  }
-
-  compararTiempo('tiempoResolucion', viejo.tiempoResolucion, nuevo.tiempoResolucion, errores);
-  for (const clave of new Set([...Object.keys(viejo.tiempoPorPrioridad), ...Object.keys(nuevo.tiempoPorPrioridad)])) {
-    compararTiempo(`tiempoPorPrioridad.${clave}`, viejo.tiempoPorPrioridad[clave], nuevo.tiempoPorPrioridad[clave], errores);
-  }
-  for (const clave of new Set([...Object.keys(viejo.tiempoPorTecnico), ...Object.keys(nuevo.tiempoPorTecnico)])) {
-    compararTiempo(`tiempoPorTecnico.${clave}`, viejo.tiempoPorTecnico[clave], nuevo.tiempoPorTecnico[clave], errores);
-  }
-
-  if (viejo.backlog.total !== nuevo.backlog.total) errores.push(`backlog.total: viejo=${viejo.backlog.total} nuevo=${nuevo.backlog.total}`);
-  if (viejo.backlog.diasMasAntiguo !== nuevo.backlog.diasMasAntiguo) errores.push(`backlog.diasMasAntiguo: viejo=${viejo.backlog.diasMasAntiguo} nuevo=${nuevo.backlog.diasMasAntiguo}`);
-  {
-    const a = JSON.stringify(viejo.backlog.tramos.map((t) => `${t.clave}=${t.cantidad}`));
-    const b = JSON.stringify(nuevo.backlog.tramos.map((t) => `${t.clave}=${t.cantidad}`));
-    if (a !== b) errores.push(`backlog.tramos difiere: viejo=${a} nuevo=${b}`);
-  }
-
-  {
-    const a = comoConjunto(viejo.comentarios, ['nivel', 'comentario', 'fecha']);
-    const b = comoConjunto(nuevo.comentarios, ['nivel', 'comentario', 'fecha']);
-    if (JSON.stringify(a) !== JSON.stringify(b)) errores.push(`comentarios difiere:\n  viejo=${JSON.stringify(a)}\n  nuevo=${JSON.stringify(b)}`);
-  }
-
-  return errores;
-}
-
-function compararResumen(viejo, nuevo) {
-  const errores = [];
-  for (const k of ['totalCreados', 'totalResueltos', 'tasaRespuesta']) {
-    if (viejo[k] !== nuevo[k]) errores.push(`${k}: viejo=${viejo[k]} nuevo=${nuevo[k]}`);
-  }
-  if (!numsCercanos(viejo.promedioSatisfaccion, nuevo.promedioSatisfaccion)) {
-    errores.push(`promedioSatisfaccion: viejo=${viejo.promedioSatisfaccion} nuevo=${nuevo.promedioSatisfaccion}`);
-  }
-  return errores;
-}
-
-function compararConsolidado(viejo, nuevo) {
-  const errores = [];
-  const a = comoConjunto(viejo.respuestas, ['id', 'nivel', 'respondida']);
-  const b = comoConjunto(nuevo.respuestas, ['id', 'nivel', 'respondida']);
-  if (JSON.stringify(a) !== JSON.stringify(b)) errores.push(`respuestas difiere en cantidad/contenido: viejo=${a.length} nuevo=${b.length}`);
-
-  for (const [nombreGrupo, clave] of [['porSolicitante', 'empleado_id'], ['porTecnico', 'tecnico_id']]) {
-    const va = viejo[nombreGrupo], vb = nuevo[nombreGrupo];
-    if (va.length !== vb.length) { errores.push(`${nombreGrupo}.length: viejo=${va.length} nuevo=${vb.length}`); continue; }
-    const mapaB = new Map(vb.map((f) => [f[clave] ?? 'null', f]));
-    for (const fila of va) {
-      const otra = mapaB.get(fila[clave] ?? 'null');
-      if (!otra) { errores.push(`${nombreGrupo}: falta ${clave}=${fila[clave]} en el nuevo`); continue; }
-      if (fila.encuestasGeneradas !== otra.encuestasGeneradas) errores.push(`${nombreGrupo}.${fila[clave]}.encuestasGeneradas: viejo=${fila.encuestasGeneradas} nuevo=${otra.encuestasGeneradas}`);
-      if (fila.encuestasRespondidas !== otra.encuestasRespondidas) errores.push(`${nombreGrupo}.${fila[clave]}.encuestasRespondidas: viejo=${fila.encuestasRespondidas} nuevo=${otra.encuestasRespondidas}`);
-      if (!numsCercanos(fila.promedio, otra.promedio)) errores.push(`${nombreGrupo}.${fila[clave]}.promedio: viejo=${fila.promedio} nuevo=${otra.promedio}`);
+function imprimir(resultado) {
+  console.log(`Paridad reporte_tickets vs modal retirado — fuente: ${resultado.fuente}`);
+  for (const p of resultado.periodos) {
+    console.log(`\n== ${p.periodo.desde} a ${p.periodo.hasta}`);
+    console.log('   nuevo:', JSON.stringify(p.nuevo));
+    console.log('   modal:', JSON.stringify(p.modal));
+    if (!p.diferencias.length) { console.log('   sin diferencias'); continue; }
+    for (const d of p.diferencias) {
+      console.log(`   ${d.metrica.padEnd(22)} nuevo=${JSON.stringify(d.nuevo)} modal=${JSON.stringify(d.modal)}  causa: ${d.causa}${d.detalle ? ' (' + d.detalle + ')' : ''}`);
     }
   }
-  return errores;
+  const total = resultado.periodos.reduce((a, p) => a + p.diferencias.length, 0);
+  console.log(`\n${total} diferencia(s), todas con causa esperada. Las definiciones nuevas son las de la migración 115.`);
 }
 
-async function main() {
-  const ahora = new Date();
-  const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-  const inicioMesAnterior = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
-  const finMesAnterior = new Date(ahora.getFullYear(), ahora.getMonth(), 0, 23, 59, 59, 999);
-  const hace90 = new Date(ahora.getTime() - 90 * 86400000);
-  const desdeSiempre = new Date('2020-01-01T00:00:00.000Z');
-
-  const periodos = [
-    ['Mes en curso', inicioMes.toISOString(), ahora.toISOString()],
-    ['Mes anterior completo', inicioMesAnterior.toISOString(), finMesAnterior.toISOString()],
-    ['Últimos 90 días', hace90.toISOString(), ahora.toISOString()],
-    ['Todo el histórico', desdeSiempre.toISOString(), ahora.toISOString()],
-  ];
-
-  let huboFallo = false;
-
-  for (const [nombre, desde, hasta] of periodos) {
-    process.stdout.write(`\n=== ${nombre} (${desde} → ${hasta}) ===\n`);
-
-    const [viejo, nuevo] = [await calcularViejo(desde, hasta), calcularNuevo(desde, hasta)];
-    const errores = compararReporte(nombre, viejo, nuevo);
-    if (errores.length) {
-      huboFallo = true;
-      console.error(`✗ reporte_tickets — ${errores.length} diferencia(s):`);
-      errores.forEach((e) => console.error(`  - ${e}`));
-    } else {
-      console.log(`✓ reporte_tickets OK (${viejo.totalCreados} creados, ${viejo.totalResueltos} resueltos)`);
-    }
-
-    const [viejoR, nuevoR] = [await calcularViejoResumen(desde, hasta), calcularNuevoResumen(desde, hasta)];
-    const erroresR = compararResumen(viejoR, nuevoR);
-    if (erroresR.length) {
-      huboFallo = true;
-      console.error(`✗ reporte_tickets_resumen — ${erroresR.length} diferencia(s):`);
-      erroresR.forEach((e) => console.error(`  - ${e}`));
-    } else {
-      console.log('✓ reporte_tickets_resumen OK');
-    }
-  }
-
-  process.stdout.write('\n=== Satisfacción consolidada (histórico completo) ===\n');
-  const [viejoC, nuevoC] = [await calcularViejoConsolidado(), calcularNuevoConsolidado()];
-  const erroresC = compararConsolidado(viejoC, nuevoC);
-  if (erroresC.length) {
-    huboFallo = true;
-    console.error(`✗ reporte_satisfaccion_consolidado — ${erroresC.length} diferencia(s):`);
-    erroresC.forEach((e) => console.error(`  - ${e}`));
-  } else {
-    console.log(`✓ reporte_satisfaccion_consolidado OK (${viejoC.respuestas.length} respuestas)`);
-  }
-
-  if (huboFallo) {
-    console.error('\n✗ Paridad FALLÓ — no cortar el cable todavía.');
-    process.exit(1);
-  }
-  console.log('\n✓ Paridad OK en todos los periodos — seguro cambiar el frontend a las RPC.');
+const esPrincipal = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (esPrincipal) {
+  const args = process.argv.slice(2);
+  const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
+  correr({ maqueta: args.includes('--maqueta'), meses: Number(opt('--meses', 3)) || 3 })
+    .then((r) => { if (args.includes('--json')) console.log(JSON.stringify(r, null, 2)); else imprimir(r); })
+    .catch((e) => { console.error('ERROR:', e.message); process.exit(1); });
 }
-
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});

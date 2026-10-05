@@ -6,6 +6,9 @@
 // el enlace de seguimiento ya lo tiene desde que creó el ticket).
 import { ref, computed, onMounted } from 'vue';
 import { responderEncuesta, encuestaYaRespondida } from '../../api/ticketsPublicos.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const props = defineProps({
   token: { type: String, required: true },
@@ -25,6 +28,8 @@ const nivel = ref(0);
 const comentario = ref('');
 
 const oculto = computed(() => props.embebido && estado.value === 'error');
+const campoComentario = useCampoAccesible();
+const infoError = infoNotificacion('error');
 
 // Antes de mostrar el formulario, hay que saber si ya se respondió: si no,
 // tras refrescar la página parece que se puede volver a enviar (aunque el
@@ -71,141 +76,97 @@ async function enviar() {
 </script>
 
 <template>
+  <!-- Rediseño 2026-09-23 (receta de portal público, SISTEMA-DISENO §4.5):
+       sin contenedor propio — lo pone la página que lo monta (la tarjeta de
+       ResponderEncuestaView o el bloque embebido del seguimiento). Controles
+       grandes, pensado para un teléfono. -->
   <div v-if="!oculto" role="status" aria-live="polite">
-    <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
+    <p v-if="estado === 'cargando'" class="py-6 text-center text-sm text-gray-500">Cargando...</p>
 
-    <template v-else-if="estado === 'error'">
-      <div class="ticket-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
-      <h2 class="ticket-title">No disponible</h2>
-      <p class="ticket-texto">{{ error }}</p>
-      <RouterLink class="public-volver" to="/soporte">
+    <div v-else-if="estado === 'error'" class="py-2 text-center">
+      <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-500">
+        <i class="ti ti-link-off" aria-hidden="true"></i>
+      </span>
+      <h2 class="mt-3 text-lg font-semibold text-gray-900">No disponible</h2>
+      <p class="mt-1 text-sm text-gray-500">{{ error }}</p>
+      <RouterLink
+        class="mt-5 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        to="/soporte"
+      >
         <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
       </RouterLink>
-    </template>
+    </div>
 
     <template v-else-if="estado === 'formulario' || estado === 'enviando'">
-      <h2 class="ticket-title">Calificación del servicio</h2>
-      <p class="ticket-texto">Su respuesta contribuye a mejorar el servicio de soporte.</p>
+      <h2 class="text-lg font-semibold text-gray-900">Calificación del servicio</h2>
+      <p class="mt-1 text-sm text-gray-500">¿Cómo fue la atención de su ticket? Su respuesta contribuye a mejorar el servicio de soporte.</p>
 
-      <div class="niveles">
+      <div class="mt-5 grid grid-cols-5 gap-2" role="group" aria-label="Nivel de satisfacción">
         <button
           v-for="n in NIVELES"
           :key="n.valor"
           type="button"
-          class="nivel-btn"
-          :class="{ 'nivel-btn--activo': nivel === n.valor }"
+          class="flex flex-col items-center gap-1 rounded-lg border px-1 py-3 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
+          :class="nivel === n.valor
+            ? 'border-primary-500 bg-primary-50 text-primary-700'
+            : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-900'"
           :disabled="estado === 'enviando'"
           :title="n.label"
           :aria-label="n.label"
           :aria-pressed="nivel === n.valor"
           @click="nivel = n.valor"
         >
-          <i :class="`ti ${n.icono}`" aria-hidden="true"></i>
+          <i class="text-3xl" :class="`ti ${n.icono}`" aria-hidden="true"></i>
+          <span class="text-xs tabular-nums">{{ n.valor }}</span>
         </button>
       </div>
+      <p class="mt-2 h-5 text-center text-sm font-medium text-gray-700">{{ NIVELES.find((n) => n.valor === nivel)?.label || '' }}</p>
 
-      <div class="form-group full">
-        <label for="ts-comentario">Comentarios (opcional)</label>
-        <textarea
-          id="ts-comentario"
-          v-model="comentario"
-          rows="3"
-          placeholder="Observaciones adicionales..."
-          :disabled="estado === 'enviando'"
-        ></textarea>
+      <div class="campo mt-3" :class="{ 'campo--inerte': estado === 'enviando' }">
+        <label class="campo__etiqueta" :for="campoComentario.id">Comentarios (opcional)</label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoComentario.id"
+            v-model="comentario"
+            class="campo__control campo__control--area"
+            rows="3"
+            placeholder="Observaciones adicionales..."
+            :disabled="estado === 'enviando'"
+            :aria-invalid="campoComentario.invalido.value"
+            :aria-describedby="campoComentario.describedBy.value"
+          ></textarea>
+        </div>
       </div>
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <div v-if="error" class="notif notif--inline mt-3" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
 
-      <button class="btn btn-primary ticket-submit" type="button" :disabled="estado === 'enviando'" @click="enviar">
-        <i v-if="estado === 'enviando'" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-        {{ estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta' }}
-      </button>
+      <AppButton
+        class="mt-5"
+        size="lg"
+        block
+        :label="estado === 'enviando' ? 'Enviando...' : 'Enviar respuesta'"
+        :loading="estado === 'enviando'"
+        @click="enviar"
+      />
     </template>
 
-    <template v-else-if="estado === 'gracias'">
-      <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
-      <h2 class="ticket-title">Respuesta registrada</h2>
-      <p class="ticket-texto">Gracias por completar la encuesta de satisfacción.</p>
-    </template>
-
-    <template v-else-if="estado === 'ya_respondida'">
-      <div class="ticket-ok-icon"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
-      <h2 class="ticket-title">Respuesta ya registrada</h2>
-      <p class="ticket-texto">La encuesta ya fue completada — no es necesario volver a responder.</p>
-    </template>
+    <div v-else-if="estado === 'gracias' || estado === 'ya_respondida'" class="py-2 text-center">
+      <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-2xl text-green-600">
+        <i class="ti ti-circle-check" aria-hidden="true"></i>
+      </span>
+      <template v-if="estado === 'gracias'">
+        <h2 class="mt-3 text-lg font-semibold text-gray-900">Respuesta registrada</h2>
+        <p class="mt-1 text-sm text-gray-500">Gracias por completar la encuesta de satisfacción.</p>
+      </template>
+      <template v-else>
+        <h2 class="mt-3 text-lg font-semibold text-gray-900">Respuesta ya registrada</h2>
+        <p class="mt-1 text-sm text-gray-500">La encuesta ya fue completada — no es necesario volver a responder.</p>
+      </template>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.ticket-title {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 4px;
-}
-
-.ticket-texto {
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 16px;
-}
-
-.niveles {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.nivel-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 48px;
-  font-size: 24px;
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-
-.nivel-btn:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent-text);
-}
-
-.nivel-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--mat-ring);
-}
-
-.nivel-btn--activo {
-  border-color: var(--color-accent);
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-}
-
-.ticket-submit {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
-  margin-top: 12px;
-}
-
-.ticket-ok-icon {
-  font-size: 40px;
-  color: var(--color-success-text);
-  margin-bottom: 8px;
-}
-
-.ticket-error-icon {
-  font-size: 40px;
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-</style>

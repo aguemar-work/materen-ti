@@ -1,98 +1,58 @@
-import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
+import { anotarErrorDb } from '../api/erroresDb.js';
+import { crearStorePaginado } from './crearStorePaginado.js';
 
-// Paginación server-side (patrón de referencia para migrar otros módulos):
+// Las transiciones de estado (migración 102) cambian el CONJUNTO de cada vista
+// (Activos / Suspendidos / Inactivos): tras la RPC se recarga la página para
+// corregir total y huecos, según la regla de crearStorePaginado. Si la recarga
+// falla, la operación ya ocurrió: no se la presenta como un error de la
+// mutación. El error de la RPC sale traducido (42501, P0001 en español...).
+async function transicion(store, accion) {
+  let empleado;
+  try {
+    empleado = await accion();
+  } catch (e) {
+    throw anotarErrorDb(e, { entidad: 'empleado' });
+  }
+  // Sin lista cargada (ficha abierta directo por URL) no hay nada que corregir:
+  // la lista se pide completa al montarse.
+  if (store.lista.length) {
+    try {
+      await store.cargar();
+    } catch {
+      // La lista se reintenta sola al volver a montarla.
+    }
+  }
+  return empleado;
+}
+
+// Paginación server-side (el esqueleto común vive en crearStorePaginado.js):
 // `lista` es SOLO la página actual; búsqueda y filtros viajan al servidor.
 // Regla de coherencia: mutaciones in-place (editar, baja) actualizan la fila
 // si está en la página; las que cambian el conjunto (crear, borrar,
 // reactivar) recargan la página para corregir total y huecos.
-export const useEmpleadosStore = defineStore('empleados', {
-  state: () => ({
-    lista: [],
-    total: 0,
-    pagina: 1,
-    tamPagina: 20,
-    filtros: { q: '', estado: '', ubicacionId: '' },
-    orden: null, // { columna, direccion } — null = orden por defecto del servidor
-    cargando: false,
-    error: null,
-    _peticionId: 0,
-  }),
+export const useEmpleadosStore = crearStorePaginado('empleados', {
+  listarPagina: (params) => insforgeApi.listEmpleadosPage(params),
+  // estado: 'Activo' por defecto (ago 2026) — activos e inactivos mezclados
+  // en la lista era el problema reportado; la vista "Todos" sigue a un clic.
+  // Las dimensiones (V2) son listas: varios valores por dimensión.
+  filtrosIniciales: () => ({ q: '', estado: 'Activo', empresaIds: [], ubicacionIds: [], areaIds: [] }),
+  mensajeError: 'Error al cargar empleados',
+  entidad: 'empleado',
+
+  // Conteos de cuentas/equipos/licencias vinculados de la página; si fallan,
+  // la columna "Vínculos" queda vacía pero el listado no se cae.
+  async enriquecer(items) {
+    const conteos = await insforgeApi.conteosVinculos(items.map((e) => e.id));
+    return items.map((e) => ({
+      ...e,
+      n_cuentas: conteos[e.id]?.cuentas ?? 0,
+      n_equipos: conteos[e.id]?.equipos ?? 0,
+      n_licencias: conteos[e.id]?.licencias ?? 0,
+    }));
+  },
 
   actions: {
-    // _peticionId descarta respuestas obsoletas: si dos cargar() se
-    // superponen (búsqueda con debounce + cambio de página/filtro rápido,
-    // orden de red no garantizado), solo se aplica el resultado de la
-    // petición más reciente.
-    async cargar() {
-      const peticionId = ++this._peticionId;
-      this.cargando = true;
-      this.error = null;
-      try {
-        const { items, total } = await insforgeApi.listEmpleadosPage({
-          pagina: this.pagina,
-          tamPagina: this.tamPagina,
-          ...this.filtros,
-          orden: this.orden,
-        });
-        if (peticionId !== this._peticionId) return;
-        this.lista = items;
-        this.total = total;
-        // Conteos de cuentas/equipos vinculados de la página; si fallan,
-        // la columna "Vínculos" queda vacía pero el listado no se cae.
-        try {
-          const conteos = await insforgeApi.conteosVinculos(items.map((e) => e.id));
-          if (peticionId !== this._peticionId) return;
-          this.lista = items.map((e) => ({
-            ...e,
-            n_cuentas: conteos[e.id]?.cuentas ?? 0,
-            n_equipos: conteos[e.id]?.equipos ?? 0,
-            n_licencias: conteos[e.id]?.licencias ?? 0,
-          }));
-        } catch { /* columna sin datos */ }
-      } catch (e) {
-        if (peticionId !== this._peticionId) return;
-        this.error = e?.message || 'Error al cargar empleados';
-        throw e;
-      } finally {
-        if (peticionId === this._peticionId) this.cargando = false;
-      }
-    },
-
-    async irAPagina(pagina) {
-      this.pagina = pagina;
-      await this.cargar();
-    },
-
-    async aplicarFiltros(filtros) {
-      this.filtros = { ...this.filtros, ...filtros };
-      this.pagina = 1;
-      await this.cargar();
-    },
-
-    // Se llama al montar la vista: los filtros viven en el store (no en el
-    // componente) y sobreviven a la navegación — sin este reset, al volver
-    // a entrar la caja de búsqueda se ve vacía pero el filtro anterior
-    // sigue aplicado (bug reportado jul 2026).
-    resetearFiltros() {
-      // estado: 'Activo' por defecto (ago 2026) — activos e inactivos
-      // mezclados en la lista era el problema reportado; "Todos los
-      // estados" sigue disponible en el selector.
-      this.filtros = { q: '', estado: 'Activo', ubicacionId: '' };
-      this.orden = null;
-      this.pagina = 1;
-    },
-
-    async ordenarPor(columna) {
-      if (this.orden?.columna === columna) {
-        this.orden = { columna, direccion: this.orden.direccion === 'asc' ? 'desc' : 'asc' };
-      } else {
-        this.orden = { columna, direccion: 'asc' };
-      }
-      this.pagina = 1;
-      await this.cargar();
-    },
-
     // Dataset filtrado completo (sin página) — para exportar CSV
     async listaParaExportar() {
       return insforgeApi.listEmpleadosFiltrados(this.filtros);
@@ -113,12 +73,44 @@ export const useEmpleadosStore = defineStore('empleados', {
       return empleado;
     },
 
-    async darDeBaja(id) {
+    // `motivo` opcional (≤ 500): queda en la hoja de vida del empleado.
+    async darDeBaja(id, motivo = null) {
       this.error = null;
-      const { empleado, resumen } = await insforgeApi.bajaEmpleado(id);
-      const idx = this.lista.findIndex((e) => e.id === id);
-      if (idx !== -1) this.lista[idx] = empleado;
-      return { empleado, resumen };
+      let resultado;
+      await transicion(this, async () => {
+        resultado = await insforgeApi.bajaEmpleado(id, motivo);
+        return resultado.empleado;
+      });
+      return resultado;
+    },
+
+    // Motivo OBLIGATORIO; solo desde Activo.
+    async suspender(id, motivo) {
+      this.error = null;
+      return transicion(this, () => insforgeApi.suspenderEmpleado(id, motivo));
+    },
+
+    // Desde Suspendido o Inactivo. No toca la fecha de alta.
+    async reactivar(id, motivo = null) {
+      this.error = null;
+      return transicion(this, () => insforgeApi.reactivarEmpleado(id, motivo));
+    },
+
+    // Solo desde Inactivo: nueva fecha de alta (hoy) y datos opcionales
+    // (area_obra_id, ubicacion_id, cargo, empresa_id).
+    async reingresar(id, datos = {}) {
+      this.error = null;
+      return transicion(this, () => insforgeApi.reingresarEmpleado(id, datos));
+    },
+
+    // Control de accesos: no cambia el conjunto, no recarga la lista.
+    async registrarRevisionAccesos(id, resultado = {}, nota = null) {
+      this.error = null;
+      try {
+        return await insforgeApi.registrarRevisionAccesos(id, resultado, nota);
+      } catch (e) {
+        throw anotarErrorDb(e, { entidad: 'empleado' });
+      }
     },
 
     async softDelete(id) {
@@ -127,12 +119,5 @@ export const useEmpleadosStore = defineStore('empleados', {
       await this.cargar(); // rellena el hueco de la página y corrige total
     },
 
-    async reactivar(id) {
-      this.error = null;
-      const empleado = await insforgeApi.reactivarEmpleado(id);
-      const idx = this.lista.findIndex((e) => e.id === id);
-      if (idx !== -1) this.lista[idx] = empleado;
-      return empleado;
-    },
   },
 });

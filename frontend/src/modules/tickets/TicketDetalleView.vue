@@ -1,681 +1,321 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { storeToRefs } from 'pinia';
-import { showToast } from '../../core/toast.js';
-import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { estadoInfo, prioridadInfo, destinoDeCambio, OPCIONES_PRIORIDAD as PRIORIDADES, OPCIONES_TIPO as TIPOS, NIVELES_ATENCION, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS } from '../../core/dominio-tickets.js';
-import { badgeInfo } from '../../core/badges.js';
-import { useAuthStore } from '../../stores/auth.js';
-import { useTicketDetalleStore } from '../../stores/ticketDetalle.js';
-import { useVolverContextual } from '../../composables/useVolverContextual.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
+import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
+import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppSeccion from '../../components/ui/AppSeccion.vue';
 import ProblemaForm from '../problemas/ProblemaForm.vue';
+import TicketCamposGestion from './TicketCamposGestion.vue';
+import TicketComposer from './TicketComposer.vue';
+import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
+import TicketSolicitante from './TicketSolicitante.vue';
+import TicketContexto from './TicketContexto.vue';
+import TicketResumen from './TicketResumen.vue';
+import AppSegmentado from '../../components/ui/AppSegmentado.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const route = useRoute();
 const router = useRouter();
-const auth = useAuthStore();
-const store = useTicketDetalleStore();
-const { volver } = useVolverContextual();
 
-const { ticket, comentarios, eventos, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId } = storeToRefs(store);
-
-const guardandoCampo = ref(false);
-
-const nuevoComentario = ref('');
-const comentarioInterno = ref(true);
-const enviandoComentario = ref(false);
-
-// Auto-crece con el texto hasta un tope (igual que un chat); pasado ese
-// tope, scrollea adentro en vez de seguir empujando el layout de la página.
-const comentarioTextarea = ref(null);
-const ALTURA_MAX_TEXTAREA = 160;
-
-function autoCrecerTextarea() {
-  const el = comentarioTextarea.value;
-  if (!el) return;
-  el.style.height = 'auto';
-  el.style.height = `${Math.min(el.scrollHeight, ALTURA_MAX_TEXTAREA)}px`;
-}
-
-function autorDe(autorId) {
-  return autorId ? (staffPorId.value[autorId] || 'Staff') : 'Sistema';
-}
-
-// El color de cada hito viene del MISMO estadoInfo() que pintan los badges
-// de estado en el resto de la app — un estado siempre significa el mismo
-// color, nunca un mapeo de color aparte solo para esta lista.
-function colorDeEstado(estado) {
-  return estadoInfo(estado).clase.replace('badge--', '');
-}
-
-// Historial: hitos del ciclo de vida (creado → inicio de atención/asignado
-// → resuelto → cerrado) más los eventos auxiliares de ticket_eventos que
-// antes se descartaban en silencio (reasignaciones, cambios de prioridad,
-// encuesta respondida).
-const historialEsencial = computed(() => {
-  const hitos = [];
-  for (const ev of eventos.value) {
-    if (ev.evento === 'creado') {
-      hitos.push({ id: ev.id, label: 'Ticket creado', fecha: ev.created_at, color: colorDeEstado('abierto') });
-    } else if (ev.evento === 'estado_cambiado') {
-      const nuevoEstado = destinoDeCambio(ev.detalle);
-      const label = HITO_LABELS[nuevoEstado];
-      if (!label) continue;
-      const asignado = nuevoEstado === 'en_progreso' && ticket.value?.asignado_a
-        ? ` · Asignado a ${staffPorId.value[ticket.value.asignado_a] || 'Staff'}`
-        : '';
-      hitos.push({ id: ev.id, label: label + asignado, fecha: ev.created_at, color: colorDeEstado(nuevoEstado) });
-    } else if (ev.evento === 'reasignado') {
-      hitos.push({ id: ev.id, label: EVENTO_LABELS.reasignado, fecha: ev.created_at, color: 'neutral' });
-    } else if (ev.evento === 'prioridad_cambiada') {
-      const nuevaPrioridad = destinoDeCambio(ev.detalle);
-      hitos.push({ id: ev.id, label: `Prioridad cambiada a ${prioridadInfo(nuevaPrioridad).label}`, fecha: ev.created_at, color: 'info' });
-    } else if (ev.evento === 'encuesta_enviada') {
-      hitos.push({ id: ev.id, label: EVENTO_LABELS.encuesta_enviada, fecha: ev.created_at, color: 'neutral' });
-    } else if (ev.evento === 'encuesta_respondida') {
-      hitos.push({ id: ev.id, label: EVENTO_LABELS.encuesta_respondida, fecha: ev.created_at, color: 'success' });
-    }
-  }
-  return hitos;
-});
-
-// ── Iniciar atención (abierto -> en_progreso): los campos (prioridad,
-// nivel, asignado) se ven directo al entrar — no detrás de un botón que
-// primero "revela" el formulario. Rechazar sigue sin pedir nada de esto.
-const atencionForm = ref({ prioridad: 'media', nivelAtencion: 'N1', asignadoA: '', tipo: '' });
-const iniciando = ref(false);
-
-// 3 subcategorías quedan deliberadamente sin tipo_sugerido (migración 035:
-// "Accesorio dañado/faltante", "Otro", "Seguridad/backup" mezclan ambos
-// tipos) — el select de Tipo queda vacío sin que nada lo explique. Este
-// hint es el único cambio: no depende de nombres de subcategoría, solo de
-// que no haya tipo precargado ni sugerido.
-const tipoAmbiguoSinClasificar = computed(() =>
-  ticket.value?.estado === 'abierto' &&
-  !ticket.value?.tipo &&
-  !ticket.value?.subcategoria_tipo_sugerido
-);
+// Toda la lógica de negocio (store, transiciones de estado, historial,
+// comentarios) vive en el composable — compartida con TicketDetallePanel.vue
+// (split-view). Lo único que queda acá es lo específico de ser una página
+// completa: leer route.params.id y redirigir a /tickets si el ticket no
+// existe (el panel embebido no navega, ver comentario de cargar() abajo).
+const {
+  auth,
+  ticket, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId,
+  guardandoCampo,
+  nuevoComentario, comentarioInterno, enviandoComentario,
+  autorDe, timelineUnificado, resolucion,
+  atencionForm, iniciando, tipoAmbiguoSinClasificar,
+  cargar: cargarTicket, confirmarIniciar,
+  mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
+  resolviendo, guardarComoKb, mostrarConfirmarResolver, dialogoResolver, cancelarResolver, confirmarResolver,
+  mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
+  cambiarNivelAtencion, cambiarPrioridad,
+  mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
+  cambiarTipo,
+  mostrarProblemaForm, onProblemaFormCerrado,
+  copiarMensajeSatisfaccion,
+  enviarComentario,
+} = useTicketDetalleLogica();
 
 async function cargar() {
-  try {
-    await store.cargar(route.params.id);
-    if (!ticket.value) {
-      showToast('Ticket no encontrado', 'error');
-      router.replace('/tickets');
-      return;
-    }
-    // Precarga los 3 campos de una vez (sin un paso de "revelar" el
-    // formulario aparte): al entrar al ticket ya se ven, listos para
-    // ajustar y confirmar en un solo clic con "Iniciar atención".
-    if (ticket.value.estado === 'abierto') {
-      atencionForm.value = {
-        prioridad: ticket.value.prioridad || 'media',
-        nivelAtencion: 'N1',
-        asignadoA: auth.user?.id || '',
-        // Precarga con el tipo ya asignado si lo tiene; si no, con el default
-        // de la subcategoría (tipo_sugerido). Si ninguno existe (los 3 casos
-        // ambiguos: Accesorio dañado/faltante, Otro, Seguridad/backup) queda
-        // vacío a propósito — el select fuerza a elegir antes de iniciar.
-        tipo: ticket.value.tipo || ticket.value.subcategoria_tipo_sugerido || '',
-      };
-    }
-  } catch (e) {
-    showToast(e?.message || 'Error al cargar el ticket', 'error');
-  }
-}
-
-async function confirmarIniciar() {
-  if (!atencionForm.value.asignadoA) {
-    showToast('Selecciona a quién se asigna el ticket', 'error');
-    return;
-  }
-  if (!atencionForm.value.tipo) {
-    showToast('Selecciona si es un incidente o una solicitud', 'error');
-    return;
-  }
-  iniciando.value = true;
-  try {
-    await store.actualizarCampos({
-      estado: 'en_progreso',
-      prioridad: atencionForm.value.prioridad,
-      nivel_atencion: atencionForm.value.nivelAtencion,
-      asignado_a: atencionForm.value.asignadoA,
-      // Explícito siempre, aunque el ticket ya traiga tipo precargado: no
-      // depender de que un UPDATE parcial "conserve" el valor previo.
-      tipo: atencionForm.value.tipo,
-    });
-    showToast('Ticket en atención');
-  } catch (e) {
-    showToast(e?.message || 'No se pudo iniciar el ticket', 'error');
-  } finally {
-    iniciando.value = false;
-  }
-}
-
-// ── Rechazar (abierto -> rechazado, terminal): exige un motivo, que queda
-// como comentario visible para el empleado ──────────────────────────────
-const mostrarRechazar = ref(false);
-const motivoRechazo = ref('');
-const rechazando = ref(false);
-
-function abrirRechazar() {
-  motivoRechazo.value = '';
-  mostrarRechazar.value = true;
-}
-
-async function confirmarRechazar() {
-  const motivo = motivoRechazo.value.trim();
-  if (!motivo) {
-    showToast('Escribe el motivo del rechazo', 'error');
-    return;
-  }
-  rechazando.value = true;
-  try {
-    await store.comentar(motivo, false);
-    await store.actualizarCampos({ estado: 'rechazado' });
-    mostrarRechazar.value = false;
-    showToast('Ticket rechazado');
-  } catch (e) {
-    showToast(e?.message || 'No se pudo rechazar el ticket', 'error');
-  } finally {
-    rechazando.value = false;
-  }
-}
-
-// ── Marcar como resuelto: encadena resuelto -> cerrado en un solo paso
-// (queda igual registrado en la hoja de vida). Exige confirmación — a
-// diferencia de Rechazar/Reabrir, este botón vivía sin ninguna fricción justo
-// debajo del selector de "Asignado a", y un clic reflejo tras reasignar
-// bastaba para cerrar el ticket sin que nadie lo decidiera de verdad ────────
-const resolviendo = ref(false);
-const guardarComoKb = ref(false);
-const mostrarConfirmarResolver = ref(false);
-const dialogoResolver = ref(null);
-
-function cancelarResolver() {
-  mostrarConfirmarResolver.value = false;
-}
-
-async function confirmarResolver() {
-  resolviendo.value = true;
-  try {
-    await store.marcarResueltoYCerrado();
-    showToast('Ticket resuelto y cerrado');
-    await store.recargarSatisfaccion();
-    if (guardarComoKb.value) {
-      try {
-        await store.guardarComoBorradorKb();
-        showToast('Solución guardada como borrador en la Base de Conocimiento');
-      } catch (e) {
-        showToast('El ticket se cerró, pero no se pudo guardar el borrador en la Base de Conocimiento: ' + (e?.message || 'motivo desconocido'), 'error');
-      }
-    }
-    dialogoResolver.value?.cerrar();
-  } catch (e) {
-    showToast(e?.message || 'No se pudo marcar como resuelto', 'error');
-  } finally {
-    resolviendo.value = false;
-  }
-}
-
-// ── Reabrir: solo JEFE (reforzado también por trigger en BD) — exige
-// motivo, igual que Rechazar. Queda como NOTA INTERNA (no visible para el
-// empleado): reabrir es una decisión interna, el empleado ya ve el cambio
-// de estado en su seguimiento público ────────────────────────────────────
-const mostrarReabrir = ref(false);
-const motivoReabrir = ref('');
-const reabriendo = ref(false);
-
-function abrirReabrir() {
-  motivoReabrir.value = '';
-  mostrarReabrir.value = true;
-}
-
-async function confirmarReabrir() {
-  const motivo = motivoReabrir.value.trim();
-  if (!motivo) {
-    showToast('Escribe el motivo para reabrir', 'error');
-    return;
-  }
-  reabriendo.value = true;
-  try {
-    await store.actualizarCampos({ estado: 'reabierto' });
-    await store.comentar(motivo, true);
-    mostrarReabrir.value = false;
-    showToast('Ticket reabierto');
-  } catch (e) {
-    showToast(e?.message || 'No se pudo reabrir el ticket', 'error');
-  } finally {
-    reabriendo.value = false;
-  }
-}
-
-async function cambiarNivelAtencion(valor) {
-  guardandoCampo.value = true;
-  try {
-    await store.actualizarCampos({ nivel_atencion: valor || null });
-  } catch (e) {
-    showToast(e?.message || 'Error al cambiar el nivel de atención', 'error');
-  } finally {
-    guardandoCampo.value = false;
-  }
-}
-
-async function cambiarPrioridad(nuevaPrioridad) {
-  guardandoCampo.value = true;
-  try {
-    await store.actualizarCampos({ prioridad: nuevaPrioridad });
-  } catch (e) {
-    showToast(e?.message || 'Error al cambiar la prioridad', 'error');
-  } finally {
-    guardandoCampo.value = false;
-  }
-}
-
-// Desasignar un ticket EN CURSO pide confirmación (no reasignar a otro
-// técnico, eso sigue siendo directo): evita dejarlo "flotando" sin
-// responsable por un clic accidental en el select.
-const mostrarConfirmarDesasignar = ref(false);
-const dialogoDesasignar = ref(null);
-const desasignando = ref(false);
-let selectAsignadoEl = null;
-
-async function cambiarAsignado(staffId, event) {
-  if (!staffId && ESTADOS_EN_CURSO.includes(ticket.value.estado)) {
-    selectAsignadoEl = event?.target || null;
-    mostrarConfirmarDesasignar.value = true;
-    return;
-  }
-  guardandoCampo.value = true;
-  try {
-    await store.actualizarCampos({ asignado_a: staffId || null });
-    showToast(staffId ? 'Ticket asignado' : 'Asignación quitada');
-  } catch (e) {
-    showToast(e?.message || 'Error al asignar', 'error');
-  } finally {
-    guardandoCampo.value = false;
-  }
-}
-
-// Único handler de cierre (botón Cancelar y cierre animado tras confirmar):
-// el <select> de "Asignado a" no usa v-model (usa :value/@change), así que
-// hay que revertirlo a mano al valor actual del ticket.
-function cancelarDesasignar() {
-  mostrarConfirmarDesasignar.value = false;
-  if (selectAsignadoEl) selectAsignadoEl.value = ticket.value.asignado_a || '';
-  selectAsignadoEl = null;
-}
-
-async function confirmarDesasignar() {
-  desasignando.value = true;
-  try {
-    await store.actualizarCampos({ asignado_a: null });
-    showToast('Asignación quitada');
-    dialogoDesasignar.value?.cerrar();
-  } catch (e) {
-    showToast(e?.message || 'Error al asignar', 'error');
-  } finally {
-    desasignando.value = false;
-  }
-}
-
-async function cambiarTipo(nuevoTipo) {
-  guardandoCampo.value = true;
-  try {
-    await store.actualizarCampos({ tipo: nuevoTipo });
-  } catch (e) {
-    showToast(e?.message || 'Error al cambiar el tipo', 'error');
-  } finally {
-    guardandoCampo.value = false;
-  }
-}
-
-// ── Gestión de Problemas: "Marcar como problema" (reemplaza el viejo
-// checkbox de lección aprendida, columna retirada en la migración 033) ──
-const mostrarProblemaForm = ref(false);
-
-function onProblemaFormCerrado(creado) {
-  mostrarProblemaForm.value = false;
-  if (creado) {
-    showToast('Problema creado');
-    store.recargarProblemaVinculado();
-  }
-}
-
-// Copia un mensaje listo para WhatsApp con el enlace de calificación —
-// mismo patrón que copiarEnlaceSoporte() (TicketsView.vue): clipboard +
-// toast, sin abrir wa.me (el sistema no envía nada por su cuenta, el staff
-// decide a través de qué canal reenviarlo). Sin correo: el enlace de
-// calificación es el único canal de entrega desde que se retiró el aviso
-// automático (migración 055) — este botón es la vía real para que llegue.
-async function copiarMensajeSatisfaccion() {
-  const link = `${window.location.origin}/soporte/${ticket.value.token}/satisfaccion`;
-  const texto =
-    `Hola, ${ticket.value.empleado_nombre}.\n` +
-    `Su ticket ${ticket.value.codigo} fue cerrado. Le pedimos calificar el servicio recibido en el siguiente enlace:\n` +
-    `${link}\n\n` +
-    `Gracias por su tiempo.`;
-  try {
-    await navigator.clipboard.writeText(texto);
-    showToast('Mensaje de calificación copiado');
-  } catch {
-    showToast('No se pudo copiar. Copia manualmente: ' + link, 'error');
-  }
-}
-
-async function enviarComentario() {
-  const mensaje = nuevoComentario.value.trim();
-  if (!mensaje) return;
-  enviandoComentario.value = true;
-  try {
-    await store.comentar(mensaje, comentarioInterno.value);
-    nuevoComentario.value = '';
-    await nextTick();
-    autoCrecerTextarea();
-  } catch (e) {
-    showToast(e?.message || 'Error al comentar', 'error');
-  } finally {
-    enviandoComentario.value = false;
-  }
+  const noEncontrado = await cargarTicket(route.params.id);
+  if (noEncontrado) router.replace('/tickets');
 }
 
 onMounted(cargar);
-onUnmounted(() => store.limpiar());
+
+const campoMotivoRechazo = useCampoAccesible();
+const campoMotivoReabrir = useCampoAccesible();
+
+// ── Presentación (rediseño 2026-09-23) ──
+const esTerminal = computed(() => !!ticket.value && ESTADOS_TERMINALES.includes(ticket.value.estado));
+const enCurso = computed(() => !!ticket.value && ESTADOS_EN_CURSO.includes(ticket.value.estado));
+const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.tipo === 'comentario').length);
+
+// Actividad y conversación van juntas a propósito: es UNA historia en orden
+// ("se asignó → se escribió al empleado → respondió → se resolvió"), y
+// separarlas obliga a cruzar dos listas para reconstruirla. Para leer solo
+// lo que escribieron las personas, "Mensajes" oculta los hitos del sistema.
+const verFeed = ref('todo');
+const filasFeed = computed(() => (verFeed.value === 'mensajes'
+  ? timelineUnificado.value.filter((f) => f.tipo === 'comentario')
+  : timelineUnificado.value));
+const OPCIONES_FEED = computed(() => [
+  { valor: 'todo', label: 'Todo', titulo: 'Mensajes y cambios del ticket (asignación, estado, prioridad…) en orden' },
+  { valor: 'mensajes', label: 'Mensajes', titulo: 'Solo lo que escribieron el equipo y el solicitante', conteo: comentariosTotal.value },
+]);
+
+// Pantalla completa (lg+): el encabezado queda fijo y cada columna tiene su
+// propio scroll. La conversación arranca abajo — lo último que pasó es lo
+// que se viene a ver — y vuelve abajo con cada mensaje nuevo.
+const refFeed = ref(null);
+async function bajarAlFinal() {
+  await nextTick();
+  if (refFeed.value) refFeed.value.scrollTop = refFeed.value.scrollHeight;
+}
+watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
 </script>
 
 <template>
-  <div class="ticket-detalle-page vista-modulo">
-    <PageHeader>
-      <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" @click="volver('/tickets')">
-          <i class="ti ti-arrow-left"></i>
-        </button>
-        <div v-if="ticket" class="header-emp">
-          <h1>
-            <span class="tk-codigo">{{ ticket.codigo }}</span>
-            {{ ticket.titulo }}
-          </h1>
-          <span class="header-sub">{{ ticket.categoria_nombre }}{{ ticket.subcategoria_nombre ? ` · ${ticket.subcategoria_nombre}` : '' }}</span>
-        </div>
-      </template>
-    </PageHeader>
+  <div class="flex w-full flex-col px-4 pb-6 pt-6 sm:px-6 lg:h-full lg:min-h-0 lg:overflow-hidden">
+    <p v-if="cargando" class="py-16 text-center text-sm text-gray-500" role="status">Cargando ticket...</p>
 
-    <main class="page page--padded">
-      <div v-if="cargando" class="no-results">Cargando ticket...</div>
+    <p v-else-if="!ticket" class="py-16 text-center text-sm text-gray-500">No se encontró el ticket.</p>
 
-      <div v-else-if="ticket" class="grid-12">
-        <!-- Columna de datos -->
-        <div class="card col-3 tk-datos">
-          <div class="datos-title"><i class="ti ti-info-circle"></i> Solicitante</div>
-          <div v-if="ticket.vinculado && ticket.empleado_nombre" class="tk-solicitante">
-            <RouterLink class="tk-nombre empleado-link" :to="`/empleados/${ticket.empleado_id}`">{{ ticket.empleado_nombre }}</RouterLink>
-            <span class="tk-detalle">DNI {{ ticket.empleado_dni }}</span>
-            <span v-if="ticket.empleado_correo" class="tk-detalle">{{ ticket.empleado_correo }}</span>
-          </div>
-          <div v-else class="tk-sin-vincular">
-            <span class="badge" :class="badgeInfo('ticket_sin_vincular').clase"><i class="ti ti-alert-triangle"></i> {{ badgeInfo('ticket_sin_vincular').label }}</span>
-            <p v-if="ticket.contacto_ingresado" class="tk-detalle">Contacto ingresado: {{ ticket.contacto_ingresado }}</p>
-            <p class="tk-nota">Revisa manualmente quién es y, si corresponde, vincúlalo desde comentarios.</p>
-          </div>
-
-          <div v-if="equiposEmpleado.length" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-devices"></i> Equipos asignados</div>
-            <p v-for="eq in equiposEmpleado" :key="eq.equipo_id" class="tk-detalle">
-              <i class="ti ti-device-desktop"></i> {{ eq.codigo }} — {{ eq.marca }} {{ eq.modelo }}
-              <BadgeEstado tipo="situacion" :valor="eq.situacion" class="badge-inline" />
-            </p>
-          </div>
-
-          <div v-if="ticket.equipo_desc || ticket.cuenta_desc || ticket.licencia_desc" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-link"></i> Enlazado a</div>
-            <p v-if="ticket.equipo_desc" class="tk-detalle"><i class="ti ti-devices"></i> {{ ticket.equipo_desc }}</p>
-            <p v-if="ticket.cuenta_desc" class="tk-detalle"><i class="ti ti-key"></i> {{ ticket.cuenta_desc }}</p>
-            <p v-if="ticket.licencia_desc" class="tk-detalle"><i class="ti ti-license"></i> {{ ticket.licencia_desc }}</p>
-          </div>
-
-          <div v-if="ticket.adjunto_url" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-camera"></i> Captura adjunta</div>
-            <a :href="ticket.adjunto_url" target="_blank" rel="noopener noreferrer">
-              <img class="tk-adjunto" :src="ticket.adjunto_url" alt="Captura adjunta al ticket">
-            </a>
-          </div>
-
-          <div v-if="ticket.categoria_id" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-books"></i> Artículos relacionados</div>
-            <template v-if="articulosRelacionados.length">
-              <RouterLink
-                v-for="a in articulosRelacionados"
-                :key="a.id"
-                class="tk-kb-relacionado"
-                :to="`/base-conocimiento/${a.id}`"
-              >
-                {{ a.titulo }}
-              </RouterLink>
+    <template v-else>
+      <!-- ══ Encabezado: qué se pidió, en qué estado está, quién lo tiene y
+           la acción que corresponde ahora (una sola sólida por estado). -->
+      <header class="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-start">
+        <div class="min-w-0 flex-1">
+          <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm text-gray-500">
+            <span class="font-medium tabular-nums text-gray-600">{{ ticket.codigo }}</span>
+            <template v-if="ticket.categoria_nombre">
+              <span aria-hidden="true">·</span>
+              <span>{{ ticket.categoria_nombre }}{{ ticket.subcategoria_nombre ? ` › ${ticket.subcategoria_nombre}` : '' }}</span>
             </template>
-            <p v-else class="tk-nota">Sin artículos publicados en esta categoría todavía.</p>
-          </div>
-
-          <div class="tk-seccion">
-            <div class="datos-title">
-              <i class="ti ti-adjustments"></i> Gestión
-              <BadgeEstado tipo="ticket" :valor="ticket.estado" class="tk-estado-badge" />
-            </div>
-
-            <!-- abierto: campos de atención visibles directo (sin paso de
-                 "revelar" el formulario) + Rechazar / Iniciar atención -->
-            <template v-if="ticket.estado === 'abierto' && !mostrarRechazar">
-              <div class="form-group">
-                <label for="in-prioridad">Prioridad</label>
-                <select id="in-prioridad" v-model="atencionForm.prioridad" :disabled="iniciando">
-                  <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="in-nivel">Nivel de atención</label>
-                <select id="in-nivel" v-model="atencionForm.nivelAtencion" :disabled="iniciando">
-                  <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="in-asignado">Asignado a</label>
-                <select id="in-asignado" v-model="atencionForm.asignadoA" :disabled="iniciando">
-                  <option value="" disabled>Seleccionar</option>
-                  <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">
-                    {{ s.user_id === auth.user?.id ? `${s.nombre} (yo)` : s.nombre }}
-                  </option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="in-tipo">Tipo</label>
-                <select id="in-tipo" v-model="atencionForm.tipo" :disabled="iniciando">
-                  <option value="" disabled>Seleccionar</option>
-                  <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-                </select>
-                <p v-if="tipoAmbiguoSinClasificar" class="tk-nota">Esta subcategoría no tiene un tipo por defecto (puede ser incidente o solicitud según el caso) — elígelo manualmente antes de iniciar.</p>
-              </div>
-              <div class="tk-acciones-estado">
-                <button class="btn btn-danger" type="button" :disabled="iniciando" @click="abrirRechazar">
-                  <i class="ti ti-x" aria-hidden="true"></i> Rechazar
-                </button>
-                <button class="btn btn-primary" type="button" :disabled="iniciando" @click="confirmarIniciar">
-                  <i :class="iniciando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-player-play'" aria-hidden="true"></i>
-                  {{ iniciando ? 'Iniciando...' : 'Iniciar atención' }}
-                </button>
-              </div>
-            </template>
-
-            <!-- Formulario: Rechazar -->
-            <div v-if="mostrarRechazar" class="tk-form-inline">
-              <div class="form-group">
-                <label for="re-motivo">Motivo del rechazo *</label>
-                <textarea id="re-motivo" v-model="motivoRechazo" rows="3" placeholder="El empleado verá este motivo en su seguimiento" :disabled="rechazando"></textarea>
-              </div>
-              <div class="modal-actions">
-                <button class="btn" type="button" :disabled="rechazando" @click="mostrarRechazar = false">Cancelar</button>
-                <button class="btn btn-danger" type="button" :disabled="rechazando" @click="confirmarRechazar">
-                  <i v-if="rechazando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-                  {{ rechazando ? 'Rechazando...' : 'Confirmar rechazo' }}
-                </button>
-              </div>
-            </div>
-
-            <!-- en curso: campos editables + Marcar como resuelto -->
-            <template v-if="ESTADOS_EN_CURSO.includes(ticket.estado)">
-              <div class="form-group">
-                <label for="tk-prioridad">Prioridad</label>
-                <select id="tk-prioridad" :value="ticket.prioridad" :disabled="guardandoCampo" @change="cambiarPrioridad($event.target.value)">
-                  <option v-for="p in PRIORIDADES" :key="p.valor" :value="p.valor">{{ p.label }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="tk-nivel">Nivel de atención</label>
-                <select id="tk-nivel" :value="ticket.nivel_atencion || ''" :disabled="guardandoCampo" @change="cambiarNivelAtencion($event.target.value)">
-                  <option value="" disabled>Sin definir</option>
-                  <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="tk-asignado">Asignado a</label>
-                <select id="tk-asignado" :value="ticket.asignado_a || ''" :disabled="guardandoCampo" @change="cambiarAsignado($event.target.value, $event)">
-                  <option value="">Sin asignar</option>
-                  <option v-for="s in staffActivo" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="tk-tipo">Tipo</label>
-                <select id="tk-tipo" :value="ticket.tipo" :disabled="guardandoCampo" @change="cambiarTipo($event.target.value)">
-                  <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-                </select>
-              </div>
-              <label class="check-inline">
-                <input v-model="guardarComoKb" type="checkbox" :disabled="resolviendo">
-                ¿Guardar esta solución en la Base de Conocimiento?
-              </label>
-              <button class="btn btn-primary tk-btn-resolver" type="button" @click="mostrarConfirmarResolver = true">
-                <i class="ti ti-circle-check" aria-hidden="true"></i> Marcar como resuelto
-              </button>
-            </template>
-
-            <!-- terminal: solo lectura + Reabrir (jefe) -->
-            <template v-if="ESTADOS_TERMINALES.includes(ticket.estado) && !mostrarReabrir">
-              <p class="tk-detalle">Prioridad: {{ PRIORIDADES.find((p) => p.valor === ticket.prioridad)?.label || ticket.prioridad }}</p>
-              <p class="tk-detalle">Nivel de atención: <TextoVacio :valor="NIVELES_ATENCION.find((n) => n.valor === ticket.nivel_atencion)?.label" placeholder="Sin definir" /></p>
-              <p class="tk-detalle">Asignado a: <TextoVacio :valor="staffPorId[ticket.asignado_a]" placeholder="Sin asignar" /></p>
-              <button v-if="auth.esJefe" class="btn tk-btn-reabrir" type="button" :disabled="reabriendo" @click="abrirReabrir">
-                <i :class="reabriendo ? 'ti ti-loader-2 spinner-icon' : 'ti ti-refresh'" aria-hidden="true"></i> {{ reabriendo ? 'Reabriendo...' : 'Reabrir ticket' }}
-              </button>
-              <p v-else class="tk-nota">Solo el jefe puede reabrir este ticket.</p>
-            </template>
-
-            <!-- Formulario: Reabrir (motivo obligatorio, queda como nota interna) -->
-            <div v-if="mostrarReabrir" class="tk-form-inline">
-              <div class="form-group">
-                <label for="re-motivo-reabrir">Motivo para reabrir *</label>
-                <textarea id="re-motivo-reabrir" v-model="motivoReabrir" rows="3" placeholder="Queda como nota interna, no visible para el empleado" :disabled="reabriendo"></textarea>
-              </div>
-              <div class="modal-actions">
-                <button class="btn" type="button" :disabled="reabriendo" @click="mostrarReabrir = false">Cancelar</button>
-                <button class="btn btn-primary" type="button" :disabled="reabriendo" @click="confirmarReabrir">
-                  <i v-if="reabriendo" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-                  {{ reabriendo ? 'Reabriendo...' : 'Confirmar reabrir' }}
-                </button>
-              </div>
-            </div>
-
-            <div class="tk-problema-vinculado">
-              <RouterLink v-if="problemaVinculado" :to="`/problemas/${problemaVinculado.id}`" class="badge badge--danger badge-inline">
-                <i class="ti ti-alert-hexagon" aria-hidden="true"></i> Problema abierto: {{ problemaVinculado.titulo }}
-              </RouterLink>
-              <button v-else class="btn" type="button" @click="mostrarProblemaForm = true">
-                <i class="ti ti-alert-hexagon" aria-hidden="true"></i> Marcar como problema
-              </button>
-            </div>
-          </div>
-
-          <div v-if="satisfaccion" class="tk-seccion">
-            <div class="datos-title"><i class="ti ti-mood-smile"></i> Satisfacción</div>
-            <p v-if="satisfaccion.fecha_envio" class="tk-detalle">
-              Nivel {{ satisfaccion.nivel }}/5 — {{ formatFecha(satisfaccion.fecha_envio) }}
-            </p>
-            <p v-if="satisfaccion.comentario" class="tk-nota">"{{ satisfaccion.comentario }}"</p>
-            <template v-if="!satisfaccion.fecha_envio">
-              <p class="tk-nota">Encuesta enviada, sin respuesta todavía.</p>
-              <button class="btn tk-btn-satisfaccion" type="button" @click="copiarMensajeSatisfaccion">
-                <i class="ti ti-brand-whatsapp" aria-hidden="true"></i> Copiar mensaje de WhatsApp
-              </button>
-            </template>
-          </div>
-        </div>
-
-        <!-- Conversación -->
-        <div class="card col-6 tk-conversacion">
-          <div class="datos-title"><i class="ti ti-message-circle"></i> Conversación</div>
-          <p class="tk-descripcion">{{ ticket.descripcion }}</p>
-
-          <div v-if="comentarios.length" class="timeline tk-timeline">
-            <div v-for="c in comentarios" :key="c.id" class="timeline-item">
-              <span class="timeline-dot" :class="c.interno ? 'timeline-dot--closed' : 'timeline-dot--active'"></span>
-              <div class="timeline-content tk-comentario-bubble" :class="c.interno ? 'tk-comentario-bubble--interno' : 'tk-comentario-bubble--visible'">
-                <div class="timeline-title">
-                  {{ autorDe(c.autor_id) }}
-                  <span class="badge badge-inline" :class="c.interno ? 'badge--neutral' : 'badge--success'">
-                    {{ c.interno ? 'Nota interna' : 'Visible para el empleado' }}
-                  </span>
-                </div>
-                <div class="timeline-meta">{{ formatFechaHora(c.created_at) }}</div>
-                <p class="tk-mensaje">{{ c.mensaje }}</p>
-              </div>
-            </div>
-          </div>
-          <p v-else class="tk-nota">Sin comentarios todavía.</p>
-
-          <div v-if="!ESTADOS_TERMINALES.includes(ticket.estado)" class="tk-nuevo-comentario">
-            <textarea
-              ref="comentarioTextarea"
-              v-model="nuevoComentario"
-              rows="1"
-              class="tk-comentario-input"
-              placeholder="Escribe una nota interna o una respuesta para el empleado..."
-              :disabled="enviandoComentario"
-              @input="autoCrecerTextarea"
-            ></textarea>
-            <div class="tk-comentario-acciones">
-              <label class="check-inline">
-                <input v-model="comentarioInterno" type="checkbox" :disabled="enviandoComentario">
-                Nota interna (no visible para el empleado)
-              </label>
-              <button class="btn" type="button" :disabled="enviandoComentario || !nuevoComentario.trim()" @click="enviarComentario">
-                <i v-if="enviandoComentario" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-                {{ enviandoComentario ? 'Enviando...' : 'Comentar' }}
-              </button>
-            </div>
-          </div>
-          <p v-else class="tk-nota">
-            Ticket {{ estadoInfo(ticket.estado).label.toLowerCase() }} — {{ auth.esJefe ? 'reábrelo para seguir comentando.' : 'solo el jefe puede reabrirlo para seguir comentando.' }}
           </p>
+          <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ ticket.titulo }}</h1>
+            <BadgeEstado tipo="ticket" :valor="ticket.estado" />
+          </div>
+          <!-- De quién es, quién lo atiende, cuándo llegó y cómo terminó. -->
+          <TicketResumen
+            class="mt-3"
+            :ticket="ticket"
+            :resolucion="resolucion"
+            :satisfaccion="satisfaccion"
+            @copiar-encuesta="copiarMensajeSatisfaccion"
+          />
+          <RouterLink
+            v-if="problemaVinculado"
+            :to="`/problemas/${problemaVinculado.id}`"
+            class="mt-2 inline-flex items-center gap-1.5 rounded text-sm text-red-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          >
+            <i class="ti ti-alert-hexagon" aria-hidden="true"></i>Problema abierto: {{ problemaVinculado.titulo }}
+          </RouterLink>
         </div>
 
-        <!-- Historial (hoja de vida): esencial, siempre visible, sin modal -->
-        <div class="card col-3 tk-historial">
-          <div class="datos-title"><i class="ti ti-history"></i> Historial</div>
-          <div v-if="historialEsencial.length" class="timeline tk-historial-timeline">
-            <div v-for="h in historialEsencial" :key="h.id" class="timeline-item">
-              <span class="timeline-dot" :class="`timeline-dot--${h.color}`"></span>
-              <div class="timeline-content">
-                <div class="timeline-title">{{ h.label }}</div>
-                <div class="timeline-meta">{{ formatFechaHora(h.fecha) }}</div>
-                <div v-if="h.detalle" class="timeline-detalle">{{ h.detalle }}</div>
-              </div>
-            </div>
-          </div>
-          <p v-else class="tk-nota">Sin hitos todavía.</p>
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
+          <AppButton
+            v-if="!problemaVinculado"
+            variant="outline"
+            severity="secondary"
+            icon="ti ti-alert-hexagon"
+            label="Marcar como problema"
+            title="Agrupar este ticket en un problema: registrar la causa raíz cuando el mismo incidente se repite"
+            @click="mostrarProblemaForm = true"
+          />
+
+          <template v-if="ticket.estado === 'abierto' && !mostrarRechazar">
+            <AppButton variant="outline" severity="danger" icon="ti ti-x" label="Rechazar" title="Descartar el ticket sin atenderlo. El empleado verá el motivo en su seguimiento" :disabled="iniciando" @click="abrirRechazar" />
+            <AppButton
+              icon="ti ti-player-play"
+              :label="iniciando ? 'Iniciando...' : 'Iniciar atención'"
+              title="Tomar el ticket: pasa a En progreso con la prioridad, el nivel y el responsable elegidos"
+              :loading="iniciando"
+              @click="confirmarIniciar"
+            />
+          </template>
+
+          <AppButton
+            v-if="enCurso"
+            icon="ti ti-circle-check"
+            label="Marcar como resuelto"
+            title="Cerrar el ticket como resuelto y enviar la encuesta de satisfacción al empleado"
+            @click="mostrarConfirmarResolver = true"
+          />
+
+          <template v-if="esTerminal && !mostrarReabrir">
+            <AppButton
+              v-if="auth.esJefe"
+              variant="outline"
+              severity="secondary"
+              icon="ti ti-refresh"
+              :label="reabriendo ? 'Reabriendo...' : 'Reabrir ticket'"
+              title="Volver a abrir el ticket (solo jefe): el motivo queda como nota interna"
+              :loading="reabriendo"
+              @click="abrirReabrir"
+            />
+            <p v-else class="text-sm text-gray-500">Solo el jefe puede reabrir este ticket.</p>
+          </template>
         </div>
+      </header>
+
+      <!-- ══ Formularios inline (rechazar / reabrir): aparecen donde se
+           decidió la acción, antes de la conversación. -->
+      <section
+        v-if="mostrarRechazar"
+        class="mt-6 shrink-0 rounded-lg border border-gray-200 bg-white p-4"
+        aria-labelledby="rechazo-titulo"
+      >
+        <h2 id="rechazo-titulo" class="text-sm font-semibold text-gray-900">Rechazar ticket</h2>
+        <p class="mt-0.5 text-xs text-gray-500">El empleado verá este motivo en su seguimiento.</p>
+        <div class="campo mt-3" :class="{ 'campo--inerte': rechazando }">
+          <label class="campo__etiqueta" :for="campoMotivoRechazo.id">
+            Motivo del rechazo<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <textarea
+              :id="campoMotivoRechazo.id"
+              v-model="motivoRechazo"
+              class="campo__control campo__control--area"
+              :rows="3"
+              required
+              placeholder="Explique por qué no se atenderá el pedido"
+              :disabled="rechazando"
+            ></textarea>
+          </div>
+        </div>
+        <div class="mt-3 flex justify-end gap-2">
+          <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="rechazando" @click="mostrarRechazar = false" />
+          <AppButton
+            severity="danger"
+            :label="rechazando ? 'Rechazando...' : 'Confirmar rechazo'"
+            :loading="rechazando"
+            @click="confirmarRechazar"
+          />
+        </div>
+      </section>
+
+      <section
+        v-if="mostrarReabrir"
+        class="mt-6 shrink-0 rounded-lg border border-gray-200 bg-white p-4"
+        aria-labelledby="reabrir-titulo"
+      >
+        <h2 id="reabrir-titulo" class="text-sm font-semibold text-gray-900">Reabrir ticket</h2>
+        <p class="mt-0.5 text-xs text-gray-500">El motivo queda como nota interna, no visible para el empleado.</p>
+        <div class="campo mt-3" :class="{ 'campo--inerte': reabriendo }">
+          <label class="campo__etiqueta" :for="campoMotivoReabrir.id">
+            Motivo para reabrir<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <textarea
+              :id="campoMotivoReabrir.id"
+              v-model="motivoReabrir"
+              class="campo__control campo__control--area"
+              :rows="3"
+              required
+              placeholder="Qué volvió a fallar o qué quedó pendiente"
+              :disabled="reabriendo"
+            ></textarea>
+          </div>
+        </div>
+        <div class="mt-3 flex justify-end gap-2">
+          <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="reabriendo" @click="mostrarReabrir = false" />
+          <AppButton
+            :label="reabriendo ? 'Reabriendo...' : 'Confirmar reabrir'"
+            :loading="reabriendo"
+            @click="confirmarReabrir"
+          />
+        </div>
+      </section>
+
+      <!-- ══ Cuerpo: conversación (principal) + gestión y contexto (lateral).
+           Mismo feed y mismo composer que el panel del split-view. -->
+      <div class="mt-6 grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <AppSeccion titulo="Actividad y conversación" sin-padding llenar>
+          <template #acciones>
+            <AppSegmentado v-model="verFeed" :opciones="OPCIONES_FEED" label="Qué mostrar en la conversación" />
+          </template>
+          <div ref="refFeed" class="px-5 py-5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            <TicketTimelineUnificado :descripcion="ticket.descripcion" :filas="filasFeed" :autor-de="autorDe" />
+          </div>
+          <div class="shrink-0 border-t border-gray-100 px-5 py-4">
+            <TicketComposer
+              v-if="!esTerminal"
+              v-model:mensaje="nuevoComentario"
+              v-model:interno="comentarioInterno"
+              :enviando="enviandoComentario"
+              @enviar="enviarComentario"
+            />
+            <p v-else class="flex items-center gap-2 text-sm text-gray-500">
+              <i class="ti ti-lock" aria-hidden="true"></i>
+              Ticket {{ estadoInfo(ticket.estado).label.toLowerCase() }} — {{ auth.esJefe ? 'reábralo para seguir comentando.' : 'solo el jefe puede reabrirlo para seguir comentando.' }}
+            </p>
+          </div>
+        </AppSeccion>
+
+        <!-- En abierto, lo primero es triar (prioridad, responsable): en móvil
+             la gestión sube antes de la conversación. -->
+        <aside class="space-y-6 lg:min-h-0 lg:overflow-y-auto" :class="{ 'order-first lg:order-none': ticket.estado === 'abierto' }">
+          <!-- Campos según el estado (abierto / en curso / terminal) —
+               compartidos con TicketDetallePanel.vue. Se ocultan mientras un
+               formulario inline está abierto: rechazar solo ocurre en
+               abierto y reabrir solo en terminal. -->
+          <AppSeccion
+            titulo="Gestión"
+            :descripcion="ticket.estado === 'abierto' ? 'Se aplican al iniciar la atención.' : enCurso ? 'Cada cambio se guarda al momento.' : ''"
+          >
+            <TicketCamposGestion
+              v-if="!mostrarRechazar && !mostrarReabrir"
+              v-model:atencion-prioridad="atencionForm.prioridad"
+              v-model:atencion-nivel="atencionForm.nivelAtencion"
+              v-model:atencion-asignado="atencionForm.asignadoA"
+              v-model:atencion-tipo="atencionForm.tipo"
+              :ticket="ticket"
+              :staff-activo="staffActivo"
+              :staff-por-id="staffPorId"
+              :usuario-id="auth.user?.id || ''"
+              :iniciando="iniciando"
+              :guardando-campo="guardandoCampo"
+              :tipo-ambiguo-sin-clasificar="tipoAmbiguoSinClasificar"
+              @cambiar-prioridad="cambiarPrioridad"
+              @cambiar-nivel="cambiarNivelAtencion"
+              @cambiar-asignado="cambiarAsignado"
+              @cambiar-tipo="cambiarTipo"
+            />
+            <p v-else class="text-sm text-gray-500">Complete el formulario de arriba para continuar.</p>
+
+            <label v-if="enCurso" class="mt-4 flex cursor-pointer items-start gap-2 border-t border-gray-100 pt-3 text-sm text-gray-700">
+              <input v-model="guardarComoKb" type="checkbox" class="mt-0.5 h-4 w-4 accent-primary-500" :disabled="resolviendo">
+              Al resolver, guardar esta solución en la Base de Conocimiento
+            </label>
+          </AppSeccion>
+
+          <AppSeccion titulo="Solicitante">
+            <TicketSolicitante :ticket="ticket" miniatura />
+          </AppSeccion>
+
+          <AppSeccion v-if="equiposEmpleado.length || ticket.categoria_id" titulo="Contexto">
+            <TicketContexto
+              :equipos="equiposEmpleado"
+              :articulos="articulosRelacionados"
+              :categoria-id="ticket.categoria_id"
+              :aviso="ticket.aviso"
+              mostrar-vacios
+            />
+          </AppSeccion>
+
+        </aside>
       </div>
-    </main>
+    </template>
 
     <ProblemaForm
       v-if="mostrarProblemaForm"
@@ -683,8 +323,8 @@ onUnmounted(() => store.limpiar());
       @cerrar="onProblemaFormCerrado"
     />
 
-    <!-- Confirmación no destructiva (ConfirmDialog compartido): desasignar
-         un ticket en curso, para no dejarlo sin responsable por error -->
+    <!-- Confirmación no destructiva: desasignar un ticket en curso, para no
+         dejarlo sin responsable por error -->
     <ConfirmDialog
       v-if="mostrarConfirmarDesasignar"
       ref="dialogoDesasignar"
@@ -692,7 +332,7 @@ onUnmounted(() => store.limpiar());
       mensaje="¿Quitar la asignación de este ticket en curso? Quedará sin responsable hasta que alguien lo tome."
       confirmar-label="Quitar asignación"
       :cargando="desasignando"
-      @cancel="cancelarDesasignar"
+      @cerrado="cancelarDesasignar"
       @confirm="confirmarDesasignar"
     />
 
@@ -702,217 +342,11 @@ onUnmounted(() => store.limpiar());
       v-if="mostrarConfirmarResolver"
       ref="dialogoResolver"
       titulo="Marcar como resuelto"
-      mensaje="Esto cierra el ticket de inmediato — no hay un paso intermedio para revisar antes de cerrar. ¿Confirmas que el problema quedó resuelto?"
+      mensaje="Esto cierra el ticket de inmediato — no hay un paso intermedio para revisar antes de cerrar. ¿Confirma que el problema quedó resuelto?"
       confirmar-label="Marcar como resuelto"
       :cargando="resolviendo"
-      @cancel="cancelarResolver"
+      @cerrado="cancelarResolver"
       @confirm="confirmarResolver"
     />
   </div>
 </template>
-
-<style scoped>
-/* .header-left/.header-inner se estilan en main.css (shell de PageHeader) */
-.btn-volver { flex-shrink: 0; }
-
-.header-emp h1 {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tk-codigo {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-}
-
-.header-sub {
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-}
-
-.tk-datos, .tk-conversacion, .tk-historial {
-  padding: 16px 20px 20px;
-}
-
-.datos-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 10px;
-}
-
-.tk-seccion {
-  margin-top: 16px;
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
-}
-
-.tk-estado-badge {
-  margin-left: auto;
-}
-
-.tk-acciones-estado {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.tk-acciones-estado .btn {
-  flex: 1;
-  justify-content: center;
-}
-
-.tk-form-inline {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.tk-form-inline textarea {
-  width: 100%;
-}
-
-.tk-btn-resolver {
-  width: 100%;
-  justify-content: center;
-  margin-top: 6px;
-}
-
-.tk-btn-reabrir {
-  width: 100%;
-  justify-content: center;
-  margin-top: 6px;
-}
-
-.tk-btn-satisfaccion {
-  width: 100%;
-  justify-content: center;
-  margin-top: 8px;
-}
-
-.tk-solicitante, .tk-sin-vincular {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.tk-kb-relacionado {
-  display: block;
-  font-size: var(--fs-sm);
-  color: var(--color-accent-text);
-  text-decoration: none;
-  margin-bottom: 6px;
-}
-.tk-kb-relacionado:hover { text-decoration: underline; }
-
-.tk-nombre { font-size: var(--fs-base); font-weight: 600; color: var(--color-text-primary); }
-.tk-detalle { font-size: var(--fs-sm); color: var(--color-text-secondary); margin: 2px 0; }
-.tk-nota { font-size: var(--fs-sm); color: var(--color-text-tertiary); font-style: italic; margin: 4px 0 0; }
-
-.tk-adjunto {
-  max-width: 100%;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-}
-
-.tk-problema-vinculado { margin-top: 10px; }
-
-.check-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-base);
-  color: var(--color-text-primary);
-  cursor: pointer;
-  margin-top: 10px;
-}
-
-.tk-descripcion {
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-subtle);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  margin-bottom: 16px;
-  white-space: pre-wrap;
-}
-
-.tk-timeline { margin-bottom: 16px; }
-
-/* Mismo par de colores que sus badges (--success = visible, --neutral =
-   interna): un vistazo a la burbuja ya dice qué vio el empleado, sin
-   depender de leer el badge de texto. */
-.tk-comentario-bubble {
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
-}
-
-.tk-comentario-bubble--interno { background: var(--color-neutral-bg); }
-.tk-comentario-bubble--visible { background: var(--color-success-bg); }
-
-.tk-mensaje {
-  margin: 4px 0 0;
-  font-size: var(--fs-base);
-  color: var(--color-text-primary);
-  white-space: pre-wrap;
-}
-
-.tk-nuevo-comentario {
-  border-top: 1px solid var(--color-border);
-  padding-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Crece con el texto (como un chat) hasta un tope, luego scrollea
-   adentro — nunca se arrastra a mano ni sigue empujando la página. */
-.tk-comentario-input {
-  width: 100%;
-  min-height: 40px;
-  max-height: 160px;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-base);
-  font-family: var(--font-sans);
-  line-height: 1.4;
-  color: var(--color-text-primary);
-  background: var(--color-bg-elevated);
-  resize: none;
-  overflow-y: auto;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.tk-comentario-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--mat-ring);
-}
-
-.tk-comentario-acciones {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.tk-comentario-acciones .check-inline { margin-top: 0; }
-
-/* Historial: misma .timeline global (main.css), más compacta por ser
-   una columna angosta — título más chico, menos separación entre hitos. */
-.tk-historial-timeline .timeline-item { padding-bottom: 12px; }
-.tk-historial-timeline .timeline-title { font-size: var(--fs-sm); font-weight: 600; }
-.tk-historial-timeline .timeline-meta { font-size: 11px; margin-top: 1px; }
-.tk-historial-timeline .timeline-detalle { font-size: 11px; color: var(--color-warning-text); margin-top: 2px; }
-</style>

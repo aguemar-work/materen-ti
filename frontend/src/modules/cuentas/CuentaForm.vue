@@ -2,13 +2,16 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { generarPassword } from '../../core/generarPassword.js';
 import { showToast } from '../../core/toast.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import { traducirErrorDb } from '../../api/erroresDb.js';
+import AppButton from '../../components/ui/AppButton.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   cuenta: { type: Object, default: null },
@@ -17,23 +20,10 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+// Sobre AppDialog (diálogo único del sistema): bloqueo de scroll, foco
+// atrapado y Escape los resuelve el componente compartido. `@cerrado` se emite
+// en todo cierre; `resultado` dice si hubo guardado.
+let resultado = false;
 
 const store = useCuentasStore();
 
@@ -49,6 +39,13 @@ const cuentaCompartidaId = ref('');
 
 const esEdicion = computed(() => !!props.cuenta?.id);
 
+const infoError = infoNotificacion('error');
+const campoPlataforma = useCampoAccesible();
+const campoUsuario = useCampoAccesible();
+const campoPassword = useCampoAccesible();
+const campoUrl = useCampoAccesible();
+const campoNotas = useCampoAccesible();
+
 const form = ref({
   plataforma_id: '',
   usuario: '',
@@ -57,13 +54,12 @@ const form = ref({
   notas: '',
 });
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => ({
   form: form.value,
   modoCompartido: modoCompartido.value,
   cuentaCompartidaId: cuentaCompartidaId.value,
 }));
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
 
 function resetForm() {
   modoCompartido.value = false;
@@ -93,7 +89,7 @@ onMounted(async () => {
   try {
     plataformas.value = await insforgeApi.listPlataformas();
   } catch (e) {
-    error.value = e?.message || 'Error al cargar plataformas';
+    error.value = traducirErrorDb(e, { porDefecto: 'No se pudieron cargar las plataformas.' }).mensaje;
   } finally {
     cargandoPlataformas.value = false;
   }
@@ -107,35 +103,18 @@ async function activarModoCompartido() {
     try {
       correosCompartidos.value = await insforgeApi.listCorreosAsignables();
     } catch (e) {
-      error.value = e?.message || 'Error al cargar correos compartidos';
+      error.value = traducirErrorDb(e, { porDefecto: 'No se pudieron cargar los correos compartidos.' }).mensaje;
     } finally {
       cargandoCompartidos.value = false;
     }
   }
 }
 
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
-// confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return;
-  }
-  cerrar(false);
-}
-
-function descartarCambios() {
-  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
-  // mientras el formulario inicia su propia salida en paralelo
-  dialogoDescarte.value?.cerrar();
-  cerrar(false);
-}
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
-
+// Guard de cierre del AppDialog compartido: Escape y la X (backdrop
+// deshabilitado, ver template — formulario de captura, un clic afuera no
+// debe perder lo escrito) pasan por acá igual que el botón "Cancelar" —
+// con cambios sin guardar se pide confirmación antes de descartar; limpio
+// cierra directo.
 function generar() {
   form.value.password = generarPassword();
 }
@@ -145,7 +124,7 @@ async function copiarGenerada() {
     await navigator.clipboard.writeText(form.value.password);
     showToast('Contraseña copiada');
   } catch {
-    showToast('No se pudo copiar. Selecciónala manualmente', 'error');
+    showToast('No se pudo copiar. Selecciónela manualmente', 'error');
   }
 }
 
@@ -155,7 +134,7 @@ async function guardar() {
   try {
     if (modoCompartido.value) {
       if (!cuentaCompartidaId.value) {
-        error.value = 'Selecciona un correo compartido';
+        error.value = 'Seleccione un correo compartido';
         guardando.value = false;
         return;
       }
@@ -171,9 +150,10 @@ async function guardar() {
       await store.crear(props.empleadoId, form.value);
     }
     tomarSnapshot();
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al guardar cuenta';
+    error.value = mensajeError(e, { porDefecto: 'Error al guardar cuenta' });
   } finally {
     guardando.value = false;
   }
@@ -181,220 +161,216 @@ async function guardar() {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal cuenta-form" role="dialog" aria-modal="true" aria-labelledby="cuenta-form-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="cuenta-form-title">{{ esEdicion ? 'Editar cuenta' : 'Nueva cuenta' }}</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <!-- Toggle solo visible al crear, no al editar -->
-      <div v-if="!esEdicion" class="modo-toggle">
+  <AppDialog
+    ref="modal"
+    :titulo="esEdicion ? 'Editar cuenta' : 'Nueva cuenta'"
+    :confirmar-cierre="confirmarCierre"
+    :cerrar-en-backdrop="false"
+    @cerrado="emit('cerrar', resultado)"
+  >
+    <form id="cuenta-form" class="form-grid" @submit.prevent="guardar">
+      <!-- Modo: solo al crear. Personal = cuenta nueva del empleado;
+           compartido = asignarle un correo que ya existe en Correos. -->
+      <div v-if="!esEdicion" class="full grid gap-2 sm:grid-cols-2" role="group" aria-label="Tipo de cuenta">
         <button
-          class="modo-btn"
-          :class="{ 'modo-btn--active': !modoCompartido }"
           type="button"
+          class="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          :class="!modoCompartido ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white hover:bg-gray-50'"
+          :aria-pressed="!modoCompartido"
+          :disabled="guardando"
           @click="modoCompartido = false; error = ''"
         >
-          <i class="ti ti-user" aria-hidden="true"></i> Cuenta personal
+          <i class="ti ti-user mt-0.5 text-lg" :class="!modoCompartido ? 'text-primary-600' : 'text-gray-500'" aria-hidden="true"></i>
+          <span class="min-w-0">
+            <span class="block text-sm font-medium" :class="!modoCompartido ? 'text-primary-700' : 'text-gray-900'">Cuenta personal</span>
+            <span class="mt-0.5 block text-xs text-gray-500">Usuario propio del empleado en una plataforma</span>
+          </span>
         </button>
         <button
-          class="modo-btn"
-          :class="{ 'modo-btn--active': modoCompartido }"
           type="button"
+          class="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          :class="modoCompartido ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white hover:bg-gray-50'"
+          :aria-pressed="modoCompartido"
+          :disabled="guardando"
           @click="activarModoCompartido"
         >
-          <i class="ti ti-users" aria-hidden="true"></i> Correo compartido
+          <i class="ti ti-users mt-0.5 text-lg" :class="modoCompartido ? 'text-primary-600' : 'text-gray-500'" aria-hidden="true"></i>
+          <span class="min-w-0">
+            <span class="block text-sm font-medium" :class="modoCompartido ? 'text-primary-700' : 'text-gray-900'">Correo compartido</span>
+            <span class="mt-0.5 block text-xs text-gray-500">Asignar uno que ya existe en el módulo Correos</span>
+          </span>
         </button>
       </div>
 
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
+      <!-- Modo: correo compartido existente -->
+      <template v-if="modoCompartido">
+        <div class="campo full">
+          <label class="campo__etiqueta" for="cf-correo-compartido">Correo compartido<span aria-hidden="true"> *</span></label>
+          <p v-if="cargandoCompartidos" class="py-2 text-sm text-gray-500" role="status">Cargando correos compartidos...</p>
+          <BuscadorCombo
+            v-else
+            id="cf-correo-compartido"
+            v-model="cuentaCompartidaId"
+            :items="correosCompartidos"
+            :campos-busqueda="['usuario', 'plataforma_nombre']"
+            :etiqueta="(c) => c.usuario"
+            placeholder="Buscar correo por dirección o plataforma..."
+            :disabled="guardando"
+          >
+            <template #resultado="{ item }">
+              <span class="min-w-0 truncate text-xs">{{ item.usuario }}</span>
+              <span class="whitespace-nowrap text-xs text-gray-500">{{ item.plataforma_nombre }} · {{ item.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable' }}</span>
+            </template>
+          </BuscadorCombo>
+          <p v-if="!cargandoCompartidos && correosCompartidos.length === 0" class="campo__pie">
+            No hay correos compartidos registrados.
+            <a class="text-primary-700 hover:underline" href="/correos" target="_blank">Ir al módulo de correos compartidos</a>
+          </p>
+          <p v-else class="campo__pie">El empleado se suma a quienes ya usan ese correo; la contraseña no cambia.</p>
+        </div>
+      </template>
 
-        <!-- Modo: correo compartido existente -->
-        <template v-if="modoCompartido">
-          <div class="form-group full">
-            <label for="cf-correo-compartido">Correo compartido *</label>
-            <div v-if="cargandoCompartidos" class="loading-inline">Cargando correos compartidos...</div>
-            <BuscadorCombo
-              v-else
-              id="cf-correo-compartido"
-              v-model="cuentaCompartidaId"
-              :items="correosCompartidos"
-              :campos-busqueda="['usuario', 'plataforma_nombre']"
-              :etiqueta="(c) => c.usuario"
-              placeholder="Buscar correo por dirección o plataforma..."
-              :disabled="guardando"
-            >
-              <template #resultado="{ item }">
-                <span class="combo-usuario">{{ item.usuario }}</span>
-                <span class="combo-plataforma">{{ item.plataforma_nombre }} · {{ item.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable' }}</span>
-              </template>
-            </BuscadorCombo>
-            <p v-if="!cargandoCompartidos && correosCompartidos.length === 0" class="field-hint">
-              No hay correos compartidos registrados.
-              <a href="/correos" target="_blank">Ir al módulo de correos compartidos</a>
-            </p>
-          </div>
-        </template>
+      <!-- Modo: cuenta personal nueva o edición -->
+      <template v-else>
+        <div v-if="!esEdicion" class="section-label">
+          <i class="ti ti-at" aria-hidden="true"></i> Acceso
+        </div>
 
-        <!-- Modo: cuenta personal nueva o edición -->
-        <template v-else>
-          <div class="form-group full">
-            <label for="cf-plataforma">Plataforma *</label>
+        <div class="campo" :class="{ 'campo--inerte': guardando || cargandoPlataformas }">
+          <label class="campo__etiqueta" :for="campoPlataforma.id">
+            Plataforma<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
             <select
-              id="cf-plataforma"
+              :id="campoPlataforma.id"
               v-model="form.plataforma_id"
+              class="campo__control campo__control--select"
               required
               :disabled="guardando || cargandoPlataformas"
+              :aria-invalid="campoPlataforma.invalido.value"
+              :aria-describedby="campoPlataforma.describedBy.value"
             >
               <option value="" disabled>Seleccionar plataforma</option>
               <option v-for="p in plataformas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
             </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
           </div>
-
-          <div class="form-group full">
-            <label for="cf-usuario">Usuario *</label>
-            <input id="cf-usuario" v-model="form.usuario" required :disabled="guardando">
-          </div>
-
-          <div class="form-group full">
-            <label for="cf-password">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
-            <div class="password-wrap">
-              <input
-                id="cf-password"
-                v-model="form.password"
-                autocomplete="new-password"
-                :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
-                :disabled="guardando"
-              >
-              <button class="icon-btn" type="button" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
-                <i class="ti ti-refresh" aria-hidden="true"></i>
-              </button>
-              <button
-                v-if="form.password"
-                class="icon-btn"
-                type="button"
-                title="Copiar contraseña"
-                aria-label="Copiar contraseña"
-                :disabled="guardando"
-                @click="copiarGenerada"
-              >
-                <i class="ti ti-copy" aria-hidden="true"></i>
-              </button>
-            </div>
-          </div>
-
-          <div class="form-group full">
-            <label for="cf-url">URL</label>
-            <input id="cf-url" v-model="form.url" type="text" placeholder="https://..." :disabled="guardando">
-          </div>
-
-          <div class="form-group full">
-            <label for="cf-notas">Notas</label>
-            <textarea id="cf-notas" v-model="form.notas" :disabled="guardando"></textarea>
-          </div>
-        </template>
-
         </div>
 
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Guardando...' : (modoCompartido ? 'Asignar' : 'Guardar') }}
-          </button>
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoUsuario.id">
+            Usuario<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <input
+              :id="campoUsuario.id"
+              v-model="form.usuario"
+              type="text"
+              class="campo__control"
+              required
+              :disabled="guardando"
+              :aria-invalid="campoUsuario.invalido.value"
+              :aria-describedby="campoUsuario.describedBy.value"
+            >
+          </div>
         </div>
-      </form>
-    </div>
-  </div>
-  </Transition>
+
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoPassword.id">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
+          <div class="campo__caja pr-1">
+            <input
+              :id="campoPassword.id"
+              v-model="form.password"
+              type="text"
+              class="campo__control font-mono"
+              autocomplete="new-password"
+              :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+              :disabled="guardando"
+              :aria-invalid="campoPassword.invalido.value"
+              :aria-describedby="campoPassword.describedBy.value"
+            >
+            <button class="icon-btn shrink-0" type="button" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+              <i class="ti ti-refresh" aria-hidden="true"></i>
+            </button>
+            <button
+              v-if="form.password"
+              class="icon-btn shrink-0"
+              type="button"
+              title="Copiar contraseña"
+              aria-label="Copiar contraseña"
+              :disabled="guardando"
+              @click="copiarGenerada"
+            >
+              <i class="ti ti-copy" aria-hidden="true"></i>
+            </button>
+          </div>
+          <p v-if="esEdicion" class="campo__pie">Al cambiarla se quita el aviso “Rotar contraseña”.</p>
+        </div>
+
+        <div class="section-label">
+          <i class="ti ti-notes" aria-hidden="true"></i> Detalles
+        </div>
+
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoUrl.id">URL de acceso</label>
+          <div class="campo__caja">
+            <input
+              :id="campoUrl.id"
+              v-model="form.url"
+              type="text"
+              class="campo__control"
+              placeholder="https://..."
+              :disabled="guardando"
+              :aria-invalid="campoUrl.invalido.value"
+              :aria-describedby="campoUrl.describedBy.value"
+            >
+          </div>
+        </div>
+
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNotas.id">Notas</label>
+          <div class="campo__caja">
+            <textarea
+              :id="campoNotas.id"
+              v-model="form.notas"
+              class="campo__control campo__control--area"
+              rows="3"
+              :disabled="guardando"
+              :aria-invalid="campoNotas.invalido.value"
+              :aria-describedby="campoNotas.describedBy.value"
+            ></textarea>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
+    </form>
+
+    <template #acciones>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton
+        type="submit"
+        form="cuenta-form"
+        :label="guardando ? 'Guardando...' : (modoCompartido ? 'Asignar' : 'Guardar')"
+        :loading="guardando"
+      />
+    </template>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
-    @cancel="confirmarDescarte = false"
+    @cerrado="confirmarDescarte = false"
     @confirm="descartarCambios"
   />
 </template>
-
-<style scoped>
-.modo-toggle {
-  display: flex;
-  gap: 0;
-  padding: 0 24px 0;
-  border-bottom: 1px solid var(--color-border);
-  margin-bottom: 4px;
-}
-
-.modo-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px 0;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  transition: color 0.15s, border-color 0.15s;
-  margin-bottom: -1px;
-}
-
-.modo-btn:hover {
-  color: var(--color-text-primary);
-}
-
-.modo-btn--active {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
-}
-
-.loading-inline {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  padding: 8px 0;
-}
-
-.password-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.password-wrap input { flex: 1; min-width: 0; }
-
-.field-hint {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.field-hint a {
-  color: var(--color-primary);
-  text-decoration: none;
-}
-
-.field-hint a:hover {
-  text-decoration: underline;
-}
-
-
-.modal-actions.full {
-  grid-column: 1 / -1;
-}
-</style>

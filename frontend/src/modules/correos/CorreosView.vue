@@ -1,51 +1,110 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useRoute } from 'vue-router';
 import { useCorreosStore } from '../../stores/correos.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { revelarPassword } from '../../api/passwords.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
+import { badgeInfo } from '../../core/badges.js';
+import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
 import CorreoForm from './CorreoForm.vue';
-import Pagination from '../../components/shared/Pagination.vue';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
-import MenuAcciones from '../../components/shared/MenuAcciones.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppAvatar from '../../components/ui/AppAvatar.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
+import { insforgeApi } from '../../api/insforge.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useEsMovil } from '../../composables/useEsMovil.js';
 
 const store = useCorreosStore();
 const authStore = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
+const { esMovil } = useEsMovil();
 
-useRealtimeRefresco('cuentas:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+useRealtimeRefresco('cuentas:list', () => Promise.all([store.cargar(), refrescarConteos()]), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
+// ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
+// La VISTA reúne los dos segmentados que había (tipo y "requieren
+// rotación"): son las 4 preguntas del módulo. Plataforma es un chip.
+// La búsqueda global enlaza con /correos?q=usuario@dominio.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  vista: { tipo: 'valor', defecto: 'todos' },
+  q: { tipo: 'texto' },
+  plataforma: { tipo: 'lista' },
+});
+const CLAVES_FILTRO = ['q', 'plataforma'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
 
-// Deep-link desde la búsqueda global: /correos?q=usuario@dominio
-const route = useRoute();
-busqueda.value = String(route.query.q ?? '');
-watch(() => route.query.q, (q) => { if (q != null) busqueda.value = String(q); });
+const PARAMS_VISTA = {
+  todos: {},
+  compartida: { tipo: 'compartida' },
+  reutilizable: { tipo: 'reutilizable' },
+  rotar: { soloRotacion: true },
+};
+const filtrosSinVista = computed(() => ({ q: filtros.q, plataformaIds: filtros.plataforma }));
+const filtrosServidor = computed(() => ({
+  ...filtrosSinVista.value, tipo: '', soloRotacion: false, ...(PARAMS_VISTA[filtros.vista] || {}),
+}));
 
-const filtroTipo = ref('');
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
+  try {
+    conteos.value = await insforgeApi.conteosCorreosPorVista(filtrosSinVista.value);
+  } catch {
+    // Sin conteos, las pestañas se muestran igual (sin número).
+  }
+}
+
+const VISTAS = computed(() => [
+  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
+  { valor: 'compartida', label: 'Compartidos', conteo: conteos.value?.compartida, titulo: 'Los usan varias personas a la vez' },
+  { valor: 'reutilizable', label: 'Reutilizables', conteo: conteos.value?.reutilizable, titulo: 'Pasan de una persona a otra' },
+  { valor: 'rotar', label: 'Por rotar', conteo: conteos.value?.rotar, titulo: 'Requieren cambio de contraseña' },
+]);
+const FRASE_VISTA = { compartida: ' compartidas', reutilizable: ' reutilizables', rotar: ' que requieren rotación' };
+
+const plataformas = ref([]);
+const DIMENSIONES = computed(() => [
+  { id: 'plataforma', label: 'Plataforma', icono: 'ti ti-apps', opciones: plataformas.value.map((p) => ({ valor: p.id, label: p.nombre })) },
+]);
+const chips = computed({
+  get: () => ({ plataforma: filtros.plataforma }),
+  set: (v) => { filtros.plataforma = v.plataforma; },
+});
+
+// "Por rotar" vacío y sin filtros: es una buena noticia, no "sin resultados".
+const nadaPorRotar = computed(() => filtros.vista === 'rotar' && !hayFiltros.value);
+function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
+  busqueda.value = '';
+}
+
+watch(filtrosServidor, (f) => { store.aplicarFiltros(f).catch(() => {}); }, { deep: true });
+watch(filtrosSinVista, refrescarConteos, { deep: true });
+
 const mostrarForm = ref(false);
 const correoEditar = ref(null);
-const passwordVisibles = ref({});
-
-watch(filtroTipo, (tipo) => store.aplicarFiltros({ tipo }));
-
-const paginaActual = computed({
-  get: () => store.pagina,
-  set: (p) => store.irAPagina(p),
-});
+// true = el formulario se abrió desde "Rotar contraseña": entra con el foco
+// en "Nueva contraseña" y un aviso de por qué (ver CorreoForm.vue).
+const modoRotar = ref(false);
 
 const exportando = ref(false);
 async function exportar() {
@@ -71,51 +130,73 @@ async function exportar() {
   }
 }
 
-// passwordVisibles[id] guarda el texto revelado; null = oculto.
-// Cada revelado pasa por la edge function y queda auditado.
-async function togglePassword(correo) {
-  if (passwordVisibles.value[correo.id]) {
-    passwordVisibles.value[correo.id] = null;
-    return;
+// El revelado de una credencial (peticion a la edge function `credenciales`,
+// auditoria en accesos_log con el motivo, cuenta regresiva de 8 segundos y
+// ocultado automatico) vive en composables/useRevelado.js. Esta vista solo
+// declara QUE se revela — una instancia por fila, creada perezosamente.
+const revelados = new Map();
+function revelarDe(fila) {
+  if (!revelados.has(fila.id)) {
+    revelados.set(fila.id, crearRevelado({
+      revelar: (motivo) => revelarPassword(fila.id, motivo),
+      etiqueta: 'contraseña',
+    }));
   }
-  try {
-    passwordVisibles.value[correo.id] = await revelarPassword(correo.id, 'ver');
-  } catch (e) {
-    showToast(e?.message || 'Error al revelar contraseña', 'error');
-  }
+  return revelados.get(fila.id);
 }
-
-async function copiarPassword(correo) {
-  try {
-    const password = await revelarPassword(correo.id, 'copiar');
-    await navigator.clipboard.writeText(password);
-    showToast('Contraseña copiada');
-  } catch (e) {
-    showToast(e?.message || 'No se pudo copiar', 'error');
-  }
-}
+// Bloqueo uniforme (no por fila): si el permiso general se cae mientras hay
+// credenciales a la vista, se ocultan todas.
+watch(() => authStore.puedeVerCredenciales, (puede) => {
+  if (!puede) revelados.forEach((r) => r.ocultar());
+});
+const detenerOcultamiento = escucharOcultamientoPorCambioDePestana(() => [...revelados.values()]);
+onBeforeUnmount(() => {
+  detenerOcultamiento();
+  revelados.forEach((r) => r.ocultar());
+});
 
 function abrirNuevo() {
   correoEditar.value = null;
+  modoRotar.value = false;
   mostrarForm.value = true;
 }
 
 function abrirEditar(correo) {
   correoEditar.value = correo;
+  modoRotar.value = false;
   mostrarForm.value = true;
 }
 
-function accionesDe(correo) {
+// Rotar = el mismo formulario de edición (la contraseña nueva viaja por el
+// mismo updateCorreo con password_cambiada, que además limpia la marca), pero
+// entrando directo al campo que importa. Nunca precarga la actual.
+function abrirRotar(correo) {
+  correoEditar.value = correo;
+  modoRotar.value = true;
+  mostrarForm.value = true;
+}
+
+// Acciones por fila en el menú ⋮ (rediseño 2026-09-22: antes eran dos
+// íconos sueltos). Mismas acciones que antes.
+function accionesDe(fila) {
   return [
-    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(correo) },
-    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = correo; } },
+    { icono: 'ti-key', label: 'Rotar contraseña', visible: fila.requiere_rotacion, onClick: () => abrirRotar(fila) },
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(fila) },
+    { separador: true },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = fila; } },
   ];
+}
+
+// Nombres de quienes usan la cuenta, para el título de la celda "Asignado a".
+function nombresAsignados(fila) {
+  return (fila.asignados || []).map((a) => a.nombre).join(', ');
 }
 
 function onFormCerrado(guardado) {
   const fueEdicion = !!correoEditar.value;
   mostrarForm.value = false;
   correoEditar.value = null;
+  modoRotar.value = false;
   if (guardado) showToast(fueEdicion ? 'Correo actualizado' : 'Correo compartido creado');
 }
 
@@ -141,254 +222,316 @@ async function confirmarEliminar() {
 
 onMounted(async () => {
   store.resetearFiltros();
+  insforgeApi.listPlataformas().then((p) => { plataformas.value = p; }).catch(() => {});
+  refrescarConteos();
   try {
-    if (busqueda.value.trim()) {
-      await store.aplicarFiltros({ q: busqueda.value.trim() });
-    } else {
-      await store.cargar();
-    }
+    await store.aplicarFiltros(filtrosServidor.value);
   } catch {
     showToast(error.value || 'Error al cargar correos compartidos', 'error');
   }
 });
 </script>
 
+
 <template>
-  <div class="correos-page vista-modulo">
-    <PageHeader titulo="Correos" icono="ti ti-mail-share" :conteo="total">
-      <template #acciones>
-        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </button>
-        <button class="btn btn-primary" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo correo
-        </button>
+  <div class="flex h-full min-h-0 flex-col">
+    <AppEncabezado titulo="Correos">
+      <template #subtitulo>
+        {{ total }} {{ total === 1 ? 'cuenta' : 'cuentas' }}{{ FRASE_VISTA[filtros.vista] || '' }}{{ hayFiltros ? ', con los filtros aplicados' : '' }}
+        · buzones y usuarios que se usan entre varias personas
       </template>
-    </PageHeader>
+      <template #acciones>
+        <AppButton
+          variant="text"
+          severity="secondary"
+          icon="ti ti-table-export"
+          :loading="exportando"
+          :disabled="exportando"
+          :label="exportando ? 'Exportando...' : 'Exportar'"
+          title="Exportar a Excel (CSV)"
+          @click="exportar"
+        />
+        <AppButton icon="ti ti-plus" label="Nuevo correo" @click="abrirNuevo" />
+      </template>
+    </AppEncabezado>
 
-    <main class="page">
-      <div class="card card--fill">
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input
-              v-model="busqueda"
-              type="text"
-              placeholder="Buscar por correo o plataforma..."
-            >
-          </div>
-          <div class="filter-field">
-            <label for="filtro-tipo">Tipo</label>
-            <select id="filtro-tipo" v-model="filtroTipo">
-              <option value="">Todos los tipos</option>
-              <option value="compartida">Compartidos</option>
-              <option value="reutilizable">Reutilizables</option>
-            </select>
-          </div>
-        </div>
+    <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
+    <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de correos" />
+    <AppBarraFiltros class="pt-3">
+      <AppBuscador v-model="busqueda" label="Buscar correos" placeholder="Buscar por correo o plataforma" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+    </AppBarraFiltros>
 
-        <div v-if="cargando" class="no-results solo-movil">Cargando correos...</div>
-        <div v-else-if="error" class="no-results correos-error">{{ error }}</div>
+    <!-- ══ Contenido ═══════════════════════════════════════════════ -->
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <div v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
+      </div>
 
-        <EmptyState
-          v-else-if="!cargando && total === 0"
-          icono="ti ti-mail-share"
-          titulo="Sin correos compartidos"
-          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Registra un correo compartido para asignarlo a empleados.'"
-        >
-          <button v-if="!busqueda" class="btn" type="button" @click="abrirNuevo">
-            <i class="ti ti-plus"></i> Nuevo correo compartido
-          </button>
-        </EmptyState>
+      <AppVacio
+        v-else-if="!cargando && total === 0"
+        icono="ti ti-mail-share"
+        :titulo="nadaPorRotar ? 'Nada por rotar' : hayFiltros ? 'Sin resultados' : 'Sin correos compartidos todavía'"
+        :mensaje="nadaPorRotar
+          ? 'Ninguna cuenta compartida o reutilizable tiene pendiente el cambio de contraseña.'
+          : hayFiltros ? 'No hay correos con los filtros aplicados.' : 'Registre un correo compartido o reutilizable para asignarlo a los empleados que lo usan.'"
+      >
+        <AppButton
+          v-if="!hayFiltros"
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-plus"
+          label="Registrar correo"
+          @click="abrirNuevo"
+        />
+        <AppButton
+          v-if="hayFiltros"
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-x"
+          label="Limpiar filtros"
+          @click="limpiarFiltros"
+        />
+      </AppVacio>
 
-        <template v-if="!error && (cargando || total > 0)">
+      <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando correos compartidos…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Correos compartidos y reutilizables">
-            <thead>
-              <tr>
-                <th scope="col">Plataforma</th>
-                <ThOrdenable clave="tipo_cuenta" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Tipo</ThOrdenable>
-                <ThOrdenable clave="usuario" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Correo / Usuario</ThOrdenable>
-                <th scope="col">Asignado a</th>
-                <th scope="col">Contraseña</th>
-                <ThOrdenable clave="url" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">URL</ThOrdenable>
-                <ThOrdenable clave="notas" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Notas</ThOrdenable>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="8" />
-              <template v-else>
-              <tr v-for="correo in lista" :key="correo.id">
-                <td>
-                  <div class="user-name"><TextoVacio :valor="correo.plataforma_nombre" /></div>
-                </td>
-                <td>
-                  <BadgeEstado tipo="tipo_cuenta" :valor="correo.tipo_cuenta" />
-                </td>
-                <td class="correo-usuario">{{ correo.usuario }}</td>
-                <td>
-                  <div class="asignado-cell">
-                    <template v-if="correo.tipo_cuenta === 'reutilizable'">
+
+        <!-- ── Tabla (escritorio) ── -->
+        <AppMarcoTabla v-if="!esMovil">
+          <div class="min-h-0 flex-1 overflow-auto">
+            <AppTable
+              :value="lista"
+              :loading="cargando"
+              :total-records="total"
+              :rows="store.tamPagina"
+              :orden="orden"
+              aria-label="Correos compartidos y reutilizables"
+              @ordenar="store.ordenarPor"
+            >
+              <AppColumn field="usuario" header="Cuenta" sortable>
+                <template #body="{ data: fila }">
+                  <div class="flex min-w-0 max-w-80 items-center gap-3">
+                    <span
+                      class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500"
+                      :title="badgeInfo('tipo_cuenta', fila.tipo_cuenta).label"
+                    >
+                      <i :class="fila.tipo_cuenta === 'reutilizable' ? 'ti ti-transfer' : 'ti ti-users'" aria-hidden="true"></i>
+                    </span>
+                    <div class="min-w-0">
+                      <div class="truncate font-medium text-gray-900" :title="fila.usuario">{{ fila.usuario }}</div>
+                      <div class="truncate text-xs text-gray-500">
+                        {{ fila.plataforma_nombre || 'Sin plataforma' }} · {{ badgeInfo('tipo_cuenta', fila.tipo_cuenta).label }}
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="asignado" header="Quién la usa">
+                <template #body="{ data: fila }">
+                  <div class="flex min-w-0 flex-col items-start gap-1">
+                    <!-- Reutilizable: un titular a la vez, o libre -->
+                    <template v-if="fila.tipo_cuenta === 'reutilizable'">
                       <RouterLink
-                        v-if="correo.asignados?.length"
-                        class="asignado-nombre empleado-link"
-                        :to="`/empleados/${correo.asignados[0].id}`"
-                        :title="correo.asignados.map((a) => a.nombre).join(', ')"
+                        v-if="fila.asignados?.length"
+                        class="inline-flex max-w-56 items-center gap-2 rounded text-sm text-gray-900 hover:text-primary-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                        :to="`/empleados/${fila.asignados[0].id}`"
+                        :title="nombresAsignados(fila)"
                       >
-                        {{ correo.asignados[0].nombre }}
+                        <AppAvatar :nombre="fila.asignados[0].nombre" />
+                        <span class="truncate">{{ fila.asignados[0].nombre }}</span>
                       </RouterLink>
-                      <span v-else class="badge badge--success">
-                        <i class="ti ti-circle-check"></i> Libre
-                      </span>
+                      <AppTag v-else tono="success" icono="ti ti-circle-check">Libre</AppTag>
                     </template>
+                    <!-- Compartida: varios usuarios a la vez -->
                     <template v-else>
-                      <span
-                        v-if="correo.asignados?.length"
-                        class="asignado-nombre"
-                        :title="correo.asignados.map((a) => a.nombre).join(', ')"
-                      >
-                        {{ correo.asignados.length }} usuario{{ correo.asignados.length === 1 ? '' : 's' }}
-                      </span>
-                      <TextoVacio v-else placeholder="Sin usuarios" />
+                      <div v-if="fila.asignados?.length" class="flex items-center gap-2" :title="nombresAsignados(fila)">
+                        <div class="flex -space-x-2" aria-hidden="true">
+                          <span v-for="a in fila.asignados.slice(0, 3)" :key="a.id" class="rounded-full ring-2 ring-white">
+                            <AppAvatar :nombre="a.nombre" />
+                          </span>
+                        </div>
+                        <span class="text-sm text-gray-700 tabular-nums">
+                          {{ fila.asignados.length }} {{ fila.asignados.length === 1 ? 'usuario' : 'usuarios' }}
+                        </span>
+                      </div>
+                      <span v-else class="text-sm text-gray-500">Sin usuarios</span>
                     </template>
-                    <span v-if="correo.requiere_rotacion" class="badge badge--warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
-                      <i class="ti ti-alert-triangle"></i> Rotar contraseña
+                    <AppTag
+                      v-if="fila.requiere_rotacion"
+                      tono="warning"
+                      icono="ti ti-alert-triangle"
+                      title="Un titular dejó esta cuenta y la contraseña no se ha cambiado"
+                    >Rotar contraseña</AppTag>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="contrasena" header="Contraseña">
+                <template #body="{ data: fila }">
+                  <!-- Revelado auditado (useRevelado): marcado .cred* intacto -->
+                  <div class="cred w-40">
+                    <span v-if="revelarDe(fila).valor.value" class="cred__valor">{{ revelarDe(fila).valor.value }}</span>
+                    <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                    <template v-if="authStore.puedeVerCredenciales">
+                      <button
+                        type="button"
+                        class="cred__accion"
+                        :disabled="revelarDe(fila).pidiendo.value"
+                        :aria-label="revelarDe(fila).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                        @click="revelarDe(fila).mostrar()"
+                      >
+                        <i :class="revelarDe(fila).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="cred__accion"
+                        :disabled="revelarDe(fila).pidiendo.value"
+                        aria-label="Copiar contraseña"
+                        @click="revelarDe(fila).copiar()"
+                      >
+                        <i class="ti ti-copy" aria-hidden="true"></i>
+                      </button>
+                      <span v-if="revelarDe(fila).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(fila).restante.value }}s</span>
+                    </template>
+                    <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas" title="Sin permiso para ver contraseñas">
+                      <i class="ti ti-lock" aria-hidden="true"></i>
                     </span>
                   </div>
-                </td>
-                <td>
-                  <div class="password-cell">
-                    <span class="password-text">
-                      {{ passwordVisibles[correo.id] || '••••••••' }}
-                    </span>
-                    <button
+                </template>
+              </AppColumn>
+
+              <AppColumn field="notas" header="Notas" sortable>
+                <template #body="{ data: fila }">
+                  <p v-if="fila.notas" class="max-w-64 truncate text-sm text-gray-600" :title="fila.notas">{{ fila.notas }}</p>
+                  <span v-else class="text-sm text-gray-500">Sin notas</span>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+                <template #body="{ data: fila }">
+                  <div class="flex items-center justify-end gap-0.5">
+                    <a
+                      v-if="fila.url"
+                      :href="fila.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       class="icon-btn"
-                      type="button"
-                      :disabled="!authStore.puedeVerCredenciales"
-                      :title="authStore.puedeVerCredenciales ? (passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar') : 'Sin permiso para ver contraseñas'"
-                      :aria-label="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
-                      @click="togglePassword(correo)"
+                      :title="fila.url"
+                      aria-label="Abrir URL de la plataforma"
                     >
-                      <i :class="passwordVisibles[correo.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :disabled="!authStore.puedeVerCredenciales"
-                      :title="authStore.puedeVerCredenciales ? 'Copiar contraseña' : 'Sin permiso para ver contraseñas'"
-                      aria-label="Copiar contraseña"
-                      @click="copiarPassword(correo)"
-                    >
-                      <i class="ti ti-copy"></i>
-                    </button>
+                      <i class="ti ti-arrow-up-right" aria-hidden="true"></i>
+                    </a>
+                    <span v-else class="inline-block h-8 w-8" aria-hidden="true"></span>
+                    <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.usuario}`" />
                   </div>
-                </td>
-                <td>
+                </template>
+              </AppColumn>
+            </AppTable>
+          </div>
+
+          <AppPaginacion
+            v-if="!cargando && total > 0"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+            @update:tam-pagina="store.cambiarTamPagina"
+          />
+        </AppMarcoTabla>
+
+        <!-- ── Tarjetas (móvil) ── -->
+        <div v-else class="min-h-0 flex-1 overflow-y-auto">
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando correos...</p>
+          <ul v-else class="grid gap-3 sm:grid-cols-2" aria-label="Correos compartidos y reutilizables">
+            <li v-for="fila in lista" :key="fila.id" class="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
+              <div class="flex items-start gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-500">
+                  <i :class="fila.tipo_cuenta === 'reutilizable' ? 'ti ti-transfer' : 'ti ti-users'" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-medium text-gray-900">{{ fila.usuario }}</div>
+                  <div class="truncate text-xs text-gray-500">
+                    {{ fila.plataforma_nombre || 'Sin plataforma' }} · {{ badgeInfo('tipo_cuenta', fila.tipo_cuenta).label }}
+                  </div>
+                </div>
+                <div class="-mr-1 -mt-1 flex items-center">
                   <a
-                    v-if="correo.url"
-                    :href="correo.url"
+                    v-if="fila.url"
+                    :href="fila.url"
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="url-link"
-                    :title="correo.url"
+                    class="icon-btn"
+                    :title="fila.url"
                     aria-label="Abrir URL de la plataforma"
                   >
-                    <i class="ti ti-external-link"></i>
+                    <i class="ti ti-arrow-up-right" aria-hidden="true"></i>
                   </a>
-                  <TextoVacio v-else />
-                </td>
-                <td class="notas-cell">
-                  <span v-if="correo.notas" :title="correo.notas">{{ correo.notas }}</span>
-                  <TextoVacio v-else />
-                </td>
-                <td>
-                  <div class="actions">
-                    <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(correo)">
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = correo">
-                      <i class="ti ti-trash"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Correos compartidos y reutilizables">
-          <li v-for="correo in lista" :key="correo.id" class="tarjeta-fila">
-            <div class="tarjeta-fila__principal user-name"><TextoVacio :valor="correo.plataforma_nombre" /></div>
-            <div class="tarjeta-fila__sec">
-              <span class="correo-usuario">{{ correo.usuario }}</span>
-            </div>
-            <div class="tarjeta-fila__sec">
-              <template v-if="correo.tipo_cuenta === 'reutilizable'">
-                <RouterLink
-                  v-if="correo.asignados?.length"
-                  class="empleado-link"
-                  :to="`/empleados/${correo.asignados[0].id}`"
-                >
-                  {{ correo.asignados[0].nombre }}
-                </RouterLink>
-                <span v-else class="badge badge--success">
-                  <i class="ti ti-circle-check"></i> Libre
-                </span>
-              </template>
-              <template v-else>
-                <span v-if="correo.asignados?.length">
-                  {{ correo.asignados.length }} usuario{{ correo.asignados.length === 1 ? '' : 's' }}
-                </span>
-                <TextoVacio v-else placeholder="Sin usuarios" />
-              </template>
-            </div>
-            <div class="tarjeta-fila__sec password-cell">
-              <span class="password-text">{{ passwordVisibles[correo.id] || '••••••••' }}</span>
-              <button
-                class="icon-btn"
-                type="button"
-                :disabled="!authStore.puedeVerCredenciales"
-                :title="authStore.puedeVerCredenciales ? (passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar') : 'Sin permiso para ver contraseñas'"
-                :aria-label="passwordVisibles[correo.id] ? 'Ocultar' : 'Mostrar'"
-                @click.stop="togglePassword(correo)"
-              >
-                <i :class="passwordVisibles[correo.id] ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
-              </button>
-              <button
-                class="icon-btn"
-                type="button"
-                :disabled="!authStore.puedeVerCredenciales"
-                :title="authStore.puedeVerCredenciales ? 'Copiar contraseña' : 'Sin permiso para ver contraseñas'"
-                aria-label="Copiar contraseña"
-                @click.stop="copiarPassword(correo)"
-              >
-                <i class="ti ti-copy"></i>
-              </button>
-            </div>
-            <div class="tarjeta-fila__pie">
-              <div class="tarjeta-fila__badges">
-                <BadgeEstado tipo="tipo_cuenta" :valor="correo.tipo_cuenta" />
-                <span v-if="correo.requiere_rotacion" class="badge badge--warning" title="Un titular dejó esta cuenta y la contraseña no se ha cambiado">
-                  <i class="ti ti-alert-triangle"></i> Rotar
-                </span>
+                  <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.usuario}`" />
+                </div>
               </div>
-              <MenuAcciones :acciones="accionesDe(correo)" :label="`Acciones de ${correo.usuario}`" />
-            </div>
-          </li>
-        </ul>
 
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
-        </template>
-      </div>
-    </main>
+              <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <template v-if="fila.tipo_cuenta === 'reutilizable'">
+                  <RouterLink
+                    v-if="fila.asignados?.length"
+                    class="inline-flex min-w-0 items-center gap-2 text-gray-900 hover:text-primary-700 hover:underline"
+                    :to="`/empleados/${fila.asignados[0].id}`"
+                  >
+                    <AppAvatar :nombre="fila.asignados[0].nombre" />
+                    <span class="truncate">{{ fila.asignados[0].nombre }}</span>
+                  </RouterLink>
+                  <AppTag v-else tono="success" icono="ti ti-circle-check">Libre</AppTag>
+                </template>
+                <template v-else>
+                  <span v-if="fila.asignados?.length" class="text-gray-700 tabular-nums" :title="nombresAsignados(fila)">
+                    {{ fila.asignados.length }} {{ fila.asignados.length === 1 ? 'usuario' : 'usuarios' }}
+                  </span>
+                  <span v-else class="text-gray-500">Sin usuarios</span>
+                </template>
+                <AppTag v-if="fila.requiere_rotacion" tono="warning" icono="ti ti-alert-triangle">Rotar contraseña</AppTag>
+              </div>
+
+              <p v-if="fila.notas" class="mt-2 line-clamp-2 text-sm text-gray-600">{{ fila.notas }}</p>
+
+              <div class="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+                <span class="text-xs text-gray-500">Contraseña</span>
+                <div class="cred">
+                  <span v-if="revelarDe(fila).valor.value" class="cred__valor">{{ revelarDe(fila).valor.value }}</span>
+                  <span v-else class="cred__oculto" aria-hidden="true">••••••••</span>
+                  <template v-if="authStore.puedeVerCredenciales">
+                    <button type="button" class="cred__accion" :disabled="revelarDe(fila).pidiendo.value" :aria-label="revelarDe(fila).valor.value ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="revelarDe(fila).mostrar()">
+                      <i :class="revelarDe(fila).valor.value ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="cred__accion" :disabled="revelarDe(fila).pidiendo.value" aria-label="Copiar contraseña" @click="revelarDe(fila).copiar()">
+                      <i class="ti ti-copy" aria-hidden="true"></i>
+                    </button>
+                    <span v-if="revelarDe(fila).valor.value" class="cred__cuenta" aria-live="off">{{ revelarDe(fila).restante.value }}s</span>
+                  </template>
+                  <span v-else class="cred__candado" role="img" aria-label="Sin permiso para ver contraseñas"><i class="ti ti-lock" aria-hidden="true"></i></span>
+                </div>
+              </div>
+            </li>
+          </ul>
+          <AppPaginacion
+            v-if="!cargando"
+            variante="compacta"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+          />
+        </div>
+      </template>
+    </div>
 
     <CorreoForm
       v-if="mostrarForm"
       :correo="correoEditar"
+      :rotar="modoRotar"
       @cerrar="onFormCerrado"
     />
 
@@ -402,60 +545,8 @@ onMounted(async () => {
       :mensaje="`¿Eliminar el correo compartido “${porEliminar.usuario}”? Las asignaciones activas quedarán en el historial.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="porEliminar = null"
+      @cerrado="porEliminar = null"
       @confirm="confirmarEliminar"
     />
   </div>
 </template>
-
-<style scoped>
-.correos-error { color: var(--color-danger); }
-
-.correo-usuario {
-  font-family: var(--font-mono, monospace);
-  font-size: 13px;
-}
-
-.asignado-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-}
-
-.asignado-nombre {
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 160px;
-}
-
-.password-cell {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.password-text {
-  font-family: var(--font-mono, monospace);
-  letter-spacing: 0.05em;
-  min-width: 80px;
-}
-
-.notas-cell {
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.url-link {
-  color: var(--color-primary);
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-
-.url-link:hover { text-decoration: underline; }
-</style>

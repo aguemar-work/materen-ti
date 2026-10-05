@@ -13,75 +13,23 @@
 //   abrir     público { slug }               → { titulo, descripcion, preguntas }
 //   responder público { slug, respuestas }    → { ok }
 //   version   staff   {}                     → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
+//   ping      público {}                     → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
 // ============================================================
 
-import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
+import { createAdminClient } from 'npm:@insforge/sdk@1.5.2';
 
-const ORIGENES_PERMITIDOS = new Set([
-  'https://materen-ti.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:4173',
-]);
-
-// Cabeceras CORS calculadas POR PETICIÓN (Ciclo 20): antes vivían en un
-// `let CORS` global de módulo, reasignado al entrar cada petición — con
-// peticiones concurrentes en el mismo isolate, una podía pisar el valor de
-// otra entre dos `await`. Mismo cambio en las 4 edge functions.
-function corsPara(origin: string | null): Record<string, string> {
-  if (!origin || !ORIGENES_PERMITIDOS.has(origin)) return {};
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Vary': 'Origin',
-  };
-}
-
-// Sin una clave `error` (string) en el body, el SDK del cliente descarta el
-// body completo en toda respuesta no-2xx y arma un InsForgeError genérico
-// ("Request failed: <statusText>") — `code` nunca llega al frontend
-// (`"error" in data` es el único gate que usa @insforge/sdk para conservar
-// las claves del body). Se espeja `code` en `error` solo para status >= 400.
-function respuesta(cors: Record<string, string>, body: unknown, status = 200): Response {
-  const payload =
-    status >= 400 && body && typeof body === 'object' && 'code' in body && !('error' in body)
-      ? { ...body, error: (body as { code: string }).code }
-      : body;
-  return new Response(JSON.stringify(payload), {
-    status,
-    // no-store (Ciclo 20): era la única de las edge functions sin esta
-    // cabecera (pendiente del Ciclo 13). La plantilla de una encuesta y la
-    // respuesta de `version` no tienen por qué quedar en caché de un proxy.
-    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-  });
-}
+// Helpers compartidos (functions/_shared/): scripts/build-functions.mjs pega
+// cada bloque aquí para generar functions/dist/encuestas.ts, que es lo que se
+// despliega (el runtime exige UN archivo por function). No editar el dist.
+// @inline ./_shared/http.ts
+// @inline ./_shared/errores.ts
+// @inline ./_shared/auth.ts
+// @inline ./_shared/version.ts
 
 // Rate-limit por IP: cuenta "abrir" y "responder" juntos para que alternar
 // acciones no lo evada.
 const INTENTOS_MAX_IP = 20;
 const INTENTOS_VENTANA_MIN = 10;
-
-// El SDK (postgrest-js sin Database schema generado) tipa toda relación
-// embebida en un select() como arreglo, aunque en runtime sea un solo
-// objeto cuando el embed es por FK 1:1 desde la fila consultada (ej.
-// encuesta_rondas.encuesta_id → encuestas.id). Sin esto, TS marca
-// `.titulo`/`.descripcion`/`.preguntas` como inexistentes en un arreglo
-// — el dato real siempre fue un objeto.
-function uno<T>(rel: T | T[] | null | undefined): T | null {
-  return (Array.isArray(rel) ? rel[0] : rel) ?? null;
-}
-
-function ipDesdeHeaders(headers: Headers): string {
-  const xff = (headers.get('x-forwarded-for') || '')
-    .split(',').map((s) => s.trim()).filter(Boolean);
-  return (
-    headers.get('cf-connecting-ip') ||
-    headers.get('x-real-ip') ||
-    xff[xff.length - 1] ||
-    'desconocida'
-  );
-}
 
 // Mismo criterio que frontend/src/core/dominio-encuestas.js#respuestaValida
 // — duplicado a propósito: esta es la copia AUTORITATIVA (el cliente no es
@@ -119,15 +67,7 @@ function respuestaValida(pregunta: Pregunta, valor: unknown): boolean {
 // falla fail-closed del rate-limit — termina en
 // { ok:false, code:'error_interno' } (500) con las cabeceras CORS de esta
 // petición, en vez de un 500 opaco sin CORS. Al log solo va el mensaje.
-export default async function (req: Request): Promise<Response> {
-  const cors = corsPara(req.headers.get('Origin'));
-  try {
-    return await manejar(req, cors);
-  } catch (e) {
-    console.error('[encuestas] error no controlado:', e instanceof Error ? e.message : String(e));
-    return respuesta(cors, { ok: false, code: 'error_interno' }, 500);
-  }
-}
+export default (req: Request): Promise<Response> => conEnvoltorio('encuestas', req, manejar);
 
 async function manejar(req: Request, cors: Record<string, string>): Promise<Response> {
   const json = (body: unknown, status = 200) => respuesta(cors, body, status);
@@ -141,35 +81,20 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     return json({ ok: false, code: 'body_invalido' }, 400);
   }
 
+  // ping: healthcheck público (Ciclo 21). Sin sesión y SIN tocar la BD.
+  if (body.action === 'ping') {
+    return json({ ok: true, funcion: 'encuestas', hora: new Date().toISOString() });
+  }
+
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
 
   // version: staff únicamente (cierra el pendiente de H-12 — ver el mismo
   // comentario en functions/credenciales.ts). No es una acción pública.
   if (body.action === 'version') {
-    const authHeader = req.headers.get('Authorization');
-    const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
-    if (!userToken) return json({ ok: false, code: 'no_autenticado' }, 401);
-    const userClient = createClient({ baseUrl, accessToken: userToken });
-    const { data: userData } = await userClient.auth.getCurrentUser();
-    if (!userData?.user?.id) return json({ ok: false, code: 'no_autenticado' }, 401);
-    const { data: staffRow } = await admin.database
-      .from('staff').select('activo').eq('user_id', userData.user.id).maybeSingle();
-    if (!staffRow?.activo) return json({ ok: false, code: 'no_es_staff' }, 403);
-
-    const [{ data: migracion }, { data: deploy }] = await Promise.all([
-      admin.database.from('schema_migrations').select('version, nombre_archivo, aplicada_en')
-        .order('version', { ascending: false }).limit(1).maybeSingle(),
-      admin.database.from('function_deploys').select('sha256, commit_sha, desplegado_en')
-        .eq('funcion', 'encuestas').order('desplegado_en', { ascending: false }).limit(1).maybeSingle(),
-    ]);
-    return json({
-      ok: true,
-      funcion: 'encuestas',
-      sdkVersion: '1.5.2',
-      ultimaMigracion: migracion || null,
-      ultimoDeploy: deploy || null,
-    });
+    const auth = await autenticarStaff(req, admin, baseUrl);
+    if (!auth.ok) return json({ ok: false, code: auth.code }, auth.status);
+    return json(await datosVersion(admin, 'encuestas'));
   }
 
   // Fail-closed (Ciclo 20): si no se puede contar ni registrar el intento se

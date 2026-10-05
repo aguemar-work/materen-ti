@@ -1,0 +1,248 @@
+// @vitest-environment happy-dom
+//
+// Primer test de render de una VISTA completa respaldada por store+router
+// en este proyecto (no existía ninguno antes de esta migración — verificado
+// buscando en todo tests/ antes de escribir esto). LicenciasView.vue es el
+// primer módulo de negocio migrado al patrón PrimeVue Unstyled + Tailwind
+// (AppTable/AppColumn/AppButton, ver frontend/AGENTS.md "UI/UX"): esto
+// prueba que la migración —tabla nativa → AppTable, orden vía @ordenar—
+// sigue produciendo el DOM y el contrato con el store que la vista espera.
+//
+// Alcance deliberado: solo el LISTADO (carga inicial, columnas, orden). Los
+// modales (LicenciaForm, asignar asiento, ConfirmDialog) son código que esta
+// migración no tocó — se stubean, no se re-verifican acá.
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
+import { createRouter, createMemoryHistory } from 'vue-router';
+import LicenciasView from '../../src/modules/licencias/LicenciasView.vue';
+
+vi.mock('../../src/api/insforge.js', () => ({
+  insforgeApi: {
+    listLicenciasPage: vi.fn(),
+    listEmpleados: vi.fn().mockResolvedValue([]),
+    listEmpresas: vi.fn().mockResolvedValue([{ id: 'emp-1', nombre: 'Materen' }]),
+    conteosLicenciasPorSituacion: vi.fn().mockResolvedValue({ todas: 2, por_vencer: 0, vencidas: 0, perpetuas: 1 }),
+  },
+}));
+import { insforgeApi } from '../../src/api/insforge.js';
+
+const LICENCIAS_FIXTURE = [
+  {
+    id: 'lic-1',
+    software: 'Adobe Creative Cloud',
+    proveedor: 'Adobe',
+    empresa_nombre: null,
+    cuenta_id: 'c1',
+    cuenta_usuario: 'ti@empresa.com',
+    tiene_clave: false,
+    usados: 3,
+    cantidad: 5,
+    usuarios: [{ nombre: 'Juan Pérez', empleado_id: 'e1', asignacion_id: 'a1' }],
+    tipo: 'suscripcion',
+    fecha_vencimiento: '2030-01-01',
+    renovacion_meses: 12,
+  },
+  {
+    id: 'lic-2',
+    software: 'Windows Server',
+    proveedor: null,
+    empresa_nombre: 'Constructora XYZ',
+    cuenta_id: null,
+    tiene_clave: false,
+    usados: 0,
+    cantidad: 1,
+    usuarios: [],
+    tipo: 'perpetua',
+    fecha_vencimiento: null,
+    renovacion_meses: null,
+  },
+];
+
+function crearRouter() {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/licencias', name: 'licencias', component: { template: '<div />' } },
+      // Solo para que el <RouterLink> del chip de usuario asignado no tire
+      // el warning "No match found" — esta vista no navega ahí de verdad.
+      { path: '/empleados/:id', name: 'empleado-detalle', component: { template: '<div />' } },
+    ],
+  });
+  return router;
+}
+
+async function montar() {
+  const router = crearRouter();
+  router.push('/licencias');
+  await router.isReady();
+
+  const w = mount(LicenciasView, {
+    global: {
+      plugins: [router],
+      stubs: { LicenciaForm: true, AppDialog: true, ConfirmDialog: true },
+    },
+  });
+  await flushPromises();
+  return w;
+}
+
+// onMounted -> store.cargar() -> insforgeApi.listLicenciasPage() son todas
+// promesas encadenadas; unos `await Promise.resolve()` no alcanzan a drenar
+// la cadena completa en algunos entornos, por eso un microtask real.
+function flushPromises() {
+  return new Promise((r) => setTimeout(r, 0));
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  vi.clearAllMocks();
+  insforgeApi.listLicenciasPage.mockResolvedValue({ items: LICENCIAS_FIXTURE, total: 2 });
+});
+
+describe('LicenciasView.vue — listado migrado a AppTable/AppColumn/AppButton', () => {
+  it('carga la página inicial vía el store real y pinta las filas', async () => {
+    const w = await montar();
+    expect(insforgeApi.listLicenciasPage).toHaveBeenCalledTimes(1);
+    expect(w.text()).toContain('Adobe Creative Cloud');
+    expect(w.text()).toContain('Windows Server');
+    expect(w.text()).toContain('Constructora XYZ');
+  });
+
+  // Rediseño 2026-09-23: "Empresa" pasó a la línea secundaria de "Software"
+  // (7 → 6 columnas). Mismo contrato: cada AppColumn sigue siendo un <th>.
+  it('las 6 columnas declaradas con AppColumn se renderizan como <th>', async () => {
+    const w = await montar();
+    const headers = w.findAll('th').map((th) => th.text());
+    expect(headers).toEqual(['Software', 'Acceso', 'Asientos', 'Usuarios', 'Vencimiento', 'Acciones']);
+  });
+
+  it('celdas con contenido custom (#body) siguen renderizando lo mismo que antes', async () => {
+    const w = await montar();
+    // Barra de capacidad (columna Asientos)
+    expect(w.text()).toContain('3/5 asientos');
+    // Vencimiento de una licencia perpetua
+    expect(w.text()).toContain('Perpetua');
+    // Chip de usuario asignado, con link al empleado
+    // (antes por la clase provisional `.empleado-link`; ahora por destino)
+    const link = w.find('a[href="/empleados/e1"]');
+    expect(link.exists()).toBe(true);
+    expect(link.text()).toBe('Juan Pérez');
+  });
+
+  it('clic en el header ordenable "Software" llama a store.ordenarPor vía @ordenar, no queda como un no-op', async () => {
+    const w = await montar();
+    const thSoftware = w.findAll('th').find((th) => th.text() === 'Software');
+    await thSoftware.trigger('click');
+    await flushPromises();
+
+    // ordenarPor() dispara una segunda carga con el orden nuevo — igual que
+    // antes (ThOrdenable + store.ordenarPor(col.clave) directo).
+    expect(insforgeApi.listLicenciasPage).toHaveBeenCalledTimes(2);
+    const [, ultimaLlamada] = insforgeApi.listLicenciasPage.mock.calls;
+    expect(ultimaLlamada[0].orden).toEqual({ columna: 'software', direccion: 'asc' });
+  });
+
+  it('columna "Usuarios" (no declarada sortable) no dispara una carga extra al clickearla', async () => {
+    const w = await montar();
+    const thUsuarios = w.findAll('th').find((th) => th.text() === 'Usuarios');
+    await thUsuarios.trigger('click');
+    await flushPromises();
+    expect(insforgeApi.listLicenciasPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('el botón "Nueva licencia" del header es el AppButton real (severidad primaria)', async () => {
+    const w = await montar();
+    const boton = w.findAll('button').find((b) => b.text().includes('Nueva licencia') && !b.text().includes('Registra'));
+    expect(boton).toBeTruthy();
+    expect(boton.attributes('class') || '').toContain('bg-primary-500');
+  });
+
+  it('loading=true (mientras carga) no rompe el render — AppTable maneja su propio overlay', async () => {
+    let resolver;
+    insforgeApi.listLicenciasPage.mockReturnValueOnce(new Promise((r) => (resolver = r)));
+    const router = crearRouter();
+    router.push('/licencias');
+    await router.isReady();
+    const w = mount(LicenciasView, {
+      global: { plugins: [router], stubs: { LicenciaForm: true, AppDialog: true, ConfirmDialog: true } },
+    });
+    await Promise.resolve();
+    // Todavía cargando: la tabla existe (con 0 filas), no explota.
+    expect(w.find('table').exists()).toBe(true);
+    resolver({ items: LICENCIAS_FIXTURE, total: 2 });
+    await flushPromises();
+    expect(w.text()).toContain('Adobe Creative Cloud');
+  });
+});
+
+// Filtro de situación (2026-09-24): segmentado server-side vía el store.
+// Filtros V2 (2026-09-25): la situación pasa a ser la VISTA (pestañas con
+// conteo) y empresa/acceso, chips; todo vive en la URL.
+describe('LicenciasView.vue — filtros V2 (vistas + chips + URL)', () => {
+  function vista(w, texto) {
+    const grupo = w.find('[role="group"][aria-label="Vista de licencias"]');
+    return grupo.findAll('button').find((b) => b.text().replace(/\d+/g, '').trim() === texto);
+  }
+
+  it('ofrece Todas / Por vencer / Vencidas / Perpetuas con su conteo, sin "Sin cupo"', async () => {
+    const w = await montar();
+    const grupo = w.find('[role="group"][aria-label="Vista de licencias"]');
+    expect(grupo.findAll('button').map((b) => b.text().replace(/\d+/g, '').trim()))
+      .toEqual(['Todas', 'Por vencer', 'Vencidas', 'Perpetuas']);
+    expect(vista(w, 'Todas').text()).toContain('2');
+  });
+
+  it('elegir "Vencidas" recarga desde el servidor con situacion=vencidas, página 1, y queda en la URL', async () => {
+    const w = await montar();
+    await vista(w, 'Vencidas').trigger('click');
+    await flushPromises();
+    const ultima = insforgeApi.listLicenciasPage.mock.calls.at(-1)[0];
+    expect(ultima).toMatchObject({ situacion: 'vencidas', pagina: 1 });
+    expect(vista(w, 'Vencidas').attributes('aria-pressed')).toBe('true');
+  });
+
+  it('al montar de nuevo sin filtros en la URL arranca en "Todas" (sin filtro fantasma)', async () => {
+    const w = await montar();
+    await vista(w, 'Por vencer').trigger('click');
+    await flushPromises();
+    w.unmount();
+    insforgeApi.listLicenciasPage.mockClear();
+    await montar();
+    expect(insforgeApi.listLicenciasPage.mock.calls.at(-1)[0].situacion).toBe('');
+  });
+
+  it('una vista vacía sin filtros es una buena noticia, no "Sin licencias todavía"', async () => {
+    const w = await montar();
+    insforgeApi.listLicenciasPage.mockResolvedValue({ items: [], total: 0 });
+    await vista(w, 'Vencidas').trigger('click');
+    await flushPromises();
+    expect(w.text()).toContain('Sin licencias vencidas');
+    expect(w.text()).not.toContain('Sin licencias todavía');
+  });
+
+  it('el enlace ?empresa= aplica el chip y los conteos lo respetan', async () => {
+    const router = crearRouter();
+    router.push('/licencias?empresa=emp-1');
+    await router.isReady();
+    const w = mount(LicenciasView, { global: { plugins: [router], stubs: { LicenciaForm: true, AppDialog: true, ConfirmDialog: true } } });
+    await flushPromises();
+    expect(insforgeApi.listLicenciasPage.mock.calls.at(-1)[0].empresaIds).toEqual(['emp-1']);
+    expect(insforgeApi.conteosLicenciasPorSituacion.mock.calls.at(-1)[0].empresaIds).toEqual(['emp-1']);
+    expect(w.find('button[aria-label^="Filtro Empresa"]').text()).toContain('Materen');
+  });
+});
+
+describe('LicenciasView.vue — /licencias?nuevo=1', () => {
+  it('abre el formulario de alta al llegar y quita el parámetro de la URL', async () => {
+    const router = crearRouter();
+    router.push('/licencias?nuevo=1');
+    await router.isReady();
+    const w = mount(LicenciasView, {
+      global: { plugins: [router], stubs: { LicenciaForm: true, AppDialog: true, ConfirmDialog: true } },
+    });
+    await flushPromises();
+    expect(w.findComponent({ name: 'LicenciaForm' }).exists()).toBe(true);
+    expect(router.currentRoute.value.query.nuevo).toBeUndefined();
+  });
+});

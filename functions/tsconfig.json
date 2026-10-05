@@ -1,5 +1,8 @@
 {
-  // Type-check de las 4 edge functions (runtime real: Deno Subhosting —
+  // Type-check de las 5 edge functions, sobre functions/dist/*.ts (los archivos
+  // autocontenidos que genera scripts/build-functions.mjs y que son lo que se
+  // despliega; las fuentes functions/*.ts + _shared/ no se chequean sueltas porque
+  // los bloques compartidos se inlinan recién en el build). Runtime real: Deno Subhosting —
   // verificado con `deno check` contra los imports `npm:@insforge/sdk` y
   // los globals `Deno.env`; no es Node, ver docs/HISTORIAL-AUDITORIAS.md
   // Q-04). Deno no detecta un archivo llamado "tsconfig.json" solo: hay
@@ -15,5 +18,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["*.ts"]
+  "include": ["dist/*.ts"]
 }

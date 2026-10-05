@@ -2,12 +2,13 @@
 // Página PÚBLICA (sin sesión): seguimiento de UN ticket, dado su token.
 // Token de TICKET — distinto del token de entrega. Solo lectura acotada
 // a este ticket (estado + comentarios visibles), nunca el resto del sistema.
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { seguimientoTicket } from '../../api/ticketsPublicos.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import EncuestaSatisfaccionForm from './EncuestaSatisfaccionForm.vue';
 
@@ -18,6 +19,7 @@ const estado = ref('cargando');
 const error = ref('');
 const ticket = ref(null);
 const copiado = ref(null);
+const errorCaptura = ref('');
 
 async function cargar() {
   try {
@@ -47,195 +49,134 @@ async function copiar(texto, id) {
   } catch { /* portapapeles no disponible */ }
 }
 
+// La captura vive en un bucket privado (migración 111): `seguimiento` entrega una
+// URL firmada que vence en 5 minutos, así que al hacer clic se vuelve a pedir
+// una fresca. La pestaña se abre en el clic (antes del `await`) para que el
+// navegador no la bloquee como ventana emergente.
+async function verCaptura() {
+  const ventana = window.open('', '_blank');
+  if (ventana) ventana.opener = null;
+  errorCaptura.value = '';
+  try {
+    const fresco = await seguimientoTicket(route.params.token);
+    if (!fresco.adjuntoUrl) throw new Error('sin captura');
+    if (ventana) ventana.location.href = fresco.adjuntoUrl;
+    else window.open(fresco.adjuntoUrl, '_blank', 'noopener');
+  } catch {
+    ventana?.close();
+    errorCaptura.value = 'No se pudo abrir la captura. Intente de nuevo.';
+  }
+}
+
 function enlaceSeguimiento() {
   return `${window.location.origin}/soporte/${route.params.token}`;
 }
+
+// ── Solo presentación (rediseño 2026-09-24, receta 4.5) ──────────────────
+const titulo = computed(() => {
+  if (estado.value === 'error') return 'No disponible';
+  if (estado.value === 'listo') return ticket.value.titulo;
+  return 'Seguimiento de solicitud';
+});
+
+// El ícono/texto del botón cambia al copiar; esto lo confirma también a un
+// lector de pantalla (región aria-live).
+const mensajeCopiado = computed(() => {
+  if (copiado.value === 'link') return 'Enlace copiado';
+  if (copiado.value === 'codigo') return 'Código copiado';
+  return '';
+});
 </script>
 
 <template>
-  <div class="public-page">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Seguimiento de solicitud" />
+  <AppPortal
+    seccion="Seguimiento de solicitud"
+    :titulo="titulo"
+    :icono="estado === 'error' ? 'ti ti-link-off' : ''"
+  >
+    <template v-if="estado === 'listo'" #antetitulo>
+      <span class="font-mono text-sm font-medium text-gray-500 tabular-nums">{{ ticket.codigo }}</span>
+      <BadgeEstado tipo="ticket" :valor="ticket.estado" />
+    </template>
+    <template v-if="estado === 'listo'" #descripcion>
+      {{ ticket.categoria }}{{ ticket.subcategoria ? ` · ${ticket.subcategoria}` : '' }}
+      · Creado el {{ formatFecha(ticket.creado) }}
+    </template>
 
-      <div v-if="estado === 'cargando'" class="ticket-texto">Cargando...</div>
+    <p v-if="estado === 'cargando'" class="py-4 text-center text-sm text-gray-500" role="status">Cargando...</p>
 
-      <template v-else-if="estado === 'error'">
-        <div class="ticket-error-icon"><i class="ti ti-link-off" aria-hidden="true"></i></div>
-        <h2 class="ticket-title">No disponible</h2>
-        <p class="ticket-texto">{{ error }}</p>
-        <RouterLink class="ticket-link" :to="{ name: 'ticket-buscar' }">
-          <i class="ti ti-search" aria-hidden="true"></i> Buscar tickets por DNI
-        </RouterLink>
-        <RouterLink class="public-volver" to="/soporte">
-          <i class="ti ti-arrow-left" aria-hidden="true"></i> Volver a soporte
-        </RouterLink>
-      </template>
+    <template v-else-if="estado === 'error'">
+      <p class="text-center text-sm text-gray-600">{{ error }}</p>
+      <AppButton
+        class="mt-6"
+        size="lg"
+        block
+        icon="ti ti-search"
+        label="Buscar tickets por DNI"
+        :to="{ name: 'ticket-buscar' }"
+      />
+    </template>
 
-      <template v-else>
-        <div class="segui-header">
-          <span class="segui-codigo">{{ ticket.codigo }}</span>
-          <BadgeEstado tipo="ticket" :valor="ticket.estado" />
-        </div>
+    <template v-else>
+      <p class="whitespace-pre-line text-sm leading-relaxed text-gray-700 [overflow-wrap:anywhere]">{{ ticket.descripcion }}</p>
 
-        <div class="segui-copiar">
-          <button class="btn" type="button" @click="copiar(enlaceSeguimiento(), 'link')">
-            <i :class="copiado === 'link' ? 'ti ti-check' : 'ti ti-link'" aria-hidden="true"></i>
-            {{ copiado === 'link' ? 'Enlace copiado' : 'Copiar enlace' }}
-          </button>
-          <button class="btn" type="button" @click="copiar(ticket.codigo, 'codigo')">
-            <i :class="copiado === 'codigo' ? 'ti ti-check' : 'ti ti-copy'" aria-hidden="true"></i>
-            {{ copiado === 'codigo' ? 'Código copiado' : 'Copiar código' }}
-          </button>
-        </div>
+      <div class="mt-5 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+        <AppButton
+          variant="outline"
+          severity="secondary"
+          :icon="copiado === 'link' ? 'ti ti-check' : 'ti ti-link'"
+          :label="copiado === 'link' ? 'Enlace copiado' : 'Copiar enlace'"
+          @click="copiar(enlaceSeguimiento(), 'link')"
+        />
+        <AppButton
+          variant="outline"
+          severity="secondary"
+          :icon="copiado === 'codigo' ? 'ti ti-check' : 'ti ti-copy'"
+          :label="copiado === 'codigo' ? 'Código copiado' : 'Copiar código'"
+          @click="copiar(ticket.codigo, 'codigo')"
+        />
+      </div>
+      <p class="sr-only" role="status" aria-live="polite">{{ mensajeCopiado }}</p>
 
-        <h2 class="ticket-title">{{ ticket.titulo }}</h2>
-        <p class="ticket-texto">{{ ticket.descripcion }}</p>
+      <div v-if="ticket.adjuntoUrl" class="mt-3">
+        <AppButton
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-camera"
+          label="Ver captura adjunta"
+          block
+          data-captura="ver"
+          @click="verCaptura"
+        />
+        <p v-if="errorCaptura" class="mt-2 text-xs text-red-700" role="alert">{{ errorCaptura }}</p>
+      </div>
 
-        <p class="segui-meta">
-          {{ ticket.categoria }}{{ ticket.subcategoria ? ` · ${ticket.subcategoria}` : '' }}
-          · Creado el {{ formatFecha(ticket.creado) }}
-        </p>
-
-        <div v-if="ticket.comentarios.length" class="segui-comentarios">
-          <h3 class="segui-subtitulo">Actualizaciones</h3>
-          <div v-for="(c, i) in ticket.comentarios" :key="i" class="segui-comentario">
-            <div class="segui-comentario-head">
-              <span class="segui-autor">{{ c.autor }}</span>
-              <span class="segui-fecha">{{ formatFechaHora(c.fecha) }}</span>
+      <section v-if="ticket.comentarios.length" class="mt-6 border-t border-gray-100 pt-5" aria-labelledby="segui-actualizaciones">
+        <h2 id="segui-actualizaciones" class="text-sm font-semibold text-gray-900">Actualizaciones</h2>
+        <ol class="mt-3 flex flex-col gap-3">
+          <li v-for="(c, i) in ticket.comentarios" :key="i" class="rounded-md bg-gray-50 px-4 py-3">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span class="text-sm font-medium text-gray-900">{{ c.autor }}</span>
+              <span class="text-xs text-gray-500 tabular-nums">{{ formatFechaHora(c.fecha) }}</span>
             </div>
-            <p>{{ c.mensaje }}</p>
-          </div>
-        </div>
+            <p class="mt-1 whitespace-pre-line text-sm text-gray-700 [overflow-wrap:anywhere]">{{ c.mensaje }}</p>
+          </li>
+        </ol>
+      </section>
 
-        <div v-if="ticket.estado === 'cerrado'" class="segui-encuesta">
-          <EncuestaSatisfaccionForm :token="route.params.token" embebido />
-        </div>
-      </template>
-    </div>
-  </div>
+      <div v-if="ticket.estado === 'cerrado'" class="mt-6 border-t border-gray-100 pt-5 empty:hidden">
+        <EncuestaSatisfaccionForm :token="route.params.token" embebido />
+      </div>
+    </template>
+
+    <template v-if="estado === 'error'" #pie>
+      <AppButton
+        variant="text"
+        severity="secondary"
+        icon="ti ti-arrow-left"
+        label="Volver a soporte"
+        to="/soporte"
+      />
+    </template>
+  </AppPortal>
 </template>
-
-<style scoped>
-.ticket-title {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 8px;
-}
-
-.ticket-texto {
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 10px;
-}
-
-.ticket-error-icon {
-  font-size: 40px;
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-
-.segui-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.segui-codigo {
-  font-family: var(--font-mono, monospace);
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-}
-
-.segui-copiar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.segui-copiar .btn {
-  flex: 1;
-  justify-content: center;
-  font-size: var(--fs-sm);
-}
-
-.segui-meta {
-  font-size: var(--fs-sm);
-  color: var(--color-text-tertiary);
-  margin: 0 0 16px;
-}
-
-.segui-subtitulo {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-tertiary);
-  margin: 0 0 10px;
-}
-
-.segui-comentarios {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.segui-comentario {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  background: var(--color-bg-subtle);
-}
-
-.segui-comentario p {
-  margin: 4px 0 0;
-  font-size: var(--fs-base);
-  color: var(--color-text-primary);
-}
-
-.segui-comentario-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.segui-autor {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--color-accent-text);
-}
-
-.segui-fecha {
-  font-size: var(--fs-sm);
-  color: var(--color-text-tertiary);
-}
-
-.segui-encuesta {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border);
-}
-
-.ticket-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-align: center;
-  padding: 10px 14px;
-  margin: 4px 0 0;
-  border: 1.5px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  color: var(--color-accent-text);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.ticket-link:hover {
-  background: var(--color-accent-subtle);
-}
-</style>

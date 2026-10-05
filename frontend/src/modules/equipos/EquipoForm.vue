@@ -1,13 +1,16 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick, useTemplateRef } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useEquiposStore } from '../../stores/equipos.js';
-import { comprimirImagen } from '../../core/imagenes.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { MAX_FOTOS_EQUIPO as MAX_FOTOS } from '../../core/dominio-equipos.js';
+import EquipoFotos from './EquipoFotos.vue';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const props = defineProps({
   equipo: { type: Object, default: null },
@@ -15,28 +18,46 @@ const props = defineProps({
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+// Sobre AppDialog (2026-10-01, unificación Modal → AppDialog): bloqueo de scroll
+// del body, atrapamiento de foco y Escape los resuelve el diálogo compartido.
+let resultado = false;
 
 const store = useEquiposStore();
 
 const guardando = ref(false);
 const error = ref('');
+
+// Campo que falló el último guardado ('' | 'codigo' | 'codigo_almacen' |
+// 'serie'), para resaltar el control y llevarle el foco además del mensaje
+// de CarbonNotification.
+const campoInvalido = ref('');
+const refCodigo = useTemplateRef('refCodigo');
+const refCodigoAlmacen = useTemplateRef('refCodigoAlmacen');
+const refSerie = useTemplateRef('refSerie');
+
+const infoError = infoNotificacion('error');
+const campoCodigo = useCampoAccesible({
+  error: () => (campoInvalido.value === 'codigo' ? 'Ya existe un equipo con ese código' : ''),
+});
+const campoCodigoAlmacen = useCampoAccesible({
+  error: () => (campoInvalido.value === 'codigo_almacen' ? 'Ya existe un equipo con ese código de almacén' : ''),
+});
+const campoTipo = useCampoAccesible();
+const campoMarca = useCampoAccesible();
+const campoModelo = useCampoAccesible();
+const campoSerie = useCampoAccesible({
+  error: () => (campoInvalido.value === 'serie' ? 'Ya existe un equipo con ese número de serie' : ''),
+});
+const campoFechaCompra = useCampoAccesible();
+const campoGarantia = useCampoAccesible();
+const campoCosto = useCampoAccesible();
+const campoNotas = useCampoAccesible();
+
+async function enfocarCampoInvalido() {
+  await nextTick();
+  const refs = { codigo: refCodigo, codigo_almacen: refCodigoAlmacen, serie: refSerie };
+  refs[campoInvalido.value]?.value?.focus();
+}
 
 const esEdicion = computed(() => !!props.equipo?.id);
 
@@ -77,41 +98,8 @@ const { termino: busquedaAcc, cargando: buscandoAcc } = useBusqueda({
 
 const nuevaLinea = ref({ codigo: '', descripcion: '', cantidad: 1 });
 
-// ── Fotos: comprimir y subir al seleccionar ───────────────────
-const MAX_FOTOS = 4;
-const subiendoFoto = ref(false);
-const inputFotos = ref(null);
-
-async function onFotosSeleccionadas(e) {
-  const files = Array.from(e.target.files || []);
-  e.target.value = '';
-  if (!files.length) return;
-  const disponibles = MAX_FOTOS - form.value.fotos.length;
-  if (disponibles <= 0) {
-    error.value = `Máximo ${MAX_FOTOS} fotos por equipo`;
-    return;
-  }
-  subiendoFoto.value = true;
-  error.value = '';
-  try {
-    for (const file of files.slice(0, disponibles)) {
-      const comprimida = await comprimirImagen(file);
-      const foto = await insforgeApi.subirFotoEquipo(comprimida);
-      form.value.fotos.push(foto);
-    }
-  } catch (err) {
-    error.value = err?.message || 'Error al subir la foto';
-  } finally {
-    subiendoFoto.value = false;
-  }
-}
-
-async function quitarFoto(foto) {
-  form.value.fotos = form.value.fotos.filter((f) => f.key !== foto.key);
-  try {
-    await insforgeApi.eliminarFotoEquipo(foto.key);
-  } catch { /* si falla, la referencia igual ya no se guardará */ }
-}
+// ── Fotos: subir y quitar las resuelve EquipoFotos.vue (compartido con la hoja
+// de vida); acá solo se guarda la lista al pulsar Guardar.
 
 const tipoActual = computed(() => store.tipos.find((t) => t.id === form.value.tipo_id));
 const camposSpec = computed(() => tipoActual.value?.campos_spec || []);
@@ -132,12 +120,11 @@ function lineaVacia() {
 
 // El buscador del catálogo (busquedaAcc) es transitorio y no cuenta como
 // cambio; la línea manual a medio escribir (nuevaLinea) sí.
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
-  form: form.value,
-  nuevaLinea: nuevaLinea.value,
-}));
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => ({
+    form: form.value,
+    nuevaLinea: nuevaLinea.value,
+  }));
 
 function resetForm() {
   error.value = '';
@@ -223,7 +210,7 @@ async function agregarLineaManual() {
   const descripcion = (nuevaLinea.value.descripcion || '').trim();
   const codigo = (nuevaLinea.value.codigo || '').trim().toUpperCase();
   if (!descripcion) {
-    error.value = 'Indica la descripción del accesorio';
+    error.value = 'Indique la descripción del accesorio';
     return;
   }
   if (yaEstaEnKit(descripcion, codigo)) {
@@ -263,30 +250,9 @@ function ocultarSugerencias() {
   setTimeout(() => { mostrarSugerencias.value = false; }, 180);
 }
 
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
-// confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return;
-  }
-  cerrar(false);
-}
-
-function descartarCambios() {
-  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
-  // mientras el formulario inicia su propia salida en paralelo
-  dialogoDescarte.value?.cerrar();
-  cerrar(false);
-}
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
-
 async function guardar() {
   error.value = '';
+  campoInvalido.value = '';
   guardando.value = true;
   try {
     const specs = {};
@@ -309,15 +275,21 @@ async function guardar() {
       await store.crear(datos);
     }
     tomarSnapshot();
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message?.includes('uq_equipos_serie')
-      ? 'Ya existe un equipo con ese número de serie'
-      : e?.message?.includes('uq_equipos_codigo_almacen')
-        ? 'Ya existe un equipo con ese código de almacén'
-        : e?.message?.includes('equipos_codigo') || e?.message?.includes('codigo')
-          ? 'Ya existe un equipo con ese código'
-          : (e?.message || 'Error al guardar equipo');
+    // `store.crear/actualizar` ya entregan el error traducido y con la
+    // restricción violada (api/erroresDb.js): el campo a enfocar sale de ahí.
+    const restriccion = e?.restriccion;
+    if (restriccion === 'uq_equipos_serie') {
+      campoInvalido.value = 'serie';
+    } else if (restriccion === 'uq_equipos_codigo_almacen') {
+      campoInvalido.value = 'codigo_almacen';
+    } else if (restriccion === 'equipos_codigo_key') {
+      campoInvalido.value = 'codigo';
+    }
+    error.value = mensajeError(e, { porDefecto: 'Error al guardar equipo' });
+    if (campoInvalido.value) enfocarCampoInvalido();
   } finally {
     guardando.value = false;
   }
@@ -325,180 +297,289 @@ async function guardar() {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal modal-lg equipo-form" role="dialog" aria-modal="true" aria-labelledby="eq-form-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="eq-form-title">{{ esEdicion ? 'Editar equipo' : 'Nuevo equipo' }}</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
+  <AppDialog
+    ref="modal"
+    size="lg"
+    :titulo="esEdicion ? 'Editar equipo' : 'Nuevo equipo'"
+    :confirmar-cierre="confirmarCierre"
+    :cerrar-en-backdrop="false"
+    @cerrado="emit('cerrar', resultado)"
+  >
+    <form id="eq-form" class="form-grid" @submit.prevent="guardar">
+      <!-- ── Identificación ── -->
+      <div class="section-label !mt-0 !border-t-0 !pt-0">
+        <i class="ti ti-device-desktop" aria-hidden="true"></i> Datos del equipo
       </div>
 
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
-        <div class="form-group">
-          <label for="ef-codigo">Código de equipo *</label>
-          <input id="ef-codigo" v-model="form.codigo" required placeholder="EQ-0001" :disabled="guardando">
-        </div>
-
-        <div class="form-group">
-          <label for="ef-codigo-almacen">Código de almacén</label>
+      <div class="campo" :class="{ 'campo--invalido': campoCodigo.invalido.value, 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoCodigo.id">Código de equipo<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
           <input
-            id="ef-codigo-almacen"
-            v-model="form.codigo_almacen"
-            placeholder="Según sistema de almacén"
+            :id="campoCodigo.id"
+            ref="refCodigo"
+            v-model="form.codigo"
+            class="campo__control tabular-nums"
+            type="text"
+            placeholder="EQ-0001"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoCodigo.invalido.value"
+            :aria-describedby="campoCodigo.describedBy.value"
+            @input="campoInvalido === 'codigo' && (campoInvalido = '')"
+          >
+          <i v-if="campoCodigo.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
+        </div>
+        <p v-if="campoInvalido === 'codigo'" :id="campoCodigo.idAyuda" class="campo__pie campo__pie--error" role="alert">
+          Ya existe un equipo con ese código
+        </p>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoTipo.id">Tipo de equipo<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <select
+            :id="campoTipo.id"
+            v-model="form.tipo_id"
+            class="campo__control campo__control--select"
+            required
             :disabled="guardando"
           >
-        </div>
-
-        <div class="form-group">
-          <label for="ef-tipo">Tipo de equipo *</label>
-          <select id="ef-tipo" v-model="form.tipo_id" required :disabled="guardando">
             <option value="" disabled>Seleccionar tipo</option>
             <option v-for="t in store.tipos" :key="t.id" :value="t.id">{{ t.nombre }}</option>
           </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
         </div>
+      </div>
 
-        <div class="form-group">
-          <label for="ef-marca">Marca</label>
-          <input id="ef-marca" v-model="form.marca" placeholder="HP, Lenovo, Epson..." :disabled="guardando">
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoMarca.id">Marca</label>
+        <div class="campo__caja">
+          <input :id="campoMarca.id" v-model="form.marca" class="campo__control" type="text" placeholder="HP, Lenovo, Epson..." :disabled="guardando">
         </div>
+      </div>
 
-        <div class="form-group">
-          <label for="ef-modelo">Modelo</label>
-          <input id="ef-modelo" v-model="form.modelo" :disabled="guardando">
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoModelo.id">Modelo</label>
+        <div class="campo__caja">
+          <input :id="campoModelo.id" v-model="form.modelo" class="campo__control" type="text" :disabled="guardando">
         </div>
+      </div>
 
-        <div class="form-group">
-          <label for="ef-serie">Número de serie</label>
-          <input id="ef-serie" v-model="form.serie" :disabled="guardando">
+      <div class="campo" :class="{ 'campo--invalido': campoSerie.invalido.value, 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoSerie.id">Número de serie</label>
+        <div class="campo__caja">
+          <input
+            :id="campoSerie.id"
+            ref="refSerie"
+            v-model="form.serie"
+            class="campo__control tabular-nums"
+            type="text"
+            :disabled="guardando"
+            :aria-invalid="campoSerie.invalido.value"
+            :aria-describedby="campoSerie.describedBy.value"
+            @input="campoInvalido === 'serie' && (campoInvalido = '')"
+          >
+          <i v-if="campoSerie.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
         </div>
+        <p v-if="campoInvalido === 'serie'" :id="campoSerie.idAyuda" class="campo__pie campo__pie--error" role="alert">
+          Ya existe un equipo con ese número de serie
+        </p>
+      </div>
 
-        <div class="form-group">
-          <label for="ef-compra">Fecha de compra</label>
-          <input id="ef-compra" v-model="form.fecha_compra" type="date" :disabled="guardando">
+      <div class="campo" :class="{ 'campo--invalido': campoCodigoAlmacen.invalido.value, 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoCodigoAlmacen.id">Código de almacén</label>
+        <div class="campo__caja">
+          <input
+            :id="campoCodigoAlmacen.id"
+            ref="refCodigoAlmacen"
+            v-model="form.codigo_almacen"
+            class="campo__control tabular-nums"
+            type="text"
+            placeholder="Según sistema de almacén"
+            :disabled="guardando"
+            :aria-invalid="campoCodigoAlmacen.invalido.value"
+            :aria-describedby="campoCodigoAlmacen.describedBy.value"
+            @input="campoInvalido === 'codigo_almacen' && (campoInvalido = '')"
+          >
+          <i v-if="campoCodigoAlmacen.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
         </div>
+        <p v-if="campoInvalido === 'codigo_almacen'" :id="campoCodigoAlmacen.idAyuda" class="campo__pie campo__pie--error" role="alert">
+          Ya existe un equipo con ese código de almacén
+        </p>
+      </div>
 
-        <div class="form-group">
-          <label for="ef-garantia">Garantía hasta</label>
-          <input id="ef-garantia" v-model="form.garantia_hasta" type="date" :disabled="guardando">
+      <!-- ── Compra y garantía ── -->
+      <div class="section-label">
+        <i class="ti ti-receipt" aria-hidden="true"></i> Compra y garantía
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoFechaCompra.id">Fecha de compra</label>
+        <div class="campo__caja">
+          <input :id="campoFechaCompra.id" v-model="form.fecha_compra" class="campo__control" type="date" :disabled="guardando">
         </div>
+      </div>
 
-        <div class="form-group costo-group">
-          <label for="ef-costo">Precio</label>
-          <div class="costo-inputs">
-            <input id="ef-costo" v-model="form.costo" type="number" step="0.01" min="0" placeholder="0.00" :disabled="guardando">
-            <select v-model="form.moneda" :disabled="guardando" aria-label="Moneda">
-              <option value="PEN">S/</option>
-              <option value="USD">US$</option>
-            </select>
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoGarantia.id">Garantía hasta</label>
+        <div class="campo__caja">
+          <input :id="campoGarantia.id" v-model="form.garantia_hasta" class="campo__control" type="date" :disabled="guardando">
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoCosto.id">Precio</label>
+        <div class="campo__caja">
+          <select
+            v-model="form.moneda"
+            :disabled="guardando"
+            aria-label="Moneda"
+            data-ui
+            class="shrink-0 cursor-pointer self-stretch rounded-l-md border-0 bg-gray-50 pl-3 pr-2 text-sm text-gray-700 focus:outline-none"
+          >
+            <option value="PEN">S/</option>
+            <option value="USD">US$</option>
+          </select>
+          <input
+            :id="campoCosto.id"
+            v-model="form.costo"
+            class="campo__control tabular-nums"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            :disabled="guardando"
+          >
+        </div>
+      </div>
+
+      <!-- ── Especificaciones (según el tipo) ── -->
+      <template v-if="camposSpec.length">
+        <div class="section-label">
+          <i class="ti ti-list-details" aria-hidden="true"></i> Especificaciones ({{ tipoActual?.nombre }})
+        </div>
+        <div v-for="campo in camposSpec" :key="campo" class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="`eq-spec-${campo}`">{{ campo }}</label>
+          <div class="campo__caja">
+            <input :id="`eq-spec-${campo}`" v-model="form.specs[campo]" class="campo__control" type="text" :disabled="guardando">
           </div>
         </div>
+      </template>
 
-        <template v-if="camposSpec.length">
-          <div class="form-group full section-label">
-            <i class="ti ti-list-details"></i> Especificaciones ({{ tipoActual?.nombre }})
+      <!-- ── Kit de accesorios ── -->
+      <template v-if="form.tipo_id">
+        <div class="section-label">
+          <i class="ti ti-plug" aria-hidden="true"></i> Accesorios incluidos
+          <span v-if="form.accesorios_lineas.length" class="rounded-full bg-gray-100 px-1.5 font-medium normal-case tracking-normal text-gray-600 tabular-nums">{{ form.accesorios_lineas.length }}</span>
+        </div>
+        <div class="full space-y-3">
+          <div class="relative">
+            <label for="ef-acc-buscar" class="sr-only">Buscar en almacén</label>
+            <i class="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
+            <input
+              id="ef-acc-buscar"
+              v-model="busquedaAcc"
+              class="h-10 w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 text-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:bg-gray-50"
+              placeholder="Buscar en almacén por código o descripción…"
+              autocomplete="off"
+              :disabled="guardando"
+              @focus="mostrarSugerencias = sugerenciasAcc.length > 0"
+              @blur="ocultarSugerencias"
+            >
+            <ul
+              v-if="mostrarSugerencias && sugerenciasAcc.length"
+              class="absolute inset-x-0 top-full z-10 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+              role="listbox"
+            >
+              <li
+                v-for="item in sugerenciasAcc"
+                :key="item.id"
+                role="option"
+                class="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50"
+                @mousedown.prevent="agregarDesdeCatalogo(item)"
+              >
+                <span class="w-24 shrink-0 truncate text-xs text-gray-500 tabular-nums">{{ item.codigo || 'Sin código' }}</span>
+                <span class="min-w-0 flex-1 truncate text-gray-900">{{ item.descripcion }}</span>
+              </li>
+            </ul>
+            <p v-else-if="buscandoAcc" class="mt-1 text-xs text-gray-500">Buscando…</p>
           </div>
-          <div v-for="campo in camposSpec" :key="campo" class="form-group">
-            <label :for="`spec-${campo}`">{{ campo }}</label>
-            <input :id="`spec-${campo}`" v-model="form.specs[campo]" :disabled="guardando">
-          </div>
-        </template>
 
-        <!-- Kit de accesorios: lista editable con código de almacén -->
-        <template v-if="form.tipo_id">
-          <div class="form-group full section-label">
-            <i class="ti ti-plug"></i> Accesorios incluidos
-          </div>
-          <div class="form-group full">
-            <div class="acc-buscar">
-              <label for="ef-acc-buscar" class="sr-only">Buscar en almacén</label>
+          <div class="overflow-hidden rounded-md border border-gray-200">
+            <div
+              class="grid grid-cols-[7rem_minmax(0,1fr)_4.5rem_2.25rem] gap-2 border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500"
+              aria-hidden="true"
+            >
+              <span>Código</span>
+              <span>Descripción</span>
+              <span>Cant.</span>
+              <span></span>
+            </div>
+            <div
+              v-for="(linea, idx) in form.accesorios_lineas"
+              :key="linea.id || `${linea.codigo}-${linea.descripcion}-${idx}`"
+              class="grid grid-cols-[7rem_minmax(0,1fr)_4.5rem_2.25rem] items-center gap-2 border-b border-gray-100 px-3 py-1.5"
+            >
               <input
-                id="ef-acc-buscar"
-                v-model="busquedaAcc"
-                placeholder="Buscar en almacén por código o descripción…"
-                autocomplete="off"
+                v-model="linea.codigo"
+                class="h-8 min-w-0 rounded border border-transparent bg-transparent px-1.5 text-sm tabular-nums hover:border-gray-200 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                placeholder="Sin código"
+                aria-label="Código de almacén"
                 :disabled="guardando"
-                @focus="mostrarSugerencias = sugerenciasAcc.length > 0"
-                @blur="ocultarSugerencias"
               >
-              <ul v-if="mostrarSugerencias && sugerenciasAcc.length" class="acc-sugerencias" role="listbox">
-                <li
-                  v-for="item in sugerenciasAcc"
-                  :key="item.id"
-                  role="option"
-                  @mousedown.prevent="agregarDesdeCatalogo(item)"
-                >
-                  <span class="acc-sug-codigo">{{ item.codigo || '—' }}</span>
-                  <span class="acc-sug-desc">{{ item.descripcion }}</span>
-                </li>
-              </ul>
-              <p v-else-if="buscandoAcc" class="field-hint">Buscando…</p>
-            </div>
-
-            <div v-if="form.accesorios_lineas.length" class="acc-lista">
-              <div class="acc-lista-head" aria-hidden="true">
-                <span>Código</span>
-                <span>Descripción</span>
-                <span>Cant.</span>
-                <span></span>
-              </div>
-              <div
-                v-for="(linea, idx) in form.accesorios_lineas"
-                :key="linea.id || `${linea.codigo}-${linea.descripcion}-${idx}`"
-                class="acc-fila"
+              <input
+                v-model="linea.descripcion"
+                class="h-8 min-w-0 rounded border border-transparent bg-transparent px-1.5 text-sm text-gray-900 hover:border-gray-200 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                required
+                placeholder="Descripción"
+                aria-label="Descripción"
+                :disabled="guardando"
               >
-                <input
-                  v-model="linea.codigo"
-                  placeholder="—"
-                  aria-label="Código de almacén"
-                  :disabled="guardando"
-                >
-                <input
-                  v-model="linea.descripcion"
-                  required
-                  placeholder="Descripción"
-                  aria-label="Descripción"
-                  :disabled="guardando"
-                >
-                <input
-                  v-model.number="linea.cantidad"
-                  type="number"
-                  min="1"
-                  max="999"
-                  aria-label="Cantidad"
-                  :disabled="guardando"
-                >
-                <button
-                  class="icon-btn"
-                  type="button"
-                  title="Quitar"
-                  aria-label="Quitar accesorio"
-                  :disabled="guardando"
-                  @click="quitarLinea(idx)"
-                >
-                  <i class="ti ti-trash" aria-hidden="true"></i>
-                </button>
-              </div>
+              <input
+                v-model.number="linea.cantidad"
+                class="h-8 min-w-0 rounded border border-transparent bg-transparent px-1.5 text-sm tabular-nums hover:border-gray-200 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                type="number"
+                min="1"
+                max="999"
+                aria-label="Cantidad"
+                :disabled="guardando"
+              >
+              <button
+                class="icon-btn danger"
+                type="button"
+                title="Quitar"
+                aria-label="Quitar accesorio"
+                :disabled="guardando"
+                @click="quitarLinea(idx)"
+              >
+                <i class="ti ti-trash" aria-hidden="true"></i>
+              </button>
             </div>
-            <p v-else class="field-hint acc-vacio">Sin accesorios. Busca en el almacén o agrega uno abajo.</p>
+            <p v-if="!form.accesorios_lineas.length" class="border-b border-gray-100 px-3 py-3 text-sm text-gray-500">
+              Sin accesorios. Busque en el almacén o agregue uno abajo.
+            </p>
 
-            <div class="acc-nueva">
+            <!-- Línea nueva, al pie de la misma lista -->
+            <div class="grid grid-cols-[7rem_minmax(0,1fr)_4.5rem_auto] items-center gap-2 bg-gray-50/60 px-3 py-2">
               <input
                 v-model="nuevaLinea.codigo"
-                placeholder="Código almacén"
+                class="h-8 min-w-0 rounded-md border border-gray-200 bg-white px-2 text-sm tabular-nums focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                placeholder="Código"
+                aria-label="Código de almacén del accesorio nuevo"
                 :disabled="guardando"
                 @keydown.enter.prevent="agregarLineaManual"
               >
               <input
                 v-model="nuevaLinea.descripcion"
+                class="h-8 min-w-0 rounded-md border border-gray-200 bg-white px-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 placeholder="Descripción (ej. Mouse inalámbrico)"
+                aria-label="Descripción del accesorio nuevo"
                 :disabled="guardando"
                 @keydown.enter.prevent="agregarLineaManual"
               >
               <input
                 v-model.number="nuevaLinea.cantidad"
+                class="h-8 min-w-0 rounded-md border border-gray-200 bg-white px-2 text-sm tabular-nums focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 type="number"
                 min="1"
                 max="999"
@@ -506,294 +587,63 @@ async function guardar() {
                 aria-label="Cantidad"
                 :disabled="guardando"
               >
-              <button
-                class="btn"
-                type="button"
+              <AppButton
+                size="sm"
+                variant="outline"
+                severity="secondary"
+                icon="ti ti-plus"
+                label="Agregar"
                 :disabled="guardando || !nuevaLinea.descripcion.trim()"
                 @click="agregarLineaManual"
-              >
-                Agregar
-              </button>
+              />
             </div>
-            <p class="field-hint">Los ítems nuevos se guardan en el catálogo de almacén para reutilizarlos.</p>
           </div>
-        </template>
-
-        <div class="form-group full section-label">
-          <i class="ti ti-camera"></i> Fotos ({{ form.fotos.length }}/{{ MAX_FOTOS }})
+          <p class="text-xs text-gray-500">Los ítems nuevos se guardan en el catálogo de almacén para reutilizarlos.</p>
         </div>
-        <div class="form-group full">
-          <div class="fotos-grid">
-            <div v-for="foto in form.fotos" :key="foto.key" class="foto-thumb">
-              <a :href="foto.url" target="_blank" rel="noopener noreferrer">
-                <img :src="foto.url" alt="Foto del equipo">
-              </a>
-              <button class="foto-x" type="button" title="Quitar foto" aria-label="Quitar foto" :disabled="guardando" @click="quitarFoto(foto)">
-                <i class="ti ti-x"></i>
-              </button>
-            </div>
-            <button
-              v-if="form.fotos.length < MAX_FOTOS"
-              class="foto-agregar"
-              type="button"
-              :disabled="guardando || subiendoFoto"
-              @click="inputFotos?.click()"
-            >
-              <i :class="subiendoFoto ? 'ti ti-loader-2 spinner-icon' : 'ti ti-camera-plus'"></i>
-              <span>{{ subiendoFoto ? 'Subiendo...' : 'Agregar' }}</span>
-            </button>
-          </div>
-          <input
-            ref="inputFotos"
-            type="file"
-            accept="image/*"
-            multiple
-            style="display: none"
-            @change="onFotosSeleccionadas"
-          >
-          <p class="field-hint">Se comprimen automáticamente (~200 KB c/u) para no llenar el almacenamiento.</p>
-        </div>
+      </template>
 
-        <div class="form-group full">
-          <label for="ef-notas">Notas</label>
-          <textarea id="ef-notas" v-model="form.notas" :disabled="guardando"></textarea>
-        </div>
+      <!-- ── Fotos (hasta MAX_FOTOS; suben por la edge function equipos-fotos) ── -->
+      <div class="section-label">
+        <i class="ti ti-camera" aria-hidden="true"></i> Fotos
+        <span class="rounded-full bg-gray-100 px-1.5 font-medium normal-case tracking-normal text-gray-600 tabular-nums">{{ form.fotos.length }}/{{ MAX_FOTOS }}</span>
+      </div>
+      <div class="full">
+        <EquipoFotos v-model="form.fotos" :equipo-id="props.equipo?.id || null" :disabled="guardando" @error="(m) => (error = m)" />
+      </div>
 
+      <div class="section-label">
+        <i class="ti ti-notes" aria-hidden="true"></i> Notas
+      </div>
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta sr-only" :for="campoNotas.id">Notas</label>
+        <div class="campo__caja">
+          <textarea :id="campoNotas.id" v-model="form.notas" class="campo__control campo__control--area" :rows="3" :disabled="guardando"></textarea>
         </div>
+      </div>
 
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Guardando...' : 'Guardar' }}
-          </button>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
         </div>
-      </form>
-    </div>
-  </div>
-  </Transition>
+      </div>
+    </form>
+
+    <template #acciones>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton type="submit" form="eq-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
+    </template>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
-    @cancel="confirmarDescarte = false"
+    @cerrado="confirmarDescarte = false"
     @confirm="descartarCambios"
   />
 </template>
-
-<style scoped>
-/* Ancho: .modal-lg de la escala centralizada (main.css) */
-
-.costo-inputs {
-  display: flex;
-  gap: 6px;
-}
-
-.costo-inputs input { flex: 1; }
-.costo-inputs select { width: 76px; }
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-}
-
-.acc-buscar {
-  position: relative;
-  margin-bottom: 10px;
-}
-
-.acc-buscar > input { width: 100%; }
-
-.acc-sugerencias {
-  position: absolute;
-  z-index: 20;
-  left: 0;
-  right: 0;
-  top: calc(100% + 2px);
-  margin: 0;
-  padding: 4px 0;
-  list-style: none;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.acc-sugerencias li {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.acc-sugerencias li:hover {
-  background: var(--color-bg-subtle);
-}
-
-.acc-sug-codigo {
-  flex: 0 0 88px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.acc-sug-desc { flex: 1; min-width: 0; }
-
-.acc-lista {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.acc-lista-head,
-.acc-fila {
-  display: grid;
-  grid-template-columns: 100px 1fr 64px 36px;
-  gap: 6px;
-  align-items: center;
-  padding: 6px 8px;
-}
-
-.acc-lista-head {
-  background: var(--color-bg-subtle);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--color-text-secondary);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.acc-fila + .acc-fila {
-  border-top: 1px solid var(--color-border-subtle, var(--color-border));
-}
-
-.acc-fila input {
-  width: 100%;
-  min-width: 0;
-}
-
-.acc-fila input[type="number"] {
-  text-align: center;
-}
-
-.acc-vacio { margin: 0 0 10px; }
-
-.acc-nueva {
-  display: grid;
-  grid-template-columns: 100px 1fr 64px auto;
-  gap: 6px;
-  align-items: center;
-}
-
-.acc-nueva input { width: 100%; min-width: 0; }
-.acc-nueva input[type="number"] { text-align: center; }
-
-.fotos-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.foto-thumb {
-  position: relative;
-  width: 92px;
-  height: 92px;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-}
-
-.foto-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.foto-x {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-}
-
-.foto-x:hover { background: var(--mat-color-danger-hover); }
-
-.foto-agregar {
-  width: 92px;
-  height: 92px;
-  border: 1.5px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  background: none;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: var(--color-text-secondary);
-  font-size: 11.5px;
-}
-
-.foto-agregar:hover:not(:disabled) {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.foto-agregar i { font-size: 20px; }
-
-.field-hint {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.modal-actions.full {
-  grid-column: 1 / -1;
-}
-
-@media (max-width: 768px) {
-  .acc-lista-head,
-  .acc-fila,
-  .acc-nueva {
-    grid-template-columns: 1fr 56px 36px;
-  }
-  .acc-lista-head span:first-child,
-  .acc-fila > input:first-child,
-  .acc-nueva > input:first-child {
-    display: none;
-  }
-  .acc-nueva {
-    grid-template-columns: 1fr 56px auto;
-  }
-}
-</style>

@@ -5,8 +5,12 @@ import { getClient } from '../client.js';
 // aquí solo se envía a cifrar antes de guardar. Los listados ya no
 // traen contraseñas; se revelan bajo demanda (auditado) vía passwords.js
 import { cifrarPassword } from '../passwords.js';
-import { toLower, trimText, fechaLocalISO } from '../../core/formatters.js';
+import { toLower, trimText } from '../../core/formatters.js';
 import { mensajeSiUsuarioDuplicado } from '../erroresDb.js';
+
+// Asignación + cuenta + plataforma: la forma que `mapAsignacion` espera.
+const SELECT_ASIGNACION =
+  'id, cuenta_id, empleado_id, fecha_inicio, notas, cuentas(id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono))';
 
 export const cuentasApi = {
   async listCuentasPorEmpleado(empleadoId) {
@@ -21,41 +25,35 @@ export const cuentasApi = {
     return items;
   },
 
+  // Cuenta + asignación inicial en UNA transacción (RPC crear_cuenta_asignada,
+  // migración 101; guard módulo `correos`). Antes eran dos inserts sueltos: si
+  // el segundo fallaba quedaba una cuenta sin titular. La contraseña viaja YA
+  // cifrada (cifrarPassword → edge function `credenciales`, invariante 2 de
+  // AGENTS.md); la RPC rechaza texto plano. La unicidad usuario+plataforma
+  // llega como 23505 crudo: la traduce quien lo muestra (api/erroresDb.js).
   async createCuenta(datos) {
     const db = getClient().database;
+    const passwordCifrada = datos.password ? await cifrarPassword(datos.password) : null;
 
-    const { data: cuenta, error: e1 } = await db
-      .from('cuentas')
-      .insert([{
-        plataforma_id: datos.plataforma_id,
-        usuario: toLower(datos.usuario),
-        password: datos.password ? await cifrarPassword(datos.password) : null,
-        last_password_change: datos.password ? new Date().toISOString() : null,
-        url: trimText(datos.url),
-        notas: trimText(datos.notas),
-        tipo_cuenta: datos.tipo_cuenta || 'personal',
-      }])
-      .select('id')
-      .single();
-    if (e1) throw new Error(mensajeSiUsuarioDuplicado(e1) || e1.message);
+    const { data: asignacion, error } = await db.rpc('crear_cuenta_asignada', {
+      p_plataforma_id: datos.plataforma_id,
+      p_usuario: toLower(datos.usuario),
+      p_empleado_id: datos.empleado_id,
+      p_password_cifrada: passwordCifrada,
+      p_url: trimText(datos.url),
+      p_notas: trimText(datos.notas),
+      p_tipo_cuenta: datos.tipo_cuenta || 'personal',
+    });
+    if (error) throw error;
 
-    const { error: e2 } = await db
+    // La RPC devuelve la fila cruda de la asignación; se relee con los embeds
+    // para conservar la forma que consumen la ficha y el store.
+    const { data, error: e2 } = await db
       .from('asignaciones_cuenta')
-      .insert([{
-        cuenta_id: cuenta.id,
-        empleado_id: datos.empleado_id,
-        fecha_inicio: fechaLocalISO(),
-      }]);
+      .select(SELECT_ASIGNACION)
+      .eq('id', asignacion.id)
+      .single();
     if (e2) throw e2;
-
-    const { data, error: e3 } = await db
-      .from('asignaciones_cuenta')
-      .select('id, cuenta_id, empleado_id, fecha_inicio, notas, cuentas(id, plataforma_id, usuario, url, notas, tipo_cuenta, last_password_change, requiere_rotacion, plataformas(nombre, icono))')
-      .eq('cuenta_id', cuenta.id)
-      .eq('empleado_id', datos.empleado_id)
-      .is('fecha_fin', null)
-      .single();
-    if (e3) throw e3;
     return mapAsignacion(data);
   },
 
@@ -91,42 +89,23 @@ export const cuentasApi = {
     return mapAsignacion(data);
   },
 
+  // Cierra la asignación, rota la contraseña si llegó una nueva y abre la del
+  // otro empleado, todo o nada (RPC traspasar_cuenta, migración 101; guard
+  // módulo `correos`). Antes eran 4 escrituras sueltas desde el cliente: si
+  // fallaba la tercera la cuenta quedaba sin titular. Sin contraseña nueva, la
+  // marca "Rotar contraseña" que pone el trigger del cierre queda como aviso.
+  // El servidor rechaza traspasar una cuenta PERSONAL (se revoca y se crea una
+  // nueva) y un destino que no esté Activo. Devuelve la asignación NUEVA (fila
+  // cruda).
   async traspasarCuenta(asignacionId, nuevoEmpleadoId, notas, nuevaPassword = null) {
-    const db = getClient().database;
-    const today = fechaLocalISO();
-
-    const { data: asig, error: e0 } = await db
-      .from('asignaciones_cuenta')
-      .select('cuenta_id')
-      .eq('id', asignacionId)
-      .single();
-    if (e0) throw e0;
-
-    const { error: e1 } = await db
-      .from('asignaciones_cuenta')
-      .update({ fecha_fin: today, notas: notas || 'Traspaso a otro empleado' })
-      .eq('id', asignacionId);
-    if (e1) throw e1;
-
-    // Rotar contraseña DESPUÉS de cerrar la asignación: el trigger de BD
-    // marca requiere_rotacion al cierre, y aquí se limpia si hubo rotación.
-    // Sin nueva contraseña, el flag queda activo como advertencia.
-    if (nuevaPassword) {
-      const { error: ePw } = await db
-        .from('cuentas')
-        .update({
-          password: await cifrarPassword(nuevaPassword),
-          last_password_change: new Date().toISOString(),
-          requiere_rotacion: false,
-        })
-        .eq('id', asig.cuenta_id);
-      if (ePw) throw ePw;
-    }
-
-    const { error: e2 } = await db
-      .from('asignaciones_cuenta')
-      .insert([{ cuenta_id: asig.cuenta_id, empleado_id: nuevoEmpleadoId, fecha_inicio: today }]);
-    if (e2) throw e2;
+    const { data, error } = await getClient().database.rpc('traspasar_cuenta', {
+      p_asignacion_id: asignacionId,
+      p_nuevo_empleado_id: nuevoEmpleadoId,
+      p_notas: trimText(notas),
+      p_password_cifrada: nuevaPassword ? await cifrarPassword(nuevaPassword) : null,
+    });
+    if (error) throw error;
+    return data;
   },
 
   async historialCuenta(cuentaId) {
@@ -152,14 +131,14 @@ export const cuentasApi = {
     });
   },
 
+  // Cierra la asignación (RPC cerrar_asignacion_cuenta, migración 101; guard
+  // módulo `correos`). Si ya estaba cerrada no hace nada. Sin `notas` no pisa
+  // las que ya tenía. La cuenta sigue viva (compartida/reutilizable).
   async cerrarAsignacion(asignacionId, notas = null) {
-    const updateData = { fecha_fin: fechaLocalISO() };
-    if (notas) updateData.notas = notas;
-    const { error } = await getClient().database
-      .from('asignaciones_cuenta')
-      .update(updateData)
-      .eq('id', asignacionId)
-      .is('fecha_fin', null);
+    const { error } = await getClient().database.rpc('cerrar_asignacion_cuenta', {
+      p_asignacion_id: asignacionId,
+      p_notas: trimText(notas),
+    });
     if (error) throw error;
   },
 

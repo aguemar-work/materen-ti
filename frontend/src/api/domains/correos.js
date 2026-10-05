@@ -16,13 +16,22 @@ const SELECT_CORREO = 'id, plataforma_id, usuario, url, notas, tipo_cuenta, last
 const ORDEN_COLUMNAS = ['usuario', 'tipo_cuenta', 'url', 'notas'];
 const ORDEN_DEFECTO = { columna: 'created_at', ascending: true };
 
-async function queryCorreos({ q = '', tipo = '', orden } = {}, { conteo = false } = {}) {
+// soloRotacion: cuentas con `requiere_rotacion` (la marca el trigger de BD
+// al cerrarse la asignación de un titular, y la limpia updateCorreo cuando
+// se escribe una contraseña nueva).
+// plataformaIds: chip "Plataforma" de los filtros V2 (2026-09-25).
+async function queryCorreos(
+  { q = '', tipo = '', soloRotacion = false, plataformaIds = [], orden } = {},
+  { conteo = false, soloConteo = false } = {},
+) {
   let query = getClient().database
     .from('cuentas')
-    .select(SELECT_CORREO, conteo ? { count: 'exact' } : undefined)
+    .select(soloConteo ? 'id' : SELECT_CORREO, conteo ? { count: 'exact' } : undefined)
     .in('tipo_cuenta', ['reutilizable', 'compartida'])
     .is('deleted_at', null);
   if (tipo) query = query.eq('tipo_cuenta', tipo);
+  if (soloRotacion) query = query.eq('requiere_rotacion', true);
+  if (plataformaIds.length) query = query.in('plataforma_id', plataformaIds);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     const { data: plats } = await getClient().database
@@ -40,16 +49,34 @@ async function queryCorreos({ q = '', tipo = '', orden } = {}, { conteo = false 
 // ── Correos Compartidos ──────────────────────────────────────────────────────
 
 export const correosApi = {
-  async listCorreosPage({ pagina = 1, tamPagina = 20, q = '', tipo = '', orden } = {}) {
+  async listCorreosPage({ pagina = 1, tamPagina = 20, orden, ...filtros } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryCorreos({ q, tipo, orden }, { conteo: true });
+    const { qb } = await queryCorreos({ ...filtros, orden }, { conteo: true });
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapCorreo), total: count ?? 0 };
   },
 
-  async listCorreosFiltrados({ q = '', tipo = '' } = {}) {
-    const { qb } = await queryCorreos({ q, tipo });
+  // Conteo de cada vista del listado (filtros V2): todos, por tipo y "por
+  // rotar", con la misma búsqueda y chips.
+  async conteosCorreosPorVista(filtros = {}) {
+    const vistas = [
+      ['todos', {}],
+      ['compartida', { tipo: 'compartida' }],
+      ['reutilizable', { tipo: 'reutilizable' }],
+      ['rotar', { soloRotacion: true }],
+    ];
+    const resultados = await Promise.all(vistas.map(async ([clave, extra]) => {
+      const { qb } = await queryCorreos({ ...filtros, ...extra }, { conteo: true, soloConteo: true });
+      const { count, error } = await qb.range(0, 0);
+      if (error) throw error;
+      return [clave, count ?? 0];
+    }));
+    return Object.fromEntries(resultados);
+  },
+
+  async listCorreosFiltrados(filtros = {}) {
+    const { qb } = await queryCorreos(filtros);
     const { data, error } = await qb;
     if (error) throw error;
     return (data || []).map(mapCorreo);

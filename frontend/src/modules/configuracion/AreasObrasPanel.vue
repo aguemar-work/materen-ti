@@ -2,179 +2,206 @@
 // Catálogo de áreas/obras: puramente funcional (migración 059) — dónde
 // trabaja cada empleado en términos de función/asignación laboral, sin
 // relación con su ubicación física (ver UbicacionesPanel.vue, independiente).
-import { ref, onMounted } from 'vue';
-import { storeToRefs } from 'pinia';
 import { useAreasObrasStore } from '../../stores/catalogos.js';
-import { showToast } from '../../core/toast.js';
-import { usePaginacion } from '../../composables/usePaginacion.js';
-import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
-import Modal from '../../components/shared/Modal.vue';
+import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import EncabezadoCatalogo from './EncabezadoCatalogo.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const store = useAreasObrasStore();
-const { lista, cargando } = storeToRefs(store);
-const guardando = ref(false);
 
-const porEliminar = ref(null);
-const eliminando = ref(false);
-// Al terminar la eliminación se cierra el diálogo con su animación de
-// salida (cerrar()); el @cancel que emite al final baja porEliminar.
-const dialogoEliminar = ref(null);
-
-const mostrarForm = ref(false);
-const editar = ref(null);
-const form = ref({ nombre: '', descripcion: '' });
-const errorForm = ref('');
-// Cerrar vía Modal.cerrar() reproduce la animación de salida;
-// el @close del Modal es quien baja mostrarForm.
-const modalForm = ref(null);
-
-function abrirNueva() {
-  editar.value = null;
-  form.value = { nombre: '', descripcion: '' };
-  errorForm.value = '';
-  mostrarForm.value = true;
-}
-
-function abrirEditar(a) {
-  editar.value = a;
-  form.value = { nombre: a.nombre, descripcion: a.descripcion || '' };
-  errorForm.value = '';
-  mostrarForm.value = true;
-}
-
-async function guardar() {
-  errorForm.value = '';
-  guardando.value = true;
-  try {
-    if (editar.value) {
-      await store.actualizar(editar.value.id, form.value);
-      showToast('Área/Obra actualizada');
-    } else {
-      await store.crear(form.value.nombre, form.value.descripcion);
-      showToast('Área/Obra creada');
-    }
-    modalForm.value?.cerrar();
-  } catch (e) {
-    errorForm.value = e?.message || 'Error al guardar';
-  } finally {
-    guardando.value = false;
-  }
-}
-
-async function confirmarEliminar() {
-  const a = porEliminar.value;
-  if (!a) return;
-  eliminando.value = true;
-  try {
-    await store.softDelete(a.id);
-    showToast('Área/Obra eliminada');
-    dialogoEliminar.value?.cerrar();
-  } catch (e) {
-    showToast(e?.message || 'Error al eliminar', 'error');
-  } finally {
-    eliminando.value = false;
-  }
-}
-
-onMounted(async () => {
-  try {
-    await store.cargar();
-  } catch (e) {
-    showToast(e?.message || 'Error al cargar áreas/obras', 'error');
-  }
+const {
+  lista, cargando, guardando, mostrarForm, editar, form, errorForm, modalForm,
+  porEliminar, eliminando, dialogoEliminar,
+  abrirNueva, abrirEditar, guardar, confirmarEliminar,
+  columna, direccion, ordenarPor, paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina,
+} = useCrudCatalogo(store, {
+  formVacio: () => ({ nombre: '', descripcion: '' }),
+  aForm: (a) => ({ nombre: a.nombre, descripcion: a.descripcion || '' }),
+  crear: (f) => store.crear(f.nombre, f.descripcion),
+  textos: {
+    creado: 'Área/Obra creada',
+    actualizado: 'Área/Obra actualizada',
+    eliminado: 'Área/Obra eliminada',
+    errorCargar: 'Error al cargar áreas/obras',
+  },
 });
 
-const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const { esMovil } = useEsMovil();
+
+// Acciones de fila en el menú ⋮ (rediseño 2026-09-23).
+function accionesDe(fila) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(fila) },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = fila; } },
+  ];
+}
+
+const campoNombre = useCampoAccesible();
+const campoDescripcion = useCampoAccesible();
+const infoErrorForm = infoNotificacion('error');
+
 </script>
 
+
 <template>
-  <main class="page">
-    <div class="card card--fill">
-      <div class="card-toolbar">
-        <div class="toolbar-title">
-          Áreas/Obras
-          <span class="badge-count">{{ lista.length }}</span>
-        </div>
-        <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva área/obra
-        </button>
-      </div>
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Áreas/Obras"
+      :conteo="lista.length"
+      descripcion="Dónde trabaja cada empleado según su función o asignación laboral, independiente de su ubicación física."
+    >
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nueva área/obra" @click="abrirNueva" />
+      </template>
+    </EncabezadoCatalogo>
 
-      <EmptyState
-        v-if="!cargando && lista.length === 0"
-        icono="ti ti-building-community"
-        titulo="Sin áreas/obras"
-        mensaje="Crea áreas administrativas u obras para asignarlas a los empleados."
-      />
+    <AppVacio
+      v-if="!cargando && totalItems === 0"
+      icono="ti ti-building-community"
+      titulo="Sin áreas/obras todavía"
+      mensaje="Cree áreas administrativas u obras para asignarlas a los empleados."
+    >
+      <AppButton variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar área/obra" @click="abrirNueva" />
+    </AppVacio>
 
-      <div v-else class="table-wrap">
+    <template v-else>
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
         <p v-if="cargando" class="sr-only" role="status">Cargando áreas/obras…</p>
-        <table aria-label="Áreas/Obras">
-          <thead>
-            <tr>
-              <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
-              <ThOrdenable clave="descripcion" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Descripción</ThOrdenable>
-              <th scope="col"><span class="sr-only">Acciones</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <SkeletonTabla v-if="cargando" :columnas="3" />
-            <template v-else>
-            <tr v-for="a in listaPaginada" :key="a.id">
-              <td><span class="user-name"><i class="ti ti-building-community ao-icon"></i> {{ a.nombre }}</span></td>
-              <td><TextoVacio :valor="a.descripcion" /></td>
-              <td>
-                <div class="actions">
-                  <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(a)">
-                    <i class="ti ti-pencil"></i>
-                  </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = a">
-                    <i class="ti ti-trash"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-            </template>
-          </tbody>
-        </table>
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-      </div>
-    </div>
 
-    <!-- Formulario (Modal accesible compartido) -->
-    <Modal
+        <!-- ── Tabla (escritorio) ── -->
+        <AppTable
+          v-if="!esMovil"
+          :value="listaPaginada"
+          :loading="cargando"
+          :total-records="totalItems"
+          :rows="tamPagina"
+          :orden="{ columna, direccion }"
+          aria-label="Áreas/Obras"
+          @ordenar="ordenarPor"
+        >
+          <AppColumn field="nombre" header="Nombre" sortable>
+            <template #body="{ data: fila }">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                  <i class="ti ti-building-community" aria-hidden="true"></i>
+                </span>
+                <span class="truncate font-medium text-gray-900">{{ fila.nombre }}</span>
+              </div>
+            </template>
+          </AppColumn>
+          <AppColumn field="descripcion" header="Descripción" sortable>
+            <template #body="{ data: fila }">
+              <span :class="fila.descripcion ? 'text-gray-700' : 'text-gray-500'">{{ fila.descripcion || 'Sin descripción' }}</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+            <template #body="{ data: fila }">
+              <div class="flex justify-end" @click.stop>
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </template>
+          </AppColumn>
+        </AppTable>
+
+        <!-- ── Lista (móvil) ── -->
+        <template v-else>
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando áreas/obras...</p>
+          <ul v-else class="divide-y divide-gray-100" aria-label="Áreas/Obras">
+            <li v-for="fila in listaPaginada" :key="fila.id" class="flex items-start gap-3 px-4 py-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                <i class="ti ti-building-community" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
+                <div class="text-xs" :class="fila.descripcion ? 'text-gray-500' : 'text-gray-500'">{{ fila.descripcion || 'Sin descripción' }}</div>
+              </div>
+              <div class="-mr-1">
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </li>
+          </ul>
+        </template>
+
+        <AppPaginacion
+          v-if="!esMovil && !cargando && totalItems > 0"
+          :pagina="paginaActual"
+          :tam-pagina="tamPagina"
+          :total="totalItems"
+          @update:pagina="paginaActual = $event"
+          @update:tam-pagina="cambiarTamPagina"
+        />
+      </div>
+      <AppPaginacion
+        v-if="esMovil && !cargando"
+        variante="compacta"
+        :pagina="paginaActual"
+        :tam-pagina="tamPagina"
+        :total="totalItems"
+        @update:pagina="paginaActual = $event"
+      />
+    </template>
+
+    <!-- Formulario (AppDialog compartido) -->
+    <AppDialog
       v-if="mostrarForm"
       ref="modalForm"
       :titulo="editar ? 'Editar área/obra' : 'Nueva área/obra'"
       size="sm"
-      @close="mostrarForm = false"
+      @cerrado="mostrarForm = false"
     >
-      <form id="ao-form" class="ao-form" @submit.prevent="guardar">
-        <div class="form-group">
-          <label for="ao-nombre">Nombre *</label>
-          <input id="ao-nombre" v-model="form.nombre" required placeholder="ej: Contabilidad, Logística" :disabled="guardando">
+      <form id="ao-form" class="space-y-4" @submit.prevent="guardar">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNombre.id">Nombre<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoNombre.id"
+              v-model="form.nombre"
+              class="campo__control"
+              type="text"
+              placeholder="ej: Contabilidad, Logística"
+              required
+              :disabled="guardando"
+              :aria-invalid="campoNombre.invalido.value"
+              :aria-describedby="campoNombre.describedBy.value"
+            >
+          </div>
         </div>
-        <div class="form-group">
-          <label for="ao-desc">Descripción</label>
-          <input id="ao-desc" v-model="form.descripcion" :disabled="guardando">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoDescripcion.id">Descripción</label>
+          <div class="campo__caja">
+            <input
+              :id="campoDescripcion.id"
+              v-model="form.descripcion"
+              class="campo__control"
+              type="text"
+              :disabled="guardando"
+              :aria-invalid="campoDescripcion.invalido.value"
+              :aria-describedby="campoDescripcion.describedBy.value"
+            >
+          </div>
         </div>
-        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+        <div v-if="errorForm" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+          <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorForm }}</p>
+          </div>
+        </div>
       </form>
       <template #acciones>
-        <button class="btn" type="button" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
-        <button class="btn btn-primary" type="submit" form="ao-form" :disabled="guardando">
-          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-          {{ guardando ? 'Guardando...' : 'Guardar' }}
-        </button>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
+        <AppButton type="submit" form="ao-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -186,13 +213,10 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
       :mensaje="`¿Eliminar “${porEliminar.nombre}”? Los empleados asignados quedan sin área/obra.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="porEliminar = null"
+      @cerrado="porEliminar = null"
       @confirm="confirmarEliminar"
     />
-  </main>
+  </div>
 </template>
 
-<style scoped>
-.ao-icon { color: var(--color-purple-text); margin-right: 4px; }
-.ao-form { display: flex; flex-direction: column; gap: 12px; }
-</style>
+

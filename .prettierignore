@@ -4,3 +4,5 @@ frontend/dist
 frontend/coverage
 package-lock.json
 frontend/package-lock.json
+
+functions/dist

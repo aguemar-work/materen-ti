@@ -7,13 +7,26 @@
 // INSERT), todo pasa por aquí con cliente admin.
 //
 // Acciones (POST { action, ... }):
-//   catalogo       público          → { categorias[], subcategorias[] }
+//   catalogo       público          → { categorias[], subcategorias[] } (con `aviso`, migración 114)
 //   crear          público o staff  → { codigo, token, vinculado }
-//   seguimiento    público          → { codigo, titulo, estado, comentarios[] }
+//   seguimiento    público          → { codigo, titulo, estado, comentarios[], adjuntoUrl? }
+//   adjuntoStaff   staff            → { url, expiraSegundos } (URL firmada de la captura de un ticket)
 //   buscarPorDni   público          → { tickets[] } (solo tickets ACTIVOS; limitado por IP)
 //   encuestaEstado público          → { respondida } (para no mostrar el formulario tras refrescar)
 //   encuesta       público          → { ok }
 //   version        staff            → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
+//   ping           público          → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
+//
+// Adjuntos (migración 111): el bucket `tickets-adjuntos` es PRIVADO. La captura
+// se guarda en `tickets/<ticket.id>/captura.<ext>` (antes `<token>/…`, que dejaba
+// el token de seguimiento en la URL del objeto) y solo se abre con una URL
+// firmada de corta vida: `seguimiento` (el dueño del enlace) y `adjuntoStaff`
+// (staff con el módulo `tickets`, verificado por la RPC `puede`). Los metadatos
+// (EXIF/XMP/ICC/comentarios) se eliminan en el servidor antes de subir.
+//
+// `crear` delega en la RPC `crear_ticket_publico` (ticket + evento + intento en
+// UNA transacción, ver migración 111): ya no hay un insert suelto de
+// `ticket_eventos` que pueda fallar en silencio.
 //
 // Nota: el sistema no envía avisos/notificaciones por correo (se
 // retiró intencionalmente; ver docs/HISTORIAL-AUDITORIAS.md). El
@@ -27,47 +40,19 @@
 // 067, que eliminó entregas.token — ver docs/HISTORIAL-AUDITORIAS.md).
 // ============================================================
 
-import { createClient, createAdminClient } from 'npm:@insforge/sdk@1.5.2';
+import { createAdminClient } from 'npm:@insforge/sdk@1.5.2';
 
-const ORIGENES_PERMITIDOS = new Set([
-  'https://materen-ti.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:4173',
-]);
-
-// Cabeceras CORS calculadas POR PETICIÓN (Ciclo 20): antes vivían en un
-// `let CORS` global de módulo, reasignado al entrar cada petición — con
-// peticiones concurrentes en el mismo isolate, una podía pisar el valor de
-// otra entre dos `await`. Mismo cambio en las 4 edge functions (helpers
-// duplicados a propósito, cada function se despliega como un único archivo).
-function corsPara(origin: string | null): Record<string, string> {
-  if (!origin || !ORIGENES_PERMITIDOS.has(origin)) return {};
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Vary': 'Origin',
-  };
-}
-
-// Sin una clave `error` (string) en el body, el SDK del cliente descarta el
-// body completo en toda respuesta no-2xx y arma un InsForgeError genérico
-// ("Request failed: <statusText>") — `code` nunca llega al frontend
-// (`"error" in data` es el único gate que usa @insforge/sdk para conservar
-// las claves del body). Se espeja `code` en `error` solo para status >= 400.
-function respuesta(cors: Record<string, string>, body: unknown, status = 200): Response {
-  const payload =
-    status >= 400 && body && typeof body === 'object' && 'code' in body && !('error' in body)
-      ? { ...body, error: (body as { code: string }).code }
-      : body;
-  return new Response(JSON.stringify(payload), {
-    status,
-    // no-store: buscarPorDni devuelve tokens de ticket y datos de contacto,
-    // no debe quedar cacheado en el navegador/proxy.
-    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-  });
-}
+// Helpers compartidos (functions/_shared/): scripts/build-functions.mjs pega
+// cada bloque aquí para generar functions/dist/tickets.ts, que es lo que se
+// despliega (el runtime exige UN archivo por function). No editar el dist.
+// @inline ./_shared/tipos.ts
+// @inline ./_shared/http.ts
+// @inline ./_shared/errores.ts
+// @inline ./_shared/auth.ts
+// @inline ./_shared/permisos.ts
+// @inline ./_shared/ratelimit.ts
+// @inline ./_shared/imagenes.ts
+// @inline ./_shared/version.ts
 
 function randomToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(18));
@@ -92,26 +77,34 @@ const ADJUNTO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const TITULO_MAX_LEN = 200;
 const DESCRIPCION_MAX_LEN = 5000;
 
-// Solo aplica a creación SIN sesión de staff (ver uso más abajo): un staff
-// autenticado ya pasó por su propio login y no necesita este freno.
-const CREACION_MAX_IP = 8;         // creaciones públicas permitidas por ventana
-const CREACION_VENTANA_MIN = 10;   // minutos
+// El rate-limit de la creación pública (8 por IP y 5 por DNI cada 10 min) vive
+// DENTRO de la RPC crear_ticket_publico (migración 111), en la misma
+// transacción que el ticket: un staff autenticado no lo consume.
 
-// Devuelve la extensión canónica si los primeros bytes son de una imagen
-// soportada; null si no lo es (no se sube).
-// export: probado en frontend/tests/tickets-validaciones.test.js
-export function sniffImagen(b: Uint8Array): string | null {
-  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
-  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
-  if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return 'gif';
-  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
-      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'webp';
-  return null;
+// Adjuntos privados (migración 111): URL firmada de corta vida, 300 s.
+const ADJUNTOS_BUCKET = 'tickets-adjuntos';
+const ADJUNTO_URL_SEGUNDOS = 300;
+const ADJUNTO_STAFF_MAX_USUARIO = 120; // urls firmadas por usuario y ventana
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Rate-limits de las acciones públicas de solo lectura/respuesta (Ciclo 21),
+// por IP y sobre `intentos_publicos` (migración 104). Mismos 10 min de ventana.
+const LIMITE_VENTANA_MIN = 10;
+const SEGUIMIENTO_MAX_IP = 60;
+const CATALOGO_MAX_IP = 60;
+const ENCUESTA_MAX_IP = 30; // encuestaEstado y encuesta, cada una por separado
+
+// URL firmada de corta vida para una captura del bucket privado (111). null si
+// no se puede firmar (objeto ausente, falla de red): nunca rompe la respuesta
+// que la incluye.
+async function urlFirmadaAdjunto(admin: ClienteAdmin, key: string): Promise<string | null> {
+  try {
+    const { data, error } = await admin.storage.from(ADJUNTOS_BUCKET).createSignedUrl(key, ADJUNTO_URL_SEGUNDOS);
+    return !error && data?.signedUrl ? data.signedUrl : null;
+  } catch {
+    return null;
+  }
 }
-
-const MIME_POR_EXT: Record<string, string> = {
-  jpg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
-};
 
 export function esEmail(valor: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
@@ -121,45 +114,12 @@ export function soloDigitos(valor: string): string {
   return valor.replace(/\D/g, '');
 }
 
-// IP de confianza del cliente. cf-connecting-ip / x-real-ip los pone el
-// edge (un solo valor, no falsificables). x-forwarded-for es el último
-// recurso y se toma su ÚLTIMO valor: los proxies AGREGAN la IP real al
-// final; el primero lo controla el cliente (auditoría H-02).
-// El SDK (postgrest-js sin Database schema generado) tipa toda relación
-// embebida en un select() como arreglo, aunque en runtime sea un solo
-// objeto cuando el embed es por FK 1:1 desde la fila consultada (ej.
-// tickets.categoria_id → categorias_ticket.id). Sin esto, TS marca
-// `.nombre` como inexistente en un arreglo — el dato real siempre fue
-// un objeto.
-function uno<T>(rel: T | T[] | null | undefined): T | null {
-  return (Array.isArray(rel) ? rel[0] : rel) ?? null;
-}
-
-export function ipDesdeHeaders(headers: Headers): string {
-  const xff = (headers.get('x-forwarded-for') || '')
-    .split(',').map((s) => s.trim()).filter(Boolean);
-  return (
-    headers.get('cf-connecting-ip') ||
-    headers.get('x-real-ip') ||
-    xff[xff.length - 1] ||
-    'desconocida'
-  );
-}
-
 // Envoltorio de primer nivel (Ciclo 20): toda excepción no controlada — o
 // una falla fail-closed de un rate-limit que no se pudo contar/registrar —
 // termina en { ok:false, code:'error_interno' } (500) con las cabeceras CORS
 // de esta petición, en vez de un 500 opaco sin CORS de la plataforma. Al log
 // solo va el mensaje, nunca el body (puede traer DNI/contacto).
-export default async function (req: Request): Promise<Response> {
-  const cors = corsPara(req.headers.get('Origin'));
-  try {
-    return await manejar(req, cors);
-  } catch (e) {
-    console.error('[tickets] error no controlado:', e instanceof Error ? e.message : String(e));
-    return respuesta(cors, { ok: false, code: 'error_interno' }, 500);
-  }
-}
+export default (req: Request): Promise<Response> => conEnvoltorio('tickets', req, manejar);
 
 async function manejar(req: Request, cors: Record<string, string>): Promise<Response> {
   const json = (body: unknown, status = 200) => respuesta(cors, body, status);
@@ -173,6 +133,11 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     return json({ ok: false, code: 'body_invalido' }, 400);
   }
 
+  // ping: healthcheck público (Ciclo 21). Sin sesión y SIN tocar la BD.
+  if (body.action === 'ping') {
+    return json({ ok: true, funcion: 'tickets', hora: new Date().toISOString() });
+  }
+
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
 
@@ -182,54 +147,48 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     ]);
   }
 
-  // Staff autenticado, si vino Authorization (opcional en "crear")
-  async function staffDeSesion(): Promise<{ id: string; email: string | null } | null> {
-    const authHeader = req.headers.get('Authorization');
-    const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
-    if (!userToken) return null;
-    const userClient = createClient({ baseUrl, accessToken: userToken });
-    const { data } = await userClient.auth.getCurrentUser();
-    const user = data?.user;
-    if (!user?.id) return null;
-    const { data: staffRow } = await admin.database
-      .from('staff')
-      .select('activo')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (!staffRow?.activo) return null;
-    return { id: user.id, email: user.email || null };
-  }
+  // Staff autenticado, si vino Authorization (opcional en "crear"). Ciclo 21 —
+  // FAIL-CLOSED (ver _shared/auth.ts): "sin cabecera / token anónimo o inválido /
+  // usuario que no es staff activo" siguen siendo público (null), pero si HAY un
+  // usuario autenticado y la consulta de `staff` (o de la sesión) FALLA, se
+  // LANZA → error_interno 500. Antes un error de BD degradaba en silencio al
+  // staff a público (su ticket salía con origen 'empleado').
+  const staffDeLaPeticion = () => staffDeSesion(req, admin, baseUrl);
+
+  const ip = ipDesdeHeaders(req.headers);
 
   // version: staff únicamente (cierra el pendiente de H-12 — ver el mismo
   // comentario en functions/credenciales.ts). No es una acción pública.
   if (body.action === 'version') {
-    const staff = await staffDeSesion();
+    const staff = await staffDeLaPeticion();
     if (!staff) return json({ ok: false, code: 'no_autenticado' }, 401);
-    const [{ data: migracion }, { data: deploy }] = await Promise.all([
-      admin.database.from('schema_migrations').select('version, nombre_archivo, aplicada_en')
-        .order('version', { ascending: false }).limit(1).maybeSingle(),
-      admin.database.from('function_deploys').select('sha256, commit_sha, desplegado_en')
-        .eq('funcion', 'tickets').order('desplegado_en', { ascending: false }).limit(1).maybeSingle(),
-    ]);
-    return json({
-      ok: true,
-      funcion: 'tickets',
-      sdkVersion: '1.5.2',
-      ultimaMigracion: migracion || null,
-      ultimoDeploy: deploy || null,
-    });
+    return json(await datosVersion(admin, 'tickets'));
   }
 
   // ── catalogo: público, categorías/subcategorías activas para el formulario ──
+  // `aviso` (migración 114): advertencia fija que el formulario muestra al
+  // elegir la categoría o la subcategoría (gana el de la subcategoría). Es texto
+  // plano del catálogo, sin datos personales: puede salir al portal público.
   if (body.action === 'catalogo') {
+    if (await excedeLimite(admin, 'tickets.catalogo', ip, CATALOGO_MAX_IP, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
     const [{ data: categorias }, { data: subcategorias }] = await Promise.all([
-      admin.database.from('categorias_ticket').select('id, nombre').is('deleted_at', null).order('nombre'),
-      admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre, tipo_sugerido').is('deleted_at', null).order('nombre'),
+      admin.database.from('categorias_ticket').select('id, nombre, aviso').is('deleted_at', null).order('nombre'),
+      admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre, tipo_sugerido, aviso').is('deleted_at', null).order('nombre'),
     ]);
     return json({ ok: true, categorias: categorias || [], subcategorias: subcategorias || [] });
   }
 
   // ── crear: público (empleado) o staff (interno / a nombre de un empleado) ──
+  // Orden (migración 111): validación rápida → sesión de staff (opcional) →
+  // adjunto decodificado, validado y SIN metadatos (en memoria) → RPC
+  // `crear_ticket_publico` (rate-limit público, vinculación por DNI, código,
+  // ticket, evento `creado` e intento, TODO en una transacción) → recién entonces
+  // se sube la captura a `tickets/<ticket.id>/captura.<ext>` y se enlaza con
+  // `adjuntar_captura_ticket`. Así un cliente bloqueado por el rate-limit no
+  // puede subir archivos al bucket, y un fallo de la subida nunca deja un
+  // ticket sin hoja de vida.
   if (body.action === 'crear') {
     const titulo = String(body.titulo || '').trim();
     const descripcion = String(body.descripcion || '').trim();
@@ -242,142 +201,99 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       return json({ ok: false, code: 'texto_muy_largo' });
     }
 
-    const staff = await staffDeSesion();
-    const origen = staff && body.origen === 'staff_interno' ? 'staff_interno' : 'empleado';
-
-    // Rate-limit por IP, solo para creación pública (sin sesión de staff):
-    // mismo patrón que buscarPorDni (migración 017), tabla propia
-    // (migración 037) para no mezclar el conteo con la búsqueda por DNI.
-    // Fail-closed (Ciclo 20): si no se puede contar ni registrar el intento,
-    // se bloquea (error_interno) — antes un error de BD daba data=null →
-    // "0 intentos" y el tope quedaba desactivado justo cuando la BD fallaba.
-    if (!staff) {
-      const ip = ipDesdeHeaders(req.headers);
-      const desde = new Date(Date.now() - CREACION_VENTANA_MIN * 60 * 1000).toISOString();
-      const { data: intentos, error: eIntentos } = await admin.database
-        .from('ticket_creacion_intentos')
-        .select('id')
-        .eq('ip', ip)
-        .gte('created_at', desde);
-      if (eIntentos) throw new Error(`No se pudo contar ticket_creacion_intentos: ${eIntentos.message}`);
-      if ((intentos?.length || 0) >= CREACION_MAX_IP) {
-        return json({ ok: false, code: 'demasiados_intentos' }, 429);
-      }
-      const { error: eRegistro } = await admin.database.from('ticket_creacion_intentos').insert([{ ip }]);
-      if (eRegistro) throw new Error(`No se pudo registrar el intento de creación: ${eRegistro.message}`);
-    }
-
-    let empleadoId: string | null = null;
-    let vinculado = true;
+    const staff = await staffDeLaPeticion();
     const contacto = body.contacto ? String(body.contacto).trim() : null;
 
-    if (staff && body.empleadoIdManual) {
-      empleadoId = String(body.empleadoIdManual);
-    } else if (origen === 'empleado' && contacto) {
-      // Identificación SOLO por DNI: un correo puede repetirse entre
-      // empleados o una persona tener varios, el DNI no. La UI ya valida
-      // 8 dígitos, pero esta rama es la autoridad real (endpoint público).
-      const { data: coincidencias } = await admin.database
-        .from('empleados').select('id').is('deleted_at', null)
-        .eq('dni', soloDigitos(contacto));
-      if (coincidencias?.length === 1) {
-        empleadoId = coincidencias[0].id;
-        vinculado = true;
-      } else {
-        empleadoId = null;
-        vinculado = false; // sin match o ambiguo: no bloquea, queda para revisión
-      }
-    } else if (origen === 'empleado') {
-      // Sin contacto (ni asignación manual de staff): no hay forma de identificar al empleado
-      vinculado = false;
-    }
-
-    const { data: codigo, error: eCodigo } = await admin.database.rpc('siguiente_codigo_ticket');
-    if (eCodigo || !codigo) return json({ ok: false, code: 'error_codigo' }, 500);
-
-    const token = randomToken();
-
-    // Adjunto opcional (captura de pantalla), ya comprimido en el cliente
-    let adjuntoUrl: string | null = null;
-    let adjuntoKey: string | null = null;
+    // Adjunto opcional (captura de pantalla), ya comprimido en el cliente. El
+    // cliente no es de confianza: tamaño acotado, tipo real por magic bytes y
+    // metadatos (EXIF/GPS…) eliminados aquí. Si algo falla, el ticket se crea
+    // igual sin adjunto.
+    let adjuntoBytes: Uint8Array<ArrayBuffer> | null = null;
+    let adjuntoExt: string | null = null;
     const adjunto = body.adjunto as { nombre?: string; tipo?: string; contenidoBase64?: string } | undefined;
     if (adjunto?.contenidoBase64) {
       try {
         const binario = atob(adjunto.contenidoBase64);
-        // Tamaño acotado en servidor (no se confía en el cliente)
         if (binario.length > 0 && binario.length <= ADJUNTO_MAX_BYTES) {
           const bytes = new Uint8Array(binario.length);
           for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
-          // Tipo real por magic bytes, ignorando el `tipo` declarado por el cliente
           const ext = sniffImagen(bytes);
-          if (ext) {
-            const blob = new Blob([bytes], { type: MIME_POR_EXT[ext] });
-            // Nombre de archivo fijo y seguro: el token es la carpeta, la
-            // extensión la marca el formato real. Nada del cliente entra en la key.
-            const key = `${token}/captura.${ext}`;
-            const { data: subida, error: eSubida } = await admin.storage.from('tickets-adjuntos').upload(key, blob);
-            if (!eSubida && subida) {
-              adjuntoUrl = subida.url;
-              adjuntoKey = subida.key;
-            }
+          const limpio = ext ? stripExif(bytes, MIME_POR_EXT[ext]) : null;
+          if (ext && limpio) {
+            adjuntoBytes = limpio;
+            adjuntoExt = ext;
           }
         }
       } catch {
-        // El adjunto es opcional: si falla la subida, el ticket se crea igual
+        // El adjunto es opcional: si no se puede leer, el ticket se crea igual
       }
     }
 
-    // Clasificación incidente/solicitud: se hereda del default de la
-    // subcategoría (nunca del cliente, mismo criterio que categoria_id/
-    // subcategoria_id). Si no hay subcategoría, o la elegida es una de las
-    // ambiguas a propósito (tipo_sugerido NULL — "Otro", "Accesorio dañado
-    // o faltante", "Seguridad...backup"), el ticket entra sin clasificar:
-    // check_iniciar_completo() ya exige tipo antes de pasar a en_progreso.
-    let tipoTicket: string | null = null;
-    if (subcategoriaId) {
-      const { data: subcategoria } = await admin.database
-        .from('subcategorias_ticket')
-        .select('tipo_sugerido')
-        .eq('id', subcategoriaId)
-        .maybeSingle();
-      tipoTicket = subcategoria?.tipo_sugerido || null;
-    }
-    // El staff que crea un ticket interno puede corregir la clasificación
-    // sugerida por la subcategoría (TicketInternoForm.vue). El formulario
-    // público nunca manda `tipo` — si lo mandara, se ignora igual porque
-    // `staff` es null sin sesión.
-    if (staff && (body.tipo === 'incidente' || body.tipo === 'solicitud')) {
-      tipoTicket = body.tipo;
-    }
-
-    const { data: ticket, error: eInsert } = await admin.database
-      .from('tickets')
-      .insert([{
-        codigo,
-        token,
+    // Solo con sesión de staff viajan origen, tipo, vínculos a activos y el
+    // empleado elegido a mano; sin sesión la RPC además los ignora.
+    const datosStaff = staff
+      ? {
+          staff_id: staff.id,
+          origen: body.origen === 'staff_interno' ? 'staff_interno' : 'empleado',
+          tipo: body.tipo === 'incidente' || body.tipo === 'solicitud' ? body.tipo : null,
+          empleado_id_manual: body.empleadoIdManual ? String(body.empleadoIdManual) : null,
+          equipo_id: body.equipoId ? String(body.equipoId) : null,
+          cuenta_id: body.cuentaId ? String(body.cuentaId) : null,
+          licencia_id: body.licenciaId ? String(body.licenciaId) : null,
+        }
+      : {};
+    const { data: creado, error: eCrear } = await admin.database.rpc('crear_ticket_publico', {
+      p_datos: {
         titulo,
         descripcion,
-        origen,
-        empleado_id: empleadoId,
-        vinculado,
-        contacto_ingresado: contacto,
-        creado_por: staff?.id || null,
         categoria_id: categoriaId,
         subcategoria_id: subcategoriaId,
-        tipo: tipoTicket,
-        equipo_id: body.equipoId || null,
-        cuenta_id: body.cuentaId || null,
-        licencia_id: body.licenciaId || null,
-        adjunto_url: adjuntoUrl,
-        adjunto_key: adjuntoKey,
-      }])
-      .select('id')
-      .single();
-    if (eInsert || !ticket) return json({ ok: false, code: 'error_creando' }, 500);
+        contacto,
+        token: randomToken(),
+        ip,
+        ...datosStaff,
+      },
+    });
+    if (eCrear) {
+      // Solo el mensaje al log: el payload puede traer DNI y contacto.
+      console.error('[tickets] crear_ticket_publico falló:', eCrear.message);
+      return json({ ok: false, code: 'error_creando' }, 500);
+    }
+    const resultado = (Array.isArray(creado) ? creado[0] : creado) as {
+      ok?: boolean; code?: string; id?: string; codigo?: string; token?: string; vinculado?: boolean;
+    } | null;
+    if (!resultado?.ok) {
+      if (resultado?.code === 'demasiados_intentos') return json({ ok: false, code: 'demasiados_intentos' }, 429);
+      if (resultado?.code) return json({ ok: false, code: resultado.code });
+      return json({ ok: false, code: 'error_creando' }, 500);
+    }
+    if (!resultado.id || !resultado.codigo || !resultado.token) {
+      return json({ ok: false, code: 'error_creando' }, 500);
+    }
 
-    await log(ticket.id, 'creado', `Origen: ${origen}${vinculado ? '' : ' (sin vincular)'}`, staff?.id || null, staff?.email || null);
+    if (adjuntoBytes && adjuntoExt) {
+      // Nombre fijo y seguro: la carpeta es el id del ticket (no el token de
+      // seguimiento) y la extensión la marca el formato real.
+      const key = `tickets/${resultado.id}/captura.${adjuntoExt}`;
+      try {
+        const blob = new Blob([adjuntoBytes], { type: MIME_POR_EXT[adjuntoExt] });
+        const { data: subida, error: eSubida } = await admin.storage.from(ADJUNTOS_BUCKET).upload(key, blob);
+        if (!eSubida && subida) {
+          const { data: enlazada, error: eEnlace } = await admin.database.rpc('adjuntar_captura_ticket', {
+            p_ticket_id: resultado.id,
+            p_key: key,
+          });
+          if (eEnlace || enlazada !== true) {
+            // Sin fila enlazada no debe quedar un objeto huérfano en el bucket.
+            await admin.storage.from(ADJUNTOS_BUCKET).remove(key).catch(() => null);
+          }
+        }
+      } catch {
+        // El adjunto es opcional: si falla la subida, el ticket ya está creado
+      }
+    }
 
-    return json({ ok: true, codigo, token, vinculado });
+    return json({ ok: true, codigo: resultado.codigo, token: resultado.token, vinculado: resultado.vinculado !== false });
   }
 
   // ── seguimiento: público, dado el token del ticket ──────────────────
@@ -385,9 +301,13 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     const token = String(body.token || '');
     if (!token) return json({ ok: false, code: 'token_requerido' });
 
+    if (await excedeLimite(admin, 'tickets.seguimiento', ip, SEGUIMIENTO_MAX_IP, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+
     const { data: ticket } = await admin.database
       .from('tickets')
-      .select('id, codigo, titulo, descripcion, estado, created_at, updated_at, categorias_ticket(nombre), subcategorias_ticket(nombre)')
+      .select('id, codigo, titulo, descripcion, estado, adjunto_key, created_at, updated_at, categorias_ticket(nombre), subcategorias_ticket(nombre)')
       .eq('token', token)
       .maybeSingle();
     if (!ticket) return json({ ok: false, code: 'no_existe' });
@@ -399,12 +319,19 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       .eq('interno', false)
       .order('created_at', { ascending: true });
 
+    // La captura es del propio solicitante: se entrega una URL firmada de corta
+    // vida, nunca la key (el bucket es privado, migración 111). Si no se puede
+    // firmar, la respuesta sale igual sin adjunto.
+    const adjuntoUrl = ticket.adjunto_key ? await urlFirmadaAdjunto(admin, ticket.adjunto_key) : null;
+
     return json({
       ok: true,
       codigo: ticket.codigo,
       titulo: ticket.titulo,
       descripcion: ticket.descripcion,
       estado: ticket.estado,
+      adjuntoUrl,
+      adjuntoExpiraSegundos: adjuntoUrl ? ADJUNTO_URL_SEGUNDOS : null,
       categoria: uno(ticket.categorias_ticket)?.nombre || '',
       subcategoria: uno(ticket.subcategorias_ticket)?.nombre || '',
       creado: ticket.created_at,
@@ -412,6 +339,40 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       // No se exponen nombres de staff: cara pública única, "Soporte TI"
       comentarios: (comentarios || []).map((c) => ({ mensaje: c.mensaje, fecha: c.created_at, autor: 'Soporte TI' })),
     });
+  }
+
+  // ── adjuntoStaff: staff con el módulo `tickets` abre la captura de un ticket ──
+  // El bucket es privado: la autorización se comprueba al emitir la URL firmada
+  // (sesión de staff ACTIVO + `puede(modulo:tickets)` por RPC, fail-closed: un
+  // error de la RPC se lanza → 500, solo un `false` explícito niega con 403).
+  // La key no sale de la function.
+  if (body.action === 'adjuntoStaff') {
+    const staff = await staffDeLaPeticion();
+    if (!staff) return json({ ok: false, code: 'no_autenticado' }, 401);
+
+    const ticketId = String(body.ticketId || '');
+    if (!UUID_RE.test(ticketId)) return json({ ok: false, code: 'no_existe' });
+
+    if (!(await puede(admin, staff.id, 'modulo:tickets'))) return json({ ok: false, code: 'no_autorizado' }, 403);
+
+    if (await excedeLimite(admin, 'tickets.adjuntoStaff', staff.id, ADJUNTO_STAFF_MAX_USUARIO, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+
+    const { data: ticket, error: eTicket } = await admin.database
+      .from('tickets').select('adjunto_key').eq('id', ticketId).maybeSingle();
+    if (eTicket) throw new Error(`No se pudo leer el ticket: ${eTicket.message}`);
+    if (!ticket?.adjunto_key) return json({ ok: false, code: 'no_existe' });
+
+    const { data: firmada, error: eUrl } = await admin.storage
+      .from(ADJUNTOS_BUCKET)
+      .createSignedUrl(ticket.adjunto_key, ADJUNTO_URL_SEGUNDOS);
+    if (eUrl || !firmada?.signedUrl) {
+      // Objeto ausente en el bucket (404) ≠ falla al firmar.
+      const faltante = (eUrl as { statusCode?: number } | null)?.statusCode === 404;
+      return json({ ok: false, code: faltante ? 'no_existe' : 'error_url' }, faltante ? 200 : 500);
+    }
+    return json({ ok: true, url: firmada.signedUrl, expiraSegundos: ADJUNTO_URL_SEGUNDOS });
   }
 
   // ── buscarPorDni: público, para quien perdió el enlace de seguimiento ──
@@ -424,9 +385,8 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     const dni = soloDigitos(String(body.dni || ''));
     if (dni.length !== 8) return json({ ok: false, code: 'dni_invalido' });
 
-    // IP del cliente (ver ipDesdeHeaders). Se refuerza además con el
-    // límite por DNI, que no depende de la IP.
-    const ip = ipDesdeHeaders(req.headers);
+    // IP del cliente (ver ipDesdeHeaders, calculada arriba). Se refuerza
+    // además con el límite por DNI, que no depende de la IP.
     const desde = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
     // Fail-closed en los dos límites y en el registro del intento (Ciclo 20):
@@ -510,6 +470,10 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     const token = String(body.token || '');
     if (!token) return json({ ok: false, code: 'token_requerido' });
 
+    if (await excedeLimite(admin, 'tickets.encuestaEstado', ip, ENCUESTA_MAX_IP, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
+
     const { data: ticket } = await admin.database
       .from('tickets').select('id').eq('token', token).maybeSingle();
     if (!ticket) return json({ ok: false, code: 'no_existe' });
@@ -525,6 +489,10 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
     const token = String(body.token || '');
     const nivel = Number(body.nivel);
     if (!token || !nivel || nivel < 1 || nivel > 5) return json({ ok: false, code: 'datos_invalidos' });
+
+    if (await excedeLimite(admin, 'tickets.encuesta', ip, ENCUESTA_MAX_IP, LIMITE_VENTANA_MIN)) {
+      return json({ ok: false, code: 'demasiados_intentos' }, 429);
+    }
 
     const { data: ticket } = await admin.database
       .from('tickets').select('id').eq('token', token).maybeSingle();

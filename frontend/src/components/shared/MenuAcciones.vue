@@ -1,12 +1,23 @@
 <script setup>
-// Menú contextual "⋮" compartido (patrón mobile, jul 2026).
-// Condensa acciones por fila (tarjetas móviles) o botones de toolbar que no
-// caben en pantallas angostas. El panel se teletransporta a <body> (mismo
-// patrón que Modal.vue) porque .card tiene overflow:hidden y recortaría un
-// popover posicionado con absolute.
-import { ref, computed, nextTick, onBeforeUnmount } from 'vue';
+// Menú contextual "⋮" compartido (patrón mobile, jul 2026). Condensa
+// acciones por fila (tarjetas móviles) o botones de toolbar que no caben en
+// pantallas angostas.
+//
+// Reescrito 2026-09-07 sobre AppMenu (primevue/menu, Unstyled + Tailwind —
+// ver components/ui/AppMenu.vue): posicionamiento del panel, foco por
+// teclado (flechas/Home/End/Enter/Escape), cierre por click-afuera/scroll/
+// resize y devolución de foco al trigger al cerrar con Escape los resuelve
+// PrimeVue Menu — ya no usePopoverFlotante (usado antes acá, sigue vivo en
+// NotificacionesCampana.vue, no se tocó ese archivo).
+//
+// La API PÚBLICA de este componente no cambió: mismas props, mismo slot
+// #trigger, mismo comportamiento visible desde afuera. Los 5 usos
+// existentes (Licencias, Equipos, Empleados...) no necesitan tocarse.
+import { computed, ref } from 'vue';
+import AppMenu from '../ui/AppMenu.vue';
 
-// Raíz múltiple (botón + Teleport): los attrs del padre (class, etc.)
+// Raíz múltiple (botón + AppMenu, que a su vez teletransporta su panel a
+// <body> vía appendTo, igual que antes): los attrs del padre (class, etc.)
 // se aplican explícitamente al botón disparador.
 defineOptions({ inheritAttrs: false });
 
@@ -15,108 +26,63 @@ const props = defineProps({
   // visible: false omite el ítem (condiciones por fila);
   // separador: true dibuja una línea divisoria en lugar de un ítem.
   acciones: { type: Array, required: true },
-  // Etiqueta accesible del botón disparador.
+  // Etiqueta accesible del botón disparador (y del <ul role="menu">).
   label: { type: String, default: 'Acciones' },
   icono: { type: String, default: 'ti-dots-vertical' },
-  // Texto visible junto al icono; con texto el trigger usa .btn (toolbar),
+  // Texto visible junto al icono; con texto el trigger es un botón de texto (toolbar),
   // sin texto usa .icon-btn (fila de tabla/tarjeta).
+  // Con el slot #trigger no aplica ninguna de las dos: quien pasa el slot
+  // se hace cargo del aspecto del boton (ver mas abajo).
   texto: { type: String, default: '' },
 });
 
-const visibles = computed(() => props.acciones.filter((a) => a.visible !== false));
+// Trigger con texto (toolbar): mismo aspecto que AppButton variant="text"
+// severity="secondary" — antes usaba la clase provisional `.btn`.
+const CLASE_CON_TEXTO =
+  'inline-flex h-9 items-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium text-gray-600 ' +
+  'transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
 
+// Traducción a la forma nativa de MenuItem de PrimeVue — la única pieza
+// custom es `danger` (no es un campo de PrimeVue); pt/menu.pt.js lo lee vía
+// el `context` que Menu pasa a cada ítem, ver ese archivo.
+const items = computed(() => props.acciones.map((a) => (
+  a.separador
+    ? { separator: true }
+    : {
+        label: a.label,
+        icon: a.icono ? `ti ${a.icono}` : undefined,
+        disabled: a.disabled,
+        visible: a.visible,
+        danger: a.danger,
+        // Menu ya se cierra solo al ejecutar un ítem (comportamiento propio
+        // de PrimeVue) — `abierto = false` acá es la MISMA actualización,
+        // solo que explícita, para no depender únicamente del evento @hide
+        // (ver nota más abajo sobre por qué).
+        command: () => { a.onClick?.(); abierto.value = false; },
+      }
+)));
+
+const appMenu = ref(null);
+// No se deriva SOLO de @show/@hide (evento que Menu emite recién cuando
+// termina su transición de entrada/salida): alternar()/un ítem ejecutado
+// actualizan `abierto` en el momento, así aria-expanded refleja la acción
+// real sin depender de esa animación. @hide sigue escuchado abajo como red
+// de seguridad para el único caso que no iniciamos nosotros: cerrar por
+// click afuera, Escape o Tab (ahí si hace falta el eco de Menu).
 const abierto = ref(false);
-const trigger = ref(null);
-const panel = ref(null);
-const coords = ref({ top: 0, left: 0 });
 
-function posicionar() {
-  if (!trigger.value || !panel.value) return;
-  const r = trigger.value.getBoundingClientRect();
-  const m = panel.value.getBoundingClientRect();
-  // Alineado al borde derecho del trigger, sin salirse del viewport.
-  let left = Math.max(8, Math.min(r.right - m.width, window.innerWidth - m.width - 8));
-  // Abre hacia abajo; si no cabe, hacia arriba.
-  let top = r.bottom + 4;
-  if (top + m.height > window.innerHeight - 8) top = Math.max(8, r.top - m.height - 4);
-  coords.value = { top, left };
+function alternar(event) {
+  const abriendo = !abierto.value;
+  appMenu.value?.toggle(event);
+  abierto.value = abriendo;
 }
-
-function onDocPointer(e) {
-  if (trigger.value?.contains(e.target) || panel.value?.contains(e.target)) return;
-  cerrar();
-}
-
-function onScroll(e) {
-  // El scroll de la página desancla el menú; el scroll interno del panel no.
-  if (panel.value?.contains(e.target)) return;
-  cerrar();
-}
-
-function items() {
-  if (!panel.value) return [];
-  return Array.from(panel.value.querySelectorAll('[role="menuitem"]:not([disabled])'));
-}
-
-function onKeydown(e) {
-  if (e.key === 'Escape') {
-    e.stopPropagation();
-    cerrar();
-    trigger.value?.focus();
-    return;
-  }
-  if (e.key === 'Tab') {
-    cerrar();
-    return;
-  }
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    const f = items();
-    if (!f.length) return;
-    const i = f.indexOf(document.activeElement);
-    const paso = e.key === 'ArrowDown' ? 1 : -1;
-    f[(i + paso + f.length) % f.length].focus();
-  }
-}
-
-async function abrir() {
-  abierto.value = true;
-  await nextTick();
-  posicionar();
-  document.addEventListener('pointerdown', onDocPointer, true);
-  document.addEventListener('keydown', onKeydown, true);
-  window.addEventListener('scroll', onScroll, true);
-  window.addEventListener('resize', cerrar);
-  items()[0]?.focus();
-}
-
-function cerrar() {
-  if (!abierto.value) return;
-  abierto.value = false;
-  document.removeEventListener('pointerdown', onDocPointer, true);
-  document.removeEventListener('keydown', onKeydown, true);
-  window.removeEventListener('scroll', onScroll, true);
-  window.removeEventListener('resize', cerrar);
-}
-
-function alternar() {
-  if (abierto.value) cerrar();
-  else abrir();
-}
-
-function ejecutar(a) {
-  cerrar();
-  a.onClick?.();
-}
-
-onBeforeUnmount(cerrar);
 </script>
 
 <template>
   <button
-    ref="trigger"
     v-bind="$attrs"
-    :class="texto ? 'btn' : 'icon-btn'"
+    :class="$slots.trigger ? null : (texto ? CLASE_CON_TEXTO : 'icon-btn')"
     type="button"
     :aria-label="label"
     aria-haspopup="menu"
@@ -124,100 +90,10 @@ onBeforeUnmount(cerrar);
     :title="texto ? undefined : label"
     @click.stop="alternar"
   >
-    <i class="ti" :class="icono" aria-hidden="true"></i>
-    <template v-if="texto">{{ texto }}</template>
+    <slot name="trigger">
+      <i class="ti" :class="icono" aria-hidden="true"></i>
+      <template v-if="texto">{{ texto }}</template>
+    </slot>
   </button>
-  <Teleport to="body">
-    <div
-      v-if="abierto"
-      ref="panel"
-      class="menu-acciones"
-      role="menu"
-      :aria-label="label"
-      :style="{ top: coords.top + 'px', left: coords.left + 'px' }"
-    >
-      <template v-for="(a, i) in visibles" :key="i">
-        <div v-if="a.separador" class="menu-acciones__sep" role="separator"></div>
-        <button
-          v-else
-          class="menu-acciones__item"
-          :class="{ 'menu-acciones__item--danger': a.danger }"
-          type="button"
-          role="menuitem"
-          :disabled="a.disabled"
-          @click.stop="ejecutar(a)"
-        >
-          <i v-if="a.icono" class="ti" :class="a.icono" aria-hidden="true"></i>
-          {{ a.label }}
-        </button>
-      </template>
-    </div>
-  </Teleport>
+  <AppMenu ref="appMenu" :model="items" :aria-label="label" @show="abierto = true" @hide="abierto = false" />
 </template>
-
-<style scoped>
-.menu-acciones {
-  position: fixed;
-  z-index: var(--z-popover);
-  min-width: 200px;
-  max-width: min(300px, calc(100vw - 16px));
-  max-height: calc(100vh - 16px);
-  overflow-y: auto;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-md);
-  padding: 4px;
-}
-
-.menu-acciones__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 11px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--fs-base);
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-
-.menu-acciones__item i {
-  font-size: 16px;
-  color: var(--color-text-secondary);
-}
-
-.menu-acciones__item:hover {
-  background: var(--color-bg-hover);
-}
-
-.menu-acciones__item:focus-visible {
-  background: var(--color-bg-hover);
-  box-shadow: 0 0 0 3px var(--mat-ring);
-}
-
-.menu-acciones__item--danger,
-.menu-acciones__item--danger i {
-  color: var(--color-danger-text);
-}
-
-.menu-acciones__item:disabled {
-  color: var(--color-text-disabled);
-  cursor: default;
-  background: transparent;
-}
-
-.menu-acciones__item:disabled i {
-  color: var(--color-text-disabled);
-}
-
-.menu-acciones__sep {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--color-border-subtle);
-}
-</style>

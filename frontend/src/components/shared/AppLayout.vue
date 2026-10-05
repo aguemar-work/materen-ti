@@ -1,11 +1,43 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
+// ── Shell raíz V2: "marco + hoja" (2026-09-25) ────────────────────────
+//
+// ANATOMÍA
+//   Marco   gris 50, ocupa toda la ventana. Sobre él vive el sidebar SIN
+//           borde propio: marca arriba, navegación, usuario abajo.
+//   Hoja    superficie blanca con esquinas redondeadas, inset de 8px sobre
+//           el marco (en desktop; en móvil ocupa todo). Es "la página":
+//           barra superior de 48px (menú · migas · búsqueda · campana) y
+//           debajo el <main> con su propio scroll.
+//
+// Por qué así (reemplaza al header blanco de 56px + sidebar blanco con
+// borde, 2026-09-22): aquel shell eran tres franjas del mismo blanco
+// separadas por líneas, sin contexto de dónde estaba uno. Acá el marco
+// agrupa todo lo que es "el sistema" (marca, menú, usuario) y la hoja todo
+// lo que es "esta página", con las migas diciendo en qué grupo y módulo
+// se está. El ítem activo del menú se dibuja como un pedazo de la hoja
+// (ver AppNav.vue), así las dos mitades se leen como una sola pieza.
+//
+// Sin bordes laterales en ningún nivel (regla de producto): la hoja se
+// despega del marco con un anillo de 1px que la rodea entera y una sombra
+// mínima, no con una línea vertical.
+//
+// POR QUÉ FLEX Y NO `position: fixed`: el <main> es su PROPIO contenedor de
+// scroll, así el `sticky top-0` de cada vista se pega justo debajo de la
+// barra de la hoja sin saber cuánto mide. Solo en móvil el sidebar pasa a
+// `fixed` (panel deslizante).
+import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
+import { useRouter, useRoute, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketsStore } from '../../stores/tickets.js';
-import { insforgeApi } from '../../api/insforge.js';
+import { useDashboardStore } from '../../stores/dashboard.js';
 import { getClient } from '../../api/client.js';
-import { temaActual, alternarTema } from '../../core/tema.js';
+// El nombre del header es marca + descriptor, y marca.js ya tiene las dos
+// piezas por separado (NOMBRE_MARCA sobrevive al crecimiento fuera de TI,
+// NOMBRE_CORTO no). Se consumen las tres: las dos piezas para el título
+// visible y el nombre completo para el alt.
+import { NOMBRE_PRODUCTO, NOMBRE_MARCA, NOMBRE_CORTO } from '../../core/marca.js';
+import { ACCION_HEADER } from './shellClases.js';
+import { migasDeRuta } from './navegacion.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco, crearRefrescoDebounced, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import NotificacionesCampana from './NotificacionesCampana.vue';
@@ -13,10 +45,26 @@ import AppSearch from './AppSearch.vue';
 import AppNav from './AppNav.vue';
 import AppNotifications from './AppNotifications.vue';
 import MenuAcciones from './MenuAcciones.vue';
-import StaffNombreForm from '../../modules/staff/StaffNombreForm.vue';
+import AppAvatar from '../ui/AppAvatar.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+// Única dependencia del shell hacia un módulo de dominio, y es a propósito:
+// "editar mi nombre para mostrar" se dispara desde el menú de usuario del
+// header, pero el formulario es el MISMO que usa StaffView.vue cuando el
+// JEFE edita el de otro (`updateStaff`). Se evaluó moverlo a
+// `components/shared/`: sería meter un formulario de dominio (tabla
+// `staff`) entre los componentes genéricos, cambiar un problema por otro.
+// Queda acá como excepción documentada (ARQ-10, ver
+// docs/HISTORIAL-AUDITORIAS.md), pero en carga diferida: es un modal que
+// casi nunca se abre y así no viaja en el chunk principal junto al shell.
+const StaffNombreForm = defineAsyncComponent(() => import('../../modules/staff/StaffNombreForm.vue'));
 
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
+
+// Migas de la barra de la hoja: grupo › módulo (› sub-página con nombre
+// propio). Salen de la misma estructura que el SideNav (navegacion.js).
+const migas = computed(() => migasDeRuta(route.path));
 
 // Conexión realtime única por sesión: las vistas solo se suscriben/
 // desuscriben a sus canales (ver useRealtimeRefresco), este layout
@@ -39,8 +87,8 @@ onUnmounted(() => {
 // Atajo global de búsqueda (Ctrl/Cmd+K, patrón Linear/Notion/Vercel/GitHub):
 // ahorra el viaje del mouse en el flujo más repetido del día (buscar un
 // ticket/empleado/cuenta). No se activa con un modal abierto y atrapando
-// foco (Modal.vue/ConfirmDialog.vue usan role="dialog") — saltar al
-// buscador del sidebar detrás del overlay sería confuso.
+// foco (AppDialog.vue/ConfirmDialog.vue usan role="dialog") — saltar al
+// buscador del header detrás del overlay sería confuso.
 const appSearchRef = ref(null);
 
 function onAtajoBusqueda(e) {
@@ -61,97 +109,124 @@ onUnmounted(() => window.removeEventListener('keydown', onAtajoBusqueda));
 // AppNotifications) porque también alimenta el badge de AppNav.
 const ticketsStore = useTicketsStore();
 
-// Cola viva de tickets sin asignar para el badge del sidebar: baja cuando
+// Cola viva de tickets sin asignar para el badge del SideNav: baja cuando
 // alguien asigna el ticket, no cuando alguien "lo ve" (no es un contador de
-// no-leídos). Se reusa pendientesTickets() del Dashboard, no se agrega
-// query nueva.
-const ticketsSinAsignar = ref(0);
-async function cargarSinAsignar() {
-  try {
-    const { sinAsignar } = await insforgeApi.pendientesTickets();
-    ticketsSinAsignar.value = sinAsignar.length;
-  } catch {
-    // Sin dato fiable: se deja el último valor conocido.
-  }
-}
-onMounted(cargarSinAsignar);
+// no-leídos). Sale del MISMO store que el Inicio (`resumen.tickets`, RPC
+// `dashboard_resumen`): una sola llamada para los dos, que ya no se repite
+// aquí. Sin dato fiable (la RPC falló) se conserva el último valor conocido.
+const dashboard = useDashboardStore();
+const ticketsSinAsignar = computed(() => dashboard.sinAsignar);
+onMounted(() => dashboard.cargar({ silencioso: true }));
 
 // El sonido debe sonar por cada ticket nuevo, pero el refresco de la lista
 // (pesado) se coalesce — ver crearRefrescoDebounced/REFRESCO_LISTA_DEBOUNCE_MS.
 const refrescarTickets = crearRefrescoDebounced(
-  () => Promise.all([ticketsStore.cargar(), cargarSinAsignar()]),
+  () => Promise.all([ticketsStore.cargar(), dashboard.cargar({ silencioso: true })]),
   { delayMs: REFRESCO_LISTA_DEBOUNCE_MS }
 );
+
+// Al volver a la pestaña el resumen puede haber envejecido (nadie lo refresca
+// en segundo plano): una recarga silenciosa, con el mismo debounce.
+const refrescarResumen = crearRefrescoDebounced(
+  () => dashboard.cargar({ silencioso: true }),
+  { delayMs: REFRESCO_LISTA_DEBOUNCE_MS }
+);
+function alVolverALaPestana() {
+  if (document.visibilityState === 'visible') refrescarResumen();
+}
+onMounted(() => document.addEventListener('visibilitychange', alVolverALaPestana));
+onUnmounted(() => document.removeEventListener('visibilitychange', alVolverALaPestana));
 
 useRealtimeRefresco('tickets:list', (payload) => {
   if (payload?.op === 'INSERT') reproducirNotificacion();
   refrescarTickets();
 });
 
-const sidebarAbierto = ref(false);
+// ── Estado del SideNav ────────────────────────────────────────
+// Dos mecanismos distintos, no uno con dos nombres:
+//   navAbierto   solo móvil (<768px, el breakpoint `md` de Tailwind): el nav es un panel deslizante sobre
+//                el contenido, con velo detrás. Se abre desde el botón de
+//                menú del header y se cierra al navegar o al tocar el velo.
+//   navEnRiel    solo desktop: el nav se contrae a 48px y deja solo los
+//                íconos (riel). Es una preferencia, y se recuerda.
+const navAbierto = ref(false);
 
-// ── Colapso del sidebar (solo desktop; en móvil manda el drawer) ──
-const CLAVE_SIDEBAR = 'sistema-ti-sidebar';
-// Sin preferencia guardada: rail por defecto en pantallas medianas (mismo
-// breakpoint que ya usa main.css/DashboardView.vue para reflow de grillas),
-// para que el ancho no le compita al contenido en laptops sin que el usuario
-// tenga que descubrir el toggle. Quien ya eligió una vez, siempre gana esa
-// elección sobre el tamaño de ventana.
-const preferenciaSidebarGuardada = localStorage.getItem(CLAVE_SIDEBAR);
-const sidebarColapsado = ref(
-  preferenciaSidebarGuardada
-    ? preferenciaSidebarGuardada === 'colapsado'
-    : window.innerWidth <= 1200
+const CLAVE_NAV = 'sistema-ti-sidebar';
+// Sin preferencia guardada: riel por defecto por debajo de 1056px (el punto
+// que ya usaba el shell anterior). Así el nav no le compite el ancho al
+// contenido en una laptop sin que el usuario tenga que descubrir el toggle.
+// Quien ya eligió una vez, siempre gana esa elección sobre el tamaño de
+// ventana. La clave de localStorage NO cambia de nombre a propósito: quien
+// tenía el sidebar colapsado antes del rediseño abre con el riel puesto, en
+// vez de perder su preferencia.
+const preferenciaNavGuardada = localStorage.getItem(CLAVE_NAV);
+const navEnRiel = ref(
+  preferenciaNavGuardada
+    ? preferenciaNavGuardada === 'colapsado'
+    : window.innerWidth <= 1056
 );
 
-function toggleColapso() {
-  sidebarColapsado.value = !sidebarColapsado.value;
-  localStorage.setItem(CLAVE_SIDEBAR, sidebarColapsado.value ? 'colapsado' : 'expandido');
+// El botón de menú del header hace dos cosas distintas según el ancho, y es
+// la misma cosa desde el punto de vista del usuario ("mostrame/escondeme la
+// navegación"): en móvil abre el panel, en desktop alterna el riel.
+function alternarNav() {
+  if (window.innerWidth < 768) {
+    navAbierto.value = !navAbierto.value;
+    return;
+  }
+  navEnRiel.value = !navEnRiel.value;
+  localStorage.setItem(CLAVE_NAV, navEnRiel.value ? 'colapsado' : 'expandido');
 }
 
-function expandirSidebar() {
-  sidebarColapsado.value = false;
-  localStorage.setItem(CLAVE_SIDEBAR, 'expandido');
+function expandirNav() {
+  navEnRiel.value = false;
+  localStorage.setItem(CLAVE_NAV, 'expandido');
 }
 
-// ── Tema claro/oscuro ─────────────────────────────────────────
-const tema = ref(temaActual());
-
-function toggleTema() {
-  tema.value = alternarTema();
+function cerrarNav() {
+  navAbierto.value = false;
 }
 
-const userInitial = computed(() => (auth.nombre?.[0] ?? auth.user?.email?.[0] ?? '?').toUpperCase());
+// El mismo botón hace dos cosas según el ancho; su nombre accesible y su
+// aria-expanded tienen que decir la verdad en cada caso.
+const { esMovil } = useEsMovil();
+const etiquetaNav = computed(() => {
+  if (esMovil.value) return navAbierto.value ? 'Cerrar menú' : 'Abrir menú';
+  return navEnRiel.value ? 'Expandir navegación' : 'Contraer navegación';
+});
 
-// Footer del sidebar apiñado (avatar + nombre truncaba contra 3 botones de
-// ícono a 240px de ancho): tema y logout se condensan en un solo menú ⋮,
-// reusando MenuAcciones.vue en vez de un componente nuevo. La campana queda
-// afuera porque es información urgente/frecuente, no una acción de cuenta.
-// Configuración se suma aquí (rediseño de sidebar, ago 2026): no es una
-// sección de uso diario, así que sale de la nav principal y se agrupa con
-// las otras acciones de "administrar mi sesión/el sistema".
+// El avatar del bloque de usuario es AppAvatar: mismas iniciales y mismo
+// tono estable que esa persona tiene en cualquier otra pantalla.
+const nombreUsuario = computed(() => auth.nombre || auth.user?.email || '');
+const rolUsuario = computed(() => (auth.esJefe ? 'Jefe de TI' : 'Asistente de TI'));
+
+// Móvil: panel `fixed` que entra desde la izquierda, blanco y con sombra
+// (flota sobre la hoja). Desktop (md+): columna estática del marco, sin
+// fondo propio — 240px, o 64px en riel.
+const claseNav = computed(() => [
+  'z-40 flex flex-col',
+  'fixed inset-y-0 left-0 w-72 bg-white shadow-xl transition-transform duration-200',
+  navAbierto.value ? 'translate-x-0' : '-translate-x-full',
+  'md:static md:translate-x-0 md:bg-transparent md:shadow-none md:transition-[width]',
+  navEnRiel.value ? 'md:w-16' : 'md:w-60',
+]);
+
 const mostrarEditarNombre = ref(false);
 
 function onNombreGuardado(actualizado) {
   auth.actualizarNombre(actualizado.nombre);
 }
 
+// Menú de usuario del header (avatar con iniciales).
+// Configuración sigue acá y además tiene ítem propio en el SideNav: es la
+// entrada de "administrar el sistema", y llegar solo por un menú "⋮" era
+// un hallazgo abierto (un usuario nuevo no asocia "⋮" con "catálogos").
 const accionesUsuario = computed(() => [
   { icono: 'ti-pencil', label: 'Editar mi nombre', onClick: () => { mostrarEditarNombre.value = true; } },
   { icono: 'ti-settings', label: 'Configuración', onClick: () => router.push('/configuracion') },
   { separador: true },
-  {
-    icono: tema.value === 'dark' ? 'ti-sun' : 'ti-moon',
-    label: tema.value === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro',
-    onClick: toggleTema,
-  },
-  { separador: true },
   { icono: 'ti-logout', label: 'Cerrar sesión', onClick: cerrarSesion },
 ]);
-
-function cerrar() {
-  sidebarAbierto.value = false;
-}
 
 async function cerrarSesion() {
   await auth.logout();
@@ -160,82 +235,123 @@ async function cerrarSesion() {
 </script>
 
 <template>
-  <div class="app-layout">
-    <!-- Backdrop móvil -->
-    <transition name="sb-fade">
+  <!-- ══ Marco ══════════════════════════════════════════════════ -->
+  <!-- data-marco / data-hoja: ganchos de styles/impresion.css (en papel el
+       marco, el menú y la barra de la hoja desaparecen y la hoja es A4). -->
+  <div data-marco class="flex h-screen overflow-hidden bg-gray-50">
+    <!-- Velo del panel deslizante (solo móvil) -->
+    <transition
+      enter-active-class="transition-opacity duration-200"
+      leave-active-class="transition-opacity duration-200"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+    >
       <div
-        v-if="sidebarAbierto"
-        class="sb-overlay"
+        v-if="navAbierto"
+        class="fixed inset-0 z-30 bg-gray-900/30 md:hidden"
         aria-hidden="true"
-        @click="cerrar"
+        @click="cerrarNav"
       />
     </transition>
 
-    <!-- Sidebar -->
-    <aside
-      class="sidebar"
-      :class="{ 'sidebar--open': sidebarAbierto, 'sidebar--colapsado': sidebarColapsado }"
-      aria-label="Menú principal"
-    >
-      <div class="sb-logo">
-        <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" class="sb-logo-full">
-        <img src="/icon_sisti.svg" alt="Materen — Sistema TI" class="sb-logo-icono">
-        <button
-          class="sb-logout sb-collapse"
-          type="button"
-          :title="sidebarColapsado ? 'Expandir menú' : 'Colapsar menú'"
-          :aria-expanded="!sidebarColapsado"
-          @click="toggleColapso"
+    <!-- ── Sidebar: marca · navegación · usuario ── -->
+    <aside :class="claseNav">
+      <!-- Marca. Mismo alto que la barra de la hoja + su margen superior,
+           para que marca y migas queden en la misma línea. -->
+      <RouterLink
+        to="/dashboard"
+        class="mx-2 mt-2 flex h-12 shrink-0 items-center gap-2.5 rounded-lg px-2 transition-colors duration-150 hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        :class="{ 'md:justify-center md:px-0': navEnRiel }"
+        @click="cerrarNav"
+      >
+        <img :src="'/icon_sisti.svg'" :alt="NOMBRE_PRODUCTO" class="h-7 w-7 shrink-0">
+        <span class="min-w-0 leading-tight" :class="{ 'md:sr-only': navEnRiel }">
+          <span class="block truncate text-sm font-semibold text-gray-900">{{ NOMBRE_MARCA }}</span>
+          <span class="block truncate text-xs text-gray-500">{{ NOMBRE_CORTO }}</span>
+        </span>
+      </RouterLink>
+
+      <nav class="min-h-0 flex-1 overflow-y-auto pb-2" aria-label="Navegación principal">
+        <AppNav
+          :nav-en-riel="navEnRiel"
+          :tickets-sin-asignar="ticketsSinAsignar"
+          @cerrar-nav="cerrarNav"
+          @expandir-nav="expandirNav"
+        />
+      </nav>
+
+      <!-- Usuario: quién está trabajando y con qué rol. Abre el menú de cuenta. -->
+      <div class="shrink-0 px-2 pb-2">
+        <MenuAcciones
+          class="flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors duration-150 hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          :class="{ 'md:justify-center': navEnRiel }"
+          :acciones="accionesUsuario"
+          :label="`Cuenta de ${nombreUsuario}`"
+          icono=" "
         >
-          <i
-            :class="sidebarColapsado ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse'"
-            aria-hidden="true"
-          ></i>
-        </button>
-      </div>
-
-      <AppSearch ref="appSearchRef" @expandir-sidebar="expandirSidebar" @navegado="cerrar" />
-
-      <AppNav
-        :sidebar-colapsado="sidebarColapsado"
-        :tickets-sin-asignar="ticketsSinAsignar"
-        @cerrar-drawer="cerrar"
-      />
-
-      <div class="sb-footer">
-        <div class="sb-user" :title="sidebarColapsado ? (auth.nombre || auth.user?.email) : null">
-          <div class="sb-user-avatar" aria-hidden="true">{{ userInitial }}</div>
-          <div class="sb-user-info">
-            <span class="sb-user-email" :title="auth.user?.email">{{ auth.nombre || auth.user?.email }}</span>
-            <span class="sb-user-rol">{{ auth.rol ?? 'Staff' }}</span>
-          </div>
-        </div>
-        <div class="sb-footer-acciones">
-        <NotificacionesCampana />
-        <MenuAcciones :acciones="accionesUsuario" label="Configuración y cuenta" />
-        </div>
+          <template #trigger>
+            <AppAvatar :nombre="nombreUsuario" />
+            <span class="min-w-0 flex-1" :class="{ 'md:hidden': navEnRiel }">
+              <span class="block truncate text-sm font-medium text-gray-900">{{ nombreUsuario }}</span>
+              <span class="block truncate text-xs text-gray-500">{{ rolUsuario }}</span>
+            </span>
+            <i class="ti ti-selector shrink-0 text-gray-400" :class="{ 'md:hidden': navEnRiel }" aria-hidden="true"></i>
+          </template>
+        </MenuAcciones>
       </div>
     </aside>
 
-    <!-- Contenido -->
-    <div class="layout-main">
-      <!-- Barra superior móvil -->
-      <div class="topbar-mobile">
-        <button
-          class="topbar-toggle"
-          type="button"
-          aria-label="Abrir menú"
-          @click="sidebarAbierto = !sidebarAbierto"
-        >
-          <i class="ti ti-menu-2" aria-hidden="true"></i>
-        </button>
-        <span class="topbar-title">Materen — Sistema TI</span>
-        <div class="topbar-campana">
-          <NotificacionesCampana />
-        </div>
-      </div>
+    <!-- ══ Hoja ═══════════════════════════════════════════════════ -->
+    <div class="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2">
+      <div data-hoja class="flex min-h-0 flex-1 flex-col overflow-hidden bg-white md:rounded-xl md:shadow-xs md:ring-1 md:ring-gray-900/[0.07]">
+        <!-- Barra de la hoja: menú · migas · acciones globales -->
+        <header class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-100 px-3 sm:px-4">
+          <button
+            :class="ACCION_HEADER"
+            type="button"
+            :title="etiquetaNav"
+            :aria-label="etiquetaNav"
+            :aria-expanded="esMovil ? navAbierto : !navEnRiel"
+            @click="alternarNav"
+          >
+            <i class="ti ti-menu-2 md:hidden" aria-hidden="true"></i>
+            <i
+              class="ti hidden md:inline"
+              :class="navEnRiel ? 'ti-layout-sidebar-left-expand' : 'ti-layout-sidebar-left-collapse'"
+              aria-hidden="true"
+            ></i>
+          </button>
 
-      <slot />
+          <nav v-if="migas.length" class="min-w-0 flex-1" aria-label="Ubicación">
+            <ol class="flex min-w-0 items-center gap-1.5 text-sm">
+              <li v-for="(m, i) in migas" :key="i" class="flex min-w-0 items-center gap-1.5">
+                <i v-if="i > 0" class="ti ti-chevron-right shrink-0 text-xs text-gray-400" aria-hidden="true"></i>
+                <RouterLink
+                  v-if="m.to"
+                  :to="m.to"
+                  class="truncate rounded text-gray-500 transition-colors hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                >{{ m.label }}</RouterLink>
+                <span
+                  v-else
+                  class="truncate"
+                  :class="i === migas.length - 1 ? 'font-medium text-gray-900' : 'text-gray-500'"
+                  :aria-current="i === migas.length - 1 ? 'page' : undefined"
+                >{{ m.label }}</span>
+              </li>
+            </ol>
+          </nav>
+          <div v-else class="flex-1"></div>
+
+          <div class="flex shrink-0 items-center gap-1">
+            <AppSearch ref="appSearchRef" @navegado="cerrarNav" />
+            <NotificacionesCampana />
+          </div>
+        </header>
+
+        <main class="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <slot />
+        </main>
+      </div>
     </div>
 
     <AppNotifications />
@@ -248,325 +364,3 @@ async function cerrarSesion() {
     />
   </div>
 </template>
-
-<style scoped>
-/* ── Variables del sidebar ───────────────────────────────────────
-   Minimalista: el sidebar se funde con el fondo de la página
-   (sin panel oscuro, sin bordes). Hover/activo = tinte muy tenue,
-   nunca bordes ni indicadores. Sigue el tema claro/oscuro. */
-.sidebar {
-  --sb-w: 240px;
-  --sb-bg: var(--color-bg);
-  --sb-text: var(--color-text-secondary);
-  --sb-text-strong: var(--color-text-primary);
-  --sb-hover: var(--color-bg-hover);
-  --sb-active-bg: var(--color-accent-subtle);
-  --sb-active-text: var(--color-accent-text);
-}
-
-/* ── Layout raíz ─────────────────────────────────────────────── */
-.app-layout {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
-}
-
-/* ── Sidebar ─────────────────────────────────────────────────── */
-.sidebar {
-  width: var(--sb-w);
-  flex-shrink: 0;
-  height: 100vh;
-  background: var(--sb-bg);
-  border-right: 1px solid var(--color-border-subtle);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  z-index: var(--z-nav); /* solo aplica cuando es fixed (móvil, ≤768px) */
-  transition: width 0.2s ease;
-}
-
-/* ── Colapsado (solo desktop; en móvil manda el drawer) ─────────── */
-.sb-collapse {
-  margin-left: auto;
-}
-
-@media (min-width: 769px) {
-  .sidebar--colapsado {
-    --sb-w: 64px;
-  }
-
-  .sidebar--colapsado .sb-logo {
-    flex-direction: column;
-    gap: 8px;
-    padding: 16px 0 10px;
-  }
-
-  .sidebar--colapsado .sb-logo-full {
-    display: none;
-  }
-
-  .sidebar--colapsado .sb-logo-icono {
-    display: block;
-  }
-
-  .sidebar--colapsado .sb-collapse {
-    margin-left: 0;
-  }
-
-  .sidebar--colapsado .sb-footer {
-    flex-direction: column;
-    gap: 6px;
-    padding: 10px 0;
-  }
-
-  .sidebar--colapsado .sb-user {
-    flex: none;
-    justify-content: center;
-  }
-
-  .sidebar--colapsado .sb-user-info {
-    display: none;
-  }
-
-  .sidebar--colapsado .sb-footer-acciones {
-    flex-direction: column;
-    padding-left: 0;
-    padding-top: 8px;
-    border-left: none;
-    border-top: 1px solid var(--color-border-subtle);
-  }
-}
-
-/* ── Logo ────────────────────────────────────────────────────── */
-.sb-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 16px 12px;
-  flex-shrink: 0;
-}
-
-/* Lockup "materen · sistema ti" expandido; icono cuadrado colapsado.
-   El logo es verde pino: en oscuro se pasa a blanco (mismo tratamiento
-   que en el login). */
-.sb-logo-full {
-  display: block;
-  height: 26px;
-  width: auto;
-}
-
-.sb-logo-icono {
-  display: none;
-  width: 28px;
-  height: 28px;
-}
-
-[data-theme="dark"] .sb-logo-full,
-[data-theme="dark"] .sb-logo-icono {
-  filter: brightness(0) invert(1);
-}
-
-/* ── Footer de usuario ───────────────────────────────────────── */
-.sb-footer {
-  flex-shrink: 0;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Agrupa campana + menú ⋮ (tema, cerrar sesión) aparte de la identidad,
-   con un separador sutil (mismo tono que la línea sidebar/contenido) para
-   que se lean como dos bloques distintos. Tema y logout se condensaron en
-   el menú porque a 240px de ancho 3 botones de ícono truncaban el nombre
-   del usuario (ago 2026). */
-.sb-footer-acciones {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding-left: 8px;
-  border-left: 1px solid var(--color-border-subtle);
-}
-
-.sb-user {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-}
-
-.sb-user-avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
-  color: var(--color-text-inverse);
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.sb-user-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.sb-user-email {
-  font-size: 12px;
-  color: var(--sb-text-strong);
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sb-user-rol {
-  font-size: 11px;
-  color: var(--sb-text);
-}
-
-.sb-logout {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--sb-text);
-  padding: 8px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  font-size: 18px;
-  transition: background 0.12s, color 0.12s;
-  flex-shrink: 0;
-}
-
-.sb-logout:hover {
-  background: var(--color-bg-hover);
-  color: var(--sb-text-strong);
-}
-
-/* ── Contenido principal ─────────────────────────────────────── */
-.layout-main {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-/* ── Barra móvil ─────────────────────────────────────────────── */
-.topbar-mobile {
-  display: none;
-}
-
-/* ── Overlay móvil ───────────────────────────────────────────── */
-.sb-overlay {
-  display: none;
-}
-
-/* ── Transición fade ─────────────────────────────────────────── */
-.sb-fade-enter-active,
-.sb-fade-leave-active {
-  transition: opacity 0.2s;
-}
-.sb-fade-enter-from,
-.sb-fade-leave-to {
-  opacity: 0;
-}
-
-/* ── Responsive ──────────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    height: 100vh;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-  }
-
-  /* El drawer móvil siempre va completo: sin toggle de colapso */
-  .sb-collapse {
-    display: none;
-  }
-
-  .sidebar--open {
-    transform: translateX(0);
-    box-shadow: 4px 0 24px rgba(12, 15, 17, 0.4);
-  }
-
-  .sb-overlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(12, 15, 17, 0.55);
-    z-index: calc(var(--z-nav) - 1); /* justo debajo del drawer que cubre */
-  }
-
-  .topbar-mobile {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 48px;
-    padding: 0 16px;
-    background: var(--color-bg-elevated);
-    border-bottom: 1px solid var(--color-border);
-    box-shadow: var(--shadow-sm);
-    position: sticky;
-    top: 0;
-    z-index: var(--z-header-mobile);
-    flex-shrink: 0;
-  }
-
-  .topbar-toggle {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--color-text-primary);
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    font-size: 22px;
-    border-radius: 6px;
-    transition: background 0.12s;
-  }
-
-  .topbar-toggle:hover {
-    background: var(--color-bg-hover);
-  }
-
-  .topbar-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--color-text-primary);
-    letter-spacing: -0.01em;
-  }
-
-  .topbar-campana {
-    margin-left: auto;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sidebar,
-  .sb-fade-enter-active,
-  .sb-fade-leave-active {
-    transition-duration: 0.01ms !important;
-  }
-}
-</style>
-
-<!-- Ajuste global: el site-header de cada vista queda bajo la topbar móvil -->
-<style>
-@media (max-width: 768px) {
-  .layout-main .site-header {
-    top: 48px;
-  }
-}
-</style>

@@ -7,15 +7,19 @@
 // primitivas de jsPDF (rect/line/text, ver pdfReporte.js): el proyecto no
 // tiene ninguna librería de charts (chart.js, etc.) y no hacía falta sumar
 // una dependencia nueva solo para esto.
-import { formatFecha, formatFechaHora } from '../../core/formatters.js';
-import { aISO } from '../tickets/reportePeriodo.js';
+import { formatFecha, formatFechaHora, fechaISO as aISO } from '../../core/formatters.js';
 import {
   ANCHO, MARGEN, UTIL, GRIS_LINEA, GRIS_TEXTO, NEGRO,
   celdaVacia, abrirSeccion, nota, bloqueKpis, tabla, graficoCategorias, piePaginas, crearDocumentoPdf,
 } from '../../core/pdfReporte.js';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
-const DIAS_VENTANA_GARANTIA = 90;
+// Ventana de "garantía por vencer". El valor real llega de config_parametros
+// (`dias_por_vencer_garantia`, migración 103: el mismo umbral que usa el
+// Inicio); hasta el 2026-10-03 el PDF usaba 90 días fijos mientras el Inicio
+// usaba 30, y los dos documentos se contradecían. Este es solo el defecto si
+// el parámetro no se pudo leer.
+export const DIAS_VENTANA_GARANTIA_DEFECTO = 30;
 
 // "Últimos N movimientos", no "últimos X días": acotado por construcción,
 // sin el riesgo de un día de importación masiva (migración 057) inundando
@@ -24,9 +28,7 @@ const DIAS_VENTANA_GARANTIA = 90;
 // pedir de más y descartar después los de equipos ya eliminados.
 export const LIMITE_MOVIMIENTOS_PDF = 20;
 
-// 'YYYY-MM-DD' → Date local a medianoche (new Date('2026-08-05') sería UTC,
-// mismo motivo por el que reportePeriodo.js tiene su propio aFecha() privado
-// — acá se repite en chico en vez de exportar el de allá, es de uso interno).
+// 'YYYY-MM-DD' → Date local a medianoche (new Date('2026-08-05') sería UTC).
 function fechaLocalDesdeISO(iso) {
   const [y, m, d] = String(iso).split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -67,7 +69,7 @@ const SITUACIONES = [
 // el resultado de equiposApi.listEquiposFiltrados({}) tal cual lo mapea
 // mapEquipo() en api/domains/equipos.js (con `situacion` y `estado` ya
 // resueltos), así que acá no se recalcula nada de eso, solo se agrega.
-export function construirDatosReporteEquipos(equipos, hoy = new Date()) {
+export function construirDatosReporteEquipos(equipos, hoy = new Date(), { diasGarantia = DIAS_VENTANA_GARANTIA_DEFECTO } = {}) {
   const total = equipos.length;
   const asignados = equipos.filter((e) => e.situacion === 'asignado' || e.situacion === 'en_ubicacion').length;
   const disponibles = equipos.filter((e) => e.situacion === 'disponible').length;
@@ -89,7 +91,7 @@ export function construirDatosReporteEquipos(equipos, hoy = new Date()) {
     .sort((a, b) => b.cantidad - a.cantidad);
 
   const hoyISO = aISO(hoy);
-  const limiteISO = aISO(new Date(hoy.getTime() + DIAS_VENTANA_GARANTIA * DIA_MS));
+  const limiteISO = aISO(new Date(hoy.getTime() + diasGarantia * DIA_MS));
   const hoyMedianoche = fechaLocalDesdeISO(hoyISO);
   const garantias = equipos
     .filter((e) => e.garantia_hasta && e.garantia_hasta >= hoyISO && e.garantia_hasta <= limiteISO)
@@ -106,7 +108,7 @@ export function construirDatosReporteEquipos(equipos, hoy = new Date()) {
   return {
     total, asignados, disponibles, enReparacion, deBaja, perdidos,
     antiguedad: antiguedadPromedio(equipos, hoy),
-    porSituacion, porTipo, garantias,
+    porSituacion, porTipo, garantias, diasGarantia,
   };
 }
 
@@ -187,7 +189,8 @@ export async function construirReporteEquipos(datos, { nombreArchivo = '' } = {}
   y = nota(doc, 'Ordenado de mayor a menor cantidad.', y);
   y = graficoCategorias(doc, datos.porTipo, y, 10);
 
-  y = abrirSeccion(doc, y, `Garantías por vencer (próximos ${DIAS_VENTANA_GARANTIA} días)`, 34);
+  const diasGarantia = datos.diasGarantia ?? DIAS_VENTANA_GARANTIA_DEFECTO;
+  y = abrirSeccion(doc, y, `Garantías por vencer (próximos ${diasGarantia} días)`, 34);
   y = tabla(doc, autoTable, {
     head: [['Código', 'Tipo', 'Marca / Modelo', 'Vence', 'Días']],
     body: datos.garantias.length
@@ -198,7 +201,7 @@ export async function construirReporteEquipos(datos, { nombreArchivo = '' } = {}
           formatFecha(g.garantia_hasta),
           String(g.diasRestantes),
         ])
-      : celdaVacia(`Sin garantías por vencer en los próximos ${DIAS_VENTANA_GARANTIA} días`, 5),
+      : celdaVacia(`Sin garantías por vencer en los próximos ${diasGarantia} días`, 5),
     columnStyles: { 3: { halign: 'right', cellWidth: 24 }, 4: { halign: 'right', cellWidth: 14 } },
   }, y);
 

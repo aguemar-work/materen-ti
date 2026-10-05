@@ -1,10 +1,11 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useEmpleadosStore } from '../../stores/empleados.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
+import { traducirErrorDb } from '../../api/erroresDb.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { exportarCSV } from '../../core/exportar.js';
@@ -12,47 +13,124 @@ import { showToast } from '../../core/toast.js';
 import { nombreCompleto } from '../../core/dominio-empleados.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
-import Pagination from '../../components/shared/Pagination.vue';
+import EmpleadoMotivoDialog from './EmpleadoMotivoDialog.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppAvatar from '../../components/ui/AppAvatar.vue';
+import AppEncabezado from '../../components/ui/AppEncabezado.vue';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
+import AppVistas from '../../components/ui/AppVistas.vue';
+import AppFiltros from '../../components/ui/AppFiltros.vue';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
+import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
+import { useEsMovil } from '../../composables/useEsMovil.js';
 
 const router = useRouter();
-const route = useRoute();
 const store = useEmpleadosStore();
 const auth = useAuthStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
-const ordenColumna = computed(() => orden.value?.columna || '');
-const ordenDireccion = computed(() => orden.value?.direccion || 'asc');
 
-useRealtimeRefresco('empleados:list', () => store.cargar(), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+// ── Filtros V2: vistas + chips + URL (2026-09-25) ──────────────────────
+// La URL es la fuente de verdad: `?estado=Inactivo&empresa=a,b&q=juan`.
+// `estado` es la VISTA (pestañas con conteo); 'Activo' por defecto — ver
+// activos e inactivos mezclados era el problema reportado (ago 2026) — y
+// 'todos' la vista sin filtro de estado. Los enlaces de Inicio
+// (/empleados?estado=Inactivo) usan este mismo parámetro.
+const { filtros, limpiar, hayActivos } = useFiltrosUrl({
+  estado: { tipo: 'valor', defecto: 'Activo' },
+  q: { tipo: 'texto' },
+  empresa: { tipo: 'lista' },
+  ubicacion: { tipo: 'lista' },
+  area: { tipo: 'lista' },
+});
 
-const { termino: busqueda } = useBusqueda({ onBuscar: (q) => store.aplicarFiltros({ q }) });
-// Precarga desde el link del Dashboard (ej. /empleados?estado=Inactivo);
-// sin query entrante arranca en Activo — ver activos e inactivos mezclados
-// por defecto era el problema reportado (ago 2026).
-const filtroEstado = ref(route.query.estado || 'Activo');
-const filtroUbicacion = ref('');
+const CLAVES_FILTRO = ['q', 'empresa', 'ubicacion', 'area'];
+const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
+
+// Lo que viaja al servidor. `estado` se separa del resto: los conteos de las
+// vistas dependen de los filtros, no de la vista elegida.
+const filtrosSinEstado = computed(() => ({
+  q: filtros.q,
+  empresaIds: filtros.empresa,
+  ubicacionIds: filtros.ubicacion,
+  areaIds: filtros.area,
+}));
+const filtrosServidor = computed(() => ({
+  ...filtrosSinEstado.value,
+  estado: filtros.estado === 'todos' ? '' : filtros.estado,
+}));
+
+// Búsqueda: el campo responde al instante; a la URL (y al servidor) llega
+// con el debounce de useBusqueda.
+const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
+busqueda.value = filtros.q;
+watch(() => filtros.q, (q) => { if (q !== busqueda.value.trim()) busqueda.value = q; });
+
+const conteos = ref(null);
+async function refrescarConteos() {
+  try {
+    conteos.value = await insforgeApi.conteosEmpleadosPorEstado(filtrosSinEstado.value);
+  } catch {
+    // Sin conteos, las pestañas se muestran igual (sin número).
+  }
+}
+
+const VISTAS = computed(() => [
+  { valor: 'todos', label: 'Todos', conteo: conteos.value?.todos },
+  { valor: 'Activo', label: 'Activos', conteo: conteos.value?.Activo },
+  { valor: 'Inactivo', label: 'Inactivos', conteo: conteos.value?.Inactivo, titulo: 'Dados de baja' },
+  { valor: 'Suspendido', label: 'Suspendidos', conteo: conteos.value?.Suspendido },
+]);
+
+// Dimensiones de los chips: las tres son columnas propias del empleado.
 const ubicaciones = ref([]);
+const empresas = ref([]);
+const areas = ref([]);
+const aOpciones = (lista) => lista.map((x) => ({ valor: x.id, label: x.nombre }));
+const DIMENSIONES = computed(() => [
+  { id: 'empresa', label: 'Empresa', icono: 'ti ti-building', opciones: aOpciones(empresas.value) },
+  { id: 'area', label: 'Área/Obra', icono: 'ti ti-briefcase', opciones: aOpciones(areas.value) },
+  { id: 'ubicacion', label: 'Ubicación', icono: 'ti ti-map-pin', opciones: aOpciones(ubicaciones.value) },
+]);
+const chips = computed({
+  get: () => ({ empresa: filtros.empresa, area: filtros.area, ubicacion: filtros.ubicacion }),
+  set: (v) => { filtros.empresa = v.empresa; filtros.area = v.area; filtros.ubicacion = v.ubicacion; },
+});
+
+function limpiarFiltros() {
+  limpiar(CLAVES_FILTRO);
+  busqueda.value = '';
+}
+
+// Una vista sin filas en un inventario que sí tiene gente ("Suspendidos: 0")
+// no es "Sin empleados todavía": dice que esa vista está vacía, nada más.
+const vistaVacia = computed(() => {
+  if (filtros.estado === 'todos' || !(conteos.value?.todos > 0)) return null;
+  const nombre = VISTAS.value.find((v) => v.valor === filtros.estado)?.label.toLowerCase();
+  return { titulo: `Sin empleados ${nombre}`, mensaje: 'No hay nadie en esta vista. Las demás pestañas muestran al resto del personal.' };
+});
+
+// Cualquier cambio de filtro o de vista recarga la página 1; los conteos,
+// solo si cambió algo más que la vista.
+watch(filtrosServidor, (f) => store.aplicarFiltros(f), { deep: true });
+watch(filtrosSinEstado, refrescarConteos, { deep: true });
+
+// Escritorio: siempre tabla (la vista "Tarjetas" se retiró el 2026-09-25 a
+// pedido del dueño: no aportaba sobre la tabla). Móvil: tarjetas apiladas.
+const { esMovil } = useEsMovil();
+
+useRealtimeRefresco('empleados:list', () => Promise.all([store.cargar(), refrescarConteos()]), { debounceMs: REFRESCO_LISTA_DEBOUNCE_MS });
+
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
 
-const estados = ['Activo', 'Inactivo', 'Suspendido'];
-
-// Búsqueda y filtros viajan al servidor (paginación server-side):
-// la búsqueda con debounce, los selects al instante.
-watch(filtroEstado, (estado) => store.aplicarFiltros({ estado }));
-watch(filtroUbicacion, (ubicacionId) => store.aplicarFiltros({ ubicacionId }));
-
-const paginaActual = computed({
-  get: () => store.pagina,
-  set: (p) => store.irAPagina(p),
-});
 
 // Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
 const exportando = ref(false);
@@ -69,14 +147,14 @@ async function exportar() {
       ]),
     );
   } catch (e) {
-    showToast(e?.message || 'Error al exportar', 'error');
+    showToast(traducirErrorDb(e, { porDefecto: 'No se pudo exportar.' }).mensaje, 'error');
   } finally {
     exportando.value = false;
   }
 }
 
 // ── Enviar credenciales sin entrar al perfil ──────────────────────
-// Mismo flujo que el botón de WhatsApp en la ficha (CuentasPanel):
+// Mismo flujo que el botón de WhatsApp en la ficha (EmpleadoDetalleView):
 // enlace de entrega de un solo uso con TODAS las cuentas del empleado.
 const enviandoCredsId = ref(null);
 
@@ -96,7 +174,7 @@ async function enviarCredenciales(emp) {
       cuentaIds: cuentas.map((c) => c.cuenta_id),
     });
   } catch (e) {
-    showToast(e?.message || 'Error al crear la entrega', 'error');
+    showToast(traducirErrorDb(e, { porDefecto: 'No se pudo crear la entrega.' }).mensaje, 'error');
   } finally {
     enviandoCredsId.value = null;
   }
@@ -117,16 +195,27 @@ function cerrarForm() {
   empleadoEditar.value = null;
 }
 
-function onFormCerrado(guardado) {
+async function onFormCerrado(guardado) {
   const fueEdicion = !!empleadoEditar.value;
   cerrarForm();
   if (!guardado) return;
   if (fueEdicion) {
     showToast('Empleado actualizado');
-  } else {
-    // Alta guiada: llevar a la ficha del nuevo empleado para asignarle accesos
-    router.push(`/empleados/${guardado.id}?nuevo=1`);
+    return;
   }
+  // Alta guiada: la persona nueva abre su solicitud de alta (migración 108) y se
+  // la lleva a la ficha, donde la guía lee esa solicitud para asignarle accesos.
+  // Si la solicitud no se pudo abrir (p. ej. el backend aún no la tiene) la
+  // persona igual quedó creada: se avisa y se sigue.
+  try {
+    await insforgeApi.crearSolicitud({ tipo: 'alta_empleado', empleadoId: guardado.id });
+  } catch (e) {
+    showToast(
+      traducirErrorDb(e, { entidad: 'solicitud', porDefecto: 'No se pudo abrir la solicitud de alta.' }).mensaje,
+      'warning',
+    );
+  }
+  router.push(`/empleados/${guardado.id}`);
 }
 
 function verFicha(empleado) {
@@ -140,12 +229,22 @@ function darDeBaja(empleado) {
   empleadoBaja.value = empleado;
 }
 
-function onBajaCerrada() {
+function onBajaCerrada(hecho) {
   empleadoBaja.value = null;
+  if (hecho) refrescarConteos();
 }
 
-// Acciones por fila para el menú ⋮ de las tarjetas móviles — mismas
-// condiciones que los icon-btn de la tabla de escritorio.
+// Suspender / Reactivar desde el menú ⋮ (RPC de la migración 102). Mismo
+// diálogo que el del expediente; la lista se recarga sola desde el store.
+const motivoEmpleado = ref(null); // { accion: 'suspender' | 'reactivar', empleado }
+
+function onMotivoCerrado(hecho) {
+  motivoEmpleado.value = null;
+  if (hecho) refrescarConteos();
+}
+
+// Acciones por fila: menú ⋮ de la tabla y de las tarjetas (rediseño
+// 2026-09-22 — antes la tabla tenía 4 íconos que aparecían al pasar el mouse).
 function accionesDe(emp) {
   return [
     { icono: 'ti-eye', label: 'Ver ficha', onClick: () => verFicha(emp) },
@@ -155,6 +254,18 @@ function accionesDe(emp) {
       label: 'Enviar credenciales por WhatsApp',
       disabled: enviandoCredsId.value === emp.id || !auth.puedeVerCredenciales,
       onClick: () => enviarCredenciales(emp),
+    },
+    {
+      icono: 'ti-user-pause',
+      label: 'Suspender',
+      visible: emp.estado === 'Activo',
+      onClick: () => { motivoEmpleado.value = { accion: 'suspender', empleado: emp }; },
+    },
+    {
+      icono: 'ti-user-check',
+      label: 'Reactivar',
+      visible: emp.estado !== 'Activo',
+      onClick: () => { motivoEmpleado.value = { accion: 'reactivar', empleado: emp }; },
     },
     {
       icono: 'ti-user-off',
@@ -167,19 +278,21 @@ function accionesDe(emp) {
 }
 
 onMounted(async () => {
+  // Catálogos de los chips, en paralelo con la página: si uno falla, esa
+  // dimensión queda sin opciones — nunca bloquea ni rompe el listado.
+  Promise.allSettled([insforgeApi.listEmpresas(), insforgeApi.listAreasObras(), insforgeApi.listUbicaciones()])
+    .then(([emps, ars, ubs]) => {
+      if (emps.status === 'fulfilled') empresas.value = emps.value;
+      if (ars.status === 'fulfilled') areas.value = ars.value;
+      if (ubs.status === 'fulfilled') ubicaciones.value = ubs.value;
+    });
+  refrescarConteos();
   try {
-    ubicaciones.value = await insforgeApi.listUbicaciones();
-  } catch {
-    // El filtro de ubicación queda vacío si falla — no rompe el listado.
-  }
-  try {
-    if (filtroEstado.value) {
-      // Llega con un filtro desde el link del Dashboard: no resetear.
-      await store.aplicarFiltros({ estado: filtroEstado.value });
-    } else {
-      store.resetearFiltros();
-      await store.cargar();
-    }
+    // Lo que se aplica es SIEMPRE lo que dice la URL: el reset limpia lo que
+    // el store pudiera traer de una visita anterior (orden, página) y los
+    // filtros se reponen desde la URL, así no queda ningún filtro invisible.
+    store.resetearFiltros();
+    await store.aplicarFiltros(filtrosServidor.value);
   } catch {
     showToast(error.value || 'Error al cargar empleados', 'error');
   }
@@ -187,199 +300,207 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="empleados-page vista-modulo">
-    <PageHeader titulo="Empleados" icono="ti ti-users" :conteo="total">
+  <div class="flex h-full min-h-0 flex-col">
+    <AppEncabezado
+      titulo="Empleados"
+      subtitulo="Personal inventariado, con sus accesos, equipos y licencias"
+    >
       <template #acciones>
-        <button class="btn" type="button" title="Exportar a Excel (CSV)" :disabled="exportando" @click="exportar">
-          <i :class="exportando ? 'ti ti-loader-2 spinner-icon' : 'ti ti-table-export'" aria-hidden="true"></i> {{ exportando ? 'Exportando...' : 'Exportar' }}
-        </button>
-        <button class="btn btn-primary" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo empleado
-        </button>
+        <AppButton
+          variant="text"
+          severity="secondary"
+          :icon="exportando ? 'ti ti-loader-2' : 'ti ti-table-export'"
+          :loading="exportando"
+          :disabled="exportando"
+          :label="exportando ? 'Exportando...' : 'Exportar'"
+          title="Exportar a Excel (CSV)"
+          @click="exportar"
+        />
+        <AppButton icon="ti ti-plus" label="Nuevo empleado" @click="abrirNuevo" />
       </template>
-    </PageHeader>
+    </AppEncabezado>
 
-    <main class="page">
-      <div class="card card--fill">
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input
-              v-model="busqueda"
-              type="text"
-              placeholder="Buscar por nombre o DNI..."
-              aria-label="Buscar empleados"
-            >
-          </div>
-          <div class="filter-field">
-            <label for="filtro-estado">Estado</label>
-            <select id="filtro-estado" v-model="filtroEstado">
-              <option value="">Todos los estados</option>
-              <option v-for="est in estados" :key="est" :value="est">{{ est }}</option>
-            </select>
-          </div>
-          <div class="filter-field">
-            <label for="filtro-ubicacion">Ubicación</label>
-            <select id="filtro-ubicacion" v-model="filtroUbicacion">
-              <option value="">Todas las ubicaciones</option>
-              <option v-for="u in ubicaciones" :key="u.id" :value="u.id">{{ u.nombre }}</option>
-            </select>
-          </div>
-        </div>
+    <!-- ══ Vistas (estado) ═══════════════════════════════════════ -->
+    <AppVistas v-model="filtros.estado" :opciones="VISTAS" label="Vista de empleados" />
 
-        <div v-if="cargando" class="no-results solo-movil">Cargando empleados...</div>
+    <!-- ══ Barra de filtros: búsqueda + chips bajo demanda ══════ -->
+    <AppBarraFiltros class="pt-3">
+      <AppBuscador v-model="busqueda" label="Buscar empleados" placeholder="Buscar por nombre o DNI" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
+      <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+    </AppBarraFiltros>
 
-        <div v-else-if="error" class="no-results empleados-error">{{ error }}</div>
+    <!-- ══ Contenido ═══════════════════════════════════════════════ -->
+    <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
+      <div v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
+      </div>
 
-        <EmptyState
-          v-else-if="total === 0"
-          icono="ti ti-users"
-          titulo="Sin empleados"
-          :mensaje="busqueda || filtroEstado ? 'No hay resultados con los filtros aplicados.' : 'Agregue el primer empleado al inventario.'"
-        >
-          <button v-if="!busqueda && !filtroEstado" class="btn" type="button" @click="abrirNuevo">
-            <i class="ti ti-plus"></i> Agregar empleado
-          </button>
-        </EmptyState>
+      <AppVacio
+        v-else-if="!cargando && total === 0"
+        icono="ti ti-users"
+        :titulo="hayFiltros ? 'Sin resultados' : vistaVacia ? vistaVacia.titulo : 'Sin empleados todavía'"
+        :mensaje="hayFiltros ? 'No hay empleados con los filtros aplicados.' : vistaVacia ? vistaVacia.mensaje : 'Agregue el primer empleado al inventario para asignarle accesos y equipos.'"
+      >
+        <AppButton
+          v-if="!hayFiltros && !vistaVacia"
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-plus"
+          label="Agregar empleado"
+          @click="abrirNuevo"
+        />
+        <AppButton
+          v-if="hayFiltros"
+          variant="outline"
+          severity="secondary"
+          icon="ti ti-x"
+          label="Limpiar filtros"
+          @click="limpiarFiltros"
+        />
+      </AppVacio>
 
-        <template v-if="!error && (cargando || total > 0)">
+      <template v-else>
         <p v-if="cargando" class="sr-only" role="status">Cargando empleados…</p>
-        <div class="table-wrap solo-escritorio">
-          <table aria-label="Inventario de empleados">
-            <thead>
-              <tr>
-                <ThOrdenable clave="dni" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">DNI</ThOrdenable>
-                <ThOrdenable clave="apellidos" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Nombre</ThOrdenable>
-                <ThOrdenable clave="cargo" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Cargo</ThOrdenable>
-                <th scope="col">Empresa</th>
-                <th scope="col">Vínculos</th>
-                <ThOrdenable clave="estado" :columna="ordenColumna" :direccion="ordenDireccion" @ordenar="store.ordenarPor">Estado</ThOrdenable>
-                <th scope="col">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="7" />
-              <template v-else>
-              <tr v-for="emp in lista" :key="emp.id" class="fila-empleado" @click="verFicha(emp)">
-                <td>{{ emp.dni }}</td>
-                <td>
-                  <div class="user-name">{{ nombreCompleto(emp) }}</div>
-                </td>
-                <td><TextoVacio :valor="emp.cargo" /></td>
-                <td><TextoVacio :valor="emp.empresa_nombre" /></td>
-                <td>
-                  <div v-if="emp.n_cuentas != null" class="vinculos">
+
+        <!-- ── Tabla (escritorio) ── -->
+        <AppMarcoTabla v-if="!esMovil">
+          <div class="min-h-0 flex-1 overflow-auto">
+            <AppTable
+              :value="lista"
+              :loading="cargando"
+              :total-records="total"
+              :rows="store.tamPagina"
+              :orden="orden"
+              :row-class="() => 'cursor-pointer'"
+              aria-label="Inventario de empleados"
+              @ordenar="store.ordenarPor"
+              @row-click="({ data }) => verFicha(data)"
+            >
+              <AppColumn field="apellidos" header="Empleado" sortable>
+                <template #body="{ data: emp }">
+                  <div class="flex min-w-0 items-center gap-3">
+                    <AppAvatar :nombre="nombreCompleto(emp)" />
+                    <div class="min-w-0">
+                      <div class="truncate font-medium text-gray-900">{{ nombreCompleto(emp) }}</div>
+                    </div>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="cargo" header="Cargo" sortable>
+                <template #body="{ data: emp }">
+                  <div class="min-w-0">
+                    <div class="truncate" :class="emp.cargo ? 'text-gray-900' : 'text-gray-500'">{{ emp.cargo || 'Sin cargo' }}</div>
+                    <div v-if="emp.empresa_nombre" class="truncate text-xs text-gray-500">{{ emp.empresa_nombre }}</div>
+                  </div>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="vinculos" header="Asignado">
+                <template #body="{ data: emp }">
+                  <div v-if="emp.n_cuentas != null" class="flex items-center gap-4 text-sm tabular-nums">
                     <span
-                      class="vinculo"
-                      :class="{ 'vinculo--cero': !emp.n_cuentas }"
+                      class="inline-flex items-center gap-1"
+                      :class="emp.n_cuentas ? 'text-gray-700' : 'text-gray-400'"
                       :title="`${emp.n_cuentas} cuenta(s) activa(s)`"
                       :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`"
-                    >
-                      <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
-                    </span>
+                    ><i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}</span>
                     <span
-                      class="vinculo"
-                      :class="{ 'vinculo--cero': !emp.n_equipos }"
+                      class="inline-flex items-center gap-1"
+                      :class="emp.n_equipos ? 'text-gray-700' : 'text-gray-400'"
                       :title="`${emp.n_equipos} equipo(s) asignado(s)`"
                       :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"
-                    >
-                      <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
-                    </span>
+                    ><i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}</span>
                     <span
-                      class="vinculo"
-                      :class="{ 'vinculo--cero': !emp.n_licencias }"
+                      class="inline-flex items-center gap-1"
+                      :class="emp.n_licencias ? 'text-gray-700' : 'text-gray-400'"
                       :title="`${emp.n_licencias} licencia(s) directa(s)`"
                       :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"
-                    >
-                      <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
-                    </span>
+                    ><i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}</span>
                   </div>
-                  <TextoVacio v-else />
-                </td>
-                <td>
-                  <BadgeEstado tipo="empleado" :valor="emp.estado" status />
-                </td>
-                <td @click.stop>
-                  <div class="actions">
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Ver ficha"
-                      aria-label="Ver ficha"
-                      @click="verFicha(emp)"
-                    >
-                      <i class="ti ti-eye"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Editar"
-                      aria-label="Editar"
-                      @click="abrirEditar(emp)"
-                    >
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      :title="auth.puedeVerCredenciales ? 'Enviar credenciales por WhatsApp' : 'Sin permiso para ver contraseñas'"
-                      aria-label="Enviar credenciales por WhatsApp"
-                      :disabled="enviandoCredsId === emp.id || !auth.puedeVerCredenciales"
-                      @click="enviarCredenciales(emp)"
-                    >
-                      <i :class="enviandoCredsId === emp.id ? 'ti ti-loader-2 spinner-icon' : 'ti ti-brand-whatsapp'"></i>
-                    </button>
-                    <button
-                      v-if="emp.estado !== 'Inactivo'"
-                      class="icon-btn danger"
-                      type="button"
-                      title="Dar de baja"
-                      aria-label="Dar de baja"
-                      @click="darDeBaja(emp)"
-                    >
-                      <i class="ti ti-user-off"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
+                  <span v-else class="text-xs text-gray-500">Sin asignaciones</span>
+                </template>
+              </AppColumn>
 
-        <!-- Render móvil: misma lista paginada, como tarjetas apiladas -->
-        <ul v-if="!cargando" class="lista-tarjetas solo-movil" aria-label="Inventario de empleados">
-          <li v-for="emp in lista" :key="emp.id" class="tarjeta-fila tarjeta-fila--clic" @click="verFicha(emp)">
-            <div class="tarjeta-fila__principal user-name">{{ nombreCompleto(emp) }}</div>
-            <div class="tarjeta-fila__sec">
-              <span>{{ emp.dni }}</span>
-              <template v-if="emp.cargo"><span aria-hidden="true">·</span><span>{{ emp.cargo }}</span></template>
-              <template v-if="emp.empresa_nombre"><span aria-hidden="true">·</span><span>{{ emp.empresa_nombre }}</span></template>
-            </div>
-            <div class="tarjeta-fila__pie">
-              <div class="tarjeta-fila__badges">
-                <BadgeEstado tipo="empleado" :valor="emp.estado" status />
-                <div v-if="emp.n_cuentas != null" class="vinculos vinculos--tarjeta">
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_cuentas }" :title="`${emp.n_cuentas} cuenta(s) activa(s)`" :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`">
-                    <i class="ti ti-key" aria-hidden="true"></i>{{ emp.n_cuentas }}
-                  </span>
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_equipos }" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`">
-                    <i class="ti ti-devices" aria-hidden="true"></i>{{ emp.n_equipos }}
-                  </span>
-                  <span class="vinculo" :class="{ 'vinculo--cero': !emp.n_licencias }" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`">
-                    <i class="ti ti-license" aria-hidden="true"></i>{{ emp.n_licencias }}
-                  </span>
+              <!-- Solo en "Todos": dentro de una vista de estado, la columna
+                   repetiría en cada fila lo que ya dice la pestaña. -->
+              <AppColumn v-if="filtros.estado === 'todos'" field="estado" header="Estado" sortable>
+                <template #body="{ data: emp }">
+                  <BadgeEstado tipo="empleado" :valor="emp.estado" status />
+                </template>
+              </AppColumn>
+
+              <AppColumn field="acciones" header="Acciones">
+                <template #body="{ data: emp }">
+                  <div class="flex justify-end" @click.stop>
+                    <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
+                  </div>
+                </template>
+              </AppColumn>
+            </AppTable>
+          </div>
+
+          <AppPaginacion
+            v-if="!cargando && total > 0"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+            @update:tam-pagina="store.cambiarTamPagina"
+          />
+        </AppMarcoTabla>
+
+        <!-- ── Tarjetas (solo móvil) ── -->
+        <div v-else class="min-h-0 flex-1 overflow-y-auto">
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando empleados...</p>
+          <ul
+            v-else
+            class="grid grid-cols-1 gap-3"
+            aria-label="Inventario de empleados"
+          >
+            <li
+              v-for="emp in lista"
+              :key="emp.id"
+              class="group flex cursor-pointer flex-col rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              tabindex="0"
+              @keydown.enter.self="verFicha(emp)"
+              @click="verFicha(emp)"
+            >
+              <div class="flex items-start gap-3">
+                <AppAvatar :nombre="nombreCompleto(emp)" tamano="md" />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-medium text-gray-900">{{ nombreCompleto(emp) }}</div>
+                </div>
+                <div class="-mr-1 -mt-1" @click.stop>
+                  <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
                 </div>
               </div>
-              <MenuAcciones :acciones="accionesDe(emp)" :label="`Acciones de ${nombreCompleto(emp)}`" />
-            </div>
-          </li>
-        </ul>
-
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="total" :page-size="store.tamPagina" />
-        </template>
-      </div>
-    </main>
+              <p class="mt-3 line-clamp-2 min-h-10 text-sm text-gray-600">
+                {{ [emp.cargo, emp.empresa_nombre].filter(Boolean).join(' · ') || 'Sin cargo' }}
+              </p>
+              <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+                <BadgeEstado tipo="empleado" :valor="emp.estado" status />
+                <div v-if="emp.n_cuentas != null" class="flex items-center gap-3 text-xs tabular-nums">
+                  <span :class="emp.n_cuentas ? 'text-gray-600' : 'text-gray-400'" :title="`${emp.n_cuentas} cuenta(s) activa(s)`" :aria-label="`${emp.n_cuentas} cuenta(s) activa(s)`"><i class="ti ti-key" aria-hidden="true"></i> {{ emp.n_cuentas }}</span>
+                  <span :class="emp.n_equipos ? 'text-gray-600' : 'text-gray-400'" :title="`${emp.n_equipos} equipo(s) asignado(s)`" :aria-label="`${emp.n_equipos} equipo(s) asignado(s)`"><i class="ti ti-devices" aria-hidden="true"></i> {{ emp.n_equipos }}</span>
+                  <span :class="emp.n_licencias ? 'text-gray-600' : 'text-gray-400'" :title="`${emp.n_licencias} licencia(s) directa(s)`" :aria-label="`${emp.n_licencias} licencia(s) directa(s)`"><i class="ti ti-license" aria-hidden="true"></i> {{ emp.n_licencias }}</span>
+                </div>
+              </div>
+            </li>
+          </ul>
+          <AppPaginacion
+            v-if="!cargando"
+            variante="compacta"
+            :pagina="store.pagina"
+            :tam-pagina="store.tamPagina"
+            :total="total"
+            @update:pagina="store.irAPagina"
+          />
+        </div>
+      </template>
+    </div>
 
     <EmpleadoForm
       v-if="mostrarForm"
@@ -392,30 +513,12 @@ onMounted(async () => {
       :empleado="empleadoBaja"
       @cerrar="onBajaCerrada"
     />
+
+    <EmpleadoMotivoDialog
+      v-if="motivoEmpleado"
+      :accion="motivoEmpleado.accion"
+      :empleado="motivoEmpleado.empleado"
+      @cerrar="onMotivoCerrado"
+    />
   </div>
 </template>
-
-<style scoped>
-.empleados-error { color: var(--color-danger); }
-
-.fila-empleado { cursor: pointer; }
-.fila-empleado:hover td { background: var(--color-bg-hover, var(--color-bg-subtle)); }
-
-/* Conteos de cuentas/equipos: dato secundario, no badge (no es estado) */
-.vinculos {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.vinculo {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--color-text-secondary);
-}
-
-.vinculo i { font-size: 14px; }
-
-.vinculo--cero { color: var(--color-text-tertiary); }
-</style>

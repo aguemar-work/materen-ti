@@ -9,9 +9,17 @@
     "lint:fix": "eslint frontend/src functions --fix",
     "format": "prettier --write frontend/src functions",
     "format:check": "prettier --check frontend/src functions",
-    "typecheck:functions": "deno check --config functions/tsconfig.json functions/credenciales.ts functions/tickets.ts functions/encuestas.ts functions/personal-registro.ts functions/equipos-fotos.ts"
+    "build:functions": "node scripts/build-functions.mjs",
+    "check:functions": "node scripts/build-functions.mjs --check",
+    "typecheck:functions": "deno check --config functions/tsconfig.json functions/dist/credenciales.ts functions/dist/tickets.ts functions/dist/encuestas.ts functions/dist/equipos-fotos.ts functions/dist/portal.ts",
+    "verify:db": "node scripts/snapshot-esquema.mjs --verificar",
+    "snapshot": "node scripts/snapshot-esquema.mjs --escribir",
+    "deploy": "node scripts/deploy.mjs",
+    "test:sql-local": "node scripts/sql-local/verificar-migraciones.mjs",
+    "test:scripts": "node --test \"scripts/**/*.test.mjs\""
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",
@@ -19,5 +27,8 @@
     "globals": "^17.11.0",
     "prettier": "^3.9.6",
     "typescript-eslint": "^8.67.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

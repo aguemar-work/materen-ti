@@ -20,5 +20,4 @@ watch(() => route.fullPath, () => cancelarErrorRed());
   </AppLayout>
   <router-view v-else />
   <ErrorRedView v-if="errorRedActivo" />
-  <div id="toast" class="toast" style="display: none"></div>
 </template>

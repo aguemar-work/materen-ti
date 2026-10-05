@@ -27,7 +27,7 @@ describe('construirReporteEquipos', () => {
     expect(nombre).toMatch(/^Equipos_\d{4}-\d{2}-\d{2}\.pdf$/);
 
     const bytes = bytesDe(doc);
-    const crudo = new TextDecoder('latin1').decode(bytes);
+    const crudo = Buffer.from(bytes).toString('latin1');
     expect(crudo.startsWith('%PDF-')).toBe(true);
     expect(crudo).toContain('%%EOF');
     expect(bytes.byteLength).toBeGreaterThan(1500);
@@ -42,7 +42,7 @@ describe('construirReporteEquipos', () => {
   it('no destroza los acentos ni el guión largo del castellano', async () => {
     const datos = construirDatosReporteEquipos(EQUIPOS, HOY);
     const { doc } = await construirReporteEquipos(datos);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('REPARACI\xD3N');
     expect(crudo).toContain('GARANT\xCDAS');
     expect(crudo).toContain('\x97'); // Materen — Sistema TI, en el pie
@@ -51,7 +51,7 @@ describe('construirReporteEquipos', () => {
   it('incluye el conteo por tipo (Laptop es el mayor: 3)', async () => {
     const datos = construirDatosReporteEquipos(EQUIPOS, HOY);
     const { doc } = await construirReporteEquipos(datos);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Laptop');
     expect(crudo).toContain('Monitor');
   });
@@ -59,7 +59,7 @@ describe('construirReporteEquipos', () => {
   it('incluye la tabla de garantías por vencer con el equipo dentro de la ventana', async () => {
     const datos = construirDatosReporteEquipos(EQUIPOS, HOY);
     const { doc } = await construirReporteEquipos(datos);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('EQ-0001');
     expect(crudo).toContain('15/09/2026');
   });
@@ -68,8 +68,8 @@ describe('construirReporteEquipos', () => {
     const sinGarantias = EQUIPOS.map((e) => ({ ...e, garantia_hasta: null }));
     const datos = construirDatosReporteEquipos(sinGarantias, HOY);
     const { doc } = await construirReporteEquipos(datos);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
-    expect(crudo).toContain('Sin garant\xEDas por vencer en los pr\xF3ximos 90 d\xEDas');
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
+    expect(crudo).toContain('Sin garant\xEDas por vencer en los pr\xF3ximos 30 d\xEDas');
   });
 
   it('genera igual un inventario completamente vacío', async () => {
@@ -77,7 +77,7 @@ describe('construirReporteEquipos', () => {
     const { doc, nombre } = await construirReporteEquipos(datos, { nombreArchivo: 'x' });
     expect(nombre).toBe('x.pdf');
     expect(bytesDe(doc).byteLength).toBeGreaterThan(1000);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Sin equipos activos para graficar');
   });
 
@@ -90,7 +90,7 @@ describe('construirReporteEquipos', () => {
       ],
     };
     const { doc } = await construirReporteEquipos(datos);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('\xDALTIMAS ASIGNACIONES Y DEVOLUCIONES');
     expect(crudo).toContain('Asignado');
     expect(crudo).toContain('Devuelto');
@@ -101,14 +101,14 @@ describe('construirReporteEquipos', () => {
   it('muestra el mensaje vacío cuando no hay movimientos recientes', async () => {
     const datos = { ...construirDatosReporteEquipos(EQUIPOS, HOY), movimientos: [] };
     const { doc } = await construirReporteEquipos(datos);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Sin movimientos recientes');
   });
 
   it('sin `movimientos` en los datos (compat), muestra igual el mensaje vacío en vez de romper', async () => {
     const datos = construirDatosReporteEquipos(EQUIPOS, HOY);
     const { doc } = await construirReporteEquipos(datos);
-    const crudo = new TextDecoder('latin1').decode(bytesDe(doc));
+    const crudo = Buffer.from(bytesDe(doc)).toString('latin1');
     expect(crudo).toContain('Sin movimientos recientes');
   });
 });

@@ -1,7 +1,7 @@
 # Contribuir a Materen — Sistema TI
 
 Guía corta: cómo se estructuran los commits y los PR en este repo. No sustituye
-`AGENTS.md` (reglas del proyecto) ni `docs/PANORAMA_SISTEMA.md` (esquema y
+`AGENTS.md` (reglas del proyecto) ni `docs/PANORAMA-SISTEMA.md` (esquema y
 decisiones) — léelos primero si vas a tocar dominio, seguridad o esquema.
 
 ## Convención de commits
@@ -80,8 +80,8 @@ pero en resumen:
 
 - Documentación actualizada en el mismo cambio (regla de `AGENTS.md`): si
   tocaste dominio, seguridad, esquema o UI, actualiza
-  `README.md`/`docs/PANORAMA_SISTEMA.md`/`docs/GUIA-UX-UI.md` según
-  corresponda, más una línea en `docs/CHANGELOG.md`.
+  `README.md`/`docs/PANORAMA-SISTEMA.md`/`docs/NOTAS-DISENO-ANTERIOR.md`
+  según corresponda, más una línea en `docs/CHANGELOG.md`.
 - `cd frontend && npm run build && npm test` en verde.
 - Si el cambio toca esquema o una edge function, qué capa de deploy se ve
   afectada (frontend/Vercel, edge function, esquema de BD — son 3

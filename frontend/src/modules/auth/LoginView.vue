@@ -3,6 +3,9 @@ import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/auth.js';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -29,18 +32,24 @@ const nuevaPassword = ref('');
 const confirmarPassword = ref('');
 const errorConfirmar = ref('');
 
+const campoEmailLogin = useCampoAccesible();
+const campoEmailReset = useCampoAccesible();
+const campoCodigo = useCampoAccesible();
+const campoNuevaPassword = useCampoAccesible();
+const campoConfirmarPassword = useCampoAccesible({ error: () => errorConfirmar.value });
+
 const titulo = computed(() => ({
   'login': 'Iniciar sesión',
-  'reset-email': 'Reestablecer contraseña',
-  'reset-codigo': 'Revisa tu correo',
+  'reset-email': 'Restablecer contraseña',
+  'reset-codigo': 'Revise su correo',
   'reset-password': 'Nueva contraseña',
 }[modo.value]));
 
 const subtitulo = computed(() => ({
   'login': null, // el login va limpio: solo título, campos y CTA
-  'reset-email': 'Te enviaremos un código de verificación a tu correo',
-  'reset-codigo': `Ingresa el código de 6 dígitos enviado a ${email.value}`,
-  'reset-password': 'Mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo',
+  'reset-email': 'Se enviará un código de verificación a su correo.',
+  'reset-codigo': `Ingrese el código de 6 dígitos enviado a ${email.value}.`,
+  'reset-password': 'Mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo.',
 }[modo.value]));
 
 function irA(nuevoModo) {
@@ -92,7 +101,7 @@ async function onVerificarCodigo() {
     resetToken.value = await auth.verificarCodigoReset(email.value, codigo.value.trim());
     irA('reset-password');
   } catch {
-    error.value = 'Código inválido o expirado. Verifica e intenta de nuevo.';
+    error.value = 'Código inválido o expirado. Verifíquelo e intente de nuevo.';
   } finally {
     procesando.value = false;
   }
@@ -109,337 +118,259 @@ async function onCambiarPassword() {
   try {
     await auth.cambiarPassword(resetToken.value, nuevaPassword.value);
     volverAlLogin();
-    aviso.value = 'Contraseña actualizada. Ya puedes iniciar sesión.';
+    aviso.value = 'Contraseña actualizada. Ya puede iniciar sesión.';
   } catch (e) {
     error.value = e?.message || 'No se pudo cambiar la contraseña';
   } finally {
     procesando.value = false;
   }
 }
+
+// Controles del portal (SISTEMA-DISENO §4.5): un poco más altos que en el
+// panel (44px, objetivo táctil) y a 16px en móvil para que iOS no haga zoom
+// al enfocar el campo.
+const CLASE_CONTROL = 'campo__control h-11 text-base sm:text-sm';
 </script>
 
 <template>
-  <div class="login-page">
-    <div class="login-card card">
-      <img src="/logo_materen_sisti.svg" alt="Materen — Sistema TI" class="login-logo">
-
-      <h2 class="login-title">{{ titulo }}</h2>
-      <p v-if="subtitulo" class="login-subtitle">{{ subtitulo }}</p>
-
-      <!-- Paso: login -->
-      <form v-if="modo === 'login'" class="login-form" @submit.prevent="onSubmit">
-        <div class="form-group full">
-          <label for="email">Correo electrónico</label>
+  <AppPortal :titulo="titulo" :descripcion="subtitulo || ''">
+    <!-- Paso: login -->
+    <form v-if="modo === 'login'" class="flex flex-col gap-5" @submit.prevent="onSubmit">
+      <div class="campo" :class="{ 'campo--inerte': cargando }">
+        <label class="campo__etiqueta" :for="campoEmailLogin.id">Correo electrónico<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
           <input
-            id="email"
+            :id="campoEmailLogin.id"
             v-model="email"
+            :class="CLASE_CONTROL"
             type="email"
-            autocomplete="email"
-            placeholder="tu@empresa.com"
+            placeholder="nombre@empresa.com"
             required
-            autofocus
+            :disabled="cargando"
+            autocomplete="username"
+            :aria-invalid="campoEmailLogin.invalido.value"
+            :aria-describedby="campoEmailLogin.describedBy.value"
+          >
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': cargando }">
+        <label class="campo__etiqueta" for="password">Contraseña<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            id="password"
+            v-model="password"
+            :class="CLASE_CONTROL"
+            :type="verPassword ? 'text' : 'password'"
+            autocomplete="current-password"
+            placeholder="••••••••"
+            required
             :disabled="cargando"
           >
+          <button
+            v-if="password"
+            class="mr-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-lg text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            type="button"
+            :title="verPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
+            :aria-label="verPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
+            :aria-pressed="verPassword"
+            @click="verPassword = !verPassword"
+          >
+            <i :class="verPassword ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
+          </button>
         </div>
+      </div>
 
-        <div class="form-group full">
-          <label for="password">Contraseña</label>
-          <div class="password-field">
-            <input
-              id="password"
-              v-model="password"
-              :type="verPassword ? 'text' : 'password'"
-              autocomplete="current-password"
-              placeholder="••••••••"
-              required
-              :disabled="cargando"
-            >
-            <button
-              v-if="password"
-              class="password-toggle"
-              type="button"
-              :title="verPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
-              :aria-label="verPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
-              @click="verPassword = !verPassword"
-            >
-              <i :class="verPassword ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
-            </button>
-          </div>
-        </div>
+      <p v-if="aviso" class="notif notif--success" role="status">
+        <i class="ti ti-circle-check" aria-hidden="true"></i>
+        <span class="notif__texto">{{ aviso }}</span>
+      </p>
+      <p v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <span class="notif__texto">{{ error }}</span>
+      </p>
 
-        <button
-          class="btn btn-primary login-submit"
-          type="submit"
-          :disabled="cargando"
-        >
-          <i v-if="cargando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-          {{ cargando ? 'Ingresando...' : 'Ingresar' }}
-        </button>
+      <AppButton
+        type="submit"
+        size="lg"
+        block
+        :label="cargando ? 'Ingresando...' : 'Ingresar'"
+        :loading="cargando"
+      />
 
-        <button class="login-link" type="button" @click="irA('reset-email')">
-          Olvidé la contraseña
-        </button>
+      <AppButton
+        class="self-center"
+        variant="text"
+        label="Olvidé la contraseña"
+        @click="irA('reset-email')"
+      />
+    </form>
 
-        <p v-if="aviso" class="login-aviso" role="status">{{ aviso }}</p>
-        <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-      </form>
-
-      <!-- Paso: pedir correo -->
-      <form v-else-if="modo === 'reset-email'" class="login-form" @submit.prevent="onSolicitarCodigo">
-        <div class="form-group full">
-          <label for="reset-email">Correo electrónico</label>
+    <!-- Paso: pedir correo -->
+    <form v-else-if="modo === 'reset-email'" class="flex flex-col gap-5" @submit.prevent="onSolicitarCodigo">
+      <div class="campo" :class="{ 'campo--inerte': procesando }">
+        <label class="campo__etiqueta" :for="campoEmailReset.id">Correo electrónico<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
           <input
-            id="reset-email"
+            :id="campoEmailReset.id"
             v-model="email"
+            :class="CLASE_CONTROL"
             type="email"
-            autocomplete="email"
-            placeholder="tu@empresa.com"
+            placeholder="nombre@empresa.com"
             required
             :disabled="procesando"
+            autocomplete="username"
+            :aria-invalid="campoEmailReset.invalido.value"
+            :aria-describedby="campoEmailReset.describedBy.value"
           >
         </div>
+      </div>
 
-        <button class="btn btn-primary login-submit" type="submit" :disabled="procesando">
-          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-          {{ procesando ? 'Enviando...' : 'Enviar código' }}
-        </button>
+      <p v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <span class="notif__texto">{{ error }}</span>
+      </p>
 
-        <button class="login-link" type="button" @click="volverAlLogin">
-          Volver a iniciar sesión
-        </button>
+      <AppButton
+        type="submit"
+        size="lg"
+        block
+        :label="procesando ? 'Enviando...' : 'Enviar código'"
+        :loading="procesando"
+      />
 
-        <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-      </form>
+      <AppButton
+        class="self-center"
+        variant="text"
+        severity="secondary"
+        icon="ti ti-arrow-left"
+        label="Volver a iniciar sesión"
+        @click="volverAlLogin"
+      />
+    </form>
 
-      <!-- Paso: código de verificación -->
-      <form v-else-if="modo === 'reset-codigo'" class="login-form" @submit.prevent="onVerificarCodigo">
-        <div class="form-group full">
-          <label for="reset-codigo">Código de verificación</label>
+    <!-- Paso: código de verificación -->
+    <form v-else-if="modo === 'reset-codigo'" class="flex flex-col gap-5" @submit.prevent="onVerificarCodigo">
+      <div class="campo" :class="{ 'campo--inerte': procesando }">
+        <label class="campo__etiqueta" :for="campoCodigo.id">Código de verificación<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
           <input
-            id="reset-codigo"
+            :id="campoCodigo.id"
             v-model="codigo"
-            class="input-codigo"
+            :class="[CLASE_CONTROL, 'text-center font-mono tracking-[0.3em]']"
             type="text"
-            inputmode="numeric"
-            autocomplete="one-time-code"
             placeholder="123456"
-            maxlength="6"
             required
             :disabled="procesando"
+            autocomplete="one-time-code"
+            inputmode="numeric"
+            :aria-invalid="campoCodigo.invalido.value"
+            :aria-describedby="campoCodigo.describedBy.value"
           >
         </div>
+      </div>
 
-        <button class="btn btn-primary login-submit" type="submit" :disabled="procesando || codigo.trim().length < 6">
-          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-          {{ procesando ? 'Verificando...' : 'Verificar código' }}
-        </button>
+      <p v-if="aviso" class="notif notif--success" role="status">
+        <i class="ti ti-circle-check" aria-hidden="true"></i>
+        <span class="notif__texto">{{ aviso }}</span>
+      </p>
+      <p v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <span class="notif__texto">{{ error }}</span>
+      </p>
 
-        <button class="login-link" type="button" :disabled="procesando" @click="onSolicitarCodigo">
-          Reenviar código
-        </button>
+      <AppButton
+        type="submit"
+        size="lg"
+        block
+        :label="procesando ? 'Verificando...' : 'Verificar código'"
+        :loading="procesando"
+        :disabled="codigo.trim().length < 6"
+      />
 
-        <button class="login-link" type="button" @click="volverAlLogin">
-          Volver a iniciar sesión
-        </button>
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        <AppButton
+          variant="text"
+          label="Reenviar código"
+          :disabled="procesando"
+          @click="onSolicitarCodigo"
+        />
+        <AppButton
+          variant="text"
+          severity="secondary"
+          icon="ti ti-arrow-left"
+          label="Volver a iniciar sesión"
+          @click="volverAlLogin"
+        />
+      </div>
+    </form>
 
-        <p v-if="aviso" class="login-aviso" role="status">{{ aviso }}</p>
-        <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-      </form>
-
-      <!-- Paso: nueva contraseña -->
-      <form v-else class="login-form" @submit.prevent="onCambiarPassword">
-        <div class="form-group full">
-          <label for="nueva-password">Nueva contraseña</label>
+    <!-- Paso: nueva contraseña -->
+    <form v-else class="flex flex-col gap-5" @submit.prevent="onCambiarPassword">
+      <div class="campo" :class="{ 'campo--inerte': procesando }">
+        <label class="campo__etiqueta" :for="campoNuevaPassword.id">Nueva contraseña<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
           <input
-            id="nueva-password"
+            :id="campoNuevaPassword.id"
             v-model="nuevaPassword"
+            :class="CLASE_CONTROL"
             type="password"
-            autocomplete="new-password"
             placeholder="••••••••"
-            minlength="12"
             required
             :disabled="procesando"
+            autocomplete="new-password"
+            :aria-invalid="campoNuevaPassword.invalido.value"
+            :aria-describedby="campoNuevaPassword.describedBy.value"
           >
         </div>
+      </div>
 
-        <div class="form-group full">
-          <label for="confirmar-password">Confirmar contraseña</label>
+      <div class="campo" :class="{ 'campo--invalido': campoConfirmarPassword.invalido.value, 'campo--inerte': procesando }">
+        <label class="campo__etiqueta" :for="campoConfirmarPassword.id">Confirmar contraseña<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
           <input
-            id="confirmar-password"
+            :id="campoConfirmarPassword.id"
             v-model="confirmarPassword"
+            :class="CLASE_CONTROL"
             type="password"
-            autocomplete="new-password"
             placeholder="••••••••"
-            minlength="12"
             required
             :disabled="procesando"
+            autocomplete="new-password"
+            :aria-invalid="campoConfirmarPassword.invalido.value"
+            :aria-describedby="campoConfirmarPassword.describedBy.value"
           >
-          <p v-if="errorConfirmar" class="form-error" role="alert">{{ errorConfirmar }}</p>
+          <i v-if="campoConfirmarPassword.invalido.value" class="ti ti-alert-circle campo__adorno campo__adorno--error" aria-hidden="true"></i>
         </div>
+        <p
+          v-if="errorConfirmar"
+          :id="campoConfirmarPassword.idAyuda"
+          class="campo__pie campo__pie--error"
+          role="alert"
+        >{{ errorConfirmar }}</p>
+      </div>
 
-        <button class="btn btn-primary login-submit" type="submit" :disabled="procesando">
-          <i v-if="procesando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-          {{ procesando ? 'Guardando...' : 'Cambiar contraseña' }}
-        </button>
+      <p v-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <span class="notif__texto">{{ error }}</span>
+      </p>
 
-        <button class="login-link" type="button" @click="volverAlLogin">
-          Cancelar
-        </button>
+      <AppButton
+        type="submit"
+        size="lg"
+        block
+        :label="procesando ? 'Guardando...' : 'Cambiar contraseña'"
+        :loading="procesando"
+      />
 
-        <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-      </form>
-    </div>
-  </div>
+      <AppButton
+        class="self-center"
+        variant="text"
+        severity="secondary"
+        label="Cancelar"
+        @click="volverAlLogin"
+      />
+    </form>
+  </AppPortal>
 </template>
 
-<style scoped>
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-}
-
-.login-card {
-  width: 100%;
-  max-width: 400px;
-  padding: 2rem;
-}
-
-.login-logo {
-  display: block;
-  height: 32px;
-  width: auto;
-  margin-bottom: 1.75rem;
-}
-
-/* El logo es verde pino (#072E2A): en oscuro se pasa a blanco
-   para no perderse contra el fondo (antes lo resolvía un plate blanco). */
-[data-theme="dark"] .login-logo {
-  filter: brightness(0) invert(1);
-}
-
-.login-title {
-  font-size: var(--fs-2xl);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin-bottom: 1.25rem;
-}
-
-/* Cuando hay subtítulo (flujo de reset), el título se le acerca */
-.login-title:has(+ .login-subtitle) {
-  margin-bottom: 4px;
-}
-
-.login-subtitle {
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  margin-bottom: 1.5rem;
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.login-form .form-group.full {
-  grid-column: unset;
-}
-
-.login-submit {
-  width: 100%;
-  justify-content: center;
-  margin-top: 4px;
-  padding: 10px 14px;
-}
-
-.login-submit:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.login-form input:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-  background: var(--color-bg-subtle);
-}
-
-.password-field {
-  position: relative;
-}
-
-.password-field input {
-  width: 100%;
-  padding-right: 38px;
-}
-
-.password-toggle {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  font-size: 16px;
-  color: var(--color-text-secondary);
-  border-radius: 6px;
-  transition: color 0.12s;
-}
-
-.password-toggle:hover {
-  color: var(--color-text-primary);
-}
-
-.login-link {
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: var(--fs-base);
-  color: var(--color-primary);
-  cursor: pointer;
-  align-self: center;
-}
-
-.login-link:hover {
-  text-decoration: underline;
-}
-
-.login-link:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.input-codigo {
-  text-align: center;
-  font-size: var(--fs-xl);
-  letter-spacing: 0.4em;
-  font-variant-numeric: tabular-nums;
-}
-
-.login-aviso {
-  color: var(--color-success-text);
-  background: var(--color-success-bg);
-  border: 1px solid var(--color-success-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: var(--fs-base);
-  margin: 0;
-}
-
-.login-error {
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: var(--fs-base);
-  margin: 0;
-}
-</style>

@@ -2,160 +2,73 @@
 // Página PÚBLICA (sin sesión): landing de soporte para empleados.
 // Punto de entrada único y memorable (/soporte) hacia las acciones
 // públicas existentes; no consulta ningún dato, solo navega.
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppTag from '../../components/ui/AppTag.vue';
+
+// Fila de acción del menú: toda la fila es el objetivo táctil (≥ 64px de
+// alto), hover con fondo tenue, sin bordes extra (principios del JEFE).
+const CLASE_FILA =
+  'flex items-center gap-4 rounded-lg border border-gray-200 p-4 text-left no-underline ' +
+  'transition-colors duration-150';
+const CLASE_ENLACE =
+  CLASE_FILA + ' hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
 </script>
 
 <template>
-  <div class="public-page">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Soporte de TI" />
+  <AppPortal
+    seccion="Soporte de TI"
+    titulo="Solicitudes de soporte"
+    descripcion="Registro y seguimiento de incidencias técnicas."
+  >
+    <nav aria-label="Acciones de soporte">
+      <ul class="flex flex-col gap-3">
+        <li>
+          <RouterLink
+            :to="{ name: 'ticket-nuevo' }"
+            :class="CLASE_ENLACE"
+          >
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-xl text-primary-600">
+              <i class="ti ti-tool" aria-hidden="true"></i>
+            </span>
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span class="text-sm font-semibold text-gray-900">Reportar un problema</span>
+              <span class="text-sm text-gray-500">Registro del incidente con código de seguimiento.</span>
+            </span>
+            <i class="ti ti-chevron-right shrink-0 text-lg text-gray-500" aria-hidden="true"></i>
+          </RouterLink>
+        </li>
 
-      <h2 class="soporte-title">Solicitudes de soporte</h2>
-      <p class="soporte-subtitulo">
-        Registro y seguimiento de incidencias técnicas.
-      </p>
+        <li>
+          <RouterLink
+            :to="{ name: 'ticket-buscar' }"
+            :class="CLASE_ENLACE"
+          >
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-xl text-gray-600">
+              <i class="ti ti-search" aria-hidden="true"></i>
+            </span>
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span class="text-sm font-semibold text-gray-900">Seguimiento de tickets</span>
+              <span class="text-sm text-gray-500">Búsqueda de solicitudes por DNI.</span>
+            </span>
+            <i class="ti ti-chevron-right shrink-0 text-lg text-gray-500" aria-hidden="true"></i>
+          </RouterLink>
+        </li>
 
-      <nav class="soporte-acciones" aria-label="Acciones de soporte">
-        <RouterLink class="soporte-accion" :to="{ name: 'ticket-nuevo' }">
-          <span class="soporte-accion-icono soporte-accion-icono--accent">
-            <i class="ti ti-tool" aria-hidden="true"></i>
-          </span>
-          <span class="soporte-accion-texto">
-            <span class="soporte-accion-titulo">Reportar un problema</span>
-            <span class="soporte-accion-desc">
-              Registro del incidente con código de seguimiento.
+        <li>
+          <div :class="[CLASE_FILA, 'cursor-default bg-gray-50']" aria-disabled="true">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-100 text-xl text-gray-500">
+              <i class="ti ti-devices" aria-hidden="true"></i>
             </span>
-          </span>
-          <i class="ti ti-chevron-right soporte-accion-chevron" aria-hidden="true"></i>
-        </RouterLink>
-
-        <RouterLink class="soporte-accion" :to="{ name: 'ticket-buscar' }">
-          <span class="soporte-accion-icono">
-            <i class="ti ti-search" aria-hidden="true"></i>
-          </span>
-          <span class="soporte-accion-texto">
-            <span class="soporte-accion-titulo">Seguimiento de tickets</span>
-            <span class="soporte-accion-desc">
-              Búsqueda de solicitudes por DNI.
+            <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span class="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-600">
+                Equipos asignados
+                <AppTag>Próximamente</AppTag>
+              </span>
+              <span class="text-sm text-gray-500">Consulta de equipos asignados.</span>
             </span>
-          </span>
-          <i class="ti ti-chevron-right soporte-accion-chevron" aria-hidden="true"></i>
-        </RouterLink>
-        <div class="soporte-accion soporte-accion--disabled" aria-disabled="true">
-          <span class="soporte-accion-icono">
-            <i class="ti ti-devices" aria-hidden="true"></i>
-          </span>
-          <span class="soporte-accion-texto">
-            <span class="soporte-accion-titulo">
-              Equipos asignados
-              <span class="badge badge--neutral">Próximamente</span>
-            </span>
-            <span class="soporte-accion-desc">
-              Consulta de equipos asignados.
-            </span>
-          </span>
-        </div>
-      </nav>
-    </div>
-  </div>
+          </div>
+        </li>
+      </ul>
+    </nav>
+  </AppPortal>
 </template>
-
-<style scoped>
-.soporte-title {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 4px;
-}
-
-.soporte-subtitulo {
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  margin: 0 0 16px;
-}
-
-.soporte-acciones {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.soporte-accion {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 14px 12px;
-  text-decoration: none;
-  transition: background 0.15s;
-}
-
-.soporte-accion:hover {
-  background: var(--color-bg-subtle);
-}
-
-.soporte-accion-icono {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  flex-shrink: 0;
-  border-radius: var(--radius-md);
-  background: var(--color-neutral-bg);
-  color: var(--color-text-secondary);
-  font-size: 19px;
-}
-
-.soporte-accion-icono--accent {
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-text);
-}
-
-.soporte-accion-texto {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.soporte-accion-titulo {
-  font-size: var(--fs-base);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.soporte-accion-desc {
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  line-height: 1.4;
-}
-
-.soporte-accion-chevron {
-  margin-left: auto;
-  flex-shrink: 0;
-  color: var(--color-text-tertiary);
-}
-
-.soporte-accion--disabled {
-  cursor: default;
-  border-color: var(--color-border-subtle);
-}
-
-.soporte-accion--disabled:hover {
-  background: transparent;
-}
-
-.soporte-accion--disabled .soporte-accion-titulo {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--color-text-secondary);
-}
-
-.soporte-accion--disabled .soporte-accion-icono,
-.soporte-accion--disabled .soporte-accion-desc {
-  color: var(--color-text-tertiary);
-}
-</style>

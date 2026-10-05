@@ -40,7 +40,10 @@ export const useAccesosSensiblesStore = defineStore('accesos-sensibles', {
       await this.cargar();
     },
 
-    async eliminar(id) {
+    // `softDelete` y no `eliminar`: mismo nombre que en los otros 9 stores
+    // para la misma operación (la baja es lógica, `deleted_at`; el DELETE
+    // físico es solo del JEFE por RLS).
+    async softDelete(id) {
       this.error = null;
       await insforgeApi.eliminarAccesoSensible(id);
       this.lista = this.lista.filter((a) => a.id !== id);

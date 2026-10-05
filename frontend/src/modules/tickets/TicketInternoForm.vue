@@ -6,32 +6,24 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { crearTicket } from '../../api/ticketsPublicos.js';
-import { OPCIONES_TIPO as TIPOS } from '../../core/dominio-tickets.js';
-import { useCerrarConEscape } from '../../composables/useCerrarConEscape.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
+import { OPCIONES_TIPO as TIPOS, resolverAvisoCategoria } from '../../core/dominio-tickets.js';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
+import AvisoCategoria from './AvisoCategoria.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const emit = defineEmits(['cerrar']);
 
-// Cierre animado (Fase 3): cerrar() dispara la transición de salida y el
-// emit real sale en @after-leave, así el padre desmonta sin cortarla.
-const visible = ref(true);
-let resultadoCierre = false;
-
-function cerrar(resultado) {
-  resultadoCierre = resultado;
-  visible.value = false;
-}
-
-function emitirCierre() {
-  emit('cerrar', resultadoCierre);
-}
-
-// Foco atrapado mientras el modal vive; al desmontar vuelve a quien lo abrió
-const panelModal = ref(null);
-useFocoAtrapado(panelModal);
+// Sobre AppDialog.vue (PrimeVue Dialog; desde el 2026-10-01 el diálogo único
+// del sistema, que reemplazó al antiguo Modal.vue): Teleport, foco atrapado, Escape,
+// aria-modal y backdrop los resuelve AppDialog. El contrato con
+// useFormularioModal.js es el de siempre: `modal.value?.cerrar()`
+// incondicional + `:confirmar-cierre` como veto de Escape/X/fondo.
+let resultado = false;
 
 const cargandoCatalogo = ref(true);
 const guardando = ref(false);
@@ -52,20 +44,40 @@ const form = ref({
 const esParaEmpleado = ref(false);
 const empleadoSelId = ref('');
 
+const campoCategoria = useCampoAccesible();
+const campoSubcategoria = useCampoAccesible();
+const campoTipo = useCampoAccesible();
+const campoTitulo = useCampoAccesible();
+const campoDescripcion = useCampoAccesible();
+const infoError = infoNotificacion('error');
+
 // Solo creación: el snapshot inicial es el form en blanco. El buscador de
 // empleado es transitorio; la selección (empleadoSelId) sí cuenta.
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
-  form: form.value,
-  esParaEmpleado: esParaEmpleado.value,
-  empleadoSelId: empleadoSelId.value,
-}));
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => ({
+    form: form.value,
+    esParaEmpleado: esParaEmpleado.value,
+    empleadoSelId: empleadoSelId.value,
+  }));
 tomarSnapshot();
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
 
 const subcategoriasFiltradas = computed(() =>
   subcategorias.value.filter((s) => s.categoria_id === form.value.categoriaId)
 );
+
+// Cambiar de categoría descarta la subcategoría elegida (ya no está en la
+// lista; si quedara, su tipo sugerido y su aviso seguirían aplicando).
+function elegirCategoria(id) {
+  form.value.categoriaId = id;
+  form.value.subcategoriaId = '';
+}
+
+// Aviso fijo de la categoría/subcategoría (migración 114): el mismo que ve el
+// solicitante en el portal; gana el de la subcategoría. Vacío = nada.
+const avisoCategoria = computed(() => resolverAvisoCategoria(
+  categorias.value.find((c) => c.id === form.value.categoriaId),
+  subcategoriasFiltradas.value.find((s) => s.id === form.value.subcategoriaId),
+));
 
 // Precarga Tipo con el default de la subcategoría elegida (tipo_sugerido);
 // queda vacío si la subcategoría es una de las ambiguas a propósito o si
@@ -76,32 +88,10 @@ watch(() => form.value.subcategoriaId, (id) => {
   form.value.tipo = sub?.tipo_sugerido || '';
 });
 
-// Cancelar, la X y Escape pasan por acá: con cambios sin guardar se pide
-// confirmación antes de descartar; limpio cierra directo.
-function cancelar() {
-  if (!visible.value) return;
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return;
-  }
-  cerrar(false);
-}
-
-function descartarCambios() {
-  // El diálogo sale animado (su @cancel al terminar baja confirmarDescarte)
-  // mientras el formulario inicia su propia salida en paralelo
-  dialogoDescarte.value?.cerrar();
-  cerrar(false);
-}
-
-// Formulario de captura: clic fuera NO cierra (se perdería lo escrito);
-// solo Cancelar, la X o Escape.
-useCerrarConEscape(() => { if (!guardando.value) cancelar(); });
-
 async function guardar() {
   error.value = '';
   if (!form.value.categoriaId) {
-    error.value = 'Selecciona el tipo de solicitud';
+    error.value = 'Seleccione el tipo de solicitud';
     return;
   }
   guardando.value = true;
@@ -116,9 +106,10 @@ async function guardar() {
       empleadoIdManual: esParaEmpleado.value ? empleadoSelId.value || null : null,
     });
     tomarSnapshot();
-    cerrar(true);
+    resultado = true;
+    modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al crear el ticket';
+    error.value = mensajeError(e, { porDefecto: 'Error al crear el ticket' });
   } finally {
     guardando.value = false;
   }
@@ -143,27 +134,28 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Transition name="modal-anim" appear @after-leave="emitirCierre">
-  <div v-if="visible" class="modal-bg">
-    <div ref="panelModal" class="modal ticket-interno-form" role="dialog" aria-modal="true" aria-labelledby="ti-title" tabindex="-1">
-      <div class="modal-title">
-        <span id="ti-title">Nuevo ticket interno</span>
-        <button class="icon-btn" type="button" aria-label="Cerrar" @click="cancelar">
-          <i class="ti ti-x" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <form @submit.prevent="guardar">
-        <div class="modal-body form-grid">
-        <div class="form-group full">
-          <label class="check-inline">
-            <input v-model="esParaEmpleado" type="checkbox" :disabled="guardando">
-            Es a nombre de un empleado (llamó o pasó en persona)
+  <AppDialog
+    ref="modal"
+    titulo="Nuevo ticket interno"
+    :confirmar-cierre="confirmarCierre"
+    :cerrar-en-backdrop="false"
+    @cerrado="emit('cerrar', resultado)"
+  >
+    <form id="ti-form" class="form-grid" @submit.prevent="guardar">
+        <!-- Para quién es: interno de TI (por defecto) o a nombre de un
+             empleado. Va primero porque cambia qué más hay que llenar. -->
+        <div class="full">
+          <label class="flex cursor-pointer items-start gap-2.5 rounded-md bg-gray-50 px-3 py-2.5 text-sm text-gray-700">
+            <input v-model="esParaEmpleado" type="checkbox" class="mt-0.5 h-4 w-4 accent-primary-500" :disabled="guardando">
+            <span>
+              <span class="font-medium text-gray-900">Es a nombre de un empleado</span>
+              <span class="block text-xs text-gray-500">Llamó o pasó en persona. Sin marcar, queda como tarea interna de TI.</span>
+            </span>
           </label>
         </div>
 
-        <div v-if="esParaEmpleado" class="form-group full">
-          <label for="ti-empleado">Empleado</label>
+        <div v-if="esParaEmpleado" class="campo full">
+          <label class="campo__etiqueta" for="ti-empleado">Empleado</label>
           <BuscadorCombo
             id="ti-empleado"
             v-model="empleadoSelId"
@@ -175,60 +167,121 @@ onMounted(async () => {
           >
             <template #resultado="{ item }">
               <span>{{ item.nombres }} {{ item.apellidos }}</span>
-              <span class="combo-sec">{{ item.dni }}</span>
+              <span class="ml-auto text-xs text-gray-500 tabular-nums">{{ item.dni }}</span>
             </template>
           </BuscadorCombo>
         </div>
 
-        <div class="form-group full">
-          <label for="ti-categoria">Tipo de solicitud *</label>
-          <select id="ti-categoria" v-model="form.categoriaId" required :disabled="guardando || cargandoCatalogo">
-            <option value="" disabled>Seleccionar</option>
-            <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-          </select>
+        <div class="campo full" :class="{ 'campo--inerte': guardando || cargandoCatalogo }">
+          <label class="campo__etiqueta" :for="campoCategoria.id">
+            Tipo de solicitud<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <select
+              :id="campoCategoria.id"
+              class="campo__control campo__control--select"
+              :value="form.categoriaId"
+              required
+              :disabled="guardando || cargandoCatalogo"
+              @change="elegirCategoria($event.target.value)"
+            >
+              <option value="" disabled>Seleccionar</option>
+              <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
         </div>
 
-        <div v-if="subcategoriasFiltradas.length" class="form-group full">
-          <label for="ti-subcategoria">Subcategoría</label>
-          <select id="ti-subcategoria" v-model="form.subcategoriaId" :disabled="guardando">
-            <option value="">Seleccionar (opcional)</option>
-            <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
-          </select>
+        <div v-if="subcategoriasFiltradas.length" class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoSubcategoria.id">Subcategoría</label>
+          <div class="campo__caja">
+            <select
+              :id="campoSubcategoria.id"
+              class="campo__control campo__control--select"
+              :value="form.subcategoriaId"
+              :disabled="guardando"
+              @change="form.subcategoriaId = $event.target.value"
+            >
+              <option value="">Seleccionar (opcional)</option>
+              <option v-for="s in subcategoriasFiltradas" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
         </div>
 
-        <div class="form-group full">
-          <label for="ti-tipo">Tipo</label>
-          <select id="ti-tipo" v-model="form.tipo" :disabled="guardando">
-            <option value="">Sin definir</option>
-            <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-          </select>
+        <div class="campo" :class="{ 'campo--inerte': guardando, full: !subcategoriasFiltradas.length }">
+          <label class="campo__etiqueta" :for="campoTipo.id">Tipo</label>
+          <div class="campo__caja">
+            <select
+              :id="campoTipo.id"
+              class="campo__control campo__control--select"
+              :value="form.tipo"
+              :disabled="guardando"
+              @change="form.tipo = $event.target.value"
+            >
+              <option value="">Sin definir</option>
+              <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
         </div>
 
-        <div class="form-group full">
-          <label for="ti-titulo">Resumen breve *</label>
-          <input id="ti-titulo" v-model="form.titulo" required maxlength="200" :disabled="guardando">
+        <!-- Aviso fijo de la categoría/subcategoría elegida (114), bajo los selectores. -->
+        <AvisoCategoria v-if="avisoCategoria" class="full" :texto="avisoCategoria" />
+
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoTitulo.id">
+            Resumen breve<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <input
+              :id="campoTitulo.id"
+              v-model="form.titulo"
+              class="campo__control"
+              type="text"
+              required
+              maxlength="200"
+              :disabled="guardando"
+            >
+          </div>
         </div>
 
-        <div class="form-group full">
-          <label for="ti-descripcion">Detalle *</label>
-          <textarea id="ti-descripcion" v-model="form.descripcion" required rows="4" maxlength="5000" :disabled="guardando"></textarea>
+        <div class="campo full" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoDescripcion.id">
+            Detalle<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <textarea
+              :id="campoDescripcion.id"
+              v-model="form.descripcion"
+              class="campo__control campo__control--area"
+              :rows="4"
+              required
+              maxlength="5000"
+              :disabled="guardando"
+            ></textarea>
+          </div>
         </div>
 
+        <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ error }}</p>
+          </div>
         </div>
+    </form>
 
-        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-
-        <div class="modal-actions full">
-          <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-          <button class="btn btn-primary" type="submit" :disabled="guardando">
-            <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-            {{ guardando ? 'Creando...' : 'Crear ticket' }}
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-  </Transition>
+    <template #acciones>
+      <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton
+        type="submit"
+        form="ti-form"
+        severity="primary"
+        :label="guardando ? 'Creando...' : 'Crear ticket'"
+        :loading="guardando"
+      />
+    </template>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
@@ -238,22 +291,9 @@ onMounted(async () => {
     mensaje="Hay cambios sin guardar. ¿Desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
-    @cancel="confirmarDescarte = false"
+    @cerrado="confirmarDescarte = false"
     @confirm="descartarCambios"
   />
 </template>
 
-<style scoped>
-/* Ancho: .modal base (540px) de la escala centralizada (main.css) */
 
-.check-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-base);
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-.modal-actions.full { grid-column: 1 / -1; }
-</style>

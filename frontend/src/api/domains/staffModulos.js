@@ -22,6 +22,20 @@ export const staffModulosApi = {
     return staffModulosApi.misModulos(userId);
   },
 
+  // Módulos de todo el staff en una sola consulta ({ userId: [modulos] }),
+  // para el listado de Configuración·Staff (antes: una consulta por fila).
+  // Solo el JEFE ve filas ajenas (RLS de la migración 056), y esa pantalla
+  // es solo para JEFE.
+  async modulosPorStaff() {
+    const { data, error } = await getClient().database
+      .from('staff_modulos_permisos')
+      .select('staff_user_id, modulo');
+    if (error) throw error;
+    const porUsuario = {};
+    for (const { staff_user_id: id, modulo } of data || []) (porUsuario[id] ||= []).push(modulo);
+    return porUsuario;
+  },
+
   // Reconcilia: agrega los módulos nuevos, quita los destildados. Mismo
   // patrón que actualizarAccesoSensible (domains/accesosSensibles.js).
   async guardarModulos(userId, modulosIds) {

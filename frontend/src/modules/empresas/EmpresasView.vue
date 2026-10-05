@@ -5,14 +5,22 @@ import { useEmpresasStore } from '../../stores/empresas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import EncabezadoCatalogo from '../configuracion/EncabezadoCatalogo.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+
+const infoError = infoNotificacion('error');
 
 const store = useEmpresasStore();
 const { lista, cargando, error } = storeToRefs(store);
@@ -22,10 +30,7 @@ const mostrarForm = ref(false);
 const empresaEditar = ref(null);
 const guardando = ref(false);
 const errorForm = ref('');
-
-// Foco atrapado mientras el modal está abierto (Fase 4)
-const panelForm = ref(null);
-useFocoAtrapado(panelForm, mostrarForm);
+const modalForm = ref(null);
 
 const form = ref({ nombre: '', ruc: '' });
 
@@ -38,7 +43,20 @@ const listaFiltrada = computed(() => {
 });
 
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
+
+const { esMovil } = useEsMovil();
+
+// Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
+function accionesDe(fila) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(fila) },
+    { icono: 'ti-building-off', label: 'Dar de baja', danger: true, onClick: () => { porDarDeBaja.value = fila; } },
+  ];
+}
+
+const campoNombre = useCampoAccesible();
+const campoRuc = useCampoAccesible();
 
 const esEdicion = computed(() => !!empresaEditar.value?.id);
 
@@ -73,7 +91,7 @@ async function guardar() {
       await store.crear(form.value);
       showToast('Empresa creada');
     }
-    cerrarForm();
+    modalForm.value?.cerrar();
   } catch (e) {
     errorForm.value = e?.message || 'Error al guardar empresa';
   } finally {
@@ -111,131 +129,166 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
-  <div class="empresas-page vista-modulo">
-    <main class="page">
-      <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Empresas registradas
-            <span class="badge-count">{{ listaFiltrada.length }} empresas</span>
-          </div>
-          <button class="btn btn-primary" type="button" @click="abrirNueva">
-            <i class="ti ti-plus" aria-hidden="true"></i> Nueva empresa
-          </button>
-        </div>
+  <!-- Panel embebido en Configuración (la cabecera de página la pone ConfiguracionView) -->
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Empresas"
+      :conteo="listaFiltrada.length"
+      descripcion="Razones sociales a las que pertenecen los empleados, las licencias y los correos."
+    >
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nueva empresa" @click="abrirNueva" />
+      </template>
+    </EncabezadoCatalogo>
 
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
+    <!-- Filtro (fuera de la tabla) -->
+    <div class="flex flex-wrap items-center gap-3">
+      <AppBuscador v-model="busqueda" label="Buscar empresas" placeholder="Buscar por nombre o RUC" />
+    </div>
+
+    <div v-if="error" class="notif" :class="`notif--${infoError.rol}`" :role="infoError.rolAria">
+      <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+      <div class="notif__texto">
+        <p class="notif__detalle">{{ error }}</p>
+      </div>
+    </div>
+
+    <AppVacio
+      v-else-if="!cargando && totalItems === 0"
+      icono="ti ti-building"
+      :titulo="busqueda ? 'Sin resultados' : 'Sin empresas todavía'"
+      :mensaje="busqueda ? 'No hay empresas que coincidan con la búsqueda.' : 'Agregue la primera empresa para asociarle empleados, licencias y correos.'"
+    >
+      <AppButton v-if="!busqueda" variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar empresa" @click="abrirNueva" />
+    </AppVacio>
+
+    <template v-else>
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <p v-if="cargando" class="sr-only" role="status">Cargando empresas…</p>
+
+        <!-- ── Tabla (escritorio) ── -->
+        <AppTable
+          v-if="!esMovil"
+          :value="listaPaginada"
+          :loading="cargando"
+          :total-records="totalItems"
+          :rows="tamPagina"
+          :orden="{ columna, direccion }"
+          aria-label="Empresas registradas"
+          @ordenar="ordenarPor"
+        >
+          <AppColumn field="nombre" header="Empresa" sortable>
+            <template #body="{ data: fila }">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                  <i class="ti ti-building" aria-hidden="true"></i>
+                </span>
+                <span class="truncate font-medium text-gray-900">{{ fila.nombre }}</span>
+              </div>
+            </template>
+          </AppColumn>
+          <AppColumn field="ruc" header="RUC" sortable>
+            <template #body="{ data: fila }">
+              <span class="tabular-nums" :class="fila.ruc ? 'text-gray-700' : 'text-gray-500'">{{ fila.ruc || 'Sin RUC' }}</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+            <template #body="{ data: fila }">
+              <div class="flex justify-end" @click.stop>
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </template>
+          </AppColumn>
+        </AppTable>
+
+        <!-- ── Lista (móvil) ── -->
+        <template v-else>
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando empresas...</p>
+          <ul v-else class="divide-y divide-gray-100" aria-label="Empresas registradas">
+            <li v-for="fila in listaPaginada" :key="fila.id" class="flex items-start gap-3 px-4 py-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                <i class="ti ti-building" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
+                <div class="text-xs tabular-nums" :class="fila.ruc ? 'text-gray-500' : 'text-gray-500'">{{ fila.ruc ? `RUC ${fila.ruc}` : 'Sin RUC' }}</div>
+              </div>
+              <div class="-mr-1">
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </li>
+          </ul>
+        </template>
+
+        <AppPaginacion
+          v-if="!esMovil && !cargando && totalItems > 0"
+          :pagina="paginaActual"
+          :tam-pagina="tamPagina"
+          :total="totalItems"
+          @update:pagina="paginaActual = $event"
+          @update:tam-pagina="cambiarTamPagina"
+        />
+      </div>
+      <AppPaginacion
+        v-if="esMovil && !cargando"
+        variante="compacta"
+        :pagina="paginaActual"
+        :tam-pagina="tamPagina"
+        :total="totalItems"
+        @update:pagina="paginaActual = $event"
+      />
+    </template>
+
+    <AppDialog
+      v-if="mostrarForm"
+      ref="modalForm"
+      :titulo="esEdicion ? 'Editar empresa' : 'Nueva empresa'"
+      size="sm"
+      @cerrado="cerrarForm"
+    >
+      <form id="empresa-form" class="form-grid" @submit.prevent="guardar">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNombre.id">Nombre<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
             <input
-              v-model="busqueda"
+              :id="campoNombre.id"
+              v-model="form.nombre"
+              class="campo__control"
               type="text"
-              placeholder="Buscar por nombre o RUC..."
+              required
+              :disabled="guardando"
+              :aria-invalid="campoNombre.invalido.value"
+              :aria-describedby="campoNombre.describedBy.value"
+            >
+          </div>
+        </div>
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoRuc.id">RUC</label>
+          <div class="campo__caja">
+            <input
+              :id="campoRuc.id"
+              v-model="form.ruc"
+              class="campo__control"
+              type="text"
+              :disabled="guardando"
+              :aria-invalid="campoRuc.invalido.value"
+              :aria-describedby="campoRuc.describedBy.value"
             >
           </div>
         </div>
 
-        <div v-if="error" class="no-results empresas-error">{{ error }}</div>
-
-        <EmptyState
-          v-else-if="!cargando && listaFiltrada.length === 0"
-          icono="ti ti-building"
-          titulo="Sin empresas"
-          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera empresa.'"
-        >
-          <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
-            <i class="ti ti-plus"></i> Agregar empresa
-          </button>
-        </EmptyState>
-
-        <div v-else-if="cargando || listaFiltrada.length > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando empresas…</p>
-          <table aria-label="Empresas registradas">
-            <thead>
-              <tr>
-                <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
-                <ThOrdenable clave="ruc" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">RUC</ThOrdenable>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="3" />
-              <template v-else>
-              <tr v-for="emp in listaPaginada" :key="emp.id">
-                <td>
-                  <div class="user-name">{{ emp.nombre }}</div>
-                </td>
-                <td><TextoVacio :valor="emp.ruc" /></td>
-                <td>
-                  <div class="actions">
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Editar"
-                      aria-label="Editar"
-                      @click="abrirEditar(emp)"
-                    >
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button
-                      class="icon-btn danger"
-                      type="button"
-                      title="Dar de baja"
-                      aria-label="Dar de baja"
-                      @click="porDarDeBaja = emp"
-                    >
-                      <i class="ti ti-building-off"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
+        <div v-if="errorForm" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+          <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorForm }}</p>
+          </div>
         </div>
-      </div>
-    </main>
-
-    <!-- Modal empresa -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarForm" class="modal-bg" @click.self="cerrarForm">
-      <div ref="panelForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="empresa-form-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="empresa-form-title">{{ esEdicion ? 'Editar empresa' : 'Nueva empresa' }}</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="cerrarForm">
-            <i class="ti ti-x" aria-hidden="true"></i>
-          </button>
-        </div>
-
-        <form @submit.prevent="guardar">
-          <div class="modal-body form-grid">
-          <div class="form-group full">
-            <label for="emp-nombre">Nombre *</label>
-            <input id="emp-nombre" v-model="form.nombre" required :disabled="guardando">
-          </div>
-
-          <div class="form-group full">
-            <label for="emp-ruc">RUC</label>
-            <input id="emp-ruc" v-model="form.ruc" :disabled="guardando">
-          </div>
-
-          </div>
-
-          <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
-
-          <div class="modal-actions full">
-            <button class="btn" type="button" :disabled="guardando" @click="cerrarForm">Cancelar</button>
-            <button class="btn btn-primary" type="submit" :disabled="guardando">
-              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-              {{ guardando ? 'Guardando...' : 'Guardar' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-    </Transition>
+      </form>
+      <template #acciones>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
+        <AppButton type="submit" form="empresa-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
+      </template>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -247,19 +300,10 @@ onMounted(async () => {
       :mensaje="`¿Dar de baja a “${porDarDeBaja.nombre}”? El registro se eliminará lógicamente.`"
       confirmar-label="Dar de baja"
       :cargando="dandoDeBaja"
-      @cancel="porDarDeBaja = null"
+      @cerrado="porDarDeBaja = null"
       @confirm="confirmarBaja"
     />
   </div>
 </template>
 
-<style scoped>
-.empresas-error {
-  color: var(--color-danger);
-}
 
-
-.modal-actions.full {
-  grid-column: 1 / -1;
-}
-</style>

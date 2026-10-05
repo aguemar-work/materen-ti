@@ -1,0 +1,3 @@
+# El dist de las edge functions (scripts/build-functions.mjs) se genera con EOL LF y su
+# sha256 se registra en function_deploys: debe ser idéntico en Windows y en Linux.
+functions/dist/*.ts text eol=lf

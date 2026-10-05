@@ -1,0 +1,187 @@
+/* ════════════════════════════════════════════════════════════════════
+   Impresión — "imprimir es la misma hoja" (regla 23, Versión Expediente)
+   ════════════════════════════════════════════════════════════════════
+   Lo que se ve en pantalla es lo que se firma en papel: el marco (menú,
+   barra de la hoja, avisos) desaparece, la hoja ocupa el A4, la carátula es
+   la cabecera, el libro de movimientos imprime como tabla con líneas finas,
+   el azul se vuelve subrayado y texto oscuro, los sellos conservan su borde
+   y los tags son texto con borde. El color nunca es el único portador de
+   significado: todo estado lleva su palabra.
+
+   Ganchos (atributos, no clases, para que ningún cambio de estilo los rompa):
+     [data-no-print]   lo que no va al papel (acciones, filtros, botones)
+     [data-marco]      raíz del shell (AppLayout)      → se aplana
+     [data-hoja]       la hoja blanca (AppLayout)      → ocupa el papel
+     [data-caratula]   AppCaratula                     → cabecera del documento
+     [data-libro]      AppLibro                        → tabla de líneas finas
+     [data-sello]      AppSello                        → conserva el borde
+     [data-tag]        AppTag                          → texto con borde
+
+   Reglas de este archivo:
+   - Sin variables nuevas: no se declara ninguna `--*` ni se toca el @theme.
+     Los valores son literales de la escala de grises de Tailwind.
+   - Sin bordes laterales en ningún elemento (regla dura del dueño).
+   - Va FUERA de las capas de Tailwind a propósito: una regla sin capa le gana
+     a las utilidades (las de `@layer utilities`) sin pelear especificidad.
+   - La fuente es la de pantalla (Inter Variable del bundle, vía --font-sans):
+     el acta impresa y la pantalla no se diferencian por tipografía.
+   ════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 14mm 16mm;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    background: #fff !important;
+    color: #111827;
+    font-family: var(--font-sans);
+    font-size: 10pt;
+    line-height: 1.4;
+  }
+
+  /* Hoja de etiquetas QR (EtiquetasEquiposView): la única página con otros
+     márgenes. 5 mm a los lados deja 200 mm = 4 etiquetas de 50 mm; 8,5 mm
+     arriba y abajo deja 280 mm = 11 filas de 25 mm. Se activa con la
+     propiedad `page: etiquetas` de esa hoja, no toca a ningún otro impreso. */
+  @page etiquetas {
+    size: A4;
+    margin: 8.5mm 5mm;
+  }
+
+  /* Ninguna sombra ni anillo en papel (la hoja se apoya en pantalla; en papel
+     ya está apoyada). */
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* ── El marco desaparece ─────────────────────────────────────────── */
+  [data-no-print],
+  [data-marco] > aside,
+  [data-hoja] > header,
+  .pointer-events-none.fixed {
+    display: none !important;
+  }
+
+  /* ── La hoja ocupa el papel: sin alto de pantalla, sin scroll propio ── */
+  [data-marco],
+  [data-marco] > div,
+  [data-hoja],
+  [data-hoja] > main {
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    border-radius: 0 !important;
+  }
+
+  /* Contenedores con scroll interno (tablas, columnas): en papel todo fluye. */
+  main [class*="overflow-y-auto"],
+  main [class*="overflow-auto"],
+  main [class*="overflow-x-auto"] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* ── Tinta: el azul deja de ser color y pasa a ser subrayado ────────── */
+  a,
+  a:visited,
+  [class*="text-primary-"] {
+    color: #111827 !important;
+  }
+
+  a[href] {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* Las tintas tenues de fondo no se imprimen: lo que importa es el texto. */
+  [class*="bg-primary-"],
+  [class*="bg-gray-"] {
+    background: transparent !important;
+  }
+
+  /* ── Carátula: la cabecera del documento ─────────────────────────── */
+  [data-caratula] {
+    padding: 0 0 8pt !important;
+    border-bottom: 0.75pt solid #111827 !important;
+    break-after: avoid;
+  }
+
+  [data-caratula] h1 {
+    font-size: 18pt;
+    line-height: 1.2;
+  }
+
+  /* ── Libro: tabla de líneas finas, la cabecera se repite por página ─── */
+  [data-libro] {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse !important;
+    font-size: 9pt;
+  }
+
+  [data-libro] thead {
+    display: table-header-group;
+  }
+
+  [data-libro] tr {
+    break-inside: avoid;
+  }
+
+  [data-libro] th,
+  [data-libro] td {
+    padding: 3pt 6pt !important;
+    background: transparent !important;
+    border-bottom: 0.5pt solid #9ca3af !important;
+  }
+
+  [data-libro] th {
+    color: #111827 !important;
+    border-bottom: 0.75pt solid #111827 !important;
+  }
+
+  /* ── Sello: conserva el borde (y su color, si la impresora lo da) ───── */
+  [data-sello] {
+    background: none !important;
+    border-style: solid !important;
+    border-width: 1pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Tag: texto con borde, sin depender del fondo ─────────────────── */
+  [data-tag] {
+    height: auto !important;
+    padding: 0 4pt !important;
+    background: transparent !important;
+    color: #111827 !important;
+    border: 0.5pt solid #6b7280 !important;
+    border-radius: 2px !important;
+    font-size: 8.5pt;
+    line-height: 1.5;
+  }
+
+  /* ── Saltos de página ────────────────────────────────────────────── */
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+
+  img {
+    break-inside: avoid;
+  }
+}

@@ -8,6 +8,7 @@ const SECCIONES = [
   'tipos-equipo',
   'ubicaciones',
   'categorias-ticket',
+  'servicios',
   'staff',
 ];
 
@@ -52,6 +53,12 @@ export default [
         path: 'categorias-ticket',
         name: 'configuracion-categorias-ticket',
         component: () => import('../../modules/configuracion/CategoriasTicketPanel.vue'),
+      },
+      {
+        // Catálogo de servicios (107): lo lee cualquier staff, lo edita solo un JEFE (RLS).
+        path: 'servicios',
+        name: 'configuracion-servicios',
+        component: () => import('../../modules/configuracion/ServiciosPanel.vue'),
       },
       {
         // Solo JEFE — ver guard en router/guards.js

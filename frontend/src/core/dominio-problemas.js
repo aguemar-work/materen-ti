@@ -2,11 +2,13 @@
 // y de sus acciones correctivas. Único origen — mismo patrón que
 // dominio-tickets.js/dominio-kb.js.
 
+import { claseBadge, TONO_ESTADO_PROBLEMA as TEP, TONO_SEVERIDAD_PROBLEMA as TSP, TONO_ESTADO_ACCION as TEA } from './tonos.js';
+
 export const ESTADOS_PROBLEMA = {
-  abierto:     { label: 'Abierto',      clase: 'badge--info' },
-  diagnostico: { label: 'Diagnóstico',  clase: 'badge--warning' },
-  acciones:    { label: 'Acciones',     clase: 'badge--teal' },
-  cerrado:     { label: 'Cerrado',      clase: 'badge--neutral' },
+  abierto:     { label: 'Abierto',      clase: claseBadge(TEP.abierto) },
+  diagnostico: { label: 'Diagnóstico',  clase: claseBadge(TEP.diagnostico) },
+  acciones:    { label: 'Acciones',     clase: claseBadge(TEP.acciones) },
+  cerrado:     { label: 'Cerrado',      clase: claseBadge(TEP.cerrado) },
 };
 
 export const OPCIONES_ESTADO_PROBLEMA = Object.entries(ESTADOS_PROBLEMA)
@@ -14,23 +16,23 @@ export const OPCIONES_ESTADO_PROBLEMA = Object.entries(ESTADOS_PROBLEMA)
 
 export const ESTADOS_PROBLEMA_ABIERTOS = ['abierto', 'diagnostico', 'acciones'];
 
-// Paleta propia, separada de ESTADOS_PROBLEMA — estado y severidad se pintan
-// uno junto al otro en la misma fila y no pueden compartir color con
-// significado distinto (ver GUIA-UX-UI.md).
+// Severidad = misma escala que la prioridad de ticket (rango escrito, neutra
+// salvo 'Crítica'). El modificador `badge--rango` la separa de un estado que
+// se pinte al lado aunque ambos sean neutros.
 export const SEVERIDADES_PROBLEMA = {
-  baja:     { label: 'Baja',     clase: 'badge--neutral' },
-  media:    { label: 'Media',    clase: 'badge--teal' },
-  alta:     { label: 'Alta',     clase: 'badge--purple' },
-  critica:  { label: 'Crítica',  clase: 'badge--danger' },
+  baja:     { label: 'Baja',     clase: claseBadge(TSP.baja, { rango: true }) },
+  media:    { label: 'Media',    clase: claseBadge(TSP.media, { rango: true }) },
+  alta:     { label: 'Alta',     clase: claseBadge(TSP.alta, { rango: true }) },
+  critica:  { label: 'Crítica',  clase: claseBadge(TSP.critica, { rango: true }) },
 };
 
 export const OPCIONES_SEVERIDAD_PROBLEMA = Object.entries(SEVERIDADES_PROBLEMA)
   .map(([valor, v]) => ({ valor, label: v.label }));
 
 export const ESTADOS_ACCION = {
-  pendiente:    { label: 'Pendiente',    clase: 'badge--neutral' },
-  en_progreso:  { label: 'En progreso',  clase: 'badge--warning' },
-  completada:   { label: 'Completada',   clase: 'badge--success' },
+  pendiente:    { label: 'Pendiente',    clase: claseBadge(TEA.pendiente) },
+  en_progreso:  { label: 'En progreso',  clase: claseBadge(TEA.en_progreso) },
+  completada:   { label: 'Completada',   clase: claseBadge(TEA.completada) },
 };
 
 export const OPCIONES_ESTADO_ACCION = Object.entries(ESTADOS_ACCION)

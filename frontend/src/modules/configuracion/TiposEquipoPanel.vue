@@ -1,225 +1,266 @@
 <script setup>
 // Catálogo de tipos de equipo con sus plantillas: qué specs pide cada
 // tipo y qué accesorios sugiere al registrar/entregar un equipo.
-import { ref, computed, onMounted } from 'vue';
-import { storeToRefs } from 'pinia';
 import { useTiposEquipoStore } from '../../stores/catalogos.js';
 import { useEquiposStore } from '../../stores/equipos.js';
-import { showToast } from '../../core/toast.js';
 import { slugDe } from '../../core/utils.js';
-import { usePaginacion } from '../../composables/usePaginacion.js';
-import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import Modal from '../../components/shared/Modal.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
+import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import EncabezadoCatalogo from './EncabezadoCatalogo.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import AppTag from '../../components/ui/AppTag.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const store = useTiposEquipoStore();
-const { lista, cargando } = storeToRefs(store);
 const equiposStore = useEquiposStore();
-
-const guardando = ref(false);
-
-const mostrarForm = ref(false);
-const editar = ref(null);
-const form = ref({ nombre: '', specs: '', accesorios: '' });
-const errorForm = ref('');
-
-// Cerrar vía Modal.cerrar() reproduce la animación de salida;
-// el @close del Modal es quien baja mostrarForm.
-const modalForm = ref(null);
-
-const esEdicion = computed(() => !!editar.value);
-
-const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
 
 function aLista(texto) {
   return texto.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function abrirNuevo() {
-  editar.value = null;
-  form.value = { nombre: '', specs: '', accesorios: '' };
-  errorForm.value = '';
-  mostrarForm.value = true;
+// Specs y accesorios se editan como texto separado por comas, pero se
+// guardan como arreglo.
+function aDatos(f) {
+  return {
+    nombre: f.nombre,
+    campos_spec: aLista(f.specs),
+    accesorios_sugeridos: aLista(f.accesorios),
+  };
 }
 
-function abrirEditar(t) {
-  editar.value = t;
-  form.value = {
+const {
+  lista, cargando, guardando, mostrarForm, editar, esEdicion, form, errorForm, modalForm,
+  porEliminar, eliminando, dialogoEliminar,
+  abrirNueva: abrirNuevo, abrirEditar, guardar, confirmarEliminar,
+  columna, direccion, ordenarPor, paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina,
+} = useCrudCatalogo(store, {
+  formVacio: () => ({ nombre: '', specs: '', accesorios: '' }),
+  aForm: (t) => ({
     nombre: t.nombre,
     specs: (t.campos_spec || []).join(', '),
     accesorios: (t.accesorios_sugeridos || []).join(', '),
-  };
-  errorForm.value = '';
-  mostrarForm.value = true;
-}
-
-async function guardar() {
-  errorForm.value = '';
-  guardando.value = true;
-  try {
-    const datos = {
-      nombre: form.value.nombre,
-      campos_spec: aLista(form.value.specs),
-      accesorios_sugeridos: aLista(form.value.accesorios),
-    };
-    if (esEdicion.value) {
-      await store.actualizar(editar.value.id, datos);
-      showToast('Tipo de equipo actualizado');
-    } else {
-      await store.crear({ ...datos, id: slugDe(form.value.nombre) });
-      showToast('Tipo de equipo creado');
-    }
-    // El formulario de equipos usa este catálogo: refrescar su copia
-    equiposStore.tipos = [...lista.value];
-    modalForm.value?.cerrar();
-  } catch (e) {
-    errorForm.value = e?.message?.includes('duplicate')
-      ? 'Ya existe un tipo con ese nombre'
-      : (e?.message || 'Error al guardar');
-  } finally {
-    guardando.value = false;
-  }
-}
-
-// Confirmación destructiva (ConfirmDialog compartido, tier base)
-const porEliminar = ref(null);
-const eliminando = ref(false);
-const dialogoEliminar = ref(null);
-
-async function confirmarEliminar() {
-  const t = porEliminar.value;
-  if (!t) return;
-  eliminando.value = true;
-  try {
-    await store.softDelete(t.id);
-    // El formulario de equipos usa este catálogo: refrescar su copia
-    equiposStore.tipos = [...lista.value];
-    showToast('Tipo eliminado');
-    dialogoEliminar.value?.cerrar();
-  } catch (e) {
-    showToast(e?.message || 'Error al eliminar', 'error');
-  } finally {
-    eliminando.value = false;
-  }
-}
-
-onMounted(async () => {
-  try {
-    await store.cargar();
-  } catch (e) {
-    showToast(e?.message || 'Error al cargar tipos de equipo', 'error');
-  }
+  }),
+  crear: (f) => store.crear({ ...aDatos(f), id: slugDe(f.nombre) }),
+  actualizar: (id, f) => store.actualizar(id, aDatos(f)),
+  // El formulario de equipos usa este catálogo: refrescar su copia
+  despuesDeGuardar: () => { equiposStore.tipos = [...lista.value]; },
+  despuesDeEliminar: () => { equiposStore.tipos = [...lista.value]; },
+  mensajeErrorGuardar: (e) => (e?.message?.includes('duplicate') ? 'Ya existe un tipo con ese nombre' : undefined),
+  textos: {
+    creado: 'Tipo de equipo creado',
+    actualizado: 'Tipo de equipo actualizado',
+    eliminado: 'Tipo eliminado',
+    errorCargar: 'Error al cargar tipos de equipo',
+  },
 });
+
+const { esMovil } = useEsMovil();
+
+// Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
+function accionesDe(fila) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar plantilla', onClick: () => abrirEditar(fila) },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = fila; } },
+  ];
+}
+
+const campoNombre = useCampoAccesible();
+const campoSpecs = useCampoAccesible();
+const campoAccesorios = useCampoAccesible();
+const infoErrorForm = infoNotificacion('error');
+
 </script>
 
 <template>
-  <main class="page">
-    <div class="card card--fill">
-      <div class="card-toolbar">
-        <div class="toolbar-title">
-          Tipos de equipo
-          <span class="badge-count">{{ lista.length }}</span>
-        </div>
-        <button class="btn btn-primary" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nuevo tipo
-        </button>
-      </div>
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Tipos de equipo"
+      :conteo="lista.length"
+      descripcion="Plantillas: qué especificaciones pide cada tipo al registrar un equipo y qué accesorios sugiere al entregarlo."
+    >
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nuevo tipo" @click="abrirNuevo" />
+      </template>
+    </EncabezadoCatalogo>
 
-      <EmptyState
-        v-if="!cargando && lista.length === 0"
-        icono="ti ti-devices"
-        titulo="Sin tipos de equipo"
-        mensaje="Crea plantillas con los campos y accesorios que pide cada tipo."
-      >
-        <button class="btn" type="button" @click="abrirNuevo">
-          <i class="ti ti-plus"></i> Nuevo tipo
-        </button>
-      </EmptyState>
+    <AppVacio
+      v-if="!cargando && totalItems === 0"
+      icono="ti ti-devices"
+      titulo="Sin tipos de equipo todavía"
+      mensaje="Cree plantillas con los campos y accesorios que pide cada tipo."
+    >
+      <AppButton variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar tipo" @click="abrirNuevo" />
+    </AppVacio>
 
-      <div v-else class="table-wrap">
+    <template v-else>
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
         <p v-if="cargando" class="sr-only" role="status">Cargando tipos de equipo…</p>
-        <table aria-label="Tipos de equipo">
-          <thead>
-            <tr>
-              <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Tipo</ThOrdenable>
-              <th scope="col">Specs que pide</th>
-              <th scope="col">Accesorios sugeridos</th>
-              <th scope="col"><span class="sr-only">Acciones</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <SkeletonTabla v-if="cargando" :columnas="4" />
-            <template v-else>
-            <tr v-for="t in listaPaginada" :key="t.id">
-              <td><span class="user-name">{{ t.nombre }}</span></td>
-              <td>
-                <div class="chips">
-                  <span v-for="c in t.campos_spec" :key="c" class="chip">{{ c }}</span>
-                  <TextoVacio v-if="!t.campos_spec?.length" />
-                </div>
-              </td>
-              <td>
-                <div class="chips">
-                  <span v-for="a in t.accesorios_sugeridos" :key="a" class="chip chip--acc">{{ a }}</span>
-                  <TextoVacio v-if="!t.accesorios_sugeridos?.length" />
-                </div>
-              </td>
-              <td>
-                <div class="actions">
-                  <button class="icon-btn" type="button" title="Editar plantilla" aria-label="Editar plantilla" @click="abrirEditar(t)">
-                    <i class="ti ti-pencil"></i>
-                  </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = t">
-                    <i class="ti ti-trash"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-            </template>
-          </tbody>
-        </table>
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-      </div>
-    </div>
 
-    <!-- Formulario (Modal accesible compartido) -->
-    <Modal
+        <!-- ── Tabla (escritorio) ── -->
+        <AppTable
+          v-if="!esMovil"
+          :value="listaPaginada"
+          :loading="cargando"
+          :total-records="totalItems"
+          :rows="tamPagina"
+          :orden="{ columna, direccion }"
+          aria-label="Tipos de equipo"
+          @ordenar="ordenarPor"
+        >
+          <AppColumn field="nombre" header="Tipo" sortable>
+            <template #body="{ data: fila }">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                  <i class="ti ti-devices" aria-hidden="true"></i>
+                </span>
+                <span class="truncate font-medium text-gray-900">{{ fila.nombre }}</span>
+              </div>
+            </template>
+          </AppColumn>
+          <AppColumn field="campos_spec" header="Specs que pide">
+            <template #body="{ data: fila }">
+              <div v-if="fila.campos_spec?.length" class="flex flex-wrap gap-1">
+                <AppTag v-for="c in fila.campos_spec" :key="c">{{ c }}</AppTag>
+              </div>
+              <span v-else class="text-gray-500">Sin specs</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="accesorios_sugeridos" header="Accesorios sugeridos">
+            <template #body="{ data: fila }">
+              <div v-if="fila.accesorios_sugeridos?.length" class="flex flex-wrap gap-1">
+                <AppTag v-for="a in fila.accesorios_sugeridos" :key="a">{{ a }}</AppTag>
+              </div>
+              <span v-else class="text-gray-500">Sin accesorios</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+            <template #body="{ data: fila }">
+              <div class="flex justify-end" @click.stop>
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </template>
+          </AppColumn>
+        </AppTable>
+
+        <!-- ── Lista (móvil) ── -->
+        <template v-else>
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando tipos de equipo...</p>
+          <ul v-else class="divide-y divide-gray-100" aria-label="Tipos de equipo">
+            <li v-for="fila in listaPaginada" :key="fila.id" class="flex items-start gap-3 px-4 py-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                <i class="ti ti-devices" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 flex-1 space-y-0.5">
+                <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
+                <p class="text-xs" :class="fila.campos_spec?.length ? 'text-gray-500' : 'text-gray-500'">
+                  <span class="text-gray-500">Specs:</span> {{ fila.campos_spec?.length ? fila.campos_spec.join(', ') : 'Sin specs' }}
+                </p>
+                <p class="text-xs" :class="fila.accesorios_sugeridos?.length ? 'text-gray-500' : 'text-gray-500'">
+                  <span class="text-gray-500">Accesorios:</span> {{ fila.accesorios_sugeridos?.length ? fila.accesorios_sugeridos.join(', ') : 'Sin accesorios' }}
+                </p>
+              </div>
+              <div class="-mr-1">
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </li>
+          </ul>
+        </template>
+
+        <AppPaginacion
+          v-if="!esMovil && !cargando && totalItems > 0"
+          :pagina="paginaActual"
+          :tam-pagina="tamPagina"
+          :total="totalItems"
+          @update:pagina="paginaActual = $event"
+          @update:tam-pagina="cambiarTamPagina"
+        />
+      </div>
+      <AppPaginacion
+        v-if="esMovil && !cargando"
+        variante="compacta"
+        :pagina="paginaActual"
+        :tam-pagina="tamPagina"
+        :total="totalItems"
+        @update:pagina="paginaActual = $event"
+      />
+    </template>
+
+    <!-- Formulario (AppDialog compartido) -->
+    <AppDialog
       v-if="mostrarForm"
       ref="modalForm"
       :titulo="esEdicion ? `Editar “${editar.nombre}”` : 'Nuevo tipo de equipo'"
       size="sm"
-      @close="mostrarForm = false"
+      @cerrado="mostrarForm = false"
     >
-      <form id="te-form" class="te-form" @submit.prevent="guardar">
-        <div class="form-group">
-          <label for="te-nombre">Nombre *</label>
-          <input id="te-nombre" v-model="form.nombre" required placeholder="ej: Cámara de seguridad" :disabled="guardando">
+      <form id="te-form" class="space-y-4" @submit.prevent="guardar">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNombre.id">Nombre<span aria-hidden="true"> *</span></label>
+          <div class="campo__caja">
+            <input
+              :id="campoNombre.id"
+              v-model="form.nombre"
+              class="campo__control"
+              type="text"
+              placeholder="ej: Cámara de seguridad"
+              required
+              :disabled="guardando"
+              :aria-invalid="campoNombre.invalido.value"
+              :aria-describedby="campoNombre.describedBy.value"
+            >
+          </div>
         </div>
-        <div class="form-group">
-          <label for="te-specs">Specs que pide (separadas por coma)</label>
-          <input id="te-specs" v-model="form.specs" placeholder="ej: Resolución, Alcance, Conectividad" :disabled="guardando">
-          <p class="field-hint">Estos campos aparecerán al registrar un equipo de este tipo.</p>
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoSpecs.id">Specs que pide (separadas por coma)</label>
+          <div class="campo__caja">
+            <input
+              :id="campoSpecs.id"
+              v-model="form.specs"
+              class="campo__control"
+              type="text"
+              placeholder="ej: Resolución, Alcance, Conectividad"
+              :disabled="guardando"
+              :aria-invalid="campoSpecs.invalido.value"
+              :aria-describedby="campoSpecs.describedBy.value"
+            >
+          </div>
+          <p :id="campoSpecs.idAyuda" class="campo__pie">Estos campos aparecerán al registrar un equipo de este tipo.</p>
         </div>
-        <div class="form-group">
-          <label for="te-acc">Accesorios sugeridos (separados por coma)</label>
-          <input id="te-acc" v-model="form.accesorios" placeholder="ej: Fuente de poder, Soporte" :disabled="guardando">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoAccesorios.id">Accesorios sugeridos (separados por coma)</label>
+          <div class="campo__caja">
+            <input
+              :id="campoAccesorios.id"
+              v-model="form.accesorios"
+              class="campo__control"
+              type="text"
+              placeholder="ej: Fuente de poder, Soporte"
+              :disabled="guardando"
+              :aria-invalid="campoAccesorios.invalido.value"
+              :aria-describedby="campoAccesorios.describedBy.value"
+            >
+          </div>
         </div>
-        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+        <div v-if="errorForm" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+          <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorForm }}</p>
+          </div>
+        </div>
       </form>
       <template #acciones>
-        <button class="btn" type="button" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
-        <button class="btn btn-primary" type="submit" form="te-form" :disabled="guardando">
-          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-          {{ guardando ? 'Guardando...' : 'Guardar' }}
-        </button>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
+        <AppButton type="submit" form="te-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -231,29 +272,10 @@ onMounted(async () => {
       :mensaje="`¿Eliminar el tipo “${porEliminar.nombre}”? Los equipos existentes de este tipo no se ven afectados.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="porEliminar = null"
+      @cerrado="porEliminar = null"
       @confirm="confirmarEliminar"
     />
-  </main>
+  </div>
 </template>
 
-<style scoped>
-.chips { display: flex; flex-wrap: wrap; gap: 4px; max-width: 280px; }
 
-.chip {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 20px;
-  background: var(--color-accent-subtle);
-  color: var(--color-accent-hover);
-  white-space: nowrap;
-}
-
-.chip--acc { background: var(--color-success-bg); color: var(--color-success-text); }
-
-.te-form { display: flex; flex-direction: column; gap: 12px; }
-
-.field-hint { margin: 4px 0 0; font-size: 12px; color: var(--color-text-secondary); }
-
-</style>

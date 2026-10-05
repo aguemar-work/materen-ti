@@ -2,7 +2,11 @@
 import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { MODULOS_CONFIGURABLES } from '../../constants/modulos.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+
+const infoError = infoNotificacion('error');
 
 const props = defineProps({
   miembro: { type: Object, required: true }, // { user_id, nombre }
@@ -47,15 +51,23 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal ref="modal" :titulo="`Módulos visibles para ${miembro.nombre}`" size="sm" @close="emit('cerrar')">
-    <form id="staff-modulos-form" @submit.prevent="guardar">
-      <div v-if="cargando" class="loading-inline">Cargando módulos...</div>
-      <template v-else>
-        <ul class="modulos-lista">
-          <li v-for="m in MODULOS_CONFIGURABLES" :key="m.id" class="modulo-item">
-            <label>
+  <AppDialog ref="modal" :titulo="`Módulos visibles para ${miembro.nombre}`" size="sm" @cerrado="emit('cerrar')">
+    <form id="staff-modulos-form" class="space-y-4" @submit.prevent="guardar">
+      <p v-if="cargando" class="py-6 text-center text-sm text-gray-500" role="status">Cargando módulos...</p>
+      <fieldset v-else>
+        <legend class="mb-2 flex w-full items-center justify-between text-sm font-medium text-gray-700">
+          Módulos que puede usar
+          <span class="text-xs font-normal text-gray-500 tabular-nums">{{ seleccionados.length }} de {{ MODULOS_CONFIGURABLES.length }}</span>
+        </legend>
+        <ul class="grid gap-1.5 sm:grid-cols-2">
+          <li v-for="m in MODULOS_CONFIGURABLES" :key="m.id">
+            <label
+              class="flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors duration-150 focus-within:ring-2 focus-within:ring-primary-500"
+              :class="seleccionados.includes(m.id) ? 'border-primary-200 bg-primary-50 text-primary-800' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+            >
               <input
                 type="checkbox"
+                class="h-4 w-4 shrink-0 accent-primary-600"
                 :checked="seleccionados.includes(m.id)"
                 :disabled="guardando"
                 @change="toggle(m.id)"
@@ -64,60 +76,21 @@ async function guardar() {
             </label>
           </li>
         </ul>
-        <p class="field-hint">
+        <p class="mt-3 text-xs text-gray-500">
           Los módulos sin marcar desaparecen del menú de {{ miembro.nombre }} y no son accesibles por URL directa.
         </p>
-      </template>
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      </fieldset>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="modal?.cerrar()">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="staff-modulos-form" :disabled="guardando || cargando">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-        {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modal?.cerrar()" />
+      <AppButton type="submit" form="staff-modulos-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" :disabled="cargando" />
     </template>
-  </Modal>
+  </AppDialog>
 </template>
-
-<style scoped>
-.loading-inline {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  padding: 8px 0;
-}
-
-.modulos-lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.modulo-item label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-/* Mismo tratamiento que .form-group input[type="checkbox"]:focus-visible
-   (main.css) — este checklist vive fuera de .form-group, así que necesita
-   la regla propia para no caer al outline nativo del navegador. */
-.modulo-item input[type="checkbox"]:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.field-hint {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-</style>

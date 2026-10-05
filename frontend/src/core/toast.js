@@ -1,29 +1,25 @@
-import { esc } from './utils.js';
+// Cola reactiva de toasts — reemplaza la manipulación directa del DOM
+// (innerHTML + estilos inline sobre un único `#toast`) por un array reactivo
+// que pinta `components/shared/AppNotifications.vue` (también los avisos
+// realtime: antes eran dos implementaciones del mismo concepto).
+//
+// La firma pública `showToast(msg, tipo)` NO cambió a propósito: la llaman
+// ~30 archivos y ninguno necesita saber que el mecanismo cambió por dentro.
+import { reactive } from 'vue';
 
-let toastEl;
+const TIEMPO_MS = 2400;
+let seq = 0;
 
-export function initToast() {
-  toastEl = document.getElementById('toast');
+/** Cola de toasts activos: { id, msg, tipo }. Consumida por AppNotifications.vue. */
+export const toasts = reactive([]);
+
+export function showToast(msg, tipo = 'success') {
+  const id = ++seq;
+  toasts.push({ id, msg, tipo });
+  setTimeout(() => descartarToast(id), TIEMPO_MS);
 }
 
-const ICONOS = {
-  success: 'ti-check',
-  error: 'ti-alert-circle',
-  warning: 'ti-alert-triangle',
-  info: 'ti-info-circle',
-};
-
-export function showToast(msg, type = 'success') {
-  if (!toastEl) return;
-  const icon = ICONOS[type] || ICONOS.success;
-  toastEl.innerHTML = `<i class="ti ${icon}" aria-hidden="true"></i> ${esc(msg)}`;
-  toastEl.className = `toast toast-${type}`;
-  toastEl.style.display = 'flex';
-  toastEl.style.opacity = '1';
-  toastEl.style.transform = 'translateY(0)';
-  setTimeout(() => {
-    toastEl.style.opacity = '0';
-    toastEl.style.transform = 'translateY(8px)';
-    setTimeout(() => { toastEl.style.display = 'none'; }, 300);
-  }, 2400);
+export function descartarToast(id) {
+  const i = toasts.findIndex((t) => t.id === id);
+  if (i !== -1) toasts.splice(i, 1);
 }

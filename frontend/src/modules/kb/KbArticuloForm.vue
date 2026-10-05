@@ -2,13 +2,16 @@
 import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useKbStore } from '../../stores/kb.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import Modal from '../../components/shared/Modal.vue';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { OPCIONES_TIPO_KB, TIPO_KB_POR_DEFECTO } from '../../core/dominio-kb.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const emit = defineEmits(['cerrar']);
 
-const modal = ref(null);
 let resultado = false;
 
 const store = useKbStore();
@@ -18,29 +21,18 @@ const guardando = ref(false);
 const error = ref('');
 const categorias = ref([]);
 
-const form = ref({ titulo: '', categoria_id: '', sintoma: '', solucion: '' });
+const form = ref({ titulo: '', tipo: TIPO_KB_POR_DEFECTO, categoria_id: '', sintoma: '', solucion: '' });
+const infoError = infoNotificacion('error');
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => form.value);
+const campoTitulo = useCampoAccesible();
+const campoTipo = useCampoAccesible();
+const campoCategoria = useCampoAccesible();
+const campoSintoma = useCampoAccesible();
+const campoSolucion = useCampoAccesible();
+
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => form.value);
 tomarSnapshot();
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
-
-function confirmarCierre() {
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return false;
-  }
-  return true;
-}
-
-function cancelar() {
-  if (confirmarCierre()) modal.value?.cerrar();
-}
-
-function descartarCambios() {
-  dialogoDescarte.value?.cerrar();
-  modal.value?.cerrar();
-}
 
 async function guardar() {
   error.value = '';
@@ -52,6 +44,7 @@ async function guardar() {
   try {
     const articulo = await store.crear({
       titulo: form.value.titulo,
+      tipo: form.value.tipo,
       categoria_id: form.value.categoria_id || null,
       sintoma: form.value.sintoma,
       solucion: form.value.solucion,
@@ -60,7 +53,7 @@ async function guardar() {
     resultado = articulo;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al crear el artículo';
+    error.value = mensajeError(e, { porDefecto: 'Error al crear el artículo' });
   } finally {
     guardando.value = false;
   }
@@ -78,52 +71,109 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Modal ref="modal" titulo="Nuevo artículo" :confirmar-cierre="confirmarCierre" @close="emit('cerrar', resultado)">
+  <AppDialog ref="modal" titulo="Nuevo artículo" :confirmar-cierre="confirmarCierre" @cerrado="emit('cerrar', resultado)">
     <form id="kb-form" class="form-grid" @submit.prevent="guardar">
-      <div class="form-group full">
-        <label for="kb-titulo">Título *</label>
-        <input id="kb-titulo" v-model="form.titulo" required :disabled="guardando" placeholder="Ej.: No conecta a la VPN institucional">
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoTitulo.id">Título<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoTitulo.id"
+            v-model="form.titulo"
+            class="campo__control"
+            type="text"
+            required
+            placeholder="Ej.: No conecta a la VPN institucional"
+            :disabled="guardando"
+          >
+        </div>
       </div>
 
-      <div class="form-group full">
-        <label for="kb-categoria">Categoría</label>
-        <select id="kb-categoria" v-model="form.categoria_id" :disabled="guardando || cargandoCategorias">
-          <option value="">Sin categoría</option>
-          <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-        </select>
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoTipo.id">Tipo</label>
+        <div class="campo__caja">
+          <select
+            :id="campoTipo.id"
+            class="campo__control campo__control--select"
+            :value="form.tipo"
+            :disabled="guardando"
+            @change="form.tipo = $event.target.value"
+          >
+            <option v-for="t in OPCIONES_TIPO_KB" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
       </div>
 
-      <div class="form-group full">
-        <label for="kb-sintoma">Síntoma</label>
-        <input id="kb-sintoma" v-model="form.sintoma" :disabled="guardando" placeholder="Cómo lo describe quien reporta">
+      <div class="campo" :class="{ 'campo--inerte': guardando || cargandoCategorias }">
+        <label class="campo__etiqueta" :for="campoCategoria.id">Categoría</label>
+        <div class="campo__caja">
+          <select
+            :id="campoCategoria.id"
+            class="campo__control campo__control--select"
+            :value="form.categoria_id"
+            :disabled="guardando || cargandoCategorias"
+            @change="form.categoria_id = $event.target.value"
+          >
+            <option value="">Sin categoría</option>
+            <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
       </div>
 
-      <div class="form-group full">
-        <label for="kb-solucion">Solución</label>
-        <textarea id="kb-solucion" v-model="form.solucion" rows="6" :disabled="guardando" placeholder="Pasos para resolverlo (texto plano)"></textarea>
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoSintoma.id">Síntoma</label>
+        <div class="campo__caja">
+          <input
+            :id="campoSintoma.id"
+            v-model="form.sintoma"
+            class="campo__control"
+            type="text"
+            placeholder="Cómo lo describe quien reporta"
+            :disabled="guardando"
+          >
+        </div>
       </div>
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoSolucion.id">Solución</label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoSolucion.id"
+            v-model="form.solucion"
+            class="campo__control campo__control--area"
+            :rows="8"
+            placeholder="Pasos para resolverlo (texto plano)"
+            :disabled="guardando"
+          ></textarea>
+        </div>
+      </div>
+
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="kb-form" :disabled="guardando">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-        {{ guardando ? 'Creando...' : 'Crear artículo' }}
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton type="submit" form="kb-form" :label="guardando ? 'Creando...' : 'Crear artículo'" :loading="guardando" :disabled="guardando" />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
-    @cancel="confirmarDescarte = false"
+    @cerrado="confirmarDescarte = false"
     @confirm="descartarCambios"
   />
 </template>
+
+

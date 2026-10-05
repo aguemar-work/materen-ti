@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
+import { anotarErrorDb } from '../api/erroresDb.js';
+import { gettersStaff } from './gettersStaff.js';
 
 // Detalle de un ticket: toda la data de TicketDetalleView pasa por acá.
 // Mismo patrón que stores/tickets.js: state plano, actions async que lanzan
@@ -18,16 +20,7 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
     error: null,
   }),
 
-  getters: {
-    // staffLista ya viene solo con staff activo (staff_nombres(), migración
-    // 061): staffActivo queda como alias por compatibilidad con la vista.
-    staffActivo: (state) => state.staffLista,
-    staffPorId() {
-      const mapa = {};
-      for (const s of this.staffActivo) mapa[s.user_id] = s.nombre;
-      return mapa;
-    },
-  },
+  getters: { ...gettersStaff },
 
   actions: {
     async cargar(id) {
@@ -107,14 +100,17 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
     },
 
     // Al cerrar el ticket, guarda la solución como borrador de KB (queda
-    // pendiente de completar/revisar — ver migración 031).
-    async guardarComoBorradorKb() {
-      return insforgeApi.crearKbArticulo({
-        titulo: this.ticket.titulo,
-        categoria_id: this.ticket.categoria_id,
-        ticket_origen_id: this.ticket.id,
-        estado: 'borrador',
-      });
+    // pendiente de completar/revisar — migración 031). Desde la 106 lo hace el
+    // servidor (crear_kb_desde_ticket): exige un ticket resuelto/cerrado y una
+    // solución (`solucion` o la nota de resolución del ticket) y copia título,
+    // síntoma y categoría. Un ticket sin solución se rechaza con un mensaje en
+    // español; ya no nace un borrador vacío (U-05).
+    async guardarComoBorradorKb({ solucion = null, titulo = null, sintoma = null } = {}) {
+      try {
+        return await insforgeApi.crearKbDesdeTicket(this.ticket.id, { solucion, titulo, sintoma });
+      } catch (e) {
+        throw anotarErrorDb(e, { entidad: 'artículo' });
+      }
     },
 
     limpiar() {

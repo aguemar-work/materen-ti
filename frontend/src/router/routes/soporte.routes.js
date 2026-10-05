@@ -45,10 +45,10 @@ export default [
     meta: { public: true },
   },
   {
-    // Pre-registro público de personal (candidato/nuevo ingreso, sin sesión)
-    path: '/personal-registro',
-    name: 'personal-registro',
-    component: () => import('../../modules/personal/PersonalRegistroView.vue'),
+    // Portal del empleado por enlace personal (identidad ligera, sin cuenta; migración 109)
+    path: '/mi/:token',
+    name: 'portal-empleado',
+    component: () => import('../../modules/portal/PortalEmpleadoView.vue'),
     meta: { public: true },
   },
   {
@@ -56,6 +56,15 @@ export default [
     path: '/encuesta/:slug',
     name: 'encuesta-publica',
     component: () => import('../../modules/encuestas/EncuestaPublicaView.vue'),
+    meta: { public: true },
+  },
+  {
+    // Destino del QR de la etiqueta de un equipo. Sin sesión no consulta nada
+    // (solo el aviso "Si lo encontró, comuníquese con TI"); con sesión de
+    // staff con el módulo equipos redirige a la hoja de vida.
+    path: '/e/:codigo',
+    name: 'equipo-qr',
+    component: () => import('../../modules/equipos/EquipoQrView.vue'),
     meta: { public: true },
   },
   // Compat /ticket/* → /soporte/*: hay enlaces viejos ya enviados por

@@ -3,59 +3,31 @@
 // App.vue la superpone a la vista actual cuando una petición no llegó al
 // servidor, y "Reintentar" repite esa misma petición sin perder el estado
 // de la vista que quedó debajo (ej. un formulario ya completado).
+// Por eso AppPortal va `superpuesto` (capa fija), no como página propia.
 import { reintentarErrorRed } from '../../core/error-red.js';
-import PublicBrand from '../../components/shared/PublicBrand.vue';
+import AppPortal from '../../components/ui/AppPortal.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 </script>
 
 <template>
-  <div class="public-page error-red">
-    <div class="card public-card">
-      <PublicBrand subtitulo="Sin conexión" />
+  <AppPortal
+    superpuesto
+    titulo="Sin conexión con el servidor"
+    icono="ti ti-wifi-off"
+  >
+    <p class="text-center text-sm text-gray-600">
+      No se pudo conectar con el servidor. Verifique su conexión e intente
+      nuevamente.
+    </p>
 
-      <div class="error-red-icon"><i class="ti ti-wifi-off" aria-hidden="true"></i></div>
-      <h2 class="error-red-title">Sin conexión con el servidor</h2>
-      <p class="error-red-texto">
-        No se pudo conectar con el servidor. Verifique su conexión e intente
-        nuevamente.
-      </p>
-
-      <button class="btn btn-primary error-red-btn" type="button" @click="reintentarErrorRed">
-        <i class="ti ti-refresh" aria-hidden="true"></i> Reintentar
-      </button>
-    </div>
-  </div>
+    <AppButton
+      class="mt-6"
+      size="lg"
+      block
+      label="Reintentar"
+      icon="ti ti-refresh"
+      icon-pos="right"
+      @click="reintentarErrorRed"
+    />
+  </AppPortal>
 </template>
-
-<style scoped>
-.error-red {
-  position: fixed;
-  inset: 0;
-  z-index: 900;
-}
-
-.error-red-icon {
-  font-size: 40px;
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-
-.error-red-title {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0 0 4px;
-}
-
-.error-red-texto {
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 16px;
-}
-
-.error-red-btn {
-  width: 100%;
-  justify-content: center;
-  padding: 10px 14px;
-}
-</style>

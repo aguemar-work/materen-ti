@@ -15,18 +15,33 @@ const SELECT_RESUMEN = `
   created_at, updated_at
 `;
 
-const SELECT_DETALLE = `${SELECT_RESUMEN}, descripcion, causa_raiz, created_by`;
+const SELECT_DETALLE = `${SELECT_RESUMEN}, descripcion, causa_raiz, workaround, error_conocido, kb_articulo_id, created_by`;
 
 const ORDEN_COLUMNAS = ['titulo', 'severidad', 'estado', 'created_at', 'updated_at'];
 const ORDEN_DEFECTO = { columna: 'updated_at', ascending: false };
 
-async function queryProblemas({ q = '', estado = '', severidad = '', orden } = {}, { conteo = false } = {}) {
+// Filtros V2 (2026-09-25): `estados` (vista ∩ chip Etapa), `severidades` y
+// `responsables` (acepta 'sin' = sin responsable) como listas; O dentro de
+// cada lista, Y entre listas. `estado`/`severidad` escalares se conservan.
+async function queryProblemas(
+  { q = '', estado = '', severidad = '', estados = [], severidades = [], responsables = [], orden } = {},
+  { conteo = false, soloConteo = false } = {},
+) {
   let query = getClient().database
     .from('problemas')
-    .select(SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined)
+    .select(soloConteo ? 'id' : SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined)
     .is('deleted_at', null);
   if (estado) query = query.eq('estado', estado);
   if (severidad) query = query.eq('severidad', severidad);
+  if (estados.length) query = query.in('estado', estados);
+  if (severidades.length) query = query.in('severidad', severidades);
+  if (responsables.length) {
+    const ids = responsables.filter((x) => x && x !== 'sin');
+    const sin = responsables.includes('sin');
+    if (sin && ids.length) query = query.or(`responsable_id.is.null,responsable_id.in.(${ids.join(',')})`);
+    else if (sin) query = query.is('responsable_id', null);
+    else query = query.in('responsable_id', ids);
+  }
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) query = query.ilike('titulo', `%${qSafe}%`);
   const { columna, ascending } = ordenValido(orden, ORDEN_COLUMNAS, ORDEN_DEFECTO);
@@ -46,6 +61,23 @@ export const problemasApi = {
     const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
     if (error) throw error;
     return { items: (data || []).map(mapProblemaResumen), total: count ?? 0 };
+  },
+
+  // Conteo de las 3 vistas con la misma búsqueda y chips (Etapa solo aplica
+  // a "Abiertos" y "Todos": en "Cerrados" no hay etapas que refinar).
+  async conteosProblemasPorVista({ etapas = [], ...filtros } = {}) {
+    const vistas = [
+      ['abiertos', etapas.length ? etapas : ESTADOS_PROBLEMA_ABIERTOS],
+      ['cerrados', ['cerrado']],
+      ['todos', etapas],
+    ];
+    const resultados = await Promise.all(vistas.map(async ([clave, estados]) => {
+      const { qb } = await queryProblemas({ ...filtros, estados }, { conteo: true, soloConteo: true });
+      const { count, error } = await qb.range(0, 0);
+      if (error) throw error;
+      return [clave, count ?? 0];
+    }));
+    return Object.fromEntries(resultados);
   },
 
   async getProblema(id) {
@@ -208,35 +240,27 @@ export const problemasApi = {
   // Mismo espíritu que dashboardApi.pendientesTickets(): se computa en vivo
   // en cada carga, sin tabla de notificaciones — ver migración 033.
 
-  // Sugerencia de apertura de problema: 3+ tickets de la misma categoría en
-  // los últimos 30 días que TODAVÍA no están vinculados a ningún problema
-  // (una vez que un ticket entra a problema_tickets, ya no cuenta para la
-  // sugerencia — se considera "ya atendido").
-  async listCategoriasRecurrentes({ dias = 30, minimo = 3 } = {}) {
-    const db = getClient().database;
-    const [{ data: recientes, error: e1 }, { data: vinculados, error: e2 }] = await Promise.all([
-      db.from('tickets')
-        .select('id, codigo, titulo, categoria_id, categorias_ticket(nombre), created_at')
-        .gte('created_at', fechaHaceDias(dias))
-        .not('categoria_id', 'is', null),
-      db.from('problema_tickets').select('ticket_id'),
-    ]);
-    if (e1) throw e1;
-    if (e2) throw e2;
-    const yaVinculados = new Set((vinculados || []).map((v) => v.ticket_id));
-    const sinAtender = (recientes || []).filter((t) => !yaVinculados.has(t.id));
-
-    const porCategoria = new Map();
-    for (const t of sinAtender) {
-      const clave = t.categoria_id;
-      if (!porCategoria.has(clave)) {
-        porCategoria.set(clave, { categoria_id: clave, categoria_nombre: t.categorias_ticket?.nombre || '', tickets: [] });
-      }
-      porCategoria.get(clave).tickets.push({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, desde: t.created_at });
-    }
-    return [...porCategoria.values()]
-      .filter((c) => c.tickets.length >= minimo)
-      .sort((a, b) => b.tickets.length - a.tickets.length);
+  // Sugerencia de apertura de problema: categorías con n+ tickets en los
+  // últimos `dias` días que TODAVÍA no están vinculados a ningún problema. La
+  // regla (umbral_recurrencia_tickets en config_parametros, días en hora de
+  // Lima) vive en la vista `v_categorias_recurrentes` (migración 103), la
+  // misma que lee el Inicio: hasta el 2026-10-03 este método la replicaba en
+  // el cliente con literales (30 días / 3 tickets) y hora del navegador, y un
+  // cambio del umbral solo afectaba al Inicio.
+  async listCategoriasRecurrentes() {
+    const { data, error } = await getClient().database
+      .from('v_categorias_recurrentes')
+      .select('categoria_id, categoria_nombre, total, primer_ticket_at, ultimo_ticket_at, tickets')
+      .order('total', { ascending: false });
+    if (error) throw error;
+    return (data || []).map((c) => ({
+      categoria_id: c.categoria_id,
+      categoria_nombre: c.categoria_nombre || '',
+      total: c.total,
+      primer_ticket_at: c.primer_ticket_at,
+      ultimo_ticket_at: c.ultimo_ticket_at,
+      tickets: c.tickets || [],
+    }));
   },
 
   async listAccionesCorrectivasVencidas() {
@@ -292,6 +316,11 @@ function mapProblemaDetalle(row) {
     ...mapProblemaResumen(row),
     descripcion: row.descripcion,
     causa_raiz: row.causa_raiz || '',
+    // KEDB (migración 106): solución provisional, bandera de error conocido y
+    // artículo de la KB donde se publicó.
+    workaround: row.workaround || '',
+    error_conocido: !!row.error_conocido,
+    kb_articulo_id: row.kb_articulo_id || null,
     created_by: row.created_by,
   };
 }

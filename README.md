@@ -15,7 +15,6 @@ cuándo y si la contraseña se rotó después.
 | Seguridad | Edge function `credenciales` (`functions/credenciales.ts`) — cifrado AES-256-GCM en servidor, auditoría y entregas de un solo uso |
 | Soporte | Edge function `tickets` (`functions/tickets.ts`) — mesa de ayuda interna, reemplaza el helpdesk externo (Bitrix24) |
 | Encuestas | Edge function `encuestas` (`functions/encuestas.ts`) — encuestas anónimas reutilizables (plantilla + rondas), distintas de la encuesta de satisfacción por ticket |
-| Personal | Edge function `personal-registro` (`functions/personal-registro.ts`) — pre-registro público de personal antes del alta en Empleados |
 
 > `<PROJECT_NAME>`/`<INSFORGE_PROJECT_URL>` son placeholders a propósito — ver
 > ["Documentación sensible" en `AGENTS.md`](AGENTS.md#documentación-sensible--no-pegar-en-herramientas-externas-sin-revisar)
@@ -139,7 +138,15 @@ global `Deno`.
   (40 más recientes) + una sección aparte de "Respuestas con baja
   satisfacción" ordenada peor-primero (`reporteSatisfaccion.js`, mismas
   primitivas de layout que el PDF del "Reporte" de Tickets, extraídas a
-  `core/pdfReporte.js`).
+  `core/pdfReporte.js`). **Workspace de 3 columnas** (`/tickets`, modo
+  Triage — por defecto desde el Plan Maestro v2, Frente 2, 2026-09-04; el
+  modo Tabla sigue disponible para selección múltiple/reasignación en
+  lote): Bandejas + lista angosta + `TicketDetallePanel.vue`, que a su vez
+  gana una 3ra columna de **contexto** (equipos asignados al solicitante,
+  artículos de KB relacionados, problema vinculado — colapsable, con botón
+  propio en el header del panel) y una sección de **Acciones rápidas** con
+  2 macros para copiar al portapapeles: "Pedir más información" (nueva) y
+  "Resuelto + encuesta" (la misma de arriba, ahora también disponible acá).
 
 - **Equipo**: activo físico con código de inventario único (etiqueta), tipo
   (catálogo `tipos_equipo` con plantilla de specs y accesorios por tipo),
@@ -153,7 +160,13 @@ global `Deno`.
   Un equipo se asigna a una **persona o a una ubicación** (catálogo
   `ubicaciones`: almacenes, áreas, sedes — exactamente uno de los dos por
   asignación). Mover entre ubicaciones es libre; si lo tiene una persona,
-  se exige registrar la devolución primero.
+  se exige registrar la devolución primero. En `/equipos`, 3 tarjetas KPI
+  (Libres para entregar / Ocupados / En reparación, sobre todo el
+  inventario, no solo la página filtrada) resumen la disponibilidad de un
+  vistazo y filtran la lista al hacer clic. La "Hoja de vida" (histórico de
+  eventos + fotos + especificaciones técnicas + accesorios) se abre en un
+  panel lateral (drawer), no en un modal centrado — mismo componente
+  `Modal.vue` compartido, con su prop `lateral`.
 
 - **Notificación**: aviso persistente para todo el staff sobre 4 eventos
   concretos (`ticket_creado`, `cuenta_creada`, `empleado_alta`,
@@ -175,25 +188,25 @@ global `Deno`.
   satisfacción de un ticket** (`ticket_satisfaccion`): esa es automática,
   por ticket cerrado y con el empleado vinculado; esta es manual, genérica
   (p. ej. clima laboral) y sin relación con tickets.
-- **Pre-registro de personal** (`/soporte`-style, público sin sesión, vía
-  edge function `personal-registro`): un candidato/nuevo ingreso llena
-  DNI/nombres/apellidos/celular/correo **antes** de existir como empleado.
-  No crea nada en `empleados` — TI lo revisa en `/personal` (**solo JEFE**,
-  migración 047) y lo marca `usado` al dar de alta al empleado. Única tabla
-  del sistema con **hard delete** real desde el cliente (`personal_registros`,
-  migración 046): sin historial de negocio ni FKs entrantes, se borra al
-  migrar su información a Empleados — no replicar este patrón en otra tabla
-  sin la misma justificación.
 
 ## Flujos principales
 
 1. **Alta guiada**: Empleados → "Nuevo empleado" → guarda → aterriza en la
-   ficha (`/empleados/:id?nuevo=1`) con guía de 3 pasos: registrado → asignar
-   accesos → enviar por WhatsApp (genera la entrega de un solo uso).
+   ficha (`/empleados/:id?nuevo=1`) con guía de 5 pasos: registrado → cuenta de
+   correo → **credenciales entregadas** (enviar por WhatsApp — requisito, no
+   opcional: tener la cuenta creada no es lo mismo que el empleado ya la
+   conozca) → equipo y licencia (ofrecidos, no exigidos). Cada paso pendiente
+   trae su propio botón, que abre directo el formulario/acción que corresponde
+   (`core/dominio-empleados.js`, `pasosAlta()`).
 2. **Baja**: botón "Dar de baja" → modal con resumen de qué pasará con cada
    cuenta (personales se dan de baja, reutilizables quedan libres, compartidas
-   pierden a ese usuario) → confirmar. Las cuentas heredables quedan marcadas
-   "Rotar contraseña".
+   pierden a ese usuario) → confirmar. Al confirmar, un checklist animado
+   (retardo fijo de 300ms por ítem) muestra cada escritura del RPC atómico
+   `dar_baja_empleado()` marcándose una por una — el último ítem solo se marca
+   listo cuando el RPC real también resolvió, nunca antes. Las cuentas
+   heredables quedan marcadas "Rotar contraseña"; los equipos, aparte, quedan
+   como último ítem "pendiente" (no "hecho": la baja nunca los toca, ver
+   Modelo de seguridad).
 3. **Auditoría**: cada vez que alguien **ve, copia o envía** una contraseña
    queda registrado en `accesos_log`. El JEFE lo consulta en `/actividad`.
 4. **Soporte por ticket**: el empleado reporta un problema en `/soporte/nuevo`
@@ -242,10 +255,8 @@ global `Deno`.
   (40 / 5 min, vía `accesos_log`); la búsqueda pública por DNI, por IP y por
   DNI (`ticket_busqueda_intentos`); la creación pública de tickets, por IP
   (8 / 10 min, `ticket_creacion_intentos`, migración 037 — no aplica a
-  tickets creados por staff autenticado); el pre-registro público de
-  personal, por IP (`personal_registro_intentos`, migración 042); las
-  respuestas a encuestas públicas, por IP (`encuesta_respuesta_intentos`,
-  migración 043).
+  tickets creados por staff autenticado); las respuestas a encuestas
+  públicas, por IP (`encuesta_respuesta_intentos`, migración 043).
 - **Tickets públicos**: `titulo`/`descripcion` tienen tope de longitud en
   servidor (200 / 5000 caracteres).
 - **Baja de empleado atómica** (migración 038): las 4 escrituras (cerrar
@@ -268,8 +279,14 @@ global `Deno`.
 │       ├── api/
 │       │   ├── insforge.js    # capa de datos (PostgREST vía SDK)
 │       │   └── passwords.js   # todo lo que toca contraseñas → edge function
-│       ├── components/shared/AppLayout.vue
-│       ├── core/              # formatters, toast, utils
+│       ├── styles/
+│       │   ├── main.css        # @theme de Tailwind (único lugar con tokens)
+│       │   └── componentes.css # primitivas oficiales (.campo, .notif, .cred, .modal...)
+│       ├── components/
+│       │   ├── ui/             # wrappers de PrimeVue + componentes base (AppButton, AppTable, AppPortal...)
+│       │   └── shared/         # AppLayout, AppNav, Modal, ConfirmDialog, MenuAcciones, ...
+│       ├── core/              # dominio-*.js, formatters, toast, utils, paginacionRender.js, tagRol.js
+│       ├── maqueta/           # datos inventados para `npm run dev:maqueta` (sin backend)
 │       ├── modules/           # una carpeta por módulo de UI
 │       │   ├── actividad/     # auditoría (solo JEFE)
 │       │   ├── auth/          # login + reestablecer contraseña (código por email)
@@ -287,7 +304,6 @@ global `Deno`.
 │       │   ├── kb/            # Base de Conocimiento
 │       │   ├── problemas/     # Gestión de Problemas (Fase 2)
 │       │   ├── encuestas/     # encuestas anónimas reutilizables (plantilla + rondas)
-│       │   ├── personal/      # pre-registro público + bandeja de revisión (solo JEFE)
 │       │   └── soporte/       # portal público de tickets
 │       ├── router/            # rutas + guards (meta.public para entregas y tickets)
 │       └── stores/            # Pinia (incluye `notificaciones` — campana del layout)
@@ -296,15 +312,18 @@ global `Deno`.
 │   ├── tickets.ts          # edge function: catalogo / crear / seguimiento / buscarPorDni /
 │   │                       #   encuestaEstado / encuesta / version
 │   ├── encuestas.ts        # edge function: abrir / responder / version (rondas de encuesta pública)
-│   ├── personal-registro.ts # edge function: buscarDni / crear / version (pre-registro público)
 │   └── equipos-fotos.ts    # edge function: subirFoto / eliminarFoto / version (staff, valida magic bytes)
-├── migrations/             # 001..070 — esquema completo, en orden, comentado
+├── migrations/             # 001..089 + 099, 100, 104 (090–098 reservadas al plan V2 de Tickets) — esquema completo, en orden, comentado
+│   └── rollback/           # rollbacks fuera de la secuencia lineal (075)
 ├── docs/
-│   ├── GUIA-UX-UI.md          # design system y convenciones de UI
-│   ├── PANORAMA_SISTEMA.md    # arquitectura, modelo de datos y decisiones verificadas
-│   ├── HISTORIAL-AUDITORIAS.md # hallazgos de auditoría con estado (reemplaza los informes sueltos)
-│   ├── INVENTARIO-ARCHIVOS.md  # qué archivos sirven, cuáles se limpiaron, qué falta crear
-│   └── CHANGELOG.md           # log discreto de cambios a la documentación
+│   ├── SISTEMA-DISENO.md      # sistema de diseño vigente: tokens, componentes, recetas de página
+│   ├── NOTAS-DISENO-ANTERIOR.md # qué se rescató del sistema anterior (principios del JEFE, accesibilidad)
+│   ├── PANORAMA-SISTEMA.md    # arquitectura, modelo de datos y decisiones verificadas
+│   ├── HISTORIAL-AUDITORIAS.md # hallazgos de auditoría con estado y pendientes de despliegue
+│   ├── GOTCHAS-CLI.md         # gotchas del CLI de InsForge: leer antes de aplicar una migración
+│   ├── CHANGELOG.md           # historial de cambios de documentación, producto y diseño
+│   ├── archivo/               # historia retirada (apéndice de diseño v1)
+│   └── propuestas/            # cambios a AGENTS.md pendientes de aprobación
 ├── AGENTS.md               # contexto para agentes de código
 └── insforge.toml           # config del backend (auth por código, password min 6)
 ```
@@ -439,10 +458,10 @@ Desde 2026-08-18 (Ciclo 11), `tests/integration/` tiene dos archivos más:
   Para updates masivos usar un solo `UPDATE ... FROM (VALUES ...)` por lote.
 - **Edge function**: editar `functions/credenciales.ts` y desplegar con
   `npx @insforge/cli functions deploy credenciales --file functions/credenciales.ts`.
-  Mismo patrón para las otras 3: `tickets`, `encuestas`, `personal-registro`
+  Mismo patrón para las otras 2: `tickets`, `encuestas`
   (`npx @insforge/cli functions deploy <nombre> --file functions/<nombre>.ts`).
   Cada una tiene su propio `ORIGENES_PERMITIDOS` (helpers CORS/admin
-  duplicados a propósito entre las 4, no se comparte código).
+  duplicados a propósito entre las 3, no se comparte código).
 - **Gotcha del SDK**: `functions.invoke()` deriva por defecto un subdominio
   que no existe en este backend; por eso `getClient()` pasa
   `functionsUrl: baseUrl + '/functions'`. No quitar esa opción.
@@ -481,7 +500,7 @@ Desde 2026-08-18 (Ciclo 11), `tests/integration/` tiene dos archivos más:
 | 028 | Fix de RLS del realtime de tickets |
 | 029 | Fix del evento de realtime de ticket |
 | 030 | Auditoría de acceso denegado: acción `acceso_denegado` en `accesos_log`, escrita por la edge function cuando el guard del router bloquea una ruta por rol |
-| 031 | Base de Conocimiento: `kb_articulos` (borrador→en_revision→publicado→obsoleto), visibilidad por estado/autoría; elimina `tickets.es_base_conocimiento`. **Nota: el backfill se perdió durante la aplicación — decisión cerrada de no restaurar, ver `docs/PANORAMA_SISTEMA.md` §6** |
+| 031 | Base de Conocimiento: `kb_articulos` (borrador→en_revision→publicado→obsoleto), visibilidad por estado/autoría; elimina `tickets.es_base_conocimiento`. **Nota: el backfill se perdió durante la aplicación — decisión cerrada de no restaurar, ver `docs/PANORAMA-SISTEMA.md` §6** |
 | 032 | Cierra un hueco de RLS del voto de KB: reemplaza la policy amplia de UPDATE por el RPC `kb_registrar_feedback()` (`SECURITY DEFINER`, solo toca `util_si`/`util_no`) |
 | 033 | Gestión de Problemas (Fase 2): `problemas`, `problema_tickets`, `acciones_correctivas` + triggers de cierre y de responsable activo. Unifica lo que iba a ser "Lecciones Aprendidas" |
 | 034 | Elimina las tablas de prueba huérfanas `test_probe`, `test_probe2`, `test_probe3` (vacías, sin referencias en el código) |
@@ -492,12 +511,12 @@ Desde 2026-08-18 (Ciclo 11), `tests/integration/` tiene dos archivos más:
 | 039 | Índice único `(plataforma_id, lower(usuario))` en `cuentas` (activas): evita registrar el mismo usuario/correo dos veces en la misma plataforma. Limpiados 5 duplicados reales en producción antes de aplicar |
 | 040 | `licencias.tiene_clave` (columna generada `clave is not null`): permite al listado saber si hay clave propia sin traer el ciphertext completo en cada carga |
 | 041 | Exclusividad de asignación también para cuentas `personal` (antes solo `reutilizable` la tenía en BD): cierra un candado de negocio que vivía solo en la disciplina de la app, no en el esquema |
-| 042 | Pre-registro público de personal: `personal_registros` + `personal_registro_intentos` (rate-limit por IP), mismo patrón que `tickets` (sin policy de INSERT para cliente, todo vía edge function `personal-registro`) |
+| 042 | Pre-registro público de personal: `personal_registros` + `personal_registro_intentos` (rate-limit por IP), mismo patrón que `tickets` (sin policy de INSERT para cliente, todo vía edge function `personal-registro`). **Revertido por la migración 084** (2026-08-29): el módulo entero se retiró — ver esa fila |
 | 043 | Módulo de Encuestas: `encuestas` (plantilla), `encuesta_rondas` (cada lanzamiento, con su propio link público), `encuesta_respuestas` (anónimas) y `encuesta_respuesta_intentos` (rate-limit). Preguntas de una plantilla inmutables en cuanto tiene alguna ronda. Solo JEFE crea/edita/lanza; cualquier staff ve resultados |
 | 044 | Realtime: canal `tickets:nuevos` con detalle mínimo (id/código/título) en cada ticket creado, para el aviso emergente con sonido del sidebar — convive con el `tickets:list` de sentencia (026), no lo reemplaza |
 | 045 | Notificaciones: `notificaciones` (4 eventos concretos: `ticket_creado`, `cuenta_creada`, `empleado_alta`, `empleado_baja`, cada uno con su propio trigger) + `notificaciones_lecturas` (estado leído/no-leído por usuario de staff) + canal realtime `notificaciones:nuevas`. Alcance deliberadamente mínimo: no es un motor de reglas genérico |
-| 046 | Hard delete de `personal_registros` (solo JEFE): única tabla del sistema con borrado físico real desde el cliente — sin historial de negocio ni FKs entrantes, se limpia al migrar el registro a Empleados |
-| 047 | RLS de `personal_registros` restringido a JEFE (antes SELECT/UPDATE eran de cualquier staff, con el ocultamiento del menú como única barrera real): cierra el hueco entre "oculto en el sidebar" y "bloqueado por RLS", mismo criterio que `accesos_sensibles` (024) |
+| 046 | Hard delete de `personal_registros` (solo JEFE): única tabla del sistema con borrado físico real desde el cliente — sin historial de negocio ni FKs entrantes, se limpia al migrar el registro a Empleados. **Revertido por la migración 084** |
+| 047 | RLS de `personal_registros` restringido a JEFE (antes SELECT/UPDATE eran de cualquier staff, con el ocultamiento del menú como única barrera real): cierra el hueco entre "oculto en el sidebar" y "bloqueado por RLS", mismo criterio que `accesos_sensibles` (024). **Revertido por la migración 084** |
 | 048 | Notificaciones personales: `notificaciones.destinatario_id` (NULL = broadcast, como hoy; no nulo = solo ese usuario) + canal realtime wildcard `notificaciones:usuario:%`. `crear_notificacion()` gana un 6º parámetro opcional — **la intención era que fuera compatible con las 4 llamadas de 5 argumentos de la migración 045, pero `create or replace` con una firma distinta crea una sobrecarga nueva en vez de reemplazar la vieja; no lo fue hasta la 054** |
 | 049 | Triggers de notificación personal de tickets: asignación y cambio de estado (`notify_ticket_personal`), comentario nuevo (`notify_ticket_comentario_personal`) y correo fallido (`notify_correo_fallido`, sobre `ticket_eventos`). Con autoexclusión: nadie se autonotifica de su propia acción |
 | 050 | Máquina de estados formal: tabla `transiciones_ticket_permitidas` (whitelist, default-deny) + `check_transicion_ticket_permitida()`, que reemplaza los triggers puntuales `check_reabrir_solo_jefe` (017) y `check_transicion_ticket` (019) |
@@ -507,24 +526,47 @@ Desde 2026-08-18 (Ciclo 11), `tests/integration/` tiene dos archivos más:
 | 055 | **Decisión de producto** (2026-08-13): retira el trigger/función `notify_correo_fallido()` (049), huérfano tras quitar de `functions/tickets.ts` el correo de confirmación al crear y la acción `enviarEncuesta` — el sistema no debe enviar avisos/notificaciones por correo por el momento. No toca los checks de `ticket_eventos`/`notificaciones` (podría haber filas históricas con esos valores) |
 | 056 | Permisos de módulo por usuario: `staff_modulos_permisos` (puente `staff_user_id ↔ módulo`, mismo patrón que `accesos_sensibles_permisos` de 024). Backfill con los 8 módulos habilitados para todo staff existente y trigger de alta (`handle_new_staff_user`, extendido) que siembra igual a cualquier staff nuevo — es "opt-out" (JEFE desmarca), no "opt-in". Solo UI/navegación (sidebar + router guard en el frontend); no toca RLS de correos/licencias/equipos/etc |
 | 057 | Bandeja de importación de equipos desde Excel: tabla `equipos_importacion` (campos editables 1 a 1 con `equipos` + `raw` jsonb de referencia). RLS: staff ve/crea/edita/**elimina** (sin jefe-only, mismo caso que `equipo_accesorios` — es cola de trabajo, no historial de negocio) |
-| 059 | Separa `areas_obras` (función/asignación laboral) de `ubicaciones` (lugar físico) — la 058 los había mezclado en una sola relación. `ubicaciones` gana `tipo` (text+check: sede/almacen/obra/otro); `empleados` gana `ubicacion_id` propio e independiente (ya no derivado de su área); `areas_obras.ubicacion_id` se elimina. Backfill de 28 empleados (27 → Oficina Principal, 1 → Almacén Pucusana) leyendo `areas_obras.ubicacion_id` antes de borrarla, verificado antes y después de aplicar. Ver decisión completa en `docs/PANORAMA_SISTEMA.md` §6 |
+| 059 | Separa `areas_obras` (función/asignación laboral) de `ubicaciones` (lugar físico) — la 058 los había mezclado en una sola relación. `ubicaciones` gana `tipo` (text+check: sede/almacen/obra/otro); `empleados` gana `ubicacion_id` propio e independiente (ya no derivado de su área); `areas_obras.ubicacion_id` se elimina. Backfill de 28 empleados (27 → Oficina Principal, 1 → Almacén Pucusana) leyendo `areas_obras.ubicacion_id` antes de borrarla, verificado antes y después de aplicar. Ver decisión completa en `docs/PANORAMA-SISTEMA.md` §6 |
 | 060 | Permiso individual `credenciales.ver`: tabla `staff_permisos` (mismo patrón que `staff_modulos_permisos` de 056, pero para capacidades). Gatea revelar/enviar contraseñas de Cuentas y Licencias en `functions/credenciales.ts` (consulta directa, no RPC — ver `AGENTS.md`); JEFE exento siempre. Backfill de los 3 staff activos + `handle_new_staff_user` extendido (ya sembraba `staff_modulos_permisos`). Otorgar/revocar queda auditado en `accesos_log` vía trigger `staff_permisos_log_evento` |
 | 061 | **Fix de bug en producción** (nombres de staff invisibles para un ASISTENTE — la RLS de SELECT de `staff` es "propio registro o jefe", así que cualquier UI que resolvía el nombre de un compañero caía a "Staff": reporte de tickets, bandeja, "Asignado a", Responsable de Problemas/acciones correctivas, autor de KB, reporte de satisfacción). RPC `staff_nombres()` (`SECURITY DEFINER`, mismo patrón que `kb_registrar_feedback` de 032): devuelve solo `(user_id, nombre)` de staff activo, sin ampliar la policy de SELECT. De paso, extiende el UPDATE de `staff` (antes solo JEFE) para que cualquier staff edite su propio `nombre` — JEFE sigue pudiendo editar cualquier fila — blindado con un trigger que congela `rol`/`activo` cuando quien edita no es JEFE (mismo patrón que `check_ticket_identidad_inmutable` de 019, hallazgo H-06) |
-| 062 | **InsForge Backend Advisor** (2026-08-17, 80 hallazgos): `REVOKE EXECUTE ... FROM PUBLIC` en las 16 funciones `SECURITY DEFINER` marcadas "callable by: public" (ninguna se convierte a `SECURITY INVOKER` — romperían el patrón de RLS/guard interno ya documentado), con `GRANT ... TO authenticated` de vuelta solo en las 10 que un rol autenticado realmente invoca (RLS o RPC); `log_evento_equipo`/`log_evento_ticket`/`crear_notificacion` quedan sin ningún grant de runtime — solo los llaman triggers `SECURITY DEFINER`. Elimina `_test_reporte_tickets`/`_test_reporte_tickets_resumen`/`_test_reporte_satisfaccion_consolidado`, gemelas de prueba de `scripts/paridad-reporte-tickets.mjs` que quedaron en producción por descuido **sin** el guard `es_staff()` de las reales — una fuga de datos sin autenticar más grave que el hallazgo original del advisor. 61 índices en columnas FK sin índice (`CREATE INDEX` simple, no `CONCURRENTLY` — ver detalle en `docs/PANORAMA_SISTEMA.md` §6). Autovacuum más agresivo en `entregas`/`eventos_equipo`/`asignaciones_cuenta` (>20% tuplas muertas) + `VACUUM ANALYZE` inmediato de las 3. **Aplicada en varios `db query` por lote** (no con `apply-migration.mjs`): el archivo completo excede el límite de línea de comandos de Windows del gotcha de `AGENTS.md` — cada lote es idempotente (`REVOKE`/`GRANT`/`DROP FUNCTION IF EXISTS`/`CREATE INDEX IF NOT EXISTS`), así que no hay riesgo de aplicación parcial inconsistente |
+| 062 | **InsForge Backend Advisor** (2026-08-17, 80 hallazgos): `REVOKE EXECUTE ... FROM PUBLIC` en las 16 funciones `SECURITY DEFINER` marcadas "callable by: public" (ninguna se convierte a `SECURITY INVOKER` — romperían el patrón de RLS/guard interno ya documentado), con `GRANT ... TO authenticated` de vuelta solo en las 10 que un rol autenticado realmente invoca (RLS o RPC); `log_evento_equipo`/`log_evento_ticket`/`crear_notificacion` quedan sin ningún grant de runtime — solo los llaman triggers `SECURITY DEFINER`. Elimina `_test_reporte_tickets`/`_test_reporte_tickets_resumen`/`_test_reporte_satisfaccion_consolidado`, gemelas de prueba de `scripts/paridad-reporte-tickets.mjs` que quedaron en producción por descuido **sin** el guard `es_staff()` de las reales — una fuga de datos sin autenticar más grave que el hallazgo original del advisor. 61 índices en columnas FK sin índice (`CREATE INDEX` simple, no `CONCURRENTLY` — ver detalle en `docs/PANORAMA-SISTEMA.md` §6). Autovacuum más agresivo en `entregas`/`eventos_equipo`/`asignaciones_cuenta` (>20% tuplas muertas) + `VACUUM ANALYZE` inmediato de las 3. **Aplicada en varios `db query` por lote** (no con `apply-migration.mjs`): el archivo completo excede el límite de línea de comandos de Windows del gotcha de `AGENTS.md` — cada lote es idempotente (`REVOKE`/`GRANT`/`DROP FUNCTION IF EXISTS`/`CREATE INDEX IF NOT EXISTS`), así que no hay riesgo de aplicación parcial inconsistente |
 | 063 | **InsForge Backend Advisor, segunda pasada** (2026-08-17, 31 hallazgos tras la 062): `ALTER POLICY` en 9 políticas de 5 tablas (`staff_permisos`, `kb_articulos` ×2, `notificaciones`, `notificaciones_lecturas` ×2, `staff` ×2, `staff_modulos_permisos`) para envolver `auth.uid()` en `(select auth.uid())` — Postgres lo evalúa una vez por consulta en vez de una vez por fila, mismo `qual`/`with_check` de siempre. `REVOKE`/`GRANT` faltante en `staff_nombres()` (migración 061, quedó fuera del hardening de la 062 por no estar en el reporte original de 80). Los otros 2 grupos del reporte (10 funciones `SECURITY DEFINER` marcadas "dangerous" por tener `EXECUTE` a `authenticated`, y 11 tablas marcadas por tener RLS de solo SELECT) **quedan sin cambios a propósito** — aplicar la sugerencia del advisor rompería el patrón de RLS-helper/RPC-gateada o abriría un hueco de auditoría real; ver Ciclo 7 de `docs/HISTORIAL-AUDITORIAS.md` para el detalle de por qué cada uno es riesgo aceptado |
 | 064 | **Verificación de auditoría externa** (2026-08-17): `accesos_log` gana columnas `ip`/`user_agent` (antes ausentes pese a que el patrón de extracción segura ya existía en otras edge functions) y la acción `'entrega_fallida'` en el check de `accion` — los 3 retornos tempranos de `entregaAbrir` (token inexistente/ya abierto/expirado) antes no dejaban ningún rastro en la auditoría |
-| 065 | Rate-limit de `personal-registro` gana límite también por DNI (antes solo por IP, compartido entre `buscarDni`/`crear`): cierra la misma evasión por rotación de IP que `ticket_busqueda_intentos` ya cerraba (H-02) pero que este endpoint no tenía |
+| 065 | Rate-limit de `personal-registro` gana límite también por DNI (antes solo por IP, compartido entre `buscarDni`/`crear`): cierra la misma evasión por rotación de IP que `ticket_busqueda_intentos` ya cerraba (H-02) pero que este endpoint no tenía. **Revertido por la migración 084** |
 | 066 | Paso 1/2: `entregas` gana `token_hash` (sha256 del token, backfill de las filas existentes). El token en claro sigue en la columna `token` durante la transición — se retira en la 067 |
 | 067 | Paso 2/2 (aplicar solo ≥7 días después de la 066, ver advertencia en el propio archivo): retira la columna `token` en claro de `entregas` — desde acá el token de la URL pública ya no se persiste en texto plano en BD, solo su hash |
 | 068 | RLS real por módulo: `licencias`/`asignaciones_licencia`, `equipos`/`tipos_equipo`/`asignaciones_equipo`/`eventos_equipo` y `cuentas`/`asignaciones_cuenta` exigen `tiene_permiso_modulo('...')` además de `es_staff()` (JEFE exento siempre) — antes `staff_modulos_permisos` (056) solo controlaba sidebar/router, cualquier staff activo podía leer/escribir esas tablas vía SDK directo. `empleados` es un caso especial a propósito: el SELECT sigue abierto (Equipos/Licencias/Correos embeben el nombre del empleado), solo INSERT/UPDATE quedan gateados por el módulo. **Requiere `db import`, no `db query`/`apply-migration.mjs` — tiene un `create or replace function` con dollar-quoting** |
 | 069 | Tabla `schema_migrations`: tracking real de qué migración ya se aplicó (backfill de 001-068), llenada desde ahora por `scripts/apply-migration.mjs` y por el job `deploy-manual` de CI. No reemplaza `db migrations up` (sigue sin usarse, ver migración 035) |
 | 070 | Tabla `function_deploys`: qué versión (sha256 + commit) de cada edge function está realmente desplegada, llenada solo por el job `deploy-manual` de CI. Cierra el pendiente de H-12 (confirmar si el redeploy real ya ocurrió) |
+| 071-083 | Existen como archivos en `migrations/` y ya están aplicadas en producción (incluye el hardening de RLS de "tablas satélite" en cuentas/tickets/problemas, migraciones 081-083), pero esta tabla todavía no las documenta fila por fila — pendiente de reconciliar junto con la divergencia de esta rama respecto a `main` (ver `docs/HISTORIAL-AUDITORIAS.md`) |
+| 084 | **Retiro completo del módulo "Pre-registro de personal"** (2026-08-29): dropea `personal_registros`/`personal_registro_intentos` (revierte 042/046/047/065). El módulo fue un experimento puntual — sus datos ya se habían exportado y usado (0 filas verificadas antes de aplicar) — que después sirvió de piloto para el módulo de Encuestas (043). Junto con esta migración se retiró también el código: edge function `personal-registro` (des-desplegada de InsForge), módulo frontend `modules/personal/`, store, dominios de API, rutas `/personal-registro`/`/personal-registros` e ítem de sidebar |
+| 085 | Disponibilidad derivada de equipos: columna `equipos.tiene_asignacion_activa` mantenida por triggers (`set_equipo_tiene_asignacion_activa`, `sync_equipo_tiene_asignacion_activa`); arregla el HTTP 414 del listado de Equipos |
+| 086 | Revisión integral v2 (Ciclo 20): gate de módulo en las RPC `dar_baja_empleado`, `cerrar_ticket` y `reporte_*`; canales realtime de staff solo para staff activo; `siguiente_codigo_ticket` sin EXECUTE público; `revocar_cuenta_personal` con fecha de Lima; CHECK de formato cifrado en `cuentas.password`, `licencias.clave` y `accesos_sensibles.password` |
+| 087 | RLS de `areas_obras` con gate del módulo `empleados` (cierra el patrón de tablas satélite sin gate) |
+| 088 | Elimina `tiene_permiso_credenciales_ver()` (huérfana: ninguna policy la usaba); `tienePermisoCredenciales()` en `functions/credenciales.ts` queda como única fuente de la regla |
+| 089 | `tickets.resuelto_at` mantenida por trigger (antes se aproximaba con `updated_at`) |
+| 099 | **(Ciclo 21, escrita, sin aplicar)** Permisos: regla única en el servidor — `puede(user, permiso)` (solo `project_admin`), `puede_actual()` y `exigir_permiso()` (42501); cierra `empresas`, `kb_registrar_feedback`, UPDATE de `kb_articulos`, `ticket_token_existe` y el último JEFE de un acceso sensible; amplía `accesos_log_accion_check` con 5 acciones; sección separable (decisión pendiente del dueño) con gate de escritura en `categorias_ticket` y `ubicaciones` |
+| 100 | **(Ciclo 21, escrita, sin aplicar)** Integridad concurrente y trazabilidad: índice único `asignaciones_equipo_una_activa`; `FOR UPDATE` en los topes de licencia y exclusividad de cuentas; CHECK de `motivo_cierre`, `equipos_fotos_max` y `empleados_dni_formato` (`NOT VALID`); trigger `cuentas_password_cambio`; `realtime.publish()` tolerante; whitelist de transiciones de problemas; `commit_sha`/`entorno` en `schema_migrations`/`function_deploys` |
+| 104 | **(Ciclo 21, escrita, sin aplicar)** `intentos_publicos (ambito, clave, created_at)`: rate-limit unificado de los endpoints públicos; reemplazará a las tres tablas `*_intentos` (aún no se borran) |
+| 110 | **(Ciclo 21, escrita, sin aplicar)** Actas firmadas en físico: tabla `actas` (solo PDF, bucket privado `actas-firmadas`, paso manual de creación), `registrar_acta`, evento `acta_adjuntada`, vista `v_actas_pendientes`; acciones `subirActa` y `urlActa` de la function `equipos-fotos`. Requiere 099, 101 y 103 |
+| 111 | **(Ciclo 21, escrita, sin aplicar)** Adjuntos privados de tickets: `crear_ticket_publico` (ticket + evento + rate-limit en una transacción) y `adjuntar_captura_ticket`; key `tickets/<id>/captura.<ext>` y URL firmada; el bucket `tickets-adjuntos` se vuelve privado a mano en el panel al final. Requiere 099 y 104 |
+| 112 | **(Ciclo 21, escrita, sin aplicar)** Retención y anonimización: `config_retencion`, `purgar_datos_temporales()`, `anonimizar_empleado`, `v_empleados_anonimizables`, `entorno`/`es_branch()`. Requiere 099, 102, 103 y 104 |
+| 109 | **(Ciclo 21, escrita, sin aplicar)** Portal del empleado por enlace firmado: `empleado_enlaces` (solo `sha256`), `asignaciones_equipo.confirmado_por_empleado_at`; RPC `portal_emitir_enlace`, `portal_revocar_enlace`, `portal_abrir`, `portal_confirmar_equipo`; extiende la purga de la 112. **Se aplica después de la 112.** Requiere 099, 101, 102 y 112 |
+| 113 | **(Ciclo 21, escrita, sin aplicar)** Corrige la 107: se puede borrar de `auth.users` a quien registró o aprobó un cambio (`check_transicion_cambio` y `cambios_aprobacion_coherente`). Requiere 107 |
+| 114 | **(escrita, sin aplicar)** `aviso` en `categorias_ticket` y `subcategorias_ticket` (≤ 600, sin HTML, blanco → NULL); se muestra al solicitante y al técnico. Sin dependencias nuevas |
+| 115 | **(escrita, sin aplicar)** Reportes: `v_ticket_hechos`, `v_kpi_volumen/tiempos/reaperturas/csat`, `v_backlog_tramos`, RPC `reporte_tickets(date,date,uuid)`; `reporte_satisfaccion_consolidado` reescrita; se eliminan `reporte_tickets(timestamptz,timestamptz)` y `reporte_tickets_resumen`; parámetros `csat_muestra_minima`, `dias_corte_reapertura`. Requiere 089, 099 y 103 |
+| 108 | **(Ciclo 21, escrita, sin aplicar)** Solicitudes de servicio: `solicitud_tipos`, `solicitud_plantilla_pasos`, `solicitudes` (`SOL-####`), `solicitud_pasos`; RPC `crear_solicitud`, `completar_paso_solicitud`, `omitir_paso_solicitud`, `cancelar_solicitud`, `convertir_ticket_en_solicitud`; autocompletado por triggers; `dar_baja_empleado` crea la solicitud de baja; `dashboard_resumen` con `solicitudes_abiertas`. Requiere 099, 101, 102 y 103 |
+| 107 | **(Ciclo 21, aplicada por el dueño el 2026-10-02)** Servicios y cambios: `servicios` (≤15) con `servicio_id` opcional en categorías, plataformas, licencias y tipos de equipo; `cambios` (`CHG-####`), `cambio_eventos`, `cambio_tickets`; RPC `crear_cambio`, `transicionar_cambio`, `aprobar_cambio`, `rechazar_cambio`; `cambio_id` en `schema_migrations`/`function_deploys`. Requiere 099 y 101 |
+| 106 | **(Ciclo 21, escrita, sin aplicar)** KEDB: `problemas.workaround/error_conocido/kb_articulo_id`, `kb_articulos.tipo/problema_id`, `ticket_kb_usos`, `v_kpi_kb`; `check_problema_cierre` ampliado; RPC `publicar_workaround_problema`, `crear_kb_desde_ticket`, `registrar_uso_kb_ticket`. Requiere 099 y 101 |
+| 101 | **(Ciclo 21, escrita, sin aplicar)** RPC transaccionales: `crear_cuenta_asignada`, `traspasar_cuenta`, `cerrar_asignacion_cuenta`, `asignar_equipo`, `devolver_equipo`, `mover_equipo`, `migrar_importacion_equipo(s)`, `crear_licencia_con_cuenta` y `verificar_equipo` (guard `exigir_permiso`; la lógica vive en funciones `*_nucleo` solo para `project_admin`); trigger `cuentas_log_evento` (CRUD de cuentas en `accesos_log`, nunca la contraseña); CHECK de `eventos_equipo` ampliado (`verificado`, `acta_adjuntada`, `recepcion_confirmada`); `revocar_cuenta_personal` delega en `cerrar_asignacion_cuenta`. Requiere 099 y 100 |
+| 102 | **(Ciclo 21, escrita, sin aplicar)** Ciclo de vida del empleado: `empleado_eventos` (inmutable, sin DNI ni valores de contacto), `transiciones_empleado_permitidas`, `contexto_transaccion`, RPC `suspender_empleado`, `reactivar_empleado`, `reingresar_empleado`, `dar_baja_empleado(uuid, motivo)` y `registrar_revision_accesos`; interruptor `empleados_ajustes.exigir_contexto_rpc` (nace en `false` hasta que el frontend use las RPC); backfill de eventos. Requiere 099 |
+| 103 | **(Ciclo 21, escrita, sin aplicar)** `config_parametros` (10 umbrales editables por el JEFE), vistas `v_licencias_cupo` y `v_categorias_recurrentes`, y la RPC `dashboard_resumen()` que reemplaza ≈25 consultas del Inicio (secciones por módulo y errores por sección). Requiere 099 |
 
 ## Checklist de deploy
 
-1. Aplicar migraciones pendientes (`node scripts/apply-migration.mjs migrations/0XX_….sql` en Windows; para migraciones con `create function`/`do $$...$$` como la 037/038, usar `npx @insforge/cli db import migrations/0XX_….sql` — ver gotcha en `AGENTS.md`). Alternativa sin los gotchas de Windows: disparar manualmente el job `deploy-manual` de `.github/workflows/ci.yml` (`workflow_dispatch`, un archivo de migración a la vez — nunca aplica "todas las pendientes", el proyecto no trackea cuáles ya corrieron).
+1. Aplicar migraciones pendientes (`node scripts/deploy.mjs migracion migrations/0XX_….sql --dry-run` primero; exige árbol limpio y HEAD en `origin/main`; `apply-migration.mjs` quedó como alias en desuso; para migraciones con `create function`/`do $$...$$` como la 037/038, usar `npx @insforge/cli db import migrations/0XX_….sql` — ver gotcha en `AGENTS.md`). Alternativa sin los gotchas de Windows: disparar manualmente el job `deploy-manual` de `.github/workflows/ci.yml` (`workflow_dispatch`, un archivo de migración a la vez — nunca aplica "todas las pendientes", el proyecto no trackea cuáles ya corrieron).
 2. Redesplegar edge functions si cambiaron: `credenciales`, `tickets`,
-   `encuestas`, `personal-registro` (o marcar `desplegar_functions` al disparar el mismo job `deploy-manual`).
+   `encuestas`, `equipos-fotos` (o marcar `desplegar_functions` al disparar el mismo job `deploy-manual`).
    **Pendiente de este redeploy (H-12, 2026-08-16)**: el import de las 4 pasó
    de `npm:@insforge/sdk` (sin versión, resolvía a la última en cada deploy)
    a `npm:@insforge/sdk@1.5.2` (fijo, igual que `frontend/package.json`).
@@ -547,7 +589,7 @@ Desde 2026-08-18 (Ciclo 11), `tests/integration/` tiene dos archivos más:
   S-04) — si se agrega un origen externo nuevo (fuente, CDN, API), hay que
   sumarlo a la CSP ahí o el navegador lo bloquea en silencio.
 - CORS de las 4 edge functions (`credenciales`, `tickets`, `encuestas`,
-  `personal-registro`): allowlist con el dominio de producción + localhost
+  `equipos-fotos`): allowlist con el dominio de producción + localhost
   (dev), una por función. Si cambia el dominio, actualizar
   `ORIGENES_PERMITIDOS` en los 4 archivos y redesplegar.
 - **El sistema no envía avisos ni notificaciones por correo** (retirado en la

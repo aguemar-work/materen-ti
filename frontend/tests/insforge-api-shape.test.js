@@ -8,10 +8,14 @@ import { insforgeApi } from '../src/api/insforge.js';
 const METODOS = [
   'buscarGlobal',
   // empleados
-  'listEmpleadosRecientes', 'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
+  'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
   'getEmpleado', 'createEmpleado', 'buscarPorDni',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
-  'conteosVinculos',
+  'conteosVinculos', 'conteosEmpleadosPorEstado',
+  // ciclo de vida del empleado (migración 102) y lecturas del expediente
+  'suspenderEmpleado', 'reingresarEmpleado', 'registrarRevisionAccesos', 'ultimaRevisionAccesos',
+  'listEventosEmpleado', 'ticketsDeEmpleado', 'entregasDeEmpleado', 'actasDeEmpleado',
+  'historialCuentasEmpleado', 'historialLicenciasEmpleado', 'historialEquiposEmpleado',
   // catálogos
   'listEmpresas', 'createEmpresa', 'updateEmpresa', 'softDeleteEmpresa',
   'listPlataformas', 'createPlataforma', 'updatePlataforma', 'softDeletePlataforma',
@@ -22,59 +26,79 @@ const METODOS = [
   // cuentas
   'listCuentasPorEmpleado', 'createCuenta', 'updateCuenta', 'traspasarCuenta',
   'historialCuenta', 'cerrarAsignacion', 'revocarCuentaPersonal',
-  // dashboard / actividad
-  'getEstadisticas', 'listPendientes', 'pendientesTickets', 'listActividad',
+  // dashboard / actividad (getEstadisticas, listPendientes, pendientesTickets y
+  // misTickets se retiraron el 2026-10-03: todo sale de getResumen)
+  'listActividad', 'getResumen',
   // correos
-  'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados',
+  'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados', 'conteosCorreosPorVista',
   'createCorreo', 'updateCorreo',
   'softDeleteCorreo', 'asignarCuentaExistente',
   // licencias
-  'listLicencias', 'listLicenciasPage', 'listLicenciasFiltrados', 'createLicencia', 'updateLicencia', 'renovarLicencia',
+  'listLicencias', 'listLicenciasPage', 'listLicenciasFiltrados', 'conteosLicenciasPorSituacion', 'createLicencia', 'createLicenciaConCuenta', 'updateLicencia', 'renovarLicencia',
   'softDeleteLicencia', 'asignarLicencia', 'cerrarAsignacionLicencia', 'licenciasPorEmpleado',
   'asignarUsuario', 'liberarUsuario',
   // equipos
   'listEquipos', 'listEquiposPage', 'listEquiposFiltrados', 'asignacionActivaEquipo', 'moverEquipo', 'createEquipo', 'updateEquipo',
   'cambiarEstadoEquipo', 'softDeleteEquipo', 'asignarEquipo', 'devolverEquipo',
   'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado', 'ultimosMovimientos',
+  'conteosEquiposPorSituacion',
+  // hoja de vida, actas firmadas y etiquetas QR (RPC 101, tabla actas 110)
+  'verificarEquipo', 'getEquipo', 'buscarEquipoPorCodigo', 'listEquiposPorIds', 'guardarFotosEquipo',
+  'asignacionesDeEquipo', 'listActasEquipo', 'subirActa', 'urlActa',
   // bandeja de importación de equipos desde Excel (migración 057)
   'listImportacionPendiente', 'bulkCrearImportacion', 'updateImportacion',
-  'eliminarImportacion', 'vaciarImportacion',
+  'eliminarImportacion', 'vaciarImportacion', 'migrarImportacionEquipo', 'migrarImportacionEquipos',
   // tickets (staff) + categorías
   'listCategoriasTicket', 'listSubcategoriasTicket', 'createCategoriaTicket',
   'updateCategoriaTicket', 'softDeleteCategoriaTicket', 'createSubcategoriaTicket',
   'updateSubcategoriaTicket', 'softDeleteSubcategoriaTicket',
-  'listTickets', 'listTicketsPage', 'listTicketsFiltrados',
+  'listTickets', 'listTicketsPage', 'listTicketsFiltrados', 'contarTickets',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
-  'obtenerReporteTickets', 'obtenerResumenTickets', 'obtenerSatisfaccionConsolidado', 'listarTicketsDelPeriodo',
+  // reportes (migración 115): solo RPC, nada se agrega en el cliente
+  'obtenerReporteTickets', 'obtenerSatisfaccionConsolidado',
+  // parámetros de negocio (config_parametros, 103): lectura de un entero
+  'parametroEntero',
   // staff
   'listStaff', 'updateStaff', 'nombresStaff',
   // accesos sensibles
   'listAccesosSensibles', 'permisosDeAcceso', 'crearAccesoSensible',
   'actualizarAccesoSensible', 'eliminarAccesoSensible',
   // base de conocimiento
-  'listKbPage', 'getKbArticulo', 'listArticulosRelacionados',
+  'listKbPage', 'getKbArticulo', 'listArticulosRelacionados', 'conteosKbPorEstado',
   'crearKbArticulo', 'actualizarKbArticulo', 'softDeleteKbArticulo', 'votarKbArticulo',
+  // KEDB (migración 106): workaround de un problema, KB desde un ticket y usos
+  'publicarWorkaroundProblema', 'crearKbDesdeTicket', 'registrarUsoKbTicket', 'listUsosKbTicket', 'kpiKbArticulo',
   // gestión de problemas
-  'listProblemasPage', 'getProblema', 'crearProblema', 'actualizarProblema', 'softDeleteProblema',
+  'listProblemasPage', 'conteosProblemasPorVista', 'getProblema', 'crearProblema', 'actualizarProblema', 'softDeleteProblema',
   'listTicketsVinculados', 'vincularTicket', 'desvincularTicket',
   'listAccionesCorrectivas', 'crearAccionCorrectiva', 'actualizarAccionCorrectiva', 'softDeleteAccionCorrectiva',
   'getProblemaAbiertoDeTicket', 'listCategoriasRecurrentes', 'listAccionesCorrectivasVencidas', 'pendientesProblemas',
-  // pre-registro de personal
-  'listPersonalRegistrosPage', 'listPersonalRegistrosFiltrados', 'marcarUsado', 'eliminarRegistro',
   // encuestas
   'listEncuestas', 'getEncuesta', 'createEncuesta', 'updateEncuesta', 'softDeleteEncuesta',
   'listRondas', 'crearRonda', 'cerrarRonda', 'listRespuestas',
+  // solicitudes de servicio (migración 108): lectura con RLS y escritura por RPC
+  'listSolicitudesPage', 'conteosSolicitudesPorEstado', 'getSolicitud', 'solicitudesDeEmpleado',
+  'solicitudDeBaja', 'objetivosDePasosSolicitud', 'crearSolicitud', 'completarPasoSolicitud',
+  'omitirPasoSolicitud', 'cancelarSolicitud', 'convertirTicketEnSolicitud',
+  // cambios (migración 107): lectura con RLS y escritura por RPC
+  'listCambiosPage', 'conteosCambiosPorVista', 'getCambio', 'listEventosCambio', 'ticketsDeCambio',
+  'buscarTicketPorCodigo', 'kpiCambios', 'cambiosAprobacionVencida', 'crearCambio', 'actualizarCambio',
+  'transicionarCambio', 'aprobarCambio', 'rechazarCambio', 'vincularCambioTicket', 'desvincularCambioTicket',
+  // servicios (migración 107): catálogo de ≤ 15, lo escribe solo un JEFE
+  'listServicios', 'createServicio', 'updateServicio', 'softDeleteServicio',
+  // portal del empleado (migración 109): enlace por token, solo columnas no secretas
+  'enlacePortalActivo', 'emitirEnlacePortal', 'revocarEnlacePortal',
   // notificaciones
   'listNotificaciones', 'listLecturas', 'marcarLeida', 'marcarVariasLeidas',
   // permisos de módulo (migración 056)
-  'misModulos', 'modulosDeStaff', 'guardarModulos',
+  'misModulos', 'modulosDeStaff', 'modulosPorStaff', 'guardarModulos',
   // permisos individuales (migración 060)
   'misPermisos', 'setCredencialesVer',
 ];
 
 describe('forma de insforgeApi', () => {
-  it('expone exactamente los 164 métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
+  it('expone exactamente los métodos conocidos (sin pérdidas ni colisiones del spread)', () => {
     const actuales = Object.keys(insforgeApi)
       .filter((k) => typeof insforgeApi[k] === 'function')
       .sort();

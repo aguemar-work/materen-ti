@@ -5,13 +5,19 @@ import { usePlataformasStore } from '../../stores/plataformas.js';
 import { showToast } from '../../core/toast.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
 import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import { useFocoAtrapado } from '../../composables/useFocoAtrapado.js';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import EncabezadoCatalogo from '../configuracion/EncabezadoCatalogo.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
+import AppBuscador from '../../components/ui/AppBuscador.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 
 const store = usePlataformasStore();
@@ -22,10 +28,11 @@ const mostrarForm = ref(false);
 const plataformaEditar = ref(null);
 const guardando = ref(false);
 const errorForm = ref('');
+const infoErrorForm = infoNotificacion('error');
 
-// Foco atrapado mientras el modal está abierto (Fase 4)
-const panelForm = ref(null);
-useFocoAtrapado(panelForm, mostrarForm);
+// Cerrar vía AppDialog.cerrar() reproduce la animación de salida;
+// el @cerrado del AppDialog es quien baja mostrarForm.
+const modalForm = ref(null);
 
 const form = ref({ id: '', nombre: '', icono: '' });
 
@@ -38,9 +45,23 @@ const listaFiltrada = computed(() => {
 });
 
 const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(listaFiltrada);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaOrdenada);
+
+const { esMovil } = useEsMovil();
+
+// Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
+function accionesDe(fila) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(fila) },
+    { icono: 'ti-trash', label: 'Dar de baja', danger: true, onClick: () => { porDarDeBaja.value = fila; } },
+  ];
+}
 
 const esEdicion = computed(() => !!plataformaEditar.value?.id);
+
+const campoSlug = useCampoAccesible({ ayuda: () => (esEdicion.value ? 'No editable después de creado' : '') });
+const campoNombre = useCampoAccesible();
+const campoIcono = useCampoAccesible({ ayuda: () => 'Clase CSS, ej: ti ti-brand-google' });
 
 function abrirNueva() {
   plataformaEditar.value = null;
@@ -111,165 +132,213 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- Panel embebido en Configuración (la cabecera la pone ConfiguracionView) -->
-  <div class="plataformas-page vista-modulo">
-    <main class="page">
-      <div class="card card--fill">
-        <div class="card-toolbar">
-          <div class="toolbar-title">
-            Plataformas registradas
-            <span class="badge-count">{{ listaFiltrada.length }} plataformas</span>
-          </div>
-          <button class="btn btn-primary" type="button" @click="abrirNueva">
-            <i class="ti ti-plus" aria-hidden="true"></i> Nueva plataforma
-          </button>
-        </div>
+  <!-- Panel embebido en Configuración (la cabecera de página la pone ConfiguracionView) -->
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Plataformas"
+      :conteo="listaFiltrada.length"
+      descripcion="Servicios donde el personal tiene cuentas de acceso: Gmail, Bitrix24, VPN, ERP."
+    >
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nueva plataforma" @click="abrirNueva" />
+      </template>
+    </EncabezadoCatalogo>
 
-        <div class="filters">
-          <div class="search-wrap">
-            <i class="ti ti-search"></i>
-            <input
-              v-model="busqueda"
-              type="text"
-              placeholder="Buscar por nombre o slug..."
-            >
-          </div>
-        </div>
+    <!-- Filtro (fuera de la tabla) -->
+    <div class="flex flex-wrap items-center gap-3">
+      <AppBuscador v-model="busqueda" label="Buscar plataformas" placeholder="Buscar por nombre o slug" />
+    </div>
 
-        <div v-if="error" class="no-results plataformas-error">{{ error }}</div>
+    <div v-if="error" class="notif notif--danger" role="alert">
+      <i class="ti ti-alert-circle" aria-hidden="true"></i>
+      <div class="notif__texto"><p class="notif__detalle">{{ error }}</p></div>
+    </div>
 
-        <EmptyState
-          v-else-if="!cargando && listaFiltrada.length === 0"
-          icono="ti ti-apps"
-          titulo="Sin plataformas"
-          :mensaje="busqueda ? 'No hay resultados con ese filtro.' : 'Agrega la primera plataforma.'"
+    <AppVacio
+      v-else-if="!cargando && totalItems === 0"
+      icono="ti ti-apps"
+      :titulo="busqueda ? 'Sin resultados' : 'Sin plataformas todavía'"
+      :mensaje="busqueda ? 'No hay plataformas que coincidan con la búsqueda.' : 'Agregue la primera plataforma (Gmail, Bitrix24, VPN...) para registrar cuentas de acceso en ella.'"
+    >
+      <AppButton v-if="!busqueda" variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar plataforma" @click="abrirNueva" />
+    </AppVacio>
+
+    <template v-else>
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <p v-if="cargando" class="sr-only" role="status">Cargando plataformas…</p>
+
+        <!-- ── Tabla (escritorio) ── -->
+        <AppTable
+          v-if="!esMovil"
+          :value="listaPaginada"
+          :loading="cargando"
+          :total-records="totalItems"
+          :rows="tamPagina"
+          :orden="{ columna, direccion }"
+          aria-label="Plataformas registradas"
+          @ordenar="ordenarPor"
         >
-          <button v-if="!busqueda" class="btn" type="button" @click="abrirNueva">
-            <i class="ti ti-plus"></i> Agregar plataforma
-          </button>
-        </EmptyState>
+          <AppColumn field="nombre" header="Plataforma" sortable>
+            <template #body="{ data: fila }">
+              <div class="flex min-w-0 items-center gap-3">
+                <span
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base"
+                  :class="fila.icono ? 'text-gray-600' : 'text-gray-300'"
+                  :title="fila.icono || 'Sin ícono'"
+                >
+                  <i :class="fila.icono ? ['ti', fila.icono] : 'ti ti-apps'" aria-hidden="true"></i>
+                </span>
+                <span class="truncate font-medium text-gray-900">{{ fila.nombre }}</span>
+              </div>
+            </template>
+          </AppColumn>
+          <AppColumn field="id" header="Slug" sortable>
+            <template #body="{ data: fila }">
+              <code class="font-mono text-xs text-gray-600">{{ fila.id }}</code>
+            </template>
+          </AppColumn>
+          <AppColumn field="icono" header="Ícono">
+            <template #body="{ data: fila }">
+              <code v-if="fila.icono" class="font-mono text-xs text-gray-500">{{ fila.icono }}</code>
+              <span v-else class="text-gray-500">Sin ícono</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+            <template #body="{ data: fila }">
+              <div class="flex justify-end" @click.stop>
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </template>
+          </AppColumn>
+        </AppTable>
 
-        <div v-else-if="cargando || listaFiltrada.length > 0" class="table-wrap">
-          <p v-if="cargando" class="sr-only" role="status">Cargando plataformas…</p>
-          <table aria-label="Plataformas registradas">
-            <thead>
-              <tr>
-                <ThOrdenable clave="id" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Slug</ThOrdenable>
-                <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
-                <th scope="col">Ícono</th>
-                <th scope="col"><span class="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <SkeletonTabla v-if="cargando" :columnas="4" />
-              <template v-else>
-              <tr v-for="plat in listaPaginada" :key="plat.id">
-                <td>
-                  <code class="slug">{{ plat.id }}</code>
-                </td>
-                <td>
-                  <div class="user-name">{{ plat.nombre }}</div>
-                </td>
-                <td>
-                  <span v-if="plat.icono" class="icono-preview">
-                    <i :class="plat.icono" aria-hidden="true"></i>
-                    <span>{{ plat.icono }}</span>
-                  </span>
-                  <TextoVacio v-else />
-                </td>
-                <td>
-                  <div class="actions">
-                    <button
-                      class="icon-btn"
-                      type="button"
-                      title="Editar"
-                      aria-label="Editar"
-                      @click="abrirEditar(plat)"
-                    >
-                      <i class="ti ti-pencil"></i>
-                    </button>
-                    <button
-                      class="icon-btn danger"
-                      type="button"
-                      title="Dar de baja"
-                      aria-label="Dar de baja"
-                      @click="porDarDeBaja = plat"
-                    >
-                      <i class="ti ti-trash"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              </template>
-            </tbody>
-          </table>
-          <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-        </div>
+        <!-- ── Lista (móvil) ── -->
+        <template v-else>
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando plataformas...</p>
+          <ul v-else class="divide-y divide-gray-100" aria-label="Plataformas registradas">
+            <li v-for="fila in listaPaginada" :key="fila.id" class="flex items-start gap-3 px-4 py-3">
+              <span
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg"
+                :class="fila.icono ? 'text-gray-600' : 'text-gray-300'"
+              >
+                <i :class="fila.icono ? ['ti', fila.icono] : 'ti ti-apps'" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
+                <code class="block truncate font-mono text-xs text-gray-500">{{ fila.id }}</code>
+              </div>
+              <div class="-mr-1">
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </li>
+          </ul>
+        </template>
+
+        <AppPaginacion
+          v-if="!esMovil && !cargando && totalItems > 0"
+          :pagina="paginaActual"
+          :tam-pagina="tamPagina"
+          :total="totalItems"
+          @update:pagina="paginaActual = $event"
+          @update:tam-pagina="cambiarTamPagina"
+        />
       </div>
-    </main>
+      <AppPaginacion
+        v-if="esMovil && !cargando"
+        variante="compacta"
+        :pagina="paginaActual"
+        :tam-pagina="tamPagina"
+        :total="totalItems"
+        @update:pagina="paginaActual = $event"
+      />
+    </template>
 
-    <!-- Modal plataforma -->
-    <Transition name="modal-anim">
-    <div v-if="mostrarForm" class="modal-bg" @click.self="cerrarForm">
-      <div ref="panelForm" class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="plat-form-title" tabindex="-1">
-        <div class="modal-title">
-          <span id="plat-form-title">{{ esEdicion ? 'Editar plataforma' : 'Nueva plataforma' }}</span>
-          <button class="icon-btn" type="button" aria-label="Cerrar" @click="cerrarForm">
-            <i class="ti ti-x" aria-hidden="true"></i>
-          </button>
-        </div>
-
-        <form @submit.prevent="guardar">
-          <div class="modal-body form-grid">
-          <div class="form-group full">
-            <label for="plat-id">
-              Slug (ID) *
-              <span v-if="esEdicion" class="label-hint">no editable</span>
-            </label>
+    <!-- Modal plataforma (AppDialog compartido) -->
+    <AppDialog
+      v-if="mostrarForm"
+      ref="modalForm"
+      :titulo="esEdicion ? 'Editar plataforma' : 'Nueva plataforma'"
+      size="sm"
+      @cerrado="cerrarForm"
+    >
+      <form id="plat-form" @submit.prevent="guardar">
+        <div class="form-grid">
+        <div class="campo" :class="{ 'campo--inerte': guardando || esEdicion }">
+          <label class="campo__etiqueta" :for="campoSlug.id">
+            Slug (ID)<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
             <input
-              id="plat-id"
+              :id="campoSlug.id"
               v-model="form.id"
+              class="campo__control"
+              type="text"
+              placeholder="ej: google-workspace"
               required
               :disabled="guardando || esEdicion"
-              placeholder="ej: google-workspace"
               pattern="[a-z0-9\-]+"
-              title="Solo minúsculas, números y guiones"
+              title="Minúsculas, números y guiones"
+              :aria-describedby="campoSlug.describedBy.value"
             >
           </div>
+          <p v-if="esEdicion" :id="campoSlug.idAyuda" class="campo__pie">No editable después de creado</p>
+        </div>
 
-          <div class="form-group full">
-            <label for="plat-nombre">Nombre *</label>
-            <input id="plat-nombre" v-model="form.nombre" required :disabled="guardando">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNombre.id">
+            Nombre<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <input
+              :id="campoNombre.id"
+              v-model="form.nombre"
+              class="campo__control"
+              type="text"
+              required
+              :disabled="guardando"
+            >
           </div>
+        </div>
 
-          <div class="form-group full">
-            <label for="plat-icono">
-              Ícono
-              <span class="label-hint">clase CSS, ej: ti ti-brand-google</span>
-            </label>
-            <div class="icono-row">
-              <input id="plat-icono" v-model="form.icono" :disabled="guardando" placeholder="ti ti-...">
-              <span v-if="form.icono" class="icono-preview-sm">
-                <i :class="form.icono"></i>
-              </span>
+        <div class="full flex items-start gap-3">
+          <div class="campo min-w-0 flex-1" :class="{ 'campo--inerte': guardando }">
+            <label class="campo__etiqueta" :for="campoIcono.id">Ícono</label>
+            <div class="campo__caja">
+              <input
+                :id="campoIcono.id"
+                v-model="form.icono"
+                class="campo__control"
+                type="text"
+                placeholder="ti ti-..."
+                :disabled="guardando"
+                :aria-describedby="campoIcono.describedBy.value"
+              >
             </div>
+            <p :id="campoIcono.idAyuda" class="campo__pie">Clase CSS, ej: ti ti-brand-google</p>
           </div>
+          <span
+            v-if="form.icono"
+            class="mt-7 flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-50 text-xl text-gray-600"
+            title="Vista previa del ícono"
+          >
+            <i :class="['ti', form.icono]" aria-hidden="true"></i>
+          </span>
+        </div>
 
+        </div>
+
+        <div v-if="errorForm" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+          <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorForm }}</p>
           </div>
-
-          <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
-
-          <div class="modal-actions full">
-            <button class="btn" type="button" :disabled="guardando" @click="cerrarForm">Cancelar</button>
-            <button class="btn btn-primary" type="submit" :disabled="guardando">
-              <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-              {{ guardando ? 'Guardando...' : 'Guardar' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-    </Transition>
+        </div>
+      </form>
+      <template #acciones>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
+        <AppButton type="submit" form="plat-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
+      </template>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -281,57 +350,8 @@ onMounted(async () => {
       :mensaje="`¿Dar de baja a “${porDarDeBaja.nombre}”? El registro se eliminará lógicamente.`"
       confirmar-label="Dar de baja"
       :cargando="dandoDeBaja"
-      @cancel="porDarDeBaja = null"
+      @cerrado="porDarDeBaja = null"
       @confirm="confirmarBaja"
     />
   </div>
 </template>
-
-<style scoped>
-.plataformas-error {
-  color: var(--color-danger);
-}
-
-/* Datos uniformes: el chip conserva fondo/borde, no cambia tipografía */
-.slug {
-  background: var(--color-surface-2, var(--color-bg-hover));
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.icono-preview {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 16px;
-}
-
-
-.icono-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.icono-row input {
-  flex: 1;
-}
-
-.icono-preview-sm {
-  font-size: 20px;
-  line-height: 1;
-  color: var(--color-text-primary);
-}
-
-.label-hint {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  font-weight: 400;
-  margin-left: 6px;
-}
-
-
-.modal-actions.full {
-  grid-column: 1 / -1;
-}
-</style>

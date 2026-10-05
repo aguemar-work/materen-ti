@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
+import { anotarErrorDb } from '../api/erroresDb.js';
+import { gettersStaff } from './gettersStaff.js';
 
 // Detalle de un problema: título/descripción/causa raíz, tickets vinculados
 // y acciones correctivas. Mismo patrón que stores/ticketDetalle.js: state
@@ -16,16 +18,7 @@ export const useProblemaDetalleStore = defineStore('problemaDetalle', {
     error: null,
   }),
 
-  getters: {
-    // staffLista ya viene solo con staff activo (staff_nombres(), migración
-    // 061): staffActivo queda como alias por compatibilidad con la vista.
-    staffActivo: (state) => state.staffLista,
-    staffPorId() {
-      const mapa = {};
-      for (const s of this.staffActivo) mapa[s.user_id] = s.nombre;
-      return mapa;
-    },
-  },
+  getters: { ...gettersStaff },
 
   actions: {
     async cargar(id) {
@@ -81,6 +74,21 @@ export const useProblemaDetalleStore = defineStore('problemaDetalle', {
     async eliminarAccion(id) {
       await insforgeApi.softDeleteAccionCorrectiva(id);
       this.accionesCorrectivas = await insforgeApi.listAccionesCorrectivas(this.problema.id);
+    },
+
+    // KEDB (migración 106): publica el workaround en la Base de conocimiento y
+    // deja el problema como error conocido. Devuelve el artículo (su `estado`
+    // dice si quedó publicado —jefe— o en revisión). Se recarga el problema
+    // porque el servidor fijó error_conocido, workaround y kb_articulo_id.
+    async publicarWorkaround(datos = {}) {
+      let articulo;
+      try {
+        articulo = await insforgeApi.publicarWorkaroundProblema(this.problema.id, datos);
+      } catch (e) {
+        throw anotarErrorDb(e, { entidad: 'problema' });
+      }
+      this.problema = await insforgeApi.getProblema(this.problema.id);
+      return articulo;
     },
 
     async eliminarProblema() {

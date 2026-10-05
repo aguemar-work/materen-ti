@@ -5,9 +5,13 @@ import { useAccesosSensiblesStore } from '../../stores/accesosSensibles.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { CATEGORIAS_ACCESO_SENSIBLE } from '../../core/dominio-accesos-sensibles.js';
 import { generarPassword } from '../../core/generarPassword.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import Modal from '../../components/shared/Modal.vue';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppAvatar from '../../components/ui/AppAvatar.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   acceso: { type: Object, default: null },
@@ -18,7 +22,6 @@ const emit = defineEmits(['cerrar']);
 const auth = useAuthStore();
 const store = useAccesosSensiblesStore();
 
-const modal = ref(null);
 let resultado = false;
 
 const guardando = ref(false);
@@ -39,18 +42,24 @@ const form = ref({
   notas: '',
 });
 
+const campoNombre = useCampoAccesible();
+const campoCategoria = useCampoAccesible();
+const campoUsuario = useCampoAccesible();
+const campoPassword = useCampoAccesible();
+const campoNotas = useCampoAccesible();
+const infoErrorForm = infoNotificacion('error');
+
 // Quién puede revelar/editar/eliminar esta credencial. El usuario actual
 // SIEMPRE aparece marcado y no se puede destildar acá: si se sacara a sí
 // mismo, al guardar perdería el permiso sobre esta fila (RLS lo exige
 // para editar) y ningún otro camino en la UI se lo devolvería.
 const permisosSeleccionados = ref([]);
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => ({
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => ({
   form: form.value,
   permisos: [...permisosSeleccionados.value].sort(),
 }));
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
 
 function resetForm() {
   error.value = '';
@@ -103,26 +112,9 @@ function togglePermiso(userId) {
   else permisosSeleccionados.value.splice(i, 1);
 }
 
-// Guard de cierre del Modal compartido: backdrop/Escape/X pasan por acá
+// Guard de cierre del AppDialog compartido: backdrop/Escape/X pasan por acá
 // igual que el botón "Cancelar" — con cambios sin guardar se pide
 // confirmación antes de descartar; limpio cierra directo.
-function confirmarCierre() {
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return false;
-  }
-  return true;
-}
-
-function cancelar() {
-  if (confirmarCierre()) modal.value?.cerrar();
-}
-
-function descartarCambios() {
-  dialogoDescarte.value?.cerrar();
-  modal.value?.cerrar();
-}
-
 function generar() {
   form.value.password = generarPassword();
   passwordVisible.value = true;
@@ -150,7 +142,7 @@ async function guardar() {
     resultado = true;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al guardar el acceso';
+    error.value = mensajeError(e, { porDefecto: 'Error al guardar el acceso' });
   } finally {
     guardando.value = false;
   }
@@ -158,93 +150,160 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal
+  <AppDialog
     ref="modal"
     size="lg"
     :titulo="esEdicion ? 'Editar acceso sensible' : 'Nuevo acceso sensible'"
     :confirmar-cierre="confirmarCierre"
-    @close="emit('cerrar', resultado)"
+    @cerrado="emit('cerrar', resultado)"
   >
     <form id="acceso-sensible-form" class="form-grid" @submit.prevent="guardar">
-      <div class="form-group full">
-        <label for="as-nombre">Nombre *</label>
-        <input id="as-nombre" v-model="form.nombre" required placeholder="ej: Router principal, Correo gerencia" :disabled="guardando">
+      <!-- ── Credencial ── -->
+      <div class="section-label !mt-0 !border-t-0 !pt-0">
+        <i class="ti ti-key" aria-hidden="true"></i> Credencial
       </div>
 
-      <div class="form-group">
-        <label for="as-categoria">Categoría *</label>
-        <select id="as-categoria" v-model="form.categoria" required :disabled="guardando">
-          <option value="" disabled>Seleccionar categoría</option>
-          <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.label }}</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="as-usuario">Usuario *</label>
-        <input id="as-usuario" v-model="form.usuario" required :disabled="guardando">
-      </div>
-
-      <div class="form-group full">
-        <label for="as-password">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
-        <div class="input-with-action">
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoNombre.id">Nombre<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
           <input
-            id="as-password"
+            :id="campoNombre.id"
+            v-model="form.nombre"
+            class="campo__control"
+            type="text"
+            placeholder="ej: Router principal, Correo gerencia"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoNombre.invalido.value"
+            :aria-describedby="campoNombre.describedBy.value"
+          >
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoCategoria.id">Categoría<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <select
+            :id="campoCategoria.id"
+            v-model="form.categoria"
+            class="campo__control campo__control--select"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoCategoria.invalido.value"
+            :aria-describedby="campoCategoria.describedBy.value"
+          >
+            <option value="" disabled>Seleccionar categoría</option>
+            <option v-for="c in categorias" :key="c.id" :value="c.id">{{ c.label }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoUsuario.id">Usuario<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoUsuario.id"
+            v-model="form.usuario"
+            class="campo__control"
+            type="text"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoUsuario.invalido.value"
+            :aria-describedby="campoUsuario.describedBy.value"
+          >
+        </div>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoPassword.id">{{ esEdicion ? 'Nueva contraseña' : 'Contraseña' }}</label>
+        <div class="campo__caja pr-1">
+          <input
+            :id="campoPassword.id"
             v-model="form.password"
+            class="campo__control"
             :type="passwordVisible ? 'text' : 'password'"
             autocomplete="new-password"
-            :placeholder="esEdicion ? 'Dejar vacío para mantener la actual' : ''"
+            :placeholder="esEdicion ? 'Vacío = mantener la actual' : ''"
             :disabled="guardando"
+            :aria-invalid="campoPassword.invalido.value"
+            :aria-describedby="campoPassword.describedBy.value"
           >
-          <button type="button" class="icon-btn" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
+          <button type="button" class="icon-btn shrink-0" title="Generar contraseña" aria-label="Generar contraseña" :disabled="guardando" @click="generar">
             <i class="ti ti-refresh" aria-hidden="true"></i>
           </button>
-          <button type="button" class="icon-btn" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
-            <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'"></i>
+          <button type="button" class="icon-btn shrink-0" :title="passwordVisible ? 'Ocultar' : 'Mostrar'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">
+            <i :class="passwordVisible ? 'ti ti-eye-off' : 'ti ti-eye'" aria-hidden="true"></i>
           </button>
         </div>
       </div>
 
-      <div class="form-group full">
-        <label for="as-notas">Notas</label>
-        <textarea id="as-notas" v-model="form.notas" :disabled="guardando"></textarea>
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoNotas.id">Notas</label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoNotas.id"
+            v-model="form.notas"
+            class="campo__control campo__control--area"
+            :rows="2"
+            :disabled="guardando"
+            :aria-invalid="campoNotas.invalido.value"
+            :aria-describedby="campoNotas.describedBy.value"
+          ></textarea>
+        </div>
       </div>
 
-      <div class="form-group full section-label">
+      <!-- ── Permisos ── -->
+      <div class="section-label">
         <i class="ti ti-shield-lock" aria-hidden="true"></i> Quién puede revelar esta credencial
       </div>
 
-      <div class="form-group full">
-        <div v-if="cargandoJefes" class="loading-inline">Cargando JEFEs...</div>
-        <ul v-else class="permisos-lista">
-          <li v-for="j in jefesActivos" :key="j.user_id" class="permiso-item">
-            <label>
+      <fieldset class="full">
+        <legend class="sr-only">JEFE con permiso sobre esta credencial</legend>
+        <p v-if="cargandoJefes" class="py-3 text-sm text-gray-500" role="status">Cargando JEFEs...</p>
+        <ul v-else class="divide-y divide-gray-100 overflow-hidden rounded-md border border-gray-200">
+          <li v-for="j in jefesActivos" :key="j.user_id">
+            <label
+              class="flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-150"
+              :class="j.user_id === auth.user.id ? 'cursor-default bg-gray-50' : 'cursor-pointer hover:bg-gray-50'"
+            >
               <input
                 type="checkbox"
+                class="h-4 w-4 shrink-0 accent-primary-600"
                 :checked="permisosSeleccionados.includes(j.user_id)"
                 :disabled="guardando || j.user_id === auth.user.id"
                 @change="togglePermiso(j.user_id)"
               >
-              {{ j.nombre }}
-              <span v-if="j.user_id === auth.user.id" class="permiso-yo">(yo)</span>
+              <AppAvatar :nombre="j.nombre" />
+              <span class="min-w-0 flex-1 truncate text-gray-900">{{ j.nombre }}</span>
+              <span v-if="j.user_id === auth.user.id" class="shrink-0 text-xs text-gray-500">Usted · siempre incluido</span>
             </label>
           </li>
         </ul>
-        <p class="field-hint">
-          Solo los JEFE marcados acá van a poder revelar, editar o eliminar esta credencial. Su propio permiso queda incluido siempre.
+        <p class="mt-2 text-xs text-gray-500">
+          Solo los JEFE marcados podrán revelar, editar o eliminar esta credencial. Su propio permiso queda incluido siempre.
         </p>
-      </div>
+      </fieldset>
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <div v-if="error" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+        <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="acceso-sensible-form" :disabled="guardando || cargandoJefes">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-        {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton
+        type="submit"
+        form="acceso-sensible-form"
+        :label="guardando ? 'Guardando...' : 'Guardar'"
+        :loading="guardando"
+        :disabled="cargandoJefes"
+      />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
@@ -254,60 +313,7 @@ async function guardar() {
     mensaje="Tiene cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
-    @cancel="confirmarDescarte = false"
+    @cerrado="confirmarDescarte = false"
     @confirm="descartarCambios"
   />
 </template>
-
-<style scoped>
-.loading-inline {
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-  padding: 8px 0;
-}
-
-.input-with-action {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.input-with-action input {
-  flex: 1;
-}
-
-.permisos-lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 180px;
-  overflow-y: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-}
-
-.permiso-item label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-base);
-  font-weight: 400;
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-.permiso-yo {
-  color: var(--color-text-tertiary);
-  font-size: var(--fs-sm);
-}
-
-.field-hint {
-  margin: 6px 0 0;
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-}
-</style>

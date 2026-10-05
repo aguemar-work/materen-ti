@@ -11,6 +11,35 @@ import { useNotificacionesStore } from '../../stores/notificaciones.js';
 import { reproducirNotificacion } from '../../core/notificacionSonido.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import { iconoNotificacion } from '../../core/notificacionIconos.js';
+import { toasts, descartarToast } from '../../core/toast.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+
+// Tarjeta flotante común a los dos stacks: superficie blanca con borde de
+// 1px + sombra (flota sobre el contenido). El tipo se comunica con el
+// COLOR DEL ÍCONO y el texto, nunca con un fondo o borde de color — peso
+// visual proporcional al significado (docs/NOTAS-DISENO-ANTERIOR.md §2).
+// Los colores de estado son los de la paleta estándar de Tailwind (el rojo
+// ya lo usa AppButton `danger`); no hay escala success/warning propia en
+// el @theme, a propósito.
+const TARJETA =
+  'pointer-events-auto flex w-full items-start gap-3 rounded-lg border border-gray-200 bg-white ' +
+  'px-4 py-3 text-sm text-gray-800 shadow-lg';
+const COLOR_ICONO = {
+  danger: 'text-red-600',
+  success: 'text-green-600',
+  warning: 'text-amber-500',
+  info: 'text-primary-500',
+};
+const BOTON_CERRAR =
+  '-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 ' +
+  'hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
+// Transición compartida (entrada desde la derecha, salida con fade).
+const TRANSICION = {
+  enterActiveClass: 'transition duration-200 ease-out',
+  leaveActiveClass: 'transition duration-150 ease-in',
+  enterFromClass: 'translate-x-4 opacity-0',
+  leaveToClass: 'opacity-0',
+};
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -72,24 +101,28 @@ async function irAAviso(aviso) {
 
 <template>
   <!-- Aviso emergente de notificación nueva (tiempo real) -->
-  <transition-group name="aviso-fade" tag="div" class="aviso-stack">
+  <transition-group
+    v-bind="TRANSICION"
+    tag="div"
+    class="pointer-events-none fixed right-4 top-16 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2"
+  >
     <div
       v-for="a in avisos"
       :key="a.key"
-      class="aviso-card"
+      :class="[TARJETA, 'cursor-pointer transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500']"
       role="button"
       tabindex="0"
       @click="irAAviso(a)"
       @keydown.enter="irAAviso(a)"
       @keydown.space.prevent="irAAviso(a)"
     >
-      <i class="ti" :class="a.icono" aria-hidden="true"></i>
-      <div class="aviso-card-texto">
-        <span class="aviso-card-titulo">{{ a.titulo }}</span>
+      <i class="ti mt-0.5 shrink-0 text-base text-primary-500" :class="a.icono" aria-hidden="true"></i>
+      <div class="min-w-0 flex-1">
+        <span class="font-medium text-gray-900">{{ a.titulo }}</span>
       </div>
       <button
         type="button"
-        class="aviso-card-cerrar"
+        :class="BOTON_CERRAR"
         aria-label="Descartar aviso"
         @click.stop="descartarAviso(a.key)"
       >
@@ -97,101 +130,36 @@ async function irAAviso(aviso) {
       </button>
     </div>
   </transition-group>
+
+  <!-- Confirmaciones de acciones propias (showToast, core/toast.js): abajo a
+       la derecha, se van solas. Distinto del stack de arriba (avisos
+       realtime, arriba a la derecha, los descarta el usuario o expiran a los
+       6s) — misma tarjeta, dos colas independientes porque su origen y
+       su posición en pantalla son distintos. -->
+  <transition-group
+    v-bind="TRANSICION"
+    tag="div"
+    class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2"
+  >
+    <div
+      v-for="t in toasts"
+      :key="t.id"
+      :class="TARJETA"
+      :role="infoNotificacion(t.tipo).rolAria"
+    >
+      <i
+        class="ti mt-0.5 shrink-0 text-base"
+        :class="[infoNotificacion(t.tipo).icono, COLOR_ICONO[infoNotificacion(t.tipo).rol]]"
+        aria-hidden="true"
+      ></i>
+      <div class="min-w-0 flex-1">
+        <p>{{ t.msg }}</p>
+      </div>
+      <button type="button" :class="BOTON_CERRAR" aria-label="Descartar aviso" @click="descartarToast(t.id)">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </div>
+  </transition-group>
 </template>
 
-<style scoped>
-.aviso-stack {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: var(--z-popover);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: min(320px, calc(100vw - 32px));
-}
 
-.aviso-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 12px 12px 14px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  cursor: pointer;
-}
-
-.aviso-card:hover {
-  border-color: var(--color-border);
-}
-
-.aviso-card > i {
-  color: var(--color-accent-soft);
-  font-size: 18px;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.aviso-card-texto {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.aviso-card-titulo {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.aviso-card-cerrar {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  padding: 2px;
-  border-radius: 6px;
-  display: flex;
-  flex-shrink: 0;
-  font-size: 14px;
-}
-
-.aviso-card-cerrar:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.aviso-fade-enter-active,
-.aviso-fade-leave-active {
-  transition: opacity 0.2s, transform 0.2s;
-}
-.aviso-fade-enter-from,
-.aviso-fade-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-@media (max-width: 768px) {
-  .aviso-stack {
-    left: 16px;
-    right: 16px;
-    width: auto;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .aviso-fade-enter-active,
-  .aviso-fade-leave-active {
-    transition-duration: 0.01ms !important;
-  }
-}
-</style>

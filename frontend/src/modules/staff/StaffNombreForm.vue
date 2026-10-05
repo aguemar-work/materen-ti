@@ -5,7 +5,10 @@
 // que StaffModulosForm.vue: llama al API directo, sin pasar por un store.
 import { ref } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
-import Modal from '../../components/shared/Modal.vue';
+import AppDialog from '../../components/ui/AppDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 const props = defineProps({
   miembro: { type: Object, required: true }, // { user_id, nombre }
@@ -16,6 +19,11 @@ const modal = ref(null);
 const guardando = ref(false);
 const error = ref('');
 const nombre = ref(props.miembro.nombre);
+
+const campoNombre = useCampoAccesible({
+  ayuda: () => 'Aparece en tickets, problemas y reportes en vez del usuario de acceso.',
+});
+const infoError = infoNotificacion('error');
 
 async function guardar() {
   error.value = '';
@@ -38,30 +46,40 @@ async function guardar() {
 </script>
 
 <template>
-  <Modal ref="modal" titulo="Editar nombre" size="sm" @close="emit('cerrar')">
-    <form id="staff-nombre-form" @submit.prevent="guardar">
-      <div class="form-group">
-        <label for="staff-nombre-input">Nombre para mostrar</label>
-        <input id="staff-nombre-input" v-model="nombre" required :disabled="guardando" placeholder="ej: Ana Guevara">
-        <p class="field-hint">Aparece en tickets, problemas y reportes en vez del usuario de acceso.</p>
+  <AppDialog ref="modal" titulo="Editar nombre" size="sm" @cerrado="emit('cerrar')">
+    <form id="staff-nombre-form" class="space-y-4" @submit.prevent="guardar">
+      <div class="campo" :class="{ 'campo--invalido': campoNombre.invalido.value, 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoNombre.id">
+          Nombre para mostrar<span aria-hidden="true"> *</span>
+        </label>
+        <div class="campo__caja">
+          <input
+            :id="campoNombre.id"
+            v-model="nombre"
+            class="campo__control"
+            type="text"
+            placeholder="ej: Ana Guevara"
+            required
+            :disabled="guardando"
+            :aria-invalid="campoNombre.invalido.value"
+            :aria-describedby="campoNombre.describedBy.value"
+          >
+        </div>
+        <p :id="campoNombre.idAyuda.value" class="campo__pie">
+          Aparece en tickets, problemas y reportes en vez del usuario de acceso.
+        </p>
       </div>
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="modal?.cerrar()">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="staff-nombre-form" :disabled="guardando">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-        {{ guardando ? 'Guardando...' : 'Guardar' }}
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modal?.cerrar()" />
+      <AppButton type="submit" form="staff-nombre-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
     </template>
-  </Modal>
+  </AppDialog>
 </template>
-
-<style scoped>
-.field-hint {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-</style>

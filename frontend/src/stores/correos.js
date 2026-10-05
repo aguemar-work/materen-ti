@@ -1,75 +1,16 @@
-import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
+import { crearStorePaginado } from './crearStorePaginado.js';
 
-// Paginación server-side (mismo patrón que empleados/tickets).
-export const useCorreosStore = defineStore('correos', {
-  state: () => ({
-    lista: [],
-    total: 0,
-    pagina: 1,
-    tamPagina: 20,
-    filtros: { q: '', tipo: '' },
-    orden: null,
-    cargando: false,
-    error: null,
-    _peticionId: 0,
-  }),
+// Paginación server-side (el esqueleto común vive en crearStorePaginado.js).
+export const useCorreosStore = crearStorePaginado('correos', {
+  listarPagina: (params) => insforgeApi.listCorreosPage(params),
+  // soloRotacion: segmento "Requieren rotación" de CorreosView. Se resetea en
+  // cada montaje de la vista junto con el resto (gotcha de resetearFiltros()).
+  filtrosIniciales: () => ({ q: '', tipo: '', soloRotacion: false }),
+  mensajeError: 'Error al cargar correos compartidos',
+  entidad: 'correo',
 
   actions: {
-    // _peticionId descarta respuestas obsoletas: si dos cargar() se
-    // superponen (búsqueda con debounce + cambio de página/filtro rápido),
-    // solo se aplica el resultado de la petición más reciente.
-    async cargar() {
-      const peticionId = ++this._peticionId;
-      this.cargando = true;
-      this.error = null;
-      try {
-        const { items, total } = await insforgeApi.listCorreosPage({
-          pagina: this.pagina,
-          tamPagina: this.tamPagina,
-          ...this.filtros,
-          orden: this.orden,
-        });
-        if (peticionId !== this._peticionId) return;
-        this.lista = items;
-        this.total = total;
-      } catch (e) {
-        if (peticionId !== this._peticionId) return;
-        this.error = e?.message || 'Error al cargar correos compartidos';
-        throw e;
-      } finally {
-        if (peticionId === this._peticionId) this.cargando = false;
-      }
-    },
-
-    async irAPagina(pagina) {
-      this.pagina = pagina;
-      await this.cargar();
-    },
-
-    async aplicarFiltros(filtros) {
-      this.filtros = { ...this.filtros, ...filtros };
-      this.pagina = 1;
-      await this.cargar();
-    },
-
-    // Se llama al montar la vista: ver nota en stores/empleados.js.
-    resetearFiltros() {
-      this.filtros = { q: '', tipo: '' };
-      this.orden = null;
-      this.pagina = 1;
-    },
-
-    async ordenarPor(columna) {
-      if (this.orden?.columna === columna) {
-        this.orden = { columna, direccion: this.orden.direccion === 'asc' ? 'desc' : 'asc' };
-      } else {
-        this.orden = { columna, direccion: 'asc' };
-      }
-      this.pagina = 1;
-      await this.cargar();
-    },
-
     async listaParaExportar() {
       return insforgeApi.listCorreosFiltrados(this.filtros);
     },

@@ -3,9 +3,12 @@ import { ref, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { useProblemasStore } from '../../stores/problemas.js';
 import { OPCIONES_SEVERIDAD_PROBLEMA } from '../../core/dominio-problemas.js';
-import { useDetectorDeCambios } from '../../composables/useDetectorDeCambios.js';
-import Modal from '../../components/shared/Modal.vue';
+import { useFormularioModal } from '../../composables/useFormularioModal.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
 
 // ticketDisparador (opcional): { id, titulo, descripcion } de un ticket
 // desde el que se abre el problema (flujo "Marcar como problema" de
@@ -17,7 +20,6 @@ const props = defineProps({
 });
 const emit = defineEmits(['cerrar']);
 
-const modal = ref(null);
 let resultado = false;
 
 const store = useProblemasStore();
@@ -34,27 +36,15 @@ const form = ref({
   responsable_id: '',
 });
 
-const { estaSucio, tomarSnapshot } = useDetectorDeCambios(() => form.value);
+const { modal, mensajeError, tomarSnapshot, confirmarDescarte, dialogoDescarte, confirmarCierre, cancelar, descartarCambios } =
+  useFormularioModal(() => form.value);
 tomarSnapshot();
-const confirmarDescarte = ref(false);
-const dialogoDescarte = ref(null);
 
-function confirmarCierre() {
-  if (estaSucio.value) {
-    confirmarDescarte.value = true;
-    return false;
-  }
-  return true;
-}
-
-function cancelar() {
-  if (confirmarCierre()) modal.value?.cerrar();
-}
-
-function descartarCambios() {
-  dialogoDescarte.value?.cerrar();
-  modal.value?.cerrar();
-}
+const campoTitulo = useCampoAccesible();
+const campoDescripcion = useCampoAccesible();
+const campoSeveridad = useCampoAccesible();
+const campoResponsable = useCampoAccesible();
+const infoError = infoNotificacion('error');
 
 async function guardar() {
   error.value = '';
@@ -79,7 +69,7 @@ async function guardar() {
     resultado = problema;
     modal.value?.cerrar();
   } catch (e) {
-    error.value = e?.message || 'Error al crear el problema';
+    error.value = mensajeError(e, { porDefecto: 'Error al crear el problema' });
   } finally {
     guardando.value = false;
   }
@@ -97,73 +87,105 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Modal ref="modal" titulo="Nuevo problema" :confirmar-cierre="confirmarCierre" @close="emit('cerrar', resultado)">
+  <AppDialog ref="modal" titulo="Nuevo problema" :confirmar-cierre="confirmarCierre" @cerrado="emit('cerrar', resultado)">
     <form id="problema-form" class="form-grid" @submit.prevent="guardar">
-      <p v-if="ticketDisparador" class="problema-disparador">
-        <i class="ti ti-ticket" aria-hidden="true"></i> Originado en el ticket {{ ticketDisparador.codigo || ticketDisparador.id }}
+      <p v-if="ticketDisparador" class="full flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
+        <i class="ti ti-ticket text-gray-500" aria-hidden="true"></i>
+        Originado en el ticket <span class="font-medium text-gray-900 tabular-nums">{{ ticketDisparador.codigo || ticketDisparador.id }}</span>
       </p>
 
-      <div class="form-group full">
-        <label for="problema-titulo">Título *</label>
-        <input id="problema-titulo" v-model="form.titulo" required :disabled="guardando" placeholder="Ej.: VPN institucional cae varias veces por semana">
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoTitulo.id">Título<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <input
+            :id="campoTitulo.id"
+            v-model="form.titulo"
+            class="campo__control"
+            type="text"
+            placeholder="Ej.: VPN institucional cae varias veces por semana"
+            required
+            :disabled="guardando"
+          >
+        </div>
       </div>
 
-      <div class="form-group full">
-        <label for="problema-descripcion">Descripción *</label>
-        <textarea id="problema-descripcion" v-model="form.descripcion" rows="5" required :disabled="guardando" placeholder="Qué pasó, cronología de lo observado"></textarea>
+      <div class="campo full" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoDescripcion.id">Descripción<span aria-hidden="true"> *</span></label>
+        <div class="campo__caja">
+          <textarea
+            :id="campoDescripcion.id"
+            v-model="form.descripcion"
+            class="campo__control campo__control--area"
+            :rows="5"
+            placeholder="Qué pasó, cronología de lo observado"
+            required
+            :disabled="guardando"
+          ></textarea>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="problema-severidad">Severidad</label>
-        <select id="problema-severidad" v-model="form.severidad" :disabled="guardando">
-          <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
-        </select>
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoSeveridad.id">Severidad</label>
+        <div class="campo__caja">
+          <select
+            :id="campoSeveridad.id"
+            v-model="form.severidad"
+            class="campo__control campo__control--select"
+            :disabled="guardando"
+          >
+            <option v-for="s in OPCIONES_SEVERIDAD_PROBLEMA" :key="s.valor" :value="s.valor">{{ s.label }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label for="problema-responsable">Responsable</label>
-        <select id="problema-responsable" v-model="form.responsable_id" :disabled="guardando || cargandoStaff">
-          <option value="">Sin asignar</option>
-          <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-        </select>
+      <div class="campo" :class="{ 'campo--inerte': guardando || cargandoStaff }">
+        <label class="campo__etiqueta" :for="campoResponsable.id">Responsable</label>
+        <div class="campo__caja">
+          <select
+            :id="campoResponsable.id"
+            v-model="form.responsable_id"
+            class="campo__control campo__control--select"
+            :disabled="guardando || cargandoStaff"
+          >
+            <option value="">Sin asignar</option>
+            <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
       </div>
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <div v-if="error" class="notif" :class="[`notif--${infoError.rol}`, 'notif--inline']" :role="infoError.rolAria">
+        <i class="ti" :class="infoError.icono" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">{{ error }}</p>
+        </div>
+      </div>
     </form>
 
     <template #acciones>
-      <button class="btn" type="button" :disabled="guardando" @click="cancelar">Cancelar</button>
-      <button class="btn btn-primary" type="submit" form="problema-form" :disabled="guardando">
-        <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-        {{ guardando ? 'Creando...' : 'Crear problema' }}
-      </button>
+      <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton
+        type="submit"
+        form="problema-form"
+        :label="guardando ? 'Creando...' : 'Crear problema'"
+        :loading="guardando"
+        :disabled="guardando"
+      />
     </template>
-  </Modal>
+  </AppDialog>
 
   <ConfirmDialog
     v-if="confirmarDescarte"
     ref="dialogoDescarte"
     destructivo
     titulo="Cambios sin guardar"
-    mensaje="Tienes cambios sin guardar, ¿deseas continuar?"
+    mensaje="Hay cambios sin guardar, ¿desea continuar?"
     confirmar-label="Descartar y salir"
     cancelar-label="Seguir editando"
-    @cancel="confirmarDescarte = false"
+    @cerrado="confirmarDescarte = false"
     @confirm="descartarCambios"
   />
 </template>
 
-<style scoped>
-.problema-disparador {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-subtle);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  margin: 0;
-}
-</style>
+

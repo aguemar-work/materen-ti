@@ -5,7 +5,7 @@ import { entregarQuery } from '../entregarQuery.js';
 import { sanitizarTermino } from '../sanitizar.js';
 import { ordenValido } from '../ordenPermitido.js';
 import { trimText } from '../../core/formatters.js';
-import { ESTADO_FILTRO_VIGENTES } from '../../core/dominio-tickets.js';
+import { ESTADO_FILTRO_VIGENTES, SIN_ASIGNAR, resolverAvisoCategoria } from '../../core/dominio-tickets.js';
 
 // Columnas de "tickets" ordenables desde la tabla (excluye solicitante y
 // asignado_a: el primero viene de un join y el segundo es un UUID sin
@@ -18,11 +18,19 @@ const ORDEN_DEFECTO = { columna: 'created_at', ascending: false };
 // api/ticketsPublicos.js (edge function). Aquí solo lo que opera el staff
 // vía RLS directo: catálogo, bandeja, detalle, comentarios, cambios de estado.
 
+// Columnas de los dos catálogos. `aviso` (migración 114): advertencia fija al
+// solicitante; vacío se manda como null (la base también lo normaliza). No
+// pasa por trimText(): ese colapsa los saltos de línea, y un aviso de varios
+// párrafos los necesita (se pinta con `whitespace-pre-line`).
+const COLS_CATEGORIA = 'id, nombre, servicio_id, aviso';
+const COLS_SUBCATEGORIA = 'id, categoria_id, nombre, tipo_sugerido, aviso';
+const avisoONull = (v) => String(v ?? '').trim() || null;
+
 export const ticketsApi = {
   async listCategoriasTicket() {
     const { data, error } = await getClient().database
       .from('categorias_ticket')
-      .select('id, nombre')
+      .select(COLS_CATEGORIA)
       .is('deleted_at', null)
       .order('nombre', { ascending: true });
     if (error) throw error;
@@ -32,7 +40,7 @@ export const ticketsApi = {
   async listSubcategoriasTicket(categoriaId = null) {
     let query = getClient().database
       .from('subcategorias_ticket')
-      .select('id, categoria_id, nombre, tipo_sugerido')
+      .select(COLS_SUBCATEGORIA)
       .is('deleted_at', null)
       .order('nombre', { ascending: true });
     if (categoriaId) query = query.eq('categoria_id', categoriaId);
@@ -44,8 +52,8 @@ export const ticketsApi = {
   async createCategoriaTicket(datos) {
     const { data, error } = await getClient().database
       .from('categorias_ticket')
-      .insert([{ id: datos.id, nombre: trimText(datos.nombre) }])
-      .select('id, nombre')
+      .insert([{ id: datos.id, nombre: trimText(datos.nombre), servicio_id: datos.servicio_id || null, aviso: avisoONull(datos.aviso) }])
+      .select(COLS_CATEGORIA)
       .single();
     if (error) throw error;
     return data;
@@ -54,9 +62,14 @@ export const ticketsApi = {
   async updateCategoriaTicket(id, datos) {
     const { data, error } = await getClient().database
       .from('categorias_ticket')
-      .update({ nombre: trimText(datos.nombre) })
+      .update({
+        nombre: trimText(datos.nombre),
+        // Servicio opcional (migración 107) y aviso (114): solo se tocan si el formulario los manda.
+        ...('servicio_id' in datos ? { servicio_id: datos.servicio_id || null } : {}),
+        ...('aviso' in datos ? { aviso: avisoONull(datos.aviso) } : {}),
+      })
       .eq('id', id)
-      .select('id, nombre')
+      .select(COLS_CATEGORIA)
       .single();
     if (error) throw error;
     return data;
@@ -77,25 +90,26 @@ export const ticketsApi = {
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
       .insert([{ categoria_id: categoriaId, nombre: trimText(nombre), tipo_sugerido: tipoSugerido }])
-      .select('id, categoria_id, nombre, tipo_sugerido')
+      .select(COLS_SUBCATEGORIA)
       .single();
     if (error) throw error;
     return data;
   },
 
-  // tipoSugerido es opcional a propósito (a diferencia del alta): omitirlo
-  // no toca la columna, así renombrar una subcategoría no obliga a fijar
-  // (o borrar) su clasificación. Pasarlo explícito — incluido null/'' — sí
-  // la actualiza. Sin llamador todavía: no hay UI de edición de
-  // subcategorías, solo alta rápida y borrado.
-  async updateSubcategoriaTicket(id, nombre, tipoSugerido) {
-    const datos = { nombre: trimText(nombre) };
-    if (tipoSugerido !== undefined) datos.tipo_sugerido = tipoSugerido || null;
+  // `datos`: { nombre, tipo_sugerido?, aviso? }. tipo_sugerido y aviso son
+  // opcionales a propósito (a diferencia del alta): omitirlos no toca la
+  // columna, así renombrar una subcategoría no obliga a fijar (o borrar) su
+  // clasificación ni su aviso. Pasarlos explícitos — incluido null/'' — sí
+  // los actualiza. Llamador: SubcategoriaTicketForm.vue (Configuración, 114).
+  async updateSubcategoriaTicket(id, datos) {
+    const cambios = { nombre: trimText(datos.nombre) };
+    if ('tipo_sugerido' in datos) cambios.tipo_sugerido = datos.tipo_sugerido || null;
+    if ('aviso' in datos) cambios.aviso = avisoONull(datos.aviso);
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
-      .update(datos)
+      .update(cambios)
       .eq('id', id)
-      .select('id, categoria_id, nombre, tipo_sugerido')
+      .select(COLS_SUBCATEGORIA)
       .single();
     if (error) throw error;
     return data;
@@ -110,10 +124,10 @@ export const ticketsApi = {
   },
 
   async listTickets() {
-    const { data, error } = await getClient().database
+    const { data, error } = await conReintentoResueltoAt(() => getClient().database
       .from('tickets')
-      .select(SELECT_RESUMEN)
-      .order('created_at', { ascending: false });
+      .select(selectResumen())
+      .order('created_at', { ascending: false }));
     if (error) throw error;
     return (data || []).map(mapTicketResumen);
   },
@@ -122,16 +136,35 @@ export const ticketsApi = {
   // (`filtros` puede incluir `orden: { columna, direccion }`, ver queryTickets)
   async listTicketsPage({ pagina = 1, tamPagina = 20, ...filtros } = {}) {
     const desde = (pagina - 1) * tamPagina;
-    const { qb } = await queryTickets(filtros, { conteo: true });
-    const { data, count, error } = await qb.range(desde, desde + tamPagina - 1);
+    const { data, count, error } = await conReintentoResueltoAt(async () => {
+      const { qb } = await queryTickets(filtros, { conteo: true });
+      return qb.range(desde, desde + tamPagina - 1);
+    });
     if (error) throw error;
     return { items: (data || []).map(mapTicketResumen), total: count ?? 0 };
   },
 
+  // Solo el total de una combinación de filtros, sin traer las filas — para
+  // los contadores por Vista del nav de Tickets (rediseño ago 2026: antes el
+  // nav solo sabía el total de la vista ACTIVA, así que no podía responder
+  // "¿cuántos sin asignar hay?" sin cambiarse de vista, que es justamente
+  // para lo que existe ese nav).
+  //
+  // Reusa queryTickets() a propósito, con los MISMOS filtros secundarios
+  // activos (búsqueda, prioridad, sin vincular): el número tiene que ser el
+  // que se va a ver al hacer clic, no un total teórico. Selecciona solo `id`
+  // (no SELECT_RESUMEN con sus embeds) y pide una sola fila — el count exacto
+  // viene igual en la respuesta.
+  async contarTickets(filtros = {}) {
+    const { qb } = await queryTickets(filtros, { conteo: true, soloConteo: true });
+    const { count, error } = await qb.range(0, 0);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
   // Dataset filtrado completo, sin página — para exportar CSV
   async listTicketsFiltrados(filtros = {}) {
-    const { qb } = await queryTickets(filtros);
-    const { data, error } = await qb;
+    const { data, error } = await conReintentoResueltoAt(async () => (await queryTickets(filtros)).qb);
     if (error) throw error;
     return (data || []).map(mapTicketResumen);
   },
@@ -142,10 +175,10 @@ export const ticketsApi = {
       .select(`
         id, codigo, token, titulo, descripcion, estado, prioridad, nivel_atencion, tipo, origen, vinculado,
         contacto_ingresado, asignado_a,
-        adjunto_url, created_at, updated_at,
+        adjunto_key, created_at, updated_at,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
-        categoria_id, categorias_ticket(nombre),
-        subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido),
+        categoria_id, categorias_ticket(nombre, aviso),
+        subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido, aviso),
         equipo_id, equipos(codigo, marca, modelo),
         cuenta_id, cuentas(usuario, plataformas(nombre)),
         licencia_id, licencias(software)
@@ -176,7 +209,7 @@ export const ticketsApi = {
   async listEventosTicket(ticketId) {
     const { data, error } = await getClient().database
       .from('ticket_eventos')
-      .select('id, evento, detalle, user_email, created_at')
+      .select('id, evento, detalle, user_id, user_email, created_at')
       .eq('ticket_id', ticketId)
       .order('created_at', { ascending: false });
     if (error) throw error;
@@ -213,23 +246,57 @@ export const ticketsApi = {
   },
 };
 
-const SELECT_RESUMEN = `
-  id, codigo, titulo, estado, prioridad, tipo, vinculado, contacto_ingresado,
+const SELECT_BASE = `
+  id, codigo, titulo, estado, prioridad, nivel_atencion, tipo, vinculado, contacto_ingresado,
   created_at, updated_at, asignado_a, empleado_id,
   empleados(nombres, apellidos),
   categorias_ticket(nombre), subcategorias_ticket(nombre)
 `;
+
+// resuelto_at (migración 089): fecha de resolución para la columna "Fecha"
+// del listado. Si el proyecto todavía no tiene la migración aplicada, la
+// primera consulta falla con 42703 (columna inexistente) y desde ahí se
+// pide el listado sin ella — la fila cae a updated_at como aproximación en
+// vez de romper la bandeja entera.
+let conResueltoAt = true;
+const selectResumen = () => (conResueltoAt ? `${SELECT_BASE}, resuelto_at` : SELECT_BASE);
+
+async function conReintentoResueltoAt(ejecutar) {
+  const res = await ejecutar();
+  if (res.error?.code === '42703' && conResueltoAt && String(res.error.message || '').includes('resuelto_at')) {
+    conResueltoAt = false;
+    return ejecutar();
+  }
+  return res;
+}
 
 // Query base del listado con filtros en servidor. El solicitante vive en
 // la tabla empleados (embed) y un .or() top-level no puede filtrar columnas
 // del embed: se preresuelven ids de empleados por nombre (cap 50 homónimos)
 // y entran al or() como empleado_id.in.(...) — los UUID no llevan comas.
 async function queryTickets(
-  { q = '', estado = '', prioridad = '', sinAsignar = false, sinVincular = false, asignadoA = '', orden } = {},
-  { conteo = false } = {},
+  {
+    q = '', estado = '', sinAsignar = false, sinVincular = false, asignadoA = '', orden,
+    // `estado`/`sinAsignar`/`sinVincular`/`asignadoA`/`categoriaId`: forma
+    // escalar previa a los filtros V2; la conservan otros llamadores
+    // (ProblemaDetalleView, tests de maqueta). El listado usa las listas.
+    fechaDesde = '', fechaHasta = '',
+    categoriaId = '',
+    // Filtros V2 (2026-09-25): listas de los chips de TicketsView. Dentro de
+    // una lista es O (`.in()`), entre listas Y. La vista y el chip de Estado
+    // ya llegan intersectados desde la vista (modules/tickets/filtrosTickets.js).
+    // `asignados` acepta SIN_ASIGNAR junto a ids de staff; `vinculado` es
+    // 'si' | 'no' | '' (sin filtro).
+    estados = [], asignados = [], prioridades = [], categoriaIds = [], tipos = [], niveles = [],
+    vinculado = '',
+  } = {},
+  // soloConteo: para contarTickets() — misma cláusula WHERE, pero sin traer
+  // los embeds de empleados/categorías que la fila necesita y el número no.
+  { conteo = false, soloConteo = false } = {},
 ) {
   const db = getClient().database;
-  let query = db.from('tickets').select(SELECT_RESUMEN, conteo ? { count: 'exact' } : undefined);
+  const seleccion = soloConteo ? 'id' : selectResumen();
+  let query = db.from('tickets').select(seleccion, conteo ? { count: 'exact' } : undefined);
   // 'resuelto' agrupa los 2 valores reales (resuelto+cerrado, fusionados
   // en la UI — ver dominio-tickets.js) — de ahí el .in() en vez de .eq().
   // "vigentes" excluye los mismos 3 valores que ya excluyen dashboard.js
@@ -239,10 +306,33 @@ async function queryTickets(
   if (estado === ESTADO_FILTRO_VIGENTES) query = query.not('estado', 'in', '("resuelto","cerrado","rechazado")');
   else if (estado === 'resuelto') query = query.in('estado', ['resuelto', 'cerrado']);
   else if (estado) query = query.eq('estado', estado);
-  if (prioridad) query = query.eq('prioridad', prioridad);
+  // estado === '' (default): sin cláusula — "Todos" real, cualquier estado.
   if (sinAsignar) query = query.is('asignado_a', null);
   else if (asignadoA) query = query.eq('asignado_a', asignadoA);
   if (sinVincular) query = query.eq('vinculado', false);
+  if (categoriaId) query = query.eq('categoria_id', categoriaId);
+  if (estados.length) {
+    // 'resuelto' es la fachada de los 2 valores reales (ver arriba).
+    const reales = estados.flatMap((e) => (e === 'resuelto' ? ['resuelto', 'cerrado'] : [e]));
+    query = query.in('estado', reales);
+  }
+  if (asignados.length) {
+    const sinAsignar = asignados.includes(SIN_ASIGNAR);
+    const ids = asignados.filter((a) => a && a !== SIN_ASIGNAR);
+    if (sinAsignar && ids.length) query = query.or(`asignado_a.is.null,asignado_a.in.(${ids.join(',')})`);
+    else if (sinAsignar) query = query.is('asignado_a', null);
+    else if (ids.length) query = query.in('asignado_a', ids);
+  }
+  if (prioridades.length) query = query.in('prioridad', prioridades);
+  if (categoriaIds.length) query = query.in('categoria_id', categoriaIds);
+  if (tipos.length) query = query.in('tipo', tipos);
+  if (niveles.length) query = query.in('nivel_atencion', niveles);
+  if (vinculado === 'si') query = query.eq('vinculado', true);
+  else if (vinculado === 'no') query = query.eq('vinculado', false);
+  if (fechaDesde) query = query.gte('created_at', fechaDesde);
+  // hasta 23:59:59.999 del día elegido — un <input type="date"> entrega
+  // solo la fecha (00:00:00), un .lte() literal excluiría todo ese día.
+  if (fechaHasta) query = query.lte('created_at', `${fechaHasta}T23:59:59.999`);
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     let idsClause = '';
@@ -264,6 +354,11 @@ function mapTicketResumen(row) {
     titulo: row.titulo,
     estado: row.estado,
     prioridad: row.prioridad,
+    // Nivel de atención (N1/N2/N3) en el LISTADO, no solo en el detalle
+    // (ago 2026): la columna "Nivel" de la tabla lo necesita. Hasta acá
+    // nivel_atencion solo viajaba en getTicket(), así que la columna habría
+    // salido vacía sin este cambio — no era un problema de UI.
+    nivel_atencion: row.nivel_atencion,
     tipo: row.tipo,
     vinculado: row.vinculado,
     solicitante: empleado ? `${empleado.nombres} ${empleado.apellidos}`.trim() : (row.contacto_ingresado || ''),
@@ -273,6 +368,9 @@ function mapTicketResumen(row) {
     asignado_a: row.asignado_a,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    // Sin la migración 089, un resuelto/cerrado cae a updated_at (en la
+    // práctica, el cierre): aproximado, pero nunca vacío.
+    resuelto_at: row.resuelto_at ?? (['resuelto', 'cerrado'].includes(row.estado) ? row.updated_at : null),
   };
 }
 
@@ -292,7 +390,9 @@ function mapTicketDetalle(row) {
     vinculado: row.vinculado,
     contacto_ingresado: row.contacto_ingresado || '',
     asignado_a: row.asignado_a,
-    adjunto_url: row.adjunto_url,
+    // La captura vive en un bucket privado (111): la key no se usa en el
+    // cliente, solo si existe; la URL firmada se pide a la edge function.
+    tiene_adjunto: Boolean(row.adjunto_key),
     created_at: row.created_at,
     updated_at: row.updated_at,
     empleado_id: row.empleado_id,
@@ -305,6 +405,9 @@ function mapTicketDetalle(row) {
     subcategoria_id: row.subcategoria_id,
     subcategoria_nombre: row.subcategorias_ticket?.nombre || '',
     subcategoria_tipo_sugerido: row.subcategorias_ticket?.tipo_sugerido || null,
+    // Aviso de la categoría/subcategoría (114), ya resuelto: el técnico lo ve
+    // en el contexto del ticket para recordar la regla que vio el solicitante.
+    aviso: resolverAvisoCategoria(row.categorias_ticket, row.subcategorias_ticket),
     equipo_id: row.equipo_id,
     equipo_desc: row.equipos ? `${row.equipos.codigo} — ${row.equipos.marca || ''} ${row.equipos.modelo || ''}`.trim() : '',
     cuenta_id: row.cuenta_id,

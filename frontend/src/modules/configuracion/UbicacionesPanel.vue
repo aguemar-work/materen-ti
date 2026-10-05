@@ -3,24 +3,23 @@
 // usado por Equipos para asignar equipos y por Empleados para su ubicación
 // — independiente de areas_obras (función/asignación laboral, ver
 // AreasObrasPanel.vue), desde la migración 059.
-import { ref, onMounted } from 'vue';
-import { storeToRefs } from 'pinia';
 import { useUbicacionesStore } from '../../stores/catalogos.js';
-import { showToast } from '../../core/toast.js';
-import { usePaginacion } from '../../composables/usePaginacion.js';
-import { useOrdenTabla } from '../../composables/useOrdenTabla.js';
-import Pagination from '../../components/shared/Pagination.vue';
-import EmptyState from '../../components/shared/EmptyState.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
-import Modal from '../../components/shared/Modal.vue';
+import { badgeInfo } from '../../core/badges.js';
+import { useCrudCatalogo } from '../../composables/useCrudCatalogo.js';
+import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
+import { infoNotificacion } from '../../core/notificacionInfo.js';
+import AppDialog from '../../components/ui/AppDialog.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
-import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import SkeletonTabla from '../../components/shared/SkeletonTabla.vue';
-import ThOrdenable from '../../components/shared/ThOrdenable.vue';
+import MenuAcciones from '../../components/shared/MenuAcciones.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import AppTable from '../../components/ui/AppTable.vue';
+import AppColumn from '../../components/ui/AppColumn.js';
+import AppVacio from '../../components/ui/AppVacio.vue';
+import AppPaginacion from '../../components/ui/AppPaginacion.vue';
+import EncabezadoCatalogo from './EncabezadoCatalogo.vue';
+import { useEsMovil } from '../../composables/useEsMovil.js';
 
 const store = useUbicacionesStore();
-const { lista, cargando } = storeToRefs(store);
-const guardando = ref(false);
 
 // sede | almacen | obra | otro (migración 059) — check de BD, ver catálogo
 // espejo en core/badges.js (TIPOS_UBICACION) para el label/color del badge.
@@ -31,169 +30,219 @@ const TIPOS = [
   { valor: 'otro', label: 'Otro' },
 ];
 
-const porEliminar = ref(null);
-const eliminando = ref(false);
-// Al terminar la eliminación se cierra el diálogo con su animación de
-// salida (cerrar()); el @cancel que emite al final baja porEliminar.
-const dialogoEliminar = ref(null);
-
-const mostrarForm = ref(false);
-const editar = ref(null);
-const form = ref({ nombre: '', descripcion: '', tipo: 'sede' });
-const errorForm = ref('');
-// Cerrar vía Modal.cerrar() reproduce la animación de salida;
-// el @close del Modal es quien baja mostrarForm.
-const modalForm = ref(null);
-
-function abrirNueva() {
-  editar.value = null;
-  form.value = { nombre: '', descripcion: '', tipo: 'sede' };
-  errorForm.value = '';
-  mostrarForm.value = true;
-}
-
-function abrirEditar(u) {
-  editar.value = u;
-  form.value = { nombre: u.nombre, descripcion: u.descripcion || '', tipo: u.tipo };
-  errorForm.value = '';
-  mostrarForm.value = true;
-}
-
-async function guardar() {
-  errorForm.value = '';
-  guardando.value = true;
-  try {
-    if (editar.value) {
-      await store.actualizar(editar.value.id, form.value);
-      showToast('Ubicación actualizada');
-    } else {
-      await store.crear(form.value.nombre, form.value.descripcion, form.value.tipo);
-      showToast('Ubicación creada');
-    }
-    modalForm.value?.cerrar();
-  } catch (e) {
-    errorForm.value = e?.message || 'Error al guardar';
-  } finally {
-    guardando.value = false;
-  }
-}
-
-async function confirmarEliminar() {
-  const u = porEliminar.value;
-  if (!u) return;
-  eliminando.value = true;
-  try {
-    await store.softDelete(u.id);
-    showToast('Ubicación eliminada');
-    dialogoEliminar.value?.cerrar();
-  } catch (e) {
-    showToast(e?.message || 'Error al eliminar', 'error');
-  } finally {
-    eliminando.value = false;
-  }
-}
-
-onMounted(async () => {
-  try {
-    await store.cargar();
-  } catch (e) {
-    showToast(e?.message || 'Error al cargar ubicaciones', 'error');
-  }
+const {
+  lista, cargando, guardando, mostrarForm, editar, form, errorForm, modalForm,
+  porEliminar, eliminando, dialogoEliminar,
+  abrirNueva, abrirEditar, guardar, confirmarEliminar,
+  columna, direccion, ordenarPor, paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina,
+} = useCrudCatalogo(store, {
+  formVacio: () => ({ nombre: '', descripcion: '', tipo: 'sede' }),
+  aForm: (u) => ({ nombre: u.nombre, descripcion: u.descripcion || '', tipo: u.tipo }),
+  crear: (f) => store.crear(f.nombre, f.descripcion, f.tipo),
+  textos: {
+    creado: 'Ubicación creada',
+    actualizado: 'Ubicación actualizada',
+    eliminado: 'Ubicación eliminada',
+    errorCargar: 'Error al cargar ubicaciones',
+  },
 });
 
-const { columna, direccion, ordenarPor, listaOrdenada } = useOrdenTabla(lista);
-const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(listaOrdenada);
+const { esMovil } = useEsMovil();
+
+// Acciones de fila en el menú ⋮ (rediseño 2026-09-23 — antes, íconos sueltos).
+function accionesDe(fila) {
+  return [
+    { icono: 'ti-pencil', label: 'Editar', onClick: () => abrirEditar(fila) },
+    { icono: 'ti-trash', label: 'Eliminar', danger: true, onClick: () => { porEliminar.value = fila; } },
+  ];
+}
+
+const infoErrorForm = infoNotificacion('error');
+const campoNombre = useCampoAccesible();
+const campoTipo = useCampoAccesible();
+const campoDescripcion = useCampoAccesible();
 </script>
 
 <template>
-  <main class="page">
-    <div class="card card--fill">
-      <div class="card-toolbar">
-        <div class="toolbar-title">
-          Ubicaciones
-          <span class="badge-count">{{ lista.length }}</span>
-        </div>
-        <button class="btn btn-primary" type="button" @click="abrirNueva">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva ubicación
-        </button>
-      </div>
+  <div class="space-y-4">
+    <EncabezadoCatalogo
+      titulo="Ubicaciones"
+      :conteo="lista.length"
+      descripcion="Lugares físicos (sedes, almacenes, obras) donde están los equipos y trabajan los empleados."
+    >
+      <template #acciones>
+        <AppButton icon="ti ti-plus" label="Nueva ubicación" @click="abrirNueva" />
+      </template>
+    </EncabezadoCatalogo>
 
-      <EmptyState
-        v-if="!cargando && lista.length === 0"
-        icono="ti ti-map-pin"
-        titulo="Sin ubicaciones"
-        mensaje="Crea almacenes, áreas u obras para asignarles equipos."
-      />
+    <AppVacio
+      v-if="!cargando && totalItems === 0"
+      icono="ti ti-map-pin"
+      titulo="Sin ubicaciones todavía"
+      mensaje="Cree sedes, almacenes u obras para asignarles equipos y empleados."
+    >
+      <AppButton variant="outline" severity="secondary" icon="ti ti-plus" label="Agregar ubicación" @click="abrirNueva" />
+    </AppVacio>
 
-      <div v-else class="table-wrap">
+    <template v-else>
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
         <p v-if="cargando" class="sr-only" role="status">Cargando ubicaciones…</p>
-        <table aria-label="Ubicaciones">
-          <thead>
-            <tr>
-              <ThOrdenable clave="nombre" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Nombre</ThOrdenable>
-              <th scope="col">Tipo</th>
-              <ThOrdenable clave="descripcion" :columna="columna" :direccion="direccion" @ordenar="ordenarPor">Descripción</ThOrdenable>
-              <th scope="col"><span class="sr-only">Acciones</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <SkeletonTabla v-if="cargando" :columnas="4" />
-            <template v-else>
-            <tr v-for="u in listaPaginada" :key="u.id">
-              <td><span class="user-name"><i class="ti ti-map-pin ub-icon"></i> {{ u.nombre }}</span></td>
-              <td><BadgeEstado tipo="tipo_ubicacion" :valor="u.tipo" /></td>
-              <td><TextoVacio :valor="u.descripcion" /></td>
-              <td>
-                <div class="actions">
-                  <button class="icon-btn" type="button" title="Editar" aria-label="Editar" @click="abrirEditar(u)">
-                    <i class="ti ti-pencil"></i>
-                  </button>
-                  <button class="icon-btn danger" type="button" title="Eliminar" aria-label="Eliminar" @click="porEliminar = u">
-                    <i class="ti ti-trash"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-            </template>
-          </tbody>
-        </table>
-        <Pagination v-if="!cargando" v-model="paginaActual" :total-items="totalItems" :page-size="tamPagina" />
-      </div>
-    </div>
 
-    <!-- Formulario (Modal accesible compartido) -->
-    <Modal
+        <!-- ── Tabla (escritorio) ── -->
+        <AppTable
+          v-if="!esMovil"
+          :value="listaPaginada"
+          :loading="cargando"
+          :total-records="totalItems"
+          :rows="tamPagina"
+          :orden="{ columna, direccion }"
+          aria-label="Ubicaciones"
+          @ordenar="ordenarPor"
+        >
+          <AppColumn field="nombre" header="Ubicación" sortable>
+            <template #body="{ data: fila }">
+              <!-- El tipo (sede/almacén/obra/otro) es clasificación fija, no
+                   un estado: va como texto secundario, sin tag. -->
+              <div class="flex min-w-0 items-center gap-3">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-50 text-base text-gray-500">
+                  <i class="ti ti-map-pin" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0">
+                  <div class="truncate font-medium text-gray-900">{{ fila.nombre }}</div>
+                  <div class="text-xs text-gray-500">{{ badgeInfo('tipo_ubicacion', fila.tipo).label }}</div>
+                </div>
+              </div>
+            </template>
+          </AppColumn>
+          <AppColumn field="descripcion" header="Descripción" sortable>
+            <template #body="{ data: fila }">
+              <span :class="fila.descripcion ? 'text-gray-700' : 'text-gray-500'">{{ fila.descripcion || 'Sin descripción' }}</span>
+            </template>
+          </AppColumn>
+          <AppColumn field="acciones" header="Acciones" :header-style="{ width: '1%', textAlign: 'right' }">
+            <template #body="{ data: fila }">
+              <div class="flex justify-end" @click.stop>
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </template>
+          </AppColumn>
+        </AppTable>
+
+        <!-- ── Lista (móvil) ── -->
+        <template v-else>
+          <p v-if="cargando" class="py-10 text-center text-sm text-gray-500">Cargando ubicaciones...</p>
+          <ul v-else class="divide-y divide-gray-100" aria-label="Ubicaciones">
+            <li v-for="fila in listaPaginada" :key="fila.id" class="flex items-start gap-3 px-4 py-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-50 text-lg text-gray-500">
+                <i class="ti ti-map-pin" aria-hidden="true"></i>
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-gray-900">{{ fila.nombre }}</div>
+                <div class="text-xs text-gray-500">
+                  {{ badgeInfo('tipo_ubicacion', fila.tipo).label }}<template v-if="fila.descripcion"> · {{ fila.descripcion }}</template>
+                </div>
+              </div>
+              <div class="-mr-1">
+                <MenuAcciones :acciones="accionesDe(fila)" :label="`Acciones de ${fila.nombre}`" />
+              </div>
+            </li>
+          </ul>
+        </template>
+
+        <AppPaginacion
+          v-if="!esMovil && !cargando && totalItems > 0"
+          :pagina="paginaActual"
+          :tam-pagina="tamPagina"
+          :total="totalItems"
+          @update:pagina="paginaActual = $event"
+          @update:tam-pagina="cambiarTamPagina"
+        />
+      </div>
+      <AppPaginacion
+        v-if="esMovil && !cargando"
+        variante="compacta"
+        :pagina="paginaActual"
+        :tam-pagina="tamPagina"
+        :total="totalItems"
+        @update:pagina="paginaActual = $event"
+      />
+    </template>
+
+    <!-- Formulario (AppDialog compartido) -->
+    <AppDialog
       v-if="mostrarForm"
       ref="modalForm"
       :titulo="editar ? 'Editar ubicación' : 'Nueva ubicación'"
       size="sm"
-      @close="mostrarForm = false"
+      @cerrado="mostrarForm = false"
     >
-      <form id="ub-form" class="ub-form" @submit.prevent="guardar">
-        <div class="form-group">
-          <label for="ub-nombre">Nombre *</label>
-          <input id="ub-nombre" v-model="form.nombre" required placeholder="ej: Almacén de TI, Recepción, Obra Norte" :disabled="guardando">
+      <form id="ub-form" class="space-y-4" @submit.prevent="guardar">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoNombre.id">
+            Nombre<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <input
+              :id="campoNombre.id"
+              v-model="form.nombre"
+              type="text"
+              class="campo__control"
+              required
+              placeholder="ej: Almacén de TI, Recepción, Obra Norte"
+              :disabled="guardando"
+              :aria-invalid="campoNombre.invalido.value"
+              :aria-describedby="campoNombre.describedBy.value"
+            >
+          </div>
         </div>
-        <div class="form-group">
-          <label for="ub-tipo">Tipo *</label>
-          <select id="ub-tipo" v-model="form.tipo" required :disabled="guardando">
-            <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
-          </select>
+
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoTipo.id">
+            Tipo<span aria-hidden="true"> *</span>
+          </label>
+          <div class="campo__caja">
+            <select
+              :id="campoTipo.id"
+              v-model="form.tipo"
+              class="campo__control campo__control--select"
+              required
+              :disabled="guardando"
+              :aria-invalid="campoTipo.invalido.value"
+              :aria-describedby="campoTipo.describedBy.value"
+            >
+              <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="ub-desc">Descripción</label>
-          <input id="ub-desc" v-model="form.descripcion" :disabled="guardando">
+
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoDescripcion.id">Descripción</label>
+          <div class="campo__caja">
+            <input
+              :id="campoDescripcion.id"
+              v-model="form.descripcion"
+              type="text"
+              class="campo__control"
+              :disabled="guardando"
+              :aria-invalid="campoDescripcion.invalido.value"
+              :aria-describedby="campoDescripcion.describedBy.value"
+            >
+          </div>
         </div>
-        <p v-if="errorForm" class="form-error" role="alert">{{ errorForm }}</p>
+
+        <div v-if="errorForm" class="notif" :class="[`notif--${infoErrorForm.rol}`, 'notif--inline']" :role="infoErrorForm.rolAria">
+          <i class="ti" :class="infoErrorForm.icono" aria-hidden="true"></i>
+          <div class="notif__texto">
+            <p class="notif__detalle">{{ errorForm }}</p>
+          </div>
+        </div>
       </form>
       <template #acciones>
-        <button class="btn" type="button" :disabled="guardando" @click="modalForm?.cerrar()">Cancelar</button>
-        <button class="btn btn-primary" type="submit" form="ub-form" :disabled="guardando">
-          <i v-if="guardando" class="ti ti-loader-2 spinner-icon" aria-hidden="true"></i>
-          {{ guardando ? 'Guardando...' : 'Guardar' }}
-        </button>
+        <AppButton variant="outline" severity="secondary" label="Cancelar" :disabled="guardando" @click="modalForm?.cerrar()" />
+        <AppButton type="submit" form="ub-form" :label="guardando ? 'Guardando...' : 'Guardar'" :loading="guardando" />
       </template>
-    </Modal>
+    </AppDialog>
 
     <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
     <ConfirmDialog
@@ -205,13 +254,10 @@ const { paginaActual, listaPaginada, totalItems, tamPagina } = usePaginacion(lis
       :mensaje="`¿Eliminar la ubicación “${porEliminar.nombre}”? Los equipos que estuvieron ahí conservan su historial.`"
       confirmar-label="Eliminar"
       :cargando="eliminando"
-      @cancel="porEliminar = null"
+      @cerrado="porEliminar = null"
       @confirm="confirmarEliminar"
     />
-  </main>
+  </div>
 </template>
 
-<style scoped>
-.ub-icon { color: var(--color-purple-text); margin-right: 4px; }
-.ub-form { display: flex; flex-direction: column; gap: 12px; }
-</style>
+

@@ -14,7 +14,9 @@ import ticketsRoutes from './routes/tickets.routes.js';
 import soporteRoutes from './routes/soporte.routes.js';
 import actividadRoutes from './routes/actividad.routes.js';
 import encuestasRoutes from './routes/encuestas.routes.js';
-import designSystemRoutes from './routes/design-system.routes.js';
+import solicitudesRoutes from './routes/solicitudes.routes.js';
+import cambiosRoutes from './routes/cambios.routes.js';
+import reportesRoutes from './routes/reportes.routes.js';
 
 const routes = [
   ...authRoutes,
@@ -28,8 +30,9 @@ const routes = [
   ...actividadRoutes,
   ...soporteRoutes,
   ...encuestasRoutes,
-  // Solo en desarrollo: /design-system no existe en el router de producción.
-  ...(import.meta.env.DEV ? designSystemRoutes : []),
+  ...solicitudesRoutes,
+  ...cambiosRoutes,
+  ...reportesRoutes,
   // Catch-all: SIEMPRE al final para no interceptar ninguna ruta real.
   // Sin esto, una URL mal escrita no matchea nada y Vue Router no
   // renderiza componente alguno (pantalla en blanco).

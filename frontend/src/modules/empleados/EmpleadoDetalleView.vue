@@ -1,697 +1,311 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+// Expediente del empleado (versión "Expediente", plan de mejora Ciclo 21,
+// pantalla 2): carátula → guía de alta → "En custodia" (cuentas, equipos y
+// licencias en UNA tabla) + entregas y datos → solicitudes → tickets → libro de
+// movimientos.
+//
+// Esta vista solo orquesta: la carga y los permisos por módulo viven en
+// useExpedienteEmpleado.js, el libro en libroEmpleado.js y cada bloque en su
+// componente. Lo que el usuario no puede ver (su rol no tiene el módulo) no se
+// pide ni se pinta. El ciclo de vida del empleado (suspender, reactivar,
+// reingresar, dar de baja, revisar accesos) corre por las RPC de la migración
+// 102 desde los diálogos de este directorio; las solicitudes (alta, baja,
+// accesos, equipos), por las de la 108.
+import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { insforgeApi } from '../../api/insforge.js';
-import { useEmpleadosStore } from '../../stores/empleados.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { useCuentasStore } from '../../stores/cuentas.js';
-import { useVolverContextual } from '../../composables/useVolverContextual.js';
+import { insforgeApi } from '../../api/insforge.js';
+import { traducirErrorDb } from '../../api/erroresDb.js';
+import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import { showToast } from '../../core/toast.js';
-import { formatFecha, formatTelefono } from '../../core/formatters.js';
-import { estadoVencimientoLicencia, CLASE_VENCIMIENTO_LICENCIA } from '../../core/dominio-licencias.js';
 import { nombreCompleto as nombreCompletoDe } from '../../core/dominio-empleados.js';
-import PageHeader from '../../components/shared/PageHeader.vue';
-import BadgeEstado from '../../components/shared/BadgeEstado.vue';
-import TextoVacio from '../../components/shared/TextoVacio.vue';
+import { diasDesde } from '../dashboard/tiempoLima.js';
+import { useExpedienteEmpleado } from './useExpedienteEmpleado.js';
+import EmpleadoCaratula from './EmpleadoCaratula.vue';
+import EmpleadoGuiaAlta from './EmpleadoGuiaAlta.vue';
+import EmpleadoCustodia from './EmpleadoCustodia.vue';
+import EmpleadoEntregas from './EmpleadoEntregas.vue';
+import EmpleadoPortal from './EmpleadoPortal.vue';
+import PortalEnlaceDialog from './PortalEnlaceDialog.vue';
+import EmpleadoDatos from './EmpleadoDatos.vue';
+import EmpleadoSolicitudes from './EmpleadoSolicitudes.vue';
+import EmpleadoTickets from './EmpleadoTickets.vue';
+import EmpleadoLibro from './EmpleadoLibro.vue';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
-import CuentasPanel from '../cuentas/CuentasPanel.vue';
-import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
+import EmpleadoMotivoDialog from './EmpleadoMotivoDialog.vue';
+import ReingresarEmpleadoDialog from './ReingresarEmpleadoDialog.vue';
+import AsignarEquipoModal from '../equipos/AsignarEquipoModal.vue';
+import AsignarLicenciaModal from '../licencias/AsignarLicenciaModal.vue';
+import SolicitudForm from '../solicitudes/SolicitudForm.vue';
 
 const route = useRoute();
 const router = useRouter();
-const empleadosStore = useEmpleadosStore();
+const auth = useAuthStore();
 const cuentasStore = useCuentasStore();
-const { volver } = useVolverContextual();
 
-const empleado = ref(null);
-const licencias = ref([]);
-const equipos = ref([]);
-const cargando = ref(true);
-const procesando = ref(false);
-const mostrarForm = ref(false);
-const mostrarBaja = ref(false);
-
-// Alta guiada: se llega con ?nuevo=1 desde "Nuevo empleado"
-const modoAlta = ref(route.query.nuevo === '1');
-const tieneAccesos = computed(() =>
-  cuentasStore.empleadoActual === route.params.id && cuentasStore.lista.length > 0
-);
-
-function terminarAlta() {
-  modoAlta.value = false;
-  router.replace({ query: {} });
-}
+const exp = useExpedienteEmpleado(() => route.params.id);
+const {
+  empleado, equipos, licencias, entregas, tickets, solicitudes, ultimaRevision, enlacePortal, cargando,
+  libro, libroCargando, fechaBaja, actaEntregaPorAsignacion, nombresStaff,
+  puedeCorreos, puedeEquipos, puedeLicencias, puedeTickets, puedeSolicitudes, puedeEmpleados,
+} = exp;
 
 const nombreCompleto = computed(() => nombreCompletoDe(empleado.value));
+const hayCustodia = computed(() => puedeCorreos.value || puedeEquipos.value || puedeLicencias.value);
+const revisor = computed(() => nombresStaff.value[ultimaRevision.value?.revisado_por] || '');
 
-const iniciales = computed(() =>
-  empleado.value ? `${empleado.value.nombres[0] || ''}${empleado.value.apellidos[0] || ''}` : ''
+const custodia = ref(null);
+const mostrarAsignarEquipo = ref(false);
+const mostrarAsignarLicencia = ref(false);
+
+const tieneCuentas = computed(() => exp.cuentasCargadas.value && cuentasStore.lista.length > 0);
+
+// "Entrega" no ofrece su botón hasta que haya una cuenta que enviar y alguien
+// con permiso para enviarla.
+const puedeEnviarEntrega = computed(
+  () => puedeCorreos.value && auth.puedeVerCredenciales && empleado.value?.estado === 'Activo' && tieneCuentas.value,
 );
 
-async function cargar() {
-  cargando.value = true;
+// ── Guía de alta = la solicitud de alta ABIERTA (migración 108) ──────────────
+// El servidor guarda el trámite y marca solos los pasos que se hacen en otros
+// módulos (cuenta, entrega abierta, equipo, licencia); aquí solo se le engancha
+// a cada paso qué abre. Ocultarla silencia la guía en esta visita: el trámite
+// sigue abierto en «Solicitudes» y en Inicio hasta que se complete.
+const ocultarGuia = ref(false);
+const solicitudAlta = computed(
+  () => solicitudes.value.find((s) => s.tipo_id === 'alta_empleado' && s.estado === 'abierta') || null,
+);
+const modoAlta = computed(() => !!solicitudAlta.value && !ocultarGuia.value);
+const diasAlta = computed(() => (solicitudAlta.value ? Math.max(0, diasDesde(solicitudAlta.value.created_at) ?? 0) : null));
+
+// clave del paso → [texto del botón, qué abre]. Un paso sin entrada aquí es
+// manual y se marca con «Marcar hecho».
+const ACCIONES_PASO = {
+  crear_cuenta: ['Crear cuenta', () => custodia.value?.abrirNuevaCuenta()],
+  entregar_credenciales: ['Enviar por WhatsApp', () => enviarEntrega()],
+  asignar_equipo: ['Entregar', () => { mostrarAsignarEquipo.value = true; }],
+  asignar_licencia: ['Asignar', () => { mostrarAsignarLicencia.value = true; }],
+};
+
+async function marcarPasoGuia(paso) {
   try {
-    const [emp, lics, eqs] = await Promise.all([
-      insforgeApi.getEmpleado(route.params.id),
-      insforgeApi.licenciasPorEmpleado(route.params.id),
-      insforgeApi.equiposPorEmpleado(route.params.id),
-    ]);
-    empleado.value = emp;
-    licencias.value = lics;
-    equipos.value = eqs;
-    if (!empleado.value) {
-      showToast('Empleado no encontrado', 'error');
-      router.replace('/empleados');
-    }
+    await insforgeApi.completarPasoSolicitud(paso.id);
+    await exp.refrescar();
   } catch (e) {
-    showToast(e?.message || 'Error al cargar el empleado', 'error');
-  } finally {
-    cargando.value = false;
+    showToast(traducirErrorDb(e, { entidad: 'solicitud', porDefecto: 'No se pudo marcar el paso.' }).mensaje, 'error');
   }
 }
 
-// Mismo umbral de vencimiento que LicenciasView (core/dominio-licencias.js);
-// aquí solo se badgea lo problemático — una licencia sana no necesita señal.
-function vencimientoLicencia(lic) {
-  const estado = estadoVencimientoLicencia(lic);
-  if (estado === 'vencida') return { clase: CLASE_VENCIMIENTO_LICENCIA.vencida, texto: 'Vencida' };
-  if (estado === 'por_vencer') return { clase: CLASE_VENCIMIENTO_LICENCIA.por_vencer, texto: 'Por vencer' };
-  return null;
+// Un paso se ofrece solo si quien mira tiene el módulo donde se hace (la entrega,
+// además, el permiso de credenciales y una cuenta que enviar).
+function accionDelPaso(paso) {
+  if (paso.estado !== 'pendiente') return {};
+  if (paso.modulo && !auth.puedeVerModulo(paso.modulo)) return {};
+  const [accion, ejecutar] = ACCIONES_PASO[paso.clave] || ['Marcar hecho', () => marcarPasoGuia(paso)];
+  if (paso.clave === 'entregar_credenciales' && !puedeEnviarEntrega.value) return {};
+  if (paso.clave === 'crear_cuenta' && !custodia.value) return {};
+  return { accion, ejecutar };
 }
 
-// Confirmación destructiva (ConfirmDialog compartido, tier base)
-const porLiberarLicencia = ref(null);
-const liberandoLicencia = ref(false);
-const dialogoLiberarLicencia = ref(null);
+const pasosGuia = computed(() => (solicitudAlta.value?.pasos || []).map((p) => ({
+  id: p.id,
+  label: p.label,
+  hecho: p.estado !== 'pendiente',
+  omitido: p.estado === 'omitido',
+  requisito: p.obligatorio,
+  ...accionDelPaso(p),
+})));
 
-async function confirmarLiberarLicencia() {
-  const lic = porLiberarLicencia.value;
-  if (!lic) return;
-  liberandoLicencia.value = true;
+// ── Entrega de credenciales (enlace de un solo uso + WhatsApp) ───────────────
+const enviandoEntrega = ref(false);
+
+async function enviarEntrega() {
+  enviandoEntrega.value = true;
   try {
-    await insforgeApi.cerrarAsignacionLicencia(lic.asignacion_id);
-    licencias.value = licencias.value.filter((l) => l.asignacion_id !== lic.asignacion_id);
-    showToast('Asiento liberado');
-    dialogoLiberarLicencia.value?.cerrar();
+    await enviarCredencialesWhatsApp({
+      empleadoId: empleado.value.id,
+      empleadoNombre: nombreCompleto.value,
+      whatsapp: empleado.value.whatsapp || '',
+      cuentaIds: cuentasStore.lista.map((c) => c.cuenta_id),
+    });
+    await exp.refrescar();
   } catch (e) {
-    showToast(e?.message || 'Error al liberar', 'error');
+    showToast(traducirErrorDb(e, { porDefecto: 'No se pudo crear la entrega.' }).mensaje, 'error');
   } finally {
-    liberandoLicencia.value = false;
+    enviandoEntrega.value = false;
   }
 }
 
-function sincronizarStore() {
-  const idx = empleadosStore.lista.findIndex((e) => e.id === empleado.value?.id);
-  if (idx !== -1 && empleado.value) empleadosStore.lista[idx] = empleado.value;
+// ── Acciones de la carátula ─────────────────────────────────────────────────
+const mostrarForm = ref(false);
+const mostrarBaja = ref(false);
+const mostrarReingreso = ref(false);
+const mostrarSolicitud = ref(false);
+const mostrarPortal = ref(false);
+const dialogoMotivo = ref(null); // 'suspender' | 'reactivar' | 'revisar' | null
+
+const resumenRevision = computed(() => ({
+  ...(puedeCorreos.value ? { cuentas: cuentasStore.lista.length } : {}),
+  ...(puedeEquipos.value ? { equipos: equipos.value.length } : {}),
+  ...(puedeLicencias.value ? { licencias: licencias.value.length } : {}),
+}));
+
+// "Agregar" de la custodia: equipo y licencia abren su diálogo; la cuenta la
+// abre la propia tabla.
+function onAgregar(tipo) {
+  if (tipo === 'equipo') mostrarAsignarEquipo.value = true;
+  else mostrarAsignarLicencia.value = true;
+}
+
+function onAccion(id) {
+  if (id === 'editar') mostrarForm.value = true;
+  else if (id === 'baja') mostrarBaja.value = true;
+  else if (id === 'reingresar') mostrarReingreso.value = true;
+  else if (id === 'imprimir') window.print();
+  else dialogoMotivo.value = id; // suspender | reactivar | revisar
 }
 
 async function onFormCerrado(guardado) {
   mostrarForm.value = false;
   if (guardado) {
-    await cargar();
+    await exp.refrescar();
     showToast('Empleado actualizado');
   }
 }
 
-async function onBajaCerrada(guardado) {
+// Tras cualquier transición el estado, la custodia (la baja cierra cuentas), las
+// solicitudes (la baja abre la suya y cancela las otras) y el libro cambian: se
+// relee todo.
+async function onCicloCerrado(hecho) {
   mostrarBaja.value = false;
-  if (guardado) {
-    await cargar();
-    // Las cuentas personales se dieron de baja: refrescar el panel de accesos
-    await cuentasStore.cargarPorEmpleado(route.params.id);
-  }
+  mostrarReingreso.value = false;
+  dialogoMotivo.value = null;
+  if (hecho) await exp.refrescar();
 }
 
-// Confirmación no destructiva (ConfirmDialog compartido): "Reactivar" es lo
-// opuesto de "Dar de baja" — usa el botón primario, no btn-danger.
-const mostrarReactivar = ref(false);
-const dialogoReactivar = ref(null);
-
-async function confirmarReactivar() {
-  procesando.value = true;
-  try {
-    empleado.value = await insforgeApi.reactivarEmpleado(empleado.value.id);
-    sincronizarStore();
-    showToast(`${nombreCompleto.value} reactivado`);
-    dialogoReactivar.value?.cerrar();
-  } catch (e) {
-    showToast(e?.message || 'Error al reactivar', 'error');
-  } finally {
-    procesando.value = false;
-  }
+// Portal del empleado (109): el enlace se genera o se revoca; solo se relee su estado.
+async function onPortalCerrado(hubo) {
+  mostrarPortal.value = false;
+  if (hubo) await exp.cargarEnlacePortal();
 }
 
-onMounted(cargar);
+async function onSolicitudCerrada(creada) {
+  mostrarSolicitud.value = false;
+  if (!creada) return;
+  showToast(`Solicitud ${creada.codigo} abierta`);
+  await exp.refrescar();
+}
+
+// Por id y no onMounted: al ir de una ficha a otra (/empleados/:id → otro :id)
+// Vue Router reusa el componente y con onMounted se veían los datos del anterior.
+watch(() => route.params.id, async (id) => {
+  if (!id) return;
+  ocultarGuia.value = false;
+  const ficha = await exp.cargar();
+  if (!ficha && !exp.errorFicha.value) {
+    showToast('Empleado no encontrado', 'error');
+    router.replace('/empleados');
+  }
+}, { immediate: true });
 </script>
 
 <template>
-  <div class="detalle-page vista-modulo">
-    <PageHeader>
-      <template #izquierda>
-        <button class="icon-btn btn-volver" type="button" title="Volver" @click="volver('/empleados')">
-          <i class="ti ti-arrow-left"></i>
-        </button>
-        <template v-if="empleado">
-          <div class="emp-avatar">{{ iniciales }}</div>
-          <div class="header-emp">
-            <h1>
-              {{ nombreCompleto }}
-              <BadgeEstado tipo="empleado" :valor="empleado.estado" status />
-            </h1>
-            <span class="header-sub">
-              <TextoVacio :valor="empleado.cargo" placeholder="Sin cargo" />
-              <template v-if="empleado.empresa_nombre"> · {{ empleado.empresa_nombre }}</template>
-            </span>
-          </div>
-        </template>
-        <div v-else class="header-emp">
-          <h1>Empleado</h1>
-        </div>
-      </template>
-      <template v-if="empleado" #acciones>
-        <button class="btn" type="button" :disabled="procesando" @click="mostrarForm = true">
-          <i class="ti ti-pencil" aria-hidden="true"></i> Editar
-        </button>
-        <button
-          v-if="empleado.estado !== 'Inactivo'"
-          class="btn btn-danger"
-          type="button"
-          :disabled="procesando"
-          @click="mostrarBaja = true"
-        >
-          <i class="ti ti-user-off" aria-hidden="true"></i> Dar de baja
-        </button>
-        <button
-          v-else
-          class="btn btn-primary"
-          type="button"
-          :disabled="procesando"
-          @click="mostrarReactivar = true"
-        >
-          <i class="ti ti-user-check" aria-hidden="true"></i> Reactivar
-        </button>
-      </template>
-    </PageHeader>
+  <div class="w-full pb-10">
+    <p v-if="cargando" class="px-4 py-16 text-center text-sm text-gray-500 sm:px-6" role="status">Cargando empleado...</p>
 
-    <main class="page page--padded detalle-body">
-      <div v-if="cargando" class="no-results">Cargando empleado...</div>
+    <p v-else-if="!empleado" class="px-4 py-16 text-center text-sm text-gray-500 sm:px-6">No se encontró el empleado.</p>
 
-      <template v-else-if="empleado">
-        <!-- Banner de alta guiada -->
-        <div v-if="modoAlta" class="alta-banner">
-          <div class="alta-pasos">
-            <div class="alta-paso alta-paso--hecho">
-              <i class="ti ti-circle-check"></i>
-              <span><strong>1.</strong> Empleado registrado</span>
-            </div>
-            <i class="ti ti-chevron-right alta-sep"></i>
-            <div class="alta-paso" :class="{ 'alta-paso--hecho': tieneAccesos }">
-              <i :class="tieneAccesos ? 'ti ti-circle-check' : 'ti ti-circle-2'"></i>
-              <span><strong>2.</strong> Asignar sus accesos</span>
-            </div>
-            <i class="ti ti-chevron-right alta-sep"></i>
-            <div class="alta-paso">
-              <i class="ti ti-circle-3"></i>
-              <span><strong>3.</strong> Enviarlos por WhatsApp</span>
-            </div>
-          </div>
-          <button class="icon-btn alta-cerrar" type="button" title="Ocultar guía" @click="terminarAlta">
-            <i class="ti ti-x"></i>
-          </button>
-        </div>
+    <template v-else>
+      <EmpleadoCaratula :empleado="empleado" :fecha-baja="fechaBaja" @accion="onAccion" />
 
-        <div class="detalle-grid">
-          <!-- Datos personales -->
-          <div class="card datos-card">
-            <div class="datos-title">
-              <i class="ti ti-id-badge-2" aria-hidden="true"></i> Datos personales
-            </div>
-            <dl class="datos-lista">
-              <div class="dato">
-                <dt>DNI</dt>
-                <dd>{{ empleado.dni }}</dd>
-              </div>
-              <div class="dato">
-                <dt>Empresa</dt>
-                <dd><TextoVacio :valor="empleado.empresa_nombre" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Cargo</dt>
-                <dd><TextoVacio :valor="empleado.cargo" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Área/Obra</dt>
-                <dd><TextoVacio :valor="empleado.area_obra_nombre" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Ubicación</dt>
-                <dd><TextoVacio :valor="empleado.ubicacion_nombre" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Fecha de alta</dt>
-                <dd><TextoVacio :valor="formatFecha(empleado.fecha_alta)" /></dd>
-              </div>
-              <div class="dato">
-                <dt>Teléfono</dt>
-                <dd><TextoVacio :valor="formatTelefono(empleado.telefono)" /></dd>
-              </div>
-              <div class="dato">
-                <dt>WhatsApp</dt>
-                <dd>
-                  <a
-                    v-if="empleado.whatsapp"
-                    class="dato-link"
-                    :href="`https://wa.me/${empleado.whatsapp.replace(/\D/g, '')}`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <i class="ti ti-brand-whatsapp"></i> {{ formatTelefono(empleado.whatsapp) }}
-                  </a>
-                  <TextoVacio v-else />
-                </dd>
-              </div>
-              <div class="dato">
-                <dt>Correo personal</dt>
-                <dd class="dato-truncar" :title="empleado.correo_personal"><TextoVacio :valor="empleado.correo_personal" /></dd>
-              </div>
-              <div v-if="empleado.notas" class="dato dato--notas">
-                <dt>Notas</dt>
-                <dd>{{ empleado.notas }}</dd>
-              </div>
-            </dl>
-          </div>
+      <EmpleadoGuiaAlta
+        v-if="modoAlta && pasosGuia.length"
+        :pasos="pasosGuia"
+        :solicitud="solicitudAlta"
+        :dias="diasAlta"
+        @cerrar="ocultarGuia = true"
+      />
 
-          <!-- Vínculos: Accesos + Equipos + Licencias -->
-          <div class="col-vinculos">
-            <CuentasPanel
-              :key="empleado.id"
-              class="accesos-panel"
-              :empleado-id="empleado.id"
-              :empleado-nombre="nombreCompleto"
-              :empleado-whatsapp="empleado.whatsapp || ''"
+      <div class="space-y-6 px-4 pt-6 sm:px-6">
+        <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <EmpleadoCustodia
+            v-if="hayCustodia"
+            ref="custodia"
+            :key="empleado.id"
+            :empleado="empleado"
+            :cuentas="cuentasStore.lista"
+            :equipos="equipos"
+            :licencias="licencias"
+            :acta-por-asignacion="actaEntregaPorAsignacion"
+            :puede-correos="puedeCorreos"
+            :puede-equipos="puedeEquipos"
+            :puede-licencias="puedeLicencias"
+            :cargando-cuentas="cuentasStore.cargando"
+            :error-cuentas="cuentasStore.error || ''"
+            @cambio="exp.refrescar()"
+            @agregar="onAgregar"
+          />
+
+          <aside class="min-w-0 space-y-6 lg:col-start-2" aria-label="Entregas y datos del empleado">
+            <EmpleadoEntregas
+              v-if="puedeCorreos"
+              :entregas="entregas"
+              :puede-enviar="puedeEnviarEntrega"
+              :enviando="enviandoEntrega"
+              @enviar="enviarEntrega"
             />
-
-            <div class="paneles-duo">
-              <!-- Equipos que porta (entrega/devolución se registran en el módulo Equipos) -->
-              <div class="card panel-card">
-                <div class="panel-toolbar">
-                  <div class="panel-title">
-                    <i class="ti ti-devices" aria-hidden="true"></i>
-                    Equipos
-                    <span class="badge-count">{{ equipos.length }}</span>
-                  </div>
-                  <RouterLink class="btn" to="/equipos" title="La entrega se registra en el módulo Equipos">
-                    <i class="ti ti-plus" aria-hidden="true"></i> Asignar
-                  </RouterLink>
-                </div>
-
-                <p v-if="equipos.length === 0" class="panel-vacio">
-                  Sin equipos asignados — la entrega se registra en el módulo Equipos.
-                </p>
-                <ul v-else class="panel-lista">
-                  <li v-for="eq in equipos" :key="eq.asignacion_id" class="panel-item">
-                    <div class="panel-item-info">
-                      <span class="panel-item-titulo">
-                        <span class="mono">{{ eq.codigo }}</span>
-                        · {{ [eq.tipo, eq.marca, eq.modelo].filter(Boolean).join(' ') }}
-                        <BadgeEstado
-                          v-if="eq.estado && eq.estado !== 'operativo'"
-                          tipo="situacion"
-                          :valor="eq.situacion"
-                          inline
-                          class="badge-inline"
-                        />
-                      </span>
-                      <span class="panel-item-meta">Desde {{ formatFecha(eq.fecha_inicio) }}</span>
-                    </div>
-                    <div class="actions">
-                      <RouterLink
-                        class="icon-btn"
-                        :to="{ path: '/equipos', query: { q: eq.codigo } }"
-                        title="Gestionar en el módulo Equipos"
-                        aria-label="Gestionar en el módulo Equipos"
-                      >
-                        <i class="ti ti-external-link"></i>
-                      </RouterLink>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-
-              <!-- Licencias directas (las de login aparecen como cuentas en Accesos) -->
-              <div class="card panel-card">
-                <div class="panel-toolbar">
-                  <div class="panel-title">
-                    <i class="ti ti-license" aria-hidden="true"></i>
-                    Licencias
-                    <span class="badge-count">{{ licencias.length }}</span>
-                  </div>
-                  <RouterLink class="btn" to="/licencias" title="Los asientos se asignan en el módulo Licencias">
-                    <i class="ti ti-plus" aria-hidden="true"></i> Asignar
-                  </RouterLink>
-                </div>
-
-                <p v-if="licencias.length === 0" class="panel-vacio">
-                  Sin licencias directas — las de login aparecen como cuentas en Accesos.
-                </p>
-                <ul v-else class="panel-lista">
-                  <li v-for="lic in licencias" :key="lic.asignacion_id" class="panel-item">
-                    <div class="panel-item-info">
-                      <span class="panel-item-titulo">
-                        {{ lic.software }}
-                        <span
-                          v-if="vencimientoLicencia(lic)"
-                          class="badge badge-inline"
-                          :class="vencimientoLicencia(lic).clase"
-                        >{{ vencimientoLicencia(lic).texto }}</span>
-                      </span>
-                      <span class="panel-item-meta">
-                        Desde {{ formatFecha(lic.fecha_inicio) }}
-                        <template v-if="lic.tipo === 'perpetua'"> · perpetua</template>
-                        <template v-else-if="lic.fecha_vencimiento"> · vence {{ formatFecha(lic.fecha_vencimiento) }}</template>
-                      </span>
-                    </div>
-                    <div class="actions">
-                      <RouterLink
-                        class="icon-btn"
-                        :to="{ path: '/licencias', query: { q: lic.software } }"
-                        title="Ver en el módulo Licencias"
-                        aria-label="Ver en el módulo Licencias"
-                      >
-                        <i class="ti ti-external-link"></i>
-                      </RouterLink>
-                      <button
-                        class="icon-btn danger"
-                        type="button"
-                        title="Liberar asiento"
-                        aria-label="Liberar asiento"
-                        @click="porLiberarLicencia = lic"
-                      >
-                        <i class="ti ti-user-minus"></i>
-                      </button>
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
+            <EmpleadoPortal v-if="puedeEmpleados && empleado.estado === 'Activo'" :enlace="enlacePortal" @abrir="mostrarPortal = true" />
+            <EmpleadoDatos :empleado="empleado" :revision="ultimaRevision" :revisor="revisor" />
+          </aside>
         </div>
-      </template>
-    </main>
 
-    <EmpleadoForm
-      v-if="mostrarForm"
+        <EmpleadoSolicitudes
+          v-if="puedeSolicitudes"
+          :solicitudes="solicitudes"
+          :puede-crear="empleado.estado === 'Activo'"
+          @nueva="mostrarSolicitud = true"
+        />
+
+        <EmpleadoTickets v-if="puedeTickets" :tickets="tickets" />
+
+        <EmpleadoLibro :filas="libro" :cargando="libroCargando" />
+      </div>
+    </template>
+
+    <EmpleadoForm v-if="mostrarForm" :empleado="empleado" @cerrar="onFormCerrado" />
+
+    <BajaEmpleadoModal v-if="mostrarBaja" :empleado="empleado" @cerrar="onCicloCerrado" />
+
+    <EmpleadoMotivoDialog
+      v-if="dialogoMotivo"
+      :accion="dialogoMotivo"
       :empleado="empleado"
-      @cerrar="onFormCerrado"
+      :resumen="resumenRevision"
+      @cerrar="onCicloCerrado"
     />
 
-    <BajaEmpleadoModal
-      v-if="mostrarBaja"
-      :empleado="empleado"
-      @cerrar="onBajaCerrada"
+    <ReingresarEmpleadoDialog v-if="mostrarReingreso" :empleado="empleado" @cerrar="onCicloCerrado" />
+
+    <PortalEnlaceDialog v-if="mostrarPortal" :empleado="empleado" :enlace="enlacePortal" @cerrar="onPortalCerrado" />
+
+    <SolicitudForm v-if="mostrarSolicitud" :empleado="empleado" @cerrar="onSolicitudCerrada" />
+
+    <AsignarEquipoModal
+      v-if="mostrarAsignarEquipo"
+      :empleado-id="empleado.id"
+      :empleado-nombre="nombreCompleto"
+      @close="mostrarAsignarEquipo = false"
+      @asignado="exp.refrescar()"
     />
 
-    <!-- Confirmación destructiva (ConfirmDialog compartido, tier base) -->
-    <ConfirmDialog
-      v-if="porLiberarLicencia"
-      ref="dialogoLiberarLicencia"
-      destructivo
-      icono="ti-user-minus"
-      titulo="Liberar asiento"
-      :mensaje="`¿Liberar el asiento de “${porLiberarLicencia.software}” de este empleado?`"
-      confirmar-label="Liberar"
-      :cargando="liberandoLicencia"
-      @cancel="porLiberarLicencia = null"
-      @confirm="confirmarLiberarLicencia"
-    />
-
-    <!-- Confirmación no destructiva (ConfirmDialog compartido) -->
-    <ConfirmDialog
-      v-if="mostrarReactivar"
-      ref="dialogoReactivar"
-      titulo="Reactivar empleado"
-      :mensaje="`¿Reactivar a ${nombreCompleto}? Volverá al estado Activo.`"
-      confirmar-label="Reactivar"
-      :cargando="procesando"
-      @cancel="mostrarReactivar = false"
-      @confirm="confirmarReactivar"
+    <AsignarLicenciaModal
+      v-if="mostrarAsignarLicencia"
+      :empleado-id="empleado.id"
+      :empleado-nombre="nombreCompleto"
+      @close="mostrarAsignarLicencia = false"
+      @asignado="exp.refrescar()"
     />
   </div>
 </template>
-
-<style scoped>
-/* .header-left/.header-inner se estilan en main.css (shell de PageHeader) */
-.btn-volver {
-  flex-shrink: 0;
-}
-
-.emp-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
-  color: var(--color-text-inverse);
-  font-size: var(--fs-base);
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  text-transform: uppercase;
-}
-
-.header-emp {
-  min-width: 0;
-}
-
-.header-emp h1 {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.header-sub {
-  font-size: 12.5px;
-  color: var(--color-text-secondary);
-}
-
-.alta-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: var(--color-accent-subtle);
-  border: 1px solid color-mix(in srgb, var(--color-primary, var(--color-accent)) 25%, transparent);
-  border-radius: var(--radius-lg, 12px);
-  padding: 12px 16px;
-  margin-bottom: 16px;
-}
-
-.alta-pasos {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.alta-paso {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-}
-
-.alta-paso i {
-  font-size: var(--fs-xl);
-}
-
-.alta-paso--hecho {
-  color: var(--color-success-text);
-}
-
-.alta-paso--hecho i {
-  color: var(--color-success);
-}
-
-.alta-sep {
-  color: var(--color-text-secondary);
-  opacity: 0.5;
-  font-size: var(--fs-md);
-}
-
-.alta-cerrar {
-  flex-shrink: 0;
-}
-
-.detalle-grid {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 16px;
-  align-items: start;
-}
-
-@media (max-width: 900px) {
-  .detalle-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.datos-card {
-  padding: 16px 20px 20px;
-}
-
-.datos-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin-bottom: 14px;
-}
-
-.datos-lista {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.dato dt {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
-  margin-bottom: 2px;
-}
-
-.dato dd {
-  margin: 0;
-  font-size: 13.5px;
-  color: var(--color-text-primary);
-}
-
-.dato-truncar {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dato--notas dd {
-  white-space: pre-wrap;
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
-}
-
-.dato-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--color-primary);
-  text-decoration: none;
-}
-
-.dato-link:hover {
-  text-decoration: underline;
-}
-
-/* Columna derecha: Accesos arriba, Equipos + Licencias en dúo debajo */
-.col-vinculos {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.paneles-duo {
-  display: grid;
-  /* min(320px, 100%): en teléfonos angostos (<352px de viewport) la
-     columna cede en lugar de desbordar horizontalmente */
-  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
-  gap: 16px;
-  align-items: start;
-}
-
-/* Misma estructura de toolbar que el panel de Accesos (CuentasPanel) */
-.panel-card {
-  padding: 0 0 6px;
-}
-
-.panel-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--color-border);
-  flex-wrap: wrap;
-}
-
-.panel-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-/* Vacío compacto: estos paneles son secundarios, no ameritan el EmptyState grande */
-.panel-vacio {
-  margin: 0;
-  padding: 18px 20px;
-  font-size: var(--fs-base);
-  color: var(--color-text-tertiary);
-}
-
-.panel-lista {
-  list-style: none;
-  margin: 0;
-  padding: 6px 8px;
-}
-
-.panel-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-}
-
-.panel-item:hover {
-  background: var(--color-bg-subtle);
-}
-
-.panel-item-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.panel-item-titulo {
-  font-size: var(--fs-base);
-  color: var(--color-text-primary);
-}
-
-.panel-item-meta {
-  font-size: 11.5px;
-  color: var(--color-text-secondary);
-}
-
-/* Identificadores en mono — solo cambia la familia, nunca peso/color */
-.mono {
-  font-family: var(--font-mono, monospace);
-}
-
-.badge-inline {
-  margin-left: 6px;
-  vertical-align: middle;
-}
-</style>
