@@ -8,8 +8,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { ESTADOS_TERMINALES, SIN_ASIGNAR } from '../../core/dominio-tickets.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
-import { exportarCSV } from '../../core/exportar.js';
-import { CABECERA_CSV_TICKETS, filaCsvTicket } from '../../core/exportar-tickets.js';
+import { REPORTE_POR_ID, puedeVerReporte, rutaReporte } from '../../core/reportes.js';
 import TicketInternoForm from './TicketInternoForm.vue';
 import TicketDetallePanel from './TicketDetallePanel.vue';
 import PrioridadTicket from './PrioridadTicket.vue';
@@ -403,21 +402,6 @@ function verTicket(ticket) {
   router.push(`/tickets/${ticket.id}`);
 }
 
-// ── Exportar la vista ─────────────────────────────────────────────────
-// Los mismos filtros que están puestos en pantalla, sin página.
-const exportando = ref(false);
-async function exportarBandeja() {
-  exportando.value = true;
-  try {
-    const filas = await store.listaParaExportar();
-    exportarCSV('tickets_bandeja', CABECERA_CSV_TICKETS, filas.map((t) => filaCsvTicket(t, staffPorId.value)));
-  } catch (e) {
-    showToast(e?.message || 'Error al exportar', 'error');
-  } finally {
-    exportando.value = false;
-  }
-}
-
 // ── Atajos de teclado: "/" enfoca el buscador ───────────────────────────
 // AppBuscador no expone focus(): se enfoca su <input> interno.
 const refBuscador = ref(null);
@@ -438,19 +422,15 @@ async function copiarEnlaceSoporte() {
 }
 
 // Menú "Más": acciones de baja frecuencia frente a "Ticket interno", el
-// único acento de la vista. Orden pedido por el JEFE: Enlace soporte →
-// Reporte → Satisfacción → Exportar datos.
+// único acento de la vista. Tickets ya no exporta ni arma reportes: todo vive
+// en Reportes (encargo del dueño, 2026-10-05); acá solo quedan los enlaces a
+// sus dos hojas (el CSV de la bandeja se integró en el de Tickets).
 const accionesMas = computed(() => [
   { icono: 'ti-link', label: 'Enlace soporte', onClick: copiarEnlaceSoporte },
-  // El reporte es su propia hoja (/reportes, migración 115): sin modal.
-  { icono: 'ti-report', label: 'Reporte', onClick: () => router.push('/reportes') },
-  { icono: 'ti-mood-smile', label: 'Satisfacción', onClick: () => router.push('/tickets/satisfaccion') },
-  {
-    icono: exportando.value ? 'ti-loader-2 animate-spin' : 'ti-download',
-    label: exportando.value ? 'Exportando...' : 'Exportar datos',
-    disabled: exportando.value || !total.value,
-    onClick: exportarBandeja,
-  },
+  ...(puedeVerReporte(auth, REPORTE_POR_ID.tickets) ? [
+    { icono: 'ti-report', label: 'Ver reporte', onClick: () => router.push(rutaReporte('tickets')) },
+    { icono: 'ti-mood-smile', label: 'Ver satisfacción', onClick: () => router.push(rutaReporte('satisfaccion')) },
+  ] : []),
 ]);
 
 function onNuevoCerrado(creado) {

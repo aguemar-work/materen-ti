@@ -44,6 +44,9 @@
   y emite `cerrado` en todo cierre. Migrar es cambiar `<Modal>` por `<AppDialog>` y
   `@close` por `@cerrado`. Todos los módulos migraron (2026-10-02) y `Modal.vue`
   se eliminó: no se reintroduce ni se crea un tercer diálogo.
+- **Reportes**: una hoja nueva usa `ReporteHoja` (carátula, sello, CSV, Imprimir, glosario) + `ReporteSecciones`;
+  los reportes de la 117 son `ReporteGenerico` (ruta `/reportes/<id>`). En un módulo, el acceso a su reporte es
+  `<EnlaceReporte reporte="…">`, nunca un botón Exportar ni `exportarCSV`.
 - **Tonos de estado**: salen de `core/tonos.js`; un estado nuevo se agrega ahí y
   en su `core/dominio-*.js` (`tests/tonos.test.js` lo exige).
 - **Errores de base**: `api/erroresDb.js` (`traducirErrorDb`) traduce 42501, P0001,

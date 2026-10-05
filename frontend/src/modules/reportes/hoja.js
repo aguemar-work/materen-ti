@@ -1,7 +1,7 @@
 // Arma las secciones de la hoja imprimible a partir del jsonb de
 // reporte_tickets (migración 115). Solo da FORMATO: no suma, no promedia, no
 // decide qué es "resuelto". Cada tabla es { titulo?, nota?, columnas, filas }
-// y cada fila una lista de celdas { texto, num?, tenue? }; ReportesView la
+// y cada fila una lista de celdas { texto, num?, tenue? }; ReporteTicketsView la
 // pinta con ReporteTabla. Separado del .vue para probarlo sin montar nada.
 import { formatHoras, formatFecha } from '../../core/formatters.js';
 import { prioridadInfo } from '../../core/dominio-tickets.js';

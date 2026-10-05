@@ -6,8 +6,9 @@
 // a PDF aquí, en el navegador, antes de subir. Nada sale del equipo hasta
 // entonces.
 //
-// jsPDF ya es dependencia (core/pdfReporte.js) y se importa de forma diferida:
-// solo se descarga cuando alguien sube una foto.
+// jsPDF se importa de forma diferida: solo se descarga cuando alguien sube una
+// foto. Desde 2026-10-05 es el ÚNICO uso de jsPDF (los reportes se imprimen
+// con window.print() desde el módulo Reportes); es un DOCUMENTO, no un reporte.
 import { comprimirImagen } from './imagenes.js';
 
 // Lado largo de la foto del acta: más que una foto de equipo (1280) para que

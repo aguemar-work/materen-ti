@@ -23,6 +23,20 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-05** (**Reportes centralizados — migración 117**, escrita, **sin aplicar**; pedido del dueño) — Todo reporte y
+  exportación vive en Reportes: `/reportes` es un índice por área (Mesa de ayuda, Personas, Custodia,
+  Administración) que muestra solo lo que cada usuario puede ver, y cada reporte tiene su ruta `/reportes/<id>`
+  con hoja imprimible y CSV del mismo jsonb: Tickets y Satisfacción (115), Cambios, Problemas y conocimiento,
+  Personal, Solicitudes, Encuestas, Inventario de equipos, Licencias, Correos y cuentas compartidas, y Auditoría
+  (solo JEFE). Una RPC por reporte con guard del módulo fuente y núcleo `*_de` solo `project_admin`, forma
+  común armada por los auxiliares `reporte_*`, sin tope de filas, sin DNI, contacto, IP ni user_agent. Se
+  retiran los botones Exportar de Tickets, Equipos, Licencias, Correos, Empleados, Actividad y Encuestas, el
+  PDF de inventario, la vista Tickets › Satisfacción con su PDF (redirige a `/reportes/satisfaccion`) y la
+  dependencia `jspdf-autotable`; jsPDF queda solo para el acta. En cada módulo, «Ver reporte»
+  (`EnlaceReporte`). Los documentos de un registro (acta, etiquetas, expediente, hoja de vida, solicitud,
+  cambio) siguen en su ficha. Parámetro `dias_revision_accesos` (180). La 117 reemplaza `reporte_tickets_de`
+  de la 115 con el mismo cuerpo más `asignado_a` (la 115 ya está aplicada y no se edita). **La 115 está
+  aplicada en producción sin su fila en `schema_migrations`**: `scripts/sql/registrar-115.sql` la registra.
 - **2026-10-05** (**Catálogo de tickets v2 — migración 116**, escrita, **sin aplicar**; pedido del dueño) — 7 categorías y
   31 subcategorías (antes 5 y 18): Hardware pasa a «Hardware y Periféricos» y recibe Impresora desde Redes;
   nuevas «Seguridad de la Información» y «Videovigilancia (CCTV)» (Cámaras sale de Accesos y conserva su aviso);

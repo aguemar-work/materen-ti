@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { MODULOS, MODULOS_CONFIGURABLES } from '../src/core/modulos.js';
 import { MODULOS_CONFIGURABLES as DESDE_CONSTANTS } from '../src/constants/modulos.js';
 import { AREAS_NAV, migasDeRuta } from '../src/components/shared/navegacion.js';
+import { REPORTES, MODULOS_CON_REPORTE } from '../src/core/reportes.js';
 
 // Fixture LITERAL del CHECK de `staff_modulos_permisos.modulo` (migración
 // 056). No se deriva de MODULOS a propósito: si se agrega o quita un módulo,
@@ -74,8 +75,8 @@ describe('navegación del shell', () => {
   it('estructura decidida: Inicio · Mesa de ayuda · Personas · Custodia · Administración', () => {
     const grupos = AREAS_NAV[0].grupos.map((g) => [g.label, g.items.map((i) => i.label)]);
     expect(grupos).toEqual([
-      ['', ['Inicio']],
-      ['Mesa de ayuda', ['Tickets', 'Conocimiento', 'Problemas', 'Cambios', 'Reportes']],
+      ['', ['Inicio', 'Reportes']],
+      ['Mesa de ayuda', ['Tickets', 'Conocimiento', 'Problemas', 'Cambios']],
       ['Personas', ['Empleados', 'Solicitudes', 'Encuestas']],
       ['Custodia', ['Equipos', 'Licencias', 'Correos']],
       ['Administración', ['Registro de actividad', 'Accesos sensibles', 'Configuración']],
@@ -86,8 +87,8 @@ describe('navegación del shell', () => {
   // módulo `empleados` (mismo meta.modulo en su ruta). El CHECK de la 056 admite
   // 8 módulos y ninguno es «solicitudes».
   // Cambios (migración 107) tampoco lo es: cuelga del módulo `tickets`.
-  // Reportes (migración 115) ídem: la bandeja de tickets agregada por período.
-  const EXTRAS_DE_MODULO = ['/solicitudes', '/cambios', '/reportes'];
+  // Reportes (115/117) no cuelga de un módulo: se ve con cualquiera que tenga un reporte.
+  const EXTRAS_DE_MODULO = ['/solicitudes', '/cambios'];
 
   it('los ítems con módulo salen del registro y caen en el grupo que éste declara', () => {
     const conModulo = items.filter((i) => i.modulo && !EXTRAS_DE_MODULO.includes(i.path));
@@ -106,6 +107,7 @@ describe('navegación del shell', () => {
       const ruta = RUTAS.find((r) => r.path === i.path);
       expect(ruta, `sin ruta para ${i.path}`).toBeDefined();
       expect(i.modulo ?? null, `${i.path}: modulo`).toBe(ruta.meta?.modulo ?? null);
+      expect(i.algunModulo ?? null, `${i.path}: algunModulo`).toEqual(ruta.meta?.algunModulo ?? null);
       expect(Boolean(i.soloJefe), `${i.path}: soloJefe`).toBe(Boolean(ruta.meta?.roles?.includes('jefe')));
     }
   });
@@ -133,17 +135,29 @@ describe('navegación del shell', () => {
     expect(migasDeRuta('/cambios/c1')).toEqual([{ label: 'Mesa de ayuda' }, { label: 'Cambios', to: '/cambios' }]);
   });
 
-  it('Reportes cuelga del módulo tickets, en Mesa de ayuda, y la sección por técnico no es una ruta', () => {
+  it('Reportes va junto a Inicio, se ve con cualquier módulo que tenga un reporte y cada hoja exige el permiso de su RPC', () => {
     const extra = items.filter((i) => i.path === '/reportes');
     expect(extra).toHaveLength(1);
-    expect(extra[0]).toMatchObject({ label: 'Reportes', modulo: 'tickets', grupo: 'mesa-de-ayuda' });
-    expect(extra[0].soloJefe).toBeFalsy();
-    const rutas = RUTAS.filter((r) => r.path.startsWith('/reportes'));
-    expect(rutas).toHaveLength(1);
-    expect(rutas[0].meta?.modulo).toBe('tickets');
-    expect(rutas[0].meta?.roles).toBeUndefined();
+    expect(extra[0]).toMatchObject({ label: 'Reportes', grupo: 'general' });
+    expect(extra[0].modulo).toBeUndefined();
+    expect([...extra[0].algunModulo].sort()).toEqual([...MODULOS_CON_REPORTE].sort());
     expect(MODULOS.map((m) => m.id)).not.toContain('reportes');
-    expect(migasDeRuta('/reportes')).toEqual([{ label: 'Mesa de ayuda' }, { label: 'Reportes' }]);
+    // Una ruta por reporte del catálogo, con el MISMO permiso que exige su RPC.
+    const rutas = RUTAS.filter((r) => r.path.startsWith('/reportes/'));
+    expect(rutas.map((r) => r.path).sort()).toEqual(REPORTES.map((r) => `/reportes/${r.id}`).sort());
+    for (const r of REPORTES) {
+      const ruta = RUTAS.find((x) => x.path === `/reportes/${r.id}`);
+      if (r.rol) expect(ruta.meta?.roles, r.id).toEqual([r.rol]);
+      else expect(ruta.meta?.modulo, r.id).toBe(r.modulo);
+    }
+    expect(REPORTES.find((r) => r.id === 'auditoria')).toMatchObject({ rol: 'jefe' });
+    expect(migasDeRuta('/reportes')).toEqual([{ label: 'Reportes' }]);
+    expect(migasDeRuta('/reportes/inventario')).toEqual([{ label: 'Reportes', to: '/reportes' }, { label: 'Inventario de equipos' }]);
+  });
+
+  it('la ruta vieja de Satisfacción redirige a su reporte', () => {
+    const vieja = RUTAS.find((r) => r.path === '/tickets/satisfaccion');
+    expect(vieja?.redirect).toBe('/reportes/satisfaccion');
   });
 
   it('las migas usan los nombres nuevos', () => {

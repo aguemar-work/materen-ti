@@ -40,6 +40,7 @@ const navAreas = computed(() => AREAS_NAV
         items: grupo.items
           .filter((item) => !item.soloJefe || auth.esJefe)
           .filter((item) => !item.modulo || auth.puedeVerModulo(item.modulo))
+          .filter((item) => !item.algunModulo || item.algunModulo.some((m) => auth.puedeVerModulo(m)))
           .map((item) => ({ ...item, badge: item.badgeSinAsignar ? props.ticketsSinAsignar : 0 })),
       }))
       .filter((grupo) => grupo.items.length > 0),

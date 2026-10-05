@@ -130,6 +130,18 @@ describe.skipIf(!listo)('autorización — RPC sensibles rechazan ejecución sin
     await esperarRpcRechazada('reporte_satisfaccion_consolidado', undefined);
   });
 
+  // Reportes centralizados (migración 117): sin sesión, todas rechazan.
+  for (const [rpc, args] of [
+    ['reporte_inventario_equipos', undefined], ['reporte_licencias', undefined], ['reporte_correos', undefined],
+    ['reporte_personal', { p_desde: '2015-03-01', p_hasta: '2015-03-31' }], ['reporte_solicitudes', { p_desde: '2015-03-01', p_hasta: '2015-03-31' }],
+    ['reporte_cambios', { p_desde: '2015-03-01', p_hasta: '2015-03-31' }], ['reporte_problemas', { p_desde: '2015-03-01', p_hasta: '2015-03-31' }],
+    ['reporte_encuestas', { p_ronda: null }], ['reporte_auditoria', { p_desde: '2015-03-01', p_hasta: '2015-03-31' }],
+  ]) {
+    it(`${rpc} — rechazada`, async () => {
+      await esperarRpcRechazada(rpc, args);
+    });
+  }
+
   // Hallazgo P0-05, ya CERRADO: tiene_permiso_modulo(text) era la única
   // función SECURITY DEFINER del sistema sin `revoke ... from public`, así
   // que quedaba con EXECUTE abierto a PUBLIC/anon por defecto. La migración

@@ -2,8 +2,7 @@
 //
 // ÚNICO lugar donde se escribe el nombre. Consumidores: AppLayout (logo +
 // título de topbar), AppPortal (portal público y páginas de error: alt del
-// logo), pdfReporte (pie de los PDFs),
-// ActaView (actas imprimibles de equipos), DesignSystem y StyleLab.
+// logo), ActaView (actas imprimibles de equipos), DesignSystem y StyleLab.
 //
 // EXCEPCIÓN CONOCIDA — `frontend/index.html` (`<title>`): es HTML estático
 // servido antes de que corra cualquier JS, así que no puede importar de acá.

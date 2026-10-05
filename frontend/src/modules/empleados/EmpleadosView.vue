@@ -8,7 +8,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { traducirErrorDb } from '../../api/erroresDb.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
-import { exportarCSV } from '../../core/exportar.js';
+import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
 import { showToast } from '../../core/toast.js';
 import { nombreCompleto } from '../../core/dominio-empleados.js';
 import EmpleadoForm from './EmpleadoForm.vue';
@@ -131,27 +131,6 @@ useRealtimeRefresco('empleados:list', () => Promise.all([store.cargar(), refresc
 const mostrarForm = ref(false);
 const empleadoEditar = ref(null);
 
-
-// Exporta el dataset filtrado COMPLETO (el servidor solo tiene la página)
-const exportando = ref(false);
-async function exportar() {
-  exportando.value = true;
-  try {
-    const filas = await store.listaParaExportar();
-    exportarCSV(
-      'empleados',
-      ['Nombres', 'Apellidos', 'DNI', 'Empresa', 'Área/Obra', 'Ubicación', 'Cargo', 'Estado', 'Fecha alta', 'WhatsApp', 'Correo personal'],
-      filas.map((e) => [
-        e.nombres, e.apellidos, e.dni, e.empresa_nombre, e.area_obra_nombre, e.ubicacion_nombre, e.cargo,
-        e.estado, e.fecha_alta, e.whatsapp, e.correo_personal,
-      ]),
-    );
-  } catch (e) {
-    showToast(traducirErrorDb(e, { porDefecto: 'No se pudo exportar.' }).mensaje, 'error');
-  } finally {
-    exportando.value = false;
-  }
-}
 
 // ── Enviar credenciales sin entrar al perfil ──────────────────────
 // Mismo flujo que el botón de WhatsApp en la ficha (EmpleadoDetalleView):
@@ -306,16 +285,7 @@ onMounted(async () => {
       subtitulo="Personal inventariado, con sus accesos, equipos y licencias"
     >
       <template #acciones>
-        <AppButton
-          variant="text"
-          severity="secondary"
-          :icon="exportando ? 'ti ti-loader-2' : 'ti ti-table-export'"
-          :loading="exportando"
-          :disabled="exportando"
-          :label="exportando ? 'Exportando...' : 'Exportar'"
-          title="Exportar a Excel (CSV)"
-          @click="exportar"
-        />
+        <EnlaceReporte reporte="personal" />
         <AppButton icon="ti ti-plus" label="Nuevo empleado" @click="abrirNuevo" />
       </template>
     </AppEncabezado>

@@ -13,12 +13,10 @@ export default [
     meta: { modulo: 'tickets' },
   },
   {
-    // Consolidado histórico de satisfacción (todo el tiempo). Va antes de
-    // '/tickets/:id' en la lista pero eso no importa acá: vue-router matchea
-    // rutas estáticas antes que las dinámicas independientemente del orden.
+    // El consolidado de satisfacción se mudó a Reportes (2026-10-05): la ruta
+    // vieja (enlaces guardados) redirige. vue-router matchea rutas estáticas
+    // antes que '/tickets/:id', así que no la captura el detalle.
     path: '/tickets/satisfaccion',
-    name: 'tickets-satisfaccion',
-    component: () => import('../../modules/tickets/ReporteSatisfaccionView.vue'),
-    meta: { modulo: 'tickets' },
+    redirect: '/reportes/satisfaccion',
   },
 ];

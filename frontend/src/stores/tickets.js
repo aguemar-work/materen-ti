@@ -73,11 +73,6 @@ export const useTicketsStore = crearStorePaginado('tickets', {
       }
     },
 
-    // Dataset filtrado completo (sin página) — para exportar CSV
-    async listaParaExportar() {
-      return insforgeApi.listTicketsFiltrados(this.filtros);
-    },
-
     async actualizar(id, datos) {
       this.error = null;
       await insforgeApi.actualizarTicket(id, datos);

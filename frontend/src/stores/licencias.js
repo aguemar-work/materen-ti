@@ -12,10 +12,6 @@ export const useLicenciasStore = crearStorePaginado('licencias', {
   entidad: 'licencia',
 
   actions: {
-    async listaParaExportar() {
-      return insforgeApi.listLicenciasFiltrados(this.filtros);
-    },
-
     // cuentaNueva (opcional): correo que se crea junto con la licencia, en una
     // sola transacción (RPC crear_licencia_con_cuenta, migración 101).
     async crear(datos, cuentaNueva = null) {

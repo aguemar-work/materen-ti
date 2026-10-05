@@ -65,6 +65,12 @@
 --         config_parametros, evento categoria_cambiada; crear_ticket_publico con la
 --         prioridad de la subcategoria (el staff puede elegir otra) y reclasificar_ticket
 --         (solo JEFE, ticket cerrado incluido, sin tocar tipo ni prioridad)
+--   [117] (bloques 117-a a 117-e) reportes centralizados: guard por modulo fuente (42501
+--         tambien con el resto de los modulos y con staff inactivo), auditoria solo JEFE,
+--         privilegios de publicas/nucleos/auxiliares, periodo P0001; inventario, licencias y
+--         correos por deltas sobre fixtures; personal (movimientos de empleado_eventos,
+--         revisiones pendientes), solicitudes, cambios, problemas/KB con avisos, encuestas
+--         anonimas y auditoria; ninguna salida con DNI, contacto, IP ni user_agent
 --   [108] (bloques 108-a a 108-f) solicitudes de servicio: catalogo y privilegios,
 --         crear_solicitud (alta con persona nueva en la misma transaccion, validaciones,
 --         una sola abierta por tipo), AUTOCOMPLETADO por cuenta/entrega abierta/equipo/
@@ -6718,5 +6724,628 @@ begin
     raise exception 'TESTS_OK [116c] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [116c]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 117a — reportes centralizados (migración 117): cada núcleo exige el
+-- módulo de su fuente (42501 sin él, también con el resto de los módulos y
+-- con staff inactivo), la auditoría exige rol:jefe, las RPC públicas sin
+-- sesión responden 42501, EXECUTE solo a authenticated en las públicas y
+-- solo a project_admin en núcleos y auxiliares, y el período se valida (P0001).
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_inact uuid;
+  v_caso record;
+  v_sql text;
+  v_mods text[] := array['tickets', 'empleados', 'correos', 'licencias', 'equipos', 'base_conocimiento', 'problemas', 'encuestas'];
+  r jsonb;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_117a_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_117a_asis@example.test') returning id into v_asis;
+  insert into auth.users (email) values ('__test_ci_117a_inact@example.test') returning id into v_inact;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 117a' where user_id = v_jefe;
+  update public.staff set activo = true, nombre = 'Asistente 117a' where user_id = v_asis;
+  update public.staff set activo = false where user_id = v_inact;
+
+  for v_caso in
+    select * from (values
+      ('reporte_inventario_equipos_de', 'equipos',   false),
+      ('reporte_licencias_de',          'licencias', false),
+      ('reporte_correos_de',            'correos',   false),
+      ('reporte_personal_de',           'empleados', true),
+      ('reporte_solicitudes_de',        'empleados', true),
+      ('reporte_cambios_de',            'tickets',   true),
+      ('reporte_problemas_de',          'problemas', true),
+      ('reporte_encuestas_de',          'encuestas', false)
+    ) as c(fn, modulo, periodo)
+  loop
+    v_sql := 'select public.' || v_caso.fn || '($1'
+             || case when v_caso.periodo then ', date ''2015-03-01'', date ''2015-03-31''' else '' end || ')';
+    delete from public.staff_modulos_permisos where staff_user_id = v_asis;
+    insert into public.staff_modulos_permisos (staff_user_id, modulo) values (v_asis, v_caso.modulo);
+    begin
+      execute v_sql into r using v_asis;
+      if r ->> 'definiciones_version' is null or r ->> 'generado_en' is null or r -> 'generado_por' ->> 'user_id' <> v_asis::text
+         or jsonb_typeof(r -> 'secciones') <> 'array' or jsonb_typeof(r -> 'filas_csv' -> 'filas') <> 'array' then
+        fallos := fallos || '[117] ' || v_caso.fn || ' sin la forma comun; ';
+      end if;
+    exception when others then
+      fallos := fallos || '[117] ' || v_caso.fn || ' con solo el modulo ' || v_caso.modulo || ' lanzo ' || sqlstate || '; ';
+    end;
+    delete from public.staff_modulos_permisos where staff_user_id = v_asis;
+    insert into public.staff_modulos_permisos (staff_user_id, modulo)
+      select v_asis, m from unnest(v_mods) m where m <> v_caso.modulo;
+    begin
+      execute v_sql into r using v_asis;
+      fallos := fallos || '[117] ' || v_caso.fn || ' sin el modulo ' || v_caso.modulo || ' no rechazo; ';
+    exception when others then
+      if sqlstate <> '42501' then fallos := fallos || '[117] ' || v_caso.fn || ' sin modulo lanzo ' || sqlstate || '; '; end if;
+    end;
+    begin
+      execute v_sql into r using v_inact;
+      fallos := fallos || '[117] ' || v_caso.fn || ' acepto a un staff inactivo; ';
+    exception when others then
+      if sqlstate <> '42501' then fallos := fallos || '[117] ' || v_caso.fn || ' inactivo lanzo ' || sqlstate || '; '; end if;
+    end;
+  end loop;
+
+  -- Auditoría: un asistente con TODOS los módulos no la recibe; el jefe sí.
+  delete from public.staff_modulos_permisos where staff_user_id = v_asis;
+  insert into public.staff_modulos_permisos (staff_user_id, modulo) select v_asis, m from unnest(v_mods) m;
+  begin
+    perform public.reporte_auditoria_de(v_asis, date '2015-03-01', date '2015-03-31');
+    fallos := fallos || '[117] la auditoria se entrego a un asistente; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[117] auditoria de asistente lanzo ' || sqlstate || '; '; end if;
+  end;
+  r := public.reporte_auditoria_de(v_jefe, date '2015-03-01', date '2015-03-31');
+  if r ->> 'reporte' <> 'auditoria' then fallos := fallos || '[117] la auditoria no llega al jefe; '; end if;
+
+  -- Sin sesión (auth.uid() NULL) las RPC públicas responden 42501.
+  for v_caso in
+    select * from (values ('reporte_inventario_equipos()'), ('reporte_licencias()'), ('reporte_correos()'),
+      ('reporte_personal(date ''2015-03-01'', date ''2015-03-31'')'), ('reporte_solicitudes(date ''2015-03-01'', date ''2015-03-31'')'),
+      ('reporte_cambios(date ''2015-03-01'', date ''2015-03-31'')'), ('reporte_problemas(date ''2015-03-01'', date ''2015-03-31'')'),
+      ('reporte_encuestas()'), ('reporte_auditoria(date ''2015-03-01'', date ''2015-03-31'')')) as c(llamada)
+  loop
+    begin
+      execute 'select public.' || v_caso.llamada into r;
+      fallos := fallos || '[117] ' || v_caso.llamada || ' sin sesion no rechazo; ';
+    exception when others then
+      if sqlstate <> '42501' then fallos := fallos || '[117] ' || v_caso.llamada || ' sin sesion lanzo ' || sqlstate || '; '; end if;
+    end;
+  end loop;
+
+  -- Privilegios: públicas a authenticated (nunca anon); núcleos y auxiliares solo project_admin.
+  for v_caso in
+    select * from (values ('public.reporte_inventario_equipos()'), ('public.reporte_licencias()'), ('public.reporte_correos()'),
+      ('public.reporte_personal(date,date)'), ('public.reporte_solicitudes(date,date)'), ('public.reporte_cambios(date,date)'),
+      ('public.reporte_problemas(date,date)'), ('public.reporte_encuestas(uuid)'), ('public.reporte_auditoria(date,date)')) as c(f)
+  loop
+    if not has_function_privilege('authenticated', v_caso.f, 'execute') or has_function_privilege('anon', v_caso.f, 'execute') then
+      fallos := fallos || '[117] privilegios de ' || v_caso.f || '; ';
+    end if;
+  end loop;
+  for v_caso in
+    select * from (values ('public.reporte_inventario_equipos_de(uuid)'), ('public.reporte_licencias_de(uuid)'), ('public.reporte_correos_de(uuid)'),
+      ('public.reporte_personal_de(uuid,date,date)'), ('public.reporte_solicitudes_de(uuid,date,date)'), ('public.reporte_cambios_de(uuid,date,date)'),
+      ('public.reporte_problemas_de(uuid,date,date)'), ('public.reporte_encuestas_de(uuid,uuid)'), ('public.reporte_auditoria_de(uuid,date,date)'),
+      ('public.reporte_cabecera(uuid,text,date,date)'), ('public.reporte_tabla(text,text,jsonb,jsonb,text)'),
+      ('public.reporte_etiqueta(text,text)'), ('public.reporte_validar_periodo(date,date)')) as c(f)
+  loop
+    if has_function_privilege('authenticated', v_caso.f, 'execute') or has_function_privilege('anon', v_caso.f, 'execute')
+       or not has_function_privilege('project_admin', v_caso.f, 'execute') then
+      fallos := fallos || '[117] ' || v_caso.f || ' no es solo project_admin; ';
+    end if;
+  end loop;
+
+  -- Período: invertido o de más de 366 días → P0001.
+  begin
+    perform public.reporte_personal_de(v_jefe, date '2015-03-31', date '2015-03-01');
+    fallos := fallos || '[117] se acepto un periodo invertido; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[117] periodo invertido lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.reporte_auditoria_de(v_jefe, date '2014-01-01', date '2015-03-01');
+    fallos := fallos || '[117] se acepto un periodo de mas de 366 dias; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[117] periodo largo lanzo ' || sqlstate || '; '; end if;
+  end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [117a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [117a]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 117b — custodia al corte: inventario (situación, garantías con el
+-- parámetro del Inicio, sin devolver con la fecha de baja de la hoja de vida,
+-- actas pendientes), licencias (cupo y vencimientos) y correos (rotaciones y
+-- su antigüedad). Son fotos de toda la base: se comparan contra el reporte
+-- tomado ANTES de sembrar (deltas) y por las filas de los fixtures. Ninguna
+-- salida lleva el DNI ni el contacto de los empleados sembrados.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_empresa uuid;
+  v_area uuid;
+  v_ubic uuid;
+  v_ea uuid;
+  v_eb uuid;
+  v_q uuid[] := '{}';
+  v_id uuid;
+  v_l1 uuid;
+  v_l2 uuid;
+  v_c1 uuid;
+  r0 jsonb;
+  r1 jsonb;
+  t jsonb;
+  fila jsonb;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_117b_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 117b' where user_id = v_jefe;
+  update public.config_parametros set valor = '30'::jsonb where clave = 'dias_por_vencer_garantia';
+  update public.config_parametros set valor = '30'::jsonb where clave = 'dias_por_vencer_licencia';
+  update public.config_parametros set valor = '"2000-01-01"'::jsonb where clave = 'actas_pendientes_desde';
+
+  r0 := public.reporte_inventario_equipos_de(v_jefe);
+
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 117b') returning id into v_empresa;
+  insert into public.areas_obras (nombre) values ('__TEST_CI__ Obra 117b') returning id into v_area;
+  insert into public.ubicaciones (nombre, tipo) values ('__TEST_CI__ Ubic 117b', 'otro') returning id into v_ubic;
+  insert into public.tipos_equipo (id, nombre) values ('t117b', 'Tipo 117b') on conflict do nothing;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, area_obra_id, whatsapp, telefono, correo_personal)
+    values ('Activa', 'CI 117b', '99011721', v_empresa, v_area, '999117211', '011172111', 'activa117b@correo.test') returning id into v_ea;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, area_obra_id, estado)
+    values ('Baja', 'CI 117b', '99011722', v_empresa, v_area, 'Inactivo') returning id into v_eb;
+  insert into public.empleado_eventos (empleado_id, evento, campo, valor_nuevo, rol_actor, detalle, created_at)
+    values (v_eb, 'baja_ejecutada', 'estado', 'Inactivo', 'jefe', 'Renuncia', ((v_hoy - 20) + time '10:00') at time zone 'America/Lima');
+
+  -- 0 asignado a la activa (sin acta), 1 asignado a la de baja, 2 disponible con garantía en 5 días,
+  -- 3 en reparación con garantía vencida hace 2 días, 4 de baja con garantía en 3 días (no cuenta), 5 en una ubicación
+  insert into public.equipos (codigo, tipo_id, estado, garantia_hasta) values ('__CI117B-0', 't117b', 'operativo', null) returning id into v_id; v_q := v_q || v_id;
+  insert into public.equipos (codigo, tipo_id, estado, garantia_hasta) values ('__CI117B-1', 't117b', 'operativo', null) returning id into v_id; v_q := v_q || v_id;
+  insert into public.equipos (codigo, tipo_id, estado, garantia_hasta) values ('__CI117B-2', 't117b', 'operativo', v_hoy + 5) returning id into v_id; v_q := v_q || v_id;
+  insert into public.equipos (codigo, tipo_id, estado, garantia_hasta) values ('__CI117B-3', 't117b', 'en_reparacion', v_hoy - 2) returning id into v_id; v_q := v_q || v_id;
+  insert into public.equipos (codigo, tipo_id, estado, garantia_hasta) values ('__CI117B-4', 't117b', 'de_baja', v_hoy + 3) returning id into v_id; v_q := v_q || v_id;
+  insert into public.equipos (codigo, tipo_id, estado, garantia_hasta) values ('__CI117B-5', 't117b', 'operativo', null) returning id into v_id; v_q := v_q || v_id;
+  insert into public.asignaciones_equipo (equipo_id, empleado_id, fecha_inicio) values (v_q[1], v_ea, v_hoy - 10);
+  insert into public.asignaciones_equipo (equipo_id, empleado_id, fecha_inicio) values (v_q[2], v_eb, v_hoy - 100);
+  insert into public.asignaciones_equipo (equipo_id, ubicacion_id, fecha_inicio) values (v_q[6], v_ubic, v_hoy - 30);
+
+  r1 := public.reporte_inventario_equipos_de(v_jefe);
+
+  -- Situación: deltas exactos por fila
+  for fila in select * from jsonb_array_elements(r1 -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') loop
+    if (fila ->> 'equipos')::int - coalesce((select (f0 ->> 'equipos')::int from jsonb_array_elements(r0 -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') f0
+                                              where f0 ->> 'situacion' = fila ->> 'situacion'), 0)
+       <> (case fila ->> 'situacion' when 'Asignado' then 2 when 'En ubicación' then 1 when 'Disponible' then 1
+                                    when 'En reparación' then 1 when 'De baja' then 1 when 'Total' then 6 else 0 end) then
+      fallos := fallos || '[117] delta de situacion incorrecto en ' || (fila ->> 'situacion') || '; ';
+    end if;
+  end loop;
+  select x into t from jsonb_array_elements(r1 -> 'secciones' -> 0 -> 'tablas' -> 1 -> 'filas') x where x ->> 'tipo' = 'Tipo 117b';
+  if t is null or (t ->> 'total')::int <> 6 or (t ->> 'en_uso')::int <> 3 or (t ->> 'disponibles')::int <> 1
+     or (t ->> 'en_reparacion')::int <> 1 or (t ->> 'fuera')::int <> 1 then
+    fallos := fallos || '[117] por tipo incorrecto: ' || coalesce(t::text, 'null') || '; ';
+  end if;
+  select x into t from jsonb_array_elements(r1 -> 'secciones' -> 1 -> 'tablas' -> 1 -> 'filas') x where x ->> 'area' = '__TEST_CI__ Obra 117b';
+  if t is null or (t ->> 'personas')::int <> 2 or (t ->> 'equipos')::int <> 2 then
+    fallos := fallos || '[117] custodia por area incorrecta: ' || coalesce(t::text, 'null') || '; ';
+  end if;
+  select x into t from jsonb_array_elements(r1 -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x where x ->> 'ubicacion' = '__TEST_CI__ Ubic 117b';
+  if t is null or (t ->> 'operativos')::int <> 1 or (t ->> 'total')::int <> 1 then
+    fallos := fallos || '[117] por ubicacion incorrecto; ';
+  end if;
+  -- Garantías: la disponible (5 días, por vencer) y la en reparación (vencida, -2); la de baja no
+  if not exists (select 1 from jsonb_array_elements(r1 -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas') x
+                  where x ->> 'codigo' = '__CI117B-2' and (x ->> 'dias')::int = 5 and x ->> 'situacion' = 'Por vencer')
+     or not exists (select 1 from jsonb_array_elements(r1 -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas') x
+                     where x ->> 'codigo' = '__CI117B-3' and (x ->> 'dias')::int = -2 and x ->> 'situacion' = 'Vencida')
+     or exists (select 1 from jsonb_array_elements(r1 -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas') x where x ->> 'codigo' = '__CI117B-4') then
+    fallos := fallos || '[117] garantias incorrectas; ';
+  end if;
+  -- Sin devolver: el equipo de la persona de baja, con la fecha del evento (no updated_at)
+  if not exists (select 1 from jsonb_array_elements(r1 -> 'secciones' -> 2 -> 'tablas' -> 1 -> 'filas') x
+                  where x ->> 'codigo' = '__CI117B-1' and (x ->> 'baja')::date = v_hoy - 20 and (x ->> 'dias_baja')::int = 20
+                    and x ->> 'persona' = 'Baja CI 117b') then
+    fallos := fallos || '[117] sin devolver no trae la fecha de baja del evento; ';
+  end if;
+  -- Actas pendientes: las dos entregas a personas, sin acta, con más de 3 días
+  if (select count(*) from jsonb_array_elements(r1 -> 'secciones' -> 2 -> 'tablas' -> 2 -> 'filas') x
+       where x ->> 'codigo' in ('__CI117B-0', '__CI117B-1')) <> 2 then
+    fallos := fallos || '[117] actas pendientes incorrectas; ';
+  end if;
+  -- CSV: todo el parque, sin tope; el fixture con su situación y portador
+  if jsonb_array_length(r1 -> 'filas_csv' -> 'filas') <> jsonb_array_length(r0 -> 'filas_csv' -> 'filas') + 6
+     or not exists (select 1 from jsonb_array_elements(r1 -> 'filas_csv' -> 'filas') x
+                     where x ->> 0 = '__CI117B-0' and x ->> 7 = 'Asignado' and x ->> 8 = 'Activa CI 117b') then
+    fallos := fallos || '[117] CSV de inventario incompleto; ';
+  end if;
+
+  -- Licencias
+  r0 := public.reporte_licencias_de(v_jefe);
+  insert into public.licencias (software, tipo, cantidad, fecha_vencimiento) values ('__CI117B Suscripcion', 'suscripcion', 2, v_hoy + 5) returning id into v_l1;
+  insert into public.licencias (software, tipo, cantidad) values ('__CI117B Perpetua', 'perpetua', 1) returning id into v_l2;
+  insert into public.licencias (software, tipo, cantidad, fecha_vencimiento) values ('__CI117B Vencida', 'suscripcion', 1, v_hoy - 3);
+  insert into public.asignaciones_licencia (licencia_id, empleado_id) values (v_l1, v_ea), (v_l2, v_ea);
+  r1 := public.reporte_licencias_de(v_jefe);
+  select x into t from jsonb_array_elements(r1 -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x where x ->> 'software' = '__CI117B Suscripcion';
+  if t is null or (t ->> 'usados')::int <> 1 or (t ->> 'libres')::int <> 1 or t ->> 'situacion' <> 'Por vencer' then
+    fallos := fallos || '[117] cupo de la suscripcion incorrecto: ' || coalesce(t::text, 'null') || '; ';
+  end if;
+  select x into t from jsonb_array_elements(r1 -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x where x ->> 'software' = '__CI117B Perpetua';
+  if t is null or (t ->> 'libres')::int <> 0 or t ->> 'situacion' <> 'Perpetua' then
+    fallos := fallos || '[117] cupo de la perpetua incorrecto; ';
+  end if;
+  for fila in select * from jsonb_array_elements(r1 -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') loop
+    if (fila ->> 'valor')::int - (select (f0 ->> 'valor')::int from jsonb_array_elements(r0 -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') f0
+                                   where f0 ->> 'indicador' = fila ->> 'indicador')
+       <> (case when fila ->> 'indicador' = 'Licencias registradas' then 3 when fila ->> 'indicador' = 'Asientos comprados' then 4
+               when fila ->> 'indicador' = 'Asientos usados' then 2 when fila ->> 'indicador' = 'Asientos libres' then 2
+               when fila ->> 'indicador' = 'Licencias sin asientos libres' then 1 when fila ->> 'indicador' = 'Vencidas' then 1
+               when fila ->> 'indicador' like 'Por vencer%' then 1 else 0 end) then
+      fallos := fallos || '[117] delta de licencias incorrecto en ' || (fila ->> 'indicador') || '; ';
+    end if;
+  end loop;
+  if (select count(*) from jsonb_array_elements(r1 -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas') x where x ->> 'software' like '__CI117B%') <> 2
+     or not exists (select 1 from jsonb_array_elements(r1 -> 'filas_csv' -> 'filas') x where x ->> 0 = '__CI117B Suscripcion' and x ->> 10 = 'Activa CI 117b') then
+    fallos := fallos || '[117] vencimientos o CSV de licencias incorrectos; ';
+  end if;
+
+  -- Correos
+  insert into public.plataformas (id, nombre) values ('ci117b', 'Plataforma 117b') on conflict do nothing;
+  insert into public.cuentas (plataforma_id, usuario, password, tipo_cuenta, requiere_rotacion, last_password_change)
+    values ('ci117b', 'compartida117b@empresa.test', 'enc2:AAAA:BBBB', 'compartida', true, now() - interval '40 days') returning id into v_c1;
+  insert into public.cuentas (plataforma_id, usuario, password, tipo_cuenta) values ('ci117b', 'reutilizable117b@empresa.test', null, 'reutilizable');
+  insert into public.asignaciones_cuenta (cuenta_id, empleado_id) values (v_c1, v_ea);
+  r1 := public.reporte_correos_de(v_jefe);
+  select x into t from jsonb_array_elements(r1 -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x where x ->> 'plataforma' = 'Plataforma 117b';
+  if t is null or (t ->> 'compartidas')::int <> 1 or (t ->> 'reutilizables')::int <> 1 or (t ->> 'total')::int <> 2
+     or (t ->> 'por_rotar')::int <> 1 or (t ->> 'sin_password')::int <> 1 then
+    fallos := fallos || '[117] correos por plataforma incorrecto: ' || coalesce(t::text, 'null') || '; ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r1 -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x
+                  where x ->> 'cuenta' = 'compartida117b@empresa.test' and (x ->> 'dias')::int between 39 and 41 and x ->> 'titulares' = 'Activa CI 117b')
+     or not exists (select 1 from jsonb_array_elements(r1 -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas') x where x ->> 'cuenta' = 'reutilizable117b@empresa.test')
+     or (select count(*) from jsonb_array_elements(r1 -> 'filas_csv' -> 'filas') x where x ->> 2 like '%117b@empresa.test') <> 2 then
+    fallos := fallos || '[117] rotaciones, reutilizables o CSV de correos incorrectos; ';
+  end if;
+  if (r1::text || public.reporte_inventario_equipos_de(v_jefe)::text || public.reporte_licencias_de(v_jefe)::text) ~ '(99011721|99011722|999117211|011172111|activa117b@correo)'
+     or (r1::text) like '%enc2:%' then
+    fallos := fallos || '[117] un reporte de custodia expone DNI, contacto o contrasena; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [117b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [117b]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 117c — personal: movimientos del período desde empleado_eventos
+-- (alta, reingreso, baja por RPC y baja de registro anterior, suspensión,
+-- reactivación; un evento fuera del período no cuenta), revisiones de acceso
+-- pendientes con el parámetro dias_revision_accesos, foto de hoy por empresa
+-- y CSV sin DNI ni contacto. Período fijo de marzo de 2015 (vacío en
+-- cualquier base real).
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_empresa uuid;
+  v_e uuid[] := '{}';
+  v_id uuid;
+  r0 jsonb;
+  r jsonb;
+  t jsonb;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_117c_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 117c' where user_id = v_jefe;
+  update public.config_parametros set valor = '180'::jsonb where clave = 'dias_revision_accesos';
+
+  r0 := public.reporte_personal_de(v_jefe, date '2015-03-01', date '2015-03-31');
+
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 117c') returning id into v_empresa;
+  -- 1 alta vieja sin revisión (pendiente), 2 alta vieja revisada hace 10 días, 3 alta reciente, 4 suspendida, 5 dada de baja
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, fecha_alta, cargo, whatsapp, telefono, correo_personal)
+    values ('Uno', 'CI 117c', '99011731', v_empresa, date '2010-01-01', 'Topografo', '999117311', '011173111', 'uno117c@correo.test') returning id into v_id; v_e := v_e || v_id;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, fecha_alta, cargo)
+    values ('Dos', 'CI 117c', '99011732', v_empresa, date '2010-01-01', 'Topografo') returning id into v_id; v_e := v_e || v_id;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, fecha_alta)
+    values ('Tres', 'CI 117c', '99011733', v_empresa, v_hoy - 5) returning id into v_id; v_e := v_e || v_id;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, fecha_alta, estado)
+    values ('Cuatro', 'CI 117c', '99011734', v_empresa, date '2010-01-01', 'Suspendido') returning id into v_id; v_e := v_e || v_id;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id, fecha_alta, estado)
+    values ('Cinco', 'CI 117c', '99011735', v_empresa, date '2010-01-01', 'Inactivo') returning id into v_id; v_e := v_e || v_id;
+  insert into public.empleado_revisiones_acceso (empleado_id, revisado_por, revisado_at) values (v_e[2], v_jefe, now() - interval '10 days');
+  insert into public.empleado_eventos (empleado_id, evento, campo, valor_nuevo, rol_actor, detalle, created_at) values
+    (v_e[1], 'creado',         'estado', 'Activo',     'jefe',   'Alta en el sistema',   timestamptz '2015-03-05 10:00-05'),
+    (v_e[2], 'reingreso',      'estado', 'Activo',     'jefe',   'Reingreso',            timestamptz '2015-03-10 10:00-05'),
+    (v_e[5], 'baja_ejecutada', 'estado', 'Inactivo',   'jefe',   'Renuncia',             timestamptz '2015-03-15 10:00-05'),
+    (v_e[3], 'estado_cambiado','estado', 'Inactivo',   'legado', 'Fecha aproximada',     timestamptz '2015-03-20 10:00-05'),
+    (v_e[4], 'suspendido',     'estado', 'Suspendido', 'jefe',   'Investigacion',        timestamptz '2015-03-25 10:00-05'),
+    (v_e[4], 'reactivado',     'estado', 'Activo',     'jefe',   null,                   timestamptz '2015-03-26 10:00-05'),
+    (v_e[1], 'baja_ejecutada', 'estado', 'Inactivo',   'jefe',   'Fuera del periodo',    timestamptz '2015-04-02 10:00-05'),
+    (v_e[1], 'accesos_revisados', null,  null,         'jefe',   'No es un movimiento',  timestamptz '2015-03-06 10:00-05');
+
+  r := public.reporte_personal_de(v_jefe, date '2015-03-01', date '2015-03-31');
+
+  if (select string_agg((x ->> 'movimiento') || '=' || (x ->> 'cantidad'), ',' order by x ->> 'movimiento')
+        from jsonb_array_elements(r -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x)
+     <> 'Altas=1,Bajas=2,Reactivaciones=1,Reingresos=1,Suspensiones=1' then
+    fallos := fallos || '[117] movimientos del periodo incorrectos: ' || (r -> 'secciones' -> 1 -> 'tablas' -> 0 ->> 'filas') || '; ';
+  end if;
+  if jsonb_array_length(r -> 'secciones' -> 1 -> 'tablas' -> 1 -> 'filas') <> 2
+     or jsonb_array_length(r -> 'secciones' -> 1 -> 'tablas' -> 2 -> 'filas') <> 2
+     or not exists (select 1 from jsonb_array_elements(r -> 'secciones' -> 1 -> 'tablas' -> 2 -> 'filas') x
+                     where x ->> 'persona' = 'Cinco CI 117c' and x ->> 'detalle' = 'Renuncia' and (x ->> 'fecha')::date = date '2015-03-15') then
+    fallos := fallos || '[117] detalle de altas o bajas incorrecto; ';
+  end if;
+  -- Revisiones: Uno (nunca revisado, alta 2010) y Cuatro (suspendida) pendientes; Dos (revisado) y Tres (reciente) no; Cinco (baja) no
+  if (select string_agg(x ->> 'persona', ',' order by x ->> 'persona') from jsonb_array_elements(r -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas') x
+       where x ->> 'persona' like '%CI 117c') <> 'Cuatro CI 117c,Uno CI 117c'
+     or not exists (select 1 from jsonb_array_elements(r -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas') x
+                     where x ->> 'persona' = 'Uno CI 117c' and (x ->> 'dias')::int = v_hoy - date '2010-01-01' and x -> 'ultima_revision' = 'null'::jsonb) then
+    fallos := fallos || '[117] revisiones pendientes incorrectas; ';
+  end if;
+  -- Foto de hoy: la empresa del fixture y los deltas del resumen
+  select x into t from jsonb_array_elements(r -> 'secciones' -> 0 -> 'tablas' -> 1 -> 'filas') x where x ->> 'empresa' = '__TEST_CI__ Empresa 117c';
+  if t is null or (t ->> 'activos')::int <> 3 or (t ->> 'suspendidos')::int <> 1 then
+    fallos := fallos || '[117] por empresa incorrecto: ' || coalesce(t::text, 'null') || '; ';
+  end if;
+  if (select (x ->> 'cantidad')::int from jsonb_array_elements(r -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x where x ->> 'indicador' = 'Activos')
+     - (select (x ->> 'cantidad')::int from jsonb_array_elements(r0 -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x where x ->> 'indicador' = 'Activos') <> 3
+     or (select (x ->> 'cantidad')::int from jsonb_array_elements(r -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x where x ->> 'indicador' = 'Revisiones de acceso pendientes')
+     - (select (x ->> 'cantidad')::int from jsonb_array_elements(r0 -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x where x ->> 'indicador' = 'Revisiones de acceso pendientes') <> 2 then
+    fallos := fallos || '[117] deltas del resumen de personal incorrectos; ';
+  end if;
+  -- CSV: todos los empleados vivos, sin tope y sin DNI ni contacto
+  if jsonb_array_length(r -> 'filas_csv' -> 'filas') <> jsonb_array_length(r0 -> 'filas_csv' -> 'filas') + 5
+     or exists (select 1 from jsonb_array_elements(r -> 'filas_csv' -> 'columnas') c where c ->> 'clave' in ('dni', 'telefono', 'whatsapp', 'correo_personal'))
+     or r::text ~ '(9901173[1-5]|999117311|011173111|uno117c@correo)' then
+    fallos := fallos || '[117] el reporte de personal expone DNI o contacto, o el CSV tiene tope; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [117c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [117c]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 117d — solicitudes (creadas, completadas y canceladas por la fecha
+-- de cada hecho; mediana y promedio del trámite con n; abiertas por tramo) y
+-- cambios (misma definición que v_kpi_cambios sobre el período: sin
+-- borradores ni cancelados; emergencias sin aprobar de la vista de la 107;
+-- revertidos con su motivo). Códigos explícitos: ninguna secuencia avanza.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_empresa uuid;
+  v_e1 uuid;
+  v_e2 uuid;
+  r jsonb;
+  t jsonb;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_117d_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 117d' where user_id = v_jefe;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 117d') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Uno', 'CI 117d', '99011741', v_empresa) returning id into v_e1;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Dos', 'CI 117d', '99011742', v_empresa) returning id into v_e2;
+
+  insert into public.solicitudes (codigo, tipo_id, empleado_id, estado, created_at, completada_at) values
+    ('__TEST_CI_117D_S1', 'alta_empleado', v_e1, 'completada', timestamptz '2015-03-02 12:00-05', timestamptz '2015-03-04 12:00-05'),
+    ('__TEST_CI_117D_S2', 'alta_empleado', v_e2, 'completada', timestamptz '2015-03-05 12:00-05', timestamptz '2015-03-09 12:00-05');
+  insert into public.solicitudes (codigo, tipo_id, empleado_id, estado, created_at, cancelada_at, motivo_cancelacion) values
+    ('__TEST_CI_117D_S3', 'baja_empleado', v_e1, 'cancelada', timestamptz '2015-03-10 12:00-05', timestamptz '2015-03-11 12:00-05', 'Duplicada');
+  insert into public.solicitudes (codigo, tipo_id, empleado_id, estado, created_at) values
+    ('__TEST_CI_117D_S4', 'licencia', v_e1, 'abierta', now() - interval '10 days');
+
+  r := public.reporte_solicitudes_de(v_jefe, date '2015-03-01', date '2015-03-31');
+  if (select string_agg((x ->> 'indicador') || '=' || (x ->> 'cantidad'), ',') from jsonb_array_elements(r -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x
+       where x ->> 'indicador' <> 'Abiertas hoy')
+     <> 'Creadas en el período=3,Completadas en el período=2,Canceladas en el período=1' then
+    fallos := fallos || '[117] resumen de solicitudes incorrecto: ' || (r -> 'secciones' -> 0 -> 'tablas' -> 0 ->> 'filas') || '; ';
+  end if;
+  select x into t from jsonb_array_elements(r -> 'secciones' -> 0 -> 'tablas' -> 1 -> 'filas') x where x ->> 'tipo' = 'Alta de empleado';
+  if t is null or (t ->> 'creadas')::int <> 2 or (t ->> 'completadas')::int <> 2 or (t ->> 'n')::int <> 2
+     or (t ->> 'mediana')::numeric <> 3.0 or (t ->> 'promedio')::numeric <> 3.0 then
+    fallos := fallos || '[117] tiempo de tramite por tipo incorrecto: ' || coalesce(t::text, 'null') || '; ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r -> 'secciones' -> 1 -> 'tablas' -> 1 -> 'filas') x
+                  where x ->> 'codigo' = '__TEST_CI_117D_S4' and (x ->> 'dias')::int = 10 and x ->> 'avance' = '0 de 0') then
+    fallos := fallos || '[117] la abierta no aparece con su antiguedad; ';
+  end if;
+  if (select count(*) from jsonb_array_elements(r -> 'filas_csv' -> 'filas') x where x ->> 0 like '__TEST_CI_117D_S%') <> 4
+     or r::text ~ '(99011741|99011742)' then
+    fallos := fallos || '[117] CSV de solicitudes incompleto o con DNI; ';
+  end if;
+
+  insert into public.cambios (codigo, titulo, tipo, riesgo, servicio_id, descripcion, plan_retroceso, ventana_inicio, ventana_fin,
+                              estado, resultado, inicio_real_at, fin_real_at, created_at) values
+    ('__TEST_CI_117D_C1', 'Cambio revertido', 'normal', 'medio', 'correo', 'd', 'volver', timestamptz '2015-03-03 10:00-05', timestamptz '2015-03-03 12:00-05',
+     'revertido', 'Fallo la migracion', timestamptz '2015-03-03 10:00-05', timestamptz '2015-03-03 11:00-05', timestamptz '2015-03-03 09:00-05'),
+    ('__TEST_CI_117D_C2', 'Cambio estandar', 'estandar', 'bajo', 'correo', 'd', null, timestamptz '2015-03-04 10:00-05', timestamptz '2015-03-04 12:00-05',
+     'cerrado', 'Listo', timestamptz '2015-03-04 10:00-05', timestamptz '2015-03-04 11:00-05', timestamptz '2015-03-04 09:00-05'),
+    ('__TEST_CI_117D_C4', 'Cambio en borrador', 'normal', 'bajo', 'correo', 'd', null, null, null,
+     'borrador', null, null, null, timestamptz '2015-03-06 09:00-05'),
+    ('__TEST_CI_117D_C5', 'Cambio cancelado', 'normal', 'bajo', 'correo', 'd', null, null, null,
+     'cancelado', 'No hizo falta', null, null, timestamptz '2015-03-07 09:00-05');
+  insert into public.cambios (codigo, titulo, tipo, riesgo, servicio_id, descripcion, plan_retroceso, estado, inicio_real_at,
+                              aprobacion_pendiente_hasta, created_at) values
+    ('__TEST_CI_117D_C3', 'Emergencia sin aprobar', 'emergencia', 'alto', 'correo', 'd', 'volver', 'en_ejecucion', timestamptz '2015-03-05 10:00-05',
+     now() - interval '1 day', timestamptz '2015-03-05 09:00-05');
+
+  r := public.reporte_cambios_de(v_jefe, date '2015-03-01', date '2015-03-31');
+  if (select string_agg((x ->> 'tipo') || ':' || (x ->> 'pedidos') || '/' || (x ->> 'ejecutados') || '/' || (x ->> 'implementados')
+                        || '/' || (x ->> 'revertidos') || '/' || coalesce(x ->> 'pct_revertidos', '-'), ',')
+        from jsonb_array_elements(r -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x)
+     <> 'Estándar:1/1/1/0/0,Normal:1/1/0/1/100,Emergencia:1/1/0/0/0' then
+    fallos := fallos || '[117] cambios por tipo incorrectos: ' || (r -> 'secciones' -> 0 -> 'tablas' -> 0 ->> 'filas') || '; ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x
+                  where x ->> 'codigo' = '__TEST_CI_117D_C3' and (x ->> 'dias')::int = 1 and x ->> 'estado' = 'En ejecución') then
+    fallos := fallos || '[117] la emergencia sin aprobar no aparece; ';
+  end if;
+  if jsonb_array_length(r -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas') <> 1
+     or r -> 'secciones' -> 2 -> 'tablas' -> 0 -> 'filas' -> 0 ->> 'motivo' <> 'Fallo la migracion' then
+    fallos := fallos || '[117] revertidos incorrectos; ';
+  end if;
+  if (select string_agg(x ->> 0, ',' order by x ->> 0) from jsonb_array_elements(r -> 'filas_csv' -> 'filas') x)
+     <> '__TEST_CI_117D_C1,__TEST_CI_117D_C2,__TEST_CI_117D_C3,__TEST_CI_117D_C5' then
+    fallos := fallos || '[117] CSV de cambios incorrecto (el borrador no va, el cancelado si); ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [117d] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [117d]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 117e — problemas y conocimiento (secciones según módulos, con aviso),
+-- encuestas (resultados anónimos por pregunta, porcentajes sobre quienes
+-- respondieron, CSV por respuesta) y auditoría (conteos del período, «quién»
+-- sin sesión, nunca IP ni user_agent).
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_p1 uuid;
+  v_enc uuid;
+  v_ronda uuid;
+  r jsonb;
+  t jsonb;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_117e_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_117e_asis@example.test') returning id into v_asis;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 117e' where user_id = v_jefe;
+  update public.staff set activo = true, nombre = 'Asistente 117e' where user_id = v_asis;
+  delete from public.staff_modulos_permisos where staff_user_id = v_asis;
+  insert into public.staff_modulos_permisos (staff_user_id, modulo) values (v_asis, 'problemas');
+
+  -- Problemas
+  insert into public.problemas (titulo, descripcion, estado, severidad, error_conocido, created_at)
+    values ('__TEST_CI_117E Problema conocido', 'd', 'abierto', 'alta', true, timestamptz '2015-03-02 10:00-05') returning id into v_p1;
+  insert into public.problemas (titulo, descripcion, estado, severidad, created_at)
+    values ('__TEST_CI_117E Problema viejo', 'd', 'abierto', 'baja', timestamptz '2015-04-02 10:00-05');
+  insert into public.acciones_correctivas (problema_id, descripcion, estado, fecha_limite)
+    values (v_p1, '__TEST_CI_117E Accion', 'pendiente', v_hoy - 4);
+  r := public.reporte_problemas_de(v_jefe, date '2015-03-01', date '2015-03-31');
+  if (select (x ->> 'cantidad')::int from jsonb_array_elements(r -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x
+       where x ->> 'indicador' = 'Creados en el período') <> 1 then
+    fallos := fallos || '[117] problemas creados en el periodo incorrecto; ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x
+                  where x ->> 'problema' = '__TEST_CI_117E Problema conocido' and x ->> 'workaround' = 'No' and x ->> 'severidad' = 'Alta')
+     or not exists (select 1 from jsonb_array_elements(r -> 'secciones' -> 1 -> 'tablas' -> 1 -> 'filas') x
+                     where x ->> 'accion' = '__TEST_CI_117E Accion' and (x ->> 'dias')::int = 4) then
+    fallos := fallos || '[117] errores conocidos o acciones vencidas incorrectos; ';
+  end if;
+  if jsonb_array_length(r -> 'secciones') <> 4 or jsonb_array_length(r -> 'avisos') <> 0 then
+    fallos := fallos || '[117] el jefe no recibe las 4 secciones de problemas; ';
+  end if;
+  r := public.reporte_problemas_de(v_asis, date '2015-03-01', date '2015-03-31');
+  if jsonb_array_length(r -> 'secciones') <> 2 or jsonb_array_length(r -> 'avisos') <> 2
+     or exists (select 1 from jsonb_array_elements(r -> 'secciones') s where s ->> 'id' in ('conocimiento', 'recurrencias')) then
+    fallos := fallos || '[117] sin conocimiento ni tickets, las secciones no se omiten con aviso: ' || (r ->> 'avisos') || '; ';
+  end if;
+
+  -- Encuestas
+  insert into public.encuestas (titulo, preguntas) values ('__TEST_CI_117E Encuesta', jsonb_build_array(
+      jsonb_build_object('id', 'q1', 'tipo', 'escala_1_5', 'etiqueta', 'Satisfaccion'),
+      jsonb_build_object('id', 'q2', 'tipo', 'opcion_unica', 'etiqueta', 'Canal', 'opciones', jsonb_build_array('A', 'B')),
+      jsonb_build_object('id', 'q3', 'tipo', 'si_no', 'etiqueta', 'Equipo adecuado'),
+      jsonb_build_object('id', 'q4', 'tipo', 'texto_largo', 'etiqueta', 'Comentario')))
+    returning id into v_enc;
+  insert into public.encuesta_rondas (encuesta_id, slug, abierta_en) values (v_enc, '__ci-117e-ronda', now() - interval '2 days') returning id into v_ronda;
+  insert into public.encuesta_respuestas (ronda_id, respuestas, created_at) values
+    (v_ronda, '{"q1": 5, "q2": "A", "q3": true, "q4": "Muy bien"}'::jsonb, now() - interval '3 hours'),
+    (v_ronda, '{"q1": 3, "q2": "B", "q3": false, "q4": ""}'::jsonb, now() - interval '2 hours'),
+    (v_ronda, '{"q1": 4, "q2": "A"}'::jsonb, now() - interval '1 hour');
+  r := public.reporte_encuestas_de(v_jefe, v_ronda);
+  t := r -> 'secciones' -> 0 -> 'tablas';
+  if (r -> 'ronda' ->> 'respuestas')::int <> 3 or jsonb_array_length(t) <> 4
+     or (select string_agg((x ->> 'opcion') || '=' || (x ->> 'respuestas'), ',') from jsonb_array_elements(t -> 0 -> 'filas') x) <> '5=1,4=1,3=1,2=0,1=0'
+     or t -> 0 ->> 'nota' not like '%promedio 4,00 sobre 5%'
+     or (select string_agg((x ->> 'opcion') || '=' || (x ->> 'respuestas') || '/' || (x ->> 'pct'), ',') from jsonb_array_elements(t -> 1 -> 'filas') x) <> 'A=2/67,B=1/33'
+     or (select string_agg((x ->> 'opcion') || '=' || (x ->> 'pct'), ',') from jsonb_array_elements(t -> 2 -> 'filas') x) <> 'Sí=50,No=50'
+     or t -> 2 ->> 'nota' not like '2 de 3 respondieron%'
+     or jsonb_array_length(t -> 3 -> 'filas') <> 1 or t -> 3 -> 'filas' -> 0 ->> 'respuesta' <> 'Muy bien' then
+    fallos := fallos || '[117] resultados de la encuesta incorrectos: ' || t::text || '; ';
+  end if;
+  if jsonb_array_length(r -> 'filas_csv' -> 'filas') <> 3 or jsonb_array_length(r -> 'filas_csv' -> 'columnas') <> 4
+     or r -> 'filas_csv' -> 'filas' -> 0 <> '["5", "A", "Sí", "Muy bien"]'::jsonb
+     or r -> 'filas_csv' -> 'filas' -> 2 <> '["4", "A", "", ""]'::jsonb then
+    fallos := fallos || '[117] CSV de la encuesta incorrecto: ' || (r ->> 'filas_csv') || '; ';
+  end if;
+  begin
+    perform public.reporte_encuestas_de(v_jefe, gen_random_uuid());
+    fallos := fallos || '[117] una ronda inexistente no se rechazo; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[117] ronda inexistente lanzo ' || sqlstate || '; '; end if;
+  end;
+
+  -- Auditoría (marzo de 2015)
+  insert into public.accesos_log (user_id, user_email, cuenta_usuario, plataforma, accion, detalle, ip, user_agent, created_at) values
+    (v_jefe, 'jefe117e@empresa.test', 'cuenta117e', 'Gmail', 'ver',             'Motivo: soporte', '203.0.113.117', 'AgenteCI117', timestamptz '2015-03-02 10:00-05'),
+    (v_jefe, 'jefe117e@empresa.test', 'cuenta117e', 'Gmail', 'copiar',          null,              '203.0.113.117', 'AgenteCI117', timestamptz '2015-03-02 10:01-05'),
+    (v_asis, 'asis117e@empresa.test', '(ruta)',     null,    'acceso_denegado', 'Ruta /actividad', '203.0.113.117', 'AgenteCI117', timestamptz '2015-03-03 10:00-05'),
+    (v_jefe, 'jefe117e@empresa.test', 'Acceso 117e', null,   'permiso_otorgado', 'Asistente 117e', null,           null,          timestamptz '2015-03-04 10:00-05'),
+    (null,   null,                    '(sistema)',  null,    'purga_ejecutada', '{"entregas": 2}', null,           null,          timestamptz '2015-03-05 10:00-05'),
+    (null,   null,                    'cuenta117e', 'Gmail', 'entrega_abierta', 'Abierta',         '203.0.113.117', 'AgenteCI117', timestamptz '2015-03-06 10:00-05'),
+    (v_jefe, 'jefe117e@empresa.test', 'cuenta117e', 'Gmail', 'ver',             'Fuera',           null,           null,          timestamptz '2015-04-01 10:00-05');
+  r := public.reporte_auditoria_de(v_jefe, date '2015-03-01', date '2015-03-31');
+  if (select sum((x ->> 'registros')::int) from jsonb_array_elements(r -> 'secciones' -> 0 -> 'tablas' -> 0 -> 'filas') x) <> 6
+     or jsonb_array_length(r -> 'filas_csv' -> 'filas') <> 6 then
+    fallos := fallos || '[117] conteo de auditoria del periodo incorrecto; ';
+  end if;
+  select x into t from jsonb_array_elements(r -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x where x ->> 'quien' = 'Jefe 117e';
+  if t is null or (t ->> 'vistas')::int <> 1 or (t ->> 'copias')::int <> 1 or (t ->> 'total')::int <> 3 then
+    fallos := fallos || '[117] auditoria por persona incorrecta: ' || coalesce(t::text, 'null') || '; ';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(r -> 'secciones' -> 1 -> 'tablas' -> 0 -> 'filas') x where x ->> 'quien' = 'Empleado, vía enlace')
+     or not exists (select 1 from jsonb_array_elements(r -> 'secciones' -> 5 -> 'tablas' -> 0 -> 'filas') x where x ->> 'quien' = 'Sistema')
+     or jsonb_array_length(r -> 'secciones' -> 3 -> 'tablas' -> 0 -> 'filas') <> 1
+     or jsonb_array_length(r -> 'secciones' -> 4 -> 'tablas' -> 0 -> 'filas') <> 1 then
+    fallos := fallos || '[117] quien sin sesion, denegados o permisos incorrectos; ';
+  end if;
+  if r::text like '%203.0.113.117%' or r::text like '%AgenteCI117%'
+     or exists (select 1 from jsonb_array_elements(r -> 'filas_csv' -> 'columnas') c where c ->> 'clave' in ('ip', 'user_agent')) then
+    fallos := fallos || '[117] la auditoria expone IP o user_agent; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [117e] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [117e]: %', fallos;
   end if;
 end $$;

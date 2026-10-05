@@ -4,7 +4,7 @@
 // ni borrarlos desde el cliente.
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
-import { exportarCSV } from '../../core/exportar.js';
+import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
 import { showToast } from '../../core/toast.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
@@ -116,21 +116,6 @@ function infoAccion(accion) {
   return ACCIONES[accion] || { label: accion, icon: 'ti ti-activity', clase: '' };
 }
 
-function exportar() {
-  exportarCSV(
-    'actividad',
-    ['Fecha', 'Quién', 'Acción', 'Cuenta', 'Plataforma', 'Detalle'],
-    listaFiltrada.value.map((r) => [
-      formatFechaHora(r.created_at),
-      r.user_email || '(empleado, vía enlace)',
-      infoAccion(r.accion).label,
-      r.cuenta_usuario,
-      r.plataforma,
-      r.detalle,
-    ]),
-  );
-}
-
 const CIRCULO = {
   info: 'bg-primary-50 text-primary-600',
   accent: 'bg-primary-50 text-primary-600',
@@ -196,15 +181,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Actividad" :subtitulo="subtitulo">
       <template #acciones>
-        <AppButton
-          variant="text"
-          severity="secondary"
-          icon="ti ti-table-export"
-          label="Exportar"
-          title="Exportar a Excel (CSV)"
-          :disabled="cargando || listaFiltrada.length === 0"
-          @click="exportar"
-        />
+        <EnlaceReporte reporte="auditoria" />
       </template>
     </AppEncabezado>
 

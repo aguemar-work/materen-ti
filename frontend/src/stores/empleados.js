@@ -53,11 +53,6 @@ export const useEmpleadosStore = crearStorePaginado('empleados', {
   },
 
   actions: {
-    // Dataset filtrado completo (sin página) — para exportar CSV
-    async listaParaExportar() {
-      return insforgeApi.listEmpleadosFiltrados(this.filtros);
-    },
-
     async crear(datos) {
       this.error = null;
       // Sin push local: el alta navega a la ficha del nuevo empleado y la

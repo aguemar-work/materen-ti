@@ -1,9 +1,10 @@
 <script setup>
-// Controles de la hoja de reporte (no se imprimen): tipo de período (mes,
-// semana, rango), navegación ‹ › y fechas, y el alcance (todo el equipo o un
-// técnico). Solo emite el período normalizado; quién puede elegir a otro
-// técnico lo decide el servidor (42501), acá solo se ofrece la lista al JEFE y
-// "solo mi actividad" al resto.
+// Controles de período de una hoja de reporte (no se imprimen): tipo de
+// período (mes, semana, rango), navegación ‹ › y fechas; los usan todos los
+// reportes por período. Con `con-alcance` (solo Tickets) suma el alcance
+// (todo el equipo o un técnico): quién puede elegir a otro técnico lo decide
+// el servidor (42501), acá solo se ofrece la lista al JEFE y "solo mi
+// actividad" al resto. Solo emite el período normalizado.
 import { computed } from 'vue';
 import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 import AppSelect from '../../components/ui/AppSelect.vue';
@@ -16,12 +17,14 @@ const props = defineProps({
   tecnicos: { type: Array, default: () => [] },
   esJefe: { type: Boolean, default: false },
   usuarioId: { type: String, default: '' },
-  primerTicket: { type: String, default: '' },
+  // Primer día con datos ('YYYY-MM-DD' o timestamp): el selector de meses empieza ahí.
+  desdeMinimo: { type: String, default: '' },
+  conAlcance: { type: Boolean, default: false },
   cargando: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:periodo', 'update:tecnicoId']);
 
-const meses = computed(() => mesesDisponibles(props.primerTicket ? props.primerTicket.slice(0, 10) : ''));
+const meses = computed(() => mesesDisponibles(props.desdeMinimo ? props.desdeMinimo.slice(0, 10) : ''));
 const siguienteEsFuturo = computed(() => esFuturo(desplazarPeriodo(props.periodo, 1)));
 const etiqueta = computed(() => etiquetaPeriodo(props.periodo));
 
@@ -80,7 +83,7 @@ function cambiarFecha(campo, e) {
       </label>
     </template>
 
-    <AppSelect :model-value="tecnicoId" label="Alcance" class="ml-auto" @update:model-value="emit('update:tecnicoId', $event)">
+    <AppSelect v-if="conAlcance" :model-value="tecnicoId" label="Alcance" class="ml-auto" @update:model-value="emit('update:tecnicoId', $event)">
       <option value="">Todo el equipo</option>
       <template v-if="esJefe">
         <option v-for="t in tecnicos" :key="t.user_id" :value="t.user_id">Técnico · {{ t.nombre }}</option>

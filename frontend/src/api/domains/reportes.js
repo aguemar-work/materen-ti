@@ -12,6 +12,13 @@
 //
 // Las fechas viajan como 'YYYY-MM-DD' de calendario y el servidor arma el
 // rango en hora de Lima: el navegador no decide ningún corte.
+//
+// Migración 117 (reportes centralizados): una RPC por reporte, todas con la
+// misma forma — {generado_*, definiciones_version, periodo|null,
+// periodo_completo, corte_at, parametros, avisos, secciones[{tablas}],
+// filas_csv} — y con el guard del módulo de su fuente (auditoría: solo JEFE).
+// Las secciones llegan listas para la hoja y el CSV sale del mismo jsonb, sin
+// tope de filas: el cliente no suma, no pagina y no vuelve a consultar.
 import { getClient } from '../client.js';
 import { anotarErrorDb } from '../erroresDb.js';
 
@@ -58,4 +65,30 @@ export const reportesApi = {
       porMes: r.porMes || [],
     };
   },
+
+  // ── Reportes centralizados (117) ──────────────────────────────────────────
+  obtenerReporteInventario: () => llamar('reporte_inventario_equipos', {}),
+  obtenerReporteLicencias: () => llamar('reporte_licencias', {}),
+  obtenerReporteCorreos: () => llamar('reporte_correos', {}),
+  obtenerReportePersonal: ({ desde, hasta }) => llamar('reporte_personal', periodo(desde, hasta)),
+  obtenerReporteSolicitudes: ({ desde, hasta }) => llamar('reporte_solicitudes', periodo(desde, hasta)),
+  obtenerReporteCambios: ({ desde, hasta }) => llamar('reporte_cambios', periodo(desde, hasta)),
+  obtenerReporteProblemas: ({ desde, hasta }) => llamar('reporte_problemas', periodo(desde, hasta)),
+  obtenerReporteAuditoria: ({ desde, hasta }) => llamar('reporte_auditoria', periodo(desde, hasta)),
+  /** @param {{ rondaId?: string|null }} p  sin ronda: la más reciente con respuestas. */
+  obtenerReporteEncuestas: ({ rondaId = null } = {}) => llamar('reporte_encuestas', { p_ronda: rondaId || null }),
 };
+
+function periodo(desde, hasta) {
+  return { p_desde: exigirFecha(desde, 'desde'), p_hasta: exigirFecha(hasta, 'hasta') };
+}
+
+async function llamar(rpc, args) {
+  const { data, error } = await getClient().database.rpc(rpc, args);
+  if (error) throw anotarErrorDb(error, { porDefecto: 'No se pudo generar el reporte.' });
+  const reporte = Array.isArray(data) ? data[0] : data;
+  if (!reporte || typeof reporte !== 'object' || !Array.isArray(reporte.secciones)) {
+    throw new Error('El servidor devolvió un reporte vacío.');
+  }
+  return reporte;
+}

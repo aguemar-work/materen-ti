@@ -10,12 +10,10 @@ import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
-import { traducirErrorDb } from '../../api/erroresDb.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
-import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
-import { situacionInfo } from '../../core/dominio-equipos.js';
-import { construirDatosReporteEquipos, generarReporteEquipos, LIMITE_MOVIMIENTOS_PDF, DIAS_VENTANA_GARANTIA_DEFECTO } from './reporteEquipos.js';
+import { REPORTE_POR_ID, puedeVerReporte, rutaReporte } from '../../core/reportes.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { useEquiposAcciones } from './useEquiposAcciones.js';
 import EquipoForm from './EquipoForm.vue';
 import EquipoAccionesModales from './EquipoAccionesModales.vue';
@@ -132,6 +130,8 @@ function onFormCerrado(guardado) {
 
 const abrirHoja = (eq) => router.push(`/equipos/${eq.id}`);
 
+const auth = useAuthStore();
+
 // ── Selección para imprimir etiquetas (sobrevive a cambiar de página) ───
 const seleccion = ref(new Set());
 
@@ -139,69 +139,12 @@ function imprimirEtiquetas() {
   router.push({ path: '/equipos/etiquetas', query: { ids: [...seleccion.value].join(',') } });
 }
 
-// ── Exportar ────────────────────────────────────────────────────────────
-function etiquetaEstado(eq) {
-  return eq.estado === 'operativo' ? 'Operativo' : situacionInfo(eq.estado).label;
-}
-
-const mensajeDe = (e, porDefecto) => traducirErrorDb(e, { porDefecto }).mensaje;
-
-// PDF: siempre el inventario COMPLETO (sin los filtros del toolbar), es la foto
-// de todo el parque — decisión de producto 2026-08-22, distinto del CSV, que sí
-// exporta lo que esté filtrado.
-const generandoPdf = ref(false);
-async function descargarPdf() {
-  generandoPdf.value = true;
-  try {
-    // La ventana de garantías es la misma del Inicio (config_parametros).
-    const [equipos, movimientos, diasGarantia] = await Promise.all([
-      insforgeApi.listEquiposFiltrados({}),
-      insforgeApi.ultimosMovimientos(LIMITE_MOVIMIENTOS_PDF),
-      insforgeApi.parametroEntero('dias_por_vencer_garantia', DIAS_VENTANA_GARANTIA_DEFECTO).catch(() => DIAS_VENTANA_GARANTIA_DEFECTO),
-    ]);
-    await generarReporteEquipos({ ...construirDatosReporteEquipos(equipos, new Date(), { diasGarantia }), movimientos });
-  } catch (e) {
-    showToast(mensajeDe(e, 'No se pudo generar el PDF'), 'error');
-  } finally {
-    generandoPdf.value = false;
-  }
-}
-
-const exportando = ref(false);
-async function exportar() {
-  exportando.value = true;
-  try {
-    const filas = await store.listaParaExportar();
-    exportarCSV(
-      'equipos',
-      ['Código equipo', 'Código almacén', 'Tipo', 'Marca', 'Modelo', 'Empresa', 'Serie', 'Situación', 'Asignado a', 'Ubicación'],
-      filas.map((eq) => [
-        eq.codigo, eq.codigo_almacen, eq.tipo_nombre, eq.marca, eq.modelo, eq.empresa_nombre, eq.serie,
-        etiquetaEstado(eq), eq.portador, eq.ubicacion_nombre,
-      ]),
-    );
-  } catch (e) {
-    showToast(mensajeDe(e, 'Error al exportar'), 'error');
-  } finally {
-    exportando.value = false;
-  }
-}
-
 // Menú "Más": acciones de baja frecuencia frente a "+ Nuevo equipo", el único
-// acento de la vista (mismo criterio que TicketsView).
+// acento de la vista (mismo criterio que TicketsView). El inventario (CSV y
+// hoja imprimible) vive en Reportes desde el 2026-10-05: acá solo el enlace.
 const accionesMas = computed(() => [
-  {
-    icono: exportando.value ? 'ti-loader-2 animate-spin' : 'ti-table-export',
-    label: exportando.value ? 'Exportando...' : 'Exportar',
-    disabled: exportando.value,
-    onClick: exportar,
-  },
-  {
-    icono: generandoPdf.value ? 'ti-loader-2 animate-spin' : 'ti-download',
-    label: generandoPdf.value ? 'Generando...' : 'Descargar PDF',
-    disabled: generandoPdf.value,
-    onClick: descargarPdf,
-  },
+  ...(puedeVerReporte(auth, REPORTE_POR_ID.inventario)
+    ? [{ icono: 'ti-report', label: 'Ver reporte', onClick: () => router.push(rutaReporte('inventario')) }] : []),
   {
     icono: 'ti-qrcode',
     label: 'Etiquetas de todos los filtrados',

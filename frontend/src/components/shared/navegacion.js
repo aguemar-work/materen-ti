@@ -1,4 +1,5 @@
 import { MODULO_POR_ID } from '../../core/modulos.js';
+import { REPORTES, MODULOS_CON_REPORTE, rutaReporte } from '../../core/reportes.js';
 
 // Estructura de la navegación del shell: áreas → grupos → ítems.
 //
@@ -37,6 +38,11 @@ import { MODULO_POR_ID } from '../../core/modulos.js';
 // Configuración NO es exclusiva de JEFE (6 de sus 7 pestañas están abiertas
 // a cualquier staff activo; solo Staff declara su propio guard). No
 // "arreglarlo" ocultándola.
+//
+// Reportes (115/117) va junto a Inicio, fuera de las áreas: reúne los
+// reportes de todas (es el único lugar donde se reporta o se exporta). Se ve
+// con CUALQUIER módulo que tenga un reporte (`algunModulo`, el mismo meta de
+// su ruta) o siendo JEFE; qué reportes lista lo decide core/reportes.js.
 
 // Ítem de módulo configurable, con extras propios del menú (badge…).
 function itemModulo(id, extras = {}) {
@@ -54,6 +60,7 @@ export const AREAS_NAV = [
         label: '',
         items: [
           { path: '/dashboard', label: 'Inicio', icon: 'ti ti-layout-dashboard' },
+          { path: '/reportes', label: 'Reportes', icon: 'ti ti-report', algunModulo: MODULOS_CON_REPORTE },
         ],
       },
       {
@@ -66,9 +73,6 @@ export const AREAS_NAV = [
           // Cambios (107) usa el módulo `tickets`: el CHECK de la 056 admite 8
           // módulos y ninguno es «cambios»; su ruta declara el mismo meta.modulo.
           { path: '/cambios', label: 'Cambios', icon: 'ti ti-arrows-exchange', modulo: 'tickets' },
-          // Reportes (115) también usa el módulo `tickets`: es la bandeja agregada
-          // por período; la sección "por técnico" la decide el servidor (JEFE).
-          { path: '/reportes', label: 'Reportes', icon: 'ti ti-report', modulo: 'tickets' },
         ],
       },
       {
@@ -110,8 +114,9 @@ function rutaDentroDe(path, base) {
 // Sub-rutas con nombre propio que merecen una tercera miga (las de detalle
 // con `:id` no: la hoja ya muestra el nombre del registro como título).
 const SUBRUTAS = {
-  '/tickets/satisfaccion': 'Satisfacción',
   '/equipos/importar': 'Importar desde Excel',
+  // Cada reporte: Reportes › <reporte>.
+  ...Object.fromEntries(REPORTES.map((r) => [rutaReporte(r.id), r.titulo])),
 };
 
 // Migas de la barra superior para una ruta: [{ label, to? }]. El último

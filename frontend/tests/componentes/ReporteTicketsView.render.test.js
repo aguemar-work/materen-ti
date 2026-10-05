@@ -1,16 +1,18 @@
 // @vitest-environment happy-dom
 //
-// Hoja de Reportes (migración 115) montada de verdad: carátula con sello
-// "Período en curso", controles fuera del papel, secciones en tablas con la
-// mediana antes que el promedio y el CSAT como "n insuficiente", la sección
-// por técnico solo cuando el servidor la mandó, Imprimir = window.print() y
-// el CSV desde el mismo jsonb. Solo api/insforge.js está mockeado.
+// Hoja del reporte de Tickets (migración 115, ruta /reportes/tickets desde la
+// 117) montada de verdad: carátula con sello "Período en curso", controles
+// fuera del papel, secciones en tablas con la mediana antes que el promedio y
+// el CSAT como "n insuficiente", la sección por técnico solo cuando el
+// servidor la mandó, Imprimir = window.print() y el CSV desde el mismo jsonb,
+// que ahora también trae lo que daba el CSV de la bandeja (título y asignado
+// hoy). Solo api/insforge.js está mockeado.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createRouter, createMemoryHistory } from 'vue-router';
 import PrimeVue from 'primevue/config';
-import ReportesView from '../../src/modules/reportes/ReportesView.vue';
+import ReporteTicketsView from '../../src/modules/reportes/ReporteTicketsView.vue';
 import { useAuthStore } from '../../src/stores/auth.js';
 
 vi.mock('../../src/api/insforge.js', () => ({
@@ -37,21 +39,21 @@ const REPORTE = {
   },
   por_tecnico: [{ tecnico_id: 'u-asis', nombre: 'Asis Uno', resueltos: 4, mismo_periodo: 4, arrastrados: 0, tiempos: { n: 4, mediana_horas: 2, promedio_horas: 3 }, csat: { n: 2, promedio: null, insuficiente: true }, reaperturas: { base: 4, reabiertos: 0 }, asignados_hoy: 1 }],
   anexos: { arrastrados: [], cerrados_sin_encuesta: [] },
-  tickets: [{ codigo: 'TCK-0010', titulo: 'Uno', estado: 'cerrado', prioridad: 'media', tipo: 'incidente', nivel_atencion: 'N1', categoria: 'Red', subcategoria: null, area: null, solicitante: 'Ana Prueba', created_at: '2026-10-01T12:00:00Z', resuelto_at: '2026-10-01T13:30:00Z', horas_resolucion: 1.5, tecnico_id: 'u-asis', encuesta_nivel: 4, en_periodo: 'ambos' }],
+  tickets: [{ codigo: 'TCK-0010', titulo: 'Uno', estado: 'cerrado', prioridad: 'media', tipo: 'incidente', nivel_atencion: 'N1', categoria: 'Red', subcategoria: null, area: null, solicitante: 'Ana Prueba', asignado_a: 'u-asis', created_at: '2026-10-01T12:00:00Z', resuelto_at: '2026-10-01T13:30:00Z', horas_resolucion: 1.5, tecnico_id: 'u-asis', encuesta_nivel: 4, en_periodo: 'ambos' }],
   comparacion: null,
 };
 
 const espera = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 let wrapper;
 
-async function montar(url = '/reportes', { rol = 'JEFE' } = {}) {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/reportes', component: { template: '<div />' } }] });
+async function montar(url = '/reportes/tickets', { rol = 'JEFE' } = {}) {
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/reportes/tickets', component: { template: '<div />' } }] });
   router.push(url);
   await router.isReady();
   const auth = useAuthStore();
   auth.user = { id: 'u-jefe' };
   auth.rol = rol;
-  wrapper = mount(ReportesView, { attachTo: document.body, global: { plugins: [router, [PrimeVue, { unstyled: true }]] } });
+  wrapper = mount(ReporteTicketsView, { attachTo: document.body, global: { plugins: [router, [PrimeVue, { unstyled: true }]] } });
   for (let i = 0; i < 6; i += 1) await espera();
   return { w: wrapper, router };
 }
@@ -69,7 +71,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('ReportesView', () => {
+describe('ReporteTicketsView', () => {
   it('pide el mes en curso por defecto, lo escribe en la URL y pinta la carátula con el sello', async () => {
     const { w, router } = await montar();
     const llamada = insforgeApi.obtenerReporteTickets.mock.calls.at(-1)[0];
@@ -101,9 +103,8 @@ describe('ReportesView', () => {
 
   it('sin la sección por técnico (asistente) no se pinta y el selector de alcance ofrece solo "mi actividad"', async () => {
     insforgeApi.obtenerReporteTickets.mockResolvedValue({ ...JSON.parse(JSON.stringify(REPORTE)), por_tecnico: null });
-    const { w } = await montar('/reportes', { rol: 'ASISTENTE' });
+    const { w } = await montar('/reportes/tickets', { rol: 'ASISTENTE' });
     expect(w.find('#reporte-tecnicos').exists()).toBe(false);
-    expect(insforgeApi.nombresStaff).not.toHaveBeenCalled();
     const opciones = w.findAll('select').at(-1).findAll('option').map((o) => o.text());
     expect(opciones).toEqual(['Todo el equipo', 'Solo mi actividad']);
   });
@@ -121,7 +122,12 @@ describe('ReportesView', () => {
     const [nombre, cabecera, filas] = exportarCSV.mock.calls[0];
     expect(nombre).toMatch(/^Reporte_tickets_\d{4}-\d{2}$/);
     expect(cabecera).toContain('Resolvió');
+    // Lo que aportaba el CSV de la bandeja de Tickets, ya retirado: título y asignado hoy.
+    expect(cabecera.slice(0, 2)).toEqual(['Código', 'Título']);
     expect(filas[0][0]).toBe('TCK-0010');
+    expect(filas[0][1]).toBe('Uno');
+    expect(filas[0][cabecera.indexOf('Asignado hoy')]).toBe('Asis Uno');
+    expect(cabecera.some((c) => /dni|tel[eé]fono|whatsapp|correo/i.test(c))).toBe(false);
     delete window.print;
   });
 

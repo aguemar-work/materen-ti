@@ -8,7 +8,7 @@ import { insforgeApi } from '../src/api/insforge.js';
 const METODOS = [
   'buscarGlobal',
   // empleados
-  'listEmpleados', 'listEmpleadosPage', 'listEmpleadosFiltrados',
+  'listEmpleados', 'listEmpleadosPage',
   'getEmpleado', 'createEmpleado', 'buscarPorDni',
   'updateEmpleado', 'softDeleteEmpleado', 'resumenBaja', 'bajaEmpleado', 'reactivarEmpleado',
   'conteosVinculos', 'conteosEmpleadosPorEstado',
@@ -30,7 +30,7 @@ const METODOS = [
   // misTickets se retiraron el 2026-10-03: todo sale de getResumen)
   'listActividad', 'getResumen',
   // correos
-  'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'listCorreosFiltrados', 'conteosCorreosPorVista',
+  'listCorreosAsignables', 'listCorreosCompartidos', 'listCorreosPage', 'conteosCorreosPorVista',
   'createCorreo', 'updateCorreo',
   'softDeleteCorreo', 'asignarCuentaExistente',
   // licencias
@@ -40,7 +40,7 @@ const METODOS = [
   // equipos
   'listEquipos', 'listEquiposPage', 'listEquiposFiltrados', 'asignacionActivaEquipo', 'moverEquipo', 'createEquipo', 'updateEquipo',
   'cambiarEstadoEquipo', 'softDeleteEquipo', 'asignarEquipo', 'devolverEquipo',
-  'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado', 'ultimosMovimientos',
+  'subirFotoEquipo', 'eliminarFotoEquipo', 'eventosEquipo', 'equiposPorEmpleado',
   'conteosEquiposPorSituacion',
   // hoja de vida, actas firmadas y etiquetas QR (RPC 101, tabla actas 110)
   'verificarEquipo', 'getEquipo', 'buscarEquipoPorCodigo', 'listEquiposPorIds', 'guardarFotosEquipo',
@@ -54,11 +54,15 @@ const METODOS = [
   'updateSubcategoriaTicket', 'softDeleteSubcategoriaTicket',
   // catálogo v2 (migración 116): reclasificación por el JEFE
   'listTicketsPorReclasificar', 'reclasificarTicket',
-  'listTickets', 'listTicketsPage', 'listTicketsFiltrados', 'contarTickets',
+  'listTickets', 'listTicketsPage', 'contarTickets',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
   // reportes (migración 115): solo RPC, nada se agrega en el cliente
   'obtenerReporteTickets', 'obtenerSatisfaccionConsolidado',
+  // reportes centralizados (migración 117): una RPC por reporte, misma forma
+  'obtenerReporteInventario', 'obtenerReporteLicencias', 'obtenerReporteCorreos', 'obtenerReportePersonal',
+  'obtenerReporteSolicitudes', 'obtenerReporteCambios', 'obtenerReporteProblemas', 'obtenerReporteEncuestas',
+  'obtenerReporteAuditoria',
   // parámetros de negocio (config_parametros, 103): lectura de un entero
   'parametroEntero',
   // staff

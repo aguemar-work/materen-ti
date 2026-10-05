@@ -5,7 +5,7 @@ import { useCorreosStore } from '../../stores/correos.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { revelarPassword } from '../../api/passwords.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
-import { exportarCSV } from '../../core/exportar.js';
+import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
 import { showToast } from '../../core/toast.js';
 import { badgeInfo } from '../../core/badges.js';
 import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
@@ -105,30 +105,6 @@ const correoEditar = ref(null);
 // true = el formulario se abrió desde "Rotar contraseña": entra con el foco
 // en "Nueva contraseña" y un aviso de por qué (ver CorreoForm.vue).
 const modoRotar = ref(false);
-
-const exportando = ref(false);
-async function exportar() {
-  exportando.value = true;
-  try {
-    const filas = await store.listaParaExportar();
-    exportarCSV(
-      'correos',
-      ['Plataforma', 'Tipo', 'Correo / Usuario', 'Asignados', 'URL', 'Notas'],
-      filas.map((c) => [
-        c.plataforma_nombre,
-        c.tipo_cuenta === 'compartida' ? 'Compartido' : 'Reutilizable',
-        c.usuario,
-        (c.asignados || []).map((a) => a.nombre).join(', '),
-        c.url,
-        c.notas,
-      ]),
-    );
-  } catch (e) {
-    showToast(e?.message || 'Error al exportar', 'error');
-  } finally {
-    exportando.value = false;
-  }
-}
 
 // El revelado de una credencial (peticion a la edge function `credenciales`,
 // auditoria en accesos_log con el motivo, cuenta regresiva de 8 segundos y
@@ -241,16 +217,7 @@ onMounted(async () => {
         · buzones y usuarios que se usan entre varias personas
       </template>
       <template #acciones>
-        <AppButton
-          variant="text"
-          severity="secondary"
-          icon="ti ti-table-export"
-          :loading="exportando"
-          :disabled="exportando"
-          :label="exportando ? 'Exportando...' : 'Exportar'"
-          title="Exportar a Excel (CSV)"
-          @click="exportar"
-        />
+        <EnlaceReporte reporte="correos" />
         <AppButton icon="ti ti-plus" label="Nuevo correo" @click="abrirNuevo" />
       </template>
     </AppEncabezado>

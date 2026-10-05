@@ -26,10 +26,6 @@ export const useEquiposStore = crearStorePaginado('equipos', {
   state: () => ({ tipos: [], ubicaciones: [] }),
 
   actions: {
-    async listaParaExportar() {
-      return insforgeApi.listEquiposFiltrados(this.filtros);
-    },
-
     async crear(datos) {
       this.error = null;
       await insforgeApi.createEquipo(datos);

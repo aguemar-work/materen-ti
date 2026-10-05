@@ -8,7 +8,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { showToast } from '../../core/toast.js';
 import { formatFecha, formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
-import { exportarCSV } from '../../core/exportar.js';
+import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
 import { resumenPregunta, tipoPreguntaInfo } from '../../core/dominio-encuestas.js';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -121,20 +121,6 @@ const resumenes = computed(() => {
     resumen: resumenPregunta(p, respuestas.value),
   }));
 });
-
-function exportar() {
-  const preguntas = encuesta.value.preguntas;
-  exportarCSV(
-    `encuesta-${encuesta.value.titulo}-ronda`,
-    preguntas.map((p) => p.etiqueta),
-    respuestas.value.map((r) => preguntas.map((p) => {
-      const v = r[p.id];
-      if (v === undefined || v === null) return '';
-      if (typeof v === 'boolean') return v ? 'Sí' : 'No';
-      return v;
-    })),
-  );
-}
 
 // ── Presentación (rediseño 2026-09-23) ──────────────────────────────────
 function porcentaje(cant, total) {
@@ -269,15 +255,7 @@ onMounted(async () => {
           sin-padding
         >
           <template #acciones>
-            <AppButton
-              size="sm"
-              variant="text"
-              severity="secondary"
-              icon="ti ti-table-export"
-              label="Exportar"
-              :disabled="cargandoRespuestas || !respuestas.length"
-              @click="exportar"
-            />
+            <EnlaceReporte reporte="encuestas" :query="{ ronda: rondaSeleccionada.id }" size="sm" />
           </template>
 
           <p v-if="cargandoRespuestas" class="px-4 py-10 text-center text-sm text-gray-500" role="status">Cargando respuestas…</p>

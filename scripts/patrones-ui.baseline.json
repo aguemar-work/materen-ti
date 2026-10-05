@@ -50,7 +50,6 @@
     "modules/kb/KbArticuloForm.vue",
     "modules/licencias/AsignarLicenciaModal.vue",
     "modules/licencias/LicenciaForm.vue",
-    "modules/licencias/LicenciasView.vue",
     "modules/plataformas/PlataformasView.vue",
     "modules/problemas/ProblemaDetalleView.vue",
     "modules/problemas/ProblemaForm.vue",
@@ -61,8 +60,7 @@
     "modules/tickets/TicketBuscarView.vue",
     "modules/tickets/TicketInternoForm.vue",
     "modules/tickets/TicketNuevoView.vue",
-    "modules/tickets/TicketSeguimientoView.vue",
-    "modules/tickets/TicketsView.vue"
+    "modules/tickets/TicketSeguimientoView.vue"
   ],
   "historial-a-mano": [
     "modules/encuestas/EncuestaDetalleView.vue",

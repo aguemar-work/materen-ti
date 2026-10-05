@@ -109,8 +109,8 @@ function accionesDe(encuesta) {
       <p class="flex items-start gap-2 text-sm text-gray-500">
         <i class="ti ti-info-circle mt-0.5 text-gray-500" aria-hidden="true"></i>
         <span>
-          ¿Busca la satisfacción de un ticket puntual? Eso vive en
-          <RouterLink class="font-medium text-primary-700 hover:underline" to="/tickets/satisfaccion">Tickets → Satisfacción</RouterLink>.
+          ¿Busca la satisfacción de los tickets? Eso vive en
+          <RouterLink class="font-medium text-primary-700 hover:underline" to="/reportes/satisfaccion">Reportes → Satisfacción</RouterLink>.
           Esta pantalla es para encuestas propias: clima, feedback puntual y rondas anónimas.
         </span>
       </p>

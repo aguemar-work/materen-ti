@@ -25,3 +25,78 @@ export const GLOSARIO = [
   { termino: 'Área', definicion: 'área u obra del empleado hoy, no la del momento del ticket.' },
   { termino: 'Período comparable', definicion: 'solo períodos completos; un mes se compara con el mes anterior y un rango con los días anteriores de igual largo; el período en curso no se compara.' },
 ];
+
+// ── Reportes centralizados (migración 117) ─────────────────────────────────
+// Una lista por reporte, con las definiciones de la cabecera de la 117. Si una
+// cambia en SQL, sube `definiciones_version` allá y este texto acá.
+export const VERSION_DEFINICIONES_117 = 'reportes-2026-10-05';
+
+const FOTO = { termino: 'Foto al corte', definicion: 'lo que hay registrado al momento de generar el reporte; no tiene período ni se compara.' };
+const PERIODO = { termino: 'Período', definicion: 'días de calendario de Lima, del primero al último inclusive; como mucho 366 días; no se compara con el anterior.' };
+
+export const GLOSARIOS = {
+  satisfaccion: [
+    { termino: 'Histórico', definicion: 'todas las encuestas de cierre de tickets registradas, sin recorte de período.' },
+    { termino: 'Promedio', definicion: 'de las respuestas con nivel 1 a 5; se publica solo con n igual o mayor a la muestra mínima (si no, «n insuficiente»).' },
+    { termino: 'Insatisfecho', definicion: 'respuesta con nivel 1 o 2.' },
+    { termino: 'Tasa de respuesta', definicion: 'encuestas respondidas sobre encuestas generadas.' },
+    { termino: 'Resolvió', definicion: 'quien marcó el ticket como resuelto por última vez.' },
+    { termino: 'Mes', definicion: 'mes de la resolución vigente del ticket, en hora de Lima.' },
+  ],
+  inventario: [
+    FOTO,
+    { termino: 'Situación', definicion: 'el estado físico si el equipo no está operativo; si lo está, asignado (lo tiene una persona), en ubicación (sede, obra o almacén) o disponible.' },
+    { termino: 'Garantía por vencer', definicion: 'equipos operativos o en reparación con garantía hasta hoy más el parámetro de días (el mismo del Inicio); incluye las vencidas.' },
+    { termino: 'Sin devolver', definicion: 'equipo aún asignado a una persona dada de baja; la fecha de baja sale de su hoja de vida.' },
+    { termino: 'Acta pendiente', definicion: 'entrega a una persona sin acta firmada adjunta, con más días que el parámetro y posterior a la fecha de inicio del control.' },
+  ],
+  licencias: [
+    FOTO,
+    { termino: 'Usados', definicion: 'asignaciones activas de la licencia; si la licencia se usa con un correo, los titulares activos de ese correo.' },
+    { termino: 'Libres', definicion: 'asientos comprados menos usados, nunca menos de cero.' },
+    { termino: 'Vencida / por vencer', definicion: 'fecha de vencimiento anterior a hoy / dentro del parámetro de días; las perpetuas no vencen.' },
+  ],
+  correos: [
+    FOTO,
+    { termino: 'Rotación pendiente', definicion: 'cuenta marcada para cambiar la contraseña (por ejemplo, tras la salida de un titular).' },
+    { termino: 'Días sin cambiar', definicion: 'días corridos desde el último cambio de contraseña registrado; no se guarda cuándo se marcó la rotación.' },
+    { termino: 'Titulares', definicion: 'personas con una asignación activa de la cuenta.' },
+  ],
+  personal: [
+    PERIODO,
+    { termino: 'Personal hoy', definicion: 'activos, suspendidos y dados de baja al momento de generar el reporte; empresa, área y cargo son los de hoy.' },
+    { termino: 'Alta / baja', definicion: 'según la hoja de vida: alta = registro, baja = baja ejecutada o paso a Inactivo (una baja anterior a la auditoría lleva fecha aproximada).' },
+    { termino: 'Revisión pendiente', definicion: 'persona activa o suspendida cuya última revisión de accesos (o su alta, si nunca se revisó) supera el parámetro de días.' },
+  ],
+  solicitudes: [
+    PERIODO,
+    { termino: 'Creadas, completadas, canceladas', definicion: 'cada una por la fecha de ese hecho dentro del período.' },
+    { termino: 'Tiempo de trámite', definicion: 'días corridos de creada a completada, de las completadas en el período; mediana primero, siempre con n.' },
+    { termino: 'Antigüedad', definicion: 'días corridos desde que se creó una solicitud que sigue abierta.' },
+  ],
+  cambios: [
+    PERIODO,
+    { termino: 'Pedidos', definicion: 'cambios creados en el período que llegaron a pedirse (sin borradores ni cancelados).' },
+    { termino: 'Ejecutados', definicion: 'en ejecución, implementados, cerrados o revertidos.' },
+    { termino: 'Revertidos de los ejecutados', definicion: 'revertidos sobre ejecutados del mismo tipo.' },
+    { termino: 'Emergencia sin aprobar', definicion: 'emergencia en ejecución o implementada sin aprobación de un jefe y con el plazo de 48 horas vencido, hoy.' },
+  ],
+  problemas: [
+    PERIODO,
+    { termino: 'Error conocido', definicion: 'problema con causa raíz o workaround documentado; vigente mientras no se cierre.' },
+    { termino: 'Acción vencida', definicion: 'acción correctiva pendiente o en progreso con fecha límite anterior a hoy.' },
+    { termino: 'Uso de un artículo', definicion: 'artículo registrado como usado para resolver un ticket.' },
+    { termino: 'Recurrente', definicion: 'categoría con tantos tickets como el umbral de Configuración en sus días, sin problema vinculado.' },
+  ],
+  encuestas: [
+    { termino: 'Ronda', definicion: 'un envío de la encuesta con su propio enlace; sus respuestas son anónimas.' },
+    { termino: 'Porcentaje', definicion: 'sobre quienes respondieron esa pregunta, no sobre el total de la ronda.' },
+    { termino: 'Promedio', definicion: 'de las respuestas de escala 1 a 5 de la pregunta.' },
+  ],
+  auditoria: [
+    PERIODO,
+    { termino: 'Quién', definicion: 'el integrante del staff que actuó; sin sesión, «Empleado, vía enlace» (entregas y portal) o «Sistema».' },
+    { termino: 'Revelado fallido o denegado', definicion: 'intento de ver una contraseña que falló o que el permiso no dejó.' },
+    { termino: 'Privacidad', definicion: 'el reporte nunca muestra la IP ni el navegador de quien actuó.' },
+  ],
+};

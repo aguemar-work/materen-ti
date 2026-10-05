@@ -69,16 +69,22 @@ describe('AppNav.vue', () => {
     expect(rotulos).toEqual(['Mesa de ayuda', 'Personas', 'Custodia', 'Administración']);
     const enlaces = w.findAll('a').map((a) => a.text());
     expect(enlaces).toEqual([
-      'Inicio', 'Tickets', 'Conocimiento', 'Problemas', 'Cambios', 'Reportes', 'Empleados', 'Solicitudes', 'Encuestas',
+      'Inicio', 'Reportes', 'Tickets', 'Conocimiento', 'Problemas', 'Cambios', 'Empleados', 'Solicitudes', 'Encuestas',
       'Equipos', 'Licencias', 'Correos', 'Registro de actividad', 'Accesos sensibles', 'Configuración',
     ]);
   });
 
   it('ASISTENTE solo con Equipos: sin Registro de actividad y con su único módulo en Custodia', async () => {
     const w = await montar({ rol: 'ASISTENTE', modulos: ['equipos'] });
-    expect(w.findAll('a').map((a) => a.text())).toEqual(['Inicio', 'Equipos', 'Configuración']);
+    // Reportes se ve: Equipos tiene su reporte (Inventario de equipos).
+    expect(w.findAll('a').map((a) => a.text())).toEqual(['Inicio', 'Reportes', 'Equipos', 'Configuración']);
     expect(w.text()).toContain('Custodia');
     expect(w.text()).not.toContain('Personas');
+  });
+
+  it('Reportes no aparece si ningún módulo del integrante tiene un reporte', async () => {
+    const w = await montar({ rol: 'ASISTENTE', modulos: ['base_conocimiento'] });
+    expect(w.findAll('a').map((a) => a.text())).toEqual(['Inicio', 'Conocimiento', 'Configuración']);
   });
 
   // `nav-activo` es la marca del ítem activo (V2): el look puede cambiar sin

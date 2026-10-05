@@ -20,6 +20,10 @@ let actor = { id: 'u-jefe', esJefe: true };
 export function definirActorReportes(nuevo) {
   actor = { ...actor, ...nuevo };
 }
+// Quien llama a las RPC de reportes de la maqueta (también las de la 117).
+export function actorReportes() {
+  return actor;
+}
 
 // ── Fechas de Lima ──────────────────────────────────────────────────────────
 const FMT = new Intl.DateTimeFormat('en-CA', { timeZone: ZONA, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -296,7 +300,7 @@ export function reporteTicketsDe(db, { user, desde, hasta, tecnico = null, compa
       codigo: x.codigo, titulo: x.titulo, estado: x.estado, prioridad: x.prioridad, tipo: x.tipo, nivel_atencion: x.nivel_atencion,
       categoria: x.categoria_nombre, subcategoria: x.subcategoria_nombre, area: x.area_obra_nombre, solicitante: x.solicitante,
       created_at: x.created_at, resuelto_at: x.resuelto_at, horas_resolucion: x.resuelto_en ? redondear(x.horas_resolucion) : null,
-      tecnico_id: x.tecnico_resolvio_id, encuesta_nivel: x.encuesta_nivel,
+      tecnico_id: x.tecnico_resolvio_id, asignado_a: x.asignado_a, encuesta_nivel: x.encuesta_nivel,
       en_periodo: x.creado_en && x.resuelto_en ? 'ambos' : (x.creado_en ? 'creado' : 'resuelto'),
     })),
     comparacion: null,

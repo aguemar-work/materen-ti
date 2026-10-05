@@ -193,13 +193,6 @@ export const ticketsApi = {
     return count ?? 0;
   },
 
-  // Dataset filtrado completo, sin página — para exportar CSV
-  async listTicketsFiltrados(filtros = {}) {
-    const { data, error } = await conReintentoResueltoAt(async () => (await queryTickets(filtros)).qb);
-    if (error) throw error;
-    return (data || []).map(mapTicketResumen);
-  },
-
   async getTicket(id) {
     const { data, error } = await getClient().database
       .from('tickets')

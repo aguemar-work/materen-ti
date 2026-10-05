@@ -20,6 +20,7 @@ import { RPC_KB, definirActorKb, calcularKpiKb } from './rpc-kb.js';
 import { RPC_CAMBIOS, definirActorCambios } from './rpc-cambios.js';
 import { RPC_PORTAL } from './rpc-portal.js';
 import { RPC_REPORTES, definirActorReportes } from './rpc-reportes.js';
+import { RPC_REPORTES_117 } from './rpc-reportes-117.js';
 import { RPC_CATALOGO_TICKETS, definirActorCatalogoTickets, calcularPorReclasificar } from './rpc-catalogo-tickets.js';
 import { crearDatosCambios } from './cambios-datos.js';
 import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
@@ -723,6 +724,9 @@ const config_parametros = [
   { clave: 'dias_ventana_alta', valor: 30 }, { clave: 'dias_por_vencer_licencia', valor: 30 }, { clave: 'dias_por_vencer_garantia', valor: 30 },
   { clave: 'umbral_recurrencia_tickets', valor: { n: 3, dias: 30 } }, { clave: 'dias_ticket_viejo', valor: 3 },
   { clave: 'csat_muestra_minima', valor: 5 }, { clave: 'dias_corte_reapertura', valor: 30 },
+  // 110 + 117: actas pendientes (desde hace 60 días, como el Inicio de la maqueta) y revisión de accesos.
+  { clave: 'dias_acta_sin_adjuntar', valor: 3 }, { clave: 'actas_pendientes_desde', valor: fecha(-60) },
+  { clave: 'dias_revision_accesos', valor: 180 },
   // Marca del catálogo v2 (116): tickets anteriores en estas subcategorías (o sin subcategoría) se revisan.
   { clave: 'catalogo_tickets_v2', valor: { aplicada_at: hace(3), subcategoria_no_clasificado: 'sub-09', subcategoria_seguridad_legado: 'sub-25' } },
 ];
@@ -887,6 +891,9 @@ const accesos_log = [
   { id: 'log05', user_email: 'lparedes@materen.pe', cuenta_usuario: null, plataforma: null, accion: 'acceso_denegado', detalle: 'Ruta /actividad', created_at: hace(5) },
   { id: 'log06', user_email: 'jefe@materen.pe', cuenta_usuario: 'cflores', plataforma: 'Erp Siscont', accion: 'ver', detalle: 'Motivo: restablecer acceso', created_at: hace(13) },
   { id: 'log07', user_email: 'jefe@materen.pe', cuenta_usuario: 'almacen.chorrillos@materen.pe', plataforma: 'Gmail', accion: 'enviar', detalle: null, created_at: hace(10) },
+  { id: 'log08', user_email: 'jefe@materen.pe', cuenta_usuario: 'Router principal sede', plataforma: null, accion: 'permiso_otorgado', detalle: 'Diego Huamán Rojas', created_at: hace(8) },
+  { id: 'log09', user_email: null, cuenta_usuario: '(sistema)', plataforma: null, accion: 'purga_ejecutada', detalle: 'entregas: 2 · notificaciones: 5', created_at: hace(1, 3) },
+  { id: 'log10', user_email: 'lparedes@materen.pe', cuenta_usuario: 'cflores', plataforma: 'Erp Siscont', accion: 'revelado_denegado', detalle: 'Sin permiso para ver contraseñas', created_at: hace(6) },
 ];
 
 const notificaciones = [
@@ -1095,6 +1102,9 @@ export const RPC = {
   // Reportes (115): reporte_tickets y reporte_satisfaccion_consolidado con la
   // misma aritmética que el SQL — maqueta/rpc-reportes.js.
   ...RPC_REPORTES,
+  // Reportes centralizados (117): inventario, licencias, correos, personal, solicitudes, cambios,
+  // problemas, encuestas y auditoría — maqueta/rpc-reportes-*.js, misma aritmética que el SQL.
+  ...RPC_REPORTES_117,
   cerrar_ticket: (db, args) => {
     const t = db.tickets.find((x) => x.id === args?.p_ticket_id);
     if (t) t.estado = 'cerrado';

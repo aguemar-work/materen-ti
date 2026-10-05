@@ -50,5 +50,14 @@ export function setupGuards(router) {
       showToast('No tiene acceso a ese módulo o sección', 'warning');
       return to.meta.redirigirDenegado ?? { path: '/dashboard' };
     }
+
+    // Alguno de varios módulos (meta.algunModulo): el índice de Reportes se
+    // abre con cualquier módulo que tenga un reporte (core/reportes.js).
+    const algunos = to.meta.algunModulo;
+    if (algunos && !algunos.some((m) => auth.puedeVerModulo(m))) {
+      registrarAccesoDenegado(to.path);
+      showToast('No tiene acceso a ese módulo o sección', 'warning');
+      return to.meta.redirigirDenegado ?? { path: '/dashboard' };
+    }
   });
 }

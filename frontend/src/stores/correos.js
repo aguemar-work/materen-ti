@@ -11,10 +11,6 @@ export const useCorreosStore = crearStorePaginado('correos', {
   entidad: 'correo',
 
   actions: {
-    async listaParaExportar() {
-      return insforgeApi.listCorreosFiltrados(this.filtros);
-    },
-
     async crear(datos) {
       this.error = null;
       const correo = await insforgeApi.createCorreo(datos);

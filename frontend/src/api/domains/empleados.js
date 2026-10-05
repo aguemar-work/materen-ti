@@ -75,13 +75,6 @@ export const empleadosApi = {
     return { items: (data || []).map(mapEmpleado), total: count ?? 0 };
   },
 
-  // Dataset filtrado completo, sin página — para exportar CSV
-  async listEmpleadosFiltrados(filtros = {}) {
-    const { data, error } = await queryEmpleados(filtros);
-    if (error) throw error;
-    return (data || []).map(mapEmpleado);
-  },
-
   // Conteo de cada vista (Activos/Inactivos/Suspendidos/Todos) con el RESTO
   // de los filtros aplicados (búsqueda y chips): el número de cada pestaña
   // dice exactamente cuántas filas va a mostrar al elegirla. Solo `count`

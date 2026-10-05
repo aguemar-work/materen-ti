@@ -880,12 +880,19 @@ async function paridadMaquetaReportes(sfx) {
     await db.exec(`delete from staff_modulos_permisos where staff_user_id = '${id}' and modulo <> all (array[${modulos.map((m) => `'${m}'`).join(',') || "''"}])`);
   }
   const empresa = (await uno(`insert into empresas (nombre) values ('Maqueta ${sfx}') returning id`)).id;
+  // 117: las empresas de la maqueta (Personal agrupa por empresa); sin la fila, el empleado cae en la genérica.
+  ids.empresa = new Map();
+  for (const e of maq.empresas || []) ids.empresa.set(e.id, (await uno(`insert into empresas (nombre) values (${lit(e.nombre)}) returning id`)).id);
   for (const a of maq.areas_obras) ids.area.set(a.id, (await uno(`insert into areas_obras (nombre) values (${lit(a.nombre)}) returning id`)).id);
   for (const u of maq.ubicaciones) ids.ubic.set(u.id, (await uno(`insert into ubicaciones (nombre, tipo) values (${lit(u.nombre)}, ${lit(u.tipo || 'otro')}) returning id`)).id);
+  // Sin el trigger de la hoja de vida: el 'creado' de hoy taparía la historia de la maqueta (117, Personal). El estado va
+  // tal cual (las reglas de transición son BEFORE UPDATE): una persona Suspendida o Inactiva entra como tal.
+  await db.exec('alter table empleados disable trigger trg_evento_empleado_cambios');
   for (const e of maq.empleados) {
     const dni = String(Math.floor(10000000 + Math.random() * 89999999));
-    ids.emp.set(e.id, (await uno(`insert into empleados (nombres, apellidos, dni, empresa_id, area_obra_id, ubicacion_id, estado) values (${lit(e.nombres)}, ${lit(e.apellidos)}, '${dni}', '${empresa}', ${lit(ids.area.get(e.area_obra_id))}, ${lit(ids.ubic.get(e.ubicacion_id))}, ${lit(e.estado === 'Suspendido' ? 'Activo' : e.estado)}) returning id`)).id);
+    ids.emp.set(e.id, (await uno(`insert into empleados (nombres, apellidos, dni, empresa_id, area_obra_id, ubicacion_id, estado, cargo, fecha_alta, created_at) values (${lit(e.nombres)}, ${lit(e.apellidos)}, '${dni}', '${ids.empresa.get(e.empresa_id) || empresa}', ${lit(ids.area.get(e.area_obra_id))}, ${lit(ids.ubic.get(e.ubicacion_id))}, ${lit(e.estado)}, ${lit(e.cargo)}, ${lit(e.fecha_alta)}, ${lit(e.created_at)}) returning id`)).id);
   }
+  await db.exec('alter table empleados enable trigger trg_evento_empleado_cambios');
   for (const c of maq.categorias_ticket) await db.exec(`insert into categorias_ticket (id, nombre) values (${lit(c.id)}, ${lit(c.nombre)}) on conflict (id) do update set nombre = excluded.nombre, deleted_at = null`);
   for (const s of maq.subcategorias_ticket) ids.sub.set(s.id, (await uno(`insert into subcategorias_ticket (categoria_id, nombre) values (${lit(s.categoria_id)}, ${lit(s.nombre)}) returning id`)).id);
   await db.exec('alter table tickets disable trigger tickets_resuelto_at');
@@ -956,9 +963,103 @@ async function paridadMaquetaReportes(sfx) {
   afirmar('S17 115: el consolidado de satisfaccion de la maqueta coincide con la RPC (resumen y muestra minima)',
     canon(resumenSql) === canon(resumenJs) && satSql.muestraMinima === satJs.muestraMinima
     && satSql.porTecnico.length === satJs.porTecnico.length, `sql=${canon(resumenSql)} js=${canon(resumenJs)}`);
+  // 117: inventario y personal de la maqueta contra las RPC, sobre el mismo fixture (misma transacción que se revierte).
+  if ((await uno("select to_regprocedure('public.reporte_personal_de(uuid, date, date)') as t")).t) {
+    await paridadReportes117(maq, ids, jefe, { lit, canon });
+  }
   } finally {
     await db.exec('rollback');
   }
+}
+
+// ---- S17 117: paridad maqueta <-> SQL de los reportes de Inventario y de Personal. Carga en la base lo que esos reportes
+// leen (equipos, asignaciones, actas, hoja de vida y revisiones de acceso), alinea los parametros con la maqueta y deja
+// fuera de la foto (deleted_at) los equipos y empleados de los demas escenarios. Las filas de cada tabla se comparan como
+// conjunto: el orden de los textos depende de la collation y la hoja los muestra igual.
+async function paridadReportes117(maq, ids, jefe, { lit, canon }) {
+  let custodia, personas;
+  try {
+    custodia = await import(pathToFileURL(join(REPO, 'frontend/src/maqueta/rpc-reportes-custodia.js')).href);
+    personas = await import(pathToFileURL(join(REPO, 'frontend/src/maqueta/rpc-reportes-personas.js')).href);
+  } catch (e) {
+    afirmar('S17 117: la maqueta de reportes centralizados se puede importar en node', false, e.message.slice(0, 160));
+    return;
+  }
+  for (const clave of ['dias_por_vencer_garantia', 'dias_acta_sin_adjuntar', 'actas_pendientes_desde', 'dias_revision_accesos']) {
+    const p = (maq.config_parametros || []).find((x) => x.clave === clave);
+    if (p) await db.exec(`update config_parametros set valor = ${lit(JSON.stringify(p.valor))}::jsonb where clave = '${clave}'`);
+  }
+  ids.equipo = new Map();
+  ids.asig = new Map();
+  for (const t of maq.tipos_equipo || []) {
+    await db.exec(`insert into tipos_equipo (id, nombre) values (${lit(t.id)}, ${lit(t.nombre)}) on conflict (id) do update set nombre = excluded.nombre, deleted_at = null`);
+  }
+  for (const q of maq.equipos || []) {
+    ids.equipo.set(q.id, (await uno(`insert into equipos (codigo, codigo_almacen, tipo_id, marca, modelo, serie, estado, empresa_id, fecha_compra, garantia_hasta, created_at)
+      values (${lit(q.codigo)}, ${lit(q.codigo_almacen)}, ${lit(q.tipo_id)}, ${lit(q.marca)}, ${lit(q.modelo)}, ${lit(q.serie)}, 'operativo', ${lit(ids.empresa.get(q.empresa_id))}, ${lit(q.fecha_compra)}, ${lit(q.garantia_hasta)}, ${lit(q.created_at)}) returning id`)).id);
+  }
+  // Primero las cerradas (el indice de un portador activo por equipo solo mira las abiertas).
+  for (const a of [...(maq.asignaciones_equipo || [])].sort((x, y) => (x.fecha_fin ? 0 : 1) - (y.fecha_fin ? 0 : 1))) {
+    ids.asig.set(a.id, (await uno(`insert into asignaciones_equipo (equipo_id, empleado_id, ubicacion_id, fecha_inicio, fecha_fin, condicion_entrega, condicion_devolucion, motivo_cierre, created_at)
+      values ('${ids.equipo.get(a.equipo_id)}', ${lit(ids.emp.get(a.empleado_id))}, ${lit(ids.ubic.get(a.ubicacion_id))}, ${lit(a.fecha_inicio)}, ${lit(a.fecha_fin)}, ${lit(a.condicion_entrega)}, ${lit(a.condicion_devolucion)}, ${lit(a.motivo_cierre)}, ${lit(a.created_at)}) returning id`)).id);
+  }
+  // El estado real va despues de las asignaciones: un trigger no deja asignar un equipo que no esta operativo.
+  for (const q of maq.equipos || []) {
+    if (q.estado !== 'operativo') await db.exec(`update equipos set estado = ${lit(q.estado)} where id = '${ids.equipo.get(q.id)}'`);
+  }
+  for (const x of maq.actas || []) {
+    await db.exec(`insert into actas (asignacion_equipo_id, tipo, empleado_id, equipo_id, pdf_key, tamano_bytes, sha256, firmado_at, subido_por, created_at)
+      values ('${ids.asig.get(x.asignacion_equipo_id)}', ${lit(x.tipo)}, ${lit(ids.emp.get(x.empleado_id))}, '${ids.equipo.get(x.equipo_id)}', 'actas/maqueta/${x.id}.pdf', ${x.tamano_bytes}, '${'a'.repeat(64)}', ${lit(x.firmado_at)}, ${lit(ids.user.get(x.subido_por))}, ${lit(x.created_at)})`);
+  }
+  for (const ev of maq.empleado_eventos || []) {
+    if (!ids.emp.has(ev.empleado_id)) continue;
+    await db.exec(`insert into empleado_eventos (empleado_id, evento, campo, valor_anterior, valor_nuevo, user_id, user_email, rol_actor, detalle, created_at)
+      values ('${ids.emp.get(ev.empleado_id)}', ${lit(ev.evento)}, ${lit(ev.campo)}, ${lit(ev.valor_anterior)}, ${lit(ev.valor_nuevo)}, ${lit(ids.user.get(ev.user_id))}, ${lit(ev.user_email)}, ${lit(ev.rol_actor)}, ${lit(ev.detalle)}, ${lit(ev.created_at)})`);
+  }
+  for (const r of maq.empleado_revisiones_acceso || []) {
+    await db.exec(`insert into empleado_revisiones_acceso (empleado_id, revisado_por, revisado_at, resultado, nota)
+      values ('${ids.emp.get(r.empleado_id)}', ${lit(ids.user.get(r.revisado_por))}, ${lit(r.revisado_at)}, ${lit(JSON.stringify(r.resultado || {}))}::jsonb, ${lit(r.nota)})`);
+  }
+  const lista = (m) => `array[${[...m.values()].map((v) => `'${v}'`).join(',') || "'00000000-0000-0000-0000-000000000000'"}]::uuid[]`;
+  await db.exec(`update equipos set deleted_at = now() where deleted_at is null and id <> all(${lista(ids.equipo)})`);
+  await db.exec('alter table empleados disable trigger trg_evento_empleado_cambios');
+  // El DNI de 9 digitos de la siembra no pasa el CHECK de la 100 en un UPDATE: se lo anonimiza (la 112 admite ANON-).
+  await db.exec(`update empleados set deleted_at = now(), dni = case when dni ~ '^[0-9]{8}$' then dni else 'ANON-' || substr(md5(id::text), 1, 12) end where deleted_at is null and id <> all(${lista(ids.emp)})`);
+  await db.exec('alter table empleados enable trigger trg_evento_empleado_cambios');
+
+  const conjunto = (r) => ({
+    periodo: r.periodo,
+    parametros: r.parametros,
+    avisos: r.avisos,
+    secciones: r.secciones.map((s) => ({ ...s, tablas: s.tablas.map((t) => ({ ...t, filas: t.filas.map(canon).sort() })) })),
+    filas_csv: { columnas: r.filas_csv.columnas, filas: r.filas_csv.filas.map((f) => JSON.stringify(f)).sort() },
+  });
+  const comparar = (etq, sql, js) => {
+    const a = conjunto(sql);
+    const b = conjunto(js);
+    const dif = [];
+    for (const clave of Object.keys(a)) {
+      if (clave === 'secciones') {
+        a.secciones.forEach((s, i) => s.tablas.forEach((t, j) => {
+          const u = b.secciones[i]?.tablas?.[j];
+          if (canon(t) !== canon(u)) dif.push(`${s.id}/${t.id}: sql=${canon(t).slice(0, 300)} js=${canon(u).slice(0, 300)}`);
+        }));
+        if (a.secciones.length !== b.secciones.length) dif.push(`secciones ${a.secciones.length} vs ${b.secciones.length}`);
+      } else if (canon(a[clave]) !== canon(b[clave])) {
+        dif.push(`${clave}: sql=${canon(a[clave]).slice(0, 300)} js=${canon(b[clave]).slice(0, 300)}`);
+      }
+    }
+    afirmar(`S17 117: la maqueta y la RPC coinciden en ${etq}`, dif.length === 0, dif.join(' | ').slice(0, 1200));
+    console.log(`   (informativo) S17 117 ${etq}: ${sql.secciones.map((s) => `${s.id}=${s.tablas.map((t) => t.filas.length).join('/')}`).join(' ')} csv=${sql.filas_csv.filas.length}`);
+  };
+  const ahora = new Date();
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ahora);
+  const desde = new Date(Date.parse(`${hoy}T00:00:00Z`) - 365 * 86400000).toISOString().slice(0, 10);
+  const jefeMaq = maq.staff.find((s) => s.rol === 'JEFE').user_id;
+  comparar('el inventario de equipos', (await uno(`select reporte_inventario_equipos_de('${jefe}') as r`)).r,
+    custodia.reporteInventarioDe(maq, { user: jefeMaq, ahora }));
+  comparar(`el personal (${desde}..${hoy})`, (await uno(`select reporte_personal_de('${jefe}', '${desde}', '${hoy}') as r`)).r,
+    personas.reportePersonalDe(maq, { user: jefeMaq, desde, hasta: hoy, ahora }));
 }
 
 // ---------------------------------------------------------------- siembra "tipo produccion" ANTES de aplicar las nuevas
@@ -1087,7 +1188,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -1175,6 +1276,8 @@ if (!args.includes('--sin-dependencias')) {
     ['115', ['089']], ['115', ['099']], ['115', ['103']],
     // 116 depende de la 107 (servicios), la 111 (crear_ticket_publico) y la 114 (aviso)
     ['116', ['107']], ['116', ['111']], ['116', ['114']],
+    // 117 depende de la 102 (empleado_eventos), la 108 (solicitudes), la 110 (v_actas_pendientes) y la 115 (v_ticket_hechos)
+    ['117', ['102']], ['117', ['108']], ['117', ['110']], ['117', ['115']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });

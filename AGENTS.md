@@ -113,6 +113,12 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
 - **Catálogo de tickets (116)**: la prioridad inicial la fija `crear_ticket_publico` con la sugerida de la
   subcategoría (NULL = media); solo el staff manda otra. Reclasificar es solo JEFE por `reclasificar_ticket`,
   que nunca cambia tipo ni prioridad y deja `categoria_cambiada`. El valor `urgente` se muestra «Crítica».
+- **Reportes centralizados (117)**: ningún módulo exporta ni arma reportes; todo vive en `/reportes`
+  (`core/reportes.js` es el catálogo único: permiso, área y alcance). Una RPC por reporte con guard del módulo
+  fuente (auditoría: `rol:jefe`) y núcleo `*_de` solo `project_admin`; la maqueta (`maqueta/rpc-reportes-*.js`)
+  sigue la misma aritmética (S17 compara Inventario y Personal). Ninguna salida lleva DNI, contacto, IP ni
+  user_agent. Los documentos de un registro (acta, etiquetas, expediente, hoja de vida, solicitud, cambio)
+  siguen en su ficha.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

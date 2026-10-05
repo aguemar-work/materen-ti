@@ -11,7 +11,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useLicenciasStore } from '../../stores/licencias.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
-import { exportarCSV } from '../../core/exportar.js';
+import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
 import { showToast } from '../../core/toast.js';
 import { DIAS_POR_VENCER_LICENCIA } from '../../core/dominio-licencias.js';
 import LicenciaForm from './LicenciaForm.vue';
@@ -116,33 +116,6 @@ watch(filtrosSinVista, refrescarConteos, { deep: true });
 
 const { sinCupo } = useLicenciaCupos({ lista, total });
 
-// ── Exportación ──────────────────────────────────────────────
-const exportando = ref(false);
-async function exportar() {
-  exportando.value = true;
-  try {
-    const filas = await store.listaParaExportar();
-    exportarCSV(
-      'licencias',
-      ['Software', 'Proveedor', 'Empresa', 'Acceso', 'Asientos usados', 'Asientos totales', 'Usuarios', 'Vencimiento'],
-      filas.map((l) => [
-        l.software,
-        l.proveedor,
-        l.empresa_nombre || 'Del grupo',
-        l.cuenta_usuario,
-        l.usados,
-        l.cantidad,
-        (l.usuarios || []).map((u) => u.nombre).join(', '),
-        l.tipo === 'perpetua' ? 'Perpetua' : l.fecha_vencimiento,
-      ]),
-    );
-  } catch (e) {
-    showToast(e?.message || 'Error al exportar', 'error');
-  } finally {
-    exportando.value = false;
-  }
-}
-
 // ── Formulario, asignación y confirmaciones ───────────────────
 const mostrarForm = ref(false);
 const licenciaEditar = ref(null);
@@ -199,16 +172,7 @@ onMounted(async () => {
         <template v-if="sinCupo"> · {{ sinCupo }} sin asientos libres</template>
       </template>
       <template #acciones>
-        <AppButton
-          variant="text"
-          severity="secondary"
-          icon="ti ti-table-export"
-          :loading="exportando"
-          :disabled="exportando"
-          :label="exportando ? 'Exportando...' : 'Exportar'"
-          title="Exportar a Excel (CSV)"
-          @click="exportar"
-        />
+        <EnlaceReporte reporte="licencias" />
         <AppButton icon="ti ti-plus" label="Nueva licencia" @click="abrirNueva" />
       </template>
     </AppEncabezado>

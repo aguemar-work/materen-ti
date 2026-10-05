@@ -75,13 +75,6 @@ export const correosApi = {
     return Object.fromEntries(resultados);
   },
 
-  async listCorreosFiltrados(filtros = {}) {
-    const { qb } = await queryCorreos(filtros);
-    const { data, error } = await qb;
-    if (error) throw error;
-    return (data || []).map(mapCorreo);
-  },
-
   async listCorreosAsignables() {
     const db = getClient().database;
 
