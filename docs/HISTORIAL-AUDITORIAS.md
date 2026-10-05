@@ -1700,3 +1700,30 @@ Cuando se cierre un hallazgo (código o config), actualizar su fila de
 completo. Si aparece un hallazgo nuevo fuera de un ciclo formal, agregarlo a
 la tabla correspondiente con su fecha de detección en la columna
 Referencia. Ver la regla general de documentación en `AGENTS.md`.
+
+## Ciclo 21 — Auditoría integral (Fase 0) y plan de mejora «Expediente» (2026-10-01 → 2026-10-05)
+
+Solo se ejecutó la **Fase 0** (reconocimiento) de la auditoría pedida; las Fases 1–7 no se autorizaron. El
+dueño pidió en su lugar un plan de mejora con libertad total y su ejecución en local, revisada y aplicada
+por él. Documentos: `docs/auditorias/ciclo-21/` (00-reconocimiento, hallazgos, anexos A–E,
+PLAN-DE-MEJORA con su estado final en §9, analisis-reportes).
+
+| ID | Hallazgo | Estado |
+|---|---|---|
+| C21-OPS-001 | Drift `main` ↔ producción (086–088 aplicadas sin registro, 089 sin aplicar, ramas sin publicar) | **Cerrado (2026-10-03)**: secuencia única 001–089 en la rama, 089 aplicada con backfill (288/288) y `schema_migrations` reconciliada 086–114 (`scripts/sql/`). Las ramas se mezclan en `main` y las pushea el dueño |
+| C21-OPS-002 | Deploy desde working tree sin commit ni registro | **Cerrado**: `scripts/deploy.mjs` (invariante 12), `function_deploys` con sha256 de `functions/dist/`, `--cambio CHG-####` (107) |
+| C21-OPS-003 | Sin backups verificados | **Parcial**: `docs/CONTINUIDAD.md` y `healthcheck.yml`; activar backups es acción del panel |
+| C21-OPS-004 | `tests-db` ciego en CI | **Parcial**: `npm run test:sql-local` (PGlite) cubre migraciones, rollbacks y 65 bloques en local; el transporte en CI sigue abierto (H2-10) |
+| C21-DOC-001 | Esquema real no versionado | **Cerrado**: `scripts/snapshot-esquema.mjs` + `docs/esquema/snapshot.json` + job `drift-esquema` (regenerar tras aplicar 115) |
+| C21-DAT-001 | Reglas de negocio en el cliente (altas incompletas, recurrencia, umbrales, cálculos de reportes) | **Cerrado**: 103 (`config_parametros`, `dashboard_resumen`), 108 (solicitudes), 115 (`v_ticket_hechos`, `reporte_tickets`) |
+| REPORTE-TICKETS-RPC-MUERTOS / T-04 | RPC de la 053 sin consumidor; «Resuelto» = `updated_at`; tres definiciones de «resuelto»; CSAT sin muestra mínima | **Cerrado en código (115, sin aplicar)**; ver `analisis-reportes.md` |
+| EMPLEADOS-SIN-AUDITORIA / CUENTAS-SIN-AUDITORIA-CRUD | Sin libro de movimientos del empleado ni CRUD de cuentas auditado | **Cerrado**: 101 (`cuentas_log_evento`), 102 (`empleado_eventos`) |
+| P0-04 (duplicación de reglas de permiso) | `tienePermisoModulo`/`tienePermisoCredenciales` repetidos en TS | **Cerrado**: 099 `puede()` por RPC fail-closed; `functions/_shared/permisos.ts` |
+| Bucket `tickets-adjuntos` público | Capturas con datos personales y token en la key | **Parcial**: 111 + `migrar-adjuntos.mjs`; apagar «Public» es paso manual del panel al final del despliegue |
+
+**Pendientes de despliegue al 2026-10-05** (orden en PLAN-DE-MEJORA §9): aplicar 115; desplegar las 5 functions
+(`credenciales`, `tickets`, `encuestas`, `equipos-fotos`, `portal`; `deno check` en verde) y el frontend;
+migrar los 66 adjuntos y cerrar el bucket; `portal` en `healthcheck.yml`; programar `purgar_datos_temporales`;
+corregir el DNI de 9 dígitos y validar el CHECK; `npm run snapshot`; paridad de reportes contra producción;
+redactar los avisos de categoría (114). **Depende de V2:** 105, Triage y detalle de ticket, «Convertir en
+solicitud», `TicketKbCrear`, `confirmar_ticket`, `nota_resolucion`.
