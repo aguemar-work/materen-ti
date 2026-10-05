@@ -37,7 +37,6 @@
     "modules/accesosSensibles/AccesosSensiblesView.vue",
     "modules/actividad/ActividadView.vue",
     "modules/auth/LoginView.vue",
-    "modules/configuracion/CategoriasTicketPanel.vue",
     "modules/configuracion/TiposEquipoPanel.vue",
     "modules/correos/CorreoForm.vue",
     "modules/correos/CorreosView.vue",

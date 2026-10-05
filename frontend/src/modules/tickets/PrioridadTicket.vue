@@ -3,7 +3,7 @@
 // (pedido del dueño, 2026-09-25 — antes baja/media eran punto + texto sin
 // fondo y la columna se leía despareja junto a los tags de Estado). El peso
 // proporcional al significado (SISTEMA-DISENO §1.6) lo dan el tono y el
-// ícono de "Urgente", no la presencia del fondo. El color sale del dominio
+// ícono de la máxima («Crítica», valor `urgente`), no la presencia del fondo. El color sale del dominio
 // (prioridadInfo → core/dominio-tickets.js), no de un mapa propio.
 import { computed } from 'vue';
 import { prioridadInfo } from '../../core/dominio-tickets.js';

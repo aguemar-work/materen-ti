@@ -50,7 +50,7 @@ const OPCIONES_ESTADO = [
 
 // De más a menos urgente: el orden en que se lee una cola.
 const OPCIONES_PRIORIDAD = [
-  { valor: 'urgente', label: 'Urgente' },
+  { valor: 'urgente', label: 'Crítica' }, // el valor sigue siendo `urgente` (116)
   { valor: 'alta', label: 'Alta' },
   { valor: 'media', label: 'Media' },
   { valor: 'baja', label: 'Baja' },

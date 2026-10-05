@@ -197,7 +197,7 @@ describe('Inicio — contenido normal', () => {
     expect(mios[0].text()).toContain('TCK-0287');
     expect(mios[0].text()).toContain('Alta');
     expect(mios[0].text()).toContain('En progreso');
-    expect(mios[1].text()).toContain('Urgente');
+    expect(mios[1].text()).toContain('Crítica'); // el valor `urgente` se lee «Crítica» (116)
     // La prioridad se escribe como rango (mayúsculas por estilo), no como color.
     expect(mios[1].find('[data-tag]').classes()).toContain('uppercase');
     const enlace = w.find('a[href="/tickets?asignado=yo"]');

@@ -23,6 +23,16 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-05** (**Catálogo de tickets v2 — migración 116**, escrita, **sin aplicar**; pedido del dueño) — 7 categorías y
+  31 subcategorías (antes 5 y 18): Hardware pasa a «Hardware y Periféricos» y recibe Impresora desde Redes;
+  nuevas «Seguridad de la Información» y «Videovigilancia (CCTV)» (Cámaras sale de Accesos y conserva su aviso);
+  «Otros» pasa a «Consultas y Capacitación». Lo que significa lo mismo se renombra (los tickets conservan su
+  clasificación); lo que cambia de categoría se mueve con sus tickets, con evento nuevo `categoria_cambiada` y sin
+  notificaciones ni cambio de `updated_at`. `subcategorias_ticket.prioridad_sugerida`: `crear_ticket_publico` la
+  usa como prioridad inicial (NULL = media; solo el staff manda otra). Servicios `seguridad` y `cctv`. RPC
+  `reclasificar_ticket` (solo JEFE; no cambia tipo ni prioridad) y vista `v_tickets_por_reclasificar` con su
+  pantalla en Configuración › Categorías. En la interfaz el valor `urgente` se lee «Crítica». La function
+  `tickets` (`catalogo` devuelve `prioridad_sugerida`) se despliega después de aplicar la 116.
 - **2026-10-03** (**Reportes — migración 115**, escrita, **sin aplicar**; requiere 089, 099 y 103. La 089 se aplicó
   y registró hoy; `schema_migrations` quedó reconciliada con 086–114) — Parte del análisis
   `docs/auditorias/ciclo-21/analisis-reportes.md`. Una sola fuente de verdad por métrica: `v_ticket_hechos`

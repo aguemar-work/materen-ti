@@ -184,8 +184,8 @@ pantalla. Las reglas 1 a 13 **se mantienen**; estas 12 se suman.
     Más. *(Construida y adoptada: expediente del empleado, hoja de vida del
     equipo y las actas, que son la ruta imprimible `/equipos/:id/acta/…`. Los
     PDF de jsPDF no cambian todavía.)*
-24. **Prioridad como rango escrito.** `BAJA · MEDIA · ALTA · URGENTE` con
-    `AppTag` neutro para las tres primeras y rojo solo para Urgente; el orden
+24. **Prioridad como rango escrito.** `BAJA · MEDIA · ALTA · CRÍTICA (valor `urgente`)` con
+    `AppTag` neutro para las tres primeras y rojo solo para Crítica (valor `urgente`); el orden
     lo da el reloj y la posición en la cola (servidor), no el color. La
     severidad de un problema usa la misma escala. `sky`, `violet` y `teal`
     dejan de ser colores de prioridad. Resuelve la colisión estado ↔

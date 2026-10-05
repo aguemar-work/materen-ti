@@ -95,6 +95,11 @@ export function useTicketDetalleLogica() {
         const nuevoNivel = destinoDeCambio(ev.detalle);
         const label = NIVELES_ATENCION.find((n) => n.valor === nuevoNivel)?.label || nuevoNivel || ev.detalle;
         hitos.push({ id: ev.id, label: `Nivel de atención cambiado a ${label}`, fecha: ev.created_at, color: 'info' });
+      } else if (ev.evento === 'categoria_cambiada') {
+        // Catálogo v2 (116): la migración o un JEFE movió el ticket de
+        // categoría; el detalle ya trae "De … a …" y, si lo hizo un JEFE, el motivo.
+        const label = ev.detalle ? `${EVENTO_LABELS.categoria_cambiada}: ${ev.detalle}` : EVENTO_LABELS.categoria_cambiada;
+        hitos.push({ id: ev.id, label, fecha: ev.created_at, color: 'neutral' });
       } else if (ev.evento === 'encuesta_enviada') {
         hitos.push({ id: ev.id, label: EVENTO_LABELS.encuesta_enviada, fecha: ev.created_at, color: 'neutral' });
       } else if (ev.evento === 'encuesta_respondida') {

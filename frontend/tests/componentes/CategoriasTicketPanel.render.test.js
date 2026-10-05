@@ -23,6 +23,8 @@ vi.mock('../../src/api/insforge.js', () => ({
     createSubcategoriaTicket: vi.fn(),
     updateSubcategoriaTicket: vi.fn(),
     softDeleteSubcategoriaTicket: vi.fn(),
+    listTicketsPorReclasificar: vi.fn(),
+    reclasificarTicket: vi.fn(),
   },
 }));
 import { insforgeApi } from '../../src/api/insforge.js';
@@ -35,6 +37,12 @@ const CATEGORIAS = [
 const SUBCATEGORIAS = [
   { id: 's-corto', categoria_id: 'camaras', nombre: 'Solicitud de imagen o corto', tipo_sugerido: 'solicitud', aviso: AVISO },
   { id: 's-senal', categoria_id: 'camaras', nombre: 'Cámara sin señal', tipo_sugerido: 'incidente', aviso: null },
+  { id: 's-lenta', categoria_id: 'red', nombre: 'Red lenta o intermitente', tipo_sugerido: 'incidente', prioridad_sugerida: 'urgente', aviso: null },
+];
+// Fila de v_tickets_por_reclasificar (116)
+const POR_RECLASIFICAR = [
+  { ticket_id: 't-1', codigo: 'TCK-0042', titulo: 'No abre el sistema de planillas', descripcion: 'Desde ayer.', estado: 'cerrado', prioridad: 'media', tipo: null,
+    created_at: '2026-08-01T10:00:00Z', categoria_id: 'red', categoria: 'Redes', subcategoria_id: null, subcategoria: null, motivo: 'sin_subcategoria' },
 ];
 
 const espera = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -46,7 +54,7 @@ async function montar({ rol = 'JEFE', modulos = [] } = {}) {
   auth.modulosVisibles = modulos;
   const w = mount(CategoriasTicketPanel, {
     attachTo: document.body,
-    global: { plugins: [[PrimeVue, { unstyled: true }]], stubs: { transition: false } },
+    global: { plugins: [[PrimeVue, { unstyled: true }]], stubs: { transition: false, RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } } },
   });
   montados.push(w);
   for (let i = 0; i < 5; i += 1) await espera();
@@ -81,6 +89,9 @@ beforeEach(() => {
   insforgeApi.createCategoriaTicket.mockImplementation(async (d) => ({ ...d }));
   insforgeApi.updateCategoriaTicket.mockImplementation(async (id, d) => ({ id, ...d }));
   insforgeApi.updateSubcategoriaTicket.mockImplementation(async (id, d) => ({ id, categoria_id: 'camaras', ...d }));
+  insforgeApi.createSubcategoriaTicket.mockImplementation(async (categoria_id, nombre, tipo_sugerido, prioridad_sugerida) => ({ id: 's-nueva', categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso: null }));
+  insforgeApi.listTicketsPorReclasificar.mockImplementation(async () => POR_RECLASIFICAR.map((t) => ({ ...t })));
+  insforgeApi.reclasificarTicket.mockResolvedValue({ ticket_id: 't-1', codigo: 'TCK-0042', categoria_id: 'red', subcategoria_id: 's-lenta', cambio: true });
 });
 
 afterEach(() => {
@@ -143,12 +154,13 @@ describe('CategoriasTicketPanel — aviso al solicitante (114)', () => {
     expect(dialogo().textContent).toContain('Editar subcategoría');
     expect(campo('Nombre').value).toBe('Cámara sin señal');
     expect(campo('Tipo sugerido').value).toBe('incidente');
+    expect(campo('Prioridad sugerida').value).toBe('media'); // NULL en la base = media (116)
     expect(campo('Aviso al solicitante').value).toBe('');
     await escribir(campo('Aviso al solicitante'), 'Indique la ubicación exacta de la cámara.');
     botonDeDialogo('Guardar').click();
     await espera(40);
     expect(insforgeApi.updateSubcategoriaTicket).toHaveBeenCalledWith('s-senal', {
-      nombre: 'Cámara sin señal', tipo_sugerido: 'incidente', aviso: 'Indique la ubicación exacta de la cámara.',
+      nombre: 'Cámara sin señal', tipo_sugerido: 'incidente', prioridad_sugerida: 'media', aviso: 'Indique la ubicación exacta de la cámara.',
     });
     await espera(500);
     const subs = w.findAll('ul[aria-label="Subcategorías de Cámaras"] > li');
@@ -174,5 +186,77 @@ describe('CategoriasTicketPanel — aviso al solicitante (114)', () => {
     expect(w.find('[data-solo-modulo]').exists()).toBe(false);
     expect(boton('Nueva categoría')).toBeTruthy();
     expect(w.find('button[aria-label="Acciones de Redes"]').exists()).toBe(true);
+  });
+});
+
+describe('CategoriasTicketPanel — prioridad sugerida y tickets por reclasificar (116)', () => {
+  const expandir = async (w, i) => {
+    await w.findAll('ul[aria-label="Categorías de tickets"] > li')[i].find('button[aria-expanded]').trigger('click');
+    await espera();
+  };
+
+  it('la lista muestra la prioridad sugerida (NULL = Media; la máxima se lee «Crítica»)', async () => {
+    const w = await montar();
+    await expandir(w, 1);
+    const fila = w.findAll('ul[aria-label="Subcategorías de Redes"] > li')[0];
+    expect(fila.find('[data-prioridad-sugerida]').text()).toBe('Crítica');
+    expect(fila.text()).toContain('Incidente');
+    await expandir(w, 0);
+    const senal = w.findAll('ul[aria-label="Subcategorías de Cámaras"] > li')[1];
+    expect(senal.find('[data-prioridad-sugerida]').text()).toBe('Media');
+  });
+
+  it('el alta rápida manda la prioridad sugerida elegida', async () => {
+    const w = await montar();
+    await expandir(w, 1);
+    await escribir(w.find('input[aria-label="Nombre de la subcategoría"]').element, 'Solicitar punto de red, WiFi o VPN');
+    await escribir(w.find('select[aria-label="Tipo sugerido"]').element, 'solicitud');
+    const prioridad = w.find('select[aria-label="Prioridad sugerida"]').element;
+    expect(prioridad.value).toBe('media');
+    await escribir(prioridad, 'baja');
+    await w.findAll('button').find((b) => b.text() === 'Agregar').trigger('click');
+    await espera(20);
+    expect(insforgeApi.createSubcategoriaTicket).toHaveBeenCalledWith('red', 'Solicitar punto de red, WiFi o VPN', 'solicitud', 'baja');
+    expect(w.findAll('ul[aria-label="Subcategorías de Redes"] > li')).toHaveLength(2);
+  });
+
+  it('el JEFE ve los tickets por reclasificar y reclasifica uno con subcategoría y motivo', async () => {
+    const w = await montar();
+    const seccion = w.find('[data-por-reclasificar]');
+    expect(seccion.text()).toContain('Tickets por reclasificar');
+    expect(seccion.text()).toContain('TCK-0042');
+    expect(seccion.text()).toContain('Redes › sin subcategoría');
+    await seccion.find('button[aria-label="Reclasificar el ticket TCK-0042"]').trigger('click');
+    await espera();
+    expect(dialogo().textContent).toContain('Reclasificar ticket');
+    botonDeDialogo('Reclasificar').click();
+    await espera();
+    expect(insforgeApi.reclasificarTicket).not.toHaveBeenCalled(); // subcategoría y motivo obligatorios
+    await escribir(campo('Subcategoría correcta'), 's-lenta');
+    await escribir(campo('Motivo'), 'Era la red de la sede');
+    botonDeDialogo('Reclasificar').click();
+    await espera(40);
+    expect(insforgeApi.reclasificarTicket).toHaveBeenCalledWith('t-1', 's-lenta', 'Era la red de la sede');
+    await espera(500);
+    expect(w.find('[data-por-reclasificar]').text()).toContain('— Sin tickets por reclasificar.');
+  });
+
+  it('un rechazo del servidor se muestra traducido y no quita la fila', async () => {
+    insforgeApi.reclasificarTicket.mockRejectedValue({ code: '42501', message: 'No autorizado' });
+    const w = await montar();
+    await w.find('button[aria-label="Reclasificar el ticket TCK-0042"]').trigger('click');
+    await espera();
+    await escribir(campo('Subcategoría correcta'), 's-lenta');
+    await escribir(campo('Motivo'), 'x');
+    botonDeDialogo('Reclasificar').click();
+    await espera(40);
+    expect(dialogo().textContent).toContain('No tiene permiso para esta acción.');
+    expect(w.find('[data-por-reclasificar]').text()).toContain('TCK-0042');
+  });
+
+  it('un asistente con el módulo Tickets no ve la sección ni consulta la vista', async () => {
+    const w = await montar({ rol: 'ASISTENTE', modulos: ['tickets'] });
+    expect(w.find('[data-por-reclasificar]').exists()).toBe(false);
+    expect(insforgeApi.listTicketsPorReclasificar).not.toHaveBeenCalled();
   });
 });

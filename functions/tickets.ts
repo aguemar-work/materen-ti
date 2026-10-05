@@ -7,7 +7,7 @@
 // INSERT), todo pasa por aquí con cliente admin.
 //
 // Acciones (POST { action, ... }):
-//   catalogo       público          → { categorias[], subcategorias[] } (con `aviso`, migración 114)
+//   catalogo       público          → { categorias[], subcategorias[] } (con `aviso`, 114, y `prioridad_sugerida`, 116)
 //   crear          público o staff  → { codigo, token, vinculado }
 //   seguimiento    público          → { codigo, titulo, estado, comentarios[], adjuntoUrl? }
 //   adjuntoStaff   staff            → { url, expiraSegundos } (URL firmada de la captura de un ticket)
@@ -86,6 +86,9 @@ const ADJUNTOS_BUCKET = 'tickets-adjuntos';
 const ADJUNTO_URL_SEGUNDOS = 300;
 const ADJUNTO_STAFF_MAX_USUARIO = 120; // urls firmadas por usuario y ventana
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Valores de tickets.prioridad (CHECK de la 016; `urgente` se lee «Crítica» en
+// la interfaz). Solo el staff puede mandar una explícita (migración 116).
+const PRIORIDADES = ['baja', 'media', 'alta', 'urgente'];
 
 // Rate-limits de las acciones públicas de solo lectura/respuesta (Ciclo 21),
 // por IP y sobre `intentos_publicos` (migración 104). Mismos 10 min de ventana.
@@ -169,13 +172,16 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
   // `aviso` (migración 114): advertencia fija que el formulario muestra al
   // elegir la categoría o la subcategoría (gana el de la subcategoría). Es texto
   // plano del catálogo, sin datos personales: puede salir al portal público.
+  // `prioridad_sugerida` (116): prioridad inicial de la subcategoría (NULL =
+  // media). El portal público NO la muestra; el formulario interno del staff
+  // la usa para precargar su selector. La que vale la fija la RPC al crear.
   if (body.action === 'catalogo') {
     if (await excedeLimite(admin, 'tickets.catalogo', ip, CATALOGO_MAX_IP, LIMITE_VENTANA_MIN)) {
       return json({ ok: false, code: 'demasiados_intentos' }, 429);
     }
     const [{ data: categorias }, { data: subcategorias }] = await Promise.all([
       admin.database.from('categorias_ticket').select('id, nombre, aviso').is('deleted_at', null).order('nombre'),
-      admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre, tipo_sugerido, aviso').is('deleted_at', null).order('nombre'),
+      admin.database.from('subcategorias_ticket').select('id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso').is('deleted_at', null).order('nombre'),
     ]);
     return json({ ok: true, categorias: categorias || [], subcategorias: subcategorias || [] });
   }
@@ -229,13 +235,16 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       }
     }
 
-    // Solo con sesión de staff viajan origen, tipo, vínculos a activos y el
-    // empleado elegido a mano; sin sesión la RPC además los ignora.
+    // Solo con sesión de staff viajan origen, tipo, prioridad (116), vínculos a
+    // activos y el empleado elegido a mano; sin sesión la RPC además los ignora
+    // (la prioridad de un ticket público es siempre la sugerida por su
+    // subcategoría, o media).
     const datosStaff = staff
       ? {
           staff_id: staff.id,
           origen: body.origen === 'staff_interno' ? 'staff_interno' : 'empleado',
           tipo: body.tipo === 'incidente' || body.tipo === 'solicitud' ? body.tipo : null,
+          prioridad: PRIORIDADES.includes(String(body.prioridad)) ? String(body.prioridad) : null,
           empleado_id_manual: body.empleadoIdManual ? String(body.empleadoIdManual) : null,
           equipo_id: body.equipoId ? String(body.equipoId) : null,
           cuenta_id: body.cuentaId ? String(body.cuentaId) : null,

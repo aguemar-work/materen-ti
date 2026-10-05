@@ -63,7 +63,7 @@ describe('Tickets — filtro por categoría (deep-link)', () => {
   it('categoriaId filtra por categoria_id, en la página y en el conteo', async () => {
     const { items, total } = await ticketsApi.listTicketsPage({ categoriaId: 'red', tamPagina: 100 });
     expect(total).toBeGreaterThan(0);
-    expect(items.every((t) => t.categoria === 'Red y Conectividad')).toBe(true);
+    expect(items.every((t) => t.categoria === 'Redes y Conectividad')).toBe(true);
     const conteo = await ticketsApi.contarTickets({ categoriaId: 'red' });
     expect(conteo).toBe(total);
     const todos = await ticketsApi.contarTickets({});

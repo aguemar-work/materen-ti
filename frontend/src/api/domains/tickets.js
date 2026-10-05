@@ -23,7 +23,9 @@ const ORDEN_DEFECTO = { columna: 'created_at', ascending: false };
 // pasa por trimText(): ese colapsa los saltos de línea, y un aviso de varios
 // párrafos los necesita (se pinta con `whitespace-pre-line`).
 const COLS_CATEGORIA = 'id, nombre, servicio_id, aviso';
-const COLS_SUBCATEGORIA = 'id, categoria_id, nombre, tipo_sugerido, aviso';
+// `prioridad_sugerida` (116): prioridad inicial de los tickets nuevos de la
+// subcategoría (NULL = media); la aplica crear_ticket_publico en el servidor.
+const COLS_SUBCATEGORIA = 'id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso';
 const avisoONull = (v) => String(v ?? '').trim() || null;
 
 export const ticketsApi = {
@@ -85,18 +87,19 @@ export const ticketsApi = {
 
   // tipoSugerido es obligatorio en la práctica: lo exige la UI de alta
   // rápida (CategoriasTicketPanel.vue), no un NOT NULL en columna (los 3
-  // casos históricos ambiguos siguen con tipo_sugerido NULL).
-  async createSubcategoriaTicket(categoriaId, nombre, tipoSugerido) {
+  // casos históricos ambiguos siguen con tipo_sugerido NULL). La prioridad
+  // sugerida (116) es opcional: vacía = media.
+  async createSubcategoriaTicket(categoriaId, nombre, tipoSugerido, prioridadSugerida = null) {
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
-      .insert([{ categoria_id: categoriaId, nombre: trimText(nombre), tipo_sugerido: tipoSugerido }])
+      .insert([{ categoria_id: categoriaId, nombre: trimText(nombre), tipo_sugerido: tipoSugerido, prioridad_sugerida: prioridadSugerida || null }])
       .select(COLS_SUBCATEGORIA)
       .single();
     if (error) throw error;
     return data;
   },
 
-  // `datos`: { nombre, tipo_sugerido?, aviso? }. tipo_sugerido y aviso son
+  // `datos`: { nombre, tipo_sugerido?, prioridad_sugerida?, aviso? }. Los tres son
   // opcionales a propósito (a diferencia del alta): omitirlos no toca la
   // columna, así renombrar una subcategoría no obliga a fijar (o borrar) su
   // clasificación ni su aviso. Pasarlos explícitos — incluido null/'' — sí
@@ -104,6 +107,7 @@ export const ticketsApi = {
   async updateSubcategoriaTicket(id, datos) {
     const cambios = { nombre: trimText(datos.nombre) };
     if ('tipo_sugerido' in datos) cambios.tipo_sugerido = datos.tipo_sugerido || null;
+    if ('prioridad_sugerida' in datos) cambios.prioridad_sugerida = datos.prioridad_sugerida || null;
     if ('aviso' in datos) cambios.aviso = avisoONull(datos.aviso);
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
@@ -121,6 +125,33 @@ export const ticketsApi = {
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id);
     if (error) throw error;
+  },
+
+  // ── Tickets por reclasificar (catálogo v2, migración 116) ─────────────
+  // Vista security_invoker que solo devuelve filas a un JEFE: tickets creados
+  // antes del catálogo v2 en «Otro (no clasificado)», sin subcategoría o en
+  // «Virus o malware sospechoso». Los más antiguos primero.
+  async listTicketsPorReclasificar() {
+    const { data, error } = await getClient().database
+      .from('v_tickets_por_reclasificar')
+      .select('ticket_id, codigo, titulo, descripcion, estado, prioridad, tipo, created_at, categoria_id, categoria, subcategoria_id, subcategoria, motivo')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  // RPC reclasificar_ticket (solo JEFE: 42501; motivo vacío o largo: P0001;
+  // ticket o subcategoría inexistentes: P0002). Cambia categoría y
+  // subcategoría, nunca tipo ni prioridad. El error se relanza crudo y lo
+  // traduce quien lo muestra (api/erroresDb.js).
+  async reclasificarTicket(ticketId, subcategoriaId, motivo) {
+    const { data, error } = await getClient().database.rpc('reclasificar_ticket', {
+      p_ticket_id: ticketId,
+      p_subcategoria_id: subcategoriaId,
+      p_motivo: String(motivo ?? '').trim(),
+    });
+    if (error) throw error;
+    return Array.isArray(data) ? data[0] : data;
   },
 
   async listTickets() {

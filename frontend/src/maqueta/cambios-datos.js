@@ -1,6 +1,6 @@
 // Datos inventados de los Cambios y los Servicios del modo "maqueta" (migración 107).
-// El catálogo de servicios es ESPEJO de la siembra del SQL (10 servicios, mismos
-// ids y nombres: tests/maqueta-cambios.test.js los compara). Los cambios cubren
+// El catálogo de servicios es ESPEJO de la siembra del SQL (10 servicios de la 107
+// más los 2 de la 116, mismos ids y nombres: tests/maqueta-cambios.test.js los compara). Los cambios cubren
 // todos los estados a la vista: uno por aprobar, una emergencia ejecutada sin
 // aprobación con el plazo de 48 h vencido (el aviso del listado), uno en ejecución,
 // un estándar preautorizado, uno cerrado, uno rechazado, uno revertido y un borrador.
@@ -18,6 +18,9 @@ const SERVICIOS = [
   ['telefonia', 'Telefonía', 'Líneas fijas, anexos y telefonía móvil corporativa.', 'media', 'Horario laboral', null],
   ['licencias', 'Licencias de software', 'Software con licencia: diseño, ofimática y utilitarios.', 'media', 'Horario laboral', 'u-asis-1'],
   ['accesos', 'Accesos y cuentas', 'Altas, bajas y permisos de las cuentas de los sistemas.', 'alta', 'Horario laboral', 'u-jefe'],
+  // Los dos que crea la migración 116 para las categorías nuevas (Seguridad y CCTV).
+  ['seguridad', 'Seguridad de la información', 'Antivirus, correos sospechosos, pérdida o robo de equipos y respaldos.', 'alta', 'Horario laboral', null],
+  ['cctv', 'Videovigilancia', 'Cámaras de seguridad de sedes y obras: visualización y grabaciones.', 'media', 'Horario laboral', null],
 ];
 
 // Transiciones de la migración (14 filas): espejo, también de core/dominio-cambios.js.

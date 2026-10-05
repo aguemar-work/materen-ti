@@ -169,6 +169,49 @@ describe('TicketInternoForm.vue — modal migrado a AppDialog (primevue/dialog)'
     expect(aviso()).toBeNull();
   });
 
+  // Catálogo v2 (migración 116): la prioridad se precarga con la sugerida de la
+  // subcategoría (o media), el técnico puede cambiarla y viaja a crearTicket.
+  it('precarga la prioridad sugerida de la subcategoría, permite cambiarla y la envía', async () => {
+    insforgeApi.listCategoriasTicket.mockResolvedValue([{ id: 'seguridad', nombre: 'Seguridad de la Información', aviso: null }]);
+    insforgeApi.listSubcategoriasTicket.mockResolvedValue([
+      { id: 's-virus', categoria_id: 'seguridad', nombre: 'Virus o malware sospechoso', tipo_sugerido: 'incidente', prioridad_sugerida: 'urgente', aviso: null },
+      { id: 's-resp', categoria_id: 'seguridad', nombre: 'Respaldo o recuperación de archivos', tipo_sugerido: 'solicitud', prioridad_sugerida: null, aviso: null },
+    ]);
+    await montar();
+    const porEtiqueta = (texto) => {
+      const label = [...document.querySelectorAll('label')].find((l) => l.textContent.trim() === texto);
+      return document.getElementById(label.getAttribute('for'));
+    };
+    const elegir = async (select, valor) => {
+      select.value = valor;
+      select.dispatchEvent(new Event('change'));
+      await nextTick();
+    };
+    const prioridad = porEtiqueta('Prioridad');
+    expect(prioridad.value).toBe('media');
+    expect([...prioridad.options].map((o) => o.textContent)).toEqual(['Baja', 'Media', 'Alta', 'Crítica']);
+
+    await elegir(porEtiqueta('Tipo de solicitud *'), 'seguridad');
+    await elegir(porEtiqueta('Subcategoría'), 's-virus');
+    expect(prioridad.value).toBe('urgente');
+    expect(prioridad.selectedOptions[0].textContent).toBe('Crítica');
+    await elegir(porEtiqueta('Subcategoría'), 's-resp');
+    expect(prioridad.value).toBe('media'); // sin sugerencia: media
+    await elegir(porEtiqueta('Subcategoría'), 's-virus');
+    await elegir(prioridad, 'alta'); // el técnico la corrige
+
+    const titulo = document.querySelector('input[type="text"]');
+    titulo.value = 'Correo con adjunto raro';
+    titulo.dispatchEvent(new Event('input'));
+    const descripcion = document.querySelector('textarea');
+    descripcion.value = 'Abrió el adjunto antes de avisar.';
+    descripcion.dispatchEvent(new Event('input'));
+    await nextTick();
+    botonPorTexto('Crear ticket').click();
+    await flushPromises();
+    expect(crearTicket).toHaveBeenCalledWith(expect.objectContaining({ subcategoriaId: 's-virus', tipo: 'incidente', prioridad: 'alta' }));
+  });
+
   it('con cambios sin guardar, Escape NO cierra: abre el descarte (el veto de AppDialog funciona)', async () => {
     const w = await montar();
     const titulo = document.querySelector('input[type="text"]');

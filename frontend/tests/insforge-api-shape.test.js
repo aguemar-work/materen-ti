@@ -52,6 +52,8 @@ const METODOS = [
   'listCategoriasTicket', 'listSubcategoriasTicket', 'createCategoriaTicket',
   'updateCategoriaTicket', 'softDeleteCategoriaTicket', 'createSubcategoriaTicket',
   'updateSubcategoriaTicket', 'softDeleteSubcategoriaTicket',
+  // catálogo v2 (migración 116): reclasificación por el JEFE
+  'listTicketsPorReclasificar', 'reclasificarTicket',
   'listTickets', 'listTicketsPage', 'listTicketsFiltrados', 'contarTickets',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',

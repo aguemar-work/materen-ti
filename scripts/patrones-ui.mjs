@@ -63,6 +63,13 @@ const RUTA_BASELINE = join(RAIZ, 'scripts/patrones-ui.baseline.json');
 // relativa a frontend/src.
 export const EXCEPCIONES = [
   {
+    archivo: 'modules/configuracion/TicketsPorReclasificar.vue',
+    reglas: ['historial-a-mano'],
+    motivo: 'Es una lista de trabajo (tickets pendientes de reclasificar, catálogo v2, migración 116), no un historial de movimientos: cada fila es un ticket con su fecha de creación y una acción, y sale de la lista al resolverse.',
+    alcance: 'Solo TicketsPorReclasificar.vue (sección del JEFE en Configuración › Categorías).',
+    impacto: 'Ninguno sobre la regla 19: el movimiento que deja cada reclasificación se registra en la hoja de vida del ticket (evento categoria_cambiada).',
+  },
+  {
     archivo: 'components/ui/AppAvatar.vue',
     reglas: ['caja-de-icono'],
     motivo: 'El avatar de iniciales es un círculo tonal por diseño (regla 20: vive en listas y menú de usuario).',

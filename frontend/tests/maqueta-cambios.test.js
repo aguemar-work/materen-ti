@@ -28,7 +28,12 @@ describe('el catálogo de la maqueta es espejo de la migración 107', () => {
     const filas = [...bloque.matchAll(/\('([a-z0-9_]+)',\s*'([^']+)',\s*'([^']+)',\s*'([a-z]+)',\s*'([^']+)'\)/g)]
       .map(([, id, nombre, descripcion, criticidad, horario]) => ({ id, nombre, descripcion, criticidad, horario }));
     expect(filas).toHaveLength(10);
-    expect(TABLAS.servicios.map(({ id, nombre, descripcion, criticidad, horario }) => ({ id, nombre, descripcion, criticidad, horario }))).toEqual(filas);
+    // La 116 suma `seguridad` y `cctv` (catálogo de tickets v2): van al final y se comparan con su propio SQL.
+    const SQL116 = readFileSync(fileURLToPath(new URL('../../migrations/116_catalogo_tickets_v2.sql', import.meta.url)), 'utf8');
+    const de116 = [...SQL116.matchAll(/\('(seguridad|cctv)',\s*'(?:seguridad|cctv)',\s*'([^']+)',\s*'([^']+)',\s*'([a-z]+)'\)/g)]
+      .map(([, id, nombre, descripcion, criticidad]) => ({ id, nombre, descripcion, criticidad, horario: 'Horario laboral' }));
+    expect(de116).toHaveLength(2);
+    expect(TABLAS.servicios.map(({ id, nombre, descripcion, criticidad, horario }) => ({ id, nombre, descripcion, criticidad, horario }))).toEqual([...filas, ...de116]);
   });
 
   it('los enlaces de fábrica de las categorías de ticket coinciden con el SQL', () => {

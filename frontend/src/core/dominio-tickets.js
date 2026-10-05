@@ -27,11 +27,14 @@ export const ESTADOS_TICKET = {
 };
 
 // Ticket público sin empleado vinculado ('Sin vincular'): alguien de TI tiene
-// que vincularlo, así que pide acción (ya no comparte el rojo con 'Urgente').
+// que vincularlo, así que pide acción (ya no comparte el rojo con 'Crítica').
 export const CLASE_TICKET_SIN_VINCULAR = claseBadge(TONO_TICKET_SIN_VINCULAR);
 
 // Prioridad como RANGO ESCRITO (regla 24): baja/media/alta son neutras y solo
-// 'Urgente' es roja; el orden real lo dan el reloj y la cola, no el color.
+// la máxima es roja; el orden real lo dan el reloj y la cola, no el color.
+// La máxima se ESCRIBE «Crítica» en toda la interfaz (catálogo v2, migración
+// 116) pero el valor en la base sigue siendo `urgente` (CHECK de tickets y de
+// subcategorias_ticket.prioridad_sugerida): ningún filtro, URL ni RPC cambia.
 // Estado y Prioridad se pintan una junto a la otra en la misma fila: el
 // modificador `badge--rango` (mayúsculas semibold) las distingue aunque ambas
 // sean neutras (rechazado / baja), y por eso la clase de una prioridad nunca
@@ -40,12 +43,27 @@ export const PRIORIDADES_TICKET = {
   baja:    { label: 'Baja',    clase: claseBadge(TP.baja, { rango: true }) },
   media:   { label: 'Media',   clase: claseBadge(TP.media, { rango: true }) },
   alta:    { label: 'Alta',    clase: claseBadge(TP.alta, { rango: true }) },
-  urgente: { label: 'Urgente', clase: claseBadge(TP.urgente, { rango: true }) },
+  urgente: { label: 'Crítica', clase: claseBadge(TP.urgente, { rango: true }) },
 };
 
 // Para selects: [{ valor, label }]
 export const OPCIONES_PRIORIDAD = Object.entries(PRIORIDADES_TICKET)
   .map(([valor, v]) => ({ valor, label: v.label }));
+
+// Prioridad de un ticket nuevo cuando la subcategoría no sugiere ninguna (o no
+// hay subcategoría): la misma que aplica crear_ticket_publico (116).
+export const PRIORIDAD_POR_DEFECTO = 'media';
+
+/**
+ * Prioridad inicial que corresponde a una subcategoría del catálogo:
+ * `prioridad_sugerida` si es un valor conocido; si no, media. Precarga el
+ * selector del formulario interno; la que vale al crear la fija el servidor
+ * con la misma regla.
+ */
+export function prioridadSugeridaDe(subcategoria) {
+  const p = subcategoria?.prioridad_sugerida;
+  return p && PRIORIDADES_TICKET[p] ? p : PRIORIDAD_POR_DEFECTO;
+}
 
 // El orden de PRIORIDADES_TICKET (de menor a mayor) ES el ranking: derivarlo
 // del mapa en vez de escribir una segunda lista evita que las dos se
@@ -128,6 +146,7 @@ export const EVENTO_LABELS = {
   prioridad_cambiada: 'Cambio de prioridad',
   nivel_atencion_cambiado: 'Cambio de nivel de atención',
   tipo_cambiado: 'Cambio de tipo',
+  categoria_cambiada: 'Reclasificado',
   encuesta_enviada: 'Encuesta enviada',
   encuesta_respondida: 'Encuesta respondida',
 };
@@ -167,6 +186,16 @@ export function resolverAvisoCategoria(categoria, subcategoria) {
   const limpio = (v) => String(v ?? '').trim();
   return limpio(subcategoria?.aviso) || limpio(categoria?.aviso);
 }
+
+// ── Tickets por reclasificar (catálogo v2, migración 116) ──────────────────
+// Por qué un ticket aparece en v_tickets_por_reclasificar (columna `motivo`).
+export const MOTIVOS_RECLASIFICAR = {
+  sin_subcategoria: 'Sin subcategoría',
+  no_clasificado: 'Otro (no clasificado)',
+  seguridad_legado: 'Seguridad anterior: virus o respaldo',
+};
+// Tope del motivo (lo valida también reclasificar_ticket_nucleo, P0001).
+export const MOTIVO_RECLASIFICAR_MAX = 500;
 
 export function estadoInfo(e) {
   return ESTADOS_TICKET[e] || { label: e, clase: 'badge--neutral' };

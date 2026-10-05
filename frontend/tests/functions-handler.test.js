@@ -266,7 +266,7 @@ describe('tickets — catalogo', () => {
     const [cat] = consultasDe('categorias_ticket', 'select');
     const [sub] = consultasDe('subcategorias_ticket', 'select');
     expect(cat.cols.split(/,\s*/)).toEqual(expect.arrayContaining(['id', 'nombre', 'aviso']));
-    expect(sub.cols.split(/,\s*/)).toEqual(expect.arrayContaining(['id', 'categoria_id', 'nombre', 'tipo_sugerido', 'aviso']));
+    expect(sub.cols.split(/,\s*/)).toEqual(expect.arrayContaining(['id', 'categoria_id', 'nombre', 'tipo_sugerido', 'prioridad_sugerida', 'aviso']));
     expect(tieneFiltro(cat, 'is', 'deleted_at', null)).toBe(true);
     expect(tieneFiltro(sub, 'is', 'deleted_at', null)).toBe(true);
   });

@@ -60,6 +60,11 @@
 --         (doble cuenta eliminada, rechazados aparte, reapertura desde rechazado no
 --         cuenta, CSAT con n < minimo insuficiente, periodo en curso sin comparacion,
 --         guard 42501 por modulo y por tecnico ajeno, paridad RPC vs vistas)
+--   [116] (bloques 116-a a 116-c) catalogo de tickets v2: categorias, subcategorias con
+--         tipo y prioridad sugeridos, tickets de las subcategorias movidas, marca de
+--         config_parametros, evento categoria_cambiada; crear_ticket_publico con la
+--         prioridad de la subcategoria (el staff puede elegir otra) y reclasificar_ticket
+--         (solo JEFE, ticket cerrado incluido, sin tocar tipo ni prioridad)
 --   [108] (bloques 108-a a 108-f) solicitudes de servicio: catalogo y privilegios,
 --         crear_solicitud (alta con persona nueva en la misma transaccion, validaciones,
 --         una sola abierta por tipo), AUTOCOMPLETADO por cuenta/entrega abierta/equipo/
@@ -6399,5 +6404,319 @@ begin
     raise exception 'TESTS_OK [115f] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [115f]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 116a — catálogo de tickets v2 (migración 116): las 7 categorías y las
+-- 31 subcategorías con su tipo y prioridad sugeridos, tickets de las
+-- subcategorías movidas alineados con su categoría nueva, marca en
+-- config_parametros, servicios de las categorías nuevas, CHECK de
+-- prioridad_sugerida y evento categoria_cambiada.
+-- Comprueba PRESENCIA (no conteos exactos): si el dueño agrega subcategorías
+-- desde Configuración, el bloque sigue pasando. Los conteos exactos (31/7) los
+-- comprueba npm run test:sql-local (D7) y el bloque Verificación de la 116.
+-- ============================================================
+do $$
+declare
+  v_falta text;
+  v_n int;
+  v_valor jsonb;
+  v_t uuid;
+  fallos text := '';
+begin
+  select string_agg(x.id, ', ') into v_falta
+    from (values ('accesos_cuentas', 'Accesos y Cuentas'), ('equipos', 'Hardware y Periféricos'),
+                 ('red', 'Redes y Conectividad'), ('software', 'Software y Aplicaciones'),
+                 ('seguridad', 'Seguridad de la Información'), ('cctv', 'Videovigilancia (CCTV)'),
+                 ('otro', 'Consultas y Capacitación')) as x(id, nombre)
+   where not exists (select 1 from public.categorias_ticket c where c.id = x.id and c.nombre = x.nombre and c.deleted_at is null);
+  if v_falta is not null then fallos := fallos || '[116] faltan categorias vivas: ' || v_falta || '; '; end if;
+
+  select string_agg(x.nombre, ', ') into v_falta
+    from (values
+      ('accesos_cuentas', 'Restablecer contraseña', 'solicitud', 'media'),
+      ('accesos_cuentas', 'Desbloquear cuenta', 'solicitud', 'alta'),
+      ('accesos_cuentas', 'No puedo ingresar al sistema', 'incidente', 'alta'),
+      ('accesos_cuentas', 'Solicitar permisos o accesos (sistemas / carpetas)', 'solicitud', 'media'),
+      ('accesos_cuentas', 'Crear cuenta de usuario (alta)', 'solicitud', 'media'),
+      ('accesos_cuentas', 'Desactivar cuenta de usuario (baja)', 'solicitud', 'alta'),
+      ('equipos', 'Equipo no enciende', 'incidente', 'alta'),
+      ('equipos', 'Equipo lento o con fallas', 'incidente', 'media'),
+      ('equipos', 'Impresora o escáner no funciona', 'incidente', 'media'),
+      ('equipos', 'Accesorio dañado o faltante', 'incidente', 'baja'),
+      ('equipos', 'Solicitar tóner o insumos', 'solicitud', 'baja'),
+      ('equipos', 'Solicitar equipo o accesorio nuevo', 'solicitud', 'baja'),
+      ('red', 'Sin internet o WiFi', 'incidente', 'alta'),
+      ('red', 'VPN no conecta', 'incidente', 'alta'),
+      ('red', 'Red lenta o intermitente', 'incidente', 'media'),
+      ('red', 'Solicitar punto de red, WiFi o VPN', 'solicitud', 'baja'),
+      ('software', 'Error o falla en aplicación', 'incidente', 'media'),
+      ('software', 'Correo electrónico / Office 365', 'incidente', 'alta'),
+      ('software', 'Licencia vencida o no se activa', 'incidente', 'media'),
+      ('software', 'Instalar o actualizar software', 'solicitud', 'baja'),
+      ('software', 'Solicitar licencia nueva', 'solicitud', 'baja'),
+      ('seguridad', 'Virus o malware sospechoso', 'incidente', 'urgente'),
+      ('seguridad', 'Correo sospechoso / phishing', 'incidente', 'alta'),
+      ('seguridad', 'Pérdida o robo de equipo', 'incidente', 'urgente'),
+      ('seguridad', 'Respaldo o recuperación de archivos', 'solicitud', 'media'),
+      ('cctv', 'Cámara sin imagen o con falla', 'incidente', 'alta'),
+      ('cctv', 'Solicitar acceso para visualizar cámaras', 'solicitud', 'media'),
+      ('cctv', 'Solicitar revisión o extracción de grabación', 'solicitud', 'media'),
+      ('otro', 'Consulta o asesoría', 'solicitud', 'baja'),
+      ('otro', 'Solicitar capacitación', 'solicitud', 'baja'),
+      ('otro', 'Otro (no clasificado)', 'solicitud', 'baja')
+    ) as x(cat, nombre, tipo, prioridad)
+   where not exists (select 1 from public.subcategorias_ticket s
+                      where s.categoria_id = x.cat and s.nombre = x.nombre and s.deleted_at is null
+                        and s.tipo_sugerido = x.tipo and s.prioridad_sugerida = x.prioridad);
+  if v_falta is not null then fallos := fallos || '[116] subcategorias ausentes o con tipo/prioridad distintos: ' || v_falta || '; '; end if;
+
+  -- Los avisos: los dos nuevos y el de «Cámaras», que se movió con ella
+  if not exists (select 1 from public.subcategorias_ticket where categoria_id = 'accesos_cuentas' and nombre = 'No puedo ingresar al sistema' and aviso like '%Desbloquear cuenta%')
+     or not exists (select 1 from public.subcategorias_ticket where categoria_id = 'cctv' and nombre = 'Solicitar revisión o extracción de grabación' and aviso like '%autorización de Gerencia%')
+     or exists (select 1 from public.subcategorias_ticket where categoria_id = 'cctv' and nombre = 'Cámara sin imagen o con falla' and aviso is not null) then
+    fallos := fallos || '[116] avisos del catalogo nuevo incorrectos; ';
+  end if;
+
+  -- Ningún ticket de una subcategoría movida quedó en la categoría anterior
+  select count(*) into v_n
+    from public.tickets t join public.subcategorias_ticket s on s.id = t.subcategoria_id
+   where s.nombre in ('Impresora o escáner no funciona', 'Virus o malware sospechoso', 'Solicitar acceso para visualizar cámaras')
+     and t.categoria_id is distinct from s.categoria_id;
+  if v_n <> 0 then fallos := fallos || '[116] ' || v_n || ' tickets de subcategorias movidas siguen en la categoria anterior; '; end if;
+
+  -- Marca de la vista v_tickets_por_reclasificar
+  select valor into v_valor from public.config_parametros where clave = 'catalogo_tickets_v2';
+  if v_valor is null or (v_valor ->> 'aplicada_at')::timestamptz > now()
+     or (v_valor ->> 'subcategoria_no_clasificado')::uuid is distinct from (select id from public.subcategorias_ticket where categoria_id = 'otro' and nombre = 'Otro (no clasificado)' and deleted_at is null)
+     or (v_valor ->> 'subcategoria_seguridad_legado')::uuid is distinct from (select id from public.subcategorias_ticket where categoria_id = 'seguridad' and nombre = 'Virus o malware sospechoso' and deleted_at is null) then
+    fallos := fallos || '[116] la marca catalogo_tickets_v2 no apunta a las subcategorias de revision: ' || coalesce(v_valor::text, 'NULL') || '; ';
+  end if;
+
+  -- Las categorías nuevas tienen servicio
+  if exists (select 1 from public.categorias_ticket where id in ('seguridad', 'cctv') and servicio_id is null) then
+    fallos := fallos || '[116] seguridad o cctv quedaron sin servicio; ';
+  end if;
+
+  -- CHECK de prioridad_sugerida: los cuatro valores y NULL; nada más
+  insert into public.categorias_ticket (id, nombre) values ('__test_ci_116a', '__TEST_CI__ 116a');
+  begin
+    insert into public.subcategorias_ticket (categoria_id, nombre, prioridad_sugerida) values ('__test_ci_116a', '__TEST_CI__ critica', 'critica');
+    fallos := fallos || '[116] prioridad_sugerida acepto un valor fuera del CHECK; ';
+  exception when check_violation then null; end;
+  begin
+    insert into public.subcategorias_ticket (categoria_id, nombre, prioridad_sugerida) values
+      ('__test_ci_116a', '__TEST_CI__ u', 'urgente'), ('__test_ci_116a', '__TEST_CI__ b', 'baja'), ('__test_ci_116a', '__TEST_CI__ n', null);
+  exception when check_violation then fallos := fallos || '[116] prioridad_sugerida rechazo un valor valido; '; end;
+
+  -- Evento categoria_cambiada admitido; uno inventado, no
+  insert into public.tickets (codigo, token, titulo, descripcion) values ('__TEST_CI_116A__', lpad('A', 24, 'U'), 't', 'd') returning id into v_t;
+  begin
+    insert into public.ticket_eventos (ticket_id, evento, detalle) values (v_t, 'categoria_cambiada', 'De "a" a "b"');
+  exception when check_violation then fallos := fallos || '[116] ticket_eventos rechazo categoria_cambiada; '; end;
+  begin
+    insert into public.ticket_eventos (ticket_id, evento) values (v_t, 'categoria_inventada');
+    fallos := fallos || '[116] ticket_eventos acepto un evento inventado; ';
+  exception when check_violation then null; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [116a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [116a]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 116b — crear_ticket_publico (116): prioridad inicial desde la
+-- subcategoría (NULL o sin subcategoría = media); el público no la elige; el
+-- staff sí, y un valor fuera del CHECK deja la sugerida.
+-- OJO: cada creación consume un código TCK-XXXX de la secuencia (igual que 111a).
+-- ============================================================
+do $$
+declare
+  v_staff uuid;
+  v_cat text := '__test_ci_116b';
+  v_alta uuid;
+  v_nula uuid;
+  r jsonb;
+  v_p text;
+  v_tipo text;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_116b_staff@example.test') returning id into v_staff;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'ASISTENTE', activo = true where user_id = v_staff;
+  insert into public.categorias_ticket (id, nombre) values (v_cat, '__TEST_CI__ Categoria 116b');
+  insert into public.subcategorias_ticket (categoria_id, nombre, tipo_sugerido, prioridad_sugerida)
+    values (v_cat, '__TEST_CI__ Sub alta', 'incidente', 'alta') returning id into v_alta;
+  insert into public.subcategorias_ticket (categoria_id, nombre, tipo_sugerido)
+    values (v_cat, '__TEST_CI__ Sub sin prioridad', 'solicitud') returning id into v_nula;
+
+  -- 1) público con subcategoría «alta»: alta; la prioridad que mande el cliente se ignora
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'subcategoria_id', v_alta,
+         'token', lpad('1', 24, 'P'), 'ip', '10.116.0.1', 'prioridad', 'baja'));
+  select prioridad, tipo into v_p, v_tipo from public.tickets where id = (r ->> 'id')::uuid;
+  if v_p is distinct from 'alta' or v_tipo is distinct from 'incidente' then
+    fallos := fallos || '[116] publico con subcategoria alta salio ' || coalesce(v_p, 'NULL') || '/' || coalesce(v_tipo, 'NULL') || '; ';
+  end if;
+
+  -- 2) público con subcategoría sin prioridad sugerida: media
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'subcategoria_id', v_nula,
+         'token', lpad('2', 24, 'P'), 'ip', '10.116.0.2'));
+  select prioridad into v_p from public.tickets where id = (r ->> 'id')::uuid;
+  if v_p is distinct from 'media' then fallos := fallos || '[116] subcategoria sin prioridad no dio media (' || coalesce(v_p, 'NULL') || '); '; end if;
+
+  -- 3) público sin subcategoría: media
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat,
+         'token', lpad('3', 24, 'P'), 'ip', '10.116.0.3', 'prioridad', 'urgente'));
+  select prioridad into v_p from public.tickets where id = (r ->> 'id')::uuid;
+  if v_p is distinct from 'media' then fallos := fallos || '[116] sin subcategoria no dio media (' || coalesce(v_p, 'NULL') || '); '; end if;
+
+  -- 4) staff sin prioridad explícita: la sugerida
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'subcategoria_id', v_alta,
+         'token', lpad('4', 24, 'P'), 'ip', '10.116.0.4', 'staff_id', v_staff, 'origen', 'staff_interno'));
+  select prioridad into v_p from public.tickets where id = (r ->> 'id')::uuid;
+  if v_p is distinct from 'alta' then fallos := fallos || '[116] staff sin prioridad no tomo la sugerida (' || coalesce(v_p, 'NULL') || '); '; end if;
+
+  -- 5) staff con prioridad explícita: se respeta (también sobre una sugerida)
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'subcategoria_id', v_alta,
+         'token', lpad('5', 24, 'P'), 'ip', '10.116.0.5', 'staff_id', v_staff, 'prioridad', 'urgente'));
+  select prioridad into v_p from public.tickets where id = (r ->> 'id')::uuid;
+  if v_p is distinct from 'urgente' then fallos := fallos || '[116] staff con prioridad urgente salio ' || coalesce(v_p, 'NULL') || '; '; end if;
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'subcategoria_id', v_nula,
+         'token', lpad('6', 24, 'P'), 'ip', '10.116.0.6', 'staff_id', v_staff, 'prioridad', 'baja'));
+  select prioridad into v_p from public.tickets where id = (r ->> 'id')::uuid;
+  if v_p is distinct from 'baja' then fallos := fallos || '[116] staff con prioridad baja salio ' || coalesce(v_p, 'NULL') || '; '; end if;
+
+  -- 6) staff con un valor fuera del CHECK: deja la sugerida (no falla)
+  r := public.crear_ticket_publico(jsonb_build_object('titulo', 't', 'descripcion', 'd', 'categoria_id', v_cat, 'subcategoria_id', v_alta,
+         'token', lpad('7', 24, 'P'), 'ip', '10.116.0.7', 'staff_id', v_staff, 'prioridad', 'critica'));
+  select prioridad into v_p from public.tickets where id = (r ->> 'id')::uuid;
+  if r ->> 'ok' <> 'true' or v_p is distinct from 'alta' then fallos := fallos || '[116] prioridad invalida del staff no dejo la sugerida: ' || r::text || '; '; end if;
+
+  -- 7) firma y privilegios intactos (111)
+  if has_function_privilege('authenticated', 'public.crear_ticket_publico(jsonb)', 'execute')
+     or has_function_privilege('anon', 'public.crear_ticket_publico(jsonb)', 'execute')
+     or not (select prosecdef from pg_proc where oid = 'public.crear_ticket_publico(jsonb)'::regprocedure) then
+    fallos := fallos || '[116] crear_ticket_publico perdio sus privilegios o SECURITY DEFINER; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [116b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [116b]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 116c — reclasificar_ticket (116): solo JEFE (42501 en el núcleo sin
+-- jefe y en la RPC sin sesión), motivo obligatorio (P0001), subcategoría o
+-- ticket inexistentes (P0002); reclasifica un ticket CERRADO sin tocar tipo,
+-- prioridad, estado ni resuelto_at; evento con actor y motivo; misma
+-- subcategoría = clasificación confirmada; privilegios y vista solo JEFE.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_cat text := '__test_ci_116c';
+  v_cat2 text := '__test_ci_116c2';
+  v_s1 uuid;
+  v_s2 uuid;
+  v_borrada uuid;
+  v_t uuid;
+  v_res timestamptz;
+  r jsonb;
+  t public.tickets;
+  v_n int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_116c_jefe@example.test') returning id into v_jefe;
+  insert into public.categorias_ticket (id, nombre) values (v_cat, '__TEST_CI__ Origen 116c'), (v_cat2, '__TEST_CI__ Destino 116c');
+  insert into public.subcategorias_ticket (categoria_id, nombre) values (v_cat, '__TEST_CI__ S1') returning id into v_s1;
+  insert into public.subcategorias_ticket (categoria_id, nombre) values (v_cat2, '__TEST_CI__ S2') returning id into v_s2;
+  insert into public.subcategorias_ticket (categoria_id, nombre, deleted_at) values (v_cat2, '__TEST_CI__ Borrada', now()) returning id into v_borrada;
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, subcategoria_id, estado, prioridad, tipo)
+    values ('__TEST_CI_116C__', lpad('C', 24, 'U'), 'Cerrado', 'd', v_cat, v_s1, 'cerrado', 'baja', 'solicitud') returning id into v_t;
+  select resuelto_at into v_res from public.tickets where id = v_t;
+
+  -- 1) autorización
+  begin
+    perform public.reclasificar_ticket_nucleo(v_t, v_s2, 'motivo', v_jefe, false);
+    fallos := fallos || '[116] el nucleo reclasifico sin jefe; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[116] sin jefe lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.reclasificar_ticket_nucleo(v_t, v_s2, 'motivo', null, true);
+    fallos := fallos || '[116] el nucleo reclasifico sin actor; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[116] sin actor lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.reclasificar_ticket(v_t, v_s2, 'motivo');
+    fallos := fallos || '[116] la RPC reclasifico sin sesion de jefe; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[116] la RPC sin sesion lanzo ' || sqlstate || '; '; end if; end;
+
+  -- 2) validaciones
+  begin
+    perform public.reclasificar_ticket_nucleo(v_t, v_s2, E'  \n ', v_jefe, true);
+    fallos := fallos || '[116] acepto un motivo vacio; ';
+  exception when others then if sqlstate <> 'P0001' then fallos := fallos || '[116] motivo vacio lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.reclasificar_ticket_nucleo(v_t, v_s2, repeat('m', 501), v_jefe, true);
+    fallos := fallos || '[116] acepto un motivo de 501 caracteres; ';
+  exception when others then if sqlstate <> 'P0001' then fallos := fallos || '[116] motivo largo lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.reclasificar_ticket_nucleo(v_t, v_borrada, 'motivo', v_jefe, true);
+    fallos := fallos || '[116] reclasifico a una subcategoria borrada; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[116] subcategoria borrada lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.reclasificar_ticket_nucleo(gen_random_uuid(), v_s2, 'motivo', v_jefe, true);
+    fallos := fallos || '[116] reclasifico un ticket inexistente; ';
+  exception when others then if sqlstate <> 'P0002' then fallos := fallos || '[116] ticket inexistente lanzo ' || sqlstate || '; '; end if; end;
+  if exists (select 1 from public.ticket_eventos where ticket_id = v_t) then
+    fallos := fallos || '[116] un rechazo dejo eventos; ';
+  end if;
+
+  -- 3) un ticket CERRADO se reclasifica; tipo, prioridad, estado y resuelto_at intactos
+  r := public.reclasificar_ticket_nucleo(v_t, v_s2, ' Pertenece a la otra categoria ', v_jefe, true);
+  select * into t from public.tickets where id = v_t;
+  if (r ->> 'cambio') <> 'true' or t.categoria_id <> v_cat2 or t.subcategoria_id <> v_s2 or t.estado <> 'cerrado'
+     or t.prioridad <> 'baja' or t.tipo <> 'solicitud' or t.resuelto_at is distinct from v_res then
+    fallos := fallos || '[116] la reclasificacion del ticket cerrado fallo: ' || r::text || '; ';
+  end if;
+  select count(*) into v_n from public.ticket_eventos
+   where ticket_id = v_t and evento = 'categoria_cambiada' and user_id = v_jefe
+     and user_email = '__test_ci_116c_jefe@example.test' and detalle like '%Pertenece a la otra categoria' and detalle like '%Destino 116c%';
+  if v_n <> 1 then fallos := fallos || '[116] falta el evento categoria_cambiada con autor y motivo; '; end if;
+  if exists (select 1 from public.ticket_eventos where ticket_id = v_t and evento <> 'categoria_cambiada') then
+    fallos := fallos || '[116] reclasificar dejo eventos de estado, prioridad o tipo; ';
+  end if;
+
+  -- 4) misma subcategoría: no actualiza, pero deja la confirmación
+  r := public.reclasificar_ticket_nucleo(v_t, v_s2, 'Revisado', v_jefe, true);
+  if (r ->> 'cambio') <> 'false'
+     or not exists (select 1 from public.ticket_eventos where ticket_id = v_t and evento = 'categoria_cambiada' and detalle like 'Clasificación confirmada%') then
+    fallos := fallos || '[116] reclasificar a la misma subcategoria no dejo la confirmacion: ' || r::text || '; ';
+  end if;
+
+  -- 5) privilegios y vista
+  if not has_function_privilege('authenticated', 'public.reclasificar_ticket(uuid,uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.reclasificar_ticket(uuid,uuid,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.reclasificar_ticket_nucleo(uuid,uuid,text,uuid,boolean)', 'execute')
+     or has_function_privilege('anon', 'public.reclasificar_ticket_nucleo(uuid,uuid,text,uuid,boolean)', 'execute') then
+    fallos := fallos || '[116] privilegios de reclasificar_ticket / nucleo incorrectos; ';
+  end if;
+  if not exists (select 1 from pg_class where relname = 'v_tickets_por_reclasificar' and relnamespace = 'public'::regnamespace
+                  and 'security_invoker=true' = any (reloptions)) then
+    fallos := fallos || '[116] v_tickets_por_reclasificar no es security_invoker; ';
+  end if;
+  if has_table_privilege('anon', 'public.v_tickets_por_reclasificar', 'select') then
+    fallos := fallos || '[116] anon puede leer v_tickets_por_reclasificar; ';
+  end if;
+  select count(*) into v_n from public.v_tickets_por_reclasificar;
+  if v_n <> 0 then fallos := fallos || '[116] la vista devolvio filas sin sesion de jefe; '; end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [116c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [116c]: %', fallos;
   end if;
 end $$;

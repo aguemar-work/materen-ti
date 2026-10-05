@@ -20,6 +20,7 @@ import { RPC_KB, definirActorKb, calcularKpiKb } from './rpc-kb.js';
 import { RPC_CAMBIOS, definirActorCambios } from './rpc-cambios.js';
 import { RPC_PORTAL } from './rpc-portal.js';
 import { RPC_REPORTES, definirActorReportes } from './rpc-reportes.js';
+import { RPC_CATALOGO_TICKETS, definirActorCatalogoTickets, calcularPorReclasificar } from './rpc-catalogo-tickets.js';
 import { crearDatosCambios } from './cambios-datos.js';
 import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
@@ -49,6 +50,8 @@ definirActorKb({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
 definirActorCambios({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
 // Reportes (115): la RPC solo entrega "por técnico" al jefe y el alcance de otro técnico exige ese rol.
 definirActorReportes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
+// Catálogo v2 (116): reclasificar y la vista de pendientes son solo del jefe.
+definirActorCatalogoTickets({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
 
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
@@ -122,33 +125,61 @@ const catalogo_almacen = [
   { id: 'cat-06', codigo: null, descripcion: 'Chip Claro corporativo', deleted_at: null },
 ];
 
-// `aviso` (migración 114): advertencia fija que ve el solicitante al elegir la
-// categoría o la subcategoría (gana el de la subcategoría). El ejemplo del
-// dueño vive en «Cámaras › Solicitud de imagen o corto».
+// Catálogo de tickets v2 (migración 116): 7 categorías y 31 subcategorías con
+// tipo y prioridad sugeridos (`urgente` se lee «Crítica»). `aviso` (114):
+// advertencia fija que ve el solicitante al elegir la categoría o la
+// subcategoría (gana el de la subcategoría). tests/maqueta-catalogo-tickets.test.js
+// compara esta lista con la tabla de la migración 116.
 const AVISO_CAMARAS = 'Deberá adjuntar la autorización de gerencia. TI no es responsable del contenido: solo administra el sistema.';
+const AVISO_GRABACION = 'Adjunte la autorización de Gerencia. TI administra el sistema de cámaras, pero no es responsable del contenido de las grabaciones.';
+const AVISO_INGRESO = 'Si su cuenta quedó bloqueada por intentos fallidos, elija «Desbloquear cuenta».';
 
 const categorias_ticket = [
   { id: 'accesos_cuentas', nombre: 'Accesos y Cuentas', servicio_id: 'accesos', aviso: null, deleted_at: null },
-  { id: 'camaras', nombre: 'Cámaras', servicio_id: null, aviso: null, deleted_at: null },
-  { id: 'equipos', nombre: 'Equipos', servicio_id: 'equipos', aviso: null, deleted_at: null },
-  { id: 'software', nombre: 'Software y Licencias', servicio_id: 'licencias', aviso: null, deleted_at: null },
-  { id: 'red', nombre: 'Red y Conectividad', servicio_id: 'red', aviso: null, deleted_at: null },
-  { id: 'otro', nombre: 'Otro', servicio_id: null, aviso: null, deleted_at: null },
+  { id: 'equipos', nombre: 'Hardware y Periféricos', servicio_id: 'equipos', aviso: null, deleted_at: null },
+  { id: 'red', nombre: 'Redes y Conectividad', servicio_id: 'red', aviso: null, deleted_at: null },
+  { id: 'software', nombre: 'Software y Aplicaciones', servicio_id: 'licencias', aviso: null, deleted_at: null },
+  { id: 'seguridad', nombre: 'Seguridad de la Información', servicio_id: 'seguridad', aviso: null, deleted_at: null },
+  { id: 'cctv', nombre: 'Videovigilancia (CCTV)', servicio_id: 'cctv', aviso: null, deleted_at: null },
+  { id: 'otro', nombre: 'Consultas y Capacitación', servicio_id: null, aviso: null, deleted_at: null },
 ];
 
+// [id, categoría, nombre, tipo, prioridad, aviso]
 const subcategorias_ticket = [
-  { id: 'sub-01', categoria_id: 'accesos_cuentas', nombre: 'Restablecer contraseña', tipo_sugerido: 'solicitud', aviso: null, deleted_at: null },
-  { id: 'sub-02', categoria_id: 'accesos_cuentas', nombre: 'Crear cuenta', tipo_sugerido: 'solicitud', aviso: null, deleted_at: null },
-  { id: 'sub-03', categoria_id: 'equipos', nombre: 'Falla de hardware', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
-  { id: 'sub-04', categoria_id: 'equipos', nombre: 'Solicitud de equipo', tipo_sugerido: 'solicitud', aviso: null, deleted_at: null },
-  { id: 'sub-05', categoria_id: 'software', nombre: 'Instalación de programa', tipo_sugerido: 'solicitud', aviso: null, deleted_at: null },
-  { id: 'sub-06', categoria_id: 'software', nombre: 'Error de aplicación', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
-  { id: 'sub-07', categoria_id: 'red', nombre: 'Sin internet', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
-  { id: 'sub-08', categoria_id: 'red', nombre: 'VPN no conecta', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
-  { id: 'sub-09', categoria_id: 'otro', nombre: 'Consulta general', tipo_sugerido: null, aviso: null, deleted_at: null },
-  { id: 'sub-10', categoria_id: 'camaras', nombre: 'Solicitud de imagen o corto', tipo_sugerido: 'solicitud', aviso: AVISO_CAMARAS, deleted_at: null },
-  { id: 'sub-11', categoria_id: 'camaras', nombre: 'Cámara sin señal', tipo_sugerido: 'incidente', aviso: null, deleted_at: null },
-];
+  ['sub-01', 'accesos_cuentas', 'Restablecer contraseña', 'solicitud', 'media'],
+  ['sub-12', 'accesos_cuentas', 'Desbloquear cuenta', 'solicitud', 'alta'],
+  ['sub-13', 'accesos_cuentas', 'No puedo ingresar al sistema', 'incidente', 'alta', AVISO_INGRESO],
+  ['sub-14', 'accesos_cuentas', 'Solicitar permisos o accesos (sistemas / carpetas)', 'solicitud', 'media'],
+  ['sub-02', 'accesos_cuentas', 'Crear cuenta de usuario (alta)', 'solicitud', 'media'],
+  ['sub-15', 'accesos_cuentas', 'Desactivar cuenta de usuario (baja)', 'solicitud', 'alta'],
+  ['sub-16', 'equipos', 'Equipo no enciende', 'incidente', 'alta'],
+  ['sub-03', 'equipos', 'Equipo lento o con fallas', 'incidente', 'media'],
+  ['sub-17', 'equipos', 'Impresora o escáner no funciona', 'incidente', 'media'],
+  ['sub-18', 'equipos', 'Accesorio dañado o faltante', 'incidente', 'baja'],
+  ['sub-19', 'equipos', 'Solicitar tóner o insumos', 'solicitud', 'baja'],
+  ['sub-04', 'equipos', 'Solicitar equipo o accesorio nuevo', 'solicitud', 'baja'],
+  ['sub-07', 'red', 'Sin internet o WiFi', 'incidente', 'alta'],
+  ['sub-08', 'red', 'VPN no conecta', 'incidente', 'alta'],
+  ['sub-20', 'red', 'Red lenta o intermitente', 'incidente', 'media'],
+  ['sub-21', 'red', 'Solicitar punto de red, WiFi o VPN', 'solicitud', 'baja'],
+  ['sub-06', 'software', 'Error o falla en aplicación', 'incidente', 'media'],
+  ['sub-22', 'software', 'Correo electrónico / Office 365', 'incidente', 'alta'],
+  ['sub-23', 'software', 'Licencia vencida o no se activa', 'incidente', 'media'],
+  ['sub-05', 'software', 'Instalar o actualizar software', 'solicitud', 'baja'],
+  ['sub-24', 'software', 'Solicitar licencia nueva', 'solicitud', 'baja'],
+  ['sub-25', 'seguridad', 'Virus o malware sospechoso', 'incidente', 'urgente'],
+  ['sub-26', 'seguridad', 'Correo sospechoso / phishing', 'incidente', 'alta'],
+  ['sub-27', 'seguridad', 'Pérdida o robo de equipo', 'incidente', 'urgente'],
+  ['sub-28', 'seguridad', 'Respaldo o recuperación de archivos', 'solicitud', 'media'],
+  ['sub-11', 'cctv', 'Cámara sin imagen o con falla', 'incidente', 'alta'],
+  ['sub-29', 'cctv', 'Solicitar acceso para visualizar cámaras', 'solicitud', 'media', AVISO_CAMARAS],
+  ['sub-10', 'cctv', 'Solicitar revisión o extracción de grabación', 'solicitud', 'media', AVISO_GRABACION],
+  ['sub-30', 'otro', 'Consulta o asesoría', 'solicitud', 'baja'],
+  ['sub-31', 'otro', 'Solicitar capacitación', 'solicitud', 'baja'],
+  ['sub-09', 'otro', 'Otro (no clasificado)', 'solicitud', 'baja'],
+].map(([id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso = null]) => ({
+  id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso, deleted_at: null,
+}));
 
 // ── Empleados ───────────────────────────────────────────────────────────────
 function empleado(id, nombres, apellidos, dni, cargo, empresa_id, area_obra_id, ubicacion_id, estado, diasAlta, extra = {}) {
@@ -520,9 +551,9 @@ function ticket(n, titulo, estado, prioridad, extra = {}) {
 }
 
 const tickets = [
-  // Categoría con aviso (114): el detalle del staff muestra la regla que vio el solicitante.
+  // Subcategoría con aviso (114): el detalle del staff muestra la regla que vio el solicitante.
   ticket(119, 'Video de la caseta de ingreso del martes', 'en_progreso', 'media', {
-    empleado_id: 'e05', categoria_id: 'camaras', subcategoria_id: 'sub-10', tipo: 'solicitud',
+    empleado_id: 'e05', categoria_id: 'cctv', subcategoria_id: 'sub-10', tipo: 'solicitud',
     descripcion: 'Gerencia pide el corte de 7:30 a 8:15 del ingreso de camiones. Adjunto la autorización firmada.',
     created_at: hace(0, 5), updated_at: hace(0, 4),
   }),
@@ -542,7 +573,7 @@ const tickets = [
   }),
   ticket(115, 'Impresora de obra no imprime', 'abierto', 'baja', {
     vinculado: false, empleado_id: null, contacto_ingresado: 'Luis Chávez — 987 654 321', asignado_a: null,
-    categoria_id: 'equipos', subcategoria_id: 'sub-03', equipo_id: 'q07', origen: 'empleado',
+    categoria_id: 'equipos', subcategoria_id: 'sub-17', equipo_id: 'q07', origen: 'empleado',
     descripcion: 'La Epson de la caseta saca las hojas en blanco.', created_at: hace(4, 2),
   }),
   ticket(114, 'Sin internet en la caseta de Obra Surco', 'en_progreso', 'alta', {
@@ -589,8 +620,9 @@ const tickets = [
     empleado_id: 'e08', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-01', tipo: 'solicitud', cuenta_id: 'c16',
     created_at: hace(60), updated_at: hace(59), resuelto_at: hace(59),
   }),
+  // Anterior al catálogo v2 y en «Otro (no clasificado)»: aparece en «Tickets por reclasificar» (116).
   ticket(103, 'Coordinar el recojo del celular corporativo', 'abierto', 'media', {
-    empleado_id: 'e06', categoria_id: 'equipos', subcategoria_id: 'sub-03', tipo: 'solicitud', equipo_id: 'q08',
+    empleado_id: 'e06', categoria_id: 'otro', subcategoria_id: 'sub-09', tipo: 'solicitud', equipo_id: 'q08',
     descripcion: 'Quedó pendiente desde la baja; el equipo sigue con el ex colaborador.', created_at: hace(20), updated_at: hace(19),
   }),
 ];
@@ -691,6 +723,8 @@ const config_parametros = [
   { clave: 'dias_ventana_alta', valor: 30 }, { clave: 'dias_por_vencer_licencia', valor: 30 }, { clave: 'dias_por_vencer_garantia', valor: 30 },
   { clave: 'umbral_recurrencia_tickets', valor: { n: 3, dias: 30 } }, { clave: 'dias_ticket_viejo', valor: 3 },
   { clave: 'csat_muestra_minima', valor: 5 }, { clave: 'dias_corte_reapertura', valor: 30 },
+  // Marca del catálogo v2 (116): tickets anteriores en estas subcategorías (o sin subcategoría) se revisan.
+  { clave: 'catalogo_tickets_v2', valor: { aplicada_at: hace(3), subcategoria_no_clasificado: 'sub-09', subcategoria_seguridad_legado: 'sub-25' } },
 ];
 
 // ── Base de conocimiento ────────────────────────────────────────────────────
@@ -1019,6 +1053,8 @@ export const TABLAS = {
   equipos, equipo_accesorios, asignaciones_equipo, eventos_equipo, actas, equipos_importacion,
   tickets, ticket_comentarios, ticket_eventos, ticket_satisfaccion,
   config_parametros,
+  // v_tickets_por_reclasificar (116): misma regla que la vista; la RPC la recalcula.
+  v_tickets_por_reclasificar: calcularPorReclasificar({ tickets, ticket_eventos, config_parametros, categorias_ticket, subcategorias_ticket }),
   // v_categorias_recurrentes (103): categorías con n+ tickets en `dias` días sin problema vinculado.
   v_categorias_recurrentes: categoriasRecurrentes(tickets, problema_tickets, categorias_ticket),
   kb_articulos, problemas, problema_tickets, acciones_correctivas,
@@ -1082,6 +1118,8 @@ export const RPC = {
   ...RPC_KB,
   // Portal del empleado (109): emitir y revocar el enlace — maqueta/rpc-portal.js (la function pública, en client.js).
   ...RPC_PORTAL,
+  // Catálogo de tickets v2 (116): reclasificar_ticket — maqueta/rpc-catalogo-tickets.js.
+  ...RPC_CATALOGO_TICKETS,
   // Inicio (103): una sola RPC; escenarios por `?maqueta=...` en maqueta/inicio.js.
   dashboard_resumen: (db) => resumenInicio(db, { usuarioId: USUARIO_MAQUETA.id }),
 };

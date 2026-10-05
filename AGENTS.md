@@ -110,6 +110,9 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   `v_ticket_hechos`; `v_kpi_*` son su corte mensual y `reporte_tickets()` la compone para un rango.
   `maqueta/rpc-reportes.js` sigue la misma aritmética (el escenario S17 del arnés lo exige). El reporte
   por técnico lo decide la RPC (solo JEFE). Un cambio de definición sube `definiciones_version`.
+- **Catálogo de tickets (116)**: la prioridad inicial la fija `crear_ticket_publico` con la sugerida de la
+  subcategoría (NULL = media); solo el staff manda otra. Reclasificar es solo JEFE por `reclasificar_ticket`,
+  que nunca cambia tipo ni prioridad y deja `categoria_cambiada`. El valor `urgente` se muestra «Crítica».
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

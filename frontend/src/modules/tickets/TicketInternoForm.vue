@@ -6,7 +6,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { crearTicket } from '../../api/ticketsPublicos.js';
-import { OPCIONES_TIPO as TIPOS, resolverAvisoCategoria } from '../../core/dominio-tickets.js';
+import { OPCIONES_TIPO as TIPOS, OPCIONES_PRIORIDAD, PRIORIDAD_POR_DEFECTO, prioridadSugeridaDe, resolverAvisoCategoria } from '../../core/dominio-tickets.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import AppDialog from '../../components/ui/AppDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -39,6 +39,8 @@ const form = ref({
   titulo: '',
   descripcion: '',
   tipo: '',
+  // 116: precargada con la sugerida de la subcategoría; el técnico puede cambiarla.
+  prioridad: PRIORIDAD_POR_DEFECTO,
 });
 
 const esParaEmpleado = ref(false);
@@ -47,6 +49,7 @@ const empleadoSelId = ref('');
 const campoCategoria = useCampoAccesible();
 const campoSubcategoria = useCampoAccesible();
 const campoTipo = useCampoAccesible();
+const campoPrioridad = useCampoAccesible();
 const campoTitulo = useCampoAccesible();
 const campoDescripcion = useCampoAccesible();
 const infoError = infoNotificacion('error');
@@ -83,9 +86,12 @@ const avisoCategoria = computed(() => resolverAvisoCategoria(
 // queda vacío si la subcategoría es una de las ambiguas a propósito o si
 // no hay subcategoría seleccionada. El staff puede corregirlo con el select
 // antes de crear el ticket — esto solo fija el valor inicial.
+// Lo mismo con la prioridad (catálogo v2, migración 116): la sugerida de la
+// subcategoría, o media. El servidor aplica la misma regla si no llega ninguna.
 watch(() => form.value.subcategoriaId, (id) => {
   const sub = subcategorias.value.find((s) => s.id === id);
   form.value.tipo = sub?.tipo_sugerido || '';
+  form.value.prioridad = prioridadSugeridaDe(sub);
 });
 
 async function guardar() {
@@ -102,6 +108,7 @@ async function guardar() {
       categoriaId: form.value.categoriaId,
       subcategoriaId: form.value.subcategoriaId || null,
       tipo: form.value.tipo || null,
+      prioridad: form.value.prioridad || null,
       origen: esParaEmpleado.value ? undefined : 'staff_interno',
       empleadoIdManual: esParaEmpleado.value ? empleadoSelId.value || null : null,
     });
@@ -192,7 +199,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="subcategoriasFiltradas.length" class="campo" :class="{ 'campo--inerte': guardando }">
+        <div v-if="subcategoriasFiltradas.length" class="campo full" :class="{ 'campo--inerte': guardando }">
           <label class="campo__etiqueta" :for="campoSubcategoria.id">Subcategoría</label>
           <div class="campo__caja">
             <select
@@ -209,7 +216,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="campo" :class="{ 'campo--inerte': guardando, full: !subcategoriasFiltradas.length }">
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
           <label class="campo__etiqueta" :for="campoTipo.id">Tipo</label>
           <div class="campo__caja">
             <select
@@ -221,6 +228,22 @@ onMounted(async () => {
             >
               <option value="">Sin definir</option>
               <option v-for="t in TIPOS" :key="t.valor" :value="t.valor">{{ t.label }}</option>
+            </select>
+            <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+          </div>
+        </div>
+
+        <div class="campo" :class="{ 'campo--inerte': guardando }">
+          <label class="campo__etiqueta" :for="campoPrioridad.id">Prioridad</label>
+          <div class="campo__caja">
+            <select
+              :id="campoPrioridad.id"
+              class="campo__control campo__control--select"
+              :value="form.prioridad"
+              :disabled="guardando"
+              @change="form.prioridad = $event.target.value"
+            >
+              <option v-for="p in OPCIONES_PRIORIDAD" :key="p.valor" :value="p.valor">{{ p.label }}</option>
             </select>
             <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
           </div>

@@ -603,7 +603,7 @@ async function escenarios(etiqueta) {
   // ---- S15 107: servicios y cambios con sesiones reales (RLS, permisos por rol, actor y rol en el libro, vistas)
   if ((await uno("select to_regclass('public.cambios') as t")).t) {
     const sv = `sv${sfx}`;
-    afirmar('S15 107: un asistente lee el catalogo de servicios sembrado (10)', (await como(U.asist, () => uno('select count(*)::int n from servicios'))).n === 10);
+    afirmar('S15 107: un asistente lee el catalogo de servicios sembrado (10, mas seguridad y cctv de la 116)', (await como(U.asist, () => uno('select count(*)::int n from servicios'))).n === (NUEVAS.includes('116') ? 12 : 10));
     afirmar('S15 107: staff inactivo no lee servicios', (await como(U.inact, () => uno('select count(*)::int n from servicios'))).n === 0);
     await falla('S15 107: anon no lee servicios', () => anonimo(() => db.exec('select * from servicios')), { code: '42501' });
     await falla('S15 107: un asistente no inserta servicios (RLS 42501)', () => como(U.asist, () => db.exec(`insert into servicios (id, nombre) values ('${sv}', 'No')`)), { code: '42501' });
@@ -809,6 +809,37 @@ async function escenarios(etiqueta) {
     afirmar('S16 109: los 5 tokens emitidos son distintos', new Set(tokens).size === 5);
   }
 
+  // ---- S18 116: reclasificar_ticket solo JEFE (sesiones reales) y v_tickets_por_reclasificar (solo JEFE, antes de la marca)
+  if ((await uno("select to_regprocedure('public.reclasificar_ticket(uuid,uuid,text)') as t")).t) {
+    const marca = (await uno("select valor from config_parametros where clave = 'catalogo_tickets_v2'")).valor;
+    const subImp = (await uno("select id from subcategorias_ticket where nombre = 'Impresora o escáner no funciona' and deleted_at is null")).id;
+    const mkT = async (k, sub, estado, antes) => (await uno(`insert into tickets (codigo, token, titulo, descripcion, categoria_id, subcategoria_id, prioridad, tipo, estado, created_at)
+      values ('TCK-S18${k}${sfx}', '${`s18${k}${sfx}`.padEnd(24, 'x')}', 'S18 ${k}', 'd', 'otro', ${sub ? `'${sub}'` : 'null'}, 'alta', 'incidente', '${estado}',
+      ${antes ? "now() - interval '1 day'" : 'now()'}) returning id`)).id;
+    const tOtro = await mkT('a', marca.subcategoria_no_clasificado, 'abierto', true);
+    const tCerr = await mkT('b', null, 'cerrado', true);
+    const tNuevo = await mkT('c', marca.subcategoria_no_clasificado, 'abierto', false);
+    const enVista = async (uid, id) => (await como(uid, () => uno(`select count(*)::int n from v_tickets_por_reclasificar where ticket_id = '${id}'`))).n;
+    afirmar('S18 116: el jefe ve en la vista el ticket anterior a la marca en «Otro (no clasificado)» y el cerrado sin subcategoria',
+      (await enVista(U.jefe, tOtro)) === 1 && (await enVista(U.jefe, tCerr)) === 1);
+    afirmar('S18 116: un ticket posterior a la marca no aparece; un asistente con el modulo tickets no ve ninguno',
+      (await enVista(U.jefe, tNuevo)) === 0 && (await como(U.asist, () => uno('select count(*)::int n from v_tickets_por_reclasificar'))).n === 0);
+    await falla('S18 116: un asistente no reclasifica (42501)', () => como(U.asist, () => db.exec(`select reclasificar_ticket('${tOtro}', '${subImp}', 'motivo')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S18 116: anon no ejecuta reclasificar_ticket', () => anonimo(() => db.exec(`select reclasificar_ticket('${tOtro}', '${subImp}', 'motivo')`)), { code: '42501' });
+    await falla('S18 116: ni el jefe ejecuta el nucleo (solo project_admin)', () => como(U.jefe, () => db.exec(`select reclasificar_ticket_nucleo('${tOtro}', '${subImp}', 'm', '${U.jefe}', true)`)), { code: '42501' });
+    await falla('S18 116: sin motivo -> P0001', () => como(U.jefe, () => db.exec(`select reclasificar_ticket('${tOtro}', '${subImp}', '  ')`)), { code: 'P0001', msg: 'motivo' });
+    const r = await como(U.jefe, () => uno(`select reclasificar_ticket('${tOtro}', '${subImp}', 'Era la impresora de obra') as r`));
+    const t = await uno(`select categoria_id, subcategoria_id, prioridad, tipo, estado from tickets where id = '${tOtro}'`);
+    afirmar('S18 116: el jefe reclasifica: cambia categoria y subcategoria, no prioridad, tipo ni estado',
+      r.r?.cambio === true && t.categoria_id === 'equipos' && t.subcategoria_id === subImp && t.prioridad === 'alta' && t.tipo === 'incidente' && t.estado === 'abierto', JSON.stringify([r, t]));
+    const ev = await uno(`select user_id, user_email, detalle from ticket_eventos where ticket_id = '${tOtro}' and evento = 'categoria_cambiada'`);
+    afirmar('S18 116: evento categoria_cambiada con el jefe como autor y el motivo', ev?.user_id === U.jefe && /Era la impresora de obra/.test(ev.detalle) && /Hardware y Periféricos/.test(ev.detalle), JSON.stringify(ev));
+    afirmar('S18 116: el ticket reclasificado sale de la vista', (await enVista(U.jefe, tOtro)) === 0);
+    await como(U.jefe, () => db.exec(`select reclasificar_ticket('${tCerr}', '${marca.subcategoria_no_clasificado}', 'Consulta sin categoria posible')`));
+    const tc = await uno(`select estado, subcategoria_id, categoria_id from tickets where id = '${tCerr}'`);
+    afirmar('S18 116: un ticket cerrado tambien se reclasifica y sale de la vista', tc.estado === 'cerrado' && tc.subcategoria_id === marca.subcategoria_no_clasificado && (await enVista(U.jefe, tCerr)) === 0, JSON.stringify(tc));
+  }
+
   // ---- S17 115: la maqueta de Reportes calcula lo MISMO que la RPC. El fixture de frontend/src/maqueta/datos.js se carga
   // en PGlite (ids traducidos a uuid) y reporte_tickets_de() se compara, numero a numero, con reporteTicketsDe() de
   // maqueta/rpc-reportes.js sobre el mismo objeto en memoria: si la maqueta y el servidor divergen, el dueno veria en la
@@ -972,9 +1003,26 @@ async function sembrarDatosTipoProduccion() {
     await db.exec(`insert into notificaciones (tipo, entidad_tipo, entidad_id, titulo, url_destino) values ('${t}', 'x', gen_random_uuid(), 't', '/')`);
   }
   await db.exec(`insert into problemas (titulo, descripcion, estado, severidad) values ('P1', 'd', 'abierto', 'media')`);
+  // Catalogo de tickets como en produccion antes de la 116 (2026-10-05: 5 categorias, 18 subcategorias). La base
+  // local trae 17; falta «Cámaras» (creada a mano en produccion). Su aviso (114) se pone justo antes de aplicar la 116.
+  await db.exec(`insert into subcategorias_ticket (categoria_id, nombre, tipo_sugerido) select 'accesos_cuentas', 'Cámaras', 'solicitud'
+    where not exists (select 1 from subcategorias_ticket where categoria_id = 'accesos_cuentas' and nombre = 'Cámaras' and deleted_at is null)`);
+  SIEMBRA.subsAntes116 = (await uno1('select count(*)::int n from subcategorias_ticket where deleted_at is null')).n;
+  // Tickets en las subcategorias que la 116 mueve (uno cerrado), en «Otro» y sin subcategoria.
+  const T116 = [['imp1', 'red', 'Impresora no funciona', 'abierto'], ['imp2', 'red', 'Impresora no funciona', 'cerrado'],
+    ['vir', 'otro', 'Seguridad (virus/malware) o backup', 'abierto'], ['cam', 'accesos_cuentas', 'Cámaras', 'abierto'],
+    ['otro', 'otro', 'Otro', 'abierto'], ['sinsub', 'equipos', null, 'abierto']];
+  SIEMBRA.t116 = {};
+  for (const [k, cat, sub, estado] of T116) {
+    const subId = sub ? `(select id from subcategorias_ticket where categoria_id = '${cat}' and nombre = '${sub}' and deleted_at is null)` : 'null';
+    SIEMBRA.t116[k] = (await uno1(`insert into tickets (codigo, token, titulo, descripcion, origen, estado, prioridad, categoria_id, subcategoria_id)
+      values ('TCK-116${k}', '${`t116${k}`.padEnd(24, 'x')}', 'T116 ${k}', 'D', 'empleado', '${estado}', 'media', '${cat}', ${subId}) returning id`)).id;
+  }
   SIEMBRA.info = { empleados: emps.length, equipos: eqs.length };
   return SIEMBRA;
 }
+// Aviso que «Cámaras» tiene en produccion (la 116 debe conservarlo al moverla a Videovigilancia).
+const AVISO_CAMARAS_116 = 'Deberá adjuntar la autorización de gerencia. TI no es responsable del contenido: solo administra el sistema.';
 
 // Comprobaciones sobre los datos sembrados tras aplicar 099..110 (normalizaciones, CHECK NOT VALID, backfill)
 async function comprobarDatosSembrados() {
@@ -995,6 +1043,37 @@ async function comprobarDatosSembrados() {
   try { await db.exec(`select empleado_dar_baja_interno('${SIEMBRA.empBadDni}')`); msg = 'SIN ERROR'; } catch (e) { msg = (e.code || '') + ' ' + (e.message || '').slice(0, 120); }
   console.log('   (hallazgo documentado) dar_baja del empleado con DNI de 9 digitos con el CHECK NOT VALID ->', msg);
   esc.informe = msg;
+  // 116: catalogo v2 sobre el catalogo "tipo produccion" (ya aplicada DOS veces: (b) y (c) reaplicar)
+  if (NUEVAS.includes('116')) {
+    afirmar('D7 116: la siembra reproduce el catalogo de produccion (18 subcategorias vivas antes de la 116)', SIEMBRA.subsAntes116 === 18, `antes=${SIEMBRA.subsAntes116}`);
+    const cats = await q('select id, nombre from categorias_ticket where deleted_at is null order by id');
+    afirmar('D7 116: 7 categorias vivas con los nombres nuevos', JSON.stringify(cats.map((c) => `${c.id}=${c.nombre}`)) === JSON.stringify(['accesos_cuentas=Accesos y Cuentas', 'cctv=Videovigilancia (CCTV)', 'equipos=Hardware y Periféricos', 'otro=Consultas y Capacitación', 'red=Redes y Conectividad', 'seguridad=Seguridad de la Información', 'software=Software y Aplicaciones']), JSON.stringify(cats));
+    const subs = await q("select s.categoria_id c, s.nombre n, s.tipo_sugerido t, s.prioridad_sugerida p from subcategorias_ticket s join categorias_ticket c on c.id = s.categoria_id and c.deleted_at is null where s.deleted_at is null order by 1, 2");
+    const porCat = subs.reduce((m, s) => ({ ...m, [s.c]: (m[s.c] || 0) + 1 }), {});
+    afirmar('D7 116: 31 subcategorias vivas (6/6/4/5/4/3/3), todas con tipo y prioridad', subs.length === 31 && porCat.accesos_cuentas === 6 && porCat.equipos === 6 && porCat.red === 4 && porCat.software === 5 && porCat.seguridad === 4 && porCat.cctv === 3 && porCat.otro === 3 && subs.every((s) => s.t && s.p), JSON.stringify(porCat));
+    const fila = (c, n) => subs.find((s) => s.c === c && s.n === n) || {};
+    afirmar('D7 116: tipos y prioridades de muestra (Desbloquear REQ alta, Virus INC urgente, Accesorio INC baja, Otro REQ baja)',
+      fila('accesos_cuentas', 'Desbloquear cuenta').t === 'solicitud' && fila('accesos_cuentas', 'Desbloquear cuenta').p === 'alta'
+      && fila('seguridad', 'Virus o malware sospechoso').p === 'urgente' && fila('equipos', 'Accesorio dañado o faltante').t === 'incidente'
+      && fila('equipos', 'Accesorio dañado o faltante').p === 'baja' && fila('otro', 'Otro (no clasificado)').t === 'solicitud');
+    const tk = Object.fromEntries((await q(`select codigo, categoria_id, estado, prioridad, tipo, updated_at = created_at as intacto from tickets where codigo like 'TCK-116%'`)).map((t) => [t.codigo.slice(7), t]));
+    afirmar('D8 116: los tickets de Impresora (abierto y cerrado), Virus y Camaras cambiaron de categoria; Otro y sin subcategoria no',
+      tk.imp1?.categoria_id === 'equipos' && tk.imp2?.categoria_id === 'equipos' && tk.vir?.categoria_id === 'seguridad' && tk.cam?.categoria_id === 'cctv'
+      && tk.otro?.categoria_id === 'otro' && tk.sinsub?.categoria_id === 'equipos', JSON.stringify(tk));
+    afirmar('D8 116: los tickets movidos conservan estado, prioridad, tipo y updated_at', Object.values(tk).every((t) => t.intacto && t.prioridad === 'media' && t.tipo === null) && tk.imp2?.estado === 'cerrado', JSON.stringify(tk));
+    afirmar('D8 116: ningun ticket queda con una categoria distinta de la de su subcategoria', (await uno2('select count(*)::int n from tickets t join subcategorias_ticket s on s.id = t.subcategoria_id where s.categoria_id <> t.categoria_id')).n === 0);
+    afirmar('D9 116: un evento categoria_cambiada sin autor por ticket movido, sin duplicar al reaplicar (4)', (await uno2(`select count(*)::int n from ticket_eventos e join tickets t on t.id = e.ticket_id where t.codigo like 'TCK-116%' and e.evento = 'categoria_cambiada' and e.user_id is null`)).n === 4);
+    const avisos = Object.fromEntries((await q('select nombre, aviso from subcategorias_ticket where deleted_at is null and aviso is not null')).map((s) => [s.nombre, s.aviso]));
+    afirmar('D10 116: «Cámaras» se movio con su aviso y las dos nuevas traen el suyo', avisos['Solicitar acceso para visualizar cámaras'] === AVISO_CAMARAS_116
+      && /Desbloquear cuenta/.test(avisos['No puedo ingresar al sistema'] || '') && /autorización de Gerencia/.test(avisos['Solicitar revisión o extracción de grabación'] || '') && !avisos['Cámara sin imagen o con falla'], JSON.stringify(Object.keys(avisos)));
+    const sv = await q("select id, servicio_id from categorias_ticket where id in ('seguridad', 'cctv') order by id");
+    afirmar('D11 116: servicios seguridad y cctv creados (12 vivos) y enlazados', (await uno2('select count(*)::int n from servicios where deleted_at is null')).n === 12 && sv.map((x) => x.servicio_id).join(',') === 'cctv,seguridad', JSON.stringify(sv));
+    const marca = (await uno2("select valor from config_parametros where clave = 'catalogo_tickets_v2'"))?.valor || {};
+    afirmar('D12 116: marca con fecha y los uuid de «Otro (no clasificado)» y «Virus o malware sospechoso»',
+      !Number.isNaN(Date.parse(marca.aplicada_at)) && marca.subcategoria_no_clasificado === (await uno2("select id from subcategorias_ticket where nombre = 'Otro (no clasificado)' and deleted_at is null")).id
+      && marca.subcategoria_seguridad_legado === (await uno2("select id from subcategorias_ticket where nombre = 'Virus o malware sospechoso' and deleted_at is null")).id, JSON.stringify(marca));
+    afirmar('D13 116: el trigger trg_tickets_updated_at quedo activo', (await uno2("select tgenabled::text e from pg_trigger where tgname = 'trg_tickets_updated_at'")).e === 'O');
+  }
   const malos = esc.mal.slice(); const oks = esc.ok;
   esc.mal = []; esc.ok = 0;
   reg(`datos tipo produccion tras 099..110: ${oks} comprobaciones`, malos.length === 0, malos.join(' || '));
@@ -1008,7 +1087,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -1022,7 +1101,11 @@ console.log('=== siembra de datos tipo produccion (antes de aplicar las nuevas)'
 await sembrarDatosTipoProduccion();
 console.log('=== (b) aplicar 099 -> 100 -> 101 -> 102 -> 103 -> 104 -> 110');
 const t0 = Date.now();
-for (const n of NUEVAS) await intentar(`aplicar ${n}`, sqlMig(n));
+for (const n of NUEVAS) {
+  // 116: el aviso de «Cámaras» (columna de la 114) que la 116 debe conservar al moverla
+  if (n === '116') await db.exec(`update subcategorias_ticket set aviso = '${AVISO_CAMARAS_116}' where categoria_id = 'accesos_cuentas' and nombre = 'Cámaras' and deleted_at is null`);
+  await intentar(`aplicar ${n}`, sqlMig(n));
+}
 const fotoAplicada = await foto();
 
 if (opt('--diag-aplicado')) { await import(pathToFileURL(opt('--diag-aplicado')).href); process.exit(0); }
@@ -1090,6 +1173,8 @@ if (!args.includes('--sin-dependencias')) {
     ['109', ['099']], ['109', ['101']], ['109', ['103']], ['109', ['104']], ['109', ['112']],
     // 115 depende de la 089 (historica: se excluye de la base), la 099 y la 103
     ['115', ['089']], ['115', ['099']], ['115', ['103']],
+    // 116 depende de la 107 (servicios), la 111 (crear_ticket_publico) y la 114 (aviso)
+    ['116', ['107']], ['116', ['111']], ['116', ['114']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });
