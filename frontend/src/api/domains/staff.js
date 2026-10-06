@@ -1,7 +1,8 @@
 // Dominio staff: usuarios del panel (roles JEFE/ASISTENTE y activación).
 import { getClient } from '../client.js';
 
-const SELECT_STAFF = 'user_id, nombre, rol, activo, staff_permisos(permiso)';
+// tecnico_mesa (migración 118): técnico de mesa de ayuda en los reportes de Tickets y Satisfacción.
+const SELECT_STAFF = 'user_id, nombre, rol, activo, tecnico_mesa, staff_permisos(permiso)';
 
 // credenciales_ver: derivado del embed de staff_permisos (migración 060) —
 // JEFE no necesita fila ahí (siempre puede, se resuelve aparte en el getter
@@ -13,6 +14,7 @@ function mapStaff(row) {
     nombre: row.nombre,
     rol: row.rol,
     activo: row.activo,
+    tecnico_mesa: !!row.tecnico_mesa,
     credenciales_ver: (row.staff_permisos || []).some((p) => p.permiso === 'credenciales.ver'),
   };
 }
@@ -39,10 +41,11 @@ export const staffApi = {
     return data || [];
   },
 
-  // datos pasa tal cual al UPDATE: {rol, activo} desde Configuración·Staff
-  // (JEFE), o {nombre} desde la autoedición de nombre (migración 061,
-  // cualquier staff sobre su propia fila). La RLS + el trigger
-  // check_staff_autoedicion_solo_nombre deciden qué combinación es válida.
+  // datos pasa tal cual al UPDATE: {rol, activo} o {tecnico_mesa} desde
+  // Configuración·Staff (JEFE), o {nombre} desde la autoedición de nombre
+  // (migración 061, cualquier staff sobre su propia fila). La RLS y los
+  // triggers check_staff_autoedicion_solo_nombre y check_staff_tecnico_mesa
+  // (118) deciden qué combinación es válida.
   async updateStaff(userId, datos) {
     const { data, error } = await getClient().database
       .from('staff')

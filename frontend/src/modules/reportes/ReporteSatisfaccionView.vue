@@ -1,49 +1,76 @@
 <script setup>
-// Reporte de Satisfacción (encuestas de cierre de tickets): el histórico
-// completo de reporte_satisfaccion_consolidado (migración 115) en la hoja
-// común de reportes. Antes era la vista Tickets › Satisfacción con su propio
-// PDF de jsPDF; desde 2026-10-05 vive acá y se imprime con window.print().
-import { ref, computed, onMounted } from 'vue';
+// Reporte de Satisfacción (encuestas de cierre de tickets, migración 118): un
+// día, una semana, un mes, un rango o todo el historial de
+// `reporte_satisfaccion`, en la hoja común de reportes. Por solicitante dice
+// cuántos tickets se le atendieron, cuántas encuestas respondió, cuántas le
+// faltan y si está conforme; por técnico (solo JEFE), el % de cada técnico de
+// mesa. La URL es la fuente de verdad del período; se imprime con
+// window.print().
+import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { traducirErrorDb } from '../../api/erroresDb.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
-import AppButton from '../../components/ui/AppButton.vue';
 import ReporteHoja from './ReporteHoja.vue';
+import ReporteControles from './ReporteControles.vue';
 import ReporteSecciones from './ReporteSecciones.vue';
+import { usePeriodoUrl } from './usePeriodoUrl.js';
+import { TIPOS_PERIODO_MESA, TIPO_TODO, nombreArchivoPeriodo } from './periodo.js';
 import { seccionesSatisfaccion, caratulaSatisfaccion, csvSatisfaccion } from './hoja-satisfaccion.js';
 import { GLOSARIOS, VERSION_DEFINICIONES } from './glosario.js';
 
+const TIPOS = [...TIPOS_PERIODO_MESA, TIPO_TODO];
+const { filtros, periodo, etiqueta, fijarPeriodo, normalizarUrl } = usePeriodoUrl({}, { permitirTodo: true });
+
 const cargando = ref(false);
 const error = ref('');
-const consolidado = ref(null);
+const reporte = ref(null);
+const staff = ref([]);
 
-const secciones = computed(() => seccionesSatisfaccion(consolidado.value));
-const caratula = computed(() => (consolidado.value ? caratulaSatisfaccion(consolidado.value) : []));
+const nombresStaff = computed(() => Object.fromEntries(staff.value.map((s) => [s.user_id, s.nombre])));
+const secciones = computed(() => seccionesSatisfaccion(reporte.value));
+const caratula = computed(() => (reporte.value ? caratulaSatisfaccion(reporte.value, etiqueta.value) : []));
+const enCurso = computed(() => reporte.value?.periodo?.en_curso === true);
 
 async function cargar() {
   cargando.value = true;
   error.value = '';
   try {
-    consolidado.value = await insforgeApi.obtenerSatisfaccionConsolidado();
+    const todo = periodo.value.tipo === 'todo';
+    reporte.value = await insforgeApi.obtenerReporteSatisfaccion(todo ? {} : { desde: periodo.value.desde, hasta: periodo.value.hasta });
   } catch (e) {
-    consolidado.value = null;
+    reporte.value = null;
     error.value = traducirErrorDb(e, { porDefecto: 'No se pudo cargar la satisfacción de tickets.' }).mensaje;
   } finally {
     cargando.value = false;
   }
 }
 
+// Nombres del staff para la columna «Resolvió» del CSV (solo llega al JEFE).
+async function cargarStaff() {
+  try {
+    staff.value = await insforgeApi.nombresStaff();
+  } catch {
+    staff.value = [];
+  }
+}
+
 function exportar() {
-  const { cabecera, filas } = csvSatisfaccion(consolidado.value);
+  const { cabecera, filas } = csvSatisfaccion(reporte.value, { nombresStaff: nombresStaff.value });
   if (!filas.length) {
     showToast('No hay encuestas para exportar', 'warning');
     return;
   }
-  exportarCSV('Reporte_satisfaccion', cabecera, filas);
+  exportarCSV(nombreArchivoPeriodo(periodo.value, 'satisfaccion'), cabecera, filas);
 }
 
-onMounted(cargar);
+// La URL manda: cambiar el período (controles, atrás/adelante, enlace) recarga.
+watch(() => [filtros.tipo, filtros.desde, filtros.hasta], cargar);
+
+onMounted(() => {
+  if (normalizarUrl()) cargar();
+  cargarStaff();
+});
 </script>
 
 <template>
@@ -51,19 +78,18 @@ onMounted(cargar);
     rotulo="REPORTE · MESA DE AYUDA"
     titulo="Satisfacción"
     :datos="caratula"
+    :en-curso="enCurso"
     :cargando="cargando"
     :error="error"
-    :listo="!!consolidado"
+    :listo="!!reporte"
     :glosario="GLOSARIOS.satisfaccion"
-    :version="VERSION_DEFINICIONES"
+    :version="reporte?.definiciones_version || ''"
+    :version-esperada="VERSION_DEFINICIONES"
     @csv="exportar"
   >
     <template #controles>
-      <div data-no-print class="flex flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-3 sm:px-6">
-        <p class="text-sm text-gray-500">Todo el historial de encuestas de cierre de tickets.</p>
-        <AppButton label="Actualizar" icon="ti ti-refresh" variant="text" severity="secondary" size="sm" :disabled="cargando" @click="cargar" />
-      </div>
+      <ReporteControles :periodo="periodo" :tipos="TIPOS" :cargando="cargando" @update:periodo="fijarPeriodo" />
     </template>
-    <ReporteSecciones :secciones="secciones" vacio="Sin encuestas registradas" />
+    <ReporteSecciones :secciones="secciones" vacio="Sin encuestas en el período" />
   </ReporteHoja>
 </template>

@@ -11,8 +11,8 @@
 // la pantalla, el menú y el guard del router lo leen de acá; la barrera real es
 // el servidor (42501).
 //
-//   alcance: 'periodo' (mes/semana/rango), 'corte' (foto al momento),
-//            'historico' (todo el tiempo) o 'ronda' (una ronda de encuesta).
+//   alcance: 'periodo' (día/semana/mes/rango; Satisfacción admite además todo
+//            el historial), 'corte' (foto al momento) o 'ronda' (una ronda de encuesta).
 //   metodo:  el de insforgeApi que trae el jsonb (null = vista propia).
 
 export const AREAS_REPORTES = [
@@ -25,11 +25,11 @@ export const AREAS_REPORTES = [
 export const REPORTES = [
   {
     id: 'tickets', titulo: 'Tickets', area: 'mesa-de-ayuda', modulo: 'tickets', alcance: 'periodo', metodo: null,
-    descripcion: 'Volumen, tiempos de atención, reaperturas y satisfacción del período, con el detalle de cada ticket.',
+    descripcion: 'Tablero diario, semanal o mensual: ingresaron, resueltos, % resuelto, pendientes, quiénes generan más tickets y el tiempo de cada uno.',
   },
   {
-    id: 'satisfaccion', titulo: 'Satisfacción', area: 'mesa-de-ayuda', modulo: 'tickets', alcance: 'historico', metodo: null,
-    descripcion: 'Encuestas de cierre de tickets de todo el historial: por mes, por técnico y por solicitante.',
+    id: 'satisfaccion', titulo: 'Satisfacción', area: 'mesa-de-ayuda', modulo: 'tickets', alcance: 'periodo', metodo: null,
+    descripcion: 'Encuestas de cierre por período: % de satisfacción, por solicitante (respondidas, faltantes, situación) y por técnico.',
   },
   {
     id: 'cambios', titulo: 'Cambios', area: 'mesa-de-ayuda', modulo: 'tickets', alcance: 'periodo', metodo: 'obtenerReporteCambios',

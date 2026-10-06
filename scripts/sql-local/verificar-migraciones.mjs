@@ -840,6 +840,30 @@ async function escenarios(etiqueta) {
     afirmar('S18 116: un ticket cerrado tambien se reclasifica y sale de la vista', tc.estado === 'cerrado' && tc.subcategoria_id === marca.subcategoria_no_clasificado && (await enVista(U.jefe, tCerr)) === 0, JSON.stringify(tc));
   }
 
+  // ---- S19 118: la marca de técnico de mesa solo la cambia un JEFE (sesiones reales); Satisfacción por período con el
+  // desglose por técnico solo para el JEFE, y las RPC públicas con su guard.
+  if ((await uno("select to_regprocedure('public.reporte_satisfaccion(date, date)') as t")).t) {
+    await falla('S19 118: un asistente no se marca como tecnico de mesa (42501)', () => como(U.asist, () => db.exec(`update staff set tecnico_mesa = true where user_id = '${U.asist}'`)), { code: '42501', msg: 'Solo un JEFE' });
+    await como(U.asist, () => db.exec(`update staff set nombre = 'Asistente ${sfx}' where user_id = '${U.asist}'`));
+    afirmar('S19 118: el asistente sigue editando su propio nombre', (await uno(`select nombre from staff where user_id = '${U.asist}'`)).nombre === `Asistente ${sfx}`);
+    await como(U.jefe, () => db.exec(`update staff set tecnico_mesa = true where user_id = '${U.asist}'`));
+    afirmar('S19 118: el jefe marca al asistente como tecnico de mesa', (await uno(`select tecnico_mesa from staff where user_id = '${U.asist}'`)).tecnico_mesa === true);
+    const satJefe = (await como(U.jefe, () => uno("select reporte_satisfaccion(current_date - 30, current_date) as r"))).r;
+    const satAsis = (await como(U.asist, () => uno('select reporte_satisfaccion() as r'))).r;
+    afirmar('S19 118: el jefe recibe satisfaccion por tecnico; el asistente no (ni el tecnico de cada respuesta)',
+      Array.isArray(satJefe.porTecnico) && satJefe.porTecnico.some((t) => t.tecnico_id === U.asist && t.grupo === 'tecnico')
+      && satAsis.porTecnico === null && satAsis.periodo === null && satAsis.respuestas.every((x) => x.tecnico_id === null),
+      JSON.stringify({ jefe: satJefe.porTecnico?.length, asis: satAsis.porTecnico }));
+    await falla('S19 118: anon no ejecuta reporte_satisfaccion', () => anonimo(() => db.exec('select reporte_satisfaccion()')), { code: '42501' });
+    await falla('S19 118: sin el modulo tickets reporte_satisfaccion da 42501', () => como(U.sinmod, () => db.exec('select reporte_satisfaccion()')), { code: '42501', msg: 'No autorizado' });
+    await falla('S19 118: authenticated no ejecuta el nucleo reporte_satisfaccion_de', () => como(U.jefe, () => db.exec(`select reporte_satisfaccion_de('${U.jefe}', null, null)`)), { code: '42501' });
+    await falla('S19 118: una sola fecha del periodo -> P0001', () => como(U.jefe, () => db.exec('select reporte_satisfaccion(null, current_date)')), { code: 'P0001', msg: 'dos fechas' });
+    const dia = (await como(U.jefe, () => uno('select reporte_tickets(current_date, current_date) as r'))).r;
+    afirmar('S19 118: el reporte de un dia trae tablero, un solo dia en por_dia, pendientes y solicitantes',
+      dia.tablero && dia.por_dia?.length === 1 && Array.isArray(dia.pendientes?.lista) && Array.isArray(dia.solicitantes?.top)
+      && dia.por_tecnico.some((t) => t.tecnico_id === U.asist), JSON.stringify(dia.tablero));
+  }
+
   // ---- S17 115: la maqueta de Reportes calcula lo MISMO que la RPC. El fixture de frontend/src/maqueta/datos.js se carga
   // en PGlite (ids traducidos a uuid) y reporte_tickets_de() se compara, numero a numero, con reporteTicketsDe() de
   // maqueta/rpc-reportes.js sobre el mismo objeto en memoria: si la maqueta y el servidor divergen, el dueno veria en la
@@ -869,16 +893,24 @@ async function paridadMaquetaReportes(sfx) {
   await db.exec('begin');
   try {
   const ids = { user: new Map(), emp: new Map(), area: new Map(), ubic: new Map(), sub: new Map(), ticket: new Map() };
+  // 118: la marca de técnico de mesa. Solo los de la maqueta quedan marcados (la siembra de la 118 pudo marcar a staff de
+  // otros escenarios, y la RPC lista a todo técnico de mesa activo aunque no tenga tickets).
+  const conMesa = !!(await uno("select count(*)::int as n from information_schema.columns where table_schema = 'public' and table_name = 'staff' and column_name = 'tecnico_mesa'")).n;
+  if (conMesa) {
+    await db.exec('alter table staff disable trigger trg_staff_tecnico_mesa');
+    await db.exec('update staff set tecnico_mesa = false where tecnico_mesa');
+  }
   // staff: un auth.users por integrante de la maqueta (el trigger crea el staff), con su rol, actividad y modulos
   for (const s of maq.staff) {
     const id = (await uno(`insert into auth.users (email) values ('maq-${s.user_id}-${sfx}@t.test') returning id`)).id;
     ids.user.set(s.user_id, id);
     await db.exec('alter table staff disable trigger trg_staff_autoedicion_solo_nombre');
-    await db.exec(`update staff set activo = ${s.activo}, rol = '${s.rol}', nombre = ${lit(s.nombre)} where user_id = '${id}'`);
+    await db.exec(`update staff set activo = ${s.activo}, rol = '${s.rol}', nombre = ${lit(s.nombre)}${conMesa ? `, tecnico_mesa = ${!!s.tecnico_mesa}` : ''} where user_id = '${id}'`);
     await db.exec('alter table staff enable trigger trg_staff_autoedicion_solo_nombre');
     const modulos = maq.staff_modulos_permisos.filter((m) => m.staff_user_id === s.user_id).map((m) => m.modulo);
     await db.exec(`delete from staff_modulos_permisos where staff_user_id = '${id}' and modulo <> all (array[${modulos.map((m) => `'${m}'`).join(',') || "''"}])`);
   }
+  if (conMesa) await db.exec('alter table staff enable trigger trg_staff_tecnico_mesa');
   const empresa = (await uno(`insert into empresas (nombre) values ('Maqueta ${sfx}') returning id`)).id;
   // 117: las empresas de la maqueta (Personal agrupa por empresa); sin la fila, el empleado cae en la genérica.
   ids.empresa = new Map();
@@ -925,11 +957,18 @@ async function paridadMaquetaReportes(sfx) {
     atencion: r.atencion,
     calidad: { reaperturas: r.calidad.reaperturas, csat: r.calidad.csat, comentarios_bajos_total: r.calidad.comentarios_bajos_total },
     por: Object.fromEntries(Object.entries(r.por).map(([k, v]) => [k, v.map(({ nombre, creados, resueltos }) => ({ nombre, creados, resueltos })).sort(porNombre)])),
-    por_tecnico: (r.por_tecnico || []).map(({ nombre, resueltos, mismo_periodo, arrastrados, tiempos, csat, reaperturas }) => ({ nombre, resueltos, mismo_periodo, arrastrados, tiempos, csat, reaperturas })).sort(porNombre),
+    por_tecnico: (r.por_tecnico || []).map(({ grupo, nombre, resueltos, mismo_periodo, arrastrados, tiempos, csat, reaperturas }) => ({ grupo, nombre, resueltos, mismo_periodo, arrastrados, tiempos, csat, reaperturas })).sort(porNombre),
+    // 118: los pendientes y la carga de hoy dependen también de los tickets de otros escenarios (vigentes aunque se hayan
+    // movido 3 años atrás): se comparan la lista de los de la maqueta y las cifras del período, no los totales globales.
+    tablero: r.tablero && { ingresaron: r.tablero.ingresaron, rechazados: r.tablero.rechazados, validos: r.tablero.validos, resueltos: r.tablero.resueltos, resueltos_de_ingresados: r.tablero.resueltos_de_ingresados, pct_resuelto: r.tablero.pct_resuelto },
+    por_dia: r.por_dia,
+    pendientes: r.pendientes && r.pendientes.lista.filter((p) => codigos.has(p.codigo)).map(({ codigo, dias, estado_hoy, solicitante }) => ({ codigo, dias, estado_hoy, solicitante })),
+    solicitantes: r.solicitantes,
     anexos: { arrastrados: r.anexos.arrastrados.map(({ codigo, dias_abierto }) => ({ codigo, dias_abierto })), cerrados_sin_encuesta: r.anexos.cerrados_sin_encuesta.map(({ codigo, motivo }) => ({ codigo, motivo })) },
     tickets: r.tickets.filter((t) => codigos.has(t.codigo)).map(({ codigo, en_periodo, horas_resolucion, encuesta_nivel, categoria, area, solicitante }) => ({ codigo, en_periodo, horas_resolucion, encuesta_nivel, categoria, area, solicitante })).sort((a, b) => a.codigo.localeCompare(b.codigo)),
     volumen: { creados: r.volumen.creados, rechazados: r.volumen.rechazados, resueltos: r.volumen.resueltos, resueltos_mismo_periodo: r.volumen.resueltos_mismo_periodo, resueltos_arrastrados: r.volumen.resueltos_arrastrados, cerrados_sin_encuesta: r.volumen.cerrados_sin_encuesta },
-    comparacion: r.comparacion && { periodo: r.comparacion.periodo, volumen: r.comparacion.volumen, atencion: r.comparacion.atencion, csat: r.comparacion.csat },
+    comparacion: r.comparacion && { periodo: r.comparacion.periodo, volumen: r.comparacion.volumen, atencion: r.comparacion.atencion, csat: r.comparacion.csat,
+      tablero: r.comparacion.tablero && { ingresaron: r.comparacion.tablero.ingresaron, resueltos: r.comparacion.tablero.resueltos, pct_resuelto: r.comparacion.tablero.pct_resuelto } },
   });
   const hoy = new Date();
   const mes = (k) => {
@@ -956,13 +995,31 @@ async function paridadMaquetaReportes(sfx) {
     afirmar(`S17 115: la maqueta y la RPC coinciden para el ${etq} (${p.desde}..${p.hasta})`, dif.length === 0, dif.join(' | ').slice(0, 900));
     console.log(`   (informativo) S17 ${etq}: creados=${a.volumen.creados} resueltos=${a.volumen.resueltos} mediana=${a.atencion.resolucion.mediana_horas} csat=${a.calidad.csat.promedio} (n=${a.calidad.csat.n})`);
   }
+  const { satisfaccionConsolidadaDe, satisfaccionDe } = await import(pathToFileURL(join(REPO, 'frontend/src/maqueta/rpc-reportes.js')).href);
+  if ((await uno("select to_regprocedure('public.reporte_satisfaccion_de(uuid, date, date)') as t")).t) {
+    // 118: satisfacción por período (los tickets de otros escenarios quedaron 3 años atrás: fuera de estos meses).
+    const asis = ids.user.get(maq.staff.find((s) => s.rol === 'ASISTENTE' && s.activo).user_id);
+    const normSat = (r) => ({
+      umbrales: r.umbrales, muestraMinima: r.muestraMinima, resumen: r.resumen, porMes: r.porMes,
+      porTecnico: r.porTecnico && r.porTecnico.map(({ tecnico_id, ...f }) => f).sort(porNombre),
+      porSolicitante: r.porSolicitante.map(({ empleado_id, ...f }) => f).sort(porNombre),
+      respuestas: r.respuestas.map(({ ticket_codigo, nivel, respondida, tecnico_id }) => ({ ticket_codigo, nivel, respondida, con_tecnico: tecnico_id != null })).sort((a, b) => a.ticket_codigo.localeCompare(b.ticket_codigo)),
+    });
+    for (const [k, etq] of [[-1, 'mes pasado'], [0, 'mes en curso']]) {
+      const p = mes(k);
+      for (const [quien, idSql, idJs] of [['jefe', jefe, 'u-jefe'], ['asistente', asis, maq.staff.find((s) => s.rol === 'ASISTENTE' && s.activo).user_id]]) {
+        const sql = normSat((await uno(`select reporte_satisfaccion_de('${idSql}', '${p.desde}', '${p.hasta}') as r`)).r);
+        const js = normSat(satisfaccionDe(maq, { user: idJs, desde: p.desde, hasta: p.hasta }));
+        const dif = Object.keys(sql).filter((c) => canon(sql[c]) !== canon(js[c])).map((c) => `${c}: sql=${canon(sql[c]).slice(0, 260)} js=${canon(js[c]).slice(0, 260)}`);
+        afirmar(`S17 118: la satisfaccion de la maqueta coincide con la RPC (${etq}, ${quien})`, dif.length === 0, dif.join(' | ').slice(0, 1200));
+      }
+    }
+  }
   const satSql = (await uno(`select reporte_satisfaccion_consolidado_de('${jefe}') as r`)).r;
-  const { satisfaccionConsolidadaDe } = await import(pathToFileURL(join(REPO, 'frontend/src/maqueta/rpc-reportes.js')).href);
   const satJs = satisfaccionConsolidadaDe(maq, { user: 'u-jefe' });
-  const resumenSql = { ...satSql.resumen }, resumenJs = { ...satJs.resumen };
-  afirmar('S17 115: el consolidado de satisfaccion de la maqueta coincide con la RPC (resumen y muestra minima)',
-    canon(resumenSql) === canon(resumenJs) && satSql.muestraMinima === satJs.muestraMinima
-    && satSql.porTecnico.length === satJs.porTecnico.length, `sql=${canon(resumenSql)} js=${canon(resumenJs)}`);
+  afirmar('S17 115: el consolidado de satisfaccion de la maqueta tiene la forma de la RPC (muestra minima y por tecnico)',
+    satSql.muestraMinima === satJs.muestraMinima && Array.isArray(satSql.porTecnico) && Array.isArray(satJs.porTecnico),
+    `sql=${satSql.muestraMinima}/${Array.isArray(satSql.porTecnico)} js=${satJs.muestraMinima}/${Array.isArray(satJs.porTecnico)}`);
   // 117: inventario y personal de la maqueta contra las RPC, sobre el mismo fixture (misma transacción que se revierte).
   if ((await uno("select to_regprocedure('public.reporte_personal_de(uuid, date, date)') as t")).t) {
     await paridadReportes117(maq, ids, jefe, { lit, canon });
@@ -1188,7 +1245,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -1278,6 +1335,8 @@ if (!args.includes('--sin-dependencias')) {
     ['116', ['107']], ['116', ['111']], ['116', ['114']],
     // 117 depende de la 102 (empleado_eventos), la 108 (solicitudes), la 110 (v_actas_pendientes) y la 115 (v_ticket_hechos)
     ['117', ['102']], ['117', ['108']], ['117', ['110']], ['117', ['115']],
+    // 118 depende de la 115 (v_ticket_hechos, backlog_tramos_en) y la 117 (reporte_validar_periodo)
+    ['118', ['115']], ['118', ['117']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });

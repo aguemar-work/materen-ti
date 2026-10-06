@@ -119,6 +119,11 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   sigue la misma aritmética (S17 compara Inventario y Personal). Ninguna salida lleva DNI, contacto, IP ni
   user_agent. Los documentos de un registro (acta, etiquetas, expediente, hoja de vida, solicitud, cambio)
   siguen en su ficha.
+- **Tablero de mesa de ayuda (118)**: «% resuelto» = de lo que ingresó en el período sin rechazar, cuánto ya está
+  resuelto (nunca más de 100 %). El desglose por técnico (Tickets y Satisfacción) muestra a cada `staff.tecnico_mesa`
+  y agrupa al resto en «Jefatura y otros» para que los totales cuadren; solo lo recibe el JEFE (también el técnico de
+  cada respuesta de Satisfacción). La marca la cambia solo un JEFE (`trg_staff_tecnico_mesa`, 42501). Pendientes y
+  tramos salen de `backlog_tickets_en()`. La situación de un solicitante usa los umbrales de `config_parametros`.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

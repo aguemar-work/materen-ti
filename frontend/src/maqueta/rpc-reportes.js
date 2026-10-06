@@ -1,16 +1,17 @@
-// Lado servidor FALSO de las RPC de reportes (migración 115) para la maqueta:
-// `reporte_tickets(p_desde, p_hasta, p_tecnico)` y
+// Lado servidor FALSO de las RPC de reportes (migraciones 115 y 118) para la
+// maqueta: `reporte_tickets(p_desde, p_hasta, p_tecnico)`,
+// `reporte_satisfaccion(p_desde, p_hasta)` y
 // `reporte_satisfaccion_consolidado()`. Replica la MISMA aritmética que el SQL
-// (v_ticket_hechos + reporte_tickets_de) sobre la base en memoria, para que lo
-// que el dueño ve en la maqueta sea lo que el servidor devolvería con esos
-// datos: scripts/sql-local/verificar-migraciones.mjs (escenario S17) carga
-// este mismo fixture en PGlite y compara los dos resultados.
+// (v_ticket_hechos + reporte_tickets_de + reporte_satisfaccion_de) sobre la
+// base en memoria, para que lo que el dueño ve en la maqueta sea lo que el
+// servidor devolvería con esos datos: scripts/sql-local/verificar-migraciones.mjs
+// (escenario S17) carga este mismo fixture en PGlite y compara los resultados.
 //
 // Es un módulo PURO (sin globals del navegador): también lo importan el script
 // de paridad (`scripts/paridad-reporte-tickets.mjs --maqueta`) y los tests.
 // NADA de esto entra al bundle de producción.
 
-export const VERSION_DEFINICIONES = 'reportes-2026-10-03';
+export const VERSION_DEFINICIONES = 'reportes-2026-10-06';
 const ZONA = 'America/Lima';
 const TERMINALES = ['resuelto', 'cerrado', 'rechazado'];
 const ORDEN_PRIORIDAD = ['urgente', 'alta', 'media', 'baja'];
@@ -143,13 +144,18 @@ const TRAMOS = [
   { clave: 'de_8_a_30', etiqueta: '8 a 30 días', desde: 8, hasta: 30 },
   { clave: 'mas_30', etiqueta: 'Más de 30 días', desde: 31, hasta: null },
 ];
-export function backlogTramosEn(hechos, instante) {
-  const vigentes = hechos.filter((h) => {
+// backlog_tickets_en(instante) (118): los tickets vigentes con sus días.
+export function backlogTicketsEn(hechos, instante) {
+  return hechos.filter((h) => {
     if (new Date(h.created_at) > instante) return false;
     const previas = h.transiciones.filter((x) => new Date(x.t) <= instante);
     const estado = previas.length ? previas[previas.length - 1].a : (h.transiciones.length ? 'abierto' : h.estado);
     return !TERMINALES.includes(estado);
-  }).map((h) => Math.floor((instante - new Date(h.created_at)) / 86400000));
+  }).map((h) => ({ hecho: h, dias: Math.floor((instante - new Date(h.created_at)) / 86400000) }));
+}
+
+export function backlogTramosEn(hechos, instante) {
+  const vigentes = backlogTicketsEn(hechos, instante).map((v) => v.dias);
   return TRAMOS.map((t) => {
     const dias = vigentes.filter((d) => d >= t.desde && (t.hasta == null || d <= t.hasta));
     return { clave: t.clave, etiqueta: t.etiqueta, cantidad: dias.length, dias_mas_antiguo: dias.length ? Math.max(...dias) : null };
@@ -229,19 +235,62 @@ export function reporteTicketsDe(db, { user, desde, hasta, tecnico = null, compa
   const comentariosBajos = resueltos.filter((x) => x.encuesta_nivel != null && x.encuesta_nivel <= 2 && x.encuesta_comentario)
     .sort((a, b) => new Date(b.encuesta_respondida_at) - new Date(a.encuesta_respondida_at));
 
-  const tecnicos = [...new Set(u.filter((x) => x.resuelto_en || x.primera_resolucion_en).map((x) => x.tecnico_resolvio_id))].map((id) => {
-    const mios = u.filter((x) => x.tecnico_resolvio_id === id);
+  // Por técnico (118): cada técnico de mesa es su grupo; el resto, «Jefatura y otros».
+  const staffDe = (id) => (db.staff || []).find((s) => s.user_id === id);
+  const grupoDe = (x) => (staffDe(x.tecnico_resolvio_id)?.tecnico_mesa ? x.tecnico_resolvio_id : null);
+  const carga = new Map();
+  for (const x of hechos) if (x.asignado_a && !TERMINALES.includes(x.estado)) carga.set(x.asignado_a, (carga.get(x.asignado_a) || 0) + 1);
+  const filaGrupo = (mios) => {
     const r = mios.filter((x) => x.resuelto_en);
     const b = mios.filter((x) => x.primera_resolucion_en);
+    const c = csat(r);
+    const satisfechos = r.filter((x) => x.encuesta_nivel != null && x.encuesta_nivel >= 4).length;
     return {
-      tecnico_id: id, nombre: (db.staff || []).find((s) => s.user_id === id)?.nombre || null,
       resueltos: r.length, mismo_periodo: r.filter((x) => x.creado_en).length, arrastrados: r.filter((x) => !x.creado_en).length,
       tiempos: resumenTiempos(noNulos(r.map((x) => x.horas_resolucion))),
-      csat: csat(r),
+      csat: { ...c, satisfechos, pct_satisfaccion: c.n > 0 && c.n >= minimo ? pct(satisfechos, c.n) : null },
       reaperturas: { base: b.length, reabiertos: b.filter((x) => x.reabierto_en_corte).length },
-      asignados_hoy: hechos.filter((x) => x.asignado_a === id && !TERMINALES.includes(x.estado)).length,
     };
-  }).sort((a, b) => (b.resueltos - a.resueltos) || String(a.nombre ?? '￿').localeCompare(String(b.nombre ?? '￿')));
+  };
+  const ug = u.filter((x) => x.resuelto_en || x.primera_resolucion_en);
+  const mesa = (db.staff || []).filter((s) => s.tecnico_mesa && s.activo && (tecnico == null || s.user_id === tecnico)).map((s) => s.user_id);
+  const idsMesa = [...new Set([...mesa, ...ug.map(grupoDe).filter((g) => g != null)])];
+  const filasMesa = idsMesa.map((id) => ({
+    grupo: 'tecnico', tecnico_id: id, nombre: staffDe(id)?.nombre || null, ...filaGrupo(ug.filter((x) => grupoDe(x) === id)), asignados_hoy: carga.get(id) || 0,
+  })).sort((a, b) => (b.resueltos - a.resueltos) || String(a.nombre ?? '￿').localeCompare(String(b.nombre ?? '￿')));
+  const otros = {
+    grupo: 'otros', tecnico_id: null, nombre: null, ...filaGrupo(ug.filter((x) => grupoDe(x) == null)),
+    asignados_hoy: tecnico == null ? [...carga].filter(([id]) => !staffDe(id)?.tecnico_mesa).reduce((a, [, n]) => a + n, 0) : 0,
+  };
+  const tecnicos = [...filasMesa, ...(otros.resueltos > 0 || otros.reaperturas.base > 0 || otros.asignados_hoy > 0 ? [otros] : [])];
+
+  // Tablero, por día, pendientes y solicitantes (118): solo alcance de equipo.
+  const inicio = new Date(Math.min(inicioLima(desde).getTime(), ahora.getTime()));
+  const pend = backlogTicketsEn(hechos, cierre);
+  const ingresados = u.filter((x) => x.creado_en);
+  const validos = ingresados.length - ingresados.filter((x) => x.rechazado).length;
+  const resueltosDeIngresados = u.filter((x) => x.resuelto_en && x.creado_en).length;
+  const porDia = [];
+  if (tecnico == null && diasEntre(desde, hasta) < 31) {
+    for (let d = desde; d <= hasta; d = sumarDias(d, 1)) {
+      porDia.push({
+        dia: d,
+        ingresaron: u.filter((x) => x.creado_en && x.dia_creado === d).length,
+        rechazados: u.filter((x) => x.creado_en && x.rechazado && x.dia_creado === d).length,
+        resueltos: u.filter((x) => x.resuelto_en && x.dia_resuelto === d).length,
+      });
+    }
+  }
+  const grupos = new Map();
+  for (const x of ingresados) {
+    const k = x.vinculado ? x.empleado_id : null;
+    if (!grupos.has(k)) grupos.set(k, { empleado_id: k, solicitante: x.solicitante, area: k == null ? null : x.area_obra_nombre, tickets: 0, sin_resolver: 0 });
+    const g = grupos.get(k);
+    g.tickets += 1;
+    if (!x.resuelto_en && !x.rechazado) g.sin_resolver += 1;
+  }
+  const solicitantes = [...grupos.values()]
+    .sort((a, b) => (b.tickets - a.tickets) || ((a.empleado_id == null) - (b.empleado_id == null)) || String(a.solicitante).localeCompare(String(b.solicitante)));
 
   const arrastrados = resueltos.filter((x) => x.dia_creado < desde).map((x) => ({
     codigo: x.codigo, titulo: x.titulo, created_at: x.created_at, resuelto_at: x.resuelto_at,
@@ -276,6 +325,27 @@ export function reporteTicketsDe(db, { user, desde, hasta, tecnico = null, compa
         tramos: backlog.map(({ clave, etiqueta, cantidad }) => ({ clave, etiqueta, cantidad })),
       },
     },
+    tablero: tecnico ? null : {
+      ingresaron: ingresados.length, rechazados: ingresados.length - validos, validos,
+      resueltos: resueltos.length, resueltos_de_ingresados: resueltosDeIngresados,
+      pct_resuelto: pct(resueltosDeIngresados, validos),
+      pendientes_inicio: backlogTicketsEn(hechos, inicio).length,
+      pendientes_cierre: pend.length,
+    },
+    por_dia: porDia.length ? porDia : null,
+    pendientes: tecnico ? null : {
+      referencia: completo ? 'cierre' : 'ahora',
+      total: pend.length,
+      sin_asignar_hoy: hechos.filter((x) => !x.asignado_a && !TERMINALES.includes(x.estado)).length,
+      lista: pend.slice().sort((a, b) => (b.dias - a.dias) || a.hecho.codigo.localeCompare(b.hecho.codigo)).slice(0, 100).map(({ hecho: x, dias }) => ({
+        codigo: x.codigo, titulo: x.titulo, prioridad: x.prioridad, estado_hoy: x.estado, created_at: x.created_at,
+        dias, asignado_a: x.asignado_a, solicitante: x.solicitante,
+      })),
+    },
+    solicitantes: tecnico ? null : {
+      total: solicitantes.length,
+      top: solicitantes.slice(0, 10).map(({ solicitante, area, tickets, sin_resolver }) => ({ solicitante, area, tickets, sin_resolver })),
+    },
     por,
     atencion: { unidad: 'horas corridas', resolucion: resumenTiempos(horas), primera_respuesta: resumenTiempos(horasPr), por_prioridad: porPrioridad },
     calidad: {
@@ -290,6 +360,9 @@ export function reporteTicketsDe(db, { user, desde, hasta, tecnico = null, compa
         minimo,
         niveles: Object.fromEntries([1, 2, 3, 4, 5].map((k) => [String(k), niveles.filter((x) => x === k).length])),
         insatisfechos: niveles.filter((x) => x <= 2).length,
+        satisfechos: niveles.filter((x) => x >= 4).length,
+        regulares: niveles.filter((x) => x === 3).length,
+        pct_satisfaccion: niveles.length > 0 && niveles.length >= minimo ? pct(niveles.filter((x) => x >= 4).length, niveles.length) : null,
       },
       comentarios_bajos: comentariosBajos.slice(0, 20).map((x) => ({ codigo: x.codigo, nivel: x.encuesta_nivel, comentario: x.encuesta_comentario, fecha: x.encuesta_respondida_at })),
       comentarios_bajos_total: comentariosBajos.length,
@@ -316,69 +389,114 @@ export function reporteTicketsDe(db, { user, desde, hasta, tecnico = null, compa
     resultado.comparacion = {
       periodo: { desde: antDesde, hasta: antHasta },
       parcial: primerDia == null || antDesde < primerDia,
-      volumen, atencion: anterior.atencion.resolucion, csat: anterior.calidad.csat, reaperturas: anterior.calidad.reaperturas,
+      volumen, tablero: anterior.tablero, atencion: anterior.atencion.resolucion, csat: anterior.calidad.csat, reaperturas: anterior.calidad.reaperturas,
     };
   }
   return resultado;
 }
 
-// ── reporte_satisfaccion_consolidado_de ─────────────────────────────────────
-export function satisfaccionConsolidadaDe(db, { user }) {
+// ── satisfaccion_fila (118) ─────────────────────────────────────────────────
+// La fila común de satisfacción: conteos, promedio con muestra mínima, % de
+// satisfechos (4 o 5) y, con umbrales [conforme, regular, mínimo por persona],
+// la situación del solicitante. Misma fórmula que public.satisfaccion_fila.
+export function filaSatisfaccion(filas, minimo, umbrales = null) {
+  const niveles = noNulos(filas.map((x) => x.encuesta_nivel));
+  const n = [1, 2, 3, 4, 5].map((k) => niveles.filter((v) => v === k).length);
+  const muestra = niveles.length;
+  const satisfechos = n[3] + n[4];
+  const generadas = filas.filter((x) => x.encuesta_generada).length;
+  const respondidas = filas.filter((x) => x.encuesta_respondida).length;
+  const pctv = muestra > 0 ? pct(satisfechos, muestra) : null;
+  let situacion = null;
+  if (umbrales) {
+    if (muestra === 0) situacion = 'sin_respuestas';
+    else if (muestra < umbrales[2]) situacion = 'pocas_respuestas';
+    else if (pctv >= umbrales[0]) situacion = 'conforme';
+    else if (pctv >= umbrales[1]) situacion = 'regular';
+    else situacion = 'inconforme';
+  }
+  return {
+    tickets: filas.length, encuestasGeneradas: generadas, encuestasRespondidas: respondidas, faltan: generadas - respondidas,
+    tasaRespuestaPct: pct(respondidas, generadas), muestra,
+    promedio: muestra >= minimo ? redondear(promedio(niveles)) : null, insuficiente: muestra < minimo,
+    niveles: Object.fromEntries(n.map((c, i) => [String(i + 1), c])),
+    satisfechos, regulares: n[2], insatisfechos: n[0] + n[1],
+    pctSatisfaccion: muestra > 0 && (umbrales || muestra >= minimo) ? pctv : null,
+    situacion,
+  };
+}
+
+// ── reporte_satisfaccion_de (118) ───────────────────────────────────────────
+export function satisfaccionDe(db, { user, desde = null, hasta = null, ahora = new Date() }) {
   const rol = (db.staff || []).find((s) => s.user_id === user);
   const modulos = (db.staff_modulos_permisos || []).filter((m) => m.staff_user_id === user).map((m) => m.modulo);
-  if (!rol || !rol.activo || !(rol.rol === 'JEFE' || modulos.includes('tickets'))) throw rechazo('42501', 'No autorizado');
+  const esJefe = !!rol && rol.activo && rol.rol === 'JEFE';
+  if (!rol || !rol.activo || !(esJefe || modulos.includes('tickets'))) throw rechazo('42501', 'No autorizado');
+  if ((desde == null) !== (hasta == null)) throw rechazo('P0001', 'Indique las dos fechas del período o ninguna (todo el historial).');
+  if (desde != null && desde > hasta) throw rechazo('P0001', 'El período no es válido: la fecha inicial debe ser anterior o igual a la final.');
+  if (desde != null && diasEntre(desde, hasta) >= 366) throw rechazo('P0001', 'El período no puede superar los 366 días.');
+
   const minimo = parametro(db, 'csat_muestra_minima', 5);
-  const hechos = hechosDeTickets(db);
-  const r = hechos.filter((h) => h.encuesta_generada).map((h) => ({
-    id: h.encuesta_id, ticket_id: h.ticket_id, ticket_codigo: h.codigo, ticket_titulo: h.titulo,
-    empleado_id: h.empleado_id, solicitante: h.solicitante, tecnico_id: h.tecnico_resolvio_id,
-    nivel: h.encuesta_nivel, comentario: h.encuesta_comentario, fecha_envio: h.encuesta_respondida_at,
-    created_at: h.encuesta_generada_at, respondida: h.encuesta_respondida,
-  }));
-  const grupo = (filas, extra) => {
-    const niveles = noNulos(filas.map((x) => x.nivel));
-    return {
-      ...extra,
-      encuestasGeneradas: filas.length, encuestasRespondidas: filas.filter((x) => x.respondida).length,
-      muestra: niveles.length, promedio: niveles.length >= minimo ? redondear(promedio(niveles)) : null, insuficiente: niveles.length < minimo,
-      niveles: Object.fromEntries([1, 2, 3, 4, 5].map((k) => [String(k), niveles.filter((x) => x === k).length])),
-      insatisfechos: niveles.filter((x) => x <= 2).length,
-      _crudo: promedio(niveles),
-    };
+  const umbrales = [parametro(db, 'satisfaccion_conforme_pct', 80), parametro(db, 'satisfaccion_regular_pct', 60), parametro(db, 'satisfaccion_minimo_persona', 3)];
+  const hoy = diaLima(ahora);
+  const staffDe = (id) => (db.staff || []).find((s) => s.user_id === id);
+  const b = hechosDeTickets(db)
+    .filter((h) => h.resuelto_vigente && (desde == null || (h.dia_resuelto >= desde && h.dia_resuelto <= hasta)))
+    .map((h) => ({ ...h, grupo_id: staffDe(h.tecnico_resolvio_id)?.tecnico_mesa ? h.tecnico_resolvio_id : null, solicitante_id: h.vinculado ? h.empleado_id : null }));
+  const agrupar = (clave) => {
+    const m = new Map();
+    for (const x of b) {
+      const k = clave(x);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(x);
+    }
+    return m;
   };
-  const peorPrimero = (a, b) => (a.insuficiente - b.insuficiente) || ((a._crudo ?? Infinity) - (b._crudo ?? Infinity)) || (b.encuestasGeneradas - a.encuestasGeneradas);
-  const limpiar = ({ _crudo, ...f }) => f;
-  const agrupar = (clave, extra) => [...new Set(r.map((x) => x[clave]))]
-    .map((k) => grupo(r.filter((x) => x[clave] === k), extra(k, r.find((x) => x[clave] === k))))
-    .sort(peorPrimero).map(limpiar);
-  const porMes = [...new Set(hechos.filter((h) => h.resuelto_vigente).map((h) => mesDe(h.dia_resuelto)))].sort().reverse()
-    .map((mes) => {
-      const filas = hechos.filter((h) => h.resuelto_vigente && mesDe(h.dia_resuelto) === mes);
-      const niveles = noNulos(filas.map((h) => h.encuesta_nivel));
-      return {
-        mes, encuestasGeneradas: filas.filter((h) => h.encuesta_generada).length, encuestasRespondidas: filas.filter((h) => h.encuesta_respondida).length,
-        muestra: niveles.length, promedio: niveles.length >= minimo ? redondear(promedio(niveles)) : null, insuficiente: niveles.length < minimo,
-        niveles: Object.fromEntries([1, 2, 3, 4, 5].map((k) => [String(k), niveles.filter((x) => x === k).length])),
-        insatisfechos: niveles.filter((x) => x <= 2).length,
-      };
-    });
-  const todas = limpiar(grupo(r, {}));
+  const porMes = [...agrupar((x) => mesDe(x.dia_resuelto))].sort((a, c) => (a[0] < c[0] ? 1 : -1))
+    .map(([mes, filas]) => ({ mes, ...filaSatisfaccion(filas, minimo) }));
+  const grupos = agrupar((x) => x.grupo_id);
+  const mesa = (db.staff || []).filter((s) => s.tecnico_mesa && s.activo).map((s) => s.user_id);
+  const idsMesa = [...new Set([...mesa, ...[...grupos.keys()].filter((k) => k != null)])];
+  const porTecnico = [
+    ...idsMesa.map((id) => ({ grupo: 'tecnico', tecnico_id: id, nombre: staffDe(id)?.nombre || null, ...filaSatisfaccion(grupos.get(id) || [], minimo) }))
+      .sort((a, c) => (c.tickets - a.tickets) || String(a.nombre ?? '￿').localeCompare(String(c.nombre ?? '￿'))),
+    ...(grupos.has(null) ? [{ grupo: 'otros', tecnico_id: null, nombre: null, ...filaSatisfaccion(grupos.get(null), minimo) }] : []),
+  ];
+  const porSolicitante = [...agrupar((x) => x.solicitante_id)].map(([k, filas]) => ({
+    empleado_id: k, nombre: filas[0].solicitante, area: k == null ? null : filas[0].area_obra_nombre, ...filaSatisfaccion(filas, minimo, umbrales),
+  })).sort((a, c) => (c.tickets - a.tickets) || ((a.empleado_id == null) - (c.empleado_id == null)) || String(a.nombre).localeCompare(String(c.nombre)));
+
   return {
+    generado_en: ahora.toISOString(),
+    generado_por: { user_id: user, nombre: rol.nombre },
+    definiciones_version: VERSION_DEFINICIONES,
+    periodo: desde == null ? null : { desde, hasta, dias: diasEntre(desde, hasta) + 1, completo: hasta < hoy, en_curso: desde <= hoy && hasta >= hoy },
     muestraMinima: minimo,
-    resumen: {
-      encuestasGeneradas: todas.encuestasGeneradas, encuestasRespondidas: todas.encuestasRespondidas,
-      tasaRespuestaPct: pct(todas.encuestasRespondidas, todas.encuestasGeneradas),
-      muestra: todas.muestra, promedio: todas.promedio, insuficiente: todas.insuficiente, insatisfechos: todas.insatisfechos,
-    },
-    respuestas: r.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
-    porSolicitante: agrupar('empleado_id', (k, x) => ({ empleado_id: k, nombre: x.solicitante })),
-    porTecnico: agrupar('tecnico_id', (k) => ({ tecnico_id: k, nombre: (db.staff || []).find((s) => s.user_id === k)?.nombre || null })),
+    umbrales: { conformePct: umbrales[0], regularPct: umbrales[1], minimoPersona: umbrales[2] },
+    resumen: filaSatisfaccion(b, minimo),
     porMes,
+    porTecnico: esJefe ? porTecnico : null,
+    porSolicitante,
+    respuestas: b.filter((h) => h.encuesta_generada)
+      .sort((a, c) => new Date(c.encuesta_generada_at) - new Date(a.encuesta_generada_at))
+      .map((h) => ({
+        id: h.encuesta_id, ticket_id: h.ticket_id, ticket_codigo: h.codigo, ticket_titulo: h.titulo,
+        empleado_id: h.empleado_id, solicitante: h.solicitante, tecnico_id: esJefe ? h.tecnico_resolvio_id : null,
+        nivel: h.encuesta_nivel, comentario: h.encuesta_comentario, fecha_envio: h.encuesta_respondida_at,
+        created_at: h.encuesta_generada_at, respondida: h.encuesta_respondida,
+      })),
   };
+}
+
+// ── reporte_satisfaccion_consolidado_de (115, delega desde la 118) ──────────
+export function satisfaccionConsolidadaDe(db, { user, ahora = new Date() }) {
+  const r = satisfaccionDe(db, { user, ahora });
+  return Array.isArray(r.porTecnico) ? r : { ...r, porTecnico: [] };
 }
 
 // ── Entradas del mapa RPC de la maqueta (firma de la base) ──────────────────
 export const RPC_REPORTES = {
   reporte_tickets: (db, args = {}) => reporteTicketsDe(db, { user: actor.id, desde: args.p_desde, hasta: args.p_hasta, tecnico: args.p_tecnico || null }),
+  reporte_satisfaccion: (db, args = {}) => satisfaccionDe(db, { user: actor.id, desde: args.p_desde || null, hasta: args.p_hasta || null }),
   reporte_satisfaccion_consolidado: (db) => satisfaccionConsolidadaDe(db, { user: actor.id }),
 };

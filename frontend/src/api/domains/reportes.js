@@ -7,8 +7,9 @@
 //     volumen, atención (horas corridas), calidad, por técnico (solo lo recibe
 //     el JEFE: llega null para el resto), anexos, detalle de tickets y la
 //     comparación con el período anterior (solo períodos completos).
-//   · reporte_satisfaccion_consolidado() → histórico de satisfacción con la
-//     MISMA muestra mínima (csat_muestra_minima) que el reporte por período.
+//   · reporte_satisfaccion(p_desde, p_hasta) (118) → satisfacción de un
+//     período o de todo el historial con la MISMA muestra mínima
+//     (csat_muestra_minima) que el reporte de tickets.
 //
 // Las fechas viajan como 'YYYY-MM-DD' de calendario y el servidor arma el
 // rango en hora de Lima: el navegador no decide ningún corte.
@@ -49,19 +50,25 @@ export const reportesApi = {
     return reporte;
   },
 
-  // Consolidado histórico de satisfacción (todo el tiempo, sin recorte): la
-  // RPC devuelve respuestas, por solicitante, por técnico y por mes, cada
-  // promedio ya con su `muestra`, `insuficiente` y la `muestraMinima` vigente.
-  async obtenerSatisfaccionConsolidado() {
-    const { data, error } = await getClient().database.rpc('reporte_satisfaccion_consolidado');
+  // Satisfacción de la mesa de ayuda (migración 118): un período de Lima o,
+  // sin fechas, todo el historial. La RPC devuelve resumen, por mes, por
+  // solicitante (con lo que le falta responder y su situación), por técnico
+  // (solo al JEFE: null para el resto) y las respuestas; cada % y promedio ya
+  // viene con su muestra y la mínima vigente. Reemplaza al consolidado de la
+  // 115 (reporte_satisfaccion_consolidado sigue en la base para el frontend
+  // anterior).
+  async obtenerReporteSatisfaccion({ desde = '', hasta = '' } = {}) {
+    const args = desde || hasta ? periodo(desde, hasta) : { p_desde: null, p_hasta: null };
+    const { data, error } = await getClient().database.rpc('reporte_satisfaccion', args);
     if (error) throw anotarErrorDb(error, { porDefecto: 'No se pudo cargar la satisfacción de tickets.' });
     const r = (Array.isArray(data) ? data[0] : data) || {};
     return {
+      ...r,
       muestraMinima: r.muestraMinima ?? 5,
       resumen: r.resumen || null,
       respuestas: r.respuestas || [],
       porSolicitante: r.porSolicitante || [],
-      porTecnico: r.porTecnico || [],
+      porTecnico: Array.isArray(r.porTecnico) ? r.porTecnico : null,
       porMes: r.porMes || [],
     };
   },

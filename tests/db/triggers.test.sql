@@ -5822,6 +5822,10 @@ begin
   alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
   update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 115a' where user_id = v_jefe;
   update public.staff set activo = true, nombre = 'Asistente 115a' where user_id = v_asis;
+  -- Desde la 118 el desglose por técnico muestra solo a los técnicos de mesa: el asistente lo es.
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'staff' and column_name = 'tecnico_mesa') then
+    execute 'update public.staff set tecnico_mesa = true where user_id = $1' using v_asis;
+  end if;
   insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 115a') returning id into v_empresa;
   insert into public.areas_obras (nombre) values ('__TEST_CI__ Obra 115a') returning id into v_area;
   insert into public.empleados (nombres, apellidos, dni, empresa_id, area_obra_id) values ('Test', 'CI 115a', '99011501', v_empresa, v_area) returning id into v_e1;
@@ -6123,7 +6127,10 @@ begin
   end if;
   r := public.reporte_satisfaccion_consolidado_de(v_jefe);
   if (r ->> 'muestraMinima')::int <> 6 or (r -> 'resumen' -> 'promedio') <> 'null'::jsonb
-     or not exists (select 1 from jsonb_array_elements(r -> 'porTecnico') t where (t ->> 'tecnico_id')::uuid = v_jefe and (t ->> 'insuficiente')::boolean and (t ->> 'insatisfechos')::int = 1) then
+     -- el jefe no es técnico de mesa: desde la 118 su fila es «Jefatura y otros» (grupo 'otros', sin tecnico_id)
+     or not exists (select 1 from jsonb_array_elements(r -> 'porTecnico') t
+                     where ((t ->> 'tecnico_id')::uuid = v_jefe or t ->> 'grupo' = 'otros')
+                       and (t ->> 'insuficiente')::boolean and (t ->> 'insatisfechos')::int = 1) then
     fallos := fallos || '[115] el consolidado de satisfaccion no aplica la misma muestra minima: ' || (r ->> 'resumen') || '; ';
   end if;
 
@@ -7347,5 +7354,303 @@ begin
     raise exception 'TESTS_OK [117e] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [117e]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 118a — tablero de mesa de ayuda (migración 118): en una semana de
+-- marzo de 2015 (vacía en cualquier base) el % resuelto cuenta solo lo que
+-- ingresó y no se rechazó, por día cubre los 7 días, los pendientes al inicio
+-- y al cierre salen de backlog_tickets_en (lo mismo que los tramos), los
+-- solicitantes agrupan lo que ingresó, y por técnico muestra a cada técnico de
+-- mesa (aunque no haya resuelto nada) y a la jefatura en «otros».
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_asis2 uuid;
+  v_empresa uuid;
+  v_e1 uuid;
+  v_e2 uuid;
+  v_t uuid;
+  v_lun date := date '2015-03-09'; -- lunes de una semana fija y vacía en cualquier base
+  v_dom date;
+  r jsonb;
+  f jsonb;
+  fallos text := '';
+begin
+  v_dom := v_lun + 6;
+  insert into auth.users (email) values ('__test_ci_118a_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_118a_asis@example.test') returning id into v_asis;
+  insert into auth.users (email) values ('__test_ci_118a_asis2@example.test') returning id into v_asis2;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 118a', tecnico_mesa = false where user_id = v_jefe;
+  update public.staff set activo = true, nombre = 'Tecnico 118a', tecnico_mesa = true where user_id = v_asis;
+  update public.staff set activo = true, nombre = 'Tecnico Dos 118a', tecnico_mesa = true where user_id = v_asis2;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 118a') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'Uno 118a', '99011811', v_empresa) returning id into v_e1;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Test', 'Dos 118a', '99011812', v_empresa) returning id into v_e2;
+
+  alter table public.tickets disable trigger tickets_resuelto_at;
+  -- T1: ingresa y se resuelve el martes (técnico), encuesta 5
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_118A_1', lpad('118a1', 24, 'x'), 'T1', 'd', 'cerrado', 'media', v_e1,
+            ((v_lun + 1) + time '08:00') at time zone 'America/Lima', ((v_lun + 1) + time '10:00') at time zone 'America/Lima')
+    returning id into v_t;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_t, 'estado_cambiado', 'De "abierto" a "resuelto"', ((v_lun + 1) + time '10:00') at time zone 'America/Lima', v_asis);
+  insert into public.ticket_satisfaccion (ticket_id, nivel, fecha_envio, created_at)
+    values (v_t, 5, ((v_lun + 2) + time '09:00') at time zone 'America/Lima', ((v_lun + 1) + time '10:00:01') at time zone 'America/Lima');
+  -- T2: ingresa el martes, lo resuelve el jefe el jueves, encuesta 2
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_118A_2', lpad('118a2', 24, 'x'), 'T2', 'd', 'cerrado', 'alta', v_e1,
+            ((v_lun + 1) + time '09:00') at time zone 'America/Lima', ((v_lun + 3) + time '09:00') at time zone 'America/Lima')
+    returning id into v_t;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_t, 'estado_cambiado', 'De "abierto" a "resuelto"', ((v_lun + 3) + time '09:00') at time zone 'America/Lima', v_jefe);
+  insert into public.ticket_satisfaccion (ticket_id, nivel, fecha_envio, created_at)
+    values (v_t, 2, ((v_lun + 4) + time '09:00') at time zone 'America/Lima', ((v_lun + 3) + time '09:00:01') at time zone 'America/Lima');
+  -- T3: ingresa el miércoles y se rechaza
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at)
+    values ('__TEST_CI_118A_3', lpad('118a3', 24, 'x'), 'T3', 'd', 'rechazado', 'baja', v_e2,
+            ((v_lun + 2) + time '08:00') at time zone 'America/Lima')
+    returning id into v_t;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_t, 'estado_cambiado', 'De "abierto" a "rechazado"', ((v_lun + 2) + time '09:00') at time zone 'America/Lima', v_jefe);
+  -- T4: ingresa el jueves y sigue abierto, asignado al técnico
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, asignado_a, created_at)
+    values ('__TEST_CI_118A_4', lpad('118a4', 24, 'x'), 'T4', 'd', 'abierto', 'media', v_e2, v_asis,
+            ((v_lun + 3) + time '08:00') at time zone 'America/Lima');
+  -- T5: ingresó el jueves anterior y el técnico lo resuelve el lunes (arrastrado)
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+    values ('__TEST_CI_118A_5', lpad('118a5', 24, 'x'), 'T5', 'd', 'cerrado', 'media', v_e1,
+            ((v_lun - 4) + time '08:00') at time zone 'America/Lima', (v_lun + time '10:00') at time zone 'America/Lima')
+    returning id into v_t;
+  insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id) values
+    (v_t, 'estado_cambiado', 'De "abierto" a "resuelto"', (v_lun + time '10:00') at time zone 'America/Lima', v_asis);
+  alter table public.tickets enable trigger tickets_resuelto_at;
+
+  r := public.reporte_tickets_de(v_jefe, v_lun, v_dom);
+  f := r -> 'tablero';
+  if (f ->> 'ingresaron')::int <> 4 or (f ->> 'rechazados')::int <> 1 or (f ->> 'validos')::int <> 3
+     or (f ->> 'resueltos')::int <> 3 or (f ->> 'resueltos_de_ingresados')::int <> 2 or (f ->> 'pct_resuelto')::int <> 67
+     or (f ->> 'pendientes_inicio')::int <> 1 or (f ->> 'pendientes_cierre')::int <> 1 then
+    fallos := fallos || '[118] tablero de la semana incorrecto: ' || coalesce(f::text, 'null') || '; ';
+  end if;
+  if jsonb_array_length(r -> 'por_dia') <> 7
+     or (r -> 'por_dia' -> 1 ->> 'ingresaron')::int <> 2 or (r -> 'por_dia' -> 1 ->> 'resueltos')::int <> 1
+     or (r -> 'por_dia' -> 0 ->> 'resueltos')::int <> 1 or (r -> 'por_dia' -> 2 ->> 'rechazados')::int <> 1
+     or (select sum((d ->> 'ingresaron')::int) from jsonb_array_elements(r -> 'por_dia') d) <> 4 then
+    fallos := fallos || '[118] por_dia incorrecto: ' || coalesce(r ->> 'por_dia', 'null') || '; ';
+  end if;
+  if (r -> 'pendientes' ->> 'total')::int <> 1 or (r -> 'pendientes' ->> 'referencia') <> 'cierre'
+     or (r -> 'pendientes' -> 'lista' -> 0 ->> 'codigo') <> '__TEST_CI_118A_4'
+     or (r -> 'pendientes' -> 'lista' -> 0 ->> 'dias')::int <> 3
+     or (r -> 'pendientes' ->> 'total')::int <> (r -> 'volumen' -> 'backlog' ->> 'total')::int then
+    fallos := fallos || '[118] pendientes incorrectos: ' || coalesce(r ->> 'pendientes', 'null') || '; ';
+  end if;
+  if (r -> 'solicitantes' ->> 'total')::int <> 2
+     or not exists (select 1 from jsonb_array_elements(r -> 'solicitantes' -> 'top') s
+                     where s ->> 'solicitante' = 'Test Dos 118a' and (s ->> 'tickets')::int = 2 and (s ->> 'sin_resolver')::int = 1)
+     or not exists (select 1 from jsonb_array_elements(r -> 'solicitantes' -> 'top') s
+                     where s ->> 'solicitante' = 'Test Uno 118a' and (s ->> 'tickets')::int = 2 and (s ->> 'sin_resolver')::int = 0) then
+    fallos := fallos || '[118] solicitantes incorrectos: ' || coalesce(r ->> 'solicitantes', 'null') || '; ';
+  end if;
+  if (r -> 'calidad' -> 'csat' ->> 'satisfechos')::int <> 1 or (r -> 'calidad' -> 'csat' ->> 'regulares')::int <> 0
+     or r -> 'calidad' -> 'csat' -> 'pct_satisfaccion' <> 'null'::jsonb then
+    fallos := fallos || '[118] satisfechos del periodo incorrectos: ' || (r -> 'calidad' ->> 'csat') || '; ';
+  end if;
+  -- por técnico: el técnico (2 resueltos: 1 del período y 1 arrastrado, 1 asignado hoy), el otro técnico en cero y la
+  -- jefatura en «otros» (sin nombre ni id)
+  if not exists (select 1 from jsonb_array_elements(r -> 'por_tecnico') t
+                  where (t ->> 'tecnico_id')::uuid = v_asis and t ->> 'grupo' = 'tecnico' and (t ->> 'resueltos')::int = 2
+                    and (t ->> 'mismo_periodo')::int = 1 and (t ->> 'arrastrados')::int = 1 and (t ->> 'asignados_hoy')::int = 1
+                    and (t -> 'csat' ->> 'satisfechos')::int = 1)
+     or not exists (select 1 from jsonb_array_elements(r -> 'por_tecnico') t
+                     where (t ->> 'tecnico_id')::uuid = v_asis2 and (t ->> 'resueltos')::int = 0)
+     or not exists (select 1 from jsonb_array_elements(r -> 'por_tecnico') t
+                     where t ->> 'grupo' = 'otros' and t -> 'tecnico_id' = 'null'::jsonb and (t ->> 'resueltos')::int = 1)
+     or exists (select 1 from jsonb_array_elements(r -> 'por_tecnico') t where (t ->> 'tecnico_id')::uuid = v_jefe) then
+    fallos := fallos || '[118] por_tecnico incorrecto: ' || coalesce(r ->> 'por_tecnico', 'null') || '; ';
+  end if;
+  if (select sum((t ->> 'resueltos')::int) from jsonb_array_elements(r -> 'por_tecnico') t) <> (r -> 'tablero' ->> 'resueltos')::int then
+    fallos := fallos || '[118] la suma por tecnico no da los resueltos del tablero; ';
+  end if;
+  if r ->> 'definiciones_version' <> 'reportes-2026-10-06' then
+    fallos := fallos || '[118] definiciones_version no se actualizo; ';
+  end if;
+  -- un día: un solo elemento en por_dia; la semana se compara con los 7 días anteriores (con su tablero)
+  r := public.reporte_tickets_de(v_jefe, v_lun + 1, v_lun + 1);
+  if jsonb_array_length(r -> 'por_dia') <> 1 or (r -> 'tablero' ->> 'ingresaron')::int <> 2
+     or (r -> 'comparacion' -> 'periodo' ->> 'desde')::date <> v_lun or r -> 'comparacion' -> 'tablero' is null then
+    fallos := fallos || '[118] el reporte de un dia es incorrecto: ' || coalesce(r ->> 'tablero', 'null') || '; ';
+  end if;
+  -- alcance técnico: sin tablero, por día, pendientes ni solicitantes
+  r := public.reporte_tickets_de(v_jefe, v_lun, v_dom, v_asis);
+  if r -> 'tablero' <> 'null'::jsonb or r -> 'por_dia' <> 'null'::jsonb or r -> 'pendientes' <> 'null'::jsonb or r -> 'solicitantes' <> 'null'::jsonb then
+    fallos := fallos || '[118] el alcance tecnico trae bloques de equipo; ';
+  end if;
+  -- más de 31 días: sin por_dia
+  r := public.reporte_tickets_de(v_jefe, v_lun - 40, v_dom);
+  if r -> 'por_dia' <> 'null'::jsonb then
+    fallos := fallos || '[118] por_dia aparece en un periodo de mas de 31 dias; ';
+  end if;
+  -- la lista de vigentes y los tramos cuentan lo mismo a cualquier instante
+  if (select sum(cantidad) from public.backlog_tramos_en((v_lun + 4)::timestamp at time zone 'America/Lima'))
+     <> (select count(*) from public.backlog_tickets_en((v_lun + 4)::timestamp at time zone 'America/Lima')) then
+    fallos := fallos || '[118] backlog_tramos_en y backlog_tickets_en no coinciden; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [118a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [118a]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 118b — satisfacción por período (118): por solicitante (tickets,
+-- encuestas que le faltan, % y situación con los umbrales de
+-- config_parametros), por técnico de mesa solo para el JEFE (la jefatura en
+-- «otros»), el técnico de cada respuesta oculto para el resto, el consolidado
+-- de la 115 delegando, y el período validado.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_sinmod uuid;
+  v_empresa uuid;
+  v_e uuid[] := array[]::uuid[];
+  v_id uuid;
+  v_t uuid;
+  v_m date := date '2015-03-01'; -- mes fijo y vacío en cualquier base
+  v_m_fin date;
+  -- (empleado 1..4, nivel o null = sin responder, -1 = sin encuesta, resolvió el técnico)
+  v_casos int[][] := array[[1, 5, 1], [1, 5, 1], [1, 4, 1], [1, 4, 1], [1, 3, 1],
+                           [2, 5, 0], [2, 2, 0], [2, 1, 0],
+                           [3, 5, 0], [3, 0, 0],
+                           [4, -1, 0]];
+  i int;
+  r jsonb;
+  s jsonb;
+  fallos text := '';
+begin
+  v_m_fin := (v_m + interval '1 month')::date - 1;
+  insert into auth.users (email) values ('__test_ci_118b_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_118b_asis@example.test') returning id into v_asis;
+  insert into auth.users (email) values ('__test_ci_118b_sinmod@example.test') returning id into v_sinmod;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 118b', tecnico_mesa = false where user_id = v_jefe;
+  update public.staff set activo = true, nombre = 'Tecnico 118b', tecnico_mesa = true where user_id = v_asis;
+  update public.staff set activo = true where user_id = v_sinmod;
+  delete from public.staff_modulos_permisos where staff_user_id = v_sinmod;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 118b') returning id into v_empresa;
+  for i in 1..4 loop
+    insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Persona', i || ' 118b', '9901182' || i, v_empresa) returning id into v_id;
+    v_e := v_e || v_id;
+  end loop;
+
+  alter table public.tickets disable trigger tickets_resuelto_at;
+  for i in 1..array_length(v_casos, 1) loop
+    insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, empleado_id, created_at, resuelto_at)
+      values ('__TEST_CI_118B_' || i, lpad('118b' || i, 24, 'x'), 'Ticket ' || i, 'd', 'cerrado', 'media', v_e[v_casos[i][1]],
+              ((v_m + i) + time '08:00') at time zone 'America/Lima', ((v_m + i) + time '10:00') at time zone 'America/Lima')
+      returning id into v_t;
+    insert into public.ticket_eventos (ticket_id, evento, detalle, created_at, user_id)
+      values (v_t, 'estado_cambiado', 'De "en_progreso" a "resuelto"', ((v_m + i) + time '10:00') at time zone 'America/Lima',
+              case when v_casos[i][3] = 1 then v_asis else v_jefe end);
+    if v_casos[i][2] >= 0 then
+      insert into public.ticket_satisfaccion (ticket_id, nivel, fecha_envio, created_at)
+        values (v_t, nullif(v_casos[i][2], 0),
+                case when v_casos[i][2] > 0 then ((v_m + i + 1) + time '10:00') at time zone 'America/Lima' end,
+                ((v_m + i) + time '10:00:01') at time zone 'America/Lima');
+    end if;
+  end loop;
+  alter table public.tickets enable trigger tickets_resuelto_at;
+
+  r := public.reporte_satisfaccion_de(v_jefe, v_m, v_m_fin);
+  s := r -> 'resumen';
+  -- 11 tickets, 10 encuestas, 9 respondidas; 6 satisfechos de 9 = 67 %; promedio 34/9 = 3.78
+  if (s ->> 'tickets')::int <> 11 or (s ->> 'encuestasGeneradas')::int <> 10 or (s ->> 'encuestasRespondidas')::int <> 9
+     or (s ->> 'faltan')::int <> 1 or (s ->> 'satisfechos')::int <> 6 or (s ->> 'regulares')::int <> 1
+     or (s ->> 'insatisfechos')::int <> 2 or (s ->> 'pctSatisfaccion')::int <> 67 or (s ->> 'promedio')::numeric <> 3.78 then
+    fallos := fallos || '[118] resumen de satisfaccion incorrecto: ' || s::text || '; ';
+  end if;
+  if (r -> 'periodo' ->> 'desde')::date <> v_m or (r -> 'umbrales' ->> 'conformePct')::int <> 80 or jsonb_array_length(r -> 'porMes') <> 1 then
+    fallos := fallos || '[118] periodo, umbrales o meses incorrectos; ';
+  end if;
+  -- situaciones por solicitante
+  select x into s from jsonb_array_elements(r -> 'porSolicitante') x where (x ->> 'empleado_id')::uuid = v_e[1];
+  if s is null or s ->> 'situacion' <> 'conforme' or (s ->> 'pctSatisfaccion')::int <> 80 or (s ->> 'tickets')::int <> 5 then
+    fallos := fallos || '[118] solicitante 1 (conforme) incorrecto: ' || coalesce(s::text, 'null') || '; ';
+  end if;
+  select x into s from jsonb_array_elements(r -> 'porSolicitante') x where (x ->> 'empleado_id')::uuid = v_e[2];
+  if s is null or s ->> 'situacion' <> 'inconforme' or (s ->> 'pctSatisfaccion')::int <> 33 then
+    fallos := fallos || '[118] solicitante 2 (inconforme) incorrecto: ' || coalesce(s::text, 'null') || '; ';
+  end if;
+  select x into s from jsonb_array_elements(r -> 'porSolicitante') x where (x ->> 'empleado_id')::uuid = v_e[3];
+  if s is null or s ->> 'situacion' <> 'pocas_respuestas' or (s ->> 'faltan')::int <> 1 or (s ->> 'pctSatisfaccion')::int <> 100 then
+    fallos := fallos || '[118] solicitante 3 (pocas respuestas, le falta 1) incorrecto: ' || coalesce(s::text, 'null') || '; ';
+  end if;
+  select x into s from jsonb_array_elements(r -> 'porSolicitante') x where (x ->> 'empleado_id')::uuid = v_e[4];
+  if s is null or s ->> 'situacion' <> 'sin_respuestas' or (s ->> 'tickets')::int <> 1 or (s ->> 'encuestasGeneradas')::int <> 0
+     or s -> 'pctSatisfaccion' <> 'null'::jsonb then
+    fallos := fallos || '[118] solicitante 4 (sin respuestas) incorrecto: ' || coalesce(s::text, 'null') || '; ';
+  end if;
+  -- por técnico: el técnico con 5 tickets y 80 %; la jefatura en «otros» con 6 tickets y n insuficiente (4 < 5)
+  if not exists (select 1 from jsonb_array_elements(r -> 'porTecnico') t
+                  where (t ->> 'tecnico_id')::uuid = v_asis and (t ->> 'tickets')::int = 5 and (t ->> 'pctSatisfaccion')::int = 80)
+     or not exists (select 1 from jsonb_array_elements(r -> 'porTecnico') t
+                     where t ->> 'grupo' = 'otros' and (t ->> 'tickets')::int = 6 and (t ->> 'muestra')::int = 4
+                       and (t ->> 'insuficiente')::boolean and t -> 'pctSatisfaccion' = 'null'::jsonb) then
+    fallos := fallos || '[118] satisfaccion por tecnico incorrecta: ' || coalesce(r ->> 'porTecnico', 'null') || '; ';
+  end if;
+  -- un umbral más alto: el solicitante 1 pasa a regular
+  update public.config_parametros set valor = '85'::jsonb where clave = 'satisfaccion_conforme_pct';
+  r := public.reporte_satisfaccion_de(v_jefe, v_m, v_m_fin);
+  if not exists (select 1 from jsonb_array_elements(r -> 'porSolicitante') x where (x ->> 'empleado_id')::uuid = v_e[1] and x ->> 'situacion' = 'regular') then
+    fallos := fallos || '[118] el umbral de conforme no sale de config_parametros; ';
+  end if;
+  -- un asistente: sin por técnico ni el técnico de cada respuesta; el consolidado le da una lista vacía
+  r := public.reporte_satisfaccion_de(v_asis, v_m, v_m_fin);
+  if r -> 'porTecnico' <> 'null'::jsonb or exists (select 1 from jsonb_array_elements(r -> 'respuestas') x where x -> 'tecnico_id' <> 'null'::jsonb) then
+    fallos := fallos || '[118] un asistente recibio la satisfaccion por tecnico; ';
+  end if;
+  if jsonb_typeof(public.reporte_satisfaccion_consolidado_de(v_asis) -> 'porTecnico') <> 'array'
+     or jsonb_array_length(public.reporte_satisfaccion_consolidado_de(v_asis) -> 'porTecnico') <> 0 then
+    fallos := fallos || '[118] el consolidado no devuelve una lista vacia por tecnico al asistente; ';
+  end if;
+  -- guard y período
+  begin
+    perform public.reporte_satisfaccion_de(v_sinmod, v_m, v_m_fin);
+    fallos := fallos || '[118] satisfaccion respondio sin el modulo tickets; ';
+  exception when others then
+    if sqlstate <> '42501' then fallos := fallos || '[118] sin modulo lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.reporte_satisfaccion_de(v_jefe, v_m, null);
+    fallos := fallos || '[118] se acepto un periodo con una sola fecha; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[118] una sola fecha lanzo ' || sqlstate || '; '; end if;
+  end;
+  begin
+    perform public.reporte_satisfaccion_de(v_jefe, v_m - 400, v_m);
+    fallos := fallos || '[118] se acepto un periodo de mas de 366 dias; ';
+  exception when others then
+    if sqlstate <> 'P0001' then fallos := fallos || '[118] periodo largo lanzo ' || sqlstate || '; '; end if;
+  end;
+  if not has_function_privilege('authenticated', 'public.reporte_satisfaccion(date, date)', 'execute')
+     or has_function_privilege('anon', 'public.reporte_satisfaccion(date, date)', 'execute')
+     or has_function_privilege('authenticated', 'public.reporte_satisfaccion_de(uuid, date, date)', 'execute')
+     or has_function_privilege('authenticated', 'public.satisfaccion_fila(integer, integer, integer, numeric, integer, integer, integer, integer, integer, integer, integer[])', 'execute') then
+    fallos := fallos || '[118] EXECUTE de satisfaccion incorrecto; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [118b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [118b]: %', fallos;
   end if;
 end $$;

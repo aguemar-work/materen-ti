@@ -15,7 +15,6 @@ const areas = computed(() => reportesPorArea(auth));
 const ALCANCE = {
   periodo: 'Por período',
   corte: 'Al momento',
-  historico: 'Todo el historial',
   ronda: 'Por ronda',
 };
 </script>

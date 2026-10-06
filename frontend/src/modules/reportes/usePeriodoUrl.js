@@ -7,14 +7,16 @@ import { computed } from 'vue';
 import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import { normalizarPeriodo, etiquetaPeriodo } from './periodo.js';
 
-export function usePeriodoUrl(extra = {}) {
+// `permitirTodo` (Satisfacción): acepta `?tipo=todo`, todo el historial sin fechas.
+export function usePeriodoUrl(extra = {}, { permitirTodo = false } = {}) {
   const { filtros } = useFiltrosUrl({
     tipo: { tipo: 'valor', defecto: 'mes' },
     desde: { tipo: 'valor' },
     hasta: { tipo: 'valor' },
     ...extra,
   });
-  const periodo = computed(() => normalizarPeriodo(filtros));
+  const normalizar = (p) => normalizarPeriodo(p, undefined, { permitirTodo });
+  const periodo = computed(() => normalizar(filtros));
   const etiqueta = computed(() => etiquetaPeriodo(periodo.value));
 
   function fijarPeriodo(p) {
@@ -29,7 +31,7 @@ export function usePeriodoUrl(extra = {}) {
    * (entonces el llamador carga una vez).
    */
   function normalizarUrl() {
-    const p = normalizarPeriodo(filtros);
+    const p = normalizar(filtros);
     if (p.tipo !== filtros.tipo || p.desde !== filtros.desde || p.hasta !== filtros.hasta) {
       fijarPeriodo(p);
       return false;

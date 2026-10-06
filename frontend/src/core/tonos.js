@@ -176,6 +176,15 @@ export const TONO_RELOJ_TICKET = Object.freeze({
   pausado: 'neutro',
 });
 
+/** Situación de un solicitante en el reporte de Satisfacción (migración 118). */
+export const TONO_SITUACION_SATISFACCION = Object.freeze({
+  conforme: 'ok',
+  regular: 'accion',
+  inconforme: 'critico',
+  pocas_respuestas: 'neutro',
+  sin_respuestas: 'neutro',
+});
+
 /** Situación derivada de un equipo (`core/dominio-equipos.js`). */
 export const TONO_SITUACION_EQUIPO = Object.freeze({
   disponible: 'ok',
@@ -344,6 +353,7 @@ export const MAPAS_DE_TONO = Object.freeze({
   ticket: TONO_ESTADO_TICKET,
   prioridad: TONO_PRIORIDAD,
   reloj_ticket: TONO_RELOJ_TICKET,
+  situacion_satisfaccion: TONO_SITUACION_SATISFACCION,
   situacion_equipo: TONO_SITUACION_EQUIPO,
   estado_fisico_equipo: TONO_ESTADO_FISICO_EQUIPO,
   empleado: TONO_ESTADO_EMPLEADO,

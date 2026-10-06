@@ -57,8 +57,8 @@ definirActorCatalogoTickets({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asi
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
   { user_id: 'u-jefe', nombre: 'Alejandro Guevara', rol: 'JEFE', activo: true, created_at: hace(400) },
-  { user_id: 'u-asis-1', nombre: 'Diego Huamán Rojas', rol: 'ASISTENTE', activo: true, created_at: hace(200) },
-  { user_id: 'u-asis-2', nombre: 'Lucía Paredes Soto', rol: 'ASISTENTE', activo: true, created_at: hace(90) },
+  { user_id: 'u-asis-1', nombre: 'Diego Huamán Rojas', rol: 'ASISTENTE', activo: true, tecnico_mesa: true, created_at: hace(200) },
+  { user_id: 'u-asis-2', nombre: 'Lucía Paredes Soto', rol: 'ASISTENTE', activo: true, tecnico_mesa: true, created_at: hace(90) },
   { user_id: 'u-asis-3', nombre: 'Kevin Ramos Álvarez', rol: 'ASISTENTE', activo: false, created_at: hace(2) },
 ];
 

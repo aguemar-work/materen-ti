@@ -5,7 +5,9 @@
 // asignado hoy (la bandeja ya lo mostraba a todo el módulo). Nunca lleva DNI ni
 // contacto (el servidor no los envía); el nombre de quien RESOLVIÓ solo va
 // cuando el servidor entregó la sección por técnico (es decir, al JEFE): para
-// el resto la columna no existe.
+// el resto la columna no existe. Desde la 118 la sección agrupa a quien no es
+// técnico de mesa en «Jefatura y otros»; el CSV es el detalle y nombra a la
+// persona (staff_nombres).
 import { formatFechaHora } from '../../core/formatters.js';
 import { estadoInfo, prioridadInfo } from '../../core/dominio-tickets.js';
 
@@ -43,7 +45,7 @@ export function filasCsvReporte(reporte, { nombresStaff = {} } = {}) {
     t.area || 'Sin registrar',
     t.solicitante || 'Sin vincular',
     t.asignado_a ? (nombresStaff[t.asignado_a] || 'Staff') : 'Sin asignar',
-    ...(conTecnico ? [t.tecnico_id ? (nombres.get(t.tecnico_id) || 'Sin registrar') : ''] : []),
+    ...(conTecnico ? [t.tecnico_id ? (nombres.get(t.tecnico_id) || nombresStaff[t.tecnico_id] || 'Sin registrar') : ''] : []),
     t.encuesta_nivel == null ? '' : String(t.encuesta_nivel),
   ]);
   return { cabecera: cabecera(conTecnico), filas };

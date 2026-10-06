@@ -1,5 +1,6 @@
 // Período del reporte: el staff elige un MES de calendario (por defecto el
-// actual), una SEMANA (lunes a domingo) o un RANGO libre, siempre como fechas
+// actual), una SEMANA (lunes a domingo), un DÍA (migración 118: el tablero
+// diario de la mesa de ayuda) o un RANGO libre, siempre como fechas
 // 'YYYY-MM-DD'. Acá solo se arman y se navegan esas fechas; el corte real
 // (00:00 de Lima del primer día, 24:00 del último) lo construye el servidor
 // (reporte_tickets, migración 115), nunca el navegador. "Hoy" también es el de
@@ -11,6 +12,21 @@ export const TIPOS_PERIODO = [
   { valor: 'semana', label: 'Semana' },
   { valor: 'rango', label: 'Rango' },
 ];
+
+// Mesa de ayuda (Tickets y Satisfacción, 118): el día y la semana van primero
+// porque son los reportes que se envían a gerencia.
+export const TIPOS_PERIODO_MESA = [
+  { valor: 'dia', label: 'Día' },
+  { valor: 'semana', label: 'Semana' },
+  { valor: 'mes', label: 'Mes' },
+  { valor: 'rango', label: 'Rango' },
+];
+
+// Satisfacción admite además todo el historial (sin fechas: el servidor no
+// recorta). Solo lo acepta quien lo pide (`permitirTodo`).
+export const TIPO_TODO = { valor: 'todo', label: 'Todo' };
+
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
 export const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -67,7 +83,12 @@ export function periodoInicial(hoy = hoyLimaISO()) {
  * fecha inválida vuelven al mes en curso; un rango invertido se endereza y un
  * rango de más de 366 días se recorta (el servidor lo rechazaría).
  */
-export function normalizarPeriodo({ tipo, desde, hasta } = {}, hoy = hoyLimaISO()) {
+export function normalizarPeriodo({ tipo, desde, hasta } = {}, hoy = hoyLimaISO(), { permitirTodo = false } = {}) {
+  if (tipo === 'todo' && permitirTodo) return { tipo, desde: '', hasta: '' };
+  if (tipo === 'dia') {
+    const d = esFechaISO(desde) ? desde : hoy;
+    return { tipo, desde: d, hasta: d };
+  }
   if (tipo === 'mes') return { tipo, ...rangoMes(esFechaISO(desde) ? desde : hoy) };
   if (tipo === 'semana') return { tipo, ...rangoSemana(esFechaISO(desde) ? desde : hoy) };
   if (tipo === 'rango' && esFechaISO(desde) && esFechaISO(hasta)) {
@@ -80,6 +101,11 @@ export function normalizarPeriodo({ tipo, desde, hasta } = {}, hoy = hoyLimaISO(
 
 /** Período anterior o siguiente del mismo tipo (delta −1 / +1). */
 export function desplazarPeriodo(periodo, delta) {
+  if (periodo.tipo === 'todo') return periodo;
+  if (periodo.tipo === 'dia') {
+    const d = sumarDias(periodo.desde, delta);
+    return { tipo: 'dia', desde: d, hasta: d };
+  }
   if (periodo.tipo === 'mes') return { tipo: 'mes', ...rangoMes(sumarMeses(periodo.desde, delta)) };
   if (periodo.tipo === 'semana') return { tipo: 'semana', ...rangoSemana(sumarDias(periodo.desde, 7 * delta)) };
   const largo = diasEntre(periodo.desde, periodo.hasta);
@@ -93,6 +119,7 @@ export function diasEntre(desde, hasta) {
 
 /** El período empieza después de hoy: no hay nada que reportar todavía. */
 export function esFuturo(periodo, hoy = hoyLimaISO()) {
+  if (periodo.tipo === 'todo') return true;
   return periodo.desde > hoy;
 }
 
@@ -101,8 +128,17 @@ function ddmm(iso, conAnio = true) {
   return conAnio ? `${d}/${m}/${y}` : `${d}/${m}`;
 }
 
-/** "Septiembre 2026" · "Semana del 28/09 al 04/10/2026" · "Del 01/09/2026 al 15/09/2026". */
+/** "Martes 6 de octubre de 2026" (calendario, sin depender de la zona del navegador). */
+export function etiquetaDia(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dia = DIAS_SEMANA[aDia(iso).getUTCDay()];
+  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)} ${d} de ${MESES[m - 1]} de ${y}`;
+}
+
+/** "Septiembre 2026" · "Semana del 28/09 al 04/10/2026" · "Martes 6 de octubre de 2026" · "Del 01/09/2026 al 15/09/2026". */
 export function etiquetaPeriodo(periodo) {
+  if (periodo.tipo === 'todo') return 'Todo el historial';
+  if (periodo.tipo === 'dia') return etiquetaDia(periodo.desde);
   if (periodo.tipo === 'mes') {
     const [y, m] = periodo.desde.split('-').map(Number);
     const mes = MESES[m - 1];
@@ -113,9 +149,11 @@ export function etiquetaPeriodo(periodo) {
 }
 
 /** Nombre de archivo para el CSV / PDF: identifica el período, no el día de descarga. */
-export function nombreArchivoPeriodo(periodo) {
-  if (periodo.tipo === 'mes') return `Reporte_tickets_${periodo.desde.slice(0, 7)}`;
-  return `Reporte_tickets_${periodo.desde}_${periodo.hasta}`;
+export function nombreArchivoPeriodo(periodo, reporte = 'tickets') {
+  if (periodo.tipo === 'todo') return `Reporte_${reporte}_historico`;
+  if (periodo.tipo === 'mes') return `Reporte_${reporte}_${periodo.desde.slice(0, 7)}`;
+  if (periodo.tipo === 'dia') return `Reporte_${reporte}_${periodo.desde}`;
+  return `Reporte_${reporte}_${periodo.desde}_${periodo.hasta}`;
 }
 
 /** Meses ofrecidos en el selector: desde `desdeISO` (primer ticket) hasta hoy, más reciente primero. */

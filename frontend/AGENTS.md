@@ -45,7 +45,9 @@
   `@close` por `@cerrado`. Todos los módulos migraron (2026-10-02) y `Modal.vue`
   se eliminó: no se reintroduce ni se crea un tercer diálogo.
 - **Reportes**: una hoja nueva usa `ReporteHoja` (carátula, sello, CSV, Imprimir, glosario) + `ReporteSecciones`;
-  los reportes de la 117 son `ReporteGenerico` (ruta `/reportes/<id>`). En un módulo, el acceso a su reporte es
+  los reportes de la 117 son `ReporteGenerico` (ruta `/reportes/<id>`). Un tablero (118) se arma con las piezas de
+  `ReporteSecciones` (`cifras`, `dias`, `barras`, `distribucion`), en grises y sin tarjetas: el número lo calcula el
+  servidor y el gráfico va con su tabla. En un módulo, el acceso a su reporte es
   `<EnlaceReporte reporte="…">`, nunca un botón Exportar ni `exportarCSV`.
 - **Tonos de estado**: salen de `core/tonos.js`; un estado nuevo se agrega ahí y
   en su `core/dominio-*.js` (`tests/tonos.test.js` lo exige).

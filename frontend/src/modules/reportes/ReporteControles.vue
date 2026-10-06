@@ -1,6 +1,7 @@
 <script setup>
 // Controles de período de una hoja de reporte (no se imprimen): tipo de
-// período (mes, semana, rango), navegación ‹ › y fechas; los usan todos los
+// período (mes, semana, rango; Tickets y Satisfacción suman el día y
+// Satisfacción todo el historial, prop `tipos`), navegación ‹ › y fechas; los usan todos los
 // reportes por período. Con `con-alcance` (solo Tickets) suma el alcance
 // (todo el equipo o un técnico): quién puede elegir a otro técnico lo decide
 // el servidor (42501), acá solo se ofrece la lista al JEFE y "solo mi
@@ -13,6 +14,7 @@ import { TIPOS_PERIODO, normalizarPeriodo, desplazarPeriodo, esFuturo, mesesDisp
 
 const props = defineProps({
   periodo: { type: Object, required: true },
+  tipos: { type: Array, default: () => TIPOS_PERIODO },
   tecnicoId: { type: String, default: '' },
   tecnicos: { type: Array, default: () => [] },
   esJefe: { type: Boolean, default: false },
@@ -24,34 +26,38 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:periodo', 'update:tecnicoId']);
 
+const permitirTodo = computed(() => props.tipos.some((t) => t.valor === 'todo'));
+const normalizar = (p) => normalizarPeriodo(p, undefined, { permitirTodo: permitirTodo.value });
 const meses = computed(() => mesesDisponibles(props.desdeMinimo ? props.desdeMinimo.slice(0, 10) : ''));
 const siguienteEsFuturo = computed(() => esFuturo(desplazarPeriodo(props.periodo, 1)));
 const etiqueta = computed(() => etiquetaPeriodo(props.periodo));
 
 function cambiarTipo(tipo) {
   if (tipo === props.periodo.tipo) return;
-  emit('update:periodo', normalizarPeriodo({ tipo, desde: props.periodo.desde, hasta: props.periodo.hasta }));
+  emit('update:periodo', normalizar({ tipo, desde: props.periodo.desde, hasta: props.periodo.hasta }));
 }
 function mover(delta) {
   emit('update:periodo', desplazarPeriodo(props.periodo, delta));
 }
 function elegirMes(valor) {
-  emit('update:periodo', normalizarPeriodo({ tipo: 'mes', desde: valor }));
+  emit('update:periodo', normalizar({ tipo: 'mes', desde: valor }));
 }
 function cambiarFecha(campo, e) {
   const valor = e.target.value;
   if (!valor) return;
   const base = { ...props.periodo, [campo]: valor };
-  if (props.periodo.tipo !== 'rango') emit('update:periodo', normalizarPeriodo({ tipo: props.periodo.tipo, desde: valor }));
-  else emit('update:periodo', normalizarPeriodo(base));
+  if (props.periodo.tipo !== 'rango') emit('update:periodo', normalizar({ tipo: props.periodo.tipo, desde: valor }));
+  else emit('update:periodo', normalizar(base));
 }
 </script>
 
 <template>
   <div data-no-print class="flex flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-3 sm:px-6">
-    <AppSegmentado :model-value="periodo.tipo" :opciones="TIPOS_PERIODO" label="Tipo de período" @update:model-value="cambiarTipo" />
+    <AppSegmentado :model-value="periodo.tipo" :opciones="tipos" label="Tipo de período" @update:model-value="cambiarTipo" />
 
-    <div class="flex items-center gap-1" role="group" aria-label="Navegar el período">
+    <p v-if="periodo.tipo === 'todo'" class="text-sm text-gray-500">Todas las encuestas registradas, sin recorte de período.</p>
+
+    <div v-else class="flex items-center gap-1" role="group" aria-label="Navegar el período">
       <AppButton icon="ti ti-chevron-left" variant="text" severity="secondary" size="sm" aria-label="Período anterior" :disabled="cargando" @click="mover(-1)" />
       <span class="min-w-40 text-center text-sm text-gray-900 tabular-nums" aria-live="polite">{{ etiqueta }}</span>
       <AppButton icon="ti ti-chevron-right" variant="text" severity="secondary" size="sm" aria-label="Período siguiente" :disabled="cargando || siguienteEsFuturo" @click="mover(1)" />
@@ -62,9 +68,9 @@ function cambiarFecha(campo, e) {
       <option v-if="!meses.some((m) => m.valor === periodo.desde)" :value="periodo.desde">{{ etiqueta }}</option>
     </AppSelect>
 
-    <template v-else>
+    <template v-else-if="periodo.tipo !== 'todo'">
       <label class="flex items-center gap-2 text-sm text-gray-700">
-        <span>{{ periodo.tipo === 'semana' ? 'Semana del' : 'Desde' }}</span>
+        <span>{{ periodo.tipo === 'semana' ? 'Semana del' : periodo.tipo === 'dia' ? 'Día' : 'Desde' }}</span>
         <input
           type="date"
           class="h-8 rounded-md border border-gray-300 px-2 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"

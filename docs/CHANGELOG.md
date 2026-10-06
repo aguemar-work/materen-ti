@@ -23,6 +23,18 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-06** (**Tablero de mesa de ayuda — migración 118**, escrita, **sin aplicar**; pedido del dueño) — El
+  reporte de Tickets pasa a ser un tablero para gerencia, por **día**, semana, mes o rango: cifras (ingresaron,
+  resueltos, % resuelto de lo que ingresó sin rechazar, pendientes al inicio y al cierre, tiempo mediano,
+  satisfacción), gráfico por día, por técnico (cada técnico de mesa y «Jefatura y otros», más sin asignar y el total
+  del servidor), pendientes con su antigüedad, quiénes generaron más tickets y el tiempo de cada ticket, antes del
+  detalle de siempre; botón «Copiar resumen» para correo o WhatsApp. Satisfacción admite período (o todo el
+  historial) y muestra por solicitante tickets, encuestas respondidas, las que le faltan, su % y si está conforme
+  (umbrales en `config_parametros`), y el % de cada técnico. Nueva marca `staff.tecnico_mesa` en Configuración ›
+  Staff (solo JEFE). Corrige el hallazgo de la revisión de Reportes del mismo día: Satisfacción entregaba el
+  desglose por técnico a todo el módulo Tickets; ahora solo al JEFE. Definiciones `reportes-2026-10-06`; maqueta y
+  arnés (S17, S19, bloques 118a/118b) con la misma aritmética. README (estado real de 099–117 y fila 118), AGENTS
+  (regla de dominio 118), glosario de Reportes.
 - **2026-10-05** (**Reportes centralizados — migración 117**, escrita, **sin aplicar**; pedido del dueño) — Todo reporte y
   exportación vive en Reportes: `/reportes` es un índice por área (Mesa de ayuda, Personas, Custodia,
   Administración) que muestra solo lo que cada usuario puede ver, y cada reporte tiene su ruta `/reportes/<id>`

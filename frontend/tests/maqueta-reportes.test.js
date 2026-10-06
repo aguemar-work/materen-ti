@@ -1,4 +1,4 @@
-// Maqueta de Reportes (migración 115): la RPC simulada aplica las MISMAS
+// Maqueta de Reportes (migraciones 115 y 118): la RPC simulada aplica las MISMAS
 // definiciones que el SQL sobre un fixture pequeño con resultados conocidos
 // (los mismos casos que tests/db/triggers.test.sql, bloques 115a-115f), y
 // rechaza como el servidor (42501 / P0001). La paridad maqueta ↔ PGlite sobre
@@ -7,9 +7,9 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TABLAS, RPC } from '../src/maqueta/datos.js';
-import { reporteTicketsDe, satisfaccionConsolidadaDe, hechosDeTickets, VERSION_DEFINICIONES } from '../src/maqueta/rpc-reportes.js';
+import { reporteTicketsDe, satisfaccionConsolidadaDe, satisfaccionDe, hechosDeTickets, VERSION_DEFINICIONES } from '../src/maqueta/rpc-reportes.js';
 
-const SQL = readFileSync(fileURLToPath(new URL('../../migrations/115_reportes.sql', import.meta.url)), 'utf8');
+const SQL = readFileSync(fileURLToPath(new URL('../../migrations/118_tablero_mesa_de_ayuda.sql', import.meta.url)), 'utf8');
 const rechazo = (fn) => { try { fn(); } catch (e) { return e; } return null; };
 
 // Fixture mínimo (zona de Lima explícita en cada marca de tiempo).
@@ -18,7 +18,7 @@ function base() {
   return {
     staff: [
       { user_id: JEFE, nombre: 'Jefe', rol: 'JEFE', activo: true },
-      { user_id: ASIS, nombre: 'Asistente', rol: 'ASISTENTE', activo: true },
+      { user_id: ASIS, nombre: 'Asistente', rol: 'ASISTENTE', activo: true, tecnico_mesa: true },
       { user_id: SINMOD, nombre: 'Sin módulo', rol: 'ASISTENTE', activo: true },
     ],
     staff_modulos_permisos: [{ staff_user_id: ASIS, modulo: 'tickets' }],
@@ -183,6 +183,96 @@ describe('la maqueta completa', () => {
     const s = RPC.reporte_satisfaccion_consolidado(db);
     expect(s.muestraMinima).toBe(5);
     expect(s.porMes.length).toBeGreaterThanOrEqual(1);
+    const p = RPC.reporte_satisfaccion(db, { p_desde: desde, p_hasta: hasta });
+    expect(p.periodo).toMatchObject({ desde, hasta, completo: true });
+    expect(p.porTecnico.some((t) => t.grupo === 'tecnico')).toBe(true);
+    expect(r.tablero.pct_resuelto).toBeGreaterThanOrEqual(0);
+    expect(r.por_tecnico.some((t) => t.grupo === 'tecnico')).toBe(true);
     expect(TABLAS.config_parametros.find((p) => p.clave === 'csat_muestra_minima').valor).toBe(5);
+  });
+});
+
+describe('tablero y satisfacción de la mesa de ayuda (118)', () => {
+  // Semana del lunes 2026-09-07: T1 y T2 ingresan el martes (T1 lo resuelve el técnico ese día, T2 el jefe el
+  // jueves), T3 ingresa y se rechaza el miércoles, T4 ingresa el jueves y sigue abierto, T5 venía de antes.
+  function semana() {
+    const db = base();
+    const t1 = ticket(db, { estado: 'cerrado', created: '2026-09-08T08:00:00-05:00', resuelto: '2026-09-08T10:00:00-05:00' });
+    evento(db, t1, 'De "abierto" a "resuelto"', '2026-09-08T10:00:00-05:00', ASIS);
+    db.ticket_satisfaccion.push({ id: 's1', ticket_id: t1, nivel: 5, fecha_envio: '2026-09-09T09:00:00-05:00', created_at: '2026-09-08T10:00:01-05:00' });
+    const t2 = ticket(db, { estado: 'cerrado', created: '2026-09-08T09:00:00-05:00', resuelto: '2026-09-10T09:00:00-05:00' });
+    evento(db, t2, 'De "abierto" a "resuelto"', '2026-09-10T09:00:00-05:00', JEFE);
+    db.ticket_satisfaccion.push({ id: 's2', ticket_id: t2, nivel: 2, comentario: 'Lento', fecha_envio: '2026-09-11T09:00:00-05:00', created_at: '2026-09-10T09:00:01-05:00' });
+    const t3 = ticket(db, { estado: 'rechazado', created: '2026-09-09T08:00:00-05:00' });
+    evento(db, t3, 'De "abierto" a "rechazado"', '2026-09-09T09:00:00-05:00');
+    ticket(db, { estado: 'abierto', created: '2026-09-10T08:00:00-05:00', asignado: ASIS, empleado: null });
+    const t5 = ticket(db, { estado: 'cerrado', created: '2026-09-03T08:00:00-05:00', resuelto: '2026-09-07T10:00:00-05:00' });
+    evento(db, t5, 'De "abierto" a "resuelto"', '2026-09-07T10:00:00-05:00', ASIS);
+    return db;
+  }
+
+  it('el tablero: % resuelto de lo que ingresó sin rechazar, pendientes al inicio y al cierre', () => {
+    const r = reporte(semana(), '2026-09-07', '2026-09-13');
+    expect(r.tablero).toEqual({ ingresaron: 4, rechazados: 1, validos: 3, resueltos: 3, resueltos_de_ingresados: 2, pct_resuelto: 67, pendientes_inicio: 1, pendientes_cierre: 1 });
+    expect(r.por_dia).toHaveLength(7);
+    expect(r.por_dia[1]).toEqual({ dia: '2026-09-08', ingresaron: 2, rechazados: 0, resueltos: 1 });
+    expect(r.pendientes).toMatchObject({ referencia: 'cierre', total: 1 });
+    expect(r.pendientes.lista).toHaveLength(1);
+    expect(r.pendientes.lista[0]).toMatchObject({ estado_hoy: 'abierto', dias: 3, asignado_a: ASIS, solicitante: 'Sin vincular' });
+    expect(r.solicitantes.total).toBe(2);
+    expect(r.solicitantes.top[0]).toEqual({ solicitante: 'Ana Prueba', area: 'Obra Uno', tickets: 3, sin_resolver: 0 });
+    expect(r.solicitantes.top[1]).toEqual({ solicitante: 'Sin vincular', area: null, tickets: 1, sin_resolver: 1 });
+    expect(r.calidad.csat).toMatchObject({ n: 2, satisfechos: 1, regulares: 0, pct_satisfaccion: null });
+  });
+
+  it('por técnico: el técnico de mesa en su fila y el jefe en «otros»; la suma da los resueltos', () => {
+    const r = reporte(semana(), '2026-09-07', '2026-09-13');
+    expect(r.por_tecnico.map((t) => t.grupo)).toEqual(['tecnico', 'otros']);
+    expect(r.por_tecnico[0]).toMatchObject({ tecnico_id: ASIS, resueltos: 2, mismo_periodo: 1, arrastrados: 1, asignados_hoy: 1 });
+    expect(r.por_tecnico[1]).toMatchObject({ tecnico_id: null, nombre: null, resueltos: 1 });
+    expect(r.por_tecnico.reduce((a, t) => a + t.resueltos, 0)).toBe(r.tablero.resueltos);
+  });
+
+  it('un día compara con el anterior y el alcance técnico no trae bloques de equipo', () => {
+    const db = semana();
+    const dia = reporte(db, '2026-09-08', '2026-09-08');
+    expect(dia.por_dia).toHaveLength(1);
+    expect(dia.comparacion.periodo).toEqual({ desde: '2026-09-07', hasta: '2026-09-07' });
+    expect(dia.comparacion.tablero).toMatchObject({ ingresaron: 0, resueltos: 1 });
+    const tec = reporte(db, '2026-09-07', '2026-09-13', { tecnico: ASIS });
+    expect([tec.tablero, tec.por_dia, tec.pendientes, tec.solicitantes]).toEqual([null, null, null, null]);
+    expect(reporte(db, '2026-08-01', '2026-09-13').por_dia).toBeNull();
+  });
+
+  it('satisfacción: por solicitante con lo que le falta y su situación; por técnico solo al jefe', () => {
+    const db = semana();
+    db.empleados.push({ id: 'e2', nombres: 'Luis', apellidos: 'Prueba', area_obra_id: null, ubicacion_id: null });
+    const t6 = ticket(db, { estado: 'cerrado', created: '2026-09-09T08:00:00-05:00', resuelto: '2026-09-09T09:00:00-05:00', empleado: 'e2' });
+    evento(db, t6, 'De "abierto" a "resuelto"', '2026-09-09T09:00:00-05:00', ASIS);
+    db.ticket_satisfaccion.push({ id: 's6', ticket_id: t6, nivel: null, fecha_envio: null, created_at: '2026-09-09T09:00:01-05:00' });
+    const s = satisfaccionDe(db, { user: JEFE, desde: '2026-09-07', hasta: '2026-09-13', ahora: AHORA });
+    expect(s.resumen).toMatchObject({ tickets: 4, encuestasGeneradas: 3, encuestasRespondidas: 2, faltan: 1, muestra: 2, satisfechos: 1, insatisfechos: 1, pctSatisfaccion: null });
+    const ana = s.porSolicitante.find((f) => f.empleado_id === 'e1');
+    expect(ana).toMatchObject({ tickets: 3, encuestasRespondidas: 2, faltan: 0, pctSatisfaccion: 50, situacion: 'pocas_respuestas' });
+    const luis = s.porSolicitante.find((f) => f.empleado_id === 'e2');
+    expect(luis).toMatchObject({ tickets: 1, faltan: 1, pctSatisfaccion: null, situacion: 'sin_respuestas' });
+    expect(s.porTecnico.map((t) => [t.grupo, t.tickets])).toEqual([['tecnico', 3], ['otros', 1]]);
+    expect(s.umbrales).toEqual({ conformePct: 80, regularPct: 60, minimoPersona: 3 });
+    const asis = satisfaccionDe(db, { user: ASIS, desde: '2026-09-07', hasta: '2026-09-13', ahora: AHORA });
+    expect(asis.porTecnico).toBeNull();
+    expect(asis.respuestas.every((x) => x.tecnico_id === null)).toBe(true);
+    expect(satisfaccionConsolidadaDe(db, { user: ASIS, ahora: AHORA }).porTecnico).toEqual([]);
+    expect(rechazo(() => satisfaccionDe(db, { user: JEFE, desde: '2026-09-07', ahora: AHORA })).code).toBe('P0001');
+  });
+
+  it('los umbrales de la situación salen de config_parametros', () => {
+    const db = semana();
+    db.config_parametros.push({ clave: 'satisfaccion_minimo_persona', valor: 2 });
+    const ana = (umbral) => {
+      db.config_parametros = db.config_parametros.filter((p) => p.clave !== 'satisfaccion_regular_pct').concat({ clave: 'satisfaccion_regular_pct', valor: umbral });
+      return satisfaccionDe(db, { user: JEFE, desde: '2026-09-07', hasta: '2026-09-13', ahora: AHORA }).porSolicitante.find((f) => f.empleado_id === 'e1').situacion;
+    };
+    expect(ana(60)).toBe('inconforme'); // 50 % con 2 respuestas
+    expect(ana(50)).toBe('regular');
   });
 });

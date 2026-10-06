@@ -6,7 +6,9 @@
 // `data-libro`). Sin filas: UNA fila en gris con el texto de `vacio` (regla 21).
 //
 //   columnas: [{ titulo, num?, ancho? }]   num = alineado a la derecha, tabular
-//   filas:    [[{ texto, num?, tenue?, codigo? }, ...]]
+//   filas:    [[{ texto, num?, tenue?, codigo?, tag? }, ...]]   tag = tono de AppTag (una palabra de estado)
+import AppTag from '../../components/ui/AppTag.vue';
+
 defineProps({
   titulo: { type: String, default: '' },
   nota: { type: String, default: '' },
@@ -46,7 +48,7 @@ defineProps({
               c.tenue ? 'text-gray-500' : 'text-gray-900',
               c.codigo ? 'font-medium tabular-nums' : '',
             ]"
-          >{{ c.texto }}</td>
+          ><AppTag v-if="c.tag" :tono="c.tag">{{ c.texto }}</AppTag><template v-else>{{ c.texto }}</template></td>
         </tr>
       </tbody>
     </table>

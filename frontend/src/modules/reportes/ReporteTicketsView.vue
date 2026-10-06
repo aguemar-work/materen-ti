@@ -1,10 +1,11 @@
 <script setup>
-// Reporte de tickets (migración 115): UNA hoja imprimible por período,
-// compuesta en el servidor (`reporte_tickets`). Esta vista solo elige el
-// período y el alcance (la URL es la fuente de verdad), pinta las secciones
-// que arma hoja.js dentro de la hoja común (ReporteHoja: carátula, Imprimir,
-// CSV y glosario) y ofrece un CSV con las filas que ya trajo la RPC. Nada se
-// suma ni se promedia acá. El CSV de la bandeja que vivía en Tickets se
+// Reporte de tickets (migraciones 115 y 118): UNA hoja imprimible por período
+// (día, semana, mes o rango), compuesta en el servidor (`reporte_tickets`).
+// Esta vista solo elige el período y el alcance (la URL es la fuente de
+// verdad), pinta las secciones que arma hoja.js dentro de la hoja común
+// (ReporteHoja: carátula, Imprimir, CSV y glosario), ofrece un CSV con las
+// filas que ya trajo la RPC y copia el resumen en texto para gerencia. Nada
+// se suma ni se promedia acá. El CSV de la bandeja que vivía en Tickets se
 // integró en este (título y asignado hoy): Tickets ya no exporta.
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
@@ -12,12 +13,13 @@ import { useAuthStore } from '../../stores/auth.js';
 import { traducirErrorDb } from '../../api/erroresDb.js';
 import { exportarCSV } from '../../core/exportar.js';
 import { showToast } from '../../core/toast.js';
+import AppButton from '../../components/ui/AppButton.vue';
 import ReporteHoja from './ReporteHoja.vue';
 import ReporteControles from './ReporteControles.vue';
 import ReporteSecciones from './ReporteSecciones.vue';
 import { usePeriodoUrl } from './usePeriodoUrl.js';
-import { etiquetaPeriodo, nombreArchivoPeriodo } from './periodo.js';
-import { armarSecciones, datosCaratula } from './hoja.js';
+import { TIPOS_PERIODO_MESA, nombreArchivoPeriodo } from './periodo.js';
+import { armarSecciones, datosCaratula, resumenTexto } from './hoja.js';
 import { filasCsvReporte } from './csv.js';
 import { GLOSARIO, VERSION_DEFINICIONES } from './glosario.js';
 
@@ -31,20 +33,14 @@ const error = ref('');
 const reporte = ref(null);
 const staff = ref([]);
 
+// Nombres del staff: para «A cargo hoy» (la bandeja ya los mostraba a todo el
+// módulo) y el selector de técnico del JEFE. Quién resolvió cada ticket solo
+// aparece cuando el servidor manda la sección por técnico (JEFE).
 const nombresStaff = computed(() => Object.fromEntries(staff.value.map((s) => [s.user_id, s.nombre])));
-const secciones = computed(() => armarSecciones(reporte.value, { nombresStaff: esJefe.value ? nombresStaff.value : {} }));
+const secciones = computed(() => armarSecciones(reporte.value, { nombresStaff: nombresStaff.value }));
 const caratula = computed(() => datosCaratula(reporte.value, etiqueta.value));
 const enCurso = computed(() => reporte.value?.periodo?.en_curso === true);
-const comparacionParcial = computed(() => reporte.value?.comparacion?.parcial === true);
-const subtitulo = computed(() => {
-  if (!reporte.value) return '';
-  const v = reporte.value.volumen || {};
-  const partes = [];
-  if (v.creados != null) partes.push(`${v.creados} creados`);
-  partes.push(`${v.resueltos ?? 0} resueltos`);
-  if (v.rechazados) partes.push(`${v.rechazados} rechazados`);
-  return partes.join(' · ');
-});
+const resumen = computed(() => resumenTexto(reporte.value, etiqueta.value));
 
 async function cargar() {
   cargando.value = true;
@@ -63,8 +59,6 @@ async function cargar() {
   }
 }
 
-// Nombres del staff: para el selector de técnico (JEFE) y la columna
-// «Asignado hoy» del CSV (la bandeja ya los mostraba a todo el módulo).
 async function cargarStaff() {
   try {
     staff.value = await insforgeApi.nombresStaff();
@@ -83,6 +77,15 @@ function exportar() {
   exportarCSV(nombreArchivoPeriodo(periodo.value), cabecera, filas);
 }
 
+async function copiarResumen() {
+  try {
+    await navigator.clipboard.writeText(resumen.value);
+    showToast('Resumen copiado: péguelo en el correo o en WhatsApp');
+  } catch {
+    showToast('No se pudo copiar el resumen. Seleccione el texto de la hoja y cópielo a mano.', 'warning');
+  }
+}
+
 // La URL manda: cualquier cambio (controles, atrás/adelante, enlace) recarga.
 watch(() => [filtros.tipo, filtros.desde, filtros.hasta, filtros.tecnico], cargar);
 
@@ -94,7 +97,7 @@ onMounted(() => {
 
 <template>
   <ReporteHoja
-    rotulo="REPORTE · TICKETS"
+    rotulo="REPORTE · MESA DE AYUDA"
     titulo="Reporte de tickets"
     :datos="caratula"
     :en-curso="enCurso"
@@ -109,6 +112,7 @@ onMounted(() => {
     <template #controles>
       <ReporteControles
         :periodo="periodo"
+        :tipos="TIPOS_PERIODO_MESA"
         :tecnico-id="filtros.tecnico"
         :tecnicos="esJefe ? staff : []"
         :es-jefe="esJefe"
@@ -121,13 +125,9 @@ onMounted(() => {
       />
     </template>
 
-    <p class="text-sm text-gray-700">
-      {{ subtitulo }}
-      <span v-if="enCurso" class="text-gray-500"> · el período no terminó: las cifras siguen cambiando y no se compara con el anterior.</span>
-      <span v-else-if="reporte.comparacion" class="text-gray-500">
-        · comparado con {{ etiquetaPeriodo({ tipo: periodo.tipo === 'mes' ? 'mes' : 'rango', ...reporte.comparacion.periodo }) }}<template v-if="comparacionParcial"> (período anterior parcial: empieza antes del primer ticket registrado)</template>.
-      </span>
-    </p>
+    <div v-if="resumen" data-no-print class="flex justify-end">
+      <AppButton label="Copiar resumen" icon="ti ti-copy" variant="outline" severity="secondary" size="sm" @click="copiarResumen" />
+    </div>
     <ReporteSecciones :secciones="secciones" />
   </ReporteHoja>
 </template>

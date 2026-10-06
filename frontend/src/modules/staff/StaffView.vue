@@ -22,6 +22,8 @@ import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import EncabezadoCatalogo from '../configuracion/EncabezadoCatalogo.vue';
 import StaffModulosForm from './StaffModulosForm.vue';
 import StaffNombreForm from './StaffNombreForm.vue';
+import StaffInterruptorMesa from './StaffInterruptorMesa.vue';
+import { traducirErrorDb } from '../../api/erroresDb.js';
 
 const store = useStaffStore();
 const authStore = useAuthStore();
@@ -188,6 +190,24 @@ async function toggleCredencialesVer(miembro) {
   }
 }
 
+// Técnico de mesa de ayuda (migración 118): define quién tiene su propia fila
+// en los reportes de Tickets y Satisfacción. Sin confirmación: es reversible
+// y no da acceso a nada.
+async function toggleTecnicoMesa(miembro) {
+  if (!authStore.esJefe || procesandoId.value) return;
+  procesandoId.value = miembro.user_id;
+  try {
+    await store.setTecnicoMesa(miembro.user_id, !miembro.tecnico_mesa);
+    showToast(miembro.tecnico_mesa
+      ? `${miembro.nombre} ya no figura como técnico de mesa de ayuda`
+      : `${miembro.nombre} figura como técnico de mesa de ayuda en los reportes`);
+  } catch (e) {
+    showToast(traducirErrorDb(e, { porDefecto: 'No se pudo cambiar la marca de técnico' }).mensaje, 'error');
+  } finally {
+    procesandoId.value = null;
+  }
+}
+
 async function cambiarRol(miembro, nuevoRol) {
   if (miembro.rol === nuevoRol) return;
   procesandoId.value = miembro.user_id;
@@ -291,7 +311,7 @@ onMounted(async () => {
               :rows="tamPagina"
               :orden="{ columna, direccion }"
               aria-label="Miembros del staff"
-              :table-props="{ style: 'table-layout: fixed; min-width: 52rem' }"
+              :table-props="{ style: 'table-layout: fixed; min-width: 61rem' }"
               @ordenar="ordenarPor"
             >
               <AppColumn field="nombre" header="Miembro" sortable>
@@ -380,6 +400,12 @@ onMounted(async () => {
                       {{ fila.rol === 'JEFE' ? 'Siempre' : (fila.credenciales_ver ? 'Puede ver' : 'No puede ver') }}
                     </span>
                   </button>
+                </template>
+              </AppColumn>
+
+              <AppColumn field="tecnico_mesa" header="Mesa de ayuda" :header-style="{ width: '140px' }">
+                <template #body="{ data: fila }">
+                  <StaffInterruptorMesa :miembro="fila" :editable="authStore.esJefe" :ocupado="procesandoId === fila.user_id" @cambiar="toggleTecnicoMesa" />
                 </template>
               </AppColumn>
 
@@ -497,6 +523,11 @@ onMounted(async () => {
                       {{ fila.rol === 'JEFE' ? 'Siempre' : (fila.credenciales_ver ? 'Puede ver' : 'No puede ver') }}
                     </span>
                   </button>
+                </dd>
+
+                <dt class="text-xs text-gray-500">Mesa de ayuda</dt>
+                <dd>
+                  <StaffInterruptorMesa :miembro="fila" :editable="authStore.esJefe" :ocupado="procesandoId === fila.user_id" @cambiar="toggleTecnicoMesa" />
                 </dd>
               </dl>
 

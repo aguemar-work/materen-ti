@@ -58,7 +58,7 @@ const METODOS = [
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
   'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
   // reportes (migración 115): solo RPC, nada se agrega en el cliente
-  'obtenerReporteTickets', 'obtenerSatisfaccionConsolidado',
+  'obtenerReporteTickets', 'obtenerReporteSatisfaccion',
   // reportes centralizados (migración 117): una RPC por reporte, misma forma
   'obtenerReporteInventario', 'obtenerReporteLicencias', 'obtenerReporteCorreos', 'obtenerReportePersonal',
   'obtenerReporteSolicitudes', 'obtenerReporteCambios', 'obtenerReporteProblemas', 'obtenerReporteEncuestas',
