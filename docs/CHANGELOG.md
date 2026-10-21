@@ -23,6 +23,15 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-21** (**El técnico reclasifica la categoría — migración 119**, escrita, **sin aplicar**; pedido del dueño) —
+  `reclasificar_ticket` pasa de `rol:jefe` a `modulo:tickets`: quien atiende corrige la categoría que eligió el
+  solicitante (p. ej. una falta de permisos registrada como «Error o falla en aplicación» va a «Accesos y Cuentas ›
+  Solicitar permisos o accesos») desde la ficha del ticket (Gestión › Categoría › «Reclasificar», página y panel), con
+  motivo obligatorio que queda en el historial; nunca cambia tipo ni prioridad. Un ticket cerrado o rechazado sigue
+  siendo solo del JEFE (P0001: ya cuenta en reportes entregados). `ReclasificarTicketDialog` se mueve a
+  `modules/tickets/` (lo comparten la ficha y «Tickets por reclasificar», que sigue solo JEFE). Pruebas: bloque SQL
+  119a, escenario S18 con sesiones reales, maqueta (`rpc-catalogo-tickets.js`) y render de la ficha. Docs: AGENTS
+  (regla 116), README (tabla), PANORAMA §3.
 - **2026-10-06** (**Tablero de mesa de ayuda — migración 118**, escrita, **sin aplicar**; pedido del dueño) — El
   reporte de Tickets pasa a ser un tablero para gerencia, por **día**, semana, mes o rango: cifras (ingresaron,
   resueltos, % resuelto de lo que ingresó sin rechazar, pendientes al inicio y al cierre, tiempo mediano,

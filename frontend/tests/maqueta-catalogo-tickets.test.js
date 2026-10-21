@@ -1,15 +1,19 @@
 // Maqueta del catálogo de tickets v2 (migración 116): el catálogo inventado es
 // ESPEJO de la tabla de correspondencias de la migración (31 subcategorías con
 // tipo y prioridad), y la RPC simulada reclasificar_ticket rechaza con el mismo
-// SQLSTATE y el MISMO texto que reclasificar_ticket_nucleo.
-import { describe, it, expect } from 'vitest';
+// SQLSTATE y el MISMO texto que reclasificar_ticket_nucleo (cuerpo vigente: 119,
+// el técnico con el módulo tickets reclasifica; un ticket terminado, solo el JEFE).
+import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TABLAS, RPC } from '../src/maqueta/datos.js';
-import { MENSAJES_RECLASIFICAR, calcularPorReclasificar } from '../src/maqueta/rpc-catalogo-tickets.js';
+import { MENSAJES_RECLASIFICAR, calcularPorReclasificar, definirActorCatalogoTickets } from '../src/maqueta/rpc-catalogo-tickets.js';
 import { prioridadInfo, prioridadSugeridaDe } from '../src/core/dominio-tickets.js';
 
 const SQL = readFileSync(fileURLToPath(new URL('../../migrations/116_catalogo_tickets_v2.sql', import.meta.url)), 'utf8');
+const SQL_119 = readFileSync(fileURLToPath(new URL('../../migrations/119_reclasificar_ticket_tecnico.sql', import.meta.url)), 'utf8');
+const JEFE = { id: 'u-jefe', esJefe: true, moduloTickets: true, email: 'jefe@materen.pe' };
+const ASISTENTE = { id: 'u-asis-1', esJefe: false, moduloTickets: true, email: 'dhuaman@materen.pe' };
 const clonar = (v) => JSON.parse(JSON.stringify(v));
 
 // Filas del bloque 2.c: ( n, 'cat', 'Nombre cat', 'origen', 'Subcategoría', array[...], 'tipo', 'prioridad', aviso)
@@ -51,10 +55,35 @@ describe('el catálogo de la maqueta es espejo de la migración 116', () => {
 });
 
 describe('reclasificar_ticket y v_tickets_por_reclasificar (maqueta)', () => {
-  it('los mensajes de rechazo son los del SQL', () => {
+  afterEach(() => definirActorCatalogoTickets(JEFE));
+
+  it('los mensajes de rechazo son los del SQL vigente (119)', () => {
     for (const m of Object.values(MENSAJES_RECLASIFICAR)) {
-      expect(SQL.includes(m) || SQL.includes(m.replace('500', '%'))).toBe(true);
+      expect(SQL_119.includes(m) || SQL_119.includes(m.replace('500', '%'))).toBe(true);
     }
+  });
+
+  it('el técnico con el módulo tickets reclasifica un ticket en curso; uno cerrado o rechazado, no (119)', () => {
+    definirActorCatalogoTickets(ASISTENTE);
+    const db = clonar(TABLAS);
+    const r = RPC.reclasificar_ticket(db, { p_ticket_id: 't114', p_subcategoria_id: 'sub-04', p_motivo: 'Es un pedido de equipo' });
+    expect(r).toMatchObject({ ticket_id: 't114', subcategoria_id: 'sub-04', cambio: true });
+    expect(db.ticket_eventos.at(-1)).toMatchObject({ ticket_id: 't114', evento: 'categoria_cambiada', user_id: 'u-asis-1' });
+    const eventos = db.ticket_eventos.length;
+    for (const id of ['t104', 't105']) {
+      expect(rechazo(() => RPC.reclasificar_ticket(db, { p_ticket_id: id, p_subcategoria_id: 'sub-04', p_motivo: 'x' })))
+        .toEqual({ code: 'P0001', message: MENSAJES_RECLASIFICAR.ticketTerminado });
+    }
+    expect(db.ticket_eventos).toHaveLength(eventos);
+  });
+
+  it('sin el módulo tickets, 42501; el JEFE sí mueve un ticket cerrado', () => {
+    definirActorCatalogoTickets({ ...ASISTENTE, moduloTickets: false });
+    const db = clonar(TABLAS);
+    expect(rechazo(() => RPC.reclasificar_ticket(db, { p_ticket_id: 't114', p_subcategoria_id: 'sub-04', p_motivo: 'x' })))
+      .toEqual({ code: '42501', message: MENSAJES_RECLASIFICAR.sinPermiso });
+    definirActorCatalogoTickets(JEFE);
+    expect(RPC.reclasificar_ticket(db, { p_ticket_id: 't104', p_subcategoria_id: 'sub-04', p_motivo: 'Cierre mal clasificado' }).cambio).toBe(true);
   });
 
   it('la vista lista los tickets anteriores a la marca sin subcategoría o en «Otro (no clasificado)»', () => {

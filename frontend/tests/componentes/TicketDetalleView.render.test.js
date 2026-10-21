@@ -8,7 +8,7 @@
 //
 // Mockea api/insforge.js en el límite; useTicketDetalleLogica.js y
 // stores/ticketDetalle.js corren de verdad, sin tocar.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createRouter, createMemoryHistory } from 'vue-router';
@@ -30,6 +30,9 @@ vi.mock('../../src/api/insforge.js', () => ({
     cerrarTicket: vi.fn(),
     crearComentarioTicket: vi.fn().mockResolvedValue(undefined),
     crearKbDesdeTicket: vi.fn().mockResolvedValue(undefined),
+    listCategoriasTicket: vi.fn(),
+    listSubcategoriasTicket: vi.fn(),
+    reclasificarTicket: vi.fn(),
   },
 }));
 import { insforgeApi } from '../../src/api/insforge.js';
@@ -80,12 +83,12 @@ function flushPromises() {
   return new Promise((r) => setTimeout(r, 0));
 }
 
-async function montar(id = 'tck-1', { rol = 'ASISTENTE', userId = 'staff-1' } = {}) {
+async function montar(id = 'tck-1', { rol = 'ASISTENTE', userId = 'staff-1', modulos = ['tickets'] } = {}) {
   const router = crearRouter();
   router.push(`/tickets/${id}`);
   await router.isReady();
   const auth = useAuthStore();
-  auth.$patch({ user: { id: userId }, rol });
+  auth.$patch({ user: { id: userId }, rol, modulosVisibles: modulos });
   const w = mount(TicketDetalleView, {
     global: {
       plugins: [router, [PrimeVue, { unstyled: true }]],
@@ -254,5 +257,79 @@ describe('TicketDetalleView.vue — encabezado y feed V2', () => {
     insforgeApi.getTicket.mockResolvedValue(ticketBase({ aviso: '' }));
     w = await montar();
     expect(w.find('[data-aviso-categoria]').exists()).toBe(false);
+  });
+});
+
+// Reclasificar desde la ficha (119): quien atiende corrige la categoría que
+// eligió el solicitante; un ticket cerrado o rechazado solo lo mueve el JEFE.
+describe('TicketDetalleView.vue — reclasificar la categoría (119)', () => {
+  const espera = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+  const dialogo = () => document.querySelector('[role="dialog"]');
+  const campo = (rotulo) => {
+    const label = [...dialogo().querySelectorAll('label')].find((l) => l.textContent.trim().startsWith(rotulo));
+    return label ? document.getElementById(label.getAttribute('for')) : null;
+  };
+  const botonDeDialogo = (texto) => [...dialogo().querySelectorAll('button')].find((b) => b.textContent.trim().startsWith(texto));
+  async function escribir(el, valor) {
+    el.value = valor;
+    el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+    await espera();
+  }
+  const botonReclasificar = (w) => w.find('[data-clasificacion]').findAll('button').find((b) => b.text().includes('Reclasificar'));
+
+  beforeEach(() => {
+    insforgeApi.listCategoriasTicket.mockResolvedValue([
+      { id: 'software', nombre: 'Software y Aplicaciones' },
+      { id: 'accesos_cuentas', nombre: 'Accesos y Cuentas' },
+    ]);
+    insforgeApi.listSubcategoriasTicket.mockResolvedValue([
+      { id: 's-error', categoria_id: 'software', nombre: 'Error o falla en aplicación' },
+      { id: 's-permisos', categoria_id: 'accesos_cuentas', nombre: 'Solicitar permisos o accesos (sistemas / carpetas)' },
+    ]);
+    insforgeApi.reclasificarTicket.mockResolvedValue({ ticket_id: 'tck-1', cambio: true });
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+    document.body.style.overflow = '';
+  });
+
+  it('un técnico con el módulo tickets reclasifica un ticket en curso y la ficha muestra la categoría nueva', async () => {
+    const enCurso = { estado: 'en_progreso', asignado_a: 'staff-1', categoria_id: 'software', categoria_nombre: 'Software y Aplicaciones', subcategoria_id: 's-error', subcategoria_nombre: 'Error o falla en aplicación' };
+    insforgeApi.getTicket.mockResolvedValue(ticketBase(enCurso));
+    const w = await montar();
+    expect(w.find('[data-clasificacion]').text()).toContain('Software y Aplicaciones › Error o falla en aplicación');
+
+    await botonReclasificar(w).trigger('click');
+    await espera(20);
+    expect(dialogo().textContent).toContain('Reclasificar ticket');
+    expect(dialogo().textContent).toContain('Software y Aplicaciones › Error o falla en aplicación');
+    await escribir(campo('Subcategoría correcta'), 's-permisos');
+    await escribir(campo('Motivo'), 'No es una falla: le faltan permisos en la carpeta');
+
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ ...enCurso, categoria_id: 'accesos_cuentas', categoria_nombre: 'Accesos y Cuentas', subcategoria_id: 's-permisos', subcategoria_nombre: 'Solicitar permisos o accesos (sistemas / carpetas)' }));
+    botonDeDialogo('Reclasificar').click();
+    await espera(40);
+    expect(insforgeApi.reclasificarTicket).toHaveBeenCalledWith('tck-1', 's-permisos', 'No es una falla: le faltan permisos en la carpeta');
+    await espera(500);
+    expect(w.find('[data-clasificacion]').text()).toContain('Accesos y Cuentas › Solicitar permisos o accesos');
+    // Tipo y prioridad no se mandan: la RPC no los toca.
+    expect(insforgeApi.actualizarTicket).not.toHaveBeenCalled();
+  });
+
+  it('un técnico no ve «Reclasificar» en un ticket cerrado; el JEFE sí', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'cerrado' }));
+    let w = await montar('tck-1', { rol: 'ASISTENTE' });
+    expect(w.find('[data-clasificacion]').text()).toContain('Hardware');
+    expect(botonReclasificar(w)).toBeFalsy();
+    w.unmount();
+
+    w = await montar('tck-1', { rol: 'JEFE', modulos: [] });
+    expect(botonReclasificar(w)).toBeTruthy();
+  });
+
+  it('sin el módulo tickets no se ofrece', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'en_progreso', asignado_a: 'staff-1' }));
+    const w = await montar('tck-1', { rol: 'ASISTENTE', modulos: ['equipos'] });
+    expect(botonReclasificar(w)).toBeFalsy();
   });
 });

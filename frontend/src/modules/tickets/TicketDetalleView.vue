@@ -39,6 +39,7 @@ const {
   cambiarNivelAtencion, cambiarPrioridad,
   mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
   cambiarTipo,
+  reclasificacion,
   mostrarProblemaForm, onProblemaFormCerrado,
   copiarMensajeSatisfaccion,
   enviarComentario,
@@ -286,6 +287,7 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
               :iniciando="iniciando"
               :guardando-campo="guardandoCampo"
               :tipo-ambiguo-sin-clasificar="tipoAmbiguoSinClasificar"
+              :reclasificacion="reclasificacion"
               @cambiar-prioridad="cambiarPrioridad"
               @cambiar-nivel="cambiarNivelAtencion"
               @cambiar-asignado="cambiarAsignado"

@@ -1,13 +1,15 @@
 // RPC simulada de la maqueta para el catálogo de tickets v2 (migración 116):
 // `reclasificar_ticket` y la vista `v_tickets_por_reclasificar`. Misma regla y
-// mismos rechazos que el SQL (42501 sin JEFE, P0001 motivo vacío o largo, P0002
-// ticket o subcategoría inexistentes), con el MISMO texto en español:
+// mismos rechazos que el SQL (42501 sin el módulo tickets, P0001 motivo vacío o
+// largo o ticket terminado sin ser JEFE (119), P0002 ticket o subcategoría
+// inexistentes), con el MISMO texto en español:
 // tests/maqueta-catalogo-tickets.test.js lo compara con la migración.
 // Todo es inventado: nada sale de esta sesión (recargar devuelve los datos iniciales).
 
-// Quién actúa: el JEFE ficticio, o Diego Huamán (ASISTENTE) con ?maqueta=asistente.
-// datos.js lo fija al importar (este archivo no puede importar datos.js).
-let actor = { id: 'u-jefe', esJefe: true, email: 'jefe@materen.pe' };
+// Quién actúa: el JEFE ficticio, o Diego Huamán (ASISTENTE, con el módulo
+// tickets) con ?maqueta=asistente. datos.js lo fija al importar (este archivo
+// no puede importar datos.js).
+let actor = { id: 'u-jefe', esJefe: true, moduloTickets: true, email: 'jefe@materen.pe' };
 export function definirActorCatalogoTickets(nuevo) {
   actor = { ...actor, ...nuevo };
 }
@@ -17,6 +19,7 @@ export const MENSAJES_RECLASIFICAR = {
   sinMotivo: 'Indique el motivo de la reclasificación.',
   motivoLargo: 'El motivo no puede superar los 500 caracteres.',
   sinTicket: 'El ticket no existe.',
+  ticketTerminado: 'Solo un JEFE puede reclasificar un ticket cerrado o rechazado.',
   sinSubcategoria: 'La subcategoría no existe o fue eliminada.',
 };
 const MOTIVO_MAX = 500;
@@ -33,8 +36,8 @@ let secuencia = 0;
 /**
  * v_tickets_por_reclasificar: tickets creados antes de la marca
  * (config_parametros.catalogo_tickets_v2) sin subcategoría, en «Otro (no
- * clasificado)» o en «Virus o malware sospechoso», que ningún JEFE reclasificó
- * o confirmó después. Solo para el JEFE (la vista real exige rol:jefe).
+ * clasificado)» o en «Virus o malware sospechoso», que nadie del staff
+ * reclasificó o confirmó después. Solo para el JEFE (la vista real exige rol:jefe).
  */
 export function calcularPorReclasificar(db) {
   if (!actor.esJefe) return [];
@@ -60,12 +63,13 @@ export function calcularPorReclasificar(db) {
 
 export const RPC_CATALOGO_TICKETS = {
   reclasificar_ticket: (db, args = {}) => {
-    if (!actor.esJefe) rechazar('42501', MENSAJES_RECLASIFICAR.sinPermiso);
+    if (!actor.esJefe && !actor.moduloTickets) rechazar('42501', MENSAJES_RECLASIFICAR.sinPermiso);
     const motivo = multilinea(args.p_motivo);
     if (!motivo) rechazar('P0001', MENSAJES_RECLASIFICAR.sinMotivo);
     if (motivo.length > MOTIVO_MAX) rechazar('P0001', MENSAJES_RECLASIFICAR.motivoLargo);
     const t = db.tickets.find((x) => x.id === args.p_ticket_id);
     if (!t) rechazar('P0002', MENSAJES_RECLASIFICAR.sinTicket);
+    if (!actor.esJefe && ['cerrado', 'rechazado'].includes(t.estado)) rechazar('P0001', MENSAJES_RECLASIFICAR.ticketTerminado);
     const sub = db.subcategorias_ticket.find((x) => x.id === args.p_subcategoria_id && !x.deleted_at);
     const cat = sub && db.categorias_ticket.find((x) => x.id === sub.categoria_id && !x.deleted_at);
     if (!sub || !cat) rechazar('P0002', MENSAJES_RECLASIFICAR.sinSubcategoria);

@@ -824,7 +824,14 @@ async function escenarios(etiqueta) {
       (await enVista(U.jefe, tOtro)) === 1 && (await enVista(U.jefe, tCerr)) === 1);
     afirmar('S18 116: un ticket posterior a la marca no aparece; un asistente con el modulo tickets no ve ninguno',
       (await enVista(U.jefe, tNuevo)) === 0 && (await como(U.asist, () => uno('select count(*)::int n from v_tickets_por_reclasificar'))).n === 0);
-    await falla('S18 116: un asistente no reclasifica (42501)', () => como(U.asist, () => db.exec(`select reclasificar_ticket('${tOtro}', '${subImp}', 'motivo')`)), { code: '42501', msg: 'No autorizado' });
+    // 119: el guard es modulo:tickets. Sin el módulo, 42501; con él, un ticket en curso sí, uno cerrado no (P0001).
+    await falla('S18 119: sin el modulo tickets no se reclasifica (42501)', () => como(U.sinmod, () => db.exec(`select reclasificar_ticket('${tOtro}', '${subImp}', 'motivo')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S18 119: un asistente no reclasifica un ticket cerrado (P0001)', () => como(U.asist, () => db.exec(`select reclasificar_ticket('${tCerr}', '${subImp}', 'motivo')`)), { code: 'P0001', msg: 'Solo un JEFE' });
+    const tAsis = await mkT('d', marca.subcategoria_no_clasificado, 'abierto', true);
+    const rA = await como(U.asist, () => uno(`select reclasificar_ticket('${tAsis}', '${subImp}', 'Es la impresora del piso 2') as r`));
+    const evA = await uno(`select user_id, detalle from ticket_eventos where ticket_id = '${tAsis}' and evento = 'categoria_cambiada'`);
+    afirmar('S18 119: un asistente con el modulo tickets reclasifica un ticket abierto, con su autor, y sale de la vista del jefe',
+      rA.r?.cambio === true && evA?.user_id === U.asist && /piso 2/.test(evA.detalle) && (await enVista(U.jefe, tAsis)) === 0, JSON.stringify([rA, evA]));
     await falla('S18 116: anon no ejecuta reclasificar_ticket', () => anonimo(() => db.exec(`select reclasificar_ticket('${tOtro}', '${subImp}', 'motivo')`)), { code: '42501' });
     await falla('S18 116: ni el jefe ejecuta el nucleo (solo project_admin)', () => como(U.jefe, () => db.exec(`select reclasificar_ticket_nucleo('${tOtro}', '${subImp}', 'm', '${U.jefe}', true)`)), { code: '42501' });
     await falla('S18 116: sin motivo -> P0001', () => como(U.jefe, () => db.exec(`select reclasificar_ticket('${tOtro}', '${subImp}', '  ')`)), { code: 'P0001', msg: 'motivo' });
@@ -1245,7 +1252,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118|119)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }

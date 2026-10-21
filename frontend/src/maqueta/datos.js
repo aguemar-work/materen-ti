@@ -51,7 +51,8 @@ definirActorKb({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
 definirActorCambios({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
 // Reportes (115): la RPC solo entrega "por técnico" al jefe y el alcance de otro técnico exige ese rol.
 definirActorReportes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente' });
-// Catálogo v2 (116): reclasificar y la vista de pendientes son solo del jefe.
+// Catálogo v2 (116): la vista de pendientes es solo del jefe. Reclasificar exige el
+// módulo tickets (Diego lo tiene) y un ticket cerrado o rechazado solo lo mueve el jefe (119).
 definirActorCatalogoTickets({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
 
 // ── Staff ───────────────────────────────────────────────────────────────────
