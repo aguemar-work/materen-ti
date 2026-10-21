@@ -15,7 +15,6 @@ import TicketDetallePanel from './TicketDetallePanel.vue';
 import PrioridadTicket from './PrioridadTicket.vue';
 import TarjetaTicket from './TarjetaTicket.vue';
 import MenuAcciones from '../../components/shared/MenuAcciones.vue';
-import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import SelectorVista from '../../components/shared/SelectorVista.vue';
 import AppTable from '../../components/ui/AppTable.vue';
@@ -117,7 +116,7 @@ watch(() => filtros.vista, (vista) => {
 const vistaActual = computed(() => vistaDe(filtros.vista));
 
 // Catálogos de las dimensiones: técnicos (también para "Asignado a" en la
-// tabla y la reasignación en lote) y categorías. Si fallan, la dimensión
+// tabla) y categorías. Si fallan, la dimensión
 // sale sin opciones y el resto del listado funciona igual.
 const staffLista = ref([]);
 const categoriasTicket = ref([]);
@@ -157,104 +156,6 @@ const staffPorId = computed(() => {
   for (const s of staffLista.value) mapa[s.user_id] = s.nombre;
   return mapa;
 });
-
-// ── Selección múltiple y acciones masivas (Plan Maestro, 2026-09-01) ────
-// Solo el modo Tabla de escritorio — Triage muestra un ticket a la vez.
-// `seleccionados` sigue siendo un Set<id>; `seleccionParaTabla` es el
-// puente hacia `v-model:selection` de AppTable (array de FILAS).
-const seleccionados = ref(new Set());
-
-function estaSeleccionado(id) {
-  return seleccionados.value.has(id);
-}
-function limpiarSeleccion() {
-  seleccionados.value = new Set();
-}
-const ticketsSeleccionados = computed(() => lista.value.filter((t) => seleccionados.value.has(t.id)));
-// Selección desde la cola de Triage (misma selección que la tabla).
-function alternarSeleccion(id) {
-  const nuevo = new Set(seleccionados.value);
-  if (nuevo.has(id)) nuevo.delete(id);
-  else nuevo.add(id);
-  seleccionados.value = nuevo;
-}
-const todaLaColaSeleccionada = computed(() => lista.value.length > 0 && lista.value.every((t) => seleccionados.value.has(t.id)));
-function alternarTodaLaCola() {
-  seleccionados.value = todaLaColaSeleccionada.value ? new Set() : new Set(lista.value.map((t) => t.id));
-}
-const seleccionParaTabla = computed({
-  get: () => ticketsSeleccionados.value,
-  set: (filas) => { seleccionados.value = new Set(filas.map((t) => t.id)); },
-});
-// Cerrar en lote solo si CADA seleccionado ya está resuelto — mismo alcance
-// que cerrarTicket() (resuelto -> cerrado); el backend rechazaría el resto.
-const todosResueltos = computed(() =>
-  ticketsSeleccionados.value.length > 0 && ticketsSeleccionados.value.every((t) => t.estado === 'resuelto')
-);
-
-// Una selección de otra vista/filtro no sobrevive al cambio de contexto.
-watch([filtrosServidor, () => store.pagina], limpiarSeleccion);
-
-const reasignarLoteA = ref('');
-const mostrarConfirmarReasignarLote = ref(false);
-const mostrarConfirmarCerrarLote = ref(false);
-const procesandoLote = ref(false);
-
-function pedirReasignarLote() {
-  if (!reasignarLoteA.value || ticketsSeleccionados.value.length === 0) return;
-  mostrarConfirmarReasignarLote.value = true;
-}
-
-async function confirmarReasignarLote() {
-  procesandoLote.value = true;
-  const staffId = reasignarLoteA.value;
-  const nombre = staffPorId.value[staffId] || 'Staff';
-  let ok = 0;
-  let fallidos = 0;
-  for (const t of ticketsSeleccionados.value) {
-    try {
-      await store.actualizar(t.id, { asignado_a: staffId });
-      ok++;
-    } catch {
-      fallidos++;
-    }
-  }
-  procesandoLote.value = false;
-  mostrarConfirmarReasignarLote.value = false;
-  reasignarLoteA.value = '';
-  limpiarSeleccion();
-  showToast(
-    fallidos === 0 ? `${ok} ticket(s) reasignado(s) a ${nombre}` : `${ok} reasignado(s), ${fallidos} fallaron`,
-    fallidos ? 'error' : undefined,
-  );
-}
-
-function pedirCerrarLote() {
-  if (!todosResueltos.value) return;
-  mostrarConfirmarCerrarLote.value = true;
-}
-
-async function confirmarCerrarLote() {
-  procesandoLote.value = true;
-  let ok = 0;
-  let fallidos = 0;
-  for (const t of ticketsSeleccionados.value) {
-    try {
-      await insforgeApi.cerrarTicket(t.id);
-      ok++;
-    } catch {
-      fallidos++;
-    }
-  }
-  procesandoLote.value = false;
-  mostrarConfirmarCerrarLote.value = false;
-  limpiarSeleccion();
-  await store.cargar();
-  showToast(
-    fallidos === 0 ? `${ok} ticket(s) cerrado(s)` : `${ok} cerrado(s), ${fallidos} fallaron`,
-    fallidos ? 'error' : undefined,
-  );
-}
 
 // ── Conteos por vista ───────────────────────────────────────────────────
 // Un count por vista (insforgeApi.contarTickets: sin traer filas), con los
@@ -373,14 +274,11 @@ function fechaListaAngosta(iso) {
 }
 
 // Clases de fila (tabla de escritorio vía `:row-class` y tarjeta móvil):
-// seleccionada = fondo azul tenue; la abierta por última vez = fondo gris
-// tenue (distinto del de selección, para no confundirse con ella) + `aria-
-// current`. Sin borde: se retiró la única excepción de la escala de bordes
-// (ver SISTEMA-DISENO §1.7).
+// la abierta por última vez = fondo gris tenue + `aria-current`. Sin borde:
+// se retiró la única excepción de la escala de bordes (ver SISTEMA-DISENO §1.7).
 function claseFilaTicket(fila) {
   const clases = ['cursor-pointer'];
-  if (estaSeleccionado(fila.id)) clases.push('bg-primary-50/70!');
-  else if (fila.id === store.ultimoAbierto) clases.push('bg-gray-50');
+  if (fila.id === store.ultimoAbierto) clases.push('bg-gray-50');
   return clases;
 }
 
@@ -496,14 +394,9 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Una línea: vistas (qué cola) · búsqueda · filtros (cómo recortarla)
-         (2026-10-21). Ver filtrosTickets.js.
-         La barra de acciones en lote SE SOBREPONE a esta fila (misma altura,
-         sin mover la tabla ni la cola): con filas marcadas, buscar o filtrar
-         no es lo que se está haciendo. La fila de abajo queda `inert` para que
-         el foco no caiga debajo de la barra. -->
-    <div class="relative">
-    <AppBarraFiltros :inert="seleccionados.size > 0 || undefined">
+    <!-- ══ Una línea: búsqueda · filtros (cómo recortar la cola) · vistas (qué
+         cola) (2026-10-21). Ver filtrosTickets.js. -->
+    <AppBarraFiltros>
       <AppBuscador
         ref="refBuscador"
         v-model="busqueda"
@@ -516,49 +409,6 @@ onMounted(async () => {
       <AppVistas v-model="filtros.vista" en-barra class="ml-auto" :opciones="opcionesVistas" label="Vista de tickets" />
       <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" />
     </AppBarraFiltros>
-    <div
-      v-if="seleccionados.size > 0"
-      class="absolute inset-x-4 bottom-4 top-0 z-10 flex flex-wrap items-center gap-3 rounded-md bg-primary-50 px-3 ring-1 ring-inset ring-primary-200 sm:inset-x-6"
-      role="toolbar"
-      aria-label="Acciones sobre los tickets seleccionados"
-    >
-      <span class="text-sm font-medium text-primary-800 tabular-nums">
-        {{ seleccionados.size }} seleccionado{{ seleccionados.size === 1 ? '' : 's' }}
-      </span>
-      <div class="ml-auto flex flex-wrap items-center gap-2">
-        <label class="relative inline-block">
-          <span class="sr-only">Reasignar seleccionados a</span>
-          <select
-            v-model="reasignarLoteA"
-            class="h-8 max-w-56 cursor-pointer appearance-none truncate rounded-md border border-gray-200 bg-white pl-3 pr-8 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            :disabled="procesandoLote"
-          >
-            <option value="" disabled>Reasignar a...</option>
-            <option v-for="s in staffLista" :key="s.user_id" :value="s.user_id">{{ s.nombre }}</option>
-          </select>
-          <i class="ti ti-chevron-down pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true"></i>
-        </label>
-        <AppButton
-          size="sm"
-          variant="outline"
-          severity="secondary"
-          label="Reasignar"
-          :disabled="!reasignarLoteA || procesandoLote"
-          @click="pedirReasignarLote"
-        />
-        <AppButton
-          size="sm"
-          variant="outline"
-          severity="secondary"
-          label="Cerrar seleccionados"
-          :disabled="!todosResueltos || procesandoLote"
-          :title="todosResueltos ? 'Cerrar los tickets seleccionados' : 'Solo se pueden cerrar en lote tickets ya resueltos'"
-          @click="pedirCerrarLote"
-        />
-        <AppButton size="sm" variant="text" severity="secondary" label="Cancelar" :disabled="procesandoLote" @click="limpiarSeleccion" />
-      </div>
-    </div>
-    </div>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
@@ -586,7 +436,6 @@ onMounted(async () => {
           <AppMarcoTabla v-if="!esMovil">
             <div class="min-h-0 flex-1 overflow-auto">
               <AppTable
-                v-model:selection="seleccionParaTabla"
                 :value="lista"
                 :loading="cargando"
                 :total-records="total"
@@ -598,8 +447,6 @@ onMounted(async () => {
                 @ordenar="store.ordenarPor"
                 @row-click="({ data }) => verTicket(data)"
               >
-                <AppColumn selection-mode="multiple" :header-style="{ width: '44px' }" />
-
                 <!-- Orden de columnas (pedido del dueño, 2026-09-25): primero lo que
                      decide qué atender (prioridad, estado), luego qué es, quién lo
                      pide, quién lo atiende y la fecha. -->
@@ -738,19 +585,13 @@ onMounted(async () => {
           </AppVacio>
 
           <template v-else>
-            <label class="flex shrink-0 cursor-pointer items-center gap-2.5 border-b border-gray-100 bg-gray-50/80 px-4 py-2 text-xs font-medium text-gray-500">
-              <input type="checkbox" :checked="todaLaColaSeleccionada" @change="alternarTodaLaCola">
-              Seleccionar {{ lista.length === total ? 'todos' : `los ${lista.length} cargados` }}
-            </label>
             <ul class="relative min-h-0 flex-1 divide-y divide-gray-100 overflow-y-auto" aria-label="Tickets de soporte">
               <li
                 v-for="t in lista"
                 :key="t.id"
                 tabindex="0"
                 class="cursor-pointer px-4 py-3 transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
-                :class="t.id === ticketSeleccionado
-                  ? 'bg-primary-50/70'
-                  : estaSeleccionado(t.id) ? 'bg-primary-50/40' : 'hover:bg-gray-50'"
+                :class="t.id === ticketSeleccionado ? 'bg-primary-50/70' : 'hover:bg-gray-50'"
                 :aria-current="t.id === ticketSeleccionado ? 'true' : undefined"
                 @click="verTicket(t)"
                 @keydown.enter.self="verTicket(t)"
@@ -762,18 +603,7 @@ onMounted(async () => {
                   :envejecido="ticketEnvejecido(t)"
                   :edad="fechaListaAngosta(t.created_at)"
                   :titulo-fecha="tituloFecha(t)"
-                >
-                  <template #inicio>
-                    <input
-                      type="checkbox"
-                      class="mt-0.5 shrink-0"
-                      :checked="estaSeleccionado(t.id)"
-                      :aria-label="`Seleccionar ${t.codigo}`"
-                      @click.stop
-                      @change="alternarSeleccion(t.id)"
-                    >
-                  </template>
-                </TarjetaTicket>
+                />
               </li>
             </ul>
 
@@ -810,35 +640,5 @@ onMounted(async () => {
     </div>
 
     <TicketInternoForm v-if="mostrarNuevo" @cerrar="onNuevoCerrado" />
-
-    <!-- Acciones masivas: mostrar la lista real afectada antes de confirmar,
-         no un "¿está seguro? (N tickets)" ciego. -->
-    <ConfirmDialog
-      v-if="mostrarConfirmarReasignarLote"
-      titulo="Reasignar tickets"
-      confirmar-label="Reasignar"
-      :cargando="procesandoLote"
-      @cerrado="mostrarConfirmarReasignarLote = false"
-      @confirm="confirmarReasignarLote"
-    >
-      <p>Reasignar {{ ticketsSeleccionados.length }} ticket(s) a <strong>{{ staffPorId[reasignarLoteA] || 'Staff' }}</strong>:</p>
-      <ul class="mt-2 max-h-48 list-disc space-y-1 overflow-y-auto pl-5 text-sm text-gray-700">
-        <li v-for="t in ticketsSeleccionados" :key="t.id"><span class="tabular-nums">{{ t.codigo }}</span> — {{ t.titulo }}</li>
-      </ul>
-    </ConfirmDialog>
-
-    <ConfirmDialog
-      v-if="mostrarConfirmarCerrarLote"
-      titulo="Cerrar tickets"
-      confirmar-label="Cerrar"
-      :cargando="procesandoLote"
-      @cerrado="mostrarConfirmarCerrarLote = false"
-      @confirm="confirmarCerrarLote"
-    >
-      <p>Cerrar {{ ticketsSeleccionados.length }} ticket(s) resuelto(s), con su encuesta de satisfacción de siempre:</p>
-      <ul class="mt-2 max-h-48 list-disc space-y-1 overflow-y-auto pl-5 text-sm text-gray-700">
-        <li v-for="t in ticketsSeleccionados" :key="t.id"><span class="tabular-nums">{{ t.codigo }}</span> — {{ t.titulo }}</li>
-      </ul>
-    </ConfirmDialog>
   </div>
 </template>

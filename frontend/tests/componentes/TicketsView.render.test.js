@@ -1,13 +1,9 @@
 // @vitest-environment happy-dom
 //
 // TicketsView.vue — Fase 1 (listado principal) de la migración de Tickets a
-// AppTable/AppColumn/AppButton, con la extensión de selección múltiple de
-// AppTable (2026-09-08). Mismo patrón de test que Licencias/Equipos: mockea
-// solo api/insforge.js, Pinia y router son reales.
-//
-// Rediseño 2026-09-23: la barra de acciones masivas se localiza por su rol
-// (role="toolbar"), no por la clase provisional `.barra-seleccion` que ya no
-// existe — mismo comportamiento verificado, selector semántico.
+// AppTable/AppColumn/AppButton. Mismo patrón de test que Licencias/Equipos:
+// mockea solo api/insforge.js, Pinia y router son reales. La selección
+// múltiple y las acciones en lote se retiraron el 2026-10-21.
 //
 // Fuerza vista='tabla' vía localStorage (useVistaModulo la lee ahí) — el
 // modo por defecto de Tickets es 'triage' (split-view, no tabla), y esta
@@ -115,13 +111,11 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
     expect(w.text()).toContain('No enciende el monitor');
   });
 
-  it('las 7 columnas (selección + 6 declaradas) se renderizan como <th>', async () => {
+  it('las 6 columnas declaradas se renderizan como <th> (sin columna de selección)', async () => {
     const w = await montar();
     const headers = w.findAll('th');
-    expect(headers.length).toBe(7);
-    // La 1ra columna es la de selección (sin texto de header); las 6 con
-    // label empiezan en la 2da.
-    const labels = headers.slice(1).map((th) => th.text());
+    expect(headers.length).toBe(6);
+    const labels = headers.map((th) => th.text());
     expect(labels).toEqual(['Prioridad', 'Estado', 'Ticket', 'Solicitante', 'Responsable', 'Fecha']);
   });
 
@@ -136,40 +130,13 @@ describe('TicketsView.vue — listado migrado a AppTable/AppColumn/AppButton (Fa
     expect(ultimaLlamada[0].orden).toEqual({ columna: 'codigo', direccion: 'asc' });
   });
 
-  it('marcar el checkbox de una fila actualiza el modelo reactivo y habilita la barra de acciones masivas', async () => {
+  // 2026-10-21 (pedido del dueño): sin selección múltiple ni acciones en lote.
+  // Reasignar y cerrar se hacen desde la ficha de cada ticket.
+  it('la tabla no tiene casillas de selección ni barra de acciones en lote', async () => {
     const w = await montar();
+    expect(w.findAll('input[type="checkbox"]')).toHaveLength(0);
     expect(w.find('[role="toolbar"]').exists()).toBe(false);
-
-    const checkboxesFila = w.findAll('input[type="checkbox"]');
-    // El primero es "seleccionar todos" (header); el resto son por fila.
-    expect(checkboxesFila.length).toBeGreaterThanOrEqual(3);
-    await checkboxesFila[1].setValue(true); // fila de TCK-0001
-
-    const barra = w.find('[role="toolbar"]');
-    expect(barra.exists()).toBe(true);
-    expect(barra.text()).toContain('1 seleccionado');
-
-    // El puente seleccionParaTabla -> seleccionados (Set<id>) debe reflejar
-    // exactamente esa fila — no una copia distinta, no las dos filas.
-    const reasignarBtn = w.findAll('button').find((b) => b.text().includes('Reasignar'));
-    expect(reasignarBtn).toBeTruthy();
-  });
-
-  it('"seleccionar todos" marca las 2 filas de la página', async () => {
-    const w = await montar();
-    const checkboxes = w.findAll('input[type="checkbox"]');
-    await checkboxes[0].setValue(true); // header
-    const barra = w.find('[role="toolbar"]');
-    expect(barra.text()).toContain('2 seleccionados');
-  });
-
-  it('destildar la única fila seleccionada oculta la barra de nuevo', async () => {
-    const w = await montar();
-    const checkboxesFila = w.findAll('input[type="checkbox"]');
-    await checkboxesFila[1].setValue(true);
-    expect(w.find('[role="toolbar"]').exists()).toBe(true);
-    await checkboxesFila[1].setValue(false);
-    expect(w.find('[role="toolbar"]').exists()).toBe(false);
+    expect(w.text()).not.toContain('Cerrar seleccionados');
   });
 
   it('el botón "Ticket interno" del header es el AppButton real (severidad primaria)', async () => {
@@ -287,20 +254,7 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     expect(w.find('button[aria-haspopup="dialog"]').attributes('aria-label')).toContain('Asignado a Usted');
   });
 
-  it('la barra de acciones en lote se sobrepone a la fila de búsqueda (no empuja la tabla)', async () => {
-    const { w } = await montarEn('/tickets');
-    await w.findAll('input[type="checkbox"]')[1].setValue(true);
-    const barra = w.find('[role="toolbar"]');
-    expect(barra.exists()).toBe(true);
-    // Vive junto a la fila de búsqueda, no dentro del marco de la tabla…
-    expect(barra.element.parentElement.querySelector('input[type="search"], input[placeholder^="Buscar por código"]')).toBeTruthy();
-    expect(barra.element.closest('table')).toBeNull();
-    expect(barra.classes()).toContain('absolute');
-    // …y la fila de abajo queda inerte mientras tanto.
-    expect(barra.element.parentElement.querySelector('[inert]')).toBeTruthy();
-  });
-
-  it('en Triage cada ticket de la cola también tiene checkbox y abre la misma barra', async () => {
+  it('la cola de Triage no tiene casillas ni "Seleccionar todos"', async () => {
     localStorage.setItem('sistema-ti-vista-tickets', 'triage');
     const router = crearRouter();
     router.push('/tickets');
@@ -308,17 +262,13 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     const w = mount(TicketsView, {
       global: {
         plugins: [router, [PrimeVue, { unstyled: true }]],
-        stubs: { TicketDetallePanel: true, TicketInternoForm: true, ConfirmDialog: true },
+        stubs: { TicketDetallePanel: true, TicketInternoForm: true },
       },
     });
     await flushPromises();
-    const check = w.find('input[aria-label="Seleccionar TCK-0002"]');
-    expect(check.exists()).toBe(true);
-    await check.setValue(true);
-    expect(w.find('[role="toolbar"]').text()).toContain('1 seleccionado');
-    // "Seleccionar todos" de la cola marca las dos.
-    await w.find('section[aria-label="Cola de tickets"] label input[type="checkbox"]').setValue(true);
-    expect(w.find('[role="toolbar"]').text()).toContain('2 seleccionados');
+    expect(w.find('section[aria-label="Cola de tickets"]').exists()).toBe(true);
+    expect(w.findAll('section[aria-label="Cola de tickets"] input[type="checkbox"]')).toHaveLength(0);
+    expect(w.text()).not.toContain('Seleccionar todos');
   });
 
   it('recuerda la última combinación al volver al listado sin filtros en la URL', async () => {
@@ -345,11 +295,11 @@ describe('TicketsView.vue — columnas de la tabla', () => {
     const w = await montar();
     const filas = w.findAll('tbody tr');
     const celdas = (fila) => fila.findAll('td').map((td) => td.text());
-    // [selección, prioridad, estado, ticket, solicitante, responsable, fecha]
-    expect(celdas(filas[0])[3]).toContain('TCK-0002');
-    expect(celdas(filas[0])[3]).not.toContain('Accesos');
-    expect(celdas(filas[0])[6]).toContain('Recibido');
-    expect(celdas(filas[1])[6]).toContain('Resuelto');
-    expect(celdas(filas[1])[6]).toContain('05/09');
+    // [prioridad, estado, ticket, solicitante, responsable, fecha]
+    expect(celdas(filas[0])[2]).toContain('TCK-0002');
+    expect(celdas(filas[0])[2]).not.toContain('Accesos');
+    expect(celdas(filas[0])[5]).toContain('Recibido');
+    expect(celdas(filas[1])[5]).toContain('Resuelto');
+    expect(celdas(filas[1])[5]).toContain('05/09');
   });
 });

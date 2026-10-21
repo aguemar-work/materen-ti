@@ -140,8 +140,8 @@ global `Deno`.
   primitivas de layout que el PDF del "Reporte" de Tickets, extraídas a
   `core/pdfReporte.js`). **Workspace de 3 columnas** (`/tickets`, modo
   Triage — por defecto desde el Plan Maestro v2, Frente 2, 2026-09-04; el
-  modo Tabla sigue disponible para selección múltiple/reasignación en
-  lote): Bandejas + lista angosta + `TicketDetallePanel.vue`, que a su vez
+  modo Tabla sigue disponible; la selección múltiple y la reasignación en
+  lote se retiraron el 2026-10-21): Bandejas + lista angosta + `TicketDetallePanel.vue`, que a su vez
   gana una 3ra columna de **contexto** (equipos asignados al solicitante,
   artículos de KB relacionados, problema vinculado — colapsable, con botón
   propio en el header del panel) y una sección de **Acciones rápidas** con

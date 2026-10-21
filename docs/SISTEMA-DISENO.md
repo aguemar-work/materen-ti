@@ -467,10 +467,10 @@ contacto y nombre o DNI del empleado. El subtítulo ofrece dos atajos a Pendient
 su chip puesto: "N sin asignar" y "N sin vincular". Los enlaces de la
 primera versión (`?vista=nuevos|mios`) se traducen a Pendientes + chip.
 
-**Selección múltiple** (Tickets, en Tabla y en Triage): con filas marcadas,
-la barra de acciones en lote **se sobrepone a la fila de búsqueda** (misma
-altura, `absolute`), que queda `inert`. Nunca se inserta encima de la
-tabla: empujarla hace perder de vista la fila que se estaba marcando.
+**Sin selección múltiple** (retirada el 2026-10-21, pedido del dueño): ni la
+tabla ni la cola de Triage llevan casillas ni barra de acciones en lote; no
+se usaban. Reasignar y cerrar se hacen desde la ficha de cada ticket.
+`TicketsView.render.test.js` verifica que no vuelvan.
 
 ### 3.3 Tablas (preset `pt/table.pt.js`)
 - Cabecera: banda `gray-50/80`, texto `text-xs font-medium text-gray-500`,

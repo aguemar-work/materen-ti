@@ -23,6 +23,11 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-21** (**Tickets sin selección múltiple**, pedido del dueño, solo frontend) — Se retiran las casillas de la
+  tabla y de la cola de Triage, "Seleccionar todos", la barra de acciones en lote ("Reasignar a…", "Cerrar
+  seleccionados") y sus confirmaciones: no se usaban. Reasignar y cerrar siguen en la ficha de cada ticket.
+  `SISTEMA-DISENO.md` §3.2.1 y `README.md` actualizados.
+
 - **2026-10-21** (**Filtros más sencillos y útiles**, solo frontend, sin migración) — `SISTEMA-DISENO.md` §3.2.1.
   **Filtros en un solo menú** (`AppFiltros`, pedido del dueño): un botón "Filtros" abre un panel con todas las
   dimensiones como secciones a la vista, sin el menú "+ Filtro" ni su segunda pantalla; con algo elegido se tiñe y
