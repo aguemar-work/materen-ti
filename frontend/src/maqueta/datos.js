@@ -644,7 +644,7 @@ const ticket_comentarios = [
   { id: 'tc06', ticket_id: 't118', mensaje: 'Por favor confirme si tiene acceso al número de respaldo.', interno: false, autor_id: 'u-jefe', created_at: hace(0, 1) },
   { id: 'tc07', ticket_id: 't110', mensaje: 'Cuenta creada y enviada por enlace de entrega.', interno: false, autor_id: 'u-asis-1', created_at: hace(3) },
   // Avance visible del escalamiento (121): la RPC lo publica como respuesta al solicitante.
-  { id: 'tc08', ticket_id: 't112', mensaje: 'Lenovo confirmó el cambio de placa; espera el repuesto.', interno: false, autor_id: 'u-jefe', created_at: hace(6) },
+  { id: 'tc-esc-01', ticket_id: 't112', mensaje: 'Lenovo confirmó el cambio de placa; espera el repuesto.', interno: false, autor_id: 'u-jefe', created_at: hace(6) },
 ];
 
 const ticket_eventos = [
@@ -665,9 +665,9 @@ const ticket_eventos = [
   { id: 'te15', ticket_id: 't106', evento: 'estado_cambiado', detalle: 'De "en_progreso" a "resuelto"', user_email: 'lparedes@materen.pe', user_id: 'u-asis-2', created_at: hace(25, 6) },
   { id: 'te16', ticket_id: 't105', evento: 'estado_cambiado', detalle: 'De "abierto" a "rechazado"', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(27) },
   { id: 'te17', ticket_id: 't108', evento: 'encuesta_enviada', detalle: null, user_email: null, user_id: null, created_at: hace(12) },
-  { id: 'te18', ticket_id: 't112', evento: 'escalado', detalle: 'De "N1" a "N2". Motivo: Se limpió el ventilador y siguió apagándose.', user_email: 'dhuaman@materen.pe', user_id: 'u-asis-1', created_at: hace(15, 10) },
-  { id: 'te19', ticket_id: 't112', evento: 'escalado', detalle: 'De "N2" a "N3". Motivo: Falla de placa en garantía. Especialista: Lenovo — servicio técnico.', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(14, 20) },
-  { id: 'te20', ticket_id: 't112', evento: 'escalamiento_actualizado', detalle: 'Lenovo confirmó el cambio de placa; espera el repuesto.', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(6) },
+  { id: 'te-esc-01', ticket_id: 't112', evento: 'escalado', detalle: 'De "N1" a "N2". Motivo: Se limpió el ventilador y siguió apagándose.', user_email: 'dhuaman@materen.pe', user_id: 'u-asis-1', created_at: hace(15, 10) },
+  { id: 'te-esc-02', ticket_id: 't112', evento: 'escalado', detalle: 'De "N2" a "N3". Motivo: Falla de placa en garantía. Especialista: Lenovo — servicio técnico.', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(14, 20) },
+  { id: 'te-esc-03', ticket_id: 't112', evento: 'escalamiento_actualizado', detalle: 'Lenovo confirmó el cambio de placa; espera el repuesto.', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(6) },
 ];
 
 // ── Escalamiento por niveles (migración 121) ───────────────────────────────

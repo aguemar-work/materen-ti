@@ -19,6 +19,9 @@
 --   select * from public.ticket_eventos where evento in ('escalado', 'nivel_devuelto', 'escalamiento_actualizado') order by created_at;
 -- ⚠️ Revertir ANTES el frontend y la function `tickets` que leen las tablas
 -- nuevas. Idempotente.
+-- ⚠️ Orden: para revertir la 120 (cierre de tickets) hay que revertir ANTES
+-- esta 121; la 120 sola restaura el dashboard_resumen_de de la 108 y borraría
+-- los contadores del escalamiento.
 -- ============================================================
 
 -- ------------------------------------------------------------
