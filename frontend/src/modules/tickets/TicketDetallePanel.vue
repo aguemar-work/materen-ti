@@ -7,6 +7,7 @@ import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import ProblemaForm from '../problemas/ProblemaForm.vue';
 import TicketCamposGestion from './TicketCamposGestion.vue';
+import TicketEscalamiento from './TicketEscalamiento.vue';
 import TicketComposer from './TicketComposer.vue';
 import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
 import TicketSolicitante from './TicketSolicitante.vue';
@@ -45,10 +46,11 @@ const {
   mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
   resolviendo, guardarComoKb, mostrarConfirmarResolver, dialogoResolver, cancelarResolver, confirmarResolver,
   mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
-  cambiarNivelAtencion, cambiarPrioridad,
+  cambiarPrioridad,
   mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
   cambiarTipo,
   reclasificacion,
+  escalamiento,
   mostrarProblemaForm, onProblemaFormCerrado,
   copiarMensajeSatisfaccion, copiarMensajeSolicitarInfo,
   enviarComentario,
@@ -293,10 +295,14 @@ function onConfirmarReabrir(motivo) {
             label-asignado="Técnico responsable"
             :reclasificacion="reclasificacion"
             @cambiar-prioridad="cambiarPrioridad"
-            @cambiar-nivel="cambiarNivelAtencion"
             @cambiar-asignado="cambiarAsignado"
             @cambiar-tipo="cambiarTipo"
           />
+        </section>
+
+        <section v-if="escalamiento.visible" aria-labelledby="pnl-escalamiento">
+          <h3 id="pnl-escalamiento" class="mb-2 text-sm font-semibold text-gray-900">Escalamiento</h3>
+          <TicketEscalamiento :escalamiento="escalamiento" :ticket="ticket" :staff-activo="staffActivo" :staff-por-id="staffPorId" />
         </section>
 
         <section v-if="mostrarContexto && contextoAbierto" aria-labelledby="pnl-contexto">

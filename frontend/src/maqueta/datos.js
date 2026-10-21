@@ -22,6 +22,7 @@ import { RPC_PORTAL } from './rpc-portal.js';
 import { RPC_REPORTES, definirActorReportes } from './rpc-reportes.js';
 import { RPC_REPORTES_117 } from './rpc-reportes-117.js';
 import { RPC_CATALOGO_TICKETS, definirActorCatalogoTickets, calcularPorReclasificar } from './rpc-catalogo-tickets.js';
+import { RPC_ESCALAMIENTO, definirActorEscalamiento } from './rpc-escalamiento-tickets.js';
 import { crearDatosCambios } from './cambios-datos.js';
 import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
@@ -54,6 +55,8 @@ definirActorReportes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente'
 // Catálogo v2 (116): la vista de pendientes es solo del jefe. Reclasificar exige el
 // módulo tickets (Diego lo tiene) y un ticket cerrado o rechazado solo lo mueve el jefe (119).
 definirActorCatalogoTickets({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
+// Escalamiento (121): escalar, devolver y registrar avances exigen el módulo tickets (Diego lo tiene).
+definirActorEscalamiento({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
 
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
@@ -180,7 +183,10 @@ const subcategorias_ticket = [
   ['sub-31', 'otro', 'Solicitar capacitación', 'solicitud', 'baja'],
   ['sub-09', 'otro', 'Otro (no clasificado)', 'solicitud', 'baja'],
 ].map(([id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso = null]) => ({
-  id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso, deleted_at: null,
+  id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida,
+  // Nivel sugerido (121): misma siembra que la migración (Redes, Seguridad y Videovigilancia en N2).
+  nivel_sugerido: ['red', 'seguridad', 'cctv'].includes(categoria_id) ? 'N2' : null,
+  aviso, deleted_at: null,
 }));
 
 // ── Empleados ───────────────────────────────────────────────────────────────
@@ -237,7 +243,7 @@ const cuentas = [
   cuenta('c02', 'bitrix24', 'rquispe', 'personal', { url: 'https://materen.bitrix24.es' }),
   cuenta('c03', 'gmail', 'jhuaman@materen.pe', 'personal'),
   cuenta('c04', 'vpn', 'jhuaman', 'personal', { requiere_rotacion: true, notas: 'Acceso remoto a planos' }),
-  cuenta('c05', 'erp', 'msalazar', 'personal', { last_password_change: hace(120) }),
+  cuenta('c05', 'erp', 'msalazar', 'personal', { last_password_change: hace(121) }),
   cuenta('c06', 'gmail', 'cflores@materen.pe', 'personal'),
   cuenta('c07', 'erp', 'cflores', 'personal', { password: null, last_password_change: null }),
   cuenta('c08', 'gmail', 'almacen.chorrillos@materen.pe', 'reutilizable', { notas: 'Correo del puesto de almacén' }),
@@ -311,7 +317,7 @@ function licencia(id, software, extra = {}) {
 }
 
 const licencias = [
-  licencia('l01', 'Microsoft 365 Business Standard', { cantidad: 10, proveedor: 'Microsoft', fecha_vencimiento: fecha(120), costo: 1850, moneda: 'USD', cuenta_id: 'c10' }),
+  licencia('l01', 'Microsoft 365 Business Standard', { cantidad: 10, proveedor: 'Microsoft', fecha_vencimiento: fecha(121), costo: 1850, moneda: 'USD', cuenta_id: 'c10' }),
   licencia('l02', 'AutoCAD 2026', { cantidad: 3, proveedor: 'Autodesk', fecha_vencimiento: fecha(12), costo: 6240, moneda: 'USD', cuenta_id: 'c11', notas: 'Renovar antes del cierre de mes' }),
   licencia('l03', 'ESET Endpoint Security', { cantidad: 25, proveedor: 'Distribuidora Andina SAC', fecha_vencimiento: fecha(-8), costo: 3200, moneda: 'PEN', tiene_clave: true }),
   licencia('l04', 'WinRAR', { tipo: 'perpetua', cantidad: 5, proveedor: 'win.rar GmbH', fecha_vencimiento: null, renovacion_meses: null, costo: 145, moneda: 'USD', tiene_clave: true }),
@@ -637,13 +643,15 @@ const ticket_comentarios = [
   { id: 'tc05', ticket_id: 't112', mensaje: 'Se le prestó la LAP-003 mientras dura la reparación.', interno: false, autor_id: 'u-jefe', created_at: hace(14) },
   { id: 'tc06', ticket_id: 't118', mensaje: 'Por favor confirme si tiene acceso al número de respaldo.', interno: false, autor_id: 'u-jefe', created_at: hace(0, 1) },
   { id: 'tc07', ticket_id: 't110', mensaje: 'Cuenta creada y enviada por enlace de entrega.', interno: false, autor_id: 'u-asis-1', created_at: hace(3) },
+  // Avance visible del escalamiento (121): la RPC lo publica como respuesta al solicitante.
+  { id: 'tc08', ticket_id: 't112', mensaje: 'Lenovo confirmó el cambio de placa; espera el repuesto.', interno: false, autor_id: 'u-jefe', created_at: hace(6) },
 ];
 
 const ticket_eventos = [
   { id: 'te01', ticket_id: 't114', evento: 'creado', detalle: null, user_email: null, user_id: null, created_at: hace(3, 6) },
   { id: 'te02', ticket_id: 't114', evento: 'reasignado', detalle: null, user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(3, 5) },
   { id: 'te03', ticket_id: 't114', evento: 'estado_cambiado', detalle: 'De "abierto" a "en_progreso"', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(3, 4) },
-  { id: 'te04', ticket_id: 't114', evento: 'nivel_atencion_cambiado', detalle: 'De "N1" a "N2"', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(3, 3) },
+  { id: 'te04', ticket_id: 't114', evento: 'escalado', detalle: 'De "N1" a "N2". Motivo: El router 4G no enciende ni con otro cargador; se necesita revisar el enlace.', user_email: 'dhuaman@materen.pe', user_id: 'u-asis-1', created_at: hace(3, 3) },
   { id: 'te05', ticket_id: 't112', evento: 'creado', detalle: null, user_email: null, user_id: null, created_at: hace(16) },
   { id: 'te06', ticket_id: 't112', evento: 'prioridad_cambiada', detalle: 'De "alta" a "urgente"', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(15, 20) },
   { id: 'te07', ticket_id: 't112', evento: 'estado_cambiado', detalle: 'De "abierto" a "en_progreso"', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(15, 18) },
@@ -657,6 +665,33 @@ const ticket_eventos = [
   { id: 'te15', ticket_id: 't106', evento: 'estado_cambiado', detalle: 'De "en_progreso" a "resuelto"', user_email: 'lparedes@materen.pe', user_id: 'u-asis-2', created_at: hace(25, 6) },
   { id: 'te16', ticket_id: 't105', evento: 'estado_cambiado', detalle: 'De "abierto" a "rechazado"', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(27) },
   { id: 'te17', ticket_id: 't108', evento: 'encuesta_enviada', detalle: null, user_email: null, user_id: null, created_at: hace(12) },
+  { id: 'te18', ticket_id: 't112', evento: 'escalado', detalle: 'De "N1" a "N2". Motivo: Se limpió el ventilador y siguió apagándose.', user_email: 'dhuaman@materen.pe', user_id: 'u-asis-1', created_at: hace(15, 10) },
+  { id: 'te19', ticket_id: 't112', evento: 'escalado', detalle: 'De "N2" a "N3". Motivo: Falla de placa en garantía. Especialista: Lenovo — servicio técnico.', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(14, 20) },
+  { id: 'te20', ticket_id: 't112', evento: 'escalamiento_actualizado', detalle: 'Lenovo confirmó el cambio de placa; espera el repuesto.', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(6) },
+];
+
+// ── Escalamiento por niveles (migración 121) ───────────────────────────────
+// TCK-0114 está en N2 (Redes) con fecha estimada para mañana; TCK-0112 pasó a N3
+// con la garantía del fabricante y su fecha estimada ya venció (sello en la
+// tarjeta y contador en el Inicio).
+const ticket_escalamientos = [
+  { id: 'esc-01', ticket_id: 't114', nivel_desde: 'N1', nivel_hacia: 'N2', direccion: 'escalado',
+    motivo: 'El router 4G no enciende ni con otro cargador; se necesita revisar el enlace.', responsable_id: 'u-jefe',
+    especialista_tipo: null, especialista_nombre: null, referencia_externa: null, fecha_estimada: fecha(1),
+    inicio_at: hace(3, 3), fin_at: null, fin_motivo: null, created_by: 'u-asis-1' },
+  { id: 'esc-02', ticket_id: 't112', nivel_desde: 'N1', nivel_hacia: 'N2', direccion: 'escalado',
+    motivo: 'Se limpió el ventilador y siguió apagándose.', responsable_id: 'u-jefe',
+    especialista_tipo: null, especialista_nombre: null, referencia_externa: null, fecha_estimada: null,
+    inicio_at: hace(15, 10), fin_at: hace(14, 20), fin_motivo: 'escalado', created_by: 'u-asis-1' },
+  { id: 'esc-03', ticket_id: 't112', nivel_desde: 'N2', nivel_hacia: 'N3', direccion: 'escalado',
+    motivo: 'Falla de placa en garantía.', responsable_id: 'u-jefe',
+    especialista_tipo: 'garantia', especialista_nombre: 'Lenovo — servicio técnico', referencia_externa: 'CASO-77812', fecha_estimada: fecha(-1),
+    inicio_at: hace(14, 20), fin_at: null, fin_motivo: null, created_by: 'u-jefe' },
+];
+
+const ticket_escalamiento_avances = [
+  { id: 'ava-01', escalamiento_id: 'esc-03', ticket_id: 't112', nota: 'Lenovo confirmó el cambio de placa; espera el repuesto.',
+    fecha_estimada_nueva: fecha(-1), visible_usuario: true, autor_id: 'u-jefe', created_at: hace(6) },
 ];
 
 const ticket_satisfaccion = [
@@ -750,7 +785,7 @@ const kb_articulos = [
     id: 'kb03', titulo: 'Impresora Epson imprime hojas en blanco', categoria_id: 'equipos', estado: 'publicado',
     sintoma: 'La impresora avanza el papel pero no imprime.',
     solucion: 'Ejecutar limpieza de cabezales desde la utilidad Epson dos veces y verificar niveles de tinta.',
-    util_si: 5, util_no: 0, ticket_origen_id: null, created_by: 'u-jefe', created_at: hace(120), updated_at: hace(40), deleted_at: null,
+    util_si: 5, util_no: 0, ticket_origen_id: null, created_by: 'u-jefe', created_at: hace(121), updated_at: hace(40), deleted_at: null,
   },
   {
     id: 'kb04', titulo: 'Macros bloqueadas en Excel', categoria_id: 'software', estado: 'en_revision',
@@ -917,7 +952,7 @@ const entregas = [
   { id: 'ent01', empleado_id: 'e12', created_at: hace(3), expires_at: hace(2), viewed_at: null, created_by: 'u-asis-1', expira_en: hace(2) },
   { id: 'ent02', empleado_id: 'e09', created_at: hace(10), expires_at: hace(9), viewed_at: hace(9, 20), created_by: 'u-jefe', expira_en: hace(9) },
   { id: 'ent03', empleado_id: 'e01', created_at: hace(399), expires_at: hace(398), viewed_at: hace(398, 22), created_by: 'u-jefe', expira_en: hace(398) },
-  { id: 'ent04', empleado_id: 'e01', created_at: hace(120), expires_at: hace(119), viewed_at: null, created_by: 'u-asis-1', expira_en: hace(119) },
+  { id: 'ent04', empleado_id: 'e01', created_at: hace(121), expires_at: hace(119), viewed_at: null, created_by: 'u-asis-1', expira_en: hace(119) },
 ];
 
 // ── Ciclo de vida del empleado (migración 102) ──────────────────────────────
@@ -1060,6 +1095,7 @@ export const TABLAS = {
   licencias, asignaciones_licencia,
   equipos, equipo_accesorios, asignaciones_equipo, eventos_equipo, actas, equipos_importacion,
   tickets, ticket_comentarios, ticket_eventos, ticket_satisfaccion,
+  ticket_escalamientos, ticket_escalamiento_avances,
   config_parametros,
   // v_tickets_por_reclasificar (116): misma regla que la vista; la RPC la recalcula.
   v_tickets_por_reclasificar: calcularPorReclasificar({ tickets, ticket_eventos, config_parametros, categorias_ticket, subcategorias_ticket }),
@@ -1109,6 +1145,10 @@ export const RPC = {
   cerrar_ticket: (db, args) => {
     const t = db.tickets.find((x) => x.id === args?.p_ticket_id);
     if (t) t.estado = 'cerrado';
+    // 121: al cerrar, el tramo de escalamiento abierto se cierra (trigger escalamiento_sigue_estado).
+    for (const e of db.ticket_escalamientos || []) {
+      if (t && e.ticket_id === t.id && !e.fin_at) Object.assign(e, { fin_at: new Date().toISOString(), fin_motivo: 'cerrado' });
+    }
     return t || null;
   },
   kb_registrar_feedback: (db, args) => {
@@ -1131,6 +1171,8 @@ export const RPC = {
   ...RPC_PORTAL,
   // Catálogo de tickets v2 (116): reclasificar_ticket — maqueta/rpc-catalogo-tickets.js.
   ...RPC_CATALOGO_TICKETS,
+  // Escalamiento por niveles (121): escalar, devolver y avances — maqueta/rpc-escalamiento-tickets.js.
+  ...RPC_ESCALAMIENTO,
   // Inicio (103): una sola RPC; escenarios por `?maqueta=...` en maqueta/inicio.js.
   dashboard_resumen: (db) => resumenInicio(db, { usuarioId: USUARIO_MAQUETA.id }),
 };

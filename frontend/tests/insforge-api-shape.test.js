@@ -56,7 +56,10 @@ const METODOS = [
   'listTicketsPorReclasificar', 'reclasificarTicket',
   'listTickets', 'listTicketsPage', 'contarTickets',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
-  'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
+  'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket',
+  // escalamiento por niveles (migración 121): tramos, avances y sus 3 RPC
+  'listEscalamientosTicket', 'escalarTicket', 'devolverNivelTicket', 'registrarAvanceEscalamiento',
+  'cerrarTicket',
   // reportes (migración 115): solo RPC, nada se agrega en el cliente
   'obtenerReporteTickets', 'obtenerReporteSatisfaccion',
   // reportes centralizados (migración 117): una RPC por reporte, misma forma

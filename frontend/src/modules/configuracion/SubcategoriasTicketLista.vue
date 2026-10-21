@@ -60,6 +60,8 @@ async function agregar() {
         <span class="min-w-0 flex-1 truncate text-sm text-gray-900">{{ sub.nombre }}</span>
         <span v-if="sub.aviso" class="shrink-0 text-xs text-gray-500">Con aviso</span>
         <span v-if="tipoLabel(sub.tipo_sugerido)" class="shrink-0 text-xs text-gray-500">{{ tipoLabel(sub.tipo_sugerido) }}</span>
+        <!-- Nivel sugerido (121): solo si no es el de siempre (N1). -->
+        <span v-if="sub.nivel_sugerido && sub.nivel_sugerido !== 'N1'" class="shrink-0 text-xs text-gray-500" title="Nivel sugerido al iniciar la atención" data-nivel-sugerido>{{ sub.nivel_sugerido }}</span>
         <span class="shrink-0" :title="sub.prioridad_sugerida ? 'Prioridad sugerida' : 'Prioridad sugerida (por defecto)'" data-prioridad-sugerida>
           <PrioridadTicket :valor="prioridadSugeridaDe(sub)" />
         </span>

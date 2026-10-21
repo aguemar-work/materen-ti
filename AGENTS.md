@@ -125,6 +125,12 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   y agrupa al resto en «Jefatura y otros» para que los totales cuadren; solo lo recibe el JEFE (también el técnico de
   cada respuesta de Satisfacción). La marca la cambia solo un JEFE (`trg_staff_tecnico_mesa`, 42501). Pendientes y
   tramos salen de `backlog_tickets_en()`. La situación de un solicitante usa los umbrales de `config_parametros`.
+- **Escalamiento (121)**: N1 Soporte, N2 Especializado, N3 Especialista interno o externo. `ticket_escalamientos` y
+  `ticket_escalamiento_avances` solo se escriben por `escalar_ticket` / `devolver_nivel_ticket` /
+  `registrar_avance_escalamiento` (permiso `tickets`); `tickets.nivel_atencion` es el nivel actual y, con el ticket en
+  atención, solo cambia escalando o devolviendo (Iniciar fija el inicial). N2 reasigna (responsable obligatorio); N3
+  conserva al responsable y avisa al JEFE. El solicitante ve nivel, fecha estimada y avances visibles, nunca el motivo
+  ni el especialista; `nivel_atencion_publico()` y `NIVEL_PUBLICO` (dominio) se mueven juntos.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

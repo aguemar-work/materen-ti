@@ -53,6 +53,9 @@ export function normalizarResumen(crudo) {
         mios: lista(t.mios) || [],
         mios_total: Number.isFinite(t.mios_total) ? t.mios_total : (lista(t.mios) || []).length,
         vigentes: Number.isFinite(t.vigentes) ? t.vigentes : 0,
+        // 121: sin la migración no llegan; 0 y [] no se leen como un aviso.
+        escalados: Number.isFinite(t.escalados) ? t.escalados : 0,
+        escalados_vencidos: lista(t.escalados_vencidos) || [],
         vencidos: t.vencidos ?? null,
         por_vencer: t.por_vencer ?? null,
       }

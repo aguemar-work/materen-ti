@@ -22,6 +22,10 @@ vi.mock('../../src/api/insforge.js', () => ({
     listComentariosTicket: vi.fn().mockResolvedValue([]),
     nombresStaff: vi.fn().mockResolvedValue([]),
     listEventosTicket: vi.fn().mockResolvedValue([]),
+    listEscalamientosTicket: vi.fn().mockResolvedValue([]),
+    escalarTicket: vi.fn(),
+    devolverNivelTicket: vi.fn(),
+    registrarAvanceEscalamiento: vi.fn(),
     getSatisfaccionTicket: vi.fn().mockResolvedValue(null),
     equiposPorEmpleado: vi.fn().mockResolvedValue([]),
     listArticulosRelacionados: vi.fn().mockResolvedValue([]),
@@ -331,5 +335,130 @@ describe('TicketDetalleView.vue — reclasificar la categoría (119)', () => {
     insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'en_progreso', asignado_a: 'staff-1' }));
     const w = await montar('tck-1', { rol: 'ASISTENTE', modulos: ['equipos'] });
     expect(botonReclasificar(w)).toBeFalsy();
+  });
+});
+
+// Escalamiento por niveles (121): en atención el nivel se lee (no se edita) y
+// cambia con «Escalar» / «Devolver nivel»; N2 exige quién lo atiende y N3 el
+// especialista. La sección muestra quién lo tiene y la fecha estimada.
+describe('TicketDetalleView.vue — escalamiento por niveles (121)', () => {
+  const espera = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+  const dialogo = () => document.querySelector('[role="dialog"]');
+  const campo = (rotulo) => {
+    const label = [...dialogo().querySelectorAll('label')].find((l) => l.textContent.trim().startsWith(rotulo));
+    return label ? document.getElementById(label.getAttribute('for')) : null;
+  };
+  const radio = (texto) => [...dialogo().querySelectorAll('label')].find((l) => l.textContent.trim().startsWith(texto))?.querySelector('input[type="radio"]');
+  const botonDeDialogo = (texto) => [...dialogo().querySelectorAll('button')].find((b) => b.textContent.trim().startsWith(texto));
+  async function escribir(el, valor) {
+    el.value = valor;
+    el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+    await espera();
+  }
+  const seccion = (w) => w.find('[data-escalamiento]');
+  const boton = (w, texto) => (seccion(w).exists() ? seccion(w).findAll('button').find((b) => b.text().includes(texto)) : undefined);
+  const enCurso = { estado: 'en_progreso', asignado_a: 'staff-1', nivel_atencion: 'N1' };
+
+  beforeEach(() => {
+    insforgeApi.nombresStaff.mockResolvedValue([
+      { user_id: 'staff-1', nombre: 'Soporte Uno', activo: true },
+      { user_id: 'staff-2', nombre: 'Redes Dos', activo: true },
+    ]);
+    insforgeApi.listEscalamientosTicket.mockResolvedValue([]);
+  });
+  afterEach(() => {
+    insforgeApi.nombresStaff.mockResolvedValue([]);
+    document.body.innerHTML = '';
+    document.body.style.overflow = '';
+  });
+
+  it('en atención el nivel es de solo lectura y se escala a N2 con quién lo atiende', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase(enCurso));
+    insforgeApi.escalarTicket.mockResolvedValue({ ticket_id: 'tck-1', nivel: 'N2', asignado_a: 'staff-2' });
+    const w = await montar();
+    expect(w.find('[data-nivel-actual]').text()).toContain('N1 — Soporte básico');
+    expect(boton(w, 'Devolver nivel')).toBeFalsy();
+
+    await boton(w, 'Escalar').trigger('click');
+    await espera(20);
+    expect(dialogo().textContent).toContain('Escalar ticket');
+    expect(radio('N2').checked).toBe(true);
+    // Sin quién lo atiende no se manda nada (el campo es obligatorio en N2).
+    await escribir(campo('Qué pasó'), 'Se reinició el router sin éxito');
+    expect(campo('Quién lo atiende').required).toBe(true);
+    botonDeDialogo('Escalar').click();
+    await espera(20);
+    expect(insforgeApi.escalarTicket).not.toHaveBeenCalled();
+
+    await escribir(campo('Quién lo atiende'), 'staff-2');
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ ...enCurso, nivel_atencion: 'N2', asignado_a: 'staff-2' }));
+    insforgeApi.listEscalamientosTicket.mockResolvedValue([{
+      id: 'esc-1', nivel_desde: 'N1', nivel_hacia: 'N2', direccion: 'escalado', motivo: 'Se reinició el router sin éxito',
+      responsable_id: 'staff-2', fecha_estimada: null, inicio_at: '2026-10-21T15:00:00Z', fin_at: null, avances: [],
+    }]);
+    botonDeDialogo('Escalar').click();
+    await espera(40);
+    expect(insforgeApi.escalarTicket).toHaveBeenCalledWith('tck-1', expect.objectContaining({
+      nivel: 'N2', motivo: 'Se reinició el router sin éxito', responsable_id: 'staff-2',
+    }));
+    expect(insforgeApi.escalarTicket.mock.calls[0][1]).not.toHaveProperty('especialista_nombre');
+    await espera(500);
+    expect(w.find('[data-nivel-actual]').text()).toContain('N2 — Especializado');
+    expect(seccion(w).text()).toContain('Redes Dos');
+    expect(w.find('[data-motivo]').text()).toBe('Se reinició el router sin éxito');
+    expect(boton(w, 'Devolver nivel')).toBeTruthy();
+    expect(insforgeApi.actualizarTicket).not.toHaveBeenCalled();
+  });
+
+  it('a N3 exige el tipo y el nombre del especialista', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ ...enCurso, nivel_atencion: 'N2' }));
+    const w = await montar();
+    await boton(w, 'Escalar').trigger('click');
+    await espera(20);
+    expect(radio('N3').checked).toBe(true);
+    expect(radio('N2')).toBeFalsy();
+    await escribir(campo('Qué pasó'), 'Falla de placa');
+    expect(campo('Tipo de especialista').required).toBe(true);
+    expect(campo('Especialista o proveedor').required).toBe(true);
+    botonDeDialogo('Escalar').click();
+    await espera(20);
+    expect(insforgeApi.escalarTicket).not.toHaveBeenCalled();
+    await escribir(campo('Tipo de especialista'), 'garantia');
+    await escribir(campo('Especialista o proveedor'), 'Lenovo');
+    insforgeApi.escalarTicket.mockResolvedValue({ ticket_id: 'tck-1', nivel: 'N3' });
+    botonDeDialogo('Escalar').click();
+    await espera(40);
+    expect(insforgeApi.escalarTicket).toHaveBeenCalledWith('tck-1', expect.objectContaining({
+      nivel: 'N3', especialista_tipo: 'garantia', especialista_nombre: 'Lenovo',
+      // «Sin cambio»: vacío (la API lo manda como null) y el servidor conserva al responsable.
+      responsable_id: '',
+    }));
+  });
+
+  it('muestra al especialista y avisa cuando la fecha estimada ya pasó', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ ...enCurso, nivel_atencion: 'N3' }));
+    insforgeApi.listEscalamientosTicket.mockResolvedValue([{
+      id: 'esc-2', nivel_desde: 'N2', nivel_hacia: 'N3', direccion: 'escalado', motivo: 'Falla de placa',
+      responsable_id: 'staff-1', especialista_tipo: 'garantia', especialista_nombre: 'Lenovo', referencia_externa: 'CASO-1',
+      fecha_estimada: '2020-01-10', inicio_at: '2020-01-01T15:00:00Z', fin_at: null,
+      avances: [{ id: 'a1', nota: 'Espera el repuesto', visible_usuario: true, autor_id: 'staff-1', created_at: '2020-01-05T15:00:00Z' }],
+    }]);
+    const w = await montar();
+    expect(seccion(w).text()).toContain('Garantía del fabricante · Lenovo');
+    expect(seccion(w).text()).toContain('CASO-1');
+    expect(w.find('[data-fecha-vencida]').exists()).toBe(true);
+    expect(w.findAll('[data-avance]')).toHaveLength(1);
+    expect(boton(w, 'Escalar')).toBeFalsy();
+    expect(boton(w, 'Registrar avance')).toBeTruthy();
+  });
+
+  it('sin el módulo tickets, o con el ticket cerrado, no se ofrece escalar', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase(enCurso));
+    let w = await montar('tck-1', { modulos: ['equipos'] });
+    expect(seccion(w).exists()).toBe(false);
+    w.unmount();
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ ...enCurso, estado: 'cerrado' }));
+    w = await montar();
+    expect(seccion(w).exists()).toBe(false);
   });
 });

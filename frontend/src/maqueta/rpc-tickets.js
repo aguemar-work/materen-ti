@@ -41,12 +41,16 @@ export function funcionTickets(db, body = {}) {
     const comentarios = (db.ticket_comentarios || [])
       .filter((c) => c.ticket_id === t.id && !c.interno)
       .map((c) => ({ mensaje: c.mensaje, fecha: c.created_at, autor: 'Soporte TI' }));
+    // Escalamiento (121): solo el nivel y la fecha estimada del tramo abierto.
+    const tramo = (db.ticket_escalamientos || []).find((e) => e.ticket_id === t.id && !e.fin_at);
     return {
       ok: true,
       codigo: t.codigo,
       titulo: t.titulo,
       descripcion: t.descripcion,
       estado: t.estado,
+      nivel: t.nivel_atencion || null,
+      fechaEstimada: tramo?.fecha_estimada || null,
       categoria: cat?.nombre || '',
       subcategoria: sub?.nombre || '',
       creado: t.created_at,

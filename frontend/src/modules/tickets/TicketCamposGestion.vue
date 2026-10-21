@@ -4,6 +4,7 @@ import {
   OPCIONES_PRIORIDAD as PRIORIDADES,
   OPCIONES_TIPO as TIPOS,
   NIVELES_ATENCION,
+  nivelAtencionLabel,
   ESTADOS_EN_CURSO,
   ESTADOS_TERMINALES,
 } from '../../core/dominio-tickets.js';
@@ -19,7 +20,9 @@ import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 // que toman según el estado:
 //   - abierto:  editables, todavía sin guardar — se aplican al iniciar la
 //               atención (atencion-*, con v-model del contenedor).
-//   - en curso: editables que guardan al vuelo (eventos cambiar-*).
+//   - en curso: editables que guardan al vuelo (eventos cambiar-*), salvo el
+//               nivel de atención: desde la 121 cambia escalando o devolviendo
+//               (TicketEscalamiento), así que acá solo se lee.
 //   - terminal: solo lectura.
 // Compartido por TicketDetalleView.vue (página completa) y
 // TicketDetallePanel.vue (split-view): hasta ago 2026 cada uno tenía su
@@ -51,7 +54,6 @@ const emit = defineEmits([
   'update:atencionAsignado',
   'update:atencionTipo',
   'cambiar-prioridad',
-  'cambiar-nivel',
   'cambiar-asignado',
   'cambiar-tipo',
 ]);
@@ -72,7 +74,6 @@ const ayudaTipoAbierto = computed(() => (props.tipoAmbiguoSinClasificar
   : ''));
 const campoTipoAbierto = useCampoAccesible({ ayuda: () => ayudaTipoAbierto.value });
 const campoPrioridadCurso = useCampoAccesible();
-const campoNivelCurso = useCampoAccesible();
 const campoAsignadoCurso = useCampoAccesible();
 const campoTipoCurso = useCampoAccesible();
 
@@ -80,7 +81,7 @@ const campoTipoCurso = useCampoAccesible();
 // "Sin registrar" en gris, nunca un guion suelto).
 const datosTerminal = computed(() => [
   { label: 'Prioridad', valor: PRIORIDADES.find((p) => p.valor === props.ticket.prioridad)?.label || props.ticket.prioridad || '' },
-  { label: 'Nivel de atención', valor: NIVELES_ATENCION.find((n) => n.valor === props.ticket.nivel_atencion)?.label || '' },
+  { label: 'Nivel de atención', valor: nivelAtencionLabel(props.ticket.nivel_atencion) },
   { label: props.labelAsignado, valor: props.staffPorId[props.ticket.asignado_a] || '' },
   { label: 'Tipo', valor: TIPOS.find((t) => t.valor === props.ticket.tipo)?.label || '' },
 ]);
@@ -220,24 +221,11 @@ const datosTerminal = computed(() => [
       </div>
     </div>
 
-    <div class="campo" :class="{ 'campo--inerte': guardandoCampo }">
-      <label class="campo__etiqueta" :for="campoNivelCurso.id">Nivel de atención</label>
-      <div class="campo__caja">
-        <select
-          :id="campoNivelCurso.id"
-          class="campo__control campo__control--select"
-          :value="ticket.nivel_atencion || ''"
-          :disabled="guardandoCampo"
-          :aria-invalid="campoNivelCurso.invalido.value"
-          :aria-describedby="campoNivelCurso.describedBy.value"
-          @change="emit('cambiar-nivel', $event.target.value)"
-        >
-          <option value="" disabled>Sin definir</option>
-          <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
-        </select>
-        <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
-      </div>
-    </div>
+    <!-- Nivel: solo lectura en curso (se cambia con Escalar o Devolver nivel). -->
+    <dl class="text-sm" data-nivel-actual>
+      <dt class="text-xs text-gray-500">Nivel de atención</dt>
+      <dd class="mt-0.5" :class="ticket.nivel_atencion ? 'text-gray-900' : 'text-gray-500'">{{ nivelAtencionLabel(ticket.nivel_atencion) || 'Sin definir' }}</dd>
+    </dl>
 
     <!-- Sin v-model: el handler necesita el $event.target real (para
          revertir el <select> a mano si el usuario cancela desasignar, ver

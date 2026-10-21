@@ -13,6 +13,8 @@ const ICONO_POR_TIPO = {
   ticket_asignado: 'ti-user-check',
   ticket_estado_cambiado: 'ti-progress',
   ticket_comentario_nuevo: 'ti-message-circle',
+  // Migración 121: un ticket pasó al Nivel 3 (aviso al JEFE).
+  ticket_escalado: 'ti-stairs-up',
 };
 
 export function iconoNotificacion(tipo) {

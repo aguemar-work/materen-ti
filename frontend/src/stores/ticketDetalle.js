@@ -15,6 +15,8 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
     equiposEmpleado: [],
     articulosRelacionados: [],
     problemaVinculado: null,
+    // Tramos del escalamiento por niveles con sus avances (migración 121).
+    escalamientos: [],
     staffLista: [],
     cargando: false,
     error: null,
@@ -27,17 +29,19 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
       this.cargando = true;
       this.error = null;
       try {
-        const [t, coms, staff, eventos] = await Promise.all([
+        const [t, coms, staff, eventos, escalamientos] = await Promise.all([
           insforgeApi.getTicket(id),
           insforgeApi.listComentariosTicket(id),
           insforgeApi.nombresStaff(),
           insforgeApi.listEventosTicket(id),
+          insforgeApi.listEscalamientosTicket(id),
         ]);
         // Si el ticket no existe, ticket queda en null (la vista decide el redirect).
         this.ticket = t || null;
         this.comentarios = coms;
         this.staffLista = staff;
         this.eventos = eventos;
+        this.escalamientos = escalamientos;
         if (t && t.estado !== 'abierto') {
           this.satisfaccion = await insforgeApi.getSatisfaccionTicket(id);
         }
@@ -118,6 +122,23 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
       this.articulosRelacionados = this.ticket.categoria_id
         ? await insforgeApi.listArticulosRelacionados({ categoriaId: this.ticket.categoria_id })
         : [];
+    },
+
+    // Tras escalar, devolver o registrar un avance (RPC de la 121): cambian el
+    // nivel y quizá el responsable (ticket), dejan su evento y, a veces, la
+    // respuesta pública al solicitante, además del tramo.
+    async recargarTrasEscalar() {
+      const id = this.ticket.id;
+      const [t, coms, eventos, escalamientos] = await Promise.all([
+        insforgeApi.getTicket(id),
+        insforgeApi.listComentariosTicket(id),
+        insforgeApi.listEventosTicket(id),
+        insforgeApi.listEscalamientosTicket(id),
+      ]);
+      if (t) this.ticket = t;
+      this.comentarios = coms;
+      this.eventos = eventos;
+      this.escalamientos = escalamientos;
     },
 
     async recargarProblemaVinculado() {

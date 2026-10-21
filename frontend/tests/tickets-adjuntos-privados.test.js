@@ -204,6 +204,41 @@ describe('tickets.seguimiento — URL firmada de la captura, nunca la key', () =
     expect(r.status).toBe(200);
     expect((await r.json()).adjuntoUrl).toBeNull();
   });
+
+  // Escalamiento (migración 121): el solicitante ve el nivel y la fecha
+  // estimada del tramo abierto; nada interno (prioridad, responsable, motivo,
+  // especialista). Lista blanca exacta: un campo nuevo se agrega a propósito.
+  it('proyecta nivel y fecha estimada, y solo las claves públicas', async () => {
+    sdk.responder = responderCon({
+      extra: {
+        'tickets:select': () => ({ data: { ...FILA, adjunto_key: null, estado: 'en_progreso', nivel_atencion: 'N3', prioridad: 'urgente', asignado_a: 'u-9' }, error: null }),
+        'ticket_escalamientos:select': () => ({ data: { fecha_estimada: '2026-11-02', especialista_nombre: 'Lenovo', motivo: 'interno' }, error: null }),
+      },
+    });
+    const datos = await (await pedir()).json();
+    expect(Object.keys(datos).sort()).toEqual([
+      'actualizado', 'adjuntoExpiraSegundos', 'adjuntoUrl', 'categoria', 'codigo', 'comentarios', 'creado',
+      'descripcion', 'estado', 'fechaEstimada', 'nivel', 'ok', 'subcategoria', 'titulo',
+    ]);
+    expect(datos.nivel).toBe('N3');
+    expect(datos.fechaEstimada).toBe('2026-11-02');
+    expect(JSON.stringify(datos)).not.toMatch(/Lenovo|interno|urgente|u-9/);
+    const tramo = consultasDe('ticket_escalamientos', 'select')[0];
+    expect(tramo.cols).toBe('fecha_estimada');
+  });
+
+  it('sin tramo abierto (o sin la tabla de la 121), fechaEstimada null', async () => {
+    sdk.responder = responderCon({
+      extra: {
+        'tickets:select': () => ({ data: { ...FILA, adjunto_key: null, nivel_atencion: 'N1' }, error: null }),
+        'ticket_escalamientos:select': () => FALLA_BD,
+      },
+    });
+    const datos = await (await pedir()).json();
+    expect(datos.ok).toBe(true);
+    expect(datos.nivel).toBe('N1');
+    expect(datos.fechaEstimada).toBeNull();
+  });
 });
 
 // ── adjuntoStaff ─────────────────────────────────────────────────────────
@@ -294,7 +329,7 @@ describe('tickets.adjuntoStaff — URL firmada para staff con el módulo tickets
   });
 
   it('rate-limit por usuario sobre intentos_publicos (120 / 10 min): 429 al llegar al tope', async () => {
-    sdk.responder = conTicket({ 'intentos_publicos:select': () => ({ data: new Array(120).fill({ id: 1 }), error: null }) });
+    sdk.responder = conTicket({ 'intentos_publicos:select': () => ({ data: new Array(121).fill({ id: 1 }), error: null }) });
     const r = await pedir();
     expect(r.status).toBe(429);
     expect((await r.json()).code).toBe('demasiados_intentos');

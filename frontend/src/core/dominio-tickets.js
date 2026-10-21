@@ -97,11 +97,81 @@ export const OPCIONES_TIPO = [
   { valor: 'solicitud', label: 'Solicitud' },
 ];
 
+// Política de la mesa de ayuda (migración 121): N1 lo atiende Soporte, N2 el
+// especialista interno (Redes) y N3 un especialista interno o externo
+// (experto, desarrollo, proveedor, garantía).
 export const NIVELES_ATENCION = [
   { valor: 'N1', label: 'N1 — Soporte básico' },
   { valor: 'N2', label: 'N2 — Especializado' },
-  { valor: 'N3', label: 'N3 — Experto / desarrollo' },
+  { valor: 'N3', label: 'N3 — Especialista (interno o externo)' },
 ];
+
+export function nivelAtencionLabel(nivel) {
+  return NIVELES_ATENCION.find((n) => n.valor === nivel)?.label || '';
+}
+
+/**
+ * Nivel que precarga Iniciar: el `nivel_sugerido` de la subcategoría si es
+ * conocido (migración 121); si no, N1.
+ */
+export function nivelSugeridoDe(subcategoria) {
+  const n = subcategoria?.nivel_sugerido;
+  return NIVELES_ATENCION.some((x) => x.valor === n) ? n : 'N1';
+}
+
+// Lo que ve el solicitante en su seguimiento. Duplica nivel_atencion_publico()
+// de la migración 121 (texto del comentario público): si cambia, en los dos.
+export const NIVEL_PUBLICO = {
+  N1: 'Nivel 1 – Soporte',
+  N2: 'Nivel 2 – Especializado',
+  N3: 'Nivel 3 – Especialista',
+};
+
+// ── Escalamiento (migración 121) ───────────────────────────────────────────
+// Tipo de especialista del Nivel 3 (CHECK de ticket_escalamientos).
+export const ESPECIALISTA_TIPOS = [
+  { valor: 'experto_interno', label: 'Experto interno' },
+  { valor: 'desarrollo', label: 'Desarrollo' },
+  { valor: 'proveedor', label: 'Proveedor' },
+  { valor: 'garantia', label: 'Garantía del fabricante' },
+  { valor: 'otro', label: 'Otro' },
+];
+
+export function especialistaTipoLabel(tipo) {
+  return ESPECIALISTA_TIPOS.find((t) => t.valor === tipo)?.label || '';
+}
+
+// Topes que también valida el servidor (P0001 en las RPC de la 121).
+export const MOTIVO_ESCALAR_MAX = 1000;
+export const NOTA_AVANCE_MAX = 1000;
+export const ESPECIALISTA_NOMBRE_MAX = 120;
+export const REFERENCIA_EXTERNA_MAX = 80;
+
+/** Rango del nivel (sin nivel = N1), para escalar hacia arriba y devolver hacia abajo. */
+export function rangoNivel(nivel) {
+  return { N1: 1, N2: 2, N3: 3 }[nivel || 'N1'] || 1;
+}
+
+/** Niveles a los que se puede escalar desde `actual` (siempre por encima; nunca N1). */
+export function nivelesParaEscalar(actual) {
+  return NIVELES_ATENCION.filter((n) => n.valor !== 'N1' && rangoNivel(n.valor) > rangoNivel(actual));
+}
+
+/** Niveles a los que se puede devolver desde `actual` (siempre por debajo). */
+export function nivelesParaDevolver(actual) {
+  return NIVELES_ATENCION.filter((n) => rangoNivel(n.valor) < rangoNivel(actual));
+}
+
+/**
+ * Fecha estimada vencida: anterior a hoy (fecha local del navegador, en el
+ * formato `AAAA-MM-DD` de la columna date). Misma regla que
+ * `escalados_vencidos` de dashboard_resumen (que usa la hora de Lima).
+ */
+export function fechaEstimadaVencida(fecha, hoy = new Date()) {
+  if (!fecha) return false;
+  const h = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  return String(fecha).slice(0, 10) < h;
+}
 
 // Estados en los que el ticket ya está en curso: campos editables + botón Resuelto
 export const ESTADOS_EN_CURSO = ['en_progreso', 'reabierto', 'resuelto'];
@@ -147,6 +217,9 @@ export const EVENTO_LABELS = {
   nivel_atencion_cambiado: 'Cambio de nivel de atención',
   tipo_cambiado: 'Cambio de tipo',
   categoria_cambiada: 'Reclasificado',
+  escalado: 'Escalado',
+  nivel_devuelto: 'Devuelto de nivel',
+  escalamiento_actualizado: 'Avance del escalamiento',
   encuesta_enviada: 'Encuesta enviada',
   encuesta_respondida: 'Encuesta respondida',
 };
@@ -168,6 +241,14 @@ export const HITO_LABELS = {
 // vista ni en el reporte.
 export function destinoDeCambio(detalle) {
   return /a "(\w+)"\s*$/.exec(String(detalle || ''))?.[1] || null;
+}
+
+// Escalar y devolver de nivel (migración 121) escriben 'De "N1" a "N2".
+// Motivo: …' (y, en N3, ' Especialista: …'): el destino ya no va al final, así
+// que destinoDeCambio no sirve. `resto` es el texto después del cambio.
+export function partesCambioNivel(detalle) {
+  const m = /^De "(\w+)" a "(\w+)"\.?\s*([\s\S]*)$/.exec(String(detalle || ''));
+  return m ? { desde: m[1], hacia: m[2], resto: m[3].trim() } : null;
 }
 
 // ── Aviso al solicitante por categoría / subcategoría (migración 114) ──────

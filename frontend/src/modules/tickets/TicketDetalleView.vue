@@ -9,6 +9,7 @@ import AppButton from '../../components/ui/AppButton.vue';
 import AppSeccion from '../../components/ui/AppSeccion.vue';
 import ProblemaForm from '../problemas/ProblemaForm.vue';
 import TicketCamposGestion from './TicketCamposGestion.vue';
+import TicketEscalamiento from './TicketEscalamiento.vue';
 import TicketComposer from './TicketComposer.vue';
 import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
 import TicketSolicitante from './TicketSolicitante.vue';
@@ -36,10 +37,11 @@ const {
   mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
   resolviendo, guardarComoKb, mostrarConfirmarResolver, dialogoResolver, cancelarResolver, confirmarResolver,
   mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
-  cambiarNivelAtencion, cambiarPrioridad,
+  cambiarPrioridad,
   mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
   cambiarTipo,
   reclasificacion,
+  escalamiento,
   mostrarProblemaForm, onProblemaFormCerrado,
   copiarMensajeSatisfaccion,
   enviarComentario,
@@ -289,7 +291,6 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
               :tipo-ambiguo-sin-clasificar="tipoAmbiguoSinClasificar"
               :reclasificacion="reclasificacion"
               @cambiar-prioridad="cambiarPrioridad"
-              @cambiar-nivel="cambiarNivelAtencion"
               @cambiar-asignado="cambiarAsignado"
               @cambiar-tipo="cambiarTipo"
             />
@@ -299,6 +300,10 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
               <input v-model="guardarComoKb" type="checkbox" class="mt-0.5 h-4 w-4 accent-primary-500" :disabled="resolviendo">
               Al resolver, guardar esta solución en la Base de Conocimiento
             </label>
+          </AppSeccion>
+
+          <AppSeccion v-if="escalamiento.visible" titulo="Escalamiento" descripcion="Nivel actual, quién lo tiene y cuándo se espera la solución.">
+            <TicketEscalamiento :escalamiento="escalamiento" :ticket="ticket" :staff-activo="staffActivo" :staff-por-id="staffPorId" />
           </AppSeccion>
 
           <AppSeccion titulo="Solicitante">

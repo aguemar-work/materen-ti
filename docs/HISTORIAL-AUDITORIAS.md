@@ -1727,3 +1727,10 @@ migrar los 66 adjuntos y cerrar el bucket; `portal` en `healthcheck.yml`; progra
 corregir el DNI de 9 dígitos y validar el CHECK; `npm run snapshot`; paridad de reportes contra producción;
 redactar los avisos de categoría (114). **Depende de V2:** 105, Triage y detalle de ticket, «Convertir en
 solicitud», `TicketKbCrear`, `confirmar_ticket`, `nota_resolucion`.
+
+**Escalamiento por niveles (migración 121, 2026-10-21, escrita, sin aplicar).** Pendiente de despliegue, en este
+orden: la 120 (cierre de tickets) aplicada antes → aplicar 121 (`deploy.mjs migracion`, bloque «Verificación») → `deploy.mjs function tickets` (el seguimiento
+envía `nivel` y `fechaEstimada`) → frontend → `npm run snapshot`. **Pendiente de diseño:** sin programador de tareas no
+hay aviso automático cuando vence la fecha estimada de un escalado (se ve al leer: Inicio, tarjeta y ficha); se
+resuelve junto con la programación de `purgar_datos_temporales`. **Choque con V2:** 091/092 redefinen
+`evento_ticket_cambios` y 093 trae `reasignar_ticket`; al integrar V2, partir de la 121.

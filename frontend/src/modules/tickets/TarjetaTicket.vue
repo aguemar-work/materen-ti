@@ -1,7 +1,8 @@
 <script setup>
 // Tarjeta de un ticket en la cola de Triage y en el listado móvil (V2,
 // pedido del dueño 2026-09-25). Tres filas, siempre en este orden:
-//   1. número · prioridad · nivel · estado   (lo que decide qué atender)
+//   1. número · prioridad · nivel · estado   (lo que decide qué atender;
+//      un escalado con la fecha estimada vencida suma «Fecha vencida», 121)
 //   2. título                                (qué pasa)
 //   3. solicitante ··········· responsable   (quién pide · quién atiende)
 // El responsable es un avatar con sus iniciales; sin técnico, un círculo
@@ -14,6 +15,8 @@ import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppTag from '../../components/ui/AppTag.vue';
 import PrioridadTicket from './PrioridadTicket.vue';
+import { fechaEstimadaVencida } from '../../core/dominio-tickets.js';
+import { formatFecha } from '../../core/formatters.js';
 
 defineProps({
   ticket: { type: Object, required: true },
@@ -45,6 +48,14 @@ defineProps({
         >{{ ticket.codigo }}</RouterLink>
         <PrioridadTicket :valor="ticket.prioridad" />
         <AppTag v-if="ticket.nivel_atencion" tono="neutral" :title="`Nivel de atención ${ticket.nivel_atencion}`">{{ ticket.nivel_atencion }}</AppTag>
+        <!-- Escalado (121) con la fecha estimada de solución ya pasada: texto, no solo color. -->
+        <AppTag
+          v-if="fechaEstimadaVencida(ticket.escalamiento_fecha_estimada)"
+          tono="critico"
+          icono="ti ti-calendar-exclamation"
+          :title="`Fecha estimada de solución: ${formatFecha(ticket.escalamiento_fecha_estimada)}`"
+          data-fecha-vencida
+        >Fecha vencida</AppTag>
         <BadgeEstado tipo="ticket" :valor="ticket.estado" />
       </div>
 
