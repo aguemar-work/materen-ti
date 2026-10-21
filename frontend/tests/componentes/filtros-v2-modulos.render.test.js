@@ -12,6 +12,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createRouter, createMemoryHistory } from 'vue-router';
 import ProblemasView from '../../src/modules/problemas/ProblemasView.vue';
 import ActividadView from '../../src/modules/actividad/ActividadView.vue';
+import { useAuthStore } from '../../src/stores/auth.js';
 
 vi.mock('../../src/api/insforge.js', () => ({
   insforgeApi: {
@@ -73,6 +74,14 @@ describe('ProblemasView — filtros V2', () => {
     expect(insforgeApi.listProblemasPage.mock.calls.at(-1)[0]).toMatchObject({
       responsables: ['sin'], severidades: ['critica', 'alta'],
     });
+  });
+
+  it('"Usted" es portable: ?responsable=yo llega al servidor como el id en sesión (2026-10-21)', async () => {
+    useAuthStore().user = { id: 's1' };
+    const { router } = await montar(ProblemasView, '/problemas?responsable=yo', RUTAS_PROBLEMAS);
+    expect(insforgeApi.listProblemasPage.mock.calls.at(-1)[0].responsables).toEqual(['s1']);
+    expect(insforgeApi.conteosProblemasPorVista.mock.calls.at(-1)[0].responsables).toEqual(['s1']);
+    expect(router.currentRoute.value.query.responsable).toBe('yo');
   });
 });
 

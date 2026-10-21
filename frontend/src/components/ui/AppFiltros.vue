@@ -15,6 +15,13 @@
 //   o, para un rango de fechas: [{ id, label, icono, tipo: 'rango' }] — su
 //   valor es [desde, hasta] ('YYYY-MM-DD' o ''), con atajos (hoy, 7 días…).
 //
+// atajos (2026-10-21): [{ id, label, icono, valores: { [dimId]: string[] } }]
+//   — las 2 o 3 preguntas diarias del listado ("Asignados a usted", "Sin
+//   asignar") a un clic, arriba del menú de "+ Filtro". Aplicar un atajo
+//   reemplaza la selección de sus dimensiones y deja el chip de siempre (se
+//   edita y se quita igual); con el atajo ya aplicado, el clic lo quita. No
+//   ocupan espacio en la barra: siguen siendo filtros bajo demanda.
+//
 // El panel es un popover teletransportado (usePopoverFlotante: cierre con
 // Escape devolviendo el foco, click afuera, resize), no un modal: no
 // bloquea la página ni atrapa el foco, y cada cambio se aplica al instante.
@@ -26,6 +33,7 @@ import { fechaLocalISO } from '../../core/formatters.js';
 const props = defineProps({
   dimensiones: { type: Array, required: true },
   modelValue: { type: Object, required: true },
+  atajos: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -37,6 +45,25 @@ const esRango = (d) => d?.tipo === 'rango';
 const enUso = (d) => (esRango(d) ? seleccionDe(d.id).some(Boolean) : seleccionDe(d.id).length > 0);
 const activas = computed(() => props.dimensiones.filter(enUso));
 const disponibles = computed(() => props.dimensiones.filter((d) => !enUso(d)));
+
+// Un atajo está aplicado si cada una de sus dimensiones tiene exactamente sus
+// valores (en cualquier orden). Solo se ofrecen los atajos cuyas dimensiones
+// existen en la vista actual (p. ej. Etapa no está en "Cerrados").
+const mismaSeleccion = (a, b) => a.length === b.length && a.every((v) => b.includes(v));
+const atajoAplicado = (a) => Object.entries(a.valores).every(([id, vals]) => mismaSeleccion(seleccionDe(id), vals));
+const atajosVisibles = computed(() => props.atajos.filter(
+  (a) => Object.keys(a.valores).every((id) => props.dimensiones.some((d) => d.id === id)),
+));
+
+function aplicarAtajoFiltro(a) {
+  const vaciar = (id) => (esRango(props.dimensiones.find((d) => d.id === id)) ? ['', ''] : []);
+  const cambios = atajoAplicado(a)
+    ? Object.fromEntries(Object.keys(a.valores).map((id) => [id, vaciar(id)]))
+    : a.valores;
+  emit('update:modelValue', { ...props.modelValue, ...cambios });
+  cerrar();
+  trigger.value?.focus();
+}
 
 const modo = ref('dimensiones'); // 'dimensiones' | 'opciones'
 const dimActual = ref(null);
@@ -188,7 +215,7 @@ function resumen(d) {
     </div>
 
     <button
-      v-if="disponibles.length"
+      v-if="disponibles.length || atajosVisibles.length"
       type="button"
       class="inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-gray-300 px-2.5 text-sm font-medium text-gray-600 transition-colors hover:border-gray-400 hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
       aria-label="Agregar filtro"
@@ -207,8 +234,25 @@ function resumen(d) {
       :class="[PANEL_FLOTANTE, 'max-h-80 w-64']"
       :style="{ top: coords.top + 'px', left: coords.left + 'px' }"
     >
+      <!-- Atajos: las preguntas diarias a un clic -->
+      <div v-if="modo === 'dimensiones' && atajosVisibles.length" role="group" aria-label="Atajos" class="mb-1 border-b border-gray-100 pb-1">
+        <div class="px-2.5 pb-1 pt-1.5 text-xs font-medium text-gray-500">Atajos</div>
+        <button
+          v-for="a in atajosVisibles"
+          :key="a.id"
+          type="button"
+          :class="ITEM_PANEL"
+          :aria-pressed="atajoAplicado(a)"
+          @click="aplicarAtajoFiltro(a)"
+        >
+          <i class="text-base text-gray-500" :class="a.icono" aria-hidden="true"></i>
+          <span class="flex-1">{{ a.label }}</span>
+          <i v-if="atajoAplicado(a)" class="ti ti-check text-sm text-gray-900" aria-hidden="true"></i>
+        </button>
+      </div>
+
       <!-- Menú de dimensiones -->
-      <div v-if="modo === 'dimensiones'" role="group" aria-label="Filtrar por">
+      <div v-if="modo === 'dimensiones' && disponibles.length" role="group" aria-label="Filtrar por">
         <div class="px-2.5 pb-1 pt-1.5 text-xs font-medium text-gray-500">Filtrar por</div>
         <button
           v-for="d in disponibles"

@@ -23,10 +23,10 @@ export const VISTA_DEFECTO = 'pendientes';
 export const ASIGNADO_YO = 'yo';
 
 export const VISTAS_TICKETS = [
-  { valor: 'todos', label: 'Todos', titulo: 'Cualquier estado', frase: 'en total', estados: null },
-  { valor: 'pendientes', label: 'Pendientes', titulo: 'Abiertos, en progreso o reabiertos', frase: 'pendientes', estados: ESTADOS_VIGENTES },
-  { valor: 'resueltos', label: 'Resueltos', titulo: 'Resueltos y cerrados', frase: 'resueltos', estados: ['resuelto'] },
-  { valor: 'rechazados', label: 'Rechazados', titulo: 'Descartados sin atención', frase: 'rechazados', estados: ['rechazado'] },
+  { valor: 'todos', label: 'Todos', titulo: 'Cualquier estado', frase: ['en total', 'en total'], estados: null },
+  { valor: 'pendientes', label: 'Pendientes', titulo: 'Abiertos, en progreso o reabiertos', frase: ['pendiente', 'pendientes'], estados: ESTADOS_VIGENTES },
+  { valor: 'resueltos', label: 'Resueltos', titulo: 'Resueltos y cerrados', frase: ['resuelto', 'resueltos'], estados: ['resuelto'] },
+  { valor: 'rechazados', label: 'Rechazados', titulo: 'Descartados sin atención', frase: ['rechazado', 'rechazados'], estados: ['rechazado'] },
 ];
 
 // Enlaces y recuerdos de la primera versión (?vista=nuevos|mios): se
@@ -93,12 +93,29 @@ export function dimensionesDe(vista, { staff = [], categorias = [], yo = '' } = 
     { id: 'prioridad', label: 'Prioridad', icono: 'ti ti-flag', opciones: OPCIONES_PRIORIDAD },
     { id: 'categoria', label: 'Categoría', icono: 'ti ti-category', opciones: categorias.map((c) => ({ valor: c.id, label: c.nombre })) },
     { id: 'tipo', label: 'Tipo', icono: 'ti ti-tag', opciones: OPCIONES_TIPO },
-    { id: 'nivel', label: 'Nivel', icono: 'ti ti-stairs', opciones: NIVELES_ATENCION.map((n) => ({ valor: n.valor, label: n.valor })) },
-    { id: 'solicitante', label: 'Solicitante', icono: 'ti ti-user-question', opciones: OPCIONES_SOLICITANTE },
+    // "N1 — Soporte básico": el código solo no dice nada a quien no lo usa.
+    { id: 'nivel', label: 'Nivel', icono: 'ti ti-stairs', opciones: NIVELES_ATENCION.map((n) => ({ valor: n.valor, label: n.label })) },
+    // La clave sigue siendo `solicitante` (enlaces viejos); el rótulo dice lo
+    // que filtra: si el ticket quedó vinculado a un empleado, no quién lo pidió.
+    { id: 'solicitante', label: 'Vínculo con empleado', icono: 'ti ti-user-question', opciones: OPCIONES_SOLICITANTE },
     // Rango de fechas (AppFiltros tipo 'rango'); en la URL, desde/hasta.
     { id: 'creado', label: 'Creado', icono: 'ti ti-calendar', tipo: 'rango' },
   );
   return dims;
+}
+
+/**
+ * Atajos de AppFiltros (2026-10-21): las preguntas diarias de la mesa de
+ * ayuda a un clic dentro de "+ Filtro". Cada uno deja el chip de siempre.
+ * @param {string} hoy  'YYYY-MM-DD' (fechaLocalISO), para "Creados hoy"
+ */
+export function atajosTickets(hoy) {
+  return [
+    { id: 'mios', label: 'Asignados a usted', icono: 'ti ti-user-check', valores: { asignado: [ASIGNADO_YO] } },
+    { id: 'sin-asignar', label: 'Sin asignar', icono: 'ti ti-user-off', valores: { asignado: [SIN_ASIGNAR] } },
+    { id: 'criticos', label: 'Prioridad crítica', icono: 'ti ti-alert-triangle', valores: { prioridad: ['urgente'] } },
+    { id: 'hoy', label: 'Creados hoy', icono: 'ti ti-calendar-event', valores: { creado: [hoy, hoy] } },
+  ];
 }
 
 /**

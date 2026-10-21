@@ -146,7 +146,7 @@ onMounted(async () => {
 
     <!-- Filtro (fuera de la tabla) -->
     <div class="flex flex-wrap items-center gap-3">
-      <AppBuscador v-model="busqueda" label="Buscar plataformas" placeholder="Buscar por nombre o slug" />
+      <AppBuscador v-model="busqueda" label="Buscar plataformas" placeholder="Buscar por nombre" />
     </div>
 
     <div v-if="error" class="notif notif--danger" role="alert">

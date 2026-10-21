@@ -6,8 +6,9 @@ import { useTicketsStore } from '../../stores/tickets.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { ESTADOS_TERMINALES, SIN_ASIGNAR } from '../../core/dominio-tickets.js';
-import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
+import { formatFechaHora, formatAntiguedad, fechaLocalISO } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
+import { subtituloListado } from '../../core/subtituloListado.js';
 import { REPORTE_POR_ID, puedeVerReporte, rutaReporte } from '../../core/reportes.js';
 import TicketInternoForm from './TicketInternoForm.vue';
 import TicketDetallePanel from './TicketDetallePanel.vue';
@@ -32,7 +33,7 @@ import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
 import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useFiltrosUrl } from '../../composables/useFiltrosUrl.js';
 import {
-  VISTAS_TICKETS, VISTA_DEFECTO, VISTAS_ANTERIORES, CLAVES_CHIPS, vistaDe, dimensionesDe, podarChips, paramsServidor,
+  VISTAS_TICKETS, VISTA_DEFECTO, VISTAS_ANTERIORES, CLAVES_CHIPS, vistaDe, dimensionesDe, podarChips, paramsServidor, atajosTickets,
 } from './filtrosTickets.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 import { useVistaModulo } from '../../composables/useVistaModulo.js';
@@ -130,6 +131,7 @@ async function cargarCategorias() {
 
 const dimensiones = computed(() =>
   dimensionesDe(filtros.vista, { staff: staffLista.value, categorias: categoriasTicket.value, yo: yo.value }));
+const atajos = computed(() => atajosTickets(fechaLocalISO()));
 const chips = computed({
   // 'creado' es un rango: en la URL viaja como desde/hasta, acá como par.
   get: () => Object.fromEntries(dimensiones.value.map((d) =>
@@ -293,12 +295,9 @@ const opcionesVistas = computed(() => VISTAS_TICKETS.map((v) => ({
   valor: v.valor, label: v.label, titulo: v.titulo, conteo: conteos.value?.[v.valor],
 })));
 
-// La página dice qué se está viendo: "8 tickets pendientes".
-const subtituloVista = computed(() => {
-  const n = total.value;
-  const texto = `${n} ${n === 1 ? 'ticket' : 'tickets'} ${vistaActual.value.frase}`;
-  return hayFiltros.value ? `${texto}, con los filtros aplicados` : texto;
-});
+// La página dice qué se está viendo: "8 tickets pendientes" / "1 ticket pendiente".
+const subtituloVista = computed(() =>
+  subtituloListado(total.value, ['ticket', 'tickets'], { frase: vistaActual.value.frase, filtrado: hayFiltros.value }));
 
 // Atajos del subtítulo, visibles desde cualquier vista mientras haya alguno
 // y no estén ya filtrados: lo que nadie tomó y los solicitantes sin
@@ -513,10 +512,10 @@ onMounted(async () => {
         ref="refBuscador"
         v-model="busqueda"
         label="Buscar tickets"
-        placeholder="Buscar por código, título o solicitante"
+        placeholder="Buscar por código, título, solicitante o DNI"
         title="Atajo: /"
       />
-      <AppFiltros v-model="chips" :dimensiones="dimensiones" />
+      <AppFiltros v-model="chips" :dimensiones="dimensiones" :atajos="atajos" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
       <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" class="ml-auto" />
     </AppBarraFiltros>

@@ -369,7 +369,7 @@ deliberadas, que no son listados: el paso de revisión de
 Plataformas) solo tiene buscador: no hay nada que filtrar.
 
 ```
- Activos 9   Inactivos 3   Suspendidos 0   Todos 12          ← AppVistas
+ Todos 12   Activos 9   Inactivos 3   Suspendidos 0          ← AppVistas
 ──────────────────────────────────────────────────────────
 [🔍 Buscar…] [🏢 Empresa: Materen, Andes ⌄ ×] [⧩ Filtro] ✕ Limpiar   ← AppBarraFiltros
 ```
@@ -389,6 +389,22 @@ Plataformas) solo tiene buscador: no hay nada que filtrar.
   múltiple**. O dentro de una dimensión, Y entre dimensiones. Chip
   aplicado = tinte `primary-50`; click lo edita, × lo quita entero. Nada
   ocupa espacio hasta que se usa.
+- **Atajos** (`AppFiltros atajos`, 2026-10-21): arriba del menú de "+ Filtro",
+  las 2–4 preguntas diarias del listado a un clic ("Asignados a usted", "Sin
+  asignar", "Prioridad crítica"). Un atajo es una combinación de chips: deja
+  el chip de siempre, que se edita y se quita igual, y con el atajo ya
+  aplicado el clic lo quita. No ocupan lugar en la barra. Hoy: Tickets,
+  Problemas y Base de conocimiento.
+- **"Usted" es portable**: el usuario en sesión viaja como `yo`
+  (`?asignado=yo`, `?responsable=yo`, `?autor=yo`) y se traduce a su id
+  antes de ir al servidor; así el mismo enlace sirve a cualquiera. Nunca el
+  id propio con "(usted)" en la etiqueta.
+- **El subtítulo dice qué se ve**: "9 empleados activos, con los filtros
+  aplicados · descripción del módulo" (`core/subtituloListado.js`); el número
+  es lo que hay en pantalla, no el total del inventario.
+- **Una vista vacía no es un inventario vacío**: "Libres: 0" con equipos en
+  otras pestañas dice "Sin equipos libres" sin botón de alta; "…todavía" y el
+  alta quedan para cuando no hay ningún registro.
 - **"Limpiar"** vuelve búsqueda y chips a cero; la vista NO (una vista no
   es un filtro).
 - **La URL es la fuente de verdad** (`useFiltrosUrl`):
@@ -417,11 +433,13 @@ Vistas y chips de cada módulo:
 | --- | --- | --- |
 | Empleados | Todos · Activos (defecto) · Inactivos · Suspendidos | Empresa, Área/Obra, Ubicación |
 | Equipos | Todos · Libres · Con personas · En ubicaciones · En reparación · Fuera de servicio | Tipo, Empresa |
-| Tickets | Todos · Pendientes (defecto) · Resueltos · Rechazados | Estado (dentro de Pendientes/Todos), Asignado a (Usted · Sin asignar · técnicos), Prioridad, Categoría, Tipo, Nivel, Solicitante, Creado |
+| Tickets | Todos · Pendientes (defecto) · Resueltos · Rechazados | Estado (dentro de Pendientes/Todos), Asignado a (Usted · Sin asignar · técnicos), Prioridad, Categoría, Tipo, Nivel (con descripción), Vínculo con empleado, Creado. Atajos: Asignados a usted · Sin asignar · Prioridad crítica · Creados hoy |
 | Licencias | Todas · Por vencer · Vencidas · Perpetuas | Empresa, Acceso (correo / clave / sin credencial) |
 | Correos | Todos · Compartidos · Reutilizables · Por rotar | Plataforma |
-| Base de conocimiento | Todos · Publicados · En revisión · Borradores · Obsoletos | Categoría, Autor |
-| Problemas | Todos · Abiertos (defecto) · Cerrados | Etapa (no en Cerrados), Severidad, Responsable |
+| Base de conocimiento | Todos · Publicados · En revisión · Borradores · Obsoletos | Categoría, Autor (Usted · staff). Atajo: Escritos por usted |
+| Problemas | Todos · Abiertos (defecto) · Cerrados | Etapa (no en Cerrados), Severidad, Responsable (Usted · Sin responsable · staff). Atajos: A cargo de usted · Sin responsable · Severidad crítica |
+| Cambios | Todos · En curso (defecto) · Por aprobar · En ejecución · Terminados | Tipo, Servicio |
+| Solicitudes | Todas · Abiertas (defecto) · Completadas · Canceladas | Tipo |
 | Actividad | Todo · Contraseñas · Entregas · Denegados | Quién, Plataforma, Fecha (rango) |
 | Accesos sensibles | Todas · Equipos · Correos · Otros | Permiso |
 
@@ -431,7 +449,8 @@ cargada); el resto, en el servidor, con un `conteos…` por módulo en su
 
 **Tickets** (`modules/tickets/filtrosTickets.js`): "Usted" viaja como
 `?asignado=yo` (el mismo enlace sirve a cualquier técnico: Inicio → "Ver mis
-tickets" = `?asignado=yo`). El subtítulo ofrece dos atajos a Pendientes con
+tickets" = `?asignado=yo`). El buscador encuentra por código, título,
+contacto y nombre o DNI del empleado. El subtítulo ofrece dos atajos a Pendientes con
 su chip puesto: "N sin asignar" y "N sin vincular". Los enlaces de la
 primera versión (`?vista=nuevos|mios`) se traducen a Pendientes + chip.
 

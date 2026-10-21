@@ -360,3 +360,29 @@ describe('EquiposView.vue — vistas y filtros en la URL', () => {
     expect(insforgeApi.conteosEquiposPorSituacion.mock.calls.at(-1)[0]).toMatchObject({ tipoIds: ['laptop', 'desktop'] });
   });
 });
+
+// 2026-10-21: una vista vacía en un inventario con equipos no es "Sin equipos
+// todavía" con el botón de alta; y el subtítulo dice qué se está viendo.
+describe('EquiposView.vue — vista vacía y subtítulo', () => {
+  it('"Libres: 0" con equipos en otras vistas dice "Sin equipos libres" y no ofrece el alta', async () => {
+    insforgeApi.listEquiposPage.mockResolvedValue({ items: [], total: 0 });
+    const router = crearRouter();
+    router.push('/equipos?situacion=disponible');
+    await router.isReady();
+    const w = mount(EquiposView, { global: { plugins: [router, [PrimeVue, { unstyled: true }]], stubs: { EquipoForm: true, ConfirmDialog: true } } });
+    await flushPromises();
+    expect(w.text()).toContain('Sin equipos libres');
+    expect(w.text()).not.toContain('Sin equipos todavía');
+    expect(w.findAll('button').some((b) => b.text().includes('Registrar equipo'))).toBe(false);
+    expect(w.text()).toContain('0 equipos libres');
+  });
+
+  it('el subtítulo cuenta lo que se ve y avisa los filtros', async () => {
+    const router = crearRouter();
+    router.push('/equipos?tipo=laptop');
+    await router.isReady();
+    const w = mount(EquiposView, { global: { plugins: [router, [PrimeVue, { unstyled: true }]], stubs: { EquipoForm: true, ConfirmDialog: true } } });
+    await flushPromises();
+    expect(w.text()).toContain('2 equipos, con los filtros aplicados');
+  });
+});

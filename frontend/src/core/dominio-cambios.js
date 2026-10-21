@@ -70,13 +70,15 @@ export const MAX_SERVICIOS = 15;
 
 // ── Vistas del listado ───────────────────────────────────────────────────────
 // Cada vista es un conjunto de estados; `[]` = sin filtro. La URL guarda la
-// clave (`/cambios?vista=por_aprobar`).
+// clave (`/cambios?vista=por_aprobar`). El orden de las claves es el de las
+// pestañas: «Todos» primero (SISTEMA-DISENO §3.2.1); la vista por defecto
+// sigue siendo «En curso».
 export const ESTADOS_DE_VISTA = {
+  todos:        [],
   activos:      ['borrador', 'solicitado', 'aprobado', 'en_ejecucion', 'implementado'],
   por_aprobar:  ['solicitado'],
   en_ejecucion: ['en_ejecucion'],
   cerrados:     ['cerrado', 'rechazado', 'cancelado', 'revertido'],
-  todos:        [],
 };
 export const VISTA_CAMBIO_DEFECTO = 'activos';
 

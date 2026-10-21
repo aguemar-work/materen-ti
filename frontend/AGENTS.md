@@ -89,6 +89,11 @@
   `/tickets?asignado=yo` (mis tickets), `/empleados?estado=Inactivo`,
   `/correos?vista=compartida`, `/licencias?q=<software>` (búsqueda global).
   Un filtro nuevo es una clave del esquema, no un `route.query` leído a mano.
+- "Usted" viaja como `yo` (`?asignado=yo`, `/problemas?responsable=yo`,
+  `/base-conocimiento?autor=yo`) y se traduce al id en sesión antes de ir al
+  servidor: nunca el id propio en la URL.
+- Las preguntas diarias de un listado van como `atajos` de `AppFiltros`
+  (dentro de "+ Filtro"), no como botones nuevos en la barra.
 - `?nuevo=1` abre el alta en Equipos y Licencias (y se quita de la URL).
 
 ## Accesibilidad y copy

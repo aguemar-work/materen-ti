@@ -107,6 +107,8 @@ const chips = computed({
 });
 
 const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
+// El subtítulo cuenta lo que se ve (2026-10-21; antes, siempre el total).
+const vistaActual = computed(() => VISTAS.value.find((v) => v.valor && v.valor === filtros.categoria)?.label);
 function limpiarFiltros() {
   limpiar(CLAVES_FILTRO);
 }
@@ -191,7 +193,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Accesos sensibles">
       <template #subtitulo>
-        {{ lista.length }} {{ lista.length === 1 ? 'credencial' : 'credenciales' }} de alta sensibilidad
+        {{ listaFiltrada.length }} {{ listaFiltrada.length === 1 ? 'credencial' : 'credenciales' }} de alta sensibilidad{{ vistaActual ? ` en «${vistaActual}»` : '' }}{{ hayFiltros ? ', con los filtros aplicados' : '' }}
         <template v-if="sinPermiso"> · <span class="font-medium text-gray-700">{{ sinPermiso }} sin permiso para usted</span></template>
         · cada una la revelan solo los JEFE autorizados y queda registrada en Actividad
       </template>

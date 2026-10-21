@@ -360,8 +360,10 @@ async function queryTickets(
   const qSafe = sanitizarTermino(q);
   if (qSafe.length >= 2) {
     let idsClause = '';
+    // También por DNI (2026-10-21): quien llama a la mesa de ayuda suele
+    // dar el DNI, y Empleados y Solicitudes ya lo buscan así.
     const { data: emps } = await db.from('empleados').select('id')
-      .or(`nombres.ilike.%${qSafe}%,apellidos.ilike.%${qSafe}%`)
+      .or(`nombres.ilike.%${qSafe}%,apellidos.ilike.%${qSafe}%,dni.ilike.%${qSafe}%`)
       .limit(50);
     if (emps?.length) idsClause = `,empleado_id.in.(${emps.map((e) => e.id).join(',')})`;
     query = query.or(`codigo.ilike.%${qSafe}%,titulo.ilike.%${qSafe}%,contacto_ingresado.ilike.%${qSafe}%${idsClause}`);

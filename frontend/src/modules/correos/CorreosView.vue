@@ -7,6 +7,7 @@ import { revelarPassword } from '../../api/passwords.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
 import { showToast } from '../../core/toast.js';
+import { subtituloListado } from '../../core/subtituloListado.js';
 import { badgeInfo } from '../../core/badges.js';
 import { crearRevelado, escucharOcultamientoPorCambioDePestana } from '../../composables/useRevelado.js';
 import CorreoForm from './CorreoForm.vue';
@@ -79,7 +80,16 @@ const VISTAS = computed(() => [
   { valor: 'reutilizable', label: 'Reutilizables', conteo: conteos.value?.reutilizable, titulo: 'Pasan de una persona a otra' },
   { valor: 'rotar', label: 'Por rotar', conteo: conteos.value?.rotar, titulo: 'Requieren cambio de contraseña' },
 ]);
-const FRASE_VISTA = { compartida: ' compartidas', reutilizable: ' reutilizables', rotar: ' que requieren rotación' };
+const FRASE_VISTA = {
+  compartida: ['compartida', 'compartidas'],
+  reutilizable: ['reutilizable', 'reutilizables'],
+  rotar: ['que requiere rotación', 'que requieren rotación'],
+};
+// "1 cuenta compartida", no "1 cuenta compartidas" (2026-10-21).
+const resumen = computed(() => subtituloListado(total.value, ['cuenta', 'cuentas'], {
+  frase: FRASE_VISTA[filtros.vista], filtrado: hayFiltros.value,
+  descripcion: 'buzones y usuarios que se usan entre varias personas',
+}));
 
 const plataformas = ref([]);
 const DIMENSIONES = computed(() => [
@@ -92,6 +102,13 @@ const chips = computed({
 
 // "Por rotar" vacío y sin filtros: es una buena noticia, no "sin resultados".
 const nadaPorRotar = computed(() => filtros.vista === 'rotar' && !hayFiltros.value);
+// "Compartidos: 0" con correos en otras pestañas no es "Sin correos
+// compartidos todavía" con un botón de alta: esa vista está vacía, nada más.
+const vistaVacia = computed(() => {
+  if (hayFiltros.value || ['todos', 'rotar'].includes(filtros.vista) || !(conteos.value?.todos > 0)) return null;
+  const nombre = VISTAS.value.find((v) => v.valor === filtros.vista)?.label.toLowerCase();
+  return { titulo: `Sin correos ${nombre}`, mensaje: 'No hay cuentas en esta vista. Las demás pestañas muestran el resto de los correos.' };
+});
 function limpiarFiltros() {
   limpiar(CLAVES_FILTRO);
   busqueda.value = '';
@@ -213,8 +230,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Correos">
       <template #subtitulo>
-        {{ total }} {{ total === 1 ? 'cuenta' : 'cuentas' }}{{ FRASE_VISTA[filtros.vista] || '' }}{{ hayFiltros ? ', con los filtros aplicados' : '' }}
-        · buzones y usuarios que se usan entre varias personas
+        {{ resumen }}
       </template>
       <template #acciones>
         <EnlaceReporte reporte="correos" />
@@ -240,13 +256,14 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && total === 0"
         icono="ti ti-mail-share"
-        :titulo="nadaPorRotar ? 'Nada por rotar' : hayFiltros ? 'Sin resultados' : 'Sin correos compartidos todavía'"
+        :titulo="nadaPorRotar ? 'Nada por rotar' : hayFiltros ? 'Sin resultados' : vistaVacia ? vistaVacia.titulo : 'Sin correos compartidos todavía'"
         :mensaje="nadaPorRotar
           ? 'Ninguna cuenta compartida o reutilizable tiene pendiente el cambio de contraseña.'
-          : hayFiltros ? 'No hay correos con los filtros aplicados.' : 'Registre un correo compartido o reutilizable para asignarlo a los empleados que lo usan.'"
+          : hayFiltros ? 'No hay correos con los filtros aplicados.'
+          : vistaVacia ? vistaVacia.mensaje : 'Registre un correo compartido o reutilizable para asignarlo a los empleados que lo usan.'"
       >
         <AppButton
-          v-if="!hayFiltros"
+          v-if="!hayFiltros && !vistaVacia && !nadaPorRotar"
           variant="outline"
           severity="secondary"
           icon="ti ti-plus"

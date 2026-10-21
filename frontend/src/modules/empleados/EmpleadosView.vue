@@ -10,6 +10,7 @@ import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composabl
 import { enviarCredencialesWhatsApp } from '../../core/entregas.js';
 import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
 import { showToast } from '../../core/toast.js';
+import { subtituloListado } from '../../core/subtituloListado.js';
 import { nombreCompleto } from '../../core/dominio-empleados.js';
 import EmpleadoForm from './EmpleadoForm.vue';
 import BajaEmpleadoModal from './BajaEmpleadoModal.vue';
@@ -108,6 +109,13 @@ function limpiarFiltros() {
   limpiar(CLAVES_FILTRO);
   busqueda.value = '';
 }
+
+// El subtítulo dice qué se está viendo (2026-10-21; antes era una frase fija).
+const FRASE_VISTA = { Activo: ['activo', 'activos'], Inactivo: ['dado de baja', 'dados de baja'], Suspendido: ['suspendido', 'suspendidos'] };
+const subtitulo = computed(() => subtituloListado(total.value, ['empleado', 'empleados'], {
+  frase: FRASE_VISTA[filtros.estado], filtrado: hayFiltros.value,
+  descripcion: 'personal inventariado, con sus accesos, equipos y licencias',
+}));
 
 // Una vista sin filas en un inventario que sí tiene gente ("Suspendidos: 0")
 // no es "Sin empleados todavía": dice que esa vista está vacía, nada más.
@@ -282,7 +290,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado
       titulo="Empleados"
-      subtitulo="Personal inventariado, con sus accesos, equipos y licencias"
+      :subtitulo="subtitulo"
     >
       <template #acciones>
         <EnlaceReporte reporte="personal" />

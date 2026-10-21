@@ -97,3 +97,51 @@ describe('AppFiltros.vue', () => {
     expect(w.find('button[aria-label="Agregar filtro"]').exists()).toBe(false);
   });
 });
+
+// Atajos (2026-10-21): las preguntas diarias a un clic dentro de "+ Filtro".
+describe('AppFiltros.vue — atajos', () => {
+  const ATAJOS = [
+    { id: 'materen', label: 'Solo Materen', icono: 'ti ti-building', valores: { empresa: ['e1'] } },
+    { id: 'fantasma', label: 'De una dimensión que no está', icono: 'ti ti-x', valores: { etapa: ['abierto'] } },
+  ];
+  function montarConAtajos(modelValue = { empresa: [], area: [] }) {
+    return mount(AppFiltros, {
+      props: { dimensiones: DIMENSIONES, modelValue, atajos: ATAJOS, 'onUpdate:modelValue': (v) => w.setProps({ modelValue: v }) },
+      attachTo: document.body,
+    });
+  }
+  const atajo = (texto) => [...document.body.querySelectorAll('[aria-label="Atajos"] button')].find((b) => b.textContent.includes(texto));
+
+  it('aparecen arriba del menú; los de una dimensión ausente no se ofrecen', async () => {
+    w = montarConAtajos();
+    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
+    await flush();
+    expect(atajo('Solo Materen')).toBeTruthy();
+    expect(atajo('De una dimensión que no está')).toBeFalsy();
+  });
+
+  it('un clic reemplaza la selección de su dimensión y cierra el panel', async () => {
+    w = montarConAtajos({ empresa: ['e2', 'e3'], area: ['a1'] });
+    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
+    await flush();
+    atajo('Solo Materen').click();
+    await flush();
+    expect(w.emitted('update:modelValue').at(-1)[0]).toEqual({ empresa: ['e1'], area: ['a1'] });
+    expect(document.body.querySelector('[aria-label="Atajos"]')).toBeNull();
+  });
+
+  it('ya aplicado se marca con aria-pressed y el clic lo quita', async () => {
+    w = montarConAtajos({ empresa: ['e1'], area: [] });
+    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
+    await flush();
+    expect(atajo('Solo Materen').getAttribute('aria-pressed')).toBe('true');
+    atajo('Solo Materen').click();
+    await flush();
+    expect(w.emitted('update:modelValue').at(-1)[0]).toEqual({ empresa: [], area: [] });
+  });
+
+  it('con todas las dimensiones en uso, "+ Filtro" sigue para ofrecer los atajos', () => {
+    w = montarConAtajos({ empresa: ['e1'], area: ['a1'] });
+    expect(w.find('button[aria-label="Agregar filtro"]').exists()).toBe(true);
+  });
+});

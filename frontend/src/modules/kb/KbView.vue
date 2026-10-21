@@ -44,7 +44,11 @@ const { filtros, limpiar, hayActivos } = useFiltrosUrl({
 });
 const CLAVES_FILTRO = ['q', 'categoria', 'autor'];
 const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
-const filtrosSinVista = computed(() => ({ q: filtros.q, categoriaIds: filtros.categoria, autorIds: filtros.autor }));
+// "Usted" viaja como `?autor=yo` (igual que `?asignado=yo` en Tickets): el
+// mismo enlace sirve a cualquiera. Sin sesión resuelta, un id imposible.
+const AUTOR_YO = 'yo';
+const autorIds = computed(() => filtros.autor.map((a) => (a === AUTOR_YO ? auth.user?.id || '00000000-0000-0000-0000-000000000000' : a)));
+const filtrosSinVista = computed(() => ({ q: filtros.q, categoriaIds: filtros.categoria, autorIds: autorIds.value }));
 const filtrosServidor = computed(() => ({ ...filtrosSinVista.value, estado: filtros.estado }));
 
 const { termino: busqueda } = useBusqueda({ onBuscar: (q) => { filtros.q = q; } });
@@ -73,7 +77,7 @@ const staff = ref([]);
 const DIMENSIONES = computed(() => {
   const yo = auth.user?.id;
   const autores = [
-    ...staff.value.filter((s) => s.user_id === yo).map((s) => ({ valor: s.user_id, label: `${s.nombre} (usted)` })),
+    { valor: AUTOR_YO, label: 'Usted' },
     ...staff.value.filter((s) => s.user_id !== yo).map((s) => ({ valor: s.user_id, label: s.nombre })),
   ];
   return [
@@ -81,6 +85,7 @@ const DIMENSIONES = computed(() => {
     { id: 'autor', label: 'Autor', icono: 'ti ti-user-edit', opciones: autores },
   ];
 });
+const ATAJOS = [{ id: 'mios', label: 'Escritos por usted', icono: 'ti ti-user-edit', valores: { autor: [AUTOR_YO] } }];
 const chips = computed({
   get: () => ({ categoria: filtros.categoria, autor: filtros.autor }),
   set: (v) => { filtros.categoria = v.categoria; filtros.autor = v.autor; },
@@ -142,7 +147,7 @@ onMounted(async () => {
     <AppVistas v-model="filtros.estado" :opciones="VISTAS" label="Vista de artículos" />
     <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar artículos" placeholder="Buscar por título o síntoma" />
-      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" :atajos="ATAJOS" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 

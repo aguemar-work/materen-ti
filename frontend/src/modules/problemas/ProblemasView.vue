@@ -3,10 +3,12 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
 import { useProblemasStore } from '../../stores/problemas.js';
+import { useAuthStore } from '../../stores/auth.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { OPCIONES_SEVERIDAD_PROBLEMA, ESTADOS_PROBLEMA_ABIERTOS, estadoProblemaInfo } from '../../core/dominio-problemas.js';
 import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { showToast } from '../../core/toast.js';
+import { subtituloListado } from '../../core/subtituloListado.js';
 import ProblemaForm from './ProblemaForm.vue';
 import SeveridadProblema from './SeveridadProblema.vue';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -27,6 +29,7 @@ import { useBusqueda } from '../../composables/useBusqueda.js';
 import { useEsMovil } from '../../composables/useEsMovil.js';
 
 const router = useRouter();
+const auth = useAuthStore();
 const store = useProblemasStore();
 const { lista, total, cargando, error, orden } = storeToRefs(store);
 const { esMovil } = useEsMovil();
@@ -55,8 +58,14 @@ watch(() => filtros.vista, (vista) => {
   if (vista === 'cerrados' && filtros.etapa.length) filtros.etapa = [];
 }, { immediate: true });
 
+// "Usted" viaja como `?responsable=yo` (igual que `?asignado=yo` en Tickets):
+// el mismo enlace sirve a cualquiera. Sin sesión resuelta, un id imposible.
+const RESPONSABLE_YO = 'yo';
+const responsables = computed(() => filtros.responsable.map(
+  (r) => (r === RESPONSABLE_YO ? auth.user?.id || '00000000-0000-0000-0000-000000000000' : r),
+));
 const filtrosSinVista = computed(() => ({
-  q: filtros.q, severidades: filtros.severidad, responsables: filtros.responsable,
+  q: filtros.q, severidades: filtros.severidad, responsables: responsables.value,
 }));
 const filtrosServidor = computed(() => {
   let estados = filtros.etapa;
@@ -91,20 +100,28 @@ const DIMENSIONES = computed(() => [
   { id: 'severidad', label: 'Severidad', icono: 'ti ti-flag', opciones: [...OPCIONES_SEVERIDAD_PROBLEMA].reverse() },
   {
     id: 'responsable', label: 'Responsable', icono: 'ti ti-user',
-    opciones: [{ valor: 'sin', label: 'Sin responsable' }, ...staffLista.value.map((s) => ({ valor: s.user_id, label: s.nombre }))],
+    opciones: [
+      { valor: RESPONSABLE_YO, label: 'Usted' },
+      { valor: 'sin', label: 'Sin responsable' },
+      ...staffLista.value.filter((s) => s.user_id !== auth.user?.id).map((s) => ({ valor: s.user_id, label: s.nombre })),
+    ],
   },
 ]);
+const ATAJOS = [
+  { id: 'mios', label: 'A cargo de usted', icono: 'ti ti-user-check', valores: { responsable: [RESPONSABLE_YO] } },
+  { id: 'sin-responsable', label: 'Sin responsable', icono: 'ti ti-user-off', valores: { responsable: ['sin'] } },
+  { id: 'criticos', label: 'Severidad crítica', icono: 'ti ti-alert-triangle', valores: { severidad: ['critica'] } },
+];
 const chips = computed({
   get: () => Object.fromEntries(DIMENSIONES.value.map((d) => [d.id, filtros[d.id]])),
   set: (v) => { for (const k of Object.keys(v)) filtros[k] = v[k]; },
 });
 
-const FRASE_VISTA = { abiertos: ' abiertos', cerrados: ' cerrados', todos: '' };
-const subtitulo = computed(() => {
-  const n = total.value;
-  const base = `${n} ${n === 1 ? 'problema' : 'problemas'}${FRASE_VISTA[filtros.vista] ?? ''}`;
-  return `${base}${hayFiltros.value ? ', con los filtros aplicados' : ''} · causa raíz y acciones correctivas de incidentes recurrentes`;
-});
+const FRASE_VISTA = { abiertos: ['abierto', 'abiertos'], cerrados: ['cerrado', 'cerrados'] };
+const subtitulo = computed(() => subtituloListado(total.value, ['problema', 'problemas'], {
+  frase: FRASE_VISTA[filtros.vista], filtrado: hayFiltros.value,
+  descripcion: 'causa raíz y acciones correctivas de incidentes recurrentes',
+}));
 
 // "Abiertos: 0" sin filtros es una buena noticia, no "Sin problemas registrados".
 const vistaVacia = computed(() => !hayFiltros.value && filtros.vista !== 'todos' && conteos.value?.todos > 0);
@@ -157,7 +174,7 @@ onMounted(async () => {
     <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de problemas" />
     <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar problemas" placeholder="Buscar por título" />
-      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" :atajos="ATAJOS" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 

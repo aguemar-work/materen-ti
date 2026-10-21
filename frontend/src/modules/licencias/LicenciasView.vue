@@ -13,6 +13,7 @@ import { insforgeApi } from '../../api/insforge.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
 import { showToast } from '../../core/toast.js';
+import { subtituloListado } from '../../core/subtituloListado.js';
 import { DIAS_POR_VENCER_LICENCIA } from '../../core/dominio-licencias.js';
 import LicenciaForm from './LicenciaForm.vue';
 import LicenciasTabla from './LicenciasTabla.vue';
@@ -76,10 +77,14 @@ const VISTAS = computed(() => [
 ]);
 
 const FRASE_SITUACION = {
-  vencidas: ' vencidas',
-  por_vencer: ` por vencer en ${DIAS_POR_VENCER_LICENCIA} días`,
-  perpetuas: ' perpetuas',
+  vencidas: ['vencida', 'vencidas'],
+  por_vencer: [`por vencer en ${DIAS_POR_VENCER_LICENCIA} días`, `por vencer en ${DIAS_POR_VENCER_LICENCIA} días`],
+  perpetuas: ['perpetua', 'perpetuas'],
 };
+// "1 licencia vencida", no "1 licencia vencidas" (2026-10-21).
+const resumen = computed(() => subtituloListado(total.value, ['licencia', 'licencias'], {
+  frase: FRASE_SITUACION[filtros.situacion], filtrado: hayFiltros.value,
+}));
 
 const empresas = ref([]);
 const DIMENSIONES = computed(() => [
@@ -168,7 +173,7 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Licencias">
       <template #subtitulo>
-        {{ total }} {{ total === 1 ? 'licencia' : 'licencias' }}{{ FRASE_SITUACION[filtros.situacion] || '' }}{{ hayFiltros ? ', con los filtros aplicados' : '' }}
+        {{ resumen }}
         <template v-if="sinCupo"> · {{ sinCupo }} sin asientos libres</template>
       </template>
       <template #acciones>
