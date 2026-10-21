@@ -328,7 +328,7 @@ una decisión para pedir, no para completar.
 | `AppEncabezado` | Encabezado de página | `titulo`, `subtitulo`, slots `acciones`, `junto-titulo`, `subtitulo` |
 | `AppBarraFiltros` | Fila de controles de 32px entre el encabezado y la tabla de un listado | slot (el selector de vista lleva `ml-auto`); con `AppVistas` arriba, `class="pt-3"` |
 | `AppVistas` | Pestañas de vista de un listado, con conteo (§3.2.1) | `v-model`, `opciones` [{valor,label,conteo?,icono?,titulo?}], `label` |
-| `AppFiltros` | Chips de filtro bajo demanda con selección múltiple (§3.2.1) | `v-model` ({[id]: valores[]}), `dimensiones` [{id,label,icono,opciones:[{valor,label}]}] o [{id,label,icono,tipo:'rango'}] (valor `[desde,hasta]`) |
+| `AppFiltros` | Un botón por filtro en la línea del buscador, selección múltiple (§3.2.1) | `v-model` ({[id]: valores[]}), `dimensiones` [{id,label,icono,opciones:[{valor,label}],mas?}] o [{id,label,icono,tipo:'rango',mas?}] (valor `[desde,hasta]`); el orden del arreglo es el de la barra |
 | `AppMarcoTabla` | Tabla a sangre dentro de la hoja (sin card), no se estira: con pocas filas la paginación queda pegada a la última | slot (tabla con scroll + `AppPaginacion`) |
 | `AppButton` | Toda acción | `label`, `icon`, `severity` (primary/secondary/danger), `variant` (solid/outline/text), `size` (sm 32 / md 36 / lg 44), `loading`; `to` (renderiza `RouterLink`) o `href` (renderiza `<a>`) para un botón que navega |
 | `AppPortal` | Layout del portal público y de las páginas de error (4.5) | `titulo` (el `<h1>`), `descripcion`, `seccion`, `icono` + `tono`, `centrado`, `superpuesto`; slots `antetitulo`, `pie` |
@@ -371,7 +371,7 @@ Plataformas) solo tiene buscador: no hay nada que filtrar.
 ```
  Todos 12   Activos 9   Inactivos 3   Suspendidos 0          ← AppVistas
 ──────────────────────────────────────────────────────────
-[🔍 Buscar…] [🏢 Empresa: Materen, Andes ⌄ ×] [⧩ Filtro] ✕ Limpiar   ← AppBarraFiltros
+[🔍 Buscar…] [🏢 Empresa: Materen, Andes ⌄ ×] [Área/Obra ⌄] [Ubicación ⌄] ✕ Limpiar   ← una línea
 ```
 - **Vistas** (`AppVistas`): las 3–6 preguntas diarias de esa lista, a un
   clic y con su conteo (el conteo respeta búsqueda y chips, no la vista
@@ -384,17 +384,24 @@ Plataformas) solo tiene buscador: no hay nada que filtrar.
   defecto puede ser otra (Empleados: Activos; Tickets: Pendientes;
   Problemas: Abiertos). Lo que no es estado — responsable, empresa… — es
   un chip.
-- **Chips bajo demanda** (`AppFiltros`): "+ Filtro" abre las dimensiones
-  del listado; cada dimensión elegida queda como chip con **selección
-  múltiple**. O dentro de una dimensión, Y entre dimensiones. Chip
-  aplicado = tinte `primary-50`; click lo edita, × lo quita entero. Nada
-  ocupa espacio hasta que se usa.
-- **Atajos** (`AppFiltros atajos`, 2026-10-21): arriba del menú de "+ Filtro",
-  las 2–4 preguntas diarias del listado a un clic ("Asignados a usted", "Sin
-  asignar", "Prioridad crítica"). Un atajo es una combinación de chips: deja
-  el chip de siempre, que se edita y se quita igual, y con el atajo ya
-  aplicado el clic lo quita. No ocupan lugar en la barra. Hoy: Tickets,
-  Problemas y Base de conocimiento.
+- **Un botón por filtro, en la misma línea que el buscador** (`AppFiltros`,
+  rediseño pedido por el dueño el 2026-10-21; reemplaza al "+ Filtro" con su
+  menú de dimensiones y su segunda pantalla de opciones, que hacía perder el
+  hilo). Un clic en "Prioridad ⌄" abre **directamente** sus opciones, con
+  **selección múltiple**: O dentro de una dimensión, Y entre dimensiones.
+  - **Libre**: borde gris, ícono, nombre y flecha.
+  - **Con algo elegido**: tinte `primary-50` y dice qué filtra
+    ("Prioridad: Crítica ×"); click lo edita, × lo quita entero. Lo que filtra
+    se distingue de un vistazo de lo que no.
+  - **Orden**: el del arreglo `dimensiones`, de la pregunta más diaria a la
+    menos (Tickets: Asignado a · Prioridad · Categoría · Creado). Dentro de
+    cada uno, las opciones diarias van primero ("Usted", "Sin asignar").
+  - **"Más filtros"**: si no caben, las dimensiones de uso ocasional llevan
+    `mas: true` y van juntas en UN panel con todas sus secciones a la vista
+    (sin navegar). Si una de ellas tiene algo elegido, aparece en la línea.
+  - **Una sola línea** desde `sm` (`AppBarraFiltros` sin salto; si no entra,
+    la fila de filtros se desliza). En móvil, el buscador ocupa su fila y los
+    filtros bajan de fila enteros, sin cortarse.
 - **"Usted" es portable**: el usuario en sesión viaja como `yo`
   (`?asignado=yo`, `?responsable=yo`, `?autor=yo`) y se traduce a su id
   antes de ir al servidor; así el mismo enlace sirve a cualquiera. Nunca el
@@ -433,11 +440,11 @@ Vistas y chips de cada módulo:
 | --- | --- | --- |
 | Empleados | Todos · Activos (defecto) · Inactivos · Suspendidos | Empresa, Área/Obra, Ubicación |
 | Equipos | Todos · Libres · Con personas · En ubicaciones · En reparación · Fuera de servicio | Tipo, Empresa |
-| Tickets | Todos · Pendientes (defecto) · Resueltos · Rechazados | Estado (dentro de Pendientes/Todos), Asignado a (Usted · Sin asignar · técnicos), Prioridad, Categoría, Tipo, Nivel (con descripción), Vínculo con empleado, Creado. Atajos: Asignados a usted · Sin asignar · Prioridad crítica · Creados hoy |
+| Tickets | Todos · Pendientes (defecto) · Resueltos · Rechazados | Asignado a (Usted · Sin asignar · técnicos), Prioridad, Categoría, Creado; en Más filtros: Estado (dentro de Pendientes/Todos), Tipo, Nivel (con descripción), Vínculo con empleado |
 | Licencias | Todas · Por vencer · Vencidas · Perpetuas | Empresa, Acceso (correo / clave / sin credencial) |
 | Correos | Todos · Compartidos · Reutilizables · Por rotar | Plataforma |
-| Base de conocimiento | Todos · Publicados · En revisión · Borradores · Obsoletos | Categoría, Autor (Usted · staff). Atajo: Escritos por usted |
-| Problemas | Todos · Abiertos (defecto) · Cerrados | Etapa (no en Cerrados), Severidad, Responsable (Usted · Sin responsable · staff). Atajos: A cargo de usted · Sin responsable · Severidad crítica |
+| Base de conocimiento | Todos · Publicados · En revisión · Borradores · Obsoletos | Categoría, Autor (Usted · staff) |
+| Problemas | Todos · Abiertos (defecto) · Cerrados | Responsable (Usted · Sin responsable · staff), Severidad, Etapa (no en Cerrados) |
 | Cambios | Todos · En curso (defecto) · Por aprobar · En ejecución · Terminados | Tipo, Servicio |
 | Solicitudes | Todas · Abiertas (defecto) · Completadas · Canceladas | Tipo |
 | Actividad | Todo · Contraseñas · Entregas · Denegados | Quién, Plataforma, Fecha (rango) |

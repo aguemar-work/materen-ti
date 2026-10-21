@@ -85,7 +85,6 @@ const DIMENSIONES = computed(() => {
     { id: 'autor', label: 'Autor', icono: 'ti ti-user-edit', opciones: autores },
   ];
 });
-const ATAJOS = [{ id: 'mios', label: 'Escritos por usted', icono: 'ti ti-user-edit', valores: { autor: [AUTOR_YO] } }];
 const chips = computed({
   get: () => ({ categoria: filtros.categoria, autor: filtros.autor }),
   set: (v) => { filtros.categoria = v.categoria; filtros.autor = v.autor; },
@@ -147,7 +146,7 @@ onMounted(async () => {
     <AppVistas v-model="filtros.estado" :opciones="VISTAS" label="Vista de artículos" />
     <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar artículos" placeholder="Buscar por título o síntoma" />
-      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" :atajos="ATAJOS" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 

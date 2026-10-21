@@ -24,8 +24,11 @@
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
 - **2026-10-21** (**Filtros más sencillos y útiles**, solo frontend, sin migración) — `SISTEMA-DISENO.md` §3.2.1.
-  **Atajos** en "+ Filtro" (`AppFiltros atajos`): Tickets (Asignados a usted, Sin asignar, Prioridad crítica, Creados
-  hoy), Problemas (A cargo de usted, Sin responsable, Severidad crítica) y KB (Escritos por usted). **"Usted" portable**
+  **Un botón por filtro en la línea del buscador** (`AppFiltros`, pedido del dueño): un clic abre las opciones de esa
+  dimensión, sin el menú "+ Filtro" ni su segunda pantalla; el botón con algo elegido se tiñe y dice qué filtra; el
+  orden es el de uso (Tickets: Asignado a, Prioridad, Categoría, Creado; Estado, Tipo, Nivel y Vínculo en "Más
+  filtros", un solo panel). Buscador y filtros en **una sola línea** desde `sm`; en móvil los filtros bajan de fila
+  enteros; el placeholder de Tickets se acorta («Código, título, nombre o DNI»). **"Usted" portable**
   (`yo`) también en Problemas (`?responsable=yo`) y KB (`?autor=yo`; antes el id propio con "(usted)"). **«Todos»
   primero** en Cambios y Solicitudes, como manda la regla de vistas. **Subtítulo que dice qué se ve** en Empleados,
   Equipos, Cambios y Solicitudes (`core/subtituloListado.js`; antes una frase fija) y en Accesos sensibles (antes

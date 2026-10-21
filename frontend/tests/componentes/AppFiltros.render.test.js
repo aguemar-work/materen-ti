@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 //
-// AppFiltros.vue — chips de filtro bajo demanda (V2, 2026-09-25). Cubre el
-// contrato con la vista: el componente solo edita `{ [dimensión]: valores[] }`
-// (O dentro de una dimensión, Y entre dimensiones lo resuelve el servidor) y
-// cada chip se puede quitar entero con su ×.
+// AppFiltros.vue — filtros de un listado (V2, 2026-09-25; rediseño
+// 2026-10-21: un botón por dimensión en la línea, un clic abre sus opciones,
+// sin menú intermedio). Cubre el contrato con la vista: el componente solo
+// edita `{ [dimensión]: valores[] }` (O dentro de una dimensión, Y entre
+// dimensiones lo resuelve el servidor) y cada filtro puesto se quita entero
+// con su ×.
 import { describe, it, expect, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import AppFiltros from '../../src/components/ui/AppFiltros.vue';
@@ -15,17 +17,18 @@ const DIMENSIONES = [
   { id: 'area', label: 'Área/Obra', icono: 'ti ti-briefcase', opciones: [{ valor: 'a1', label: 'Obra Surco' }] },
 ];
 
-function montar(modelValue = { empresa: [], area: [] }) {
-  return mount(AppFiltros, {
-    props: { dimensiones: DIMENSIONES, modelValue, 'onUpdate:modelValue': (v) => w.setProps({ modelValue: v }) },
+let w;
+function montar(modelValue = { empresa: [], area: [] }, dimensiones = DIMENSIONES) {
+  w = mount(AppFiltros, {
+    props: { dimensiones, modelValue, 'onUpdate:modelValue': (v) => w.setProps({ modelValue: v }) },
     attachTo: document.body,
   });
+  return w;
 }
-let w;
 
-function flush() {
-  return new Promise((r) => setTimeout(r, 0));
-}
+const flush = () => new Promise((r) => setTimeout(r, 0));
+const botonLibre = (texto) => w.findAll('button').find((b) => b.text().trim() === texto);
+const casillas = () => document.body.querySelectorAll('fieldset input[type="checkbox"]');
 
 afterEach(() => {
   w?.unmount();
@@ -33,53 +36,59 @@ afterEach(() => {
 });
 
 describe('AppFiltros.vue', () => {
-  it('sin filtros no muestra chips, solo "+ Filtro"', () => {
-    w = montar();
-    expect(w.find('button[aria-label="Agregar filtro"]').exists()).toBe(true);
+  it('cada dimensión es un botón en la línea, en el orden que manda la vista', () => {
+    montar();
+    expect(botonLibre('Empresa')).toBeTruthy();
+    expect(botonLibre('Área/Obra')).toBeTruthy();
     expect(w.findAll('button[aria-label^="Quitar filtro"]')).toHaveLength(0);
+    // Ya no existe el "+ Filtro" con su menú de dimensiones.
+    expect(w.find('button[aria-label="Agregar filtro"]').exists()).toBe(false);
   });
 
-  it('"+ Filtro" → elegir dimensión → marcar dos valores emite la lista (O dentro de la dimensión)', async () => {
-    w = montar();
-    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
+  it('un clic abre las opciones de ESA dimensión, sin menú intermedio; marcar dos emite la lista (O)', async () => {
+    montar();
+    await botonLibre('Empresa').trigger('click');
     await flush();
-    const dimension = [...document.body.querySelectorAll('button')].find((b) => b.textContent.includes('Empresa'));
-    dimension.click();
+    expect(casillas()).toHaveLength(3);
+    expect(document.body.querySelector('[aria-label="Volver a la lista de filtros"]')).toBeNull();
+    casillas()[0].click();
     await flush();
-    const checks = document.body.querySelectorAll('fieldset input[type="checkbox"]');
-    expect(checks).toHaveLength(3);
-    checks[0].click();
+    casillas()[1].click();
     await flush();
-    document.body.querySelectorAll('fieldset input[type="checkbox"]')[1].click();
-    await flush();
-    const emitido = w.emitted('update:modelValue').at(-1)[0];
-    expect(emitido).toEqual({ empresa: ['e1', 'e2'], area: [] });
+    expect(w.emitted('update:modelValue').at(-1)[0]).toEqual({ empresa: ['e1', 'e2'], area: [] });
   });
 
-  it('el chip resume lo elegido y su × quita la dimensión entera', async () => {
-    w = montar({ empresa: ['e1', 'e2'], area: [] });
-    const chip = w.find('button[aria-label^="Filtro Empresa"]');
-    expect(chip.text()).toContain('Materen, Andes');
+  it('con algo elegido el botón cambia: dice qué filtra y su × quita la dimensión entera', async () => {
+    montar({ empresa: ['e1', 'e2'], area: [] });
+    const activo = w.find('button[aria-label^="Filtro Empresa"]');
+    expect(activo.text()).toContain('Materen, Andes');
+    expect(activo.element.closest('[data-chip]')).toBeTruthy();
+    expect(botonLibre('Área/Obra').element.closest('[data-chip]')).toBeNull();
     await w.find('button[aria-label="Quitar filtro Empresa"]').trigger('click');
     expect(w.emitted('update:modelValue').at(-1)[0]).toEqual({ empresa: [], area: [] });
   });
 
   it('con más de dos valores resume como "X y N más"', () => {
-    w = montar({ empresa: ['e1', 'e2', 'e3'], area: [] });
+    montar({ empresa: ['e1', 'e2', 'e3'], area: [] });
     expect(w.find('button[aria-label^="Filtro Empresa"]').text()).toContain('Materen y 2 más');
   });
 
-  it('dimensión de rango: el atajo fija [desde, hasta] y el chip lo resume como fechas', async () => {
-    const dims = [{ id: 'creado', label: 'Creado', icono: 'ti ti-calendar', tipo: 'rango' }];
-    w = mount(AppFiltros, {
-      props: { dimensiones: dims, modelValue: { creado: ['', ''] }, 'onUpdate:modelValue': (v) => w.setProps({ modelValue: v }) },
-      attachTo: document.body,
-    });
+  it('al elegir el primer valor el panel sigue abierto y anclado al botón que ahora dice qué filtra', async () => {
+    montar();
+    await botonLibre('Empresa').trigger('click');
+    await flush();
+    casillas()[0].click();
+    await flush();
+    await flush();
+    expect(casillas()).toHaveLength(3); // el panel no se cerró
+    expect(w.find('button[aria-label^="Filtro Empresa"]').attributes('aria-expanded')).toBe('true');
+  });
+
+  it('dimensión de rango: el atajo fija [desde, hasta] y el botón lo resume como fechas', async () => {
+    montar({ creado: ['', ''] }, [{ id: 'creado', label: 'Creado', icono: 'ti ti-calendar', tipo: 'rango' }]);
     // Sin fechas, el rango no cuenta como filtro puesto.
     expect(w.findAll('button[aria-label^="Quitar filtro"]')).toHaveLength(0);
-    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
-    await flush();
-    [...document.body.querySelectorAll('button')].find((b) => b.textContent.includes('Creado')).click();
+    await botonLibre('Creado').trigger('click');
     await flush();
     [...document.body.querySelectorAll('button')].find((b) => b.textContent.includes('Hoy')).click();
     await flush();
@@ -91,57 +100,30 @@ describe('AppFiltros.vue', () => {
     await w.find('button[aria-label="Quitar filtro Creado"]').trigger('click');
     expect(w.emitted('update:modelValue').at(-1)[0]).toEqual({ creado: ['', ''] });
   });
-
-  it('cuando todas las dimensiones están en uso, "+ Filtro" desaparece', () => {
-    w = montar({ empresa: ['e1'], area: ['a1'] });
-    expect(w.find('button[aria-label="Agregar filtro"]').exists()).toBe(false);
-  });
 });
 
-// Atajos (2026-10-21): las preguntas diarias a un clic dentro de "+ Filtro".
-describe('AppFiltros.vue — atajos', () => {
-  const ATAJOS = [
-    { id: 'materen', label: 'Solo Materen', icono: 'ti ti-building', valores: { empresa: ['e1'] } },
-    { id: 'fantasma', label: 'De una dimensión que no está', icono: 'ti ti-x', valores: { etapa: ['abierto'] } },
+describe('AppFiltros.vue — "Más filtros"', () => {
+  const DIMS = [
+    ...DIMENSIONES,
+    { id: 'tipo', label: 'Tipo', icono: 'ti ti-tag', mas: true, opciones: [{ valor: 'incidente', label: 'Incidente' }] },
+    { id: 'nivel', label: 'Nivel', icono: 'ti ti-stairs', mas: true, opciones: [{ valor: 'N1', label: 'N1 — Soporte básico' }] },
   ];
-  function montarConAtajos(modelValue = { empresa: [], area: [] }) {
-    return mount(AppFiltros, {
-      props: { dimensiones: DIMENSIONES, modelValue, atajos: ATAJOS, 'onUpdate:modelValue': (v) => w.setProps({ modelValue: v }) },
-      attachTo: document.body,
-    });
-  }
-  const atajo = (texto) => [...document.body.querySelectorAll('[aria-label="Atajos"] button')].find((b) => b.textContent.includes(texto));
 
-  it('aparecen arriba del menú; los de una dimensión ausente no se ofrecen', async () => {
-    w = montarConAtajos();
-    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
+  it('las dimensiones `mas` no ocupan la línea: van juntas en un solo panel, todas a la vista', async () => {
+    montar({ empresa: [], area: [], tipo: [], nivel: [] }, DIMS);
+    expect(botonLibre('Tipo')).toBeFalsy();
+    await botonLibre('Más filtros').trigger('click');
     await flush();
-    expect(atajo('Solo Materen')).toBeTruthy();
-    expect(atajo('De una dimensión que no está')).toBeFalsy();
+    expect(document.body.querySelectorAll('fieldset')).toHaveLength(2);
+    expect(casillas()).toHaveLength(2);
+    casillas()[1].click();
+    await flush();
+    expect(w.emitted('update:modelValue').at(-1)[0].nivel).toEqual(['N1']);
   });
 
-  it('un clic reemplaza la selección de su dimensión y cierra el panel', async () => {
-    w = montarConAtajos({ empresa: ['e2', 'e3'], area: ['a1'] });
-    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
-    await flush();
-    atajo('Solo Materen').click();
-    await flush();
-    expect(w.emitted('update:modelValue').at(-1)[0]).toEqual({ empresa: ['e1'], area: ['a1'] });
-    expect(document.body.querySelector('[aria-label="Atajos"]')).toBeNull();
-  });
-
-  it('ya aplicado se marca con aria-pressed y el clic lo quita', async () => {
-    w = montarConAtajos({ empresa: ['e1'], area: [] });
-    await w.find('button[aria-label="Agregar filtro"]').trigger('click');
-    await flush();
-    expect(atajo('Solo Materen').getAttribute('aria-pressed')).toBe('true');
-    atajo('Solo Materen').click();
-    await flush();
-    expect(w.emitted('update:modelValue').at(-1)[0]).toEqual({ empresa: [], area: [] });
-  });
-
-  it('con todas las dimensiones en uso, "+ Filtro" sigue para ofrecer los atajos', () => {
-    w = montarConAtajos({ empresa: ['e1'], area: ['a1'] });
-    expect(w.find('button[aria-label="Agregar filtro"]').exists()).toBe(true);
+  it('una de "Más filtros" con algo elegido aparece en la línea: lo que filtra nunca queda escondido', () => {
+    montar({ empresa: [], area: [], tipo: ['incidente'], nivel: [] }, DIMS);
+    expect(w.find('button[aria-label^="Filtro Tipo"]').text()).toContain('Incidente');
+    expect(botonLibre('Más filtros')).toBeTruthy();
   });
 });

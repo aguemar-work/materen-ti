@@ -92,12 +92,9 @@ const VISTAS = computed(() => [
   { valor: 'cerrados', label: 'Cerrados', conteo: conteos.value?.cerrados },
 ]);
 
+// Orden de la barra (2026-10-21): lo que más se pregunta primero — de quién
+// es, qué tan grave, en qué etapa va.
 const DIMENSIONES = computed(() => [
-  ...(filtros.vista === 'cerrados' ? [] : [{
-    id: 'etapa', label: 'Etapa', icono: 'ti ti-progress',
-    opciones: ESTADOS_PROBLEMA_ABIERTOS.map((e) => ({ valor: e, label: estadoProblemaInfo(e).label })),
-  }]),
-  { id: 'severidad', label: 'Severidad', icono: 'ti ti-flag', opciones: [...OPCIONES_SEVERIDAD_PROBLEMA].reverse() },
   {
     id: 'responsable', label: 'Responsable', icono: 'ti ti-user',
     opciones: [
@@ -106,12 +103,12 @@ const DIMENSIONES = computed(() => [
       ...staffLista.value.filter((s) => s.user_id !== auth.user?.id).map((s) => ({ valor: s.user_id, label: s.nombre })),
     ],
   },
+  { id: 'severidad', label: 'Severidad', icono: 'ti ti-flag', opciones: [...OPCIONES_SEVERIDAD_PROBLEMA].reverse() },
+  ...(filtros.vista === 'cerrados' ? [] : [{
+    id: 'etapa', label: 'Etapa', icono: 'ti ti-progress',
+    opciones: ESTADOS_PROBLEMA_ABIERTOS.map((e) => ({ valor: e, label: estadoProblemaInfo(e).label })),
+  }]),
 ]);
-const ATAJOS = [
-  { id: 'mios', label: 'A cargo de usted', icono: 'ti ti-user-check', valores: { responsable: [RESPONSABLE_YO] } },
-  { id: 'sin-responsable', label: 'Sin responsable', icono: 'ti ti-user-off', valores: { responsable: ['sin'] } },
-  { id: 'criticos', label: 'Severidad crítica', icono: 'ti ti-alert-triangle', valores: { severidad: ['critica'] } },
-];
 const chips = computed({
   get: () => Object.fromEntries(DIMENSIONES.value.map((d) => [d.id, filtros[d.id]])),
   set: (v) => { for (const k of Object.keys(v)) filtros[k] = v[k]; },
@@ -174,7 +171,7 @@ onMounted(async () => {
     <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de problemas" />
     <AppBarraFiltros class="pt-3">
       <AppBuscador v-model="busqueda" label="Buscar problemas" placeholder="Buscar por título" />
-      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" :atajos="ATAJOS" />
+      <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
     </AppBarraFiltros>
 

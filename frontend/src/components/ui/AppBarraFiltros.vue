@@ -10,7 +10,7 @@
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-2 px-4 pb-4 sm:px-6">
+  <div class="flex flex-wrap items-center gap-2 px-4 pb-4 sm:flex-nowrap sm:px-6">
     <slot />
   </div>
 </template>

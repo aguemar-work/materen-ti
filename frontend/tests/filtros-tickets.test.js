@@ -2,7 +2,7 @@
 // Tickets (2026-09-25): vista ∩ chips → parámetros de queryTickets().
 import { describe, it, expect } from 'vitest';
 import {
-  dimensionesDe, podarChips, paramsServidor, VISTAS_TICKETS, VISTA_DEFECTO, ASIGNADO_YO, atajosTickets,
+  dimensionesDe, podarChips, paramsServidor, VISTAS_TICKETS, VISTA_DEFECTO, ASIGNADO_YO,
 } from '../src/modules/tickets/filtrosTickets.js';
 import { SIN_ASIGNAR } from '../src/core/dominio-tickets.js';
 
@@ -62,18 +62,15 @@ describe('filtrosTickets', () => {
   });
 });
 
-// Atajos (2026-10-21): cada uno apunta a dimensiones que existen en todas las
-// vistas (AppFiltros esconde el que no), y deja valores que el servidor entiende.
-describe('atajosTickets', () => {
-  it('sus dimensiones existen en cada vista y "Creados hoy" es el rango del día', () => {
-    const atajos = atajosTickets('2026-10-21');
-    for (const vista of VISTAS_TICKETS.map((v) => v.valor)) {
-      const ids = dimensionesDe(vista).map((d) => d.id);
-      for (const a of atajos) for (const id of Object.keys(a.valores)) expect(ids).toContain(id);
-    }
-    expect(atajos.find((a) => a.id === 'hoy').valores.creado).toEqual(['2026-10-21', '2026-10-21']);
-    expect(atajos.find((a) => a.id === 'mios').valores.asignado).toEqual([ASIGNADO_YO]);
-    expect(atajos.find((a) => a.id === 'sin-asignar').valores.asignado).toEqual([SIN_ASIGNAR]);
+
+// Orden de la barra (2026-10-21): lo diario en la línea; el resto en "Más filtros".
+describe('dimensionesDe — orden de la barra', () => {
+  it('Asignado a, Prioridad, Categoría y Creado en la línea; Estado, Tipo, Nivel y Vínculo en "Más filtros"', () => {
+    const dims = dimensionesDe('pendientes');
+    expect(dims.filter((d) => !d.mas).map((d) => d.id)).toEqual(['asignado', 'prioridad', 'categoria', 'creado']);
+    expect(dims.filter((d) => d.mas).map((d) => d.id)).toEqual(['estado', 'tipo', 'nivel', 'solicitante']);
+    // "Usted" y "Sin asignar" son las primeras opciones: la pregunta diaria a dos clics.
+    expect(dims[0].opciones.slice(0, 2).map((o) => o.valor)).toEqual([ASIGNADO_YO, SIN_ASIGNAR]);
   });
 
   it('Nivel muestra su descripción, no solo el código', () => {

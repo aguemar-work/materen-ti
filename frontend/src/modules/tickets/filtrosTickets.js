@@ -75,13 +75,14 @@ function opcionesEstado(vista) {
  * @param {string} vista
  * @param {{ staff: {user_id:string,nombre:string}[], categorias: {id:string,nombre:string}[], yo: string }} catalogos
  */
+//
+// Orden (2026-10-21): el de la barra, de lo que más se pregunta a lo que
+// menos. En la línea: Asignado a, Prioridad, Categoría y Creado; el resto
+// (`mas: true`) va en "Más filtros" para que la barra quepa en una línea.
 export function dimensionesDe(vista, { staff = [], categorias = [], yo = '' } = {}) {
-  const dims = [];
-  const estados = opcionesEstado(vista);
-  if (estados.length) dims.push({ id: 'estado', label: 'Estado', icono: 'ti ti-progress', opciones: estados });
-  // "Usted" primero y "Sin asignar" después: son las dos preguntas diarias
-  // (lo mío, lo que nadie tomó); luego el resto del equipo.
-  dims.push(
+  const dims = [
+    // "Usted" primero y "Sin asignar" después: son las dos preguntas diarias
+    // (lo mío, lo que nadie tomó); luego el resto del equipo.
     {
       id: 'asignado', label: 'Asignado a', icono: 'ti ti-user',
       opciones: [
@@ -92,30 +93,20 @@ export function dimensionesDe(vista, { staff = [], categorias = [], yo = '' } = 
     },
     { id: 'prioridad', label: 'Prioridad', icono: 'ti ti-flag', opciones: OPCIONES_PRIORIDAD },
     { id: 'categoria', label: 'Categoría', icono: 'ti ti-category', opciones: categorias.map((c) => ({ valor: c.id, label: c.nombre })) },
-    { id: 'tipo', label: 'Tipo', icono: 'ti ti-tag', opciones: OPCIONES_TIPO },
-    // "N1 — Soporte básico": el código solo no dice nada a quien no lo usa.
-    { id: 'nivel', label: 'Nivel', icono: 'ti ti-stairs', opciones: NIVELES_ATENCION.map((n) => ({ valor: n.valor, label: n.label })) },
-    // La clave sigue siendo `solicitante` (enlaces viejos); el rótulo dice lo
-    // que filtra: si el ticket quedó vinculado a un empleado, no quién lo pidió.
-    { id: 'solicitante', label: 'Vínculo con empleado', icono: 'ti ti-user-question', opciones: OPCIONES_SOLICITANTE },
     // Rango de fechas (AppFiltros tipo 'rango'); en la URL, desde/hasta.
     { id: 'creado', label: 'Creado', icono: 'ti ti-calendar', tipo: 'rango' },
+  ];
+  const estados = opcionesEstado(vista);
+  if (estados.length) dims.push({ id: 'estado', label: 'Estado', icono: 'ti ti-progress', opciones: estados, mas: true });
+  dims.push(
+    { id: 'tipo', label: 'Tipo', icono: 'ti ti-tag', opciones: OPCIONES_TIPO, mas: true },
+    // "N1 — Soporte básico": el código solo no dice nada a quien no lo usa.
+    { id: 'nivel', label: 'Nivel', icono: 'ti ti-stairs', opciones: NIVELES_ATENCION.map((n) => ({ valor: n.valor, label: n.label })), mas: true },
+    // La clave sigue siendo `solicitante` (enlaces viejos); el rótulo dice lo
+    // que filtra: si el ticket quedó vinculado a un empleado, no quién lo pidió.
+    { id: 'solicitante', label: 'Vínculo con empleado', icono: 'ti ti-user-question', opciones: OPCIONES_SOLICITANTE, mas: true },
   );
   return dims;
-}
-
-/**
- * Atajos de AppFiltros (2026-10-21): las preguntas diarias de la mesa de
- * ayuda a un clic dentro de "+ Filtro". Cada uno deja el chip de siempre.
- * @param {string} hoy  'YYYY-MM-DD' (fechaLocalISO), para "Creados hoy"
- */
-export function atajosTickets(hoy) {
-  return [
-    { id: 'mios', label: 'Asignados a usted', icono: 'ti ti-user-check', valores: { asignado: [ASIGNADO_YO] } },
-    { id: 'sin-asignar', label: 'Sin asignar', icono: 'ti ti-user-off', valores: { asignado: [SIN_ASIGNAR] } },
-    { id: 'criticos', label: 'Prioridad crítica', icono: 'ti ti-alert-triangle', valores: { prioridad: ['urgente'] } },
-    { id: 'hoy', label: 'Creados hoy', icono: 'ti ti-calendar-event', valores: { creado: [hoy, hoy] } },
-  ];
 }
 
 /**

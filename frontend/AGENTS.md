@@ -92,8 +92,9 @@
 - "Usted" viaja como `yo` (`?asignado=yo`, `/problemas?responsable=yo`,
   `/base-conocimiento?autor=yo`) y se traduce al id en sesión antes de ir al
   servidor: nunca el id propio en la URL.
-- Las preguntas diarias de un listado van como `atajos` de `AppFiltros`
-  (dentro de "+ Filtro"), no como botones nuevos en la barra.
+- Filtros (`AppFiltros`): un botón por dimensión en la línea del buscador, en
+  el orden del arreglo (lo más diario primero); lo ocasional con `mas: true`
+  va en "Más filtros". Nunca un menú que lleve a otro menú.
 - `?nuevo=1` abre el alta en Equipos y Licencias (y se quita de la URL).
 
 ## Accesibilidad y copy
