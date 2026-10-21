@@ -178,12 +178,11 @@ describe('CambiosView — listado', () => {
   it('los chips ofrecen tipo y los servicios del catálogo', async () => {
     const { w } = await montar();
     expect(insforgeApi.listServicios).toHaveBeenCalled();
-    // Desde 2026-10-21 cada dimensión es su propio botón en la barra.
-    const filtros = w.find('[role="group"][aria-label="Filtros"]');
-    expect(filtros.findAll('button').map((b) => b.text().trim())).toEqual(['Tipo', 'Servicio']);
-    await filtros.findAll('button')[1].trigger('click');
+    // Desde 2026-10-21: un solo botón "Filtros" con un panel de secciones.
+    await w.find('button[aria-haspopup="dialog"]').trigger('click');
     await espera(10);
-    expect(document.body.querySelectorAll('fieldset input[type="checkbox"]').length).toBeGreaterThan(0);
+    const secciones = [...document.body.querySelectorAll('[role="dialog"] fieldset legend')].map((l) => l.textContent.trim());
+    expect(secciones).toEqual(['Filtrar por Tipo', 'Filtrar por Servicio']);
   });
 });
 

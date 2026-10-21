@@ -496,17 +496,14 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Vistas (qué cola) y filtros bajo demanda (cómo recortarla) ══
-         Una sola fila de vistas que nunca cambia de forma, y chips que se
-         suman solo cuando hacen falta (ver filtrosTickets.js). -->
-    <AppVistas v-model="filtros.vista" :opciones="opcionesVistas" label="Vista de tickets" />
-
-    <!-- La barra de acciones en lote SE SOBREPONE a la fila de búsqueda
-         (misma altura, sin mover la tabla ni la cola): con filas marcadas,
-         buscar o filtrar no es lo que se está haciendo. La fila de abajo
-         queda `inert` para que el foco no caiga debajo de la barra. -->
+    <!-- ══ Una línea: vistas (qué cola) · búsqueda · filtros (cómo recortarla)
+         (2026-10-21). Ver filtrosTickets.js.
+         La barra de acciones en lote SE SOBREPONE a esta fila (misma altura,
+         sin mover la tabla ni la cola): con filas marcadas, buscar o filtrar
+         no es lo que se está haciendo. La fila de abajo queda `inert` para que
+         el foco no caiga debajo de la barra. -->
     <div class="relative">
-    <AppBarraFiltros class="pt-3" :inert="seleccionados.size > 0 || undefined">
+    <AppBarraFiltros :inert="seleccionados.size > 0 || undefined">
       <AppBuscador
         ref="refBuscador"
         v-model="busqueda"
@@ -516,11 +513,12 @@ onMounted(async () => {
       />
       <AppFiltros v-model="chips" :dimensiones="dimensiones" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
-      <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" class="ml-auto" />
+      <AppVistas v-model="filtros.vista" en-barra class="ml-auto" :opciones="opcionesVistas" label="Vista de tickets" />
+      <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" />
     </AppBarraFiltros>
     <div
       v-if="seleccionados.size > 0"
-      class="absolute inset-x-4 bottom-4 top-3 z-10 flex flex-wrap items-center gap-3 rounded-md bg-primary-50 px-3 ring-1 ring-inset ring-primary-200 sm:inset-x-6"
+      class="absolute inset-x-4 bottom-4 top-0 z-10 flex flex-wrap items-center gap-3 rounded-md bg-primary-50 px-3 ring-1 ring-inset ring-primary-200 sm:inset-x-6"
       role="toolbar"
       aria-label="Acciones sobre los tickets seleccionados"
     >

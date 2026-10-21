@@ -264,13 +264,16 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     const llamadas = insforgeApi.listTicketsPage.mock.calls.map((c) => c[0]);
     expect(llamadas.every((f) => f.categoriaIds.includes('red'))).toBe(true);
     expect(llamadas.at(-1)).toMatchObject({ estados: [], asignados: [] });
-    expect(w.find('button[aria-label^="Filtro Categoría"]').text()).toContain('Red y Conectividad');
+    // El botón "Filtros" dice qué hay puesto (2026-10-21: un solo menú).
+    expect(w.find('button[aria-haspopup="dialog"]').attributes('aria-label')).toContain('Categoría Red y Conectividad');
     expect(insforgeApi.contarTickets.mock.calls.every((c) => c[0].categoriaIds.includes('red'))).toBe(true);
   });
 
   it('quitar el chip limpia el filtro y saca el parámetro de la URL', async () => {
     const { w, router } = await montarEn('/tickets?vista=todos&categoria=red');
-    await w.find('button[aria-label="Quitar filtro Categoría"]').trigger('click');
+    await w.find('button[aria-haspopup="dialog"]').trigger('click');
+    await flushPromises();
+    document.body.querySelector('[aria-label="Quitar filtro Categoría"]').click();
     await flushPromises();
     expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0].categoriaIds).toEqual([]);
     expect(router.currentRoute.value.query.categoria).toBeUndefined();
@@ -281,7 +284,7 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     await flushPromises();
     expect(router.currentRoute.value.query).toMatchObject({ asignado: 'yo' });
     expect(router.currentRoute.value.query.vista).toBeUndefined(); // pendientes = por defecto
-    expect(w.find('button[aria-label^="Filtro Asignado a"]').text()).toContain('Usted');
+    expect(w.find('button[aria-haspopup="dialog"]').attributes('aria-label')).toContain('Asignado a Usted');
   });
 
   it('la barra de acciones en lote se sobrepone a la fila de búsqueda (no empuja la tabla)', async () => {

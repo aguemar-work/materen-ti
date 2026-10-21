@@ -24,11 +24,13 @@
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
 - **2026-10-21** (**Filtros más sencillos y útiles**, solo frontend, sin migración) — `SISTEMA-DISENO.md` §3.2.1.
-  **Un botón por filtro en la línea del buscador** (`AppFiltros`, pedido del dueño): un clic abre las opciones de esa
-  dimensión, sin el menú "+ Filtro" ni su segunda pantalla; el botón con algo elegido se tiñe y dice qué filtra; el
-  orden es el de uso (Tickets: Asignado a, Prioridad, Categoría, Creado; Estado, Tipo, Nivel y Vínculo en "Más
-  filtros", un solo panel). Buscador y filtros en **una sola línea** desde `sm`; en móvil los filtros bajan de fila
-  enteros; el placeholder de Tickets se acorta («Código, título, nombre o DNI»). **"Usted" portable**
+  **Filtros en un solo menú** (`AppFiltros`, pedido del dueño): un botón "Filtros" abre un panel con todas las
+  dimensiones como secciones a la vista, sin el menú "+ Filtro" ni su segunda pantalla; con algo elegido se tiñe y
+  cuenta las dimensiones puestas; las secciones van por uso (Tickets: Asignado a, Prioridad, Categoría, Creado, Estado,
+  Tipo, Nivel, Vínculo). **Buscador, Filtros y vistas en una sola línea**, en ese orden, desde `sm` (`AppVistas
+  en-barra`, un segmentado de 32px a la derecha de `AppBarraFiltros`; las pestañas a lo ancho quedan para Inicio;
+  `tests/vistas-en-barra.test.js` exige el orden en todo listado); en móvil van en filas; el placeholder de Tickets se
+  acorta («Código, título, nombre o DNI»). **"Usted" portable**
   (`yo`) también en Problemas (`?responsable=yo`) y KB (`?autor=yo`; antes el id propio con "(usted)"). **«Todos»
   primero** en Cambios y Solicitudes, como manda la regla de vistas. **Subtítulo que dice qué se ve** en Empleados,
   Equipos, Cambios y Solicitudes (`core/subtituloListado.js`; antes una frase fija) y en Accesos sensibles (antes

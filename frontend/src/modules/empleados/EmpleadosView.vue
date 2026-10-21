@@ -298,14 +298,13 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Vistas (estado) ═══════════════════════════════════════ -->
-    <AppVistas v-model="filtros.estado" :opciones="VISTAS" label="Vista de empleados" />
 
     <!-- ══ Barra de filtros: búsqueda + chips bajo demanda ══════ -->
-    <AppBarraFiltros class="pt-3">
+    <AppBarraFiltros>
       <AppBuscador v-model="busqueda" label="Buscar empleados" placeholder="Buscar por nombre o DNI" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <AppVistas v-model="filtros.estado" en-barra class="ml-auto" :opciones="VISTAS" label="Vista de empleados" />
     </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->

@@ -63,14 +63,13 @@ describe('filtrosTickets', () => {
 });
 
 
-// Orden de la barra (2026-10-21): lo diario en la línea; el resto en "Más filtros".
-describe('dimensionesDe — orden de la barra', () => {
-  it('Asignado a, Prioridad, Categoría y Creado en la línea; Estado, Tipo, Nivel y Vínculo en "Más filtros"', () => {
-    const dims = dimensionesDe('pendientes');
-    expect(dims.filter((d) => !d.mas).map((d) => d.id)).toEqual(['asignado', 'prioridad', 'categoria', 'creado']);
-    expect(dims.filter((d) => d.mas).map((d) => d.id)).toEqual(['estado', 'tipo', 'nivel', 'solicitante']);
-    // "Usted" y "Sin asignar" son las primeras opciones: la pregunta diaria a dos clics.
-    expect(dims[0].opciones.slice(0, 2).map((o) => o.valor)).toEqual([ASIGNADO_YO, SIN_ASIGNAR]);
+// Orden de las secciones del panel "Filtros" (2026-10-21): lo diario primero.
+describe('dimensionesDe — orden', () => {
+  it('Asignado a, Prioridad, Categoría, Creado y después Estado, Tipo, Nivel y Vínculo', () => {
+    expect(dimensionesDe('pendientes').map((d) => d.id))
+      .toEqual(['asignado', 'prioridad', 'categoria', 'creado', 'estado', 'tipo', 'nivel', 'solicitante']);
+    // "Usted" y "Sin asignar" son las primeras opciones: la pregunta diaria.
+    expect(dimensionesDe('pendientes')[0].opciones.slice(0, 2).map((o) => o.valor)).toEqual([ASIGNADO_YO, SIN_ASIGNAR]);
   });
 
   it('Nivel muestra su descripción, no solo el código', () => {

@@ -164,14 +164,14 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de cambios" />
 
     <CambiosResumen :kpi="kpi" :vencidas="vencidas" />
 
-    <AppBarraFiltros class="pt-3">
+    <AppBarraFiltros>
       <AppBuscador v-model="busqueda" label="Buscar cambios" placeholder="Buscar por código o título" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <AppVistas v-model="filtros.vista" en-barra class="ml-auto" :opciones="VISTAS" label="Vista de cambios" />
     </AppBarraFiltros>
 
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">

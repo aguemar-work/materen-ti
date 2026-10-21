@@ -203,11 +203,11 @@ onMounted(async () => {
     </AppEncabezado>
 
     <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
-    <AppVistas v-if="lista.length" v-model="filtros.categoria" :opciones="VISTAS" label="Vista de accesos sensibles" />
-    <AppBarraFiltros v-if="lista.length" class="pt-3">
+    <AppBarraFiltros v-if="lista.length">
       <AppBuscador v-model="busqueda" label="Buscar accesos sensibles" placeholder="Buscar por nombre, usuario o nota" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <AppVistas v-model="filtros.categoria" en-barra class="ml-auto" :opciones="VISTAS" label="Vista de accesos sensibles" />
     </AppBarraFiltros>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->

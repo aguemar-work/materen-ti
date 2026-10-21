@@ -76,9 +76,8 @@ function opcionesEstado(vista) {
  * @param {{ staff: {user_id:string,nombre:string}[], categorias: {id:string,nombre:string}[], yo: string }} catalogos
  */
 //
-// Orden (2026-10-21): el de la barra, de lo que más se pregunta a lo que
-// menos. En la línea: Asignado a, Prioridad, Categoría y Creado; el resto
-// (`mas: true`) va en "Más filtros" para que la barra quepa en una línea.
+// Orden (2026-10-21): el de las secciones del panel "Filtros", de lo que más
+// se pregunta a lo que menos.
 export function dimensionesDe(vista, { staff = [], categorias = [], yo = '' } = {}) {
   const dims = [
     // "Usted" primero y "Sin asignar" después: son las dos preguntas diarias
@@ -97,14 +96,14 @@ export function dimensionesDe(vista, { staff = [], categorias = [], yo = '' } = 
     { id: 'creado', label: 'Creado', icono: 'ti ti-calendar', tipo: 'rango' },
   ];
   const estados = opcionesEstado(vista);
-  if (estados.length) dims.push({ id: 'estado', label: 'Estado', icono: 'ti ti-progress', opciones: estados, mas: true });
+  if (estados.length) dims.push({ id: 'estado', label: 'Estado', icono: 'ti ti-progress', opciones: estados });
   dims.push(
-    { id: 'tipo', label: 'Tipo', icono: 'ti ti-tag', opciones: OPCIONES_TIPO, mas: true },
+    { id: 'tipo', label: 'Tipo', icono: 'ti ti-tag', opciones: OPCIONES_TIPO },
     // "N1 — Soporte básico": el código solo no dice nada a quien no lo usa.
-    { id: 'nivel', label: 'Nivel', icono: 'ti ti-stairs', opciones: NIVELES_ATENCION.map((n) => ({ valor: n.valor, label: n.label })), mas: true },
+    { id: 'nivel', label: 'Nivel', icono: 'ti ti-stairs', opciones: NIVELES_ATENCION.map((n) => ({ valor: n.valor, label: n.label })) },
     // La clave sigue siendo `solicitante` (enlaces viejos); el rótulo dice lo
     // que filtra: si el ticket quedó vinculado a un empleado, no quién lo pidió.
-    { id: 'solicitante', label: 'Vínculo con empleado', icono: 'ti ti-user-question', opciones: OPCIONES_SOLICITANTE, mas: true },
+    { id: 'solicitante', label: 'Vínculo con empleado', icono: 'ti ti-user-question', opciones: OPCIONES_SOLICITANTE },
   );
   return dims;
 }

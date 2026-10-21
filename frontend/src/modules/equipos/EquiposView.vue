@@ -225,14 +225,13 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Vistas (situación) ══ -->
-    <AppVistas v-model="filtros.situacion" :opciones="VISTAS" label="Vista de equipos" />
 
     <!-- ══ Barra de filtros: búsqueda + chips bajo demanda ══ -->
-    <AppBarraFiltros class="pt-3">
+    <AppBarraFiltros>
       <AppBuscador v-model="busqueda" label="Buscar equipos" placeholder="Buscar por código, modelo, serie o portador" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <AppVistas v-model="filtros.situacion" en-barra class="ml-auto" :opciones="VISTAS" label="Vista de equipos" />
     </AppBarraFiltros>
 
     <!-- ══ Selección para etiquetas ══ -->
