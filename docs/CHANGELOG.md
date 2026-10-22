@@ -23,6 +23,11 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-22** (**Realtime sin cliente configurado**, solo frontend) — `useRealtimeRefresco` ya no vuelve a llamar a
+  `getClient()` al desmontar: suelta el cliente que obtuvo al montar y, si no lo obtuvo (sin `VITE_INSFORGE_*`), no
+  hace nada. Antes el error «InsForge no configurado» tumbaba 21 render tests de Empleados, Equipos y Licencias en
+  todo worktree sin `frontend/.env`. Prueba: `tests/useRealtimeRefresco.ciclo.test.js`.
+
 - **2026-10-21** (**Tickets sin selección múltiple**, pedido del dueño, solo frontend) — Se retiran las casillas de la
   tabla y de la cola de Triage, "Seleccionar todos", la barra de acciones en lote ("Reasignar a…", "Cerrar
   seleccionados") y sus confirmaciones: no se usaban. Reasignar y cerrar siguen en la ficha de cada ticket.
