@@ -125,6 +125,14 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   y agrupa al resto en «Jefatura y otros» para que los totales cuadren; solo lo recibe el JEFE (también el técnico de
   cada respuesta de Satisfacción). La marca la cambia solo un JEFE (`trg_staff_tecnico_mesa`, 42501). Pendientes y
   tramos salen de `backlog_tickets_en()`. La situación de un solicitante usa los umbrales de `config_parametros`.
+- **Cierre de tickets (120, procedimiento de TI)**: «Resolver» exige la solución (`nota_resolucion`), que la base
+  publica como comentario visible; el ticket queda `resuelto` y **solo lo cierra** la calificación del solicitante
+  (`responder_encuesta_ticket`, `cerrado_por = 'usuario'`) o el cierre automático a las `horas_autocierre_resuelto` (24)
+  horas (`cerrar_resueltos_vencidos`, `'sistema'`, encuesta anulada, contado aparte y nunca satisfecho); sin
+  solicitante se cierra al resolver (`'sin_solicitante'`). Ninguna sesión de staff hace `resuelto → cerrado`
+  (whitelist con `quien`). Una calificación de 1 o 2 se revisa una vez con `revisar_calificacion_baja`: `reabierto`
+  (el técnico reabre sin ser JEFE, solo por esta vía) o `nota`. Una encuesta por resolución (`resolucion_numero`).
+  `cerrado_at`/`cerrado_por` solo los escribe `tickets_datos_transicion`.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una
@@ -192,7 +200,7 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
 
   | Function | Qué hace | Notas |
   | --- | --- | --- |
-  | `credenciales` | cifrar/revelar/entregas/auditoría | secrets `CRED_KEY_V2`, `CRED_KEY_LEGACY`, `API_KEY`, `INSFORGE_BASE_URL`; auditoría fail-closed |
+  | `credenciales` | cifrar/revelar/entregas/auditoría; `mantenimiento` (autocierre y purga, 120) | secrets `CRED_KEY_V2`, `CRED_KEY_LEGACY`, `API_KEY`, `INSFORGE_BASE_URL`, `MANTENIMIENTO_SECRET`; auditoría fail-closed |
   | `tickets` | crear/buscar/seguir tickets públicos, adjuntos | rate-limit por IP/DNI |
   | `encuestas` | `abrir`/`responder` rondas anónimas | distinta de `ticket_satisfaccion` |
   | `equipos-fotos` | subir/borrar fotos (magic bytes + tamaño) | exige staff activo **con** módulo `equipos` |

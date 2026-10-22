@@ -250,7 +250,8 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     const resueltos = vistas(w).findAll('button').find((b) => b.text().includes('Resueltos'));
     await resueltos.trigger('click');
     await flushPromises();
-    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({ estados: ['resuelto'], asignados: [] });
+    // 120: «Resueltos» son los resueltos por calificar y los cerrados.
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({ estados: ['resuelto', 'cerrado'], asignados: [] });
     expect(router.currentRoute.value.query.vista).toBe('resueltos');
   });
 
@@ -324,7 +325,7 @@ describe('TicketsView.vue — filtros V2 (vistas + chips + URL)', () => {
     insforgeApi.listTicketsPage.mockClear();
     const { router } = await montarEn('/tickets');
     expect(router.currentRoute.value.query).toMatchObject({ vista: 'resueltos', prioridad: 'alta' });
-    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({ estados: ['resuelto'], prioridades: ['alta'] });
+    expect(insforgeApi.listTicketsPage.mock.calls.at(-1)[0]).toMatchObject({ estados: ['resuelto', 'cerrado'], prioridades: ['alta'] });
   });
 });
 

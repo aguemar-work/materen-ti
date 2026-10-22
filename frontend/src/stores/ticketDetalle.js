@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { insforgeApi } from '../api/insforge.js';
 import { anotarErrorDb } from '../api/erroresDb.js';
 import { gettersStaff } from './gettersStaff.js';
+import { HORAS_AUTOCIERRE_DEFECTO } from '../core/dominio-tickets.js';
 
 // Detalle de un ticket: toda la data de TicketDetalleView pasa por acá.
 // Mismo patrón que stores/tickets.js: state plano, actions async que lanzan
@@ -16,6 +17,9 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
     articulosRelacionados: [],
     problemaVinculado: null,
     staffLista: [],
+    // Horas del cierre automático (config_parametros, 120): el aviso de
+    // «Resolver» y el del ticket resuelto dicen cuándo se cierra solo.
+    horasAutocierre: HORAS_AUTOCIERRE_DEFECTO,
     cargando: false,
     error: null,
   }),
@@ -40,6 +44,14 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
         this.eventos = eventos;
         if (t && t.estado !== 'abierto') {
           this.satisfaccion = await insforgeApi.getSatisfaccionTicket(id);
+        }
+        if (t && ['en_progreso', 'reabierto', 'resuelto'].includes(t.estado)) {
+          // Un parámetro que no se puede leer nunca rompe la ficha: queda el de siempre.
+          try {
+            this.horasAutocierre = await insforgeApi.parametroEntero('horas_autocierre_resuelto', HORAS_AUTOCIERRE_DEFECTO);
+          } catch {
+            this.horasAutocierre = HORAS_AUTOCIERRE_DEFECTO;
+          }
         }
         // Equipos que tiene ASIGNADOS el solicitante (contexto para el
         // técnico), no el equipo/cuenta/licencia que el ticket referencia
@@ -77,13 +89,34 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
       await this.recargarEventos();
     },
 
-    // Resuelto -> cerrado en una sola transacción de servidor (migración
-    // 051), en vez de 2 llamadas separadas a actualizarCampos(). Reemplaza
-    // this.ticket completo: cerrarTicket() ya devuelve el shape mapeado
-    // (con joins), igual que cargar().
-    async marcarResueltoYCerrado() {
-      this.ticket = await insforgeApi.cerrarTicket(this.ticket.id);
-      await this.recargarEventos();
+    // Resolver con la solución (migración 120): la base deja el comentario
+    // visible y abre la encuesta en la misma transacción, así que se releen
+    // comentarios, historial y encuesta. Reemplaza this.ticket completo:
+    // resolverTicket() ya devuelve el shape mapeado (con joins), igual que cargar().
+    async resolver(nota) {
+      this.ticket = await insforgeApi.resolverTicket(this.ticket.id, nota);
+      await this.recargarTrasCierre();
+    },
+
+    // Reabrir (JEFE, 120): estado + motivo como nota interna en una RPC.
+    async reabrir(motivo) {
+      this.ticket = await insforgeApi.reabrirTicket(this.ticket.id, motivo);
+      await this.recargarTrasCierre();
+    },
+
+    // Tras resolver, reabrir o revisar una calificación baja: lo que tocó la
+    // base en la misma transacción (estado, comentario, historial, encuesta).
+    async recargarTrasCierre() {
+      const [t, coms, eventos, satisfaccion] = await Promise.all([
+        insforgeApi.getTicket(this.ticket.id),
+        insforgeApi.listComentariosTicket(this.ticket.id),
+        insforgeApi.listEventosTicket(this.ticket.id),
+        insforgeApi.getSatisfaccionTicket(this.ticket.id),
+      ]);
+      if (t) this.ticket = t;
+      this.comentarios = coms;
+      this.eventos = eventos;
+      this.satisfaccion = satisfaccion;
     },
 
     async comentar(mensaje, interno) {
@@ -124,7 +157,7 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
       this.problemaVinculado = await insforgeApi.getProblemaAbiertoDeTicket(this.ticket.id);
     },
 
-    // Al cerrar el ticket, guarda la solución como borrador de KB (queda
+    // Al resolver el ticket, guarda la solución como borrador de KB (queda
     // pendiente de completar/revisar — migración 031). Desde la 106 lo hace el
     // servidor (crear_kb_desde_ticket): exige un ticket resuelto/cerrado y una
     // solución (`solucion` o la nota de resolución del ticket) y copia título,

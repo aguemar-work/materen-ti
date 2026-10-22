@@ -185,18 +185,14 @@ const seleccionParaTabla = computed({
   get: () => ticketsSeleccionados.value,
   set: (filas) => { seleccionados.value = new Set(filas.map((t) => t.id)); },
 });
-// Cerrar en lote solo si CADA seleccionado ya está resuelto — mismo alcance
-// que cerrarTicket() (resuelto -> cerrado); el backend rechazaría el resto.
-const todosResueltos = computed(() =>
-  ticketsSeleccionados.value.length > 0 && ticketsSeleccionados.value.every((t) => t.estado === 'resuelto')
-);
+// Sin «Cerrar seleccionados» desde la 120: un ticket resuelto lo cierra el
+// solicitante al calificar o el cierre automático, nunca el staff.
 
 // Una selección de otra vista/filtro no sobrevive al cambio de contexto.
 watch([filtrosServidor, () => store.pagina], limpiarSeleccion);
 
 const reasignarLoteA = ref('');
 const mostrarConfirmarReasignarLote = ref(false);
-const mostrarConfirmarCerrarLote = ref(false);
 const procesandoLote = ref(false);
 
 function pedirReasignarLote() {
@@ -224,33 +220,6 @@ async function confirmarReasignarLote() {
   limpiarSeleccion();
   showToast(
     fallidos === 0 ? `${ok} ticket(s) reasignado(s) a ${nombre}` : `${ok} reasignado(s), ${fallidos} fallaron`,
-    fallidos ? 'error' : undefined,
-  );
-}
-
-function pedirCerrarLote() {
-  if (!todosResueltos.value) return;
-  mostrarConfirmarCerrarLote.value = true;
-}
-
-async function confirmarCerrarLote() {
-  procesandoLote.value = true;
-  let ok = 0;
-  let fallidos = 0;
-  for (const t of ticketsSeleccionados.value) {
-    try {
-      await insforgeApi.cerrarTicket(t.id);
-      ok++;
-    } catch {
-      fallidos++;
-    }
-  }
-  procesandoLote.value = false;
-  mostrarConfirmarCerrarLote.value = false;
-  limpiarSeleccion();
-  await store.cargar();
-  showToast(
-    fallidos === 0 ? `${ok} ticket(s) cerrado(s)` : `${ok} cerrado(s), ${fallidos} fallaron`,
     fallidos ? 'error' : undefined,
   );
 }
@@ -315,6 +284,19 @@ function verSinVincular() {
   filtros.vista = 'pendientes';
   filtros.solicitante = ['no'];
 }
+
+// Calificaciones de 1 o 2 sin revisar (procedimiento de cierre, 120): el
+// técnico las revisa a más tardar el día hábil siguiente. Un conteo que no se
+// puede leer no rompe la bandeja: el atajo simplemente no aparece.
+const calificacionesPorRevisar = ref(0);
+async function cargarCalificacionesPorRevisar() {
+  try {
+    calificacionesPorRevisar.value = await insforgeApi.contarCalificacionesBajasPendientes();
+  } catch {
+    calificacionesPorRevisar.value = 0;
+  }
+}
+const RUTA_CALIFICACIONES = '/tickets/calificaciones';
 
 // Estado vacío: con filtros es "sin resultados"; sin filtros, cada vista
 // explica por qué está vacía (una cola en cero es una buena noticia).
@@ -427,6 +409,7 @@ async function copiarEnlaceSoporte() {
 // sus dos hojas (el CSV de la bandeja se integró en el de Tickets).
 const accionesMas = computed(() => [
   { icono: 'ti-link', label: 'Enlace soporte', onClick: copiarEnlaceSoporte },
+  { icono: 'ti-message-report', label: 'Calificaciones por revisar', onClick: () => router.push(RUTA_CALIFICACIONES) },
   ...(puedeVerReporte(auth, REPORTE_POR_ID.tickets) ? [
     { icono: 'ti-report', label: 'Ver reporte', onClick: () => router.push(rutaReporte('tickets')) },
     { icono: 'ti-mood-smile', label: 'Ver satisfacción', onClick: () => router.push(rutaReporte('satisfaccion')) },
@@ -454,6 +437,7 @@ onMounted(async () => {
     staffLista.value = staff;
     // Sin await: los conteos no deben retrasar la primera pintada.
     cargarConteos();
+    cargarCalificacionesPorRevisar();
   } catch {
     showToast(error.value || 'Error al cargar tickets', 'error');
   }
@@ -482,6 +466,14 @@ onMounted(async () => {
             title="Pendientes cuyo solicitante no se pudo identificar"
             @click="verSinVincular"
           >{{ pendientesSinVincular }} sin vincular</button>
+        </template>
+        <template v-if="calificacionesPorRevisar > 0">
+          ·
+          <RouterLink
+            :to="RUTA_CALIFICACIONES"
+            class="rounded font-medium text-red-700 tabular-nums hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            title="Calificaciones de 1 o 2 que el técnico debe revisar a más tardar el día hábil siguiente"
+          >{{ calificacionesPorRevisar }} {{ calificacionesPorRevisar === 1 ? 'calificación' : 'calificaciones' }} por revisar</RouterLink>
         </template>
       </template>
       <template #acciones>
@@ -549,15 +541,6 @@ onMounted(async () => {
           label="Reasignar"
           :disabled="!reasignarLoteA || procesandoLote"
           @click="pedirReasignarLote"
-        />
-        <AppButton
-          size="sm"
-          variant="outline"
-          severity="secondary"
-          label="Cerrar seleccionados"
-          :disabled="!todosResueltos || procesandoLote"
-          :title="todosResueltos ? 'Cerrar los tickets seleccionados' : 'Solo se pueden cerrar en lote tickets ya resueltos'"
-          @click="pedirCerrarLote"
         />
         <AppButton size="sm" variant="text" severity="secondary" label="Cancelar" :disabled="procesandoLote" @click="limpiarSeleccion" />
       </div>
@@ -831,18 +814,5 @@ onMounted(async () => {
       </ul>
     </ConfirmDialog>
 
-    <ConfirmDialog
-      v-if="mostrarConfirmarCerrarLote"
-      titulo="Cerrar tickets"
-      confirmar-label="Cerrar"
-      :cargando="procesandoLote"
-      @cerrado="mostrarConfirmarCerrarLote = false"
-      @confirm="confirmarCerrarLote"
-    >
-      <p>Cerrar {{ ticketsSeleccionados.length }} ticket(s) resuelto(s), con su encuesta de satisfacción de siempre:</p>
-      <ul class="mt-2 max-h-48 list-disc space-y-1 overflow-y-auto pl-5 text-sm text-gray-700">
-        <li v-for="t in ticketsSeleccionados" :key="t.id"><span class="tabular-nums">{{ t.codigo }}</span> — {{ t.titulo }}</li>
-      </ul>
-    </ConfirmDialog>
   </div>
 </template>

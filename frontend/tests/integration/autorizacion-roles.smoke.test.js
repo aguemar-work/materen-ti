@@ -37,7 +37,7 @@
 // autorización.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { getClient } from '../../src/api/client.js';
-import { esperarSinAcceso, esperarRpcRechazada, esperarAccionRechazada } from './_autorizacion-helpers.js';
+import { esperarSinAcceso, esperarRpcRechazada, esperarAccionRechazada, esperarCierreTicketsRechazado } from './_autorizacion-helpers.js';
 
 async function iniciarSesion(email, password, etiqueta) {
   const { error } = await getClient().auth.signInWithPassword({ email, password });
@@ -252,8 +252,8 @@ describe.skipIf(!listoInactivo)('autorización — staff inactivo no puede opera
     await esperarRpcRechazada('staff_nombres', undefined);
   });
 
-  it('RPC cerrar_ticket — rechazada para staff inactivo', async () => {
-    await esperarRpcRechazada('cerrar_ticket', { p_ticket_id: '00000000-0000-4000-8000-000000000000' });
+  it('RPC de cierre de tickets (cerrar_ticket o, desde la 120, resolver/reabrir/revisar) — rechazadas para staff inactivo', async () => {
+    await esperarCierreTicketsRechazado('00000000-0000-4000-8000-000000000000');
   });
 });
 

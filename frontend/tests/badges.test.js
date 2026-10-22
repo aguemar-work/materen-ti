@@ -7,10 +7,10 @@ describe('badgeInfo', () => {
   });
 
   it('resuelve estados de ticket', () => {
-    // 'cerrado' se muestra con la misma ETIQUETA que 'resuelto' (decisión de
-    // producto 2026-08-21, ver dominio-tickets.js), aunque la columna real de
-    // la tabla guarda los 2 valores distintos.
-    expect(badgeInfo('ticket', 'cerrado').label).toBe('Resuelto');
+    // Desde la 120 son dos estados distintos también en pantalla: 'resuelto'
+    // espera la calificación del solicitante y 'cerrado' ya terminó (antes, la
+    // decisión de 2026-08-21 los mostraba con la misma etiqueta).
+    expect(badgeInfo('ticket', 'cerrado').label).toBe('Cerrado');
     expect(badgeInfo('ticket', 'resuelto').label).toBe('Resuelto');
     // El TONO sí los separa desde el mapa único (core/tonos.js, Ciclo 21):
     // cerrado = ok (verde); resuelto = espera (violeta, aguarda la

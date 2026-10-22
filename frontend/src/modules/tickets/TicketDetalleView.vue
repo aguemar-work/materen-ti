@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
+import { formatFechaHora } from '../../core/formatters.js';
 import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -14,6 +15,8 @@ import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
 import TicketSolicitante from './TicketSolicitante.vue';
 import TicketContexto from './TicketContexto.vue';
 import TicketResumen from './TicketResumen.vue';
+import ResolverTicketDialog from './ResolverTicketDialog.vue';
+import RevisarCalificacionDialog from './RevisarCalificacionDialog.vue';
 import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
@@ -34,8 +37,9 @@ const {
   atencionForm, iniciando, tipoAmbiguoSinClasificar,
   cargar: cargarTicket, confirmarIniciar,
   mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
-  resolviendo, guardarComoKb, mostrarConfirmarResolver, dialogoResolver, cancelarResolver, confirmarResolver,
-  mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
+  puedeResolver, ofrecerKb, mostrarResolver, resolverConNota, onResuelto, esperaCalificacion, horasAutocierre,
+  puedeRevisarCalificacion, mostrarRevisarCalificacion, onCalificacionRevisada,
+  puedeReabrir, mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
   cambiarNivelAtencion, cambiarPrioridad,
   mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
   cambiarTipo,
@@ -112,7 +116,9 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
             :ticket="ticket"
             :resolucion="resolucion"
             :satisfaccion="satisfaccion"
+            :puede-revisar="puedeRevisarCalificacion"
             @copiar-encuesta="copiarMensajeSatisfaccion"
+            @revisar-calificacion="mostrarRevisarCalificacion = true"
           />
           <RouterLink
             v-if="problemaVinculado"
@@ -146,16 +152,16 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
           </template>
 
           <AppButton
-            v-if="enCurso"
+            v-if="puedeResolver"
             icon="ti ti-circle-check"
-            label="Marcar como resuelto"
-            title="Cerrar el ticket como resuelto y enviar la encuesta de satisfacción al empleado"
-            @click="mostrarConfirmarResolver = true"
+            label="Resolver"
+            title="Registrar la solución aplicada: el solicitante la ve en su seguimiento y califica la atención para cerrar el ticket"
+            @click="mostrarResolver = true"
           />
 
-          <template v-if="esTerminal && !mostrarReabrir">
+          <template v-if="!mostrarReabrir">
             <AppButton
-              v-if="auth.esJefe"
+              v-if="puedeReabrir"
               variant="outline"
               severity="secondary"
               icon="ti ti-refresh"
@@ -164,10 +170,23 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
               :loading="reabriendo"
               @click="abrirReabrir"
             />
-            <p v-else class="text-sm text-gray-500">Solo el jefe puede reabrir este ticket.</p>
+            <p v-else-if="esTerminal && !puedeRevisarCalificacion" class="text-sm text-gray-500">Solo el jefe puede reabrir este ticket.</p>
           </template>
         </div>
       </header>
+
+      <!-- Resuelto (120): espera la calificación del solicitante, que es la
+           que lo cierra; si no llega, el cierre automático. -->
+      <div v-if="esperaCalificacion" class="notif notif--info notif--inline mt-4 shrink-0" role="status">
+        <i class="ti ti-hourglass" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">
+            Resuelto: espera la calificación del solicitante, que es la que cierra el ticket. Si no califica, se cierra solo el
+            <span class="font-medium tabular-nums">{{ formatFechaHora(esperaCalificacion.venceAt) }}</span>
+            como «Cerrado automático – Sin validación».
+          </p>
+        </div>
+      </div>
 
       <!-- ══ Formularios inline (rechazar / reabrir): aparecen donde se
            decidió la acción, antes de la conversación. -->
@@ -294,11 +313,6 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
               @cambiar-tipo="cambiarTipo"
             />
             <p v-else class="text-sm text-gray-500">Complete el formulario de arriba para continuar.</p>
-
-            <label v-if="enCurso" class="mt-4 flex cursor-pointer items-start gap-2 border-t border-gray-100 pt-3 text-sm text-gray-700">
-              <input v-model="guardarComoKb" type="checkbox" class="mt-0.5 h-4 w-4 accent-primary-500" :disabled="resolviendo">
-              Al resolver, guardar esta solución en la Base de Conocimiento
-            </label>
           </AppSeccion>
 
           <AppSeccion titulo="Solicitante">
@@ -338,17 +352,22 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
       @confirm="confirmarDesasignar"
     />
 
-    <!-- Confirmación no destructiva: marcar resuelto cierra el ticket de
-         inmediato, sin paso intermedio para revisar antes de cerrar -->
-    <ConfirmDialog
-      v-if="mostrarConfirmarResolver"
-      ref="dialogoResolver"
-      titulo="Marcar como resuelto"
-      mensaje="Esto cierra el ticket de inmediato — no hay un paso intermedio para revisar antes de cerrar. ¿Confirma que el problema quedó resuelto?"
-      confirmar-label="Marcar como resuelto"
-      :cargando="resolviendo"
-      @cerrado="cancelarResolver"
-      @confirm="confirmarResolver"
+    <!-- Resolver (120): la solución aplicada es obligatoria y visible para el
+         solicitante; el ticket espera su calificación. -->
+    <ResolverTicketDialog
+      v-if="mostrarResolver"
+      :ticket="ticket"
+      :resolver="resolverConNota"
+      :horas-autocierre="horasAutocierre"
+      :ofrecer-kb="ofrecerKb"
+      @cerrar="onResuelto"
+    />
+
+    <RevisarCalificacionDialog
+      v-if="mostrarRevisarCalificacion && satisfaccion"
+      :encuesta="satisfaccion"
+      :ticket="ticket"
+      @cerrar="onCalificacionRevisada"
     />
   </div>
 </template>

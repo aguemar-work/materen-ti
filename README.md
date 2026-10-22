@@ -98,19 +98,37 @@ global `Deno`.
   difundirlos a los empleados. Cada ticket tiene código (`TCK-####`) y token
   propio; con el token el empleado sigue su caso en `/soporte/:token` (solo ve
   comentarios no internos) sin volver a autenticarse, con CTAs para copiar el
-  enlace/código, o puede recuperarlo en `/soporte/buscar` (por DNI, solo
-  tickets activos, limitado por IP). Flujo de estados guiado por botones (no
-  un select libre):
+  enlace/código, o puede recuperarlo en `/soporte/buscar` (por DNI, tickets
+  activos y los resueltos por calificar, limitado por IP). Flujo de estados
+  guiado por botones (no un select libre):
   desde `abierto`, el staff elige **Rechazar** (estado terminal `rechazado`,
   pide motivo obligatorio visible al empleado, sin encuesta) o **Iniciar
   atención** (pasa a `en_progreso`, exige elegir de una vez prioridad + nivel
   de atención N1/N2/N3 + asignado a — precargado con quien inicia, editable).
-  En curso, **Marcar como resuelto** encadena `resuelto → cerrado` en un solo
-  clic y dispara la encuesta si hay empleado vinculado. Solo el **JEFE** puede
-  **Reabrir** un ticket cerrado/rechazado (reforzado también por trigger en
-  BD, no solo en la UI) — conserva prioridad/nivel/asignado previos. Al
-  cerrarse con empleado vinculado, se reutiliza el **mismo token** del ticket
-  para el enlace de encuesta (`/soporte/:token/satisfaccion`) — a diferencia de
+  **Cierre según el procedimiento de TI (migración 120)**: en curso, **Resolver**
+  pide la **solución aplicada** (obligatoria; la base la publica como comentario
+  **visible** para el empleado, «Solución aplicada: …») y deja el ticket en
+  `resuelto`, esperando al empleado: **calificar la atención (1 a 5) lo cierra**
+  (`cerrado_por = 'usuario'`). Si no califica en **24 horas corridas**
+  (parámetro `horas_autocierre_resuelto`), `cerrar_resueltos_vencidos()` lo
+  cierra como **«Cerrado automático – Sin validación»** (`cerrado_por =
+  'sistema'`, encuesta anulada; se cuenta aparte y nunca como satisfecho). Sin
+  empleado vinculado nadie puede calificar: se cierra al resolver
+  (`sin_solicitante`). Ningún staff cierra un resuelto (la whitelist lo
+  rechaza), y ya no hay «Cerrar seleccionados». Una **calificación de 1 o 2**
+  avisa al técnico asignado (notificación `ticket_calificacion_baja`) y entra
+  en **Calificaciones por revisar** (`/tickets/calificaciones`): a más tardar
+  el día hábil siguiente, el técnico **reabre** el ticket (sin ser JEFE, solo
+  por esta vía) o deja una **nota interna**; las dos quedan en el historial
+  (`calificacion_revisada`) y en el reporte de Satisfacción. La condición de
+  cierre del procedimiento (p. ej. el registro en KAPO Almacén) vive fuera del
+  sistema: la solución debe citarla; mientras se espera a Almacén o a un
+  proveedor el ticket sigue en curso con una nota. Fuera de la revisión, solo
+  el **JEFE** puede **Reabrir** un ticket resuelto/cerrado/rechazado
+  (`reabrir_ticket`: estado y motivo como nota interna en una transacción) —
+  conserva prioridad/nivel/asignado previos. Al resolverse con empleado
+  vinculado, se reutiliza el **mismo token** del ticket para el enlace de
+  encuesta (`/soporte/:token/satisfaccion`; una encuesta por cada resolución) — a diferencia de
   Bitrix24, el empleado no tiene que anotar ningún ID. Esa página consulta
   primero si ya se respondió (`encuestaEstado`) antes de mostrar el
   formulario, para que un refresco después de enviar no la haga parecer
@@ -118,7 +136,7 @@ global `Deno`.
   (asignaciones, cambios de estado/prioridad/nivel de atención, fallos de
   correo, envío/respuesta de encuesta). **Canal de entrega de la encuesta**
   (sin correo, ver más abajo): el mismo formulario (`EncuestaSatisfaccionForm.vue`)
-  se **embebe** en `/soporte/:token` en cuanto el ticket pasa a `cerrado` —
+  se **embebe** en `/soporte/:token` en cuanto el ticket pasa a `resuelto` —
   el empleado ya tiene ese enlace de seguimiento desde que creó el ticket, no
   hace falta que navegue a otra URL. Si la encuesta no existe todavía para
   ese ticket (sin empleado vinculado) o falla la consulta, el bloque

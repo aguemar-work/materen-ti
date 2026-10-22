@@ -2,8 +2,10 @@
 // Formulario de calificación del servicio (ticket_satisfaccion), compartido
 // por dos contextos: standalone (ResponderEncuestaView, enlace directo
 // /soporte/:token/satisfaccion) y embebido (TicketSeguimientoView, cuando el
-// ticket ya está cerrado — evita que el empleado tenga que navegar aparte,
+// ticket está resuelto — evita que el empleado tenga que navegar aparte,
 // el enlace de seguimiento ya lo tiene desde que creó el ticket).
+// Calificar valida la solución (migración 120): el ticket resuelto se cierra.
+// Emite `respondida` para que la página recargue el estado.
 import { ref, computed, onMounted } from 'vue';
 import { responderEncuesta, encuestaYaRespondida } from '../../api/ticketsPublicos.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
@@ -20,12 +22,14 @@ const props = defineProps({
   // respuesta explícita.
   embebido: { type: Boolean, default: false },
 });
+const emit = defineEmits(['respondida']);
 
 // estado: 'cargando' | 'formulario' | 'enviando' | 'gracias' | 'ya_respondida' | 'error'
 const estado = ref('cargando');
 const error = ref('');
 const nivel = ref(0);
 const comentario = ref('');
+const cerroTicket = ref(false);
 
 const oculto = computed(() => props.embebido && estado.value === 'error');
 const campoComentario = useCampoAccesible();
@@ -60,8 +64,10 @@ async function enviar() {
   error.value = '';
   estado.value = 'enviando';
   try {
-    await responderEncuesta(props.token, nivel.value, comentario.value.trim());
+    const r = await responderEncuesta(props.token, nivel.value, comentario.value.trim());
+    cerroTicket.value = r.cerrado;
     estado.value = 'gracias';
+    emit('respondida');
   } catch (e) {
     // Ya se respondió (ej. otra pestaña envió justo antes): no hay nada que
     // reintentar, mostrar la misma pantalla de "ya respondida".
@@ -99,7 +105,7 @@ async function enviar() {
 
     <template v-else-if="estado === 'formulario' || estado === 'enviando'">
       <h2 class="text-lg font-semibold text-gray-900">Calificación del servicio</h2>
-      <p class="mt-1 text-sm text-gray-500">¿Cómo fue la atención de su ticket? Su respuesta contribuye a mejorar el servicio de soporte.</p>
+      <p class="mt-1 text-sm text-gray-500">¿Cómo fue la atención de su ticket? Con su calificación el ticket queda cerrado; si la solución no le sirvió, indíquelo con 1 o 2 y su técnico lo revisará.</p>
 
       <div class="mt-5 grid grid-cols-5 gap-2" role="group" aria-label="Nivel de satisfacción">
         <button
@@ -161,7 +167,7 @@ async function enviar() {
       </span>
       <template v-if="estado === 'gracias'">
         <h2 class="mt-3 text-lg font-semibold text-gray-900">Respuesta registrada</h2>
-        <p class="mt-1 text-sm text-gray-500">Gracias por completar la encuesta de satisfacción.</p>
+        <p class="mt-1 text-sm text-gray-500">Gracias por completar la encuesta de satisfacción.{{ cerroTicket ? ' Su ticket quedó cerrado.' : '' }}</p>
       </template>
       <template v-else>
         <h2 class="mt-3 text-lg font-semibold text-gray-900">Respuesta ya registrada</h2>

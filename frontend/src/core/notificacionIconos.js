@@ -13,6 +13,8 @@ const ICONO_POR_TIPO = {
   ticket_asignado: 'ti-user-check',
   ticket_estado_cambiado: 'ti-progress',
   ticket_comentario_nuevo: 'ti-message-circle',
+  // Migración 120: calificación de 1 o 2 que el técnico revisa a más tardar el día hábil siguiente.
+  ticket_calificacion_baja: 'ti-message-report',
 };
 
 export function iconoNotificacion(tipo) {

@@ -565,15 +565,16 @@ async function escenarios(etiqueta) {
     await falla('S14 106: un segundo articulo para el mismo ticket es P0001', () => como(U.asist, () => db.exec(`select crear_kb_desde_ticket('${tk1}', 'otra')`)), { code: 'P0001', msg: 'ya tiene un art' });
     const tk0 = await tkK('0', 'abierto');
     await falla('S14 106: un ticket abierto no genera articulo (P0001)', () => como(U.asist, () => db.exec(`select crear_kb_desde_ticket('${tk0}', 'x')`)), { code: 'P0001', msg: 'resuelto o cerrado' });
-    // la nota de resolucion (092 de V2) sirve de solucion cuando la columna existe
-    await db.exec('alter table tickets add column nota_resolucion text');
+    // la nota de resolucion (092 de V2; desde la 120, columna real) sirve de solucion cuando la columna existe
+    const conNota = !!(await uno("select count(*)::int as n from information_schema.columns where table_schema = 'public' and table_name = 'tickets' and column_name = 'nota_resolucion'")).n;
+    if (!conNota) await db.exec('alter table tickets add column nota_resolucion text');
     try {
       const tk2 = await tkK('2', 'cerrado');
       await falla('S14 106: con la columna pero sin nota ni solucion sigue siendo P0001', () => como(U.asist, () => db.exec(`select crear_kb_desde_ticket('${tk2}')`)), { code: 'P0001', msg: 'nota de resoluci' });
       await db.exec(`update tickets set nota_resolucion = 'Nota del tecnico' where id = '${tk2}'`);
       const kb2 = await como(U.asist, () => uno(`select * from crear_kb_desde_ticket('${tk2}')`));
       afirmar('S14 106: sin p_solucion se usa tickets.nota_resolucion', kb2.solucion === 'Nota del tecnico', JSON.stringify(kb2));
-    } finally { await db.exec('alter table tickets drop column nota_resolucion'); }
+    } finally { if (!conNota) await db.exec('alter table tickets drop column nota_resolucion'); }
 
     // registrar el uso de un articulo publicado
     const uso = await como(U.asist, () => uno(`select * from registrar_uso_kb_ticket('${tk1}', '${wa.id}')`));
@@ -871,6 +872,52 @@ async function escenarios(etiqueta) {
       && dia.por_tecnico.some((t) => t.tecnico_id === U.asist), JSON.stringify(dia.tablero));
   }
 
+  // ---- S20 120: cierre según el procedimiento con sesiones reales: resolver con la solución visible, el staff no cierra
+  // un resuelto (lo cierra la calificación, sin sesión como la edge function), aviso de calificación baja al técnico,
+  // reabrir por la revisión sin ser JEFE, reabrir general solo JEFE, y el ticket sin solicitante se cierra al resolver.
+  if ((await uno("select to_regprocedure('public.resolver_ticket(uuid, text)') as t")).t) {
+    const emp20 = await mkEmp('S20');
+    const tok20 = (k) => `s20${k}${sfx}`.padEnd(24, 'x');
+    const mkT20 = async (k, conEmp = true) => (await uno(`insert into tickets (codigo, token, titulo, descripcion, estado, prioridad, tipo, nivel_atencion, asignado_a, empleado_id)
+      values ('TCK-S20${k}${sfx}', '${tok20(k)}', 'S20 ${k}', 'd', 'en_progreso', 'media', 'incidente', 'N1', '${U.asist}', ${conEmp ? `'${emp20}'` : 'null'}) returning id`)).id;
+    const ta = await mkT20('a');
+    await falla('S20 120: sin el modulo tickets no se resuelve (42501)', () => como(U.sinmod, () => db.exec(`select resolver_ticket('${ta}', 'Solucion')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S20 120: anon no ejecuta resolver_ticket', () => anonimo(() => db.exec(`select resolver_ticket('${ta}', 'x')`)), { code: '42501' });
+    await falla('S20 120: un UPDATE directo del staff no resuelve sin solucion', () => como(U.asist, () => db.exec(`update tickets set estado = 'resuelto' where id = '${ta}'`)), { msg: 'escriba la solución' });
+    const r20 = await como(U.asist, () => uno(`select estado from resolver_ticket('${ta}', 'Se reinstaló el driver')`));
+    const com20 = await uno(`select autor_id, interno, mensaje from ticket_comentarios where ticket_id = '${ta}'`);
+    afirmar('S20 120: el asistente resuelve; la solucion queda visible y a su nombre',
+      r20.estado === 'resuelto' && com20?.autor_id === U.asist && com20.interno === false && /^Solución aplicada: Se reinstaló/.test(com20.mensaje), JSON.stringify(com20));
+    await falla('S20 120: el asistente no cierra un ticket resuelto', () => como(U.asist, () => db.exec(`update tickets set estado = 'cerrado' where id = '${ta}'`)), { msg: 'lo cierra el solicitante' });
+    await falla('S20 120: ni el jefe cierra un resuelto con un UPDATE directo', () => como(U.jefe, () => db.exec(`update tickets set estado = 'cerrado' where id = '${ta}'`)), { msg: 'lo cierra el solicitante' });
+    await falla('S20 120: authenticated no ejecuta responder_encuesta_ticket', () => como(U.jefe, () => db.exec(`select responder_encuesta_ticket('${tok20('a')}', 5, null)`)), { code: '42501' });
+    await falla('S20 120: anon no ejecuta cerrar_resueltos_vencidos', () => anonimo(() => db.exec('select cerrar_resueltos_vencidos()')), { code: '42501' });
+    // La calificación llega sin sesión, como desde la edge function `tickets`.
+    const resp20 = (await uno(`select responder_encuesta_ticket('${tok20('a')}', 1, 'No funcionó') as r`)).r;
+    const tc20 = await uno(`select estado, cerrado_por from tickets where id = '${ta}'`);
+    afirmar('S20 120: calificar cierra el ticket como usuario', resp20.ok && resp20.cerrado && tc20.estado === 'cerrado' && tc20.cerrado_por === 'usuario', JSON.stringify([resp20, tc20]));
+    afirmar('S20 120: el tecnico asignado ve el aviso de calificacion baja',
+      (await como(U.asist, () => uno(`select count(*)::int as n from notificaciones where tipo = 'ticket_calificacion_baja' and entidad_id = '${ta}'`))).n === 1);
+    const enc20 = (await como(U.asist, () => uno(`select id from ticket_satisfaccion where ticket_id = '${ta}'`))).id;
+    await como(U.asist, () => db.exec(`update ticket_satisfaccion set revision_desenlace = 'nota', revisado_at = now() where id = '${enc20}'`)).catch(() => null);
+    afirmar('S20 120: el staff no revisa con un UPDATE directo (sin policy de UPDATE)', (await uno(`select revision_desenlace from ticket_satisfaccion where id = '${enc20}'`)).revision_desenlace === null);
+    await falla('S20 120: el asistente no reabre por la via general (rol:jefe)', () => como(U.asist, () => db.exec(`select reabrir_ticket('${ta}', 'x')`)), { code: '42501' });
+    const rv20 = await como(U.asist, () => uno(`select revisar_calificacion_baja('${enc20}', 'reabierto', 'Se volvió a instalar') as r`));
+    afirmar('S20 120: el asistente reabre por la revision de la calificacion baja',
+      rv20.r?.estado === 'reabierto' && (await uno(`select estado from tickets where id = '${ta}'`)).estado === 'reabierto', JSON.stringify(rv20));
+    // El JEFE reabre un resuelto por la vía general: la encuesta pendiente queda anulada y el motivo es nota interna.
+    const tb = await mkT20('b');
+    await como(U.asist, () => db.exec(`select resolver_ticket('${tb}', 'Configurado')`));
+    const rj20 = await como(U.jefe, () => uno(`select estado from reabrir_ticket('${tb}', 'Se resolvió el ticket equivocado')`));
+    const encB = await uno(`select anulada_at from ticket_satisfaccion where ticket_id = '${tb}'`);
+    const notaB = await uno(`select interno, autor_id from ticket_comentarios where ticket_id = '${tb}' and mensaje like 'Reabierto:%'`);
+    afirmar('S20 120: el jefe reabre un resuelto; la encuesta pendiente queda anulada y el motivo es nota interna',
+      rj20.estado === 'reabierto' && encB.anulada_at !== null && notaB?.interno === true && notaB.autor_id === U.jefe, JSON.stringify([rj20, encB, notaB]));
+    const tsin = await mkT20('c', false);
+    const rs20 = await como(U.asist, () => uno(`select cerrado_por from resolver_ticket('${tsin}', 'Reinicio del servidor')`));
+    afirmar('S20 120: sin solicitante el ticket se cierra al resolver', rs20.cerrado_por === 'sin_solicitante', JSON.stringify(rs20));
+  }
+
   // ---- S17 115: la maqueta de Reportes calcula lo MISMO que la RPC. El fixture de frontend/src/maqueta/datos.js se carga
   // en PGlite (ids traducidos a uuid) y reporte_tickets_de() se compara, numero a numero, con reporteTicketsDe() de
   // maqueta/rpc-reportes.js sobre el mismo objeto en memoria: si la maqueta y el servidor divergen, el dueno veria en la
@@ -940,6 +987,14 @@ async function paridadMaquetaReportes(sfx) {
       values (${lit(t.codigo)}, ${lit(String(t.token).padEnd(24, 'x').slice(0, 24))}, ${lit(t.titulo)}, ${lit(t.descripcion || 'd')}, ${lit(t.estado)}, ${lit(t.prioridad)}, ${lit(t.tipo)}, ${lit(t.nivel_atencion)}, ${lit(t.origen || 'empleado')}, ${t.vinculado !== false}, ${lit(ids.emp.get(t.empleado_id))}, ${lit(t.categoria_id)}, ${lit(ids.sub.get(t.subcategoria_id))}, ${lit(ids.user.get(t.asignado_a))}, ${lit(t.created_at)}, ${lit(t.updated_at || t.created_at)}, ${lit(t.resuelto_at)}) returning id`)).id;
     ids.ticket.set(t.id, id);
   }
+  // 120: quién cerró. La columna la escribe un trigger BEFORE UPDATE (el INSERT del fixture la deja nula): se fija con el
+  // trigger apagado, como resuelto_at.
+  const conCierre = !!(await uno("select count(*)::int as n from information_schema.columns where table_schema = 'public' and table_name = 'tickets' and column_name = 'cerrado_por'")).n;
+  if (conCierre) {
+    await db.exec('alter table tickets disable trigger trg_tickets_datos_transicion');
+    for (const t of maq.tickets.filter((x) => x.cerrado_por)) await db.exec(`update tickets set cerrado_por = ${lit(t.cerrado_por)} where id = '${ids.ticket.get(t.id)}'`);
+    await db.exec('alter table tickets enable trigger trg_tickets_datos_transicion');
+  }
   await db.exec('alter table tickets enable trigger tickets_resuelto_at');
   for (const e of maq.ticket_eventos) {
     if (!ids.ticket.has(e.ticket_id)) continue;
@@ -956,6 +1011,12 @@ async function paridadMaquetaReportes(sfx) {
   for (const s of maq.ticket_satisfaccion) {
     if (!ids.ticket.has(s.ticket_id)) continue;
     await db.exec(`insert into ticket_satisfaccion (ticket_id, nivel, comentario, fecha_envio, created_at) values ('${ids.ticket.get(s.ticket_id)}', ${s.nivel == null ? 'null' : s.nivel}, ${lit(s.comentario)}, ${lit(s.fecha_envio)}, ${lit(s.created_at)})`);
+  }
+  // 120: la revisión de las calificaciones bajas y la encuesta anulada (el guard la admite: respondida con nivel <= 2).
+  if (conCierre) {
+    for (const x of maq.ticket_satisfaccion.filter((e) => ids.ticket.has(e.ticket_id) && (e.revision_desenlace || e.anulada_at))) {
+      await db.exec(`update ticket_satisfaccion set revision_desenlace = ${lit(x.revision_desenlace)}, revision_nota = ${lit(x.revision_nota)}, revisado_por = ${lit(ids.user.get(x.revisado_por))}, revisado_at = ${lit(x.revisado_at)}, anulada_at = ${lit(x.anulada_at)} where ticket_id = '${ids.ticket.get(x.ticket_id)}'`);
+    }
   }
   // Solo los tickets de la maqueta: los de otros escenarios de este arnes se dejan fuera de la comparacion (la RPC no filtra).
   const codigos = new Set(maq.tickets.map((t) => t.codigo));
@@ -988,7 +1049,11 @@ async function paridadMaquetaReportes(sfx) {
   // mueven fuera de cualquier periodo comparado (creados hace 3 anos, sin eventos en el rango).
   await db.exec(`update tickets set created_at = created_at - interval '3 years', updated_at = updated_at - interval '3 years' where codigo not in (${[...codigos].map(lit).join(',')})`);
   await db.exec(`update ticket_eventos set created_at = created_at - interval '3 years' where ticket_id in (select id from tickets where codigo not in (${[...codigos].map(lit).join(',')}))`);
+  // 120: el guard de la encuesta no deja mover la fecha de una respuesta; aca solo se corre el reloj del fixture.
+  const conGuardEncuesta = !!(await uno("select count(*)::int as n from pg_trigger where tgname = 'trg_ticket_satisfaccion_respuesta'")).n;
+  if (conGuardEncuesta) await db.exec('alter table ticket_satisfaccion disable trigger trg_ticket_satisfaccion_respuesta');
   await db.exec(`update ticket_satisfaccion set created_at = created_at - interval '3 years', fecha_envio = fecha_envio - interval '3 years' where ticket_id in (select id from tickets where codigo not in (${[...codigos].map(lit).join(',')}))`);
+  if (conGuardEncuesta) await db.exec('alter table ticket_satisfaccion enable trigger trg_ticket_satisfaccion_respuesta');
   await db.exec('alter table tickets disable trigger tickets_resuelto_at');
   await db.exec(`update tickets set resuelto_at = resuelto_at - interval '3 years' where resuelto_at is not null and codigo not in (${[...codigos].map(lit).join(',')})`);
   await db.exec('alter table tickets enable trigger tickets_resuelto_at');
@@ -1010,6 +1075,9 @@ async function paridadMaquetaReportes(sfx) {
       umbrales: r.umbrales, muestraMinima: r.muestraMinima, resumen: r.resumen, porMes: r.porMes,
       porTecnico: r.porTecnico && r.porTecnico.map(({ tecnico_id, ...f }) => f).sort(porNombre),
       porSolicitante: r.porSolicitante.map(({ empleado_id, ...f }) => f).sort(porNombre),
+      // 120: cierres sin validación y calificaciones bajas (sin fechas ni nombres: se comparan cifras y desenlaces)
+      cierresSinValidacion: r.cierresSinValidacion,
+      calificacionesBajas: r.calificacionesBajas && { ...r.calificacionesBajas, lista: r.calificacionesBajas.lista.map(({ ticket_codigo, nivel, desenlace, a_tiempo, revisado_por }) => ({ ticket_codigo, nivel, desenlace, a_tiempo, con_revisor: revisado_por != null })).sort((a, b) => a.ticket_codigo.localeCompare(b.ticket_codigo)) },
       respuestas: r.respuestas.map(({ ticket_codigo, nivel, respondida, tecnico_id }) => ({ ticket_codigo, nivel, respondida, con_tecnico: tecnico_id != null })).sort((a, b) => a.ticket_codigo.localeCompare(b.ticket_codigo)),
     });
     for (const [k, etq] of [[-1, 'mes pasado'], [0, 'mes en curso']]) {
@@ -1252,7 +1320,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118|119)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }

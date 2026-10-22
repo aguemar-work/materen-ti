@@ -70,6 +70,13 @@ export const EXCEPCIONES = [
     impacto: 'Ninguno sobre la regla 19: el movimiento que deja cada reclasificación se registra en la hoja de vida del ticket (evento categoria_cambiada).',
   },
   {
+    archivo: 'modules/tickets/CalificacionesBajasView.vue',
+    reglas: ['historial-a-mano'],
+    motivo: 'Es una lista de trabajo (calificaciones de 1 o 2 por revisar, procedimiento de cierre, migración 120), no un historial de movimientos: cada fila es una calificación con su plazo y una acción, y sale de la lista al revisarse. Misma forma que TicketsPorReclasificar.',
+    alcance: 'Solo CalificacionesBajasView.vue (/tickets/calificaciones).',
+    impacto: 'Ninguno sobre la regla 19: cada revisión queda en la hoja de vida del ticket (evento calificacion_revisada) y en el reporte de Satisfacción.',
+  },
+  {
     archivo: 'components/ui/AppAvatar.vue',
     reglas: ['caja-de-icono'],
     motivo: 'El avatar de iniciales es un círculo tonal por diseño (regla 20: vive en listas y menú de usuario).',

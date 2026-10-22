@@ -12,6 +12,8 @@ export const MENSAJES_ERROR_TICKETS = {
   no_existe: 'El ticket no existe o el enlace ya no es válido',
   no_disponible: 'La encuesta de este ticket no está disponible',
   ya_respondida: 'Ya se registró una respuesta para esta encuesta',
+  // 120: el ticket se reabrió o se cerró solo a las 24 h sin calificación.
+  no_vigente: 'Esta encuesta ya no está disponible: el ticket se reabrió o se cerró automáticamente',
   datos_invalidos: 'Seleccione un nivel de satisfacción válido',
   error_codigo: 'No se pudo generar el código del ticket',
   error_creando: 'No se pudo registrar el ticket',
@@ -69,12 +71,15 @@ export async function encuestaYaRespondida(token) {
   return data.respondida;
 }
 
-// Respuesta a la encuesta de satisfacción
+// Respuesta a la encuesta de satisfacción. Calificar valida la solución: un
+// ticket resuelto queda cerrado (migración 120) → { cerrado }.
 export async function responderEncuesta(token, nivel, comentario) {
-  await invoke({ action: 'encuesta', token, nivel, comentario });
+  const data = await invoke({ action: 'encuesta', token, nivel, comentario });
+  return { cerrado: data?.cerrado === true };
 }
 
-// Tickets ACTIVOS de un empleado, para quien perdió el enlace de seguimiento
+// Tickets ACTIVOS de un empleado y los resueltos por calificar, para quien
+// perdió el enlace de seguimiento
 export async function buscarTicketsPorDni(dni) {
   const data = await invoke({ action: 'buscarPorDni', dni });
   return data.tickets;

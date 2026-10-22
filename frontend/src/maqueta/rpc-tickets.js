@@ -5,6 +5,8 @@
 // NADA de esto entra al bundle de producción (solo lo importa client.js, que
 // solo carga el plugin del modo maqueta).
 
+import { responderEncuesta, estadoEncuesta } from './rpc-cierre-tickets.js';
+
 const SEGUNDOS_URL = 300;
 
 // "URL firmada" de la maqueta: un objeto local con una imagen de ejemplo. No
@@ -47,6 +49,7 @@ export function funcionTickets(db, body = {}) {
       titulo: t.titulo,
       descripcion: t.descripcion,
       estado: t.estado,
+      cerradoPor: t.cerrado_por || null,
       categoria: cat?.nombre || '',
       subcategoria: sub?.nombre || '',
       creado: t.created_at,
@@ -56,6 +59,10 @@ export function funcionTickets(db, body = {}) {
       adjuntoExpiraSegundos: t.adjunto_key ? SEGUNDOS_URL : null,
     };
   }
+
+  // Encuesta (120): calificar cierra el ticket resuelto — ./rpc-cierre-tickets.js.
+  if (accion === 'encuestaEstado') return estadoEncuesta(db, body.token);
+  if (accion === 'encuesta') return responderEncuesta(db, body);
 
   return null;
 }

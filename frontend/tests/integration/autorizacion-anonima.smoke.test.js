@@ -22,7 +22,7 @@
 // real (verificada en vivo) de por qué. Endurecido 2026-08-18, autoauditoría
 // posterior al Ciclo 11.
 import { describe, it } from 'vitest';
-import { esperarSinAcceso, esperarInsertRechazado, esperarRpcRechazada } from './_autorizacion-helpers.js';
+import { esperarSinAcceso, esperarInsertRechazado, esperarRpcRechazada, esperarCierreTicketsRechazado } from './_autorizacion-helpers.js';
 
 const BASE_URL = import.meta.env.VITE_INSFORGE_URL;
 const ANON_KEY = import.meta.env.VITE_INSFORGE_ANON_KEY;
@@ -108,8 +108,10 @@ describe.skipIf(!listo)('autorización — RPC sensibles rechazan ejecución sin
     await esperarRpcRechazada('kb_registrar_feedback', { p_articulo_id: UUID_INEXISTENTE, p_util: true });
   });
 
-  it('cerrar_ticket — rechazada', async () => {
-    await esperarRpcRechazada('cerrar_ticket', { p_ticket_id: UUID_INEXISTENTE });
+  // 120: cerrar_ticket se reemplaza por resolver_ticket (y reabrir/revisar);
+  // se prueba la que tenga el backend real.
+  it('cierre de tickets (cerrar_ticket o, desde la 120, resolver/reabrir/revisar) — rechazadas', async () => {
+    await esperarCierreTicketsRechazado(UUID_INEXISTENTE);
   });
 
   it('staff_nombres — rechazada', async () => {
@@ -121,10 +123,7 @@ describe.skipIf(!listo)('autorización — RPC sensibles rechazan ejecución sin
     await esperarRpcRechazada('reporte_tickets', { p_desde: hoy, p_hasta: hoy });
   });
 
-  it('reporte_tickets_resumen — rechazada', async () => {
-    const hoy = new Date().toISOString();
-    await esperarRpcRechazada('reporte_tickets_resumen', { p_desde: hoy, p_hasta: hoy });
-  });
+  // reporte_tickets_resumen dejó de existir en la 115 (PGRST202): no hay nada que rechazar.
 
   it('reporte_satisfaccion_consolidado — rechazada', async () => {
     await esperarRpcRechazada('reporte_satisfaccion_consolidado', undefined);

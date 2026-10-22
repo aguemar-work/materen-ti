@@ -34,9 +34,17 @@ describe('filtrosTickets', () => {
       .toEqual(['abierto', 'en_progreso', 'reabierto']);
   });
 
-  it('"Resueltos" y "Rechazados" no ofrecen chip de Estado (no hay nada que refinar)', () => {
-    expect(dimensionesDe('resueltos').map((d) => d.id)).not.toContain('estado');
+  it('"Rechazados" no ofrece chip de Estado (no hay nada que refinar)', () => {
+    expect(dimensionesDe('rechazados').map((d) => d.id)).not.toContain('estado');
     expect(paramsServidor({ vista: 'rechazados', chips: vacios() }, 'u').estados).toEqual(['rechazado']);
+  });
+
+  // 120: un resuelto espera la calificación del solicitante; un cerrado ya terminó.
+  it('"Resueltos" son resueltos y cerrados, y el chip de Estado los separa', () => {
+    expect(paramsServidor({ vista: 'resueltos', chips: vacios() }, 'u').estados).toEqual(['resuelto', 'cerrado']);
+    const estado = dimensionesDe('resueltos').find((d) => d.id === 'estado');
+    expect(estado.opciones.map((o) => o.valor)).toEqual(['resuelto', 'cerrado']);
+    expect(paramsServidor({ vista: 'resueltos', chips: { ...vacios(), estado: ['resuelto'] } }, 'u').estados).toEqual(['resuelto']);
   });
 
   it('en "Todos" el Estado admite rechazados, y sin chip no restringe', () => {
