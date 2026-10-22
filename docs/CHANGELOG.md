@@ -23,6 +23,10 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-22** (**Despliegue de la 122 en producción**) — Aplicada con `deploy.mjs migracion` (`--dry-run` primero;
+  verificación en verde: filtro sin rechazados en `portal_abrir`, permisos iguales —solo `project_admin`—, token
+  inválido → `no_existe`; registrada en `schema_migrations` con el commit dd75d9c). Sin redesplegar `portal`. Snapshot
+  regenerado y `verify:db` sin diferencias.
 - **2026-10-22** (**El portal del empleado ya no lista los tickets rechazados — migración 122**, escrita, **sin
   aplicar**; hallazgo PROC-CIERRE-09) — `portal_abrir` (109) excluía de «Mis tickets» solo los resueltos y cerrados:
   un ticket rechazado aparecía como si siguiera en curso. La 122 reemplaza el cuerpo con el filtro `not in ('resuelto',
