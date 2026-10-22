@@ -15,7 +15,7 @@ import { MOTIVOS_RECLASIFICAR } from '../../core/dominio-tickets.js';
 import { formatFecha } from '../../core/formatters.js';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppCodigo from '../../components/ui/AppCodigo.vue';
-import ReclasificarTicketDialog from './ReclasificarTicketDialog.vue';
+import ReclasificarTicketDialog from '../tickets/ReclasificarTicketDialog.vue';
 
 defineProps({
   categorias: { type: Array, default: () => [] },

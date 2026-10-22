@@ -48,6 +48,7 @@ const {
   cambiarNivelAtencion, cambiarPrioridad,
   mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
   cambiarTipo,
+  reclasificacion,
   mostrarProblemaForm, onProblemaFormCerrado,
   copiarMensajeSatisfaccion, copiarMensajeSolicitarInfo,
   enviarComentario,
@@ -290,6 +291,7 @@ function onConfirmarReabrir(motivo) {
             :tipo-ambiguo-sin-clasificar="tipoAmbiguoSinClasificar"
             id-prefijo="pnl-"
             label-asignado="Técnico responsable"
+            :reclasificacion="reclasificacion"
             @cambiar-prioridad="cambiarPrioridad"
             @cambiar-nivel="cambiarNivelAtencion"
             @cambiar-asignado="cambiarAsignado"

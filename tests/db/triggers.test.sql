@@ -71,6 +71,8 @@
 --         correos por deltas sobre fixtures; personal (movimientos de empleado_eventos,
 --         revisiones pendientes), solicitudes, cambios, problemas/KB con avisos, encuestas
 --         anonimas y auditoria; ninguna salida con DNI, contacto, IP ni user_agent
+--   [119] (bloque 119-a) reclasificar_ticket para el tecnico: modulo tickets (42501 sin el
+--         modulo o inactivo), ticket cerrado o rechazado solo JEFE (P0001), evento con su autor
 --   [108] (bloques 108-a a 108-f) solicitudes de servicio: catalogo y privilegios,
 --         crear_solicitud (alta con persona nueva en la misma transaccion, validaciones,
 --         una sola abierta por tipo), AUTOCOMPLETADO por cuenta/entrega abierta/equipo/
@@ -7652,5 +7654,125 @@ begin
     raise exception 'TESTS_OK [118b] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [118b]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 119a — reclasificar_ticket para el técnico (119): un staff activo
+-- con el módulo tickets reclasifica un ticket en curso (evento con su autor,
+-- sin tocar tipo, prioridad ni estado); sin el módulo o inactivo, 42501; un
+-- ticket cerrado o rechazado solo lo reclasifica el JEFE (P0001 sin escribir
+-- nada); la RPC sin sesión sigue en 42501 y su guard es modulo:tickets.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_sinmod uuid;
+  v_inact uuid;
+  v_cat text := '__test_ci_119a';
+  v_cat2 text := '__test_ci_119a2';
+  v_s1 uuid;
+  v_s2 uuid;
+  v_t uuid;
+  v_tc uuid;
+  v_tr uuid;
+  v_id uuid;
+  r jsonb;
+  t public.tickets;
+  v_n int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_119a_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_119a_asis@example.test') returning id into v_asis;
+  insert into auth.users (email) values ('__test_ci_119a_sinmod@example.test') returning id into v_sinmod;
+  insert into auth.users (email) values ('__test_ci_119a_inact@example.test') returning id into v_inact;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 119a' where user_id = v_jefe;
+  update public.staff set activo = true, nombre = 'Asistente 119a' where user_id in (v_asis, v_sinmod);
+  update public.staff set activo = false where user_id = v_inact;
+  delete from public.staff_modulos_permisos where staff_user_id in (v_asis, v_sinmod, v_inact);
+  insert into public.staff_modulos_permisos (staff_user_id, modulo) values (v_asis, 'tickets'), (v_inact, 'tickets'), (v_sinmod, 'equipos');
+
+  insert into public.categorias_ticket (id, nombre) values (v_cat, '__TEST_CI__ Origen 119a'), (v_cat2, '__TEST_CI__ Destino 119a');
+  insert into public.subcategorias_ticket (categoria_id, nombre) values (v_cat, '__TEST_CI__ S1') returning id into v_s1;
+  insert into public.subcategorias_ticket (categoria_id, nombre) values (v_cat2, '__TEST_CI__ S2') returning id into v_s2;
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, subcategoria_id, estado, prioridad, tipo, nivel_atencion, asignado_a)
+    values ('__TEST_CI_119A__', lpad('A', 24, 'V'), 'En curso', 'd', v_cat, v_s1, 'en_progreso', 'alta', 'incidente', 'N1', v_asis) returning id into v_t;
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, subcategoria_id, estado, prioridad, tipo)
+    values ('__TEST_CI_119B__', lpad('B', 24, 'V'), 'Cerrado', 'd', v_cat, v_s1, 'cerrado', 'baja', 'solicitud') returning id into v_tc;
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, subcategoria_id, estado, prioridad, tipo)
+    values ('__TEST_CI_119C__', lpad('C', 24, 'V'), 'Rechazado', 'd', v_cat, v_s1, 'rechazado', 'media', 'solicitud') returning id into v_tr;
+  delete from public.ticket_eventos where ticket_id in (v_t, v_tc, v_tr);
+
+  -- 1) sin el módulo tickets, inactivo o sin actor: 42501
+  foreach v_id in array array[v_sinmod, v_inact] loop
+    begin
+      perform public.reclasificar_ticket_nucleo(v_t, v_s2, 'motivo', v_id, false);
+      fallos := fallos || '[119] reclasifico un staff sin el modulo tickets o inactivo; ';
+    exception when others then if sqlstate <> '42501' then fallos := fallos || '[119] sin modulo o inactivo lanzo ' || sqlstate || '; '; end if; end;
+  end loop;
+  begin
+    perform public.reclasificar_ticket_nucleo(v_t, v_s2, 'motivo', null, false);
+    fallos := fallos || '[119] el nucleo reclasifico sin actor; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[119] sin actor lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.reclasificar_ticket(v_t, v_s2, 'motivo');
+    fallos := fallos || '[119] la RPC reclasifico sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[119] la RPC sin sesion lanzo ' || sqlstate || '; '; end if; end;
+
+  -- 2) el técnico no reclasifica un ticket cerrado ni uno rechazado
+  foreach v_id in array array[v_tc, v_tr] loop
+    begin
+      perform public.reclasificar_ticket_nucleo(v_id, v_s2, 'motivo', v_asis, false);
+      fallos := fallos || '[119] el tecnico reclasifico un ticket terminado; ';
+    exception when others then
+      if sqlstate <> 'P0001' or sqlerrm not like 'Solo un JEFE puede reclasificar%' then
+        fallos := fallos || '[119] ticket terminado lanzo ' || sqlstate || ' ' || sqlerrm || '; ';
+      end if;
+    end;
+  end loop;
+  if exists (select 1 from public.ticket_eventos where ticket_id in (v_t, v_tc, v_tr)) then
+    fallos := fallos || '[119] un rechazo dejo eventos; ';
+  end if;
+
+  -- 3) el técnico reclasifica el ticket en curso: solo categoría y subcategoría
+  r := public.reclasificar_ticket_nucleo(v_t, v_s2, ' Es un pedido de permisos ', v_asis, false);
+  select * into t from public.tickets where id = v_t;
+  if (r ->> 'cambio') <> 'true' or t.categoria_id <> v_cat2 or t.subcategoria_id <> v_s2 or t.estado <> 'en_progreso'
+     or t.prioridad <> 'alta' or t.tipo <> 'incidente' or t.nivel_atencion <> 'N1' or t.asignado_a <> v_asis then
+    fallos := fallos || '[119] la reclasificacion del tecnico fallo: ' || r::text || '; ';
+  end if;
+  select count(*) into v_n from public.ticket_eventos
+   where ticket_id = v_t and evento = 'categoria_cambiada' and user_id = v_asis
+     and user_email = '__test_ci_119a_asis@example.test' and detalle like '%Es un pedido de permisos' and detalle like '%Destino 119a%';
+  if v_n <> 1 then fallos := fallos || '[119] falta el evento categoria_cambiada con el tecnico como autor; '; end if;
+  if exists (select 1 from public.ticket_eventos where ticket_id = v_t and evento <> 'categoria_cambiada') then
+    fallos := fallos || '[119] reclasificar dejo eventos de estado, prioridad o tipo; ';
+  end if;
+
+  -- 4) el técnico confirma la clasificación; el JEFE sí mueve un ticket cerrado
+  r := public.reclasificar_ticket_nucleo(v_t, v_s2, 'Revisado', v_asis, false);
+  if (r ->> 'cambio') <> 'false' then fallos := fallos || '[119] la confirmacion del tecnico cambio el ticket; '; end if;
+  r := public.reclasificar_ticket_nucleo(v_tc, v_s2, 'Cierre mal clasificado', v_jefe, true);
+  select * into t from public.tickets where id = v_tc;
+  if (r ->> 'cambio') <> 'true' or t.subcategoria_id <> v_s2 or t.estado <> 'cerrado' then
+    fallos := fallos || '[119] el jefe no reclasifico el ticket cerrado: ' || r::text || '; ';
+  end if;
+
+  -- 5) guard de la RPC y privilegios
+  if position('exigir_permiso(''modulo:tickets'')' in pg_get_functiondef('public.reclasificar_ticket(uuid,uuid,text)'::regprocedure)) = 0 then
+    fallos := fallos || '[119] el guard de reclasificar_ticket no es modulo:tickets; ';
+  end if;
+  if not has_function_privilege('authenticated', 'public.reclasificar_ticket(uuid,uuid,text)', 'execute')
+     or has_function_privilege('anon', 'public.reclasificar_ticket(uuid,uuid,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.reclasificar_ticket_nucleo(uuid,uuid,text,uuid,boolean)', 'execute') then
+    fallos := fallos || '[119] privilegios de reclasificar_ticket / nucleo incorrectos; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [119a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [119a]: %', fallos;
   end if;
 end $$;

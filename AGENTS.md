@@ -111,8 +111,9 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   `maqueta/rpc-reportes.js` sigue la misma aritmética (el escenario S17 del arnés lo exige). El reporte
   por técnico lo decide la RPC (solo JEFE). Un cambio de definición sube `definiciones_version`.
 - **Catálogo de tickets (116)**: la prioridad inicial la fija `crear_ticket_publico` con la sugerida de la
-  subcategoría (NULL = media); solo el staff manda otra. Reclasificar es solo JEFE por `reclasificar_ticket`,
-  que nunca cambia tipo ni prioridad y deja `categoria_cambiada`. El valor `urgente` se muestra «Crítica».
+  subcategoría (NULL = media); solo el staff manda otra. Reclasificar es por `reclasificar_ticket` (permiso
+  `tickets` desde la 119; un ticket cerrado o rechazado, solo JEFE), que nunca cambia tipo ni prioridad y deja
+  `categoria_cambiada`. La lista «Tickets por reclasificar» es solo JEFE. El valor `urgente` se muestra «Crítica».
 - **Reportes centralizados (117)**: ningún módulo exporta ni arma reportes; todo vive en `/reportes`
   (`core/reportes.js` es el catálogo único: permiso, área y alcance). Una RPC por reporte con guard del módulo
   fuente (auditoría: `rol:jefe`) y núcleo `*_de` solo `project_admin`; la maqueta (`maqueta/rpc-reportes-*.js`)

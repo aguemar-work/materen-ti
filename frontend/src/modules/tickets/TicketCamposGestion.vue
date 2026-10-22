@@ -8,10 +8,15 @@ import {
   ESTADOS_TERMINALES,
 } from '../../core/dominio-tickets.js';
 import AppListaDatos from '../../components/ui/AppListaDatos.vue';
+import AppButton from '../../components/ui/AppButton.vue';
+import ReclasificarTicketDialog from './ReclasificarTicketDialog.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 
-// Campos de gestión de un ticket (prioridad, nivel de atención, responsable
-// y tipo) en las 3 formas que toman según el estado:
+// Campos de gestión de un ticket: arriba la categoría con «Reclasificar»
+// (116/119: quien atiende corrige la categoría que eligió el solicitante; el
+// estado y las acciones vienen de useTicketDetalleLogica en `reclasificacion`)
+// y después prioridad, nivel de atención, responsable y tipo en las 3 formas
+// que toman según el estado:
 //   - abierto:  editables, todavía sin guardar — se aplican al iniciar la
 //               atención (atencion-*, con v-model del contenedor).
 //   - en curso: editables que guardan al vuelo (eventos cambiar-*).
@@ -35,6 +40,9 @@ const props = defineProps({
   atencionNivel: { type: String, default: '' },
   atencionAsignado: { type: String, default: '' },
   atencionTipo: { type: String, default: '' },
+  // { puede, abriendo, ticket, catalogo, abrir(), alCerrar(resultado) } de
+  // useTicketDetalleLogica (`puede`: módulo tickets; ticket terminado, JEFE).
+  reclasificacion: { type: Object, default: null },
 });
 
 const emit = defineEmits([
@@ -47,6 +55,12 @@ const emit = defineEmits([
   'cambiar-asignado',
   'cambiar-tipo',
 ]);
+
+const clasificacion = computed(() => {
+  const t = props.ticket;
+  if (!t.categoria_nombre) return '';
+  return t.subcategoria_nombre ? `${t.categoria_nombre} › ${t.subcategoria_nombre}` : t.categoria_nombre;
+});
 
 // Un useCampoAccesible por campo (no se reutiliza entre distintos <select>) —
 // mismo criterio que useId() adentro de CarbonCampo.vue antes de retirarlo.
@@ -74,6 +88,34 @@ const datosTerminal = computed(() => [
 
 <template>
   <div class="grid gap-3">
+  <!-- categoría: en todos los estados; se cambia con un motivo (diálogo) -->
+  <div class="flex items-start justify-between gap-3" data-clasificacion>
+    <dl class="min-w-0 text-sm">
+      <dt class="text-xs text-gray-500">Categoría</dt>
+      <dd class="mt-0.5 break-words" :class="clasificacion ? 'text-gray-900' : 'text-gray-500'">{{ clasificacion || 'Sin categoría' }}</dd>
+    </dl>
+    <AppButton
+      v-if="reclasificacion?.puede"
+      class="-mr-2 shrink-0"
+      size="sm"
+      variant="text"
+      severity="secondary"
+      icon="ti ti-arrows-exchange"
+      label="Reclasificar"
+      title="Corregir la categoría del ticket: el motivo queda en el historial; el tipo y la prioridad no cambian"
+      :loading="reclasificacion.abriendo"
+      :disabled="guardandoCampo || iniciando"
+      @click="reclasificacion.abrir()"
+    />
+  </div>
+  <ReclasificarTicketDialog
+    v-if="reclasificacion?.ticket"
+    :ticket="reclasificacion.ticket"
+    :categorias="reclasificacion.catalogo.categorias"
+    :subcategorias="reclasificacion.catalogo.subcategorias"
+    @cerrar="reclasificacion.alCerrar"
+  />
+
   <!-- abierto: se guardan recién al iniciar la atención -->
   <template v-if="ticket.estado === 'abierto'">
     <div class="campo" :class="{ 'campo--inerte': iniciando }">

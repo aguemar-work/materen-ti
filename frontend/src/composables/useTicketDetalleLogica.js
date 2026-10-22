@@ -1,7 +1,8 @@
-import { ref, computed, onUnmounted } from 'vue';
+import { ref, reactive, computed, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../core/toast.js';
-import { estadoInfo, prioridadInfo, destinoDeCambio, ESTADOS_EN_CURSO, HITO_LABELS, EVENTO_LABELS, NIVELES_ATENCION } from '../core/dominio-tickets.js';
+import { estadoInfo, prioridadInfo, destinoDeCambio, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS, NIVELES_ATENCION } from '../core/dominio-tickets.js';
+import { traducirErrorDb } from '../api/erroresDb.js';
 import { useAuthStore } from '../stores/auth.js';
 import { useTicketDetalleStore } from '../stores/ticketDetalle.js';
 
@@ -96,8 +97,9 @@ export function useTicketDetalleLogica() {
         const label = NIVELES_ATENCION.find((n) => n.valor === nuevoNivel)?.label || nuevoNivel || ev.detalle;
         hitos.push({ id: ev.id, label: `Nivel de atención cambiado a ${label}`, fecha: ev.created_at, color: 'info' });
       } else if (ev.evento === 'categoria_cambiada') {
-        // Catálogo v2 (116): la migración o un JEFE movió el ticket de
-        // categoría; el detalle ya trae "De … a …" y, si lo hizo un JEFE, el motivo.
+        // Catálogo v2 (116): la migración, un JEFE o un técnico (119) movió el
+        // ticket de categoría; el detalle ya trae "De … a …" y, si lo hizo una
+        // persona, el motivo.
         const label = ev.detalle ? `${EVENTO_LABELS.categoria_cambiada}: ${ev.detalle}` : EVENTO_LABELS.categoria_cambiada;
         hitos.push({ id: ev.id, label, fecha: ev.created_at, color: 'neutral' });
       } else if (ev.evento === 'encuesta_enviada') {
@@ -383,6 +385,64 @@ export function useTicketDetalleLogica() {
     }
   }
 
+  // ── Reclasificar (116; el técnico desde la 119): corregir la categoría que
+  // eligió el solicitante. La RPC exige el módulo tickets y, para un ticket
+  // cerrado o rechazado, ser JEFE: lo que rechazaría no se ofrece. Nunca toca
+  // tipo ni prioridad; el motivo queda en el historial.
+  const puedeReclasificar = computed(() => !!ticket.value && auth.puedeVerModulo('tickets')
+    && (auth.esJefe || !ESTADOS_TERMINALES.includes(ticket.value.estado)));
+  // Ticket con la forma que espera ReclasificarTicketDialog (null = cerrado).
+  const ticketAReclasificar = ref(null);
+  const catalogoClasificacion = ref({ categorias: [], subcategorias: [] });
+  const abriendoReclasificar = ref(false);
+
+  async function abrirReclasificar() {
+    if (abriendoReclasificar.value || !ticket.value) return;
+    abriendoReclasificar.value = true;
+    try {
+      catalogoClasificacion.value = await store.catalogoClasificacion();
+      const t = ticket.value;
+      ticketAReclasificar.value = {
+        ticket_id: t.id,
+        codigo: t.codigo,
+        titulo: t.titulo,
+        // La descripción ya está a la vista en la conversación.
+        descripcion: null,
+        created_at: t.created_at,
+        categoria: t.categoria_nombre || null,
+        subcategoria: t.subcategoria_nombre || null,
+        subcategoria_id: t.subcategoria_id || null,
+      };
+    } catch (e) {
+      showToast(traducirErrorDb(e, { porDefecto: 'No se pudo cargar el catálogo de categorías.' }).mensaje, 'error');
+    } finally {
+      abriendoReclasificar.value = false;
+    }
+  }
+
+  // El diálogo emite la respuesta de la RPC, o null si se canceló.
+  async function onReclasificado(resultado) {
+    ticketAReclasificar.value = null;
+    if (!resultado) return;
+    showToast(resultado.cambio === false ? 'Clasificación confirmada' : 'Ticket reclasificado');
+    try {
+      await store.recargarTrasReclasificar();
+    } catch (e) {
+      showToast(traducirErrorDb(e, { porDefecto: 'El ticket se reclasificó, pero no se pudo actualizar la ficha. Recargue la página.' }).mensaje, 'error');
+    }
+  }
+
+  // Todo junto para TicketCamposGestion, que muestra el botón y monta el
+  // diálogo: los contenedores solo pasan este objeto (reactive desenvuelve los refs).
+  const reclasificacion = reactive({
+    puede: puedeReclasificar,
+    abriendo: abriendoReclasificar,
+    ticket: ticketAReclasificar,
+    catalogo: catalogoClasificacion,
+    abrir: abrirReclasificar,
+    alCerrar: onReclasificado,
+  });
+
   // ── Gestión de Problemas: "Marcar como problema" (reemplaza el viejo
   // checkbox de lección aprendida, columna retirada en la migración 033) ──
   const mostrarProblemaForm = ref(false);
@@ -502,6 +562,7 @@ export function useTicketDetalleLogica() {
     cambiarNivelAtencion, cambiarPrioridad,
     mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
     cambiarTipo,
+    reclasificacion,
     mostrarProblemaForm, onProblemaFormCerrado,
     copiarMensajeSatisfaccion,
     copiarLinkSatisfaccion,

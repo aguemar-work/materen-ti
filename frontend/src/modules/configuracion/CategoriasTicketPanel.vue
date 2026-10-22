@@ -28,8 +28,9 @@ import TicketsPorReclasificar from './TicketsPorReclasificar.vue';
 // El resto del staff solo lee; no se le ofrecen acciones que el servidor
 // rechazaría (frontend/AGENTS.md). El aviso al solicitante (114) y la
 // prioridad sugerida (116) son columnas más de esas filas: las edita quien
-// edita la categoría. Reclasificar tickets es solo del JEFE (rol:jefe en la
-// RPC y en la vista).
+// edita la categoría. La lista de tickets por reclasificar es solo del JEFE
+// (rol:jefe en la vista); reclasificar un ticket suelto lo hace también el
+// técnico desde su ficha (119).
 const auth = useAuthStore();
 const puedeEditar = computed(() => auth.puedeVerModulo('tickets'));
 

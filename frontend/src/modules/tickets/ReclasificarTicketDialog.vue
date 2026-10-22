@@ -1,9 +1,12 @@
 <script setup>
-// Reclasificar un ticket (catálogo v2, migración 116): el JEFE elige la
-// subcategoría correcta (con ella va su categoría) y escribe el motivo; la RPC
-// reclasificar_ticket deja el evento en la hoja de vida del ticket. Nunca
-// cambia el tipo ni la prioridad del ticket. Elegir la misma subcategoría que
-// ya tiene registra «Clasificación confirmada» (el ticket sale de la lista).
+// Reclasificar un ticket (catálogo v2, migración 116; técnico desde la 119):
+// quien atiende elige la subcategoría correcta (con ella va su categoría) y
+// escribe el motivo; la RPC reclasificar_ticket deja el evento en la hoja de
+// vida del ticket. Nunca cambia el tipo ni la prioridad del ticket. Elegir la
+// misma subcategoría que ya tiene registra «Clasificación confirmada» (el
+// ticket sale de «Tickets por reclasificar»). Lo abren la lista del JEFE en
+// Configuración y la ficha del ticket (TicketCamposGestion). Un ticket cerrado
+// o rechazado solo lo reclasifica el JEFE (P0001 si no).
 // Emite `cerrar` con la respuesta de la RPC, o con null si se canceló.
 import { ref, computed } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
@@ -18,7 +21,9 @@ import AppCodigo from '../../components/ui/AppCodigo.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 
 const props = defineProps({
-  // Fila de v_tickets_por_reclasificar
+  // { ticket_id, codigo, titulo, descripcion, created_at, categoria,
+  // subcategoria, subcategoria_id }: la fila de v_tickets_por_reclasificar, o
+  // el ticket de la ficha con esa forma (useTicketDetalleLogica).
   ticket: { type: Object, required: true },
   categorias: { type: Array, default: () => [] },
   subcategorias: { type: Array, default: () => [] },

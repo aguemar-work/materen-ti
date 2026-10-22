@@ -140,8 +140,9 @@ export const ticketsApi = {
     return data || [];
   },
 
-  // RPC reclasificar_ticket (solo JEFE: 42501; motivo vacío o largo: P0001;
-  // ticket o subcategoría inexistentes: P0002). Cambia categoría y
+  // RPC reclasificar_ticket (módulo tickets desde la 119, si no 42501; motivo
+  // vacío o largo, o ticket cerrado/rechazado sin ser JEFE: P0001; ticket o
+  // subcategoría inexistentes: P0002). Cambia categoría y
   // subcategoría, nunca tipo ni prioridad. El error se relanza crudo y lo
   // traduce quien lo muestra (api/erroresDb.js).
   async reclasificarTicket(ticketId, subcategoriaId, motivo) {

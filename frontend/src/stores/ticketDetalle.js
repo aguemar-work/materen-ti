@@ -95,6 +95,31 @@ export const useTicketDetalleStore = defineStore('ticketDetalle', {
       this.satisfaccion = await insforgeApi.getSatisfaccionTicket(this.ticket.id);
     },
 
+    // Catálogo vivo para el diálogo de reclasificar (categorías y subcategorías).
+    async catalogoClasificacion() {
+      const [categorias, subcategorias] = await Promise.all([
+        insforgeApi.listCategoriasTicket(),
+        insforgeApi.listSubcategoriasTicket(),
+      ]);
+      return { categorias, subcategorias };
+    },
+
+    // Tras reclasificar (RPC reclasificar_ticket, 116/119): la categoría, la
+    // subcategoría y su aviso vienen de joins, así que se relee el ticket
+    // entero; el evento `categoria_cambiada` va al historial y los artículos
+    // de KB sugeridos dependen de la categoría.
+    async recargarTrasReclasificar() {
+      const [t, eventos] = await Promise.all([
+        insforgeApi.getTicket(this.ticket.id),
+        insforgeApi.listEventosTicket(this.ticket.id),
+      ]);
+      if (t) this.ticket = t;
+      this.eventos = eventos;
+      this.articulosRelacionados = this.ticket.categoria_id
+        ? await insforgeApi.listArticulosRelacionados({ categoriaId: this.ticket.categoria_id })
+        : [];
+    },
+
     async recargarProblemaVinculado() {
       this.problemaVinculado = await insforgeApi.getProblemaAbiertoDeTicket(this.ticket.id);
     },
