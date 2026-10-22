@@ -1747,14 +1747,16 @@ autocierre a las 24 h corridas, el técnico reabre por una calificación baja, r
 | PROC-CIERRE-08 | (hallazgo de paso) «Guardar en la KB» al resolver fallaba siempre (no existía `nota_resolucion`) | Abierto (PANORAMA §pendientes) | **Cerrado en código (120)**: la solución del diálogo es la del borrador |
 | PROC-CIERRE-09 | (hallazgo de paso) El portal (109) lista los tickets `rechazado` como activos | Abierto | **Abierto**: fuera del alcance de la 120 |
 
-**Pendientes de despliegue de la 120** (commit antes que producción, invariante 12): aplicar la 120
-(`deploy.mjs migracion`, `--dry-run` primero) → desplegar `tickets` → desplegar `credenciales` y cargar
-el secret `MANTENIMIENTO_SECRET` → publicar el frontend → con autorización del dueño, crear los dos schedules
-(`autocierre` cada hora, `purga` diaria; `docs/CONTINUIDAD.md`) → `npm run snapshot`. La 119 va antes.
+**Despliegue de la 119 y la 120 (2026-10-22).** Aplicadas con `deploy.mjs migracion` (dry-run primero; verificación
+en verde: 390 tickets legados etiquetados, 0 sin cierre) y desplegadas `tickets`, `credenciales`, `encuestas` y
+`equipos-fotos`; snapshot regenerado. Disparador: el frontend ya estaba publicado en Vercel desde el push de `main`
+de ese mediodía y el listado de tickets devolvía 400 (`cerrado_por` y `ticket_escalamientos` no existían) —
+desorden del orden «migración → function → frontend», no de la invariante 12. **Queda del dueño**: cargar
+`MANTENIMIENTO_SECRET` y crear los dos schedules (`autocierre` cada hora, `purga` diaria; `docs/CONTINUIDAD.md`);
+hasta entonces la acción `mantenimiento` responde 403 y el autocierre a las 24 h no corre.
 
-**Escalamiento por niveles (migración 121, 2026-10-21, escrita, sin aplicar).** Pendiente de despliegue, en este
-orden: la 120 (cierre de tickets) aplicada antes → aplicar 121 (`deploy.mjs migracion`, bloque «Verificación») → `deploy.mjs function tickets` (el seguimiento
-envía `nivel` y `fechaEstimada`) → frontend → `npm run snapshot`. **Pendiente de diseño:** sin programador de tareas no
+**Escalamiento por niveles (migración 121, 2026-10-21; aplicada el 2026-10-22 tras la 120, verificación en verde,
+`tickets` desplegada, snapshot regenerado).** **Pendiente de diseño:** sin programador de tareas no
 hay aviso automático cuando vence la fecha estimada de un escalado (se ve al leer: Inicio, tarjeta y ficha); se
 resuelve junto con la programación de `purgar_datos_temporales`. **Choque con V2:** 091/092 redefinen
 `evento_ticket_cambios` y 093 trae `reasignar_ticket`; al integrar V2, partir de la 121.

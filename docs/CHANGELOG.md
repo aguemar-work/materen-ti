@@ -23,6 +23,17 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-22** (**Despliegue de 119, 120 y 121 en producción**; incidente «Error al cargar tickets») — El push de
+  `main` de las 12:36 publicó en Vercel el frontend unificado antes de aplicar las migraciones: el listado pedía
+  `cerrado_por` (120) y el embed `ticket_escalamientos` (121) y PostgREST respondía 400 (`PGRST200` / `42703`).
+  Se aplicaron en orden 119 → 120 → 121 con `deploy.mjs migracion` (`--dry-run` primero, bloques «Verificación» en
+  verde: 390 tickets legados con `cerrado_por = 'legado'`, 0 sin cierre; `cerrar_resueltos_vencidos()` → 0) y se
+  desplegaron las cuatro functions cuyo `dist/` difería del desplegado: `tickets`, `credenciales` (un 502 temporal del
+  servidor de build en el primer intento; el segundo pasó), `encuestas` y `equipos-fotos` (`portal` ya coincidía).
+  `npm run snapshot` + `verify:db` sin diferencias (las 4 policies de storage de la plataforma quedan en el snapshot).
+  **Pendiente del dueño**: cargar `MANTENIMIENTO_SECRET` y crear los dos schedules (`docs/CONTINUIDAD.md`); mientras
+  tanto la acción `mantenimiento` responde 403 y ningún `resuelto` se cierra solo.
+
 - **2026-10-22** (**Policies de storage de la plataforma**, solo documentación, investigación de solo lectura) —
   `HISTORIAL-AUDITORIAS.md`: InsForge instaló anoche sus 4 policies «owner-only» en `storage.objects` (RLS activo),
   fuera del snapshot; hallazgos STORAGE-RLS-01 a 04. El snapshot **no** se regeneró (decisión del dueño): `verify:db`

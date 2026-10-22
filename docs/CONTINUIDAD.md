@@ -173,7 +173,7 @@ consultas de una línea: sin saltos de línea, sin `$$`, sin comillas dobles y s
 - [ ] Anotar el enlace a la página de estado de InsForge y de Vercel.
 - [ ] Preparar e imprimir el acta física en blanco y la hoja de cálculo de contingencia.
 - [ ] Hacer la primera restauración probada (sección 4) y registrar el tiempo.
-- [ ] Tras aplicar la 120 y desplegar `credenciales`: cargar `MANTENIMIENTO_SECRET` y crear los schedules
+- [ ] La 120 está aplicada y `credenciales` desplegada (2026-10-22); falta cargar `MANTENIMIENTO_SECRET` y crear los schedules
       (`npx @insforge/cli schedules create --name autocierre-tickets --cron "0 * * * *" --method POST --url
       "<INSFORGE_PROJECT_URL>/functions/credenciales" --headers "{\"x-mantenimiento\":\"<valor>\",\"Content-Type\":\"application/json\"}"
       --body "{\"action\":\"mantenimiento\",\"tarea\":\"autocierre\"}"`, y el mismo con `"tarea":"purga"` y
