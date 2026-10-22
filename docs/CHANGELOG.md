@@ -23,6 +23,11 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-22** (**Policies de storage de la plataforma**, solo documentación, investigación de solo lectura) —
+  `HISTORIAL-AUDITORIAS.md`: InsForge instaló anoche sus 4 policies «owner-only» en `storage.objects` (RLS activo),
+  fuera del snapshot; hallazgos STORAGE-RLS-01 a 04. El snapshot **no** se regeneró (decisión del dueño): `verify:db`
+  sigue marcando esas 4 diferencias.
+
 - **2026-10-22** (**Unificación en `main`: filtros, 119, 120 y 121**, sin aplicar ni desplegar nada) — Se mergean en
   `main` local la rama de filtros sencillos, la reclasificación por el técnico (119), el cierre según el procedimiento
   (120) y el escalamiento (121), en ese orden. Conciliación: la vista «Resueltos» suma `cerrado` y se queda sin la

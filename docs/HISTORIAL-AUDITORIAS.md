@@ -1758,3 +1758,37 @@ envía `nivel` y `fechaEstimada`) → frontend → `npm run snapshot`. **Pendien
 hay aviso automático cuando vence la fecha estimada de un escalado (se ve al leer: Inicio, tarjeta y ficha); se
 resuelve junto con la programación de `purgar_datos_temporales`. **Choque con V2:** 091/092 redefinen
 `evento_ticket_cambios` y 093 trae `reasignar_ticket`; al integrar V2, partir de la 121.
+
+## Policies de storage instaladas por la plataforma (2026-10-22)
+
+`npm run verify:db` marcó 4 diferencias: `storage_objects_owner_select`, `_insert`, `_update` y `_delete` sobre
+`storage.objects`, en producción y no en el snapshot. Investigación **solo lectura** (consultas `SELECT` al catálogo
+con el transporte de `verify:db`; nada se escribió en la base):
+
+- **Origen: InsForge, no el repo.** Es el conjunto «owner-only» que la plataforma instala sola en los proyectos que ya
+  tenían buckets (referencia de RLS de storage del skill `insforge`). Ninguna migración del repo ni
+  `system.custom_migrations` las crea; `system.migrations` termina el 2026-08-21 y `system.audit_logs` no las registra.
+- **Fecha:** las 4 policies y la fila de `storage.objects` en `pg_class` comparten `xmin` (una sola transacción). Por
+  `xmin` contra `ticket_eventos` (solo inserciones): **entre el 2026-10-21 23:04 y el 2026-10-22 13:16 UTC**. El
+  snapshot del 2026-10-06 (tras la 118) no las tenía.
+- **Estado actual:** RLS activo en `storage.objects`; `authenticated` con `SELECT/INSERT/UPDATE/DELETE` en la tabla,
+  `anon` sin ningún privilegio. Las cuatro son `TO authenticated`: ver lo propio (`uploaded_by = auth.jwt() ->> 'sub'`)
+  **o cualquier objeto de un bucket público** (`storage.bucket_is_public`); subir, modificar y borrar solo lo propio.
+- **Buckets:** `equipos-fotos` y `tickets-adjuntos`, **ambos `public = true`**; no hay bucket privado. Los 100 objetos
+  están en `tickets-adjuntos`, todos con `uploaded_by` NULL (los sube la function con cliente admin): 25 con la key
+  nueva `tickets/<id>/…` y 75 con la key antigua `<token>/…`.
+
+| ID | Hallazgo | Estado |
+|---|---|---|
+| STORAGE-RLS-01 | Policies de la plataforma fuera del snapshot (`verify:db` en rojo) | **Abierto**: decidir si se aceptan (`npm run snapshot`) o se reemplazan por una migración propia |
+| STORAGE-RLS-02 | Con la policy de SELECT, cualquier sesión `authenticated` (sin importar el módulo, y sin que RLS de storage mire si el staff sigue activo) podría listar las keys de los buckets públicos; 75 keys antiguas llevan el token de seguimiento | **Abierto**, deducido del catálogo y de la documentación de la plataforma, **no probado** (exige actuar con una sesión de usuario). Se cierra con la migración de adjuntos y el bucket privado |
+| STORAGE-RLS-03 | Con la policy de INSERT, cualquier sesión `authenticated` podría subir archivos a los dos buckets por la API de storage, sin los controles de `equipos-fotos` (tipo, tamaño, módulo), y quedarían públicos | **Abierto**, **no probado**. Los objetos existentes no se pueden modificar ni borrar por esta vía (`uploaded_by` NULL) |
+| STORAGE-RLS-04 | `docs/PROTECCION-DATOS.md` describe `tickets-adjuntos` como privado; en producción es público | **Abierto**: es la intención (111), no el estado; se alinea al cerrar «Bucket `tickets-adjuntos` público» |
+
+La app no depende de estas policies: todo acceso a storage va por las edge functions con cliente admin, que no pasa
+por RLS, y el frontend no usa storage. Lo más probable es que, antes de esta transacción, RLS estuviera apagado con los
+mismos privilegios (según la documentación de la plataforma), es decir, más abierto; no se pudo confirmar el estado
+previo. **El riesgo de fondo sigue siendo el ya registrado** (Ciclo 21, «Bucket `tickets-adjuntos` público»): un
+bucket público sirve cada objeto a quien tenga la URL sin pasar por RLS. Pendientes: correr `scripts/migrar-adjuntos.mjs`
+para las 75 keys antiguas, apagar «Public» en el panel y, después, decidir STORAGE-RLS-01. El snapshot no se regeneró
+a propósito (decisión del dueño, 2026-10-22).
