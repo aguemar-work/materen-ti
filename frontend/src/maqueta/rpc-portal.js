@@ -77,7 +77,8 @@ function datosPortal(db, enlace) {
   }
   if (enlace.alcance.includes('ver_tickets')) {
     salida.tickets = db.tickets
-      .filter((t) => t.empleado_id === emp.id && !['resuelto', 'cerrado'].includes(t.estado))
+      // 122: un rechazado tampoco está activo (mismo filtro que portal_abrir).
+      .filter((t) => t.empleado_id === emp.id && !['resuelto', 'cerrado', 'rechazado'].includes(t.estado))
       .slice(0, 20)
       .map((t) => ({ codigo: t.codigo, titulo: t.titulo, estado: t.estado, creado: t.created_at }));
   }

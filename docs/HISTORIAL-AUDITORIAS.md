@@ -1745,7 +1745,7 @@ autocierre a las 24 h corridas, el técnico reabre por una calificación baja, r
 | PROC-CIERRE-06 | Calificación 1-2: el técnico revisa al día hábil siguiente, reabre o deja nota; ambos al informe mensual | No existía (solo el JEFE reabría) | **Cerrado en código (120, sin aplicar)**: aviso `ticket_calificacion_baja`, bandeja `/tickets/calificaciones`, `revisar_calificacion_baja` (reabre sin JEFE), sección del reporte de Satisfacción con desenlace y plazo |
 | PROC-CIERRE-07 | (hallazgo de paso) Un ticket reabierto y vuelto a cerrar no generaba encuesta nueva (`on conflict do nothing`) | Abierto | **Cerrado en código (120)**: una encuesta por resolución |
 | PROC-CIERRE-08 | (hallazgo de paso) «Guardar en la KB» al resolver fallaba siempre (no existía `nota_resolucion`) | Abierto (PANORAMA §pendientes) | **Cerrado en código (120)**: la solución del diálogo es la del borrador |
-| PROC-CIERRE-09 | (hallazgo de paso) El portal (109) lista los tickets `rechazado` como activos | Abierto | **Abierto**: fuera del alcance de la 120 |
+| PROC-CIERRE-09 | (hallazgo de paso) El portal (109) lista los tickets `rechazado` como activos | Abierto | **Cerrado en código (122, sin aplicar; 2026-10-22)**: `portal_abrir` excluye también `rechazado` (activos = abierto, en_progreso, reabierto); bloque 122a y test de la maqueta. Pendiente: aplicar la 122 (sin redesplegar `portal`: la respuesta no cambia de forma) |
 
 **Despliegue de la 119 y la 120 (2026-10-22).** Aplicadas con `deploy.mjs migracion` (dry-run primero; verificación
 en verde: 390 tickets legados etiquetados, 0 sin cierre) y desplegadas `tickets`, `credenciales`, `encuestas` y

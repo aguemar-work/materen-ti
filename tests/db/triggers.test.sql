@@ -73,6 +73,8 @@
 --         anonimas y auditoria; ninguna salida con DNI, contacto, IP ni user_agent
 --   [119] (bloque 119-a) reclasificar_ticket para el tecnico: modulo tickets (42501 sin el
 --         modulo o inactivo), ticket cerrado o rechazado solo JEFE (P0001), evento con su autor
+--   [122] (bloque 122-a) portal_abrir: «Mis tickets» solo con los activos (sin resueltos,
+--         cerrados ni rechazados), aislamiento entre empleados, token invalido y permisos
 --   [120] (bloques 120-a a 120-c) cierre segun el procedimiento: resolver con solucion visible
 --         y encuesta por resolucion, calificar cierra (usuario), sin solicitante cierra al
 --         resolver, cierre automatico a las 24 h (sistema, encuesta anulada), guard de la
@@ -8379,5 +8381,62 @@ begin
     raise exception 'TESTS_OK [121b] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [121b]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 122a — portal_abrir (122): «Mis tickets» lista solo los activos
+-- (abierto, en_progreso, reabierto); ni resueltos, ni cerrados, ni
+-- rechazados (PROC-CIERRE-09). Nunca los de otro empleado. El token
+-- inválido sigue respondiendo no_existe y los permisos no cambian.
+-- ============================================================
+do $$
+declare
+  v_empresa uuid;
+  v_a uuid;
+  v_b uuid;
+  v_res jsonb;
+  v_codigos text[];
+  c_tok constant text := 'T122aAAAAAAAAAAAAAAAAAAA';
+  fallos text := '';
+begin
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 122a') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Rosa', 'CI 122a', '99012201', v_empresa) returning id into v_a;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('Otro', 'CI 122a Ajeno', '99012202', v_empresa) returning id into v_b;
+  insert into public.tickets (codigo, token, titulo, descripcion, empleado_id, estado) values
+    ('__TESTCI-122-AB__', 'tk122aABABABABABABABABAB', '__TEST_CI__ abierto', 'd', v_a, 'abierto'),
+    ('__TESTCI-122-EP__', 'tk122aEPEPEPEPEPEPEPEPEP', '__TEST_CI__ en progreso', 'd', v_a, 'en_progreso'),
+    ('__TESTCI-122-RA__', 'tk122aRARARARARARARARARA', '__TEST_CI__ reabierto', 'd', v_a, 'reabierto'),
+    ('__TESTCI-122-RS__', 'tk122aRSRSRSRSRSRSRSRSRS', '__TEST_CI__ resuelto', 'd', v_a, 'resuelto'),
+    ('__TESTCI-122-CE__', 'tk122aCECECECECECECECECE', '__TEST_CI__ cerrado', 'd', v_a, 'cerrado'),
+    ('__TESTCI-122-RE__', 'tk122aRERERERERERERERERE', '__TEST_CI__ rechazado', 'd', v_a, 'rechazado'),
+    ('__TESTCI-122-AJ__', 'tk122aAJAJAJAJAJAJAJAJAJ', '__TEST_CI__ del ajeno', 'd', v_b, 'abierto');
+  insert into public.empleado_enlaces (empleado_id, token_hash, alcance, expires_at)
+    values (v_a, encode(sha256(convert_to(c_tok, 'UTF8')), 'hex'), array['ver_tickets'], now() + interval '3 days');
+
+  v_res := public.portal_abrir(c_tok, null);
+  select coalesce(array_agg(t ->> 'codigo' order by t ->> 'codigo'), '{}') into v_codigos
+    from jsonb_array_elements(v_res -> 'tickets') t;
+  if (v_res ->> 'ok') <> 'true'
+     or v_codigos <> array['__TESTCI-122-AB__', '__TESTCI-122-EP__', '__TESTCI-122-RA__'] then
+    fallos := fallos || '[122] el portal no lista solo los activos: ' || array_to_string(v_codigos, ',') || '; ';
+  end if;
+  if exists (select 1 from jsonb_array_elements(v_res -> 'tickets') t where t ->> 'estado' in ('rechazado', 'resuelto', 'cerrado')) then
+    fallos := fallos || '[122] el portal lista un ticket terminado; ';
+  end if;
+
+  if public.portal_abrir('AAAAAAAAAAAAAAAAAAAAAAAA', null) <> '{"ok": false, "code": "no_existe"}'::jsonb then
+    fallos := fallos || '[122] un token invalido ya no responde no_existe; ';
+  end if;
+  if has_function_privilege('authenticated', 'public.portal_abrir(text,text)', 'execute')
+     or has_function_privilege('anon', 'public.portal_abrir(text,text)', 'execute')
+     or not has_function_privilege('project_admin', 'public.portal_abrir(text,text)', 'execute') then
+    fallos := fallos || '[122] cambiaron los permisos de portal_abrir; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [122a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [122a]: %', fallos;
   end if;
 end $$;
