@@ -52,6 +52,10 @@ const vigente = (db, ticketId) => (db.ticket_satisfaccion || [])
 function cerrar(db, t, por) {
   evento(db, t.id, 'estado_cambiado', `De "${t.estado}" a "cerrado"`, por !== 'usuario');
   Object.assign(t, { estado: 'cerrado', cerrado_por: por, cerrado_at: ahora(), updated_at: ahora() });
+  // 121: al cerrar, el tramo de escalamiento abierto se cierra (trigger escalamiento_sigue_estado).
+  for (const e of db.ticket_escalamientos || []) {
+    if (e.ticket_id === t.id && !e.fin_at) Object.assign(e, { fin_at: ahora(), fin_motivo: 'cerrado' });
+  }
 }
 
 export const RPC_CIERRE_TICKETS = {

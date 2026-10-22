@@ -1,10 +1,14 @@
 import { ref, reactive, computed, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../core/toast.js';
-import { estadoInfo, prioridadInfo, destinoDeCambio, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, ESTADOS_RESOLUBLES, ESTADOS_REABRIBLES, HITO_LABELS, EVENTO_LABELS, NIVELES_ATENCION } from '../core/dominio-tickets.js';
+import {
+  estadoInfo, prioridadInfo, destinoDeCambio, partesCambioNivel, nivelAtencionLabel, nivelSugeridoDe,
+  ESTADOS_EN_CURSO, ESTADOS_TERMINALES, ESTADOS_RESOLUBLES, ESTADOS_REABRIBLES, HITO_LABELS, EVENTO_LABELS,
+} from '../core/dominio-tickets.js';
 import { traducirErrorDb } from '../api/erroresDb.js';
 import { useAuthStore } from '../stores/auth.js';
 import { useTicketDetalleStore } from '../stores/ticketDetalle.js';
+import { useTicketEscalamiento } from './useTicketEscalamiento.js';
 
 // Lógica de negocio de la ficha de ticket — extraída de TicketDetalleView.vue
 // (refactor "split-view") para que la misma lógica (store,
@@ -83,19 +87,29 @@ export function useTicketDetalleLogica() {
           : '';
         hitos.push({ id: ev.id, label: label + asignado, fecha: ev.created_at, color: colorDeEstado(nuevoEstado) });
       } else if (ev.evento === 'reasignado') {
-        hitos.push({ id: ev.id, label: EVENTO_LABELS.reasignado, fecha: ev.created_at, color: 'neutral' });
+        // Desde la 121 el detalle dice de quién a quién (antes, vacío).
+        hitos.push({ id: ev.id, label: EVENTO_LABELS.reasignado, detalle: ev.detalle || '', fecha: ev.created_at, color: 'neutral' });
       } else if (ev.evento === 'prioridad_cambiada') {
         const nuevaPrioridad = destinoDeCambio(ev.detalle);
         hitos.push({ id: ev.id, label: `Prioridad cambiada a ${prioridadInfo(nuevaPrioridad).label}`, fecha: ev.created_at, color: 'info' });
       } else if (ev.evento === 'nivel_atencion_cambiado') {
         // El trigger de BD (evento_ticket_cambios(), migración 017) ya
-        // loguea esto — historialEsencial nunca tuvo el caso para
-        // mostrarlo (EVENTO_LABELS.nivel_atencion_cambiado existía sin
-        // usar). No es lógica nueva: mismo patrón que prioridad_cambiada,
-        // con los labels ya definidos en NIVELES_ATENCION.
+        // loguea esto. Desde la 121 solo aparece por cambios anteriores al
+        // escalamiento (en atención, el nivel cambia escalando o devolviendo).
         const nuevoNivel = destinoDeCambio(ev.detalle);
-        const label = NIVELES_ATENCION.find((n) => n.valor === nuevoNivel)?.label || nuevoNivel || ev.detalle;
+        const label = nivelAtencionLabel(nuevoNivel) || nuevoNivel || ev.detalle;
         hitos.push({ id: ev.id, label: `Nivel de atención cambiado a ${label}`, fecha: ev.created_at, color: 'info' });
+      } else if (ev.evento === 'escalado' || ev.evento === 'nivel_devuelto') {
+        // Escalamiento (121): 'De "N1" a "N2". Motivo: …' — el motivo va como detalle.
+        const partes = partesCambioNivel(ev.detalle);
+        const destino = nivelAtencionLabel(partes?.hacia) || partes?.hacia || '';
+        const verbo = ev.evento === 'escalado' ? 'Escalado a' : 'Devuelto a';
+        hitos.push({
+          id: ev.id, label: destino ? `${verbo} ${destino}` : EVENTO_LABELS[ev.evento],
+          detalle: partes ? partes.resto : (ev.detalle || ''), fecha: ev.created_at, color: ev.evento === 'escalado' ? 'warning' : 'info',
+        });
+      } else if (ev.evento === 'escalamiento_actualizado') {
+        hitos.push({ id: ev.id, label: EVENTO_LABELS.escalamiento_actualizado, detalle: ev.detalle || '', fecha: ev.created_at, color: 'neutral' });
       } else if (ev.evento === 'categoria_cambiada') {
         // Catálogo v2 (116): la migración, un JEFE o un técnico (119) movió el
         // ticket de categoría; el detalle ya trae "De … a …" y, si lo hizo una
@@ -171,7 +185,8 @@ export function useTicketDetalleLogica() {
       if (ticket.value.estado === 'abierto') {
         atencionForm.value = {
           prioridad: ticket.value.prioridad || 'media',
-          nivelAtencion: 'N1',
+          // El de la subcategoría (121: Redes, Seguridad y Cámaras entran en N2); si no, N1.
+          nivelAtencion: nivelSugeridoDe({ nivel_sugerido: ticket.value.subcategoria_nivel_sugerido }),
           asignadoA: auth.user?.id || '',
           // Precarga con el tipo ya asignado si lo tiene; si no, con el default
           // de la subcategoría (tipo_sugerido). Si ninguno existe (los 3 casos
@@ -331,16 +346,10 @@ export function useTicketDetalleLogica() {
     }
   }
 
-  async function cambiarNivelAtencion(valor) {
-    guardandoCampo.value = true;
-    try {
-      await store.actualizarCampos({ nivel_atencion: valor || null });
-    } catch (e) {
-      showToast(e?.message || 'Error al cambiar el nivel de atención', 'error');
-    } finally {
-      guardandoCampo.value = false;
-    }
-  }
+  // El nivel de un ticket en atención ya no se edita en un <select>: cambia
+  // escalando o devolviendo (migración 121, el servidor rechaza el UPDATE
+  // directo). Todo el estado y las acciones, en useTicketEscalamiento.
+  const escalamiento = useTicketEscalamiento({ ticket, auth, store });
 
   async function cambiarPrioridad(nuevaPrioridad) {
     guardandoCampo.value = true;
@@ -587,10 +596,11 @@ export function useTicketDetalleLogica() {
     puedeResolver, ofrecerKb, mostrarResolver, resolverConNota, onResuelto, esperaCalificacion, horasAutocierre,
     puedeRevisarCalificacion, mostrarRevisarCalificacion, onCalificacionRevisada,
     puedeReabrir, mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
-    cambiarNivelAtencion, cambiarPrioridad,
+    cambiarPrioridad,
     mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
     cambiarTipo,
     reclasificacion,
+    escalamiento,
     mostrarProblemaForm, onProblemaFormCerrado,
     copiarMensajeSatisfaccion,
     copiarLinkSatisfaccion,

@@ -1751,3 +1751,10 @@ autocierre a las 24 h corridas, el técnico reabre por una calificación baja, r
 (`deploy.mjs migracion`, `--dry-run` primero) → desplegar `tickets` → desplegar `credenciales` y cargar
 el secret `MANTENIMIENTO_SECRET` → publicar el frontend → con autorización del dueño, crear los dos schedules
 (`autocierre` cada hora, `purga` diaria; `docs/CONTINUIDAD.md`) → `npm run snapshot`. La 119 va antes.
+
+**Escalamiento por niveles (migración 121, 2026-10-21, escrita, sin aplicar).** Pendiente de despliegue, en este
+orden: la 120 (cierre de tickets) aplicada antes → aplicar 121 (`deploy.mjs migracion`, bloque «Verificación») → `deploy.mjs function tickets` (el seguimiento
+envía `nivel` y `fechaEstimada`) → frontend → `npm run snapshot`. **Pendiente de diseño:** sin programador de tareas no
+hay aviso automático cuando vence la fecha estimada de un escalado (se ve al leer: Inicio, tarjeta y ficha); se
+resuelve junto con la programación de `purgar_datos_temporales`. **Choque con V2:** 091/092 redefinen
+`evento_ticket_cambios` y 093 trae `reasignar_ticket`; al integrar V2, partir de la 121.

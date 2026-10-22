@@ -1,13 +1,13 @@
 <script setup>
 // Edición de una subcategoría de ticket (nombre, tipo sugerido, prioridad
-// sugerida de la 116 y aviso al solicitante de la 114). Hasta hoy una subcategoría solo se creaba
+// sugerida de la 116, nivel sugerido de la 121 y aviso al solicitante de la 114). Hasta hoy una subcategoría solo se creaba
 // (alta rápida inline) o se eliminaba; el aviso necesita un lugar donde
 // escribirlo. Mismo andamiaje que todo formulario en modal
 // (useFormularioModal + AppDialog). Emite `cerrar` con la fila actualizada,
 // o con null si se canceló.
 import { ref } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
-import { OPCIONES_TIPO as TIPOS, OPCIONES_PRIORIDAD, prioridadSugeridaDe } from '../../core/dominio-tickets.js';
+import { OPCIONES_TIPO as TIPOS, OPCIONES_PRIORIDAD, prioridadSugeridaDe, NIVELES_ATENCION, nivelSugeridoDe } from '../../core/dominio-tickets.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
@@ -26,6 +26,8 @@ const form = ref({
   tipo_sugerido: props.subcategoria.tipo_sugerido || '',
   // NULL en la base = media (116): el selector la muestra como «Media».
   prioridad_sugerida: prioridadSugeridaDe(props.subcategoria),
+  // NULL en la base = N1 (121): el selector lo muestra como «N1».
+  nivel_sugerido: nivelSugeridoDe(props.subcategoria),
   aviso: props.subcategoria.aviso || '',
 });
 let resultado = null;
@@ -37,6 +39,7 @@ tomarSnapshot();
 const campoNombre = useCampoAccesible();
 const campoTipo = useCampoAccesible();
 const campoPrioridad = useCampoAccesible({ ayuda: () => 'Prioridad inicial' });
+const campoNivel = useCampoAccesible({ ayuda: () => 'Nivel inicial' });
 const infoError = infoNotificacion('error');
 
 async function guardar() {
@@ -45,6 +48,7 @@ async function guardar() {
       nombre: form.value.nombre,
       tipo_sugerido: form.value.tipo_sugerido || null,
       prioridad_sugerida: form.value.prioridad_sugerida || null,
+      nivel_sugerido: form.value.nivel_sugerido || null,
       aviso: form.value.aviso,
     }),
     { entidad: 'la subcategoría', porDefecto: 'No se pudo guardar la subcategoría' },
@@ -92,6 +96,17 @@ async function guardar() {
           <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
         </div>
         <p :id="campoPrioridad.idAyuda" class="campo__pie">Con esta prioridad entra un ticket nuevo de esta subcategoría; el técnico puede cambiarla. No cambia los tickets ya registrados.</p>
+      </div>
+
+      <div class="campo" :class="{ 'campo--inerte': guardando }">
+        <label class="campo__etiqueta" :for="campoNivel.id">Nivel sugerido</label>
+        <div class="campo__caja">
+          <select :id="campoNivel.id" v-model="form.nivel_sugerido" class="campo__control campo__control--select" :disabled="guardando" :aria-describedby="campoNivel.describedBy.value">
+            <option v-for="n in NIVELES_ATENCION" :key="n.valor" :value="n.valor">{{ n.label }}</option>
+          </select>
+          <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
+        </div>
+        <p :id="campoNivel.idAyuda" class="campo__pie">Con este nivel se propone iniciar la atención; el técnico puede elegir otro. No cambia los tickets ya registrados.</p>
       </div>
 
       <CampoAvisoCategoria v-model="form.aviso" nivel="subcategoría" :disabled="guardando" />

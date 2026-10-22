@@ -60,6 +60,8 @@ const METODOS = [
   // cierre según el procedimiento (migración 120): resolver, reabrir (JEFE), calificaciones bajas
   'resolverTicket', 'reabrirTicket', 'listCalificacionesBajasPendientes', 'contarCalificacionesBajasPendientes',
   'revisarCalificacionBaja',
+  // escalamiento por niveles (migración 121): tramos, avances y sus 3 RPC
+  'listEscalamientosTicket', 'escalarTicket', 'devolverNivelTicket', 'registrarAvanceEscalamiento',
   // reportes (migración 115): solo RPC, nada se agrega en el cliente
   'obtenerReporteTickets', 'obtenerReporteSatisfaccion',
   // reportes centralizados (migración 117): una RPC por reporte, misma forma

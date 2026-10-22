@@ -133,6 +133,12 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   (whitelist con `quien`). Una calificación de 1 o 2 se revisa una vez con `revisar_calificacion_baja`: `reabierto`
   (el técnico reabre sin ser JEFE, solo por esta vía) o `nota`. Una encuesta por resolución (`resolucion_numero`).
   `cerrado_at`/`cerrado_por` solo los escribe `tickets_datos_transicion`.
+- **Escalamiento (121)**: N1 Soporte, N2 Especializado, N3 Especialista interno o externo. `ticket_escalamientos` y
+  `ticket_escalamiento_avances` solo se escriben por `escalar_ticket` / `devolver_nivel_ticket` /
+  `registrar_avance_escalamiento` (permiso `tickets`); `tickets.nivel_atencion` es el nivel actual y, con el ticket en
+  atención, solo cambia escalando o devolviendo (Iniciar fija el inicial). N2 reasigna (responsable obligatorio); N3
+  conserva al responsable y avisa al JEFE. El solicitante ve nivel, fecha estimada y avances visibles, nunca el motivo
+  ni el especialista; `nivel_atencion_publico()` y `NIVEL_PUBLICO` (dominio) se mueven juntos.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una

@@ -8127,3 +8127,257 @@ begin
     raise exception 'TESTS_FALLARON [120c]: %', fallos;
   end if;
 end $$;
+
+-- ============================================================
+-- BLOQUE 121a — escalar_ticket (121): sin el módulo, inactivo o sin sesión,
+-- 42501; un ticket abierto o cerrado, un nivel no superior, sin motivo, N2 sin
+-- responsable (o uno sin el módulo), N3 sin especialista y una fecha pasada,
+-- P0001 sin escribir nada. N1 a N2 reasigna, deja un tramo, el evento escalado,
+-- la reasignación con origen y destino y el comentario público; N2 a N3
+-- conserva al responsable y avisa al JEFE.
+-- ============================================================
+do $$
+declare
+  v_jefe uuid;
+  v_asis uuid;
+  v_redes uuid;
+  v_sinmod uuid;
+  v_inact uuid;
+  v_t uuid;
+  v_ta uuid;
+  v_tc uuid;
+  v_id uuid;
+  d jsonb;
+  r record;
+  t public.tickets;
+  e public.ticket_escalamientos;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_121a_jefe@example.test') returning id into v_jefe;
+  insert into auth.users (email) values ('__test_ci_121a_asis@example.test') returning id into v_asis;
+  insert into auth.users (email) values ('__test_ci_121a_redes@example.test') returning id into v_redes;
+  insert into auth.users (email) values ('__test_ci_121a_sinmod@example.test') returning id into v_sinmod;
+  insert into auth.users (email) values ('__test_ci_121a_inact@example.test') returning id into v_inact;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set rol = 'JEFE', activo = true, nombre = 'Jefe 121a' where user_id = v_jefe;
+  update public.staff set activo = true, nombre = 'Soporte 121a' where user_id = v_asis;
+  update public.staff set activo = true, nombre = 'Redes 121a' where user_id = v_redes;
+  update public.staff set activo = true where user_id = v_sinmod;
+  update public.staff set activo = false where user_id = v_inact;
+  delete from public.staff_modulos_permisos where staff_user_id in (v_asis, v_redes, v_sinmod, v_inact);
+  insert into public.staff_modulos_permisos (staff_user_id, modulo) values (v_asis, 'tickets'), (v_redes, 'tickets'), (v_inact, 'tickets'), (v_sinmod, 'equipos');
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, estado, prioridad, tipo, nivel_atencion, asignado_a)
+    values ('__TEST_CI_121A__', lpad('A', 24, 'W'), 'Sin red', 'd', 'red', 'en_progreso', 'alta', 'incidente', 'N1', v_asis) returning id into v_t;
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, estado, prioridad)
+    values ('__TEST_CI_121B__', lpad('B', 24, 'W'), 'Abierto', 'd', 'red', 'abierto', 'media') returning id into v_ta;
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, estado, prioridad, tipo)
+    values ('__TEST_CI_121C__', lpad('C', 24, 'W'), 'Cerrado', 'd', 'red', 'cerrado', 'baja', 'solicitud') returning id into v_tc;
+  delete from public.ticket_eventos where ticket_id in (v_t, v_ta, v_tc);
+  d := jsonb_build_object('nivel', 'N2', 'motivo', 'Se reinicio el router sin exito', 'responsable_id', v_redes);
+
+  -- 1) 42501: sin el módulo, inactivo, y la RPC sin sesión
+  foreach v_id in array array[v_sinmod, v_inact] loop
+    begin
+      perform public.escalar_ticket_nucleo(v_t, d, v_id);
+      fallos := fallos || '[121] escalo un staff sin el modulo o inactivo; ';
+    exception when others then if sqlstate <> '42501' then fallos := fallos || '[121] sin modulo lanzo ' || sqlstate || '; '; end if; end;
+  end loop;
+  begin
+    perform public.escalar_ticket(v_t, d);
+    fallos := fallos || '[121] la RPC escalo sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[121] la RPC sin sesion lanzo ' || sqlstate || '; '; end if; end;
+
+  -- 2) P0001 con su mensaje y sin escribir nada
+  for r in
+    select * from (values
+      (v_ta, d, 'Solo se escala'),
+      (v_tc, d, 'Solo se escala'),
+      (v_t, d || '{"nivel": "N1"}', 'Indique el nivel'),
+      (v_t, d - 'motivo', 'Indique qué pasó'),
+      (v_t, d - 'responsable_id', 'Indique quién atiende'),
+      (v_t, d || jsonb_build_object('responsable_id', v_sinmod), 'El responsable debe ser'),
+      (v_t, d || '{"nivel": "N3"}', 'Indique el tipo de especialista'),
+      (v_t, d || '{"fecha_estimada": "2000-01-01"}', 'anterior a hoy')
+    ) as x(tk, dd, msg)
+  loop
+    begin
+      perform public.escalar_ticket_nucleo(r.tk, r.dd, v_asis);
+      fallos := fallos || '[121] escalo sin cumplir: ' || r.msg || '; ';
+    exception when others then
+      if sqlstate <> 'P0001' or position(r.msg in sqlerrm) = 0 then
+        fallos := fallos || '[121] esperaba ' || r.msg || ' y lanzo ' || sqlstate || ' ' || sqlerrm || '; ';
+      end if;
+    end;
+  end loop;
+  if exists (select 1 from public.ticket_escalamientos where ticket_id in (v_t, v_ta, v_tc))
+     or exists (select 1 from public.ticket_eventos where ticket_id in (v_t, v_ta, v_tc)) then
+    fallos := fallos || '[121] un rechazo dejo tramos o eventos; ';
+  end if;
+
+  -- 3) N1 a N2: reasigna, tramo, evento, reasignación con nombres, comentario público
+  perform public.escalar_ticket_nucleo(v_t, d || jsonb_build_object('fecha_estimada', current_date + 3), v_asis);
+  select * into t from public.tickets where id = v_t;
+  select * into e from public.ticket_escalamientos where ticket_id = v_t and fin_at is null;
+  if t.nivel_atencion <> 'N2' or t.asignado_a <> v_redes or e.nivel_desde <> 'N1' or e.nivel_hacia <> 'N2'
+     or e.responsable_id <> v_redes or e.created_by <> v_asis or e.fecha_estimada <> current_date + 3 then
+    fallos := fallos || '[121] N1 a N2 no reasigno o no dejo el tramo; ';
+  end if;
+  if (select count(*) from public.ticket_eventos where ticket_id = v_t and evento = 'escalado' and user_id = v_asis
+       and detalle like 'De "N1" a "N2". Motivo: Se reinicio%') <> 1 then
+    fallos := fallos || '[121] falta el evento escalado con su autor; ';
+  end if;
+  if not exists (select 1 from public.ticket_eventos where ticket_id = v_t and evento = 'reasignado' and detalle = 'De "Soporte 121a" a "Redes 121a"') then
+    fallos := fallos || '[121] la reasignacion no guarda origen y destino; ';
+  end if;
+  if exists (select 1 from public.ticket_eventos where ticket_id = v_t and evento = 'nivel_atencion_cambiado') then
+    fallos := fallos || '[121] el escalamiento duplico el evento de nivel; ';
+  end if;
+  if not exists (select 1 from public.ticket_comentarios where ticket_id = v_t and not interno
+                  and mensaje like 'Su ticket fue derivado al Nivel 2 – Especializado. Fecha estimada de solución: %') then
+    fallos := fallos || '[121] falta el comentario publico del escalamiento; ';
+  end if;
+  begin
+    perform public.escalar_ticket_nucleo(v_t, d, v_redes);
+    fallos := fallos || '[121] escalo a su mismo nivel; ';
+  exception when others then if position('Devolver nivel' in sqlerrm) = 0 then fallos := fallos || '[121] mismo nivel lanzo ' || sqlerrm || '; '; end if; end;
+
+  -- 4) N2 a N3: conserva al responsable, guarda al especialista y avisa al JEFE
+  perform public.escalar_ticket_nucleo(v_t, jsonb_build_object('nivel', 'N3', 'motivo', 'Falla del equipo de borde',
+    'especialista_tipo', 'proveedor', 'especialista_nombre', ' HP  Peru ', 'referencia', 'CASO-123'), v_redes);
+  select * into t from public.tickets where id = v_t;
+  select * into e from public.ticket_escalamientos where ticket_id = v_t and fin_at is null;
+  if t.nivel_atencion <> 'N3' or t.asignado_a <> v_redes or e.responsable_id <> v_redes or e.especialista_nombre <> 'HP Peru'
+     or e.referencia_externa <> 'CASO-123' or e.fecha_estimada is not null then
+    fallos := fallos || '[121] N2 a N3 no conservo al responsable o no guardo al especialista; ';
+  end if;
+  if (select count(*) from public.ticket_escalamientos where ticket_id = v_t and fin_motivo = 'escalado') <> 1 then
+    fallos := fallos || '[121] el tramo de N2 no se cerro como escalado; ';
+  end if;
+  if (select count(*) from public.notificaciones where tipo = 'ticket_escalado' and entidad_id = v_t and destinatario_id = v_jefe) <> 1
+     or exists (select 1 from public.notificaciones where tipo = 'ticket_escalado' and entidad_id = v_t and destinatario_id = v_redes) then
+    fallos := fallos || '[121] el aviso de N3 no llego al JEFE o llego a quien escalo; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [121a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [121a]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 121b — avances, devolver nivel y ciclo de vida del tramo (121): el
+-- avance visible se publica y mueve la fecha estimada; devolver baja de nivel
+-- (nunca sube); con el ticket en atención el nivel no cambia por UPDATE directo
+-- (Iniciar sí lo fija); cerrar cierra el tramo y reabrir en N3 abre uno nuevo
+-- con el especialista; Inicio cuenta los escalados vencidos; privilegios.
+-- ============================================================
+do $$
+declare
+  v_asis uuid;
+  v_t uuid;
+  v_tb uuid;
+  r jsonb;
+  t public.tickets;
+  e public.ticket_escalamientos;
+  v_pub int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_121b_asis@example.test') returning id into v_asis;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set activo = true, nombre = 'Soporte 121b' where user_id = v_asis;
+  delete from public.staff_modulos_permisos where staff_user_id = v_asis;
+  insert into public.staff_modulos_permisos (staff_user_id, modulo) values (v_asis, 'tickets');
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, estado, prioridad, tipo, nivel_atencion, asignado_a)
+    values ('__TEST_CI_121D__', lpad('D', 24, 'W'), 'Impresora', 'd', 'equipos', 'en_progreso', 'media', 'incidente', 'N1', v_asis) returning id into v_t;
+  insert into public.tickets (codigo, token, titulo, descripcion, categoria_id, estado, prioridad)
+    values ('__TEST_CI_121E__', lpad('E', 24, 'W'), 'Abierto', 'd', 'equipos', 'abierto', 'media') returning id into v_tb;
+
+  -- 1) en atención, el nivel no cambia por UPDATE directo; Iniciar sí lo fija
+  begin
+    update public.tickets set nivel_atencion = 'N2' where id = v_t;
+    fallos := fallos || '[121] un UPDATE directo cambio el nivel de un ticket en atencion; ';
+  exception when others then if sqlstate <> 'P0001' or position('Escalar' in sqlerrm) = 0 then fallos := fallos || '[121] UPDATE directo lanzo ' || sqlerrm || '; '; end if; end;
+  update public.tickets set estado = 'en_progreso', nivel_atencion = 'N2', tipo = 'incidente', asignado_a = v_asis where id = v_tb;
+  if (select nivel_atencion from public.tickets where id = v_tb) <> 'N2' then fallos := fallos || '[121] Iniciar no fijo el nivel; '; end if;
+
+  -- 2) sin tramo no hay avance; con tramo, el avance visible se publica y mueve la fecha
+  begin
+    perform public.registrar_avance_escalamiento_nucleo(v_t, '{"nota": "x"}', v_asis);
+    fallos := fallos || '[121] registro un avance sin escalamiento; ';
+  exception when others then if position('no tiene un escalamiento abierto' in sqlerrm) = 0 then fallos := fallos || '[121] avance sin tramo lanzo ' || sqlerrm || '; '; end if; end;
+  perform public.escalar_ticket_nucleo(v_t, jsonb_build_object('nivel', 'N3', 'motivo', 'Placa dañada',
+    'especialista_tipo', 'garantia', 'especialista_nombre', 'Epson', 'fecha_estimada', current_date + 2), v_asis);
+  select count(*) into v_pub from public.ticket_comentarios where ticket_id = v_t and not interno;
+  r := public.registrar_avance_escalamiento_nucleo(v_t, jsonb_build_object('nota', 'Epson envia el repuesto', 'fecha_estimada', current_date + 6,
+    'referencia', 'RMA-9', 'visible_usuario', true), v_asis);
+  select * into e from public.ticket_escalamientos where ticket_id = v_t and fin_at is null;
+  if e.fecha_estimada <> current_date + 6 or e.referencia_externa <> 'RMA-9'
+     or (select count(*) from public.ticket_escalamiento_avances where escalamiento_id = e.id and visible_usuario and autor_id = v_asis) <> 1 then
+    fallos := fallos || '[121] el avance no movio la fecha o no quedo registrado; ';
+  end if;
+  if not exists (select 1 from public.ticket_comentarios where ticket_id = v_t and not interno
+                  and mensaje like 'Epson envia el repuesto%Nueva fecha estimada de solución: %') then
+    fallos := fallos || '[121] el avance visible no se publico; ';
+  end if;
+  perform public.registrar_avance_escalamiento_nucleo(v_t, '{"nota": "Interno: se llamo al proveedor"}', v_asis);
+  if (select count(*) from public.ticket_comentarios where ticket_id = v_t and not interno) <> v_pub + 1
+     or (select count(*) from public.ticket_eventos where ticket_id = v_t and evento = 'escalamiento_actualizado') <> 2 then
+    fallos := fallos || '[121] un avance no visible se publico o falta su evento; ';
+  end if;
+
+  -- 3) devolver: nunca a un nivel igual o superior; a uno inferior, con tramo y evento
+  begin
+    perform public.devolver_nivel_ticket_nucleo(v_t, '{"nivel": "N3", "motivo": "x"}', v_asis);
+    fallos := fallos || '[121] devolvio a un nivel no inferior; ';
+  exception when others then if position('Solo se devuelve a un nivel inferior' in sqlerrm) = 0 then fallos := fallos || '[121] devolver lanzo ' || sqlerrm || '; '; end if; end;
+  perform public.devolver_nivel_ticket_nucleo(v_t, '{"nivel": "N1", "motivo": "El proveedor lo resolvio en sitio"}', v_asis);
+  select * into t from public.tickets where id = v_t;
+  select * into e from public.ticket_escalamientos where ticket_id = v_t and fin_at is null;
+  if t.nivel_atencion <> 'N1' or e.direccion <> 'devuelto' or e.nivel_hacia <> 'N1' or e.especialista_nombre is not null
+     or (select count(*) from public.ticket_eventos where ticket_id = v_t and evento = 'nivel_devuelto' and detalle like 'De "N3" a "N1"%') <> 1 then
+    fallos := fallos || '[121] devolver no dejo el tramo o el evento; ';
+  end if;
+
+  -- 4) cerrar cierra el tramo; reabrir en N3 abre uno nuevo con el especialista
+  perform public.escalar_ticket_nucleo(v_t, '{"nivel": "N3", "motivo": "Volvio a fallar", "especialista_tipo": "garantia", "especialista_nombre": "Epson"}', v_asis);
+  alter table public.tickets disable trigger trg_check_transicion_ticket_permitida;
+  -- 120 (cierre): resolver exige la solución y reabrir, el motivo. Sin
+  -- solicitante, resolver ya cierra el ticket en la misma transacción.
+  update public.tickets set estado = 'resuelto', nota_resolucion = 'Se cambió la placa' where id = v_t;
+  update public.tickets set estado = 'cerrado' where id = v_t and estado = 'resuelto';
+  if exists (select 1 from public.ticket_escalamientos where ticket_id = v_t and fin_at is null)
+     or not exists (select 1 from public.ticket_escalamientos where ticket_id = v_t and fin_motivo = 'cerrado') then
+    fallos := fallos || '[121] cerrar no cerro el tramo; ';
+  end if;
+  update public.tickets set estado = 'reabierto', motivo_reapertura = 'Volvió a apagarse' where id = v_t;
+  select * into e from public.ticket_escalamientos where ticket_id = v_t and fin_at is null;
+  if e.id is null or e.direccion <> 'reabierto' or e.nivel_hacia <> 'N3' or e.especialista_nombre <> 'Epson' then
+    fallos := fallos || '[121] reabrir en N3 no abrio un tramo con el especialista; ';
+  end if;
+  alter table public.tickets enable trigger trg_check_transicion_ticket_permitida;
+
+  -- 5) Inicio: escalados y escalados vencidos (fecha estimada anterior a hoy)
+  update public.ticket_escalamientos set fecha_estimada = current_date - 1 where id = e.id;
+  r := public.dashboard_resumen_de(v_asis) -> 'tickets';
+  if (r ->> 'escalados')::int < 1 or not (r -> 'escalados_vencidos' @> jsonb_build_array(jsonb_build_object('ticket_id', v_t, 'nivel', 'N3'))) then
+    fallos := fallos || '[121] Inicio no cuenta el escalado vencido: ' || coalesce(r::text, 'null') || '; ';
+  end if;
+
+  -- 6) privilegios: 3 RPC para authenticated; núcleos y tablas no escribibles
+  if not has_function_privilege('authenticated', 'public.escalar_ticket(uuid,jsonb)', 'execute')
+     or not has_function_privilege('authenticated', 'public.devolver_nivel_ticket(uuid,jsonb)', 'execute')
+     or not has_function_privilege('authenticated', 'public.registrar_avance_escalamiento(uuid,jsonb)', 'execute')
+     or has_function_privilege('anon', 'public.escalar_ticket(uuid,jsonb)', 'execute')
+     or has_function_privilege('authenticated', 'public.escalar_ticket_nucleo(uuid,jsonb,uuid)', 'execute')
+     or has_table_privilege('authenticated', 'public.ticket_escalamientos', 'insert')
+     or has_table_privilege('authenticated', 'public.ticket_escalamiento_avances', 'update') then
+    fallos := fallos || '[121] privilegios de las RPC o de las tablas incorrectos; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [121b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [121b]: %', fallos;
+  end if;
+end $$;

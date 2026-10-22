@@ -40,6 +40,7 @@ const FK_DE = {
   plataformas: 'plataforma_id',
   tipos_equipo: 'tipo_id',
   tickets: 'ticket_id',
+  ticket_escalamientos: 'escalamiento_id',
   solicitudes: 'solicitud_id',
   solicitud_tipos: 'tipo_id',
   servicios: 'servicio_id',

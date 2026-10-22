@@ -155,12 +155,13 @@ describe('CategoriasTicketPanel — aviso al solicitante (114)', () => {
     expect(campo('Nombre').value).toBe('Cámara sin señal');
     expect(campo('Tipo sugerido').value).toBe('incidente');
     expect(campo('Prioridad sugerida').value).toBe('media'); // NULL en la base = media (116)
+    expect(campo('Nivel sugerido').value).toBe('N1'); // NULL en la base = N1 (121)
     expect(campo('Aviso al solicitante').value).toBe('');
     await escribir(campo('Aviso al solicitante'), 'Indique la ubicación exacta de la cámara.');
     botonDeDialogo('Guardar').click();
     await espera(40);
     expect(insforgeApi.updateSubcategoriaTicket).toHaveBeenCalledWith('s-senal', {
-      nombre: 'Cámara sin señal', tipo_sugerido: 'incidente', prioridad_sugerida: 'media', aviso: 'Indique la ubicación exacta de la cámara.',
+      nombre: 'Cámara sin señal', tipo_sugerido: 'incidente', prioridad_sugerida: 'media', nivel_sugerido: 'N1', aviso: 'Indique la ubicación exacta de la cámara.',
     });
     await espera(500);
     const subs = w.findAll('ul[aria-label="Subcategorías de Cámaras"] > li');

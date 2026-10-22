@@ -16,7 +16,8 @@ import { diasDesde, textoAntiguedad } from './tiempoLima.js';
 //   y garantías YA vencidas, acciones correctivas vencidas y altas o bajas
 //   abiertas con más de `DIAS_SOLICITUD_CRITICA` días.
 // - Tier 2 (atención): por rotar, licencias/garantías por vencer (aún no
-//   vencidas), tickets sin asignar / sin vincular / abiertos hace tiempo,
+//   vencidas), tickets sin asignar / sin vincular / abiertos hace tiempo /
+//   escalados con la fecha estimada vencida (121),
 //   posibles problemas recurrentes, actas sin adjuntar, solicitudes abiertas
 //   (las altas y bajas recientes incluidas).
 // - Dentro de un tier ordena por `diasUrgencia` descendente (más días de
@@ -135,6 +136,11 @@ export function construirFeedPendientes(resumen, { ahora = new Date() } = {}) {
   for (const t of resumen.tickets?.viejos || []) {
     const d = edad(t.desde);
     motivo(t, d == null ? 'Abierto hace tiempo' : `Abierto hace ${dias(d)}`);
+  }
+  // Escalados (migración 121) cuya fecha estimada de solución ya pasó: la
+  // antigüedad es la del vencimiento (sin aviso automático, se ve al leer).
+  for (const e of resumen.tickets?.escalados_vencidos || []) {
+    motivo({ ...e, desde: e.fecha_estimada }, `${e.nivel || 'Escalado'}: fecha estimada vencida (${formatFecha(e.fecha_estimada)})`);
   }
   for (const { t, motivos } of tickets.values()) {
     agregar({

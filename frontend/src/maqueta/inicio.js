@@ -132,6 +132,13 @@ export function resumenInicio(db, { usuarioId }) {
         })),
         mios_total: mios.length,
         vigentes: vigentes.length,
+        // 121: escalados (N2/N3) y los de fecha estimada vencida (tramo abierto).
+        escalados: vigentes.filter((t) => ['N2', 'N3'].includes(t.nivel_atencion)).length,
+        escalados_vencidos: vigentes
+          .map((t) => ({ t, e: (db.ticket_escalamientos || []).find((e) => e.ticket_id === t.id && !e.fin_at) }))
+          .filter(({ e }) => e?.fecha_estimada && e.fecha_estimada < fecha(0))
+          .sort((a, b) => a.e.fecha_estimada.localeCompare(b.e.fecha_estimada) || porAntiguedad(a.t, b.t))
+          .map(({ t, e }) => ({ ticket_id: t.id, codigo: t.codigo, titulo: t.titulo, nivel: t.nivel_atencion, fecha_estimada: e.fecha_estimada })),
         vencidos: null,
         por_vencer: null,
       }
@@ -292,7 +299,7 @@ export function resumenInicio(db, { usuarioId }) {
       'garantias_por_vencer', 'solicitudes_abiertas', 'actas_pendientes']) {
       if (resumen[k]) resumen[k] = [];
     }
-    if (resumen.tickets) Object.assign(resumen.tickets, { sin_asignar: [], sin_vincular: [], viejos: [] });
+    if (resumen.tickets) Object.assign(resumen.tickets, { sin_asignar: [], sin_vincular: [], viejos: [], escalados_vencidos: [] });
     if (resumen.problemas) Object.assign(resumen.problemas, { acciones_vencidas: [], recurrentes: [] });
   }
 

@@ -1,11 +1,13 @@
 <script setup>
 // Página PÚBLICA (sin sesión): seguimiento de UN ticket, dado su token.
 // Token de TICKET — distinto del token de entrega. Solo lectura acotada
-// a este ticket (estado + comentarios visibles), nunca el resto del sistema.
+// a este ticket (estado, nivel de atención y fecha estimada, comentarios
+// visibles), nunca el resto del sistema.
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { seguimientoTicket } from '../../api/ticketsPublicos.js';
 import { formatFecha, formatFechaHora } from '../../core/formatters.js';
+import { NIVEL_PUBLICO, ESTADOS_EN_CURSO } from '../../core/dominio-tickets.js';
 import { useRealtimeRefresco } from '../../composables/useRealtimeRefresco.js';
 import AppPortal from '../../components/ui/AppPortal.vue';
 import AppButton from '../../components/ui/AppButton.vue';
@@ -79,6 +81,13 @@ const titulo = computed(() => {
   return 'Seguimiento de solicitud';
 });
 
+// Escalamiento (migración 121): mientras el ticket está en atención, en qué
+// nivel está y, si hay, cuándo se espera la solución. Nunca quién lo tiene ni
+// el motivo interno: la function `tickets` no los envía.
+const atencion = computed(() => (estado.value === 'listo' && ESTADOS_EN_CURSO.includes(ticket.value.estado) && NIVEL_PUBLICO[ticket.value.nivel]
+  ? { nivel: NIVEL_PUBLICO[ticket.value.nivel], fecha: ticket.value.fechaEstimada ? formatFecha(ticket.value.fechaEstimada) : '' }
+  : null));
+
 // El ícono/texto del botón cambia al copiar; esto lo confirma también a un
 // lector de pantalla (región aria-live).
 const mensajeCopiado = computed(() => {
@@ -119,6 +128,17 @@ const mensajeCopiado = computed(() => {
 
     <template v-else>
       <p class="whitespace-pre-line text-sm leading-relaxed text-gray-700 [overflow-wrap:anywhere]">{{ ticket.descripcion }}</p>
+
+      <dl v-if="atencion" class="mt-5 grid gap-x-6 gap-y-2 rounded-md border border-gray-200 px-4 py-3 text-sm min-[400px]:grid-cols-2" data-atencion>
+        <div>
+          <dt class="text-xs text-gray-500">Nivel de atención</dt>
+          <dd class="mt-0.5 font-medium text-gray-900">{{ atencion.nivel }}</dd>
+        </div>
+        <div v-if="atencion.fecha">
+          <dt class="text-xs text-gray-500">Fecha estimada de solución</dt>
+          <dd class="mt-0.5 font-medium tabular-nums text-gray-900">{{ atencion.fecha }}</dd>
+        </div>
+      </dl>
 
       <div class="mt-5 grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
         <AppButton

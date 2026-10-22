@@ -918,6 +918,42 @@ async function escenarios(etiqueta) {
     afirmar('S20 120: sin solicitante el ticket se cierra al resolver', rs20.cerrado_por === 'sin_solicitante', JSON.stringify(rs20));
   }
 
+  // ---- S21 121: escalamiento con sesiones reales (sobre la 120 de cierre de tickets). RLS de las tablas nuevas (solo lectura, con el módulo), el nivel en
+  // atención no se cambia por UPDATE directo, N2 reasigna (un solo aviso al nuevo responsable), N3 avisa al JEFE salvo
+  // cuando el JEFE escala, el avance visible se publica y el Inicio cuenta los escalados.
+  if ((await uno("select to_regprocedure('public.escalar_ticket(uuid, jsonb)') as t")).t) {
+    const tE = (await uno(`insert into tickets (codigo, token, titulo, descripcion, categoria_id, prioridad, tipo, estado, nivel_atencion, asignado_a)
+      values ('TCK-S20${sfx}', '${`s20${sfx}`.padEnd(24, 'x')}', 'S20 sin red', 'd', 'red', 'alta', 'incidente', 'en_progreso', 'N1', '${U.asist}') returning id`)).id;
+    const dN2 = JSON.stringify({ nivel: 'N2', motivo: 'Se reviso el cableado', responsable_id: U.jefe }).replace(/'/g, "''");
+    await falla('S21 121: sin el modulo tickets no se escala (42501)', () => como(U.sinmod, () => db.exec(`select escalar_ticket('${tE}', '${dN2}')`)), { code: '42501', msg: 'No autorizado' });
+    await falla('S21 121: anon no ejecuta escalar_ticket', () => anonimo(() => db.exec(`select escalar_ticket('${tE}', '${dN2}')`)), { code: '42501' });
+    await falla('S21 121: authenticated no ejecuta el nucleo', () => como(U.jefe, () => db.exec(`select escalar_ticket_nucleo('${tE}', '${dN2}', '${U.jefe}')`)), { code: '42501' });
+    await falla('S21 121: un UPDATE directo del nivel en atencion -> P0001', () => como(U.asist, () => db.exec(`update tickets set nivel_atencion = 'N2' where id = '${tE}'`)), { code: 'P0001', msg: 'Escalar' });
+    const avisosAntes = (await uno(`select count(*)::int n from notificaciones where entidad_id = '${tE}' and destinatario_id = '${U.jefe}'`)).n;
+    await como(U.asist, () => db.exec(`select escalar_ticket('${tE}', '${dN2}')`));
+    const t1 = await uno(`select nivel_atencion, asignado_a from tickets where id = '${tE}'`);
+    const com = await uno(`select autor_id, mensaje from ticket_comentarios where ticket_id = '${tE}' and not interno`);
+    const avisosJefe = await q(`select tipo from notificaciones where entidad_id = '${tE}' and destinatario_id = '${U.jefe}' order by creado_en`);
+    afirmar('S21 121: N1 a N2 reasigna al responsable y publica el comentario con el tecnico como autor',
+      t1.nivel_atencion === 'N2' && t1.asignado_a === U.jefe && com?.autor_id === U.asist && /Nivel 2/.test(com.mensaje), JSON.stringify([t1, com]));
+    afirmar('S21 121: el nuevo responsable recibe un solo aviso (asignacion), no tambien el del comentario',
+      avisosJefe.length - avisosAntes === 1 && avisosJefe.at(-1)?.tipo === 'ticket_asignado', JSON.stringify(avisosJefe));
+    afirmar('S21 121: el asistente con el modulo ve el tramo; el que no tiene el modulo no',
+      (await como(U.asist, () => uno(`select count(*)::int n from ticket_escalamientos where ticket_id = '${tE}'`))).n === 1
+      && (await como(U.sinmod, () => uno(`select count(*)::int n from ticket_escalamientos where ticket_id = '${tE}'`))).n === 0);
+    await falla('S21 121: el cliente no escribe tramos', () => como(U.jefe, () => db.exec(`insert into ticket_escalamientos (ticket_id, nivel_hacia, direccion, motivo) values ('${tE}', 'N3', 'escalado', 'x')`)), { code: '42501' });
+    const dN3 = JSON.stringify({ nivel: 'N3', motivo: 'Falla del switch', especialista_tipo: 'proveedor', especialista_nombre: 'Proveedor S20' });
+    await como(U.jefe, () => db.exec(`select escalar_ticket('${tE}', '${dN3}')`));
+    afirmar('S21 121: el JEFE escala a N3: conserva el responsable y no se avisa a si mismo',
+      (await uno(`select asignado_a from tickets where id = '${tE}'`)).asignado_a === U.jefe
+      && (await uno(`select count(*)::int n from notificaciones where entidad_id = '${tE}' and tipo = 'ticket_escalado' and destinatario_id = '${U.jefe}'`)).n === 0);
+    await como(U.asist, () => db.exec(`select registrar_avance_escalamiento('${tE}', '{"nota": "El proveedor confirma visita", "visible_usuario": true}')`));
+    afirmar('S21 121: el avance visible queda como comentario publico',
+      (await uno(`select count(*)::int n from ticket_comentarios where ticket_id = '${tE}' and not interno and mensaje = 'El proveedor confirma visita'`)).n === 1);
+    const ini = (await como(U.asist, () => uno('select dashboard_resumen() as r'))).r.tickets;
+    afirmar('S21 121: el Inicio cuenta los escalados', ini.escalados >= 1 && Array.isArray(ini.escalados_vencidos), JSON.stringify(ini.escalados));
+  }
+
   // ---- S17 115: la maqueta de Reportes calcula lo MISMO que la RPC. El fixture de frontend/src/maqueta/datos.js se carga
   // en PGlite (ids traducidos a uuid) y reporte_tickets_de() se compara, numero a numero, con reporteTicketsDe() de
   // maqueta/rpc-reportes.js sobre el mismo objeto en memoria: si la maqueta y el servidor divergen, el dueno veria en la
@@ -1320,7 +1356,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }
@@ -1412,6 +1448,8 @@ if (!args.includes('--sin-dependencias')) {
     ['117', ['102']], ['117', ['108']], ['117', ['110']], ['117', ['115']],
     // 118 depende de la 115 (v_ticket_hechos, backlog_tramos_en) y la 117 (reporte_validar_periodo)
     ['118', ['115']], ['118', ['117']],
+    // 121 depende de la 120 (cierre de tickets: CHECK y dashboard_resumen_de que recompone) y la 116 (catálogo v2)
+    ['121', ['120']], ['121', ['116']],
   ];
   for (const [objetivo, omitir] of casos) {
     const inst = new PGlite({ extensions: { pgcrypto } });

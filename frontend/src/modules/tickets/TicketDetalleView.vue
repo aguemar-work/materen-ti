@@ -10,6 +10,7 @@ import AppButton from '../../components/ui/AppButton.vue';
 import AppSeccion from '../../components/ui/AppSeccion.vue';
 import ProblemaForm from '../problemas/ProblemaForm.vue';
 import TicketCamposGestion from './TicketCamposGestion.vue';
+import TicketEscalamiento from './TicketEscalamiento.vue';
 import TicketComposer from './TicketComposer.vue';
 import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
 import TicketSolicitante from './TicketSolicitante.vue';
@@ -40,10 +41,11 @@ const {
   puedeResolver, ofrecerKb, mostrarResolver, resolverConNota, onResuelto, esperaCalificacion, horasAutocierre,
   puedeRevisarCalificacion, mostrarRevisarCalificacion, onCalificacionRevisada,
   puedeReabrir, mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
-  cambiarNivelAtencion, cambiarPrioridad,
+  cambiarPrioridad,
   mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
   cambiarTipo,
   reclasificacion,
+  escalamiento,
   mostrarProblemaForm, onProblemaFormCerrado,
   copiarMensajeSatisfaccion,
   enviarComentario,
@@ -308,11 +310,14 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
               :tipo-ambiguo-sin-clasificar="tipoAmbiguoSinClasificar"
               :reclasificacion="reclasificacion"
               @cambiar-prioridad="cambiarPrioridad"
-              @cambiar-nivel="cambiarNivelAtencion"
               @cambiar-asignado="cambiarAsignado"
               @cambiar-tipo="cambiarTipo"
             />
             <p v-else class="text-sm text-gray-500">Complete el formulario de arriba para continuar.</p>
+          </AppSeccion>
+
+          <AppSeccion v-if="escalamiento.visible" titulo="Escalamiento" descripcion="Nivel actual, quién lo tiene y cuándo se espera la solución.">
+            <TicketEscalamiento :escalamiento="escalamiento" :ticket="ticket" :staff-activo="staffActivo" :staff-por-id="staffPorId" />
           </AppSeccion>
 
           <AppSeccion titulo="Solicitante">

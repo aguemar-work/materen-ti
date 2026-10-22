@@ -15,6 +15,8 @@ const ICONO_POR_TIPO = {
   ticket_comentario_nuevo: 'ti-message-circle',
   // Migración 120: calificación de 1 o 2 que el técnico revisa a más tardar el día hábil siguiente.
   ticket_calificacion_baja: 'ti-message-report',
+  // Migración 121: un ticket pasó al Nivel 3 (aviso al JEFE).
+  ticket_escalado: 'ti-stairs-up',
 };
 
 export function iconoNotificacion(tipo) {

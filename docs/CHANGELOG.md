@@ -23,6 +23,15 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-22** (**Unificación en `main`: filtros, 119, 120 y 121**, sin aplicar ni desplegar nada) — Se mergean en
+  `main` local la rama de filtros sencillos, la reclasificación por el técnico (119), el cierre según el procedimiento
+  (120) y el escalamiento (121), en ese orden. Conciliación: la vista «Resueltos» suma `cerrado` y se queda sin la
+  selección múltiple; el seguimiento público proyecta `cerradoPor` (120) **y** `nivel`/`fechaEstimada` (121); el
+  `<select>` de nivel en atención desaparece (121) y `cerrarTicket` también (120); en la maqueta el cierre de la 120
+  cierra el tramo de escalamiento abierto (como `escalamiento_sigue_estado`); PANORAMA queda con los triggers vigentes
+  de las dos. `TicketDetalleView.render.test.js` desmonta la ficha antes de vaciar el body (error intermitente de
+  vitest). Orden de despliegue sin cambios: 119 → 120 → 121 (`HISTORIAL-AUDITORIAS.md`).
+
 - **2026-10-22** (**Realtime sin cliente configurado**, solo frontend) — `useRealtimeRefresco` ya no vuelve a llamar a
   `getClient()` al desmontar: suelta el cliente que obtuvo al montar y, si no lo obtuvo (sin `VITE_INSFORGE_*`), no
   hace nada. Antes el error «InsForge no configurado» tumbaba 21 render tests de Empleados, Equipos y Licencias en
@@ -63,6 +72,25 @@
   la prioridad sugerida del sistema. Marca las diferencias con el sistema (Restablecer contraseña y Desbloquear
   cuenta son Solicitud) y los valores propuestos para las subcategorías nuevas, pendientes de confirmar. «Gestión
   interna TI» no es una categoría: sus filas apuntan a Solicitudes (108), Cambios (107) o CCTV.
+
+- **2026-10-21** (**Escalamiento de tickets por niveles — migración 121**, escrita, **sin aplicar**; pedido del dueño) —
+  Escalamiento funcional (ITIL) según la política de la mesa de ayuda: N1 Soporte básico, N2 Especializado (Redes),
+  N3 Especialista interno o externo (experto, desarrollo, proveedor, garantía). En la ficha del ticket, sección
+  «Escalamiento»: nivel actual, quién lo tiene, qué pasó, especialista y referencia, fecha estimada (con aviso si ya
+  pasó) y avances; acciones «Escalar», «Devolver nivel» y «Registrar avance». N2 exige quién lo atiende y se le
+  reasigna; N3 conserva al responsable y avisa al JEFE en la campana. El nivel de un ticket en atención ya no se edita
+  en un selector (el servidor rechaza el UPDATE directo). El empleado ve en su seguimiento el nivel, la fecha estimada y
+  los avances marcados como visibles (comentario público automático al escalar o devolver; cuenta como primera
+  respuesta en los reportes); nunca el motivo ni el especialista. El historial de una reasignación dice de quién a
+  quién. Nivel sugerido por subcategoría (Iniciar lo precarga). Inicio: los escalados con la fecha estimada vencida
+  entran al feed de pendientes; la tarjeta del Triage dice «Fecha vencida». Sin programador de tareas no hay aviso
+  automático al vencer (se ve al leer). El listado no suma una vista «Escalados» (las vistas responden solo el estado):
+  se filtra con el chip Nivel (`/tickets?nivel=N2,N3`). Pruebas: bloques SQL 121a/121b, escenario S21, maqueta
+  (`rpc-escalamiento-tickets.js`), proyección del seguimiento y render de la ficha. ⚠️ V2: las migraciones 091/092 de
+  `v2/tickets-f1` redefinen `evento_ticket_cambios` y la 093 trae `reasignar_ticket`: al integrar V2, partir de la
+  121. Numerada 121 (decisión del dueño): va después de la 120 (cierre de tickets), recompone sus CHECK de
+  `ticket_eventos` y `notificaciones` y parte de su `dashboard_resumen_de`; el tramo abierto sigue al ticket
+  mientras está resuelto esperando la calificación y se cierra con el cierre. Docs: AGENTS (regla «Escalamiento (121)»), README (tabla), PANORAMA §2–§3, HISTORIAL (pendiente del aviso).
 - **2026-10-21** (**El técnico reclasifica la categoría — migración 119**, escrita, **sin aplicar**; pedido del dueño) —
   `reclasificar_ticket` pasa de `rol:jefe` a `modulo:tickets`: quien atiende corrige la categoría que eligió el
   solicitante (p. ej. una falta de permisos registrada como «Error o falla en aplicación» va a «Accesos y Cuentas ›

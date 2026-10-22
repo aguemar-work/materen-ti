@@ -25,7 +25,7 @@
 // Acciones (POST { action, ... }):
 //   catalogo       público          → { categorias[], subcategorias[] } (con `aviso`, 114, y `prioridad_sugerida`, 116)
 //   crear          público o staff  → { codigo, token, vinculado }
-//   seguimiento    público          → { codigo, titulo, estado, cerradoPor, comentarios[], adjuntoUrl? }
+//   seguimiento    público          → { codigo, titulo, descripcion, estado, cerradoPor, nivel, fechaEstimada, categoria, subcategoria, creado, actualizado, comentarios[], adjuntoUrl? }
 //   adjuntoStaff   staff            → { url, expiraSegundos } (URL firmada de la captura de un ticket)
 //   buscarPorDni   público          → { tickets[] } (activos y los resueltos por calificar; limitado por IP)
 //   encuestaEstado público          → { respondida } (para no mostrar el formulario tras refrescar)
@@ -695,7 +695,7 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
 
     const { data: ticket } = await admin.database
       .from('tickets')
-      .select('id, codigo, titulo, descripcion, estado, cerrado_por, adjunto_key, created_at, updated_at, categorias_ticket(nombre), subcategorias_ticket(nombre)')
+      .select('id, codigo, titulo, descripcion, estado, cerrado_por, nivel_atencion, adjunto_key, created_at, updated_at, categorias_ticket(nombre), subcategorias_ticket(nombre)')
       .eq('token', token)
       .maybeSingle();
     if (!ticket) return json({ ok: false, code: 'no_existe' });
@@ -706,6 +706,16 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       .eq('ticket_id', ticket.id)
       .eq('interno', false)
       .order('created_at', { ascending: true });
+
+    // Escalamiento (migración 121): el solicitante ve el nivel y la fecha
+    // estimada del tramo abierto; nunca el motivo, el especialista ni quién lo
+    // tiene. Sin la tabla (function desplegada antes que la 121) sale null.
+    const { data: tramo } = await admin.database
+      .from('ticket_escalamientos')
+      .select('fecha_estimada')
+      .eq('ticket_id', ticket.id)
+      .is('fin_at', null)
+      .maybeSingle();
 
     // La captura es del propio solicitante: se entrega una URL firmada de corta
     // vida, nunca la key (el bucket es privado, migración 111). Si no se puede
@@ -720,6 +730,8 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       estado: ticket.estado,
       // 120: 'sistema' = «Cerrado automático – Sin validación» (no se califica).
       cerradoPor: ticket.cerrado_por || null,
+      nivel: ticket.nivel_atencion || null,
+      fechaEstimada: tramo?.fecha_estimada || null,
       adjuntoUrl,
       adjuntoExpiraSegundos: adjuntoUrl ? ADJUNTO_URL_SEGUNDOS : null,
       categoria: uno(ticket.categorias_ticket)?.nombre || '',

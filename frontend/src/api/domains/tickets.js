@@ -25,7 +25,8 @@ const ORDEN_DEFECTO = { columna: 'created_at', ascending: false };
 const COLS_CATEGORIA = 'id, nombre, servicio_id, aviso';
 // `prioridad_sugerida` (116): prioridad inicial de los tickets nuevos de la
 // subcategoría (NULL = media); la aplica crear_ticket_publico en el servidor.
-const COLS_SUBCATEGORIA = 'id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso';
+// `nivel_sugerido` (121): nivel con el que Iniciar precarga el ticket (NULL = N1).
+const COLS_SUBCATEGORIA = 'id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, nivel_sugerido, aviso';
 const avisoONull = (v) => String(v ?? '').trim() || null;
 // Encuesta de satisfacción con su revisión (120: una por resolución).
 const COLS_ENCUESTA = 'id, nivel, comentario, fecha_envio, created_at, resolucion_numero, anulada_at, revision_desenlace, revision_nota, revisado_por, revisado_at';
@@ -91,17 +92,17 @@ export const ticketsApi = {
   // rápida (CategoriasTicketPanel.vue), no un NOT NULL en columna (los 3
   // casos históricos ambiguos siguen con tipo_sugerido NULL). La prioridad
   // sugerida (116) es opcional: vacía = media.
-  async createSubcategoriaTicket(categoriaId, nombre, tipoSugerido, prioridadSugerida = null) {
+  async createSubcategoriaTicket(categoriaId, nombre, tipoSugerido, prioridadSugerida = null, nivelSugerido = null) {
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
-      .insert([{ categoria_id: categoriaId, nombre: trimText(nombre), tipo_sugerido: tipoSugerido, prioridad_sugerida: prioridadSugerida || null }])
+      .insert([{ categoria_id: categoriaId, nombre: trimText(nombre), tipo_sugerido: tipoSugerido, prioridad_sugerida: prioridadSugerida || null, nivel_sugerido: nivelSugerido || null }])
       .select(COLS_SUBCATEGORIA)
       .single();
     if (error) throw error;
     return data;
   },
 
-  // `datos`: { nombre, tipo_sugerido?, prioridad_sugerida?, aviso? }. Los tres son
+  // `datos`: { nombre, tipo_sugerido?, prioridad_sugerida?, nivel_sugerido?, aviso? }. Los cuatro son
   // opcionales a propósito (a diferencia del alta): omitirlos no toca la
   // columna, así renombrar una subcategoría no obliga a fijar (o borrar) su
   // clasificación ni su aviso. Pasarlos explícitos — incluido null/'' — sí
@@ -110,6 +111,7 @@ export const ticketsApi = {
     const cambios = { nombre: trimText(datos.nombre) };
     if ('tipo_sugerido' in datos) cambios.tipo_sugerido = datos.tipo_sugerido || null;
     if ('prioridad_sugerida' in datos) cambios.prioridad_sugerida = datos.prioridad_sugerida || null;
+    if ('nivel_sugerido' in datos) cambios.nivel_sugerido = datos.nivel_sugerido || null;
     if ('aviso' in datos) cambios.aviso = avisoONull(datos.aviso);
     const { data, error } = await getClient().database
       .from('subcategorias_ticket')
@@ -206,10 +208,11 @@ export const ticketsApi = {
         nota_resolucion, cerrado_at, cerrado_por,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
         categoria_id, categorias_ticket(nombre, aviso),
-        subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido, aviso),
+        subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido, nivel_sugerido, aviso),
         equipo_id, equipos(codigo, marca, modelo),
         cuenta_id, cuentas(usuario, plataformas(nombre)),
-        licencia_id, licencias(software)
+        licencia_id, licencias(software),
+        ${EMBED_ESCALAMIENTO}
       `)
       .eq('id', id)
       .maybeSingle();
@@ -299,6 +302,47 @@ export const ticketsApi = {
     if (error) throw error;
   },
 
+  // ── Escalamiento por niveles (migración 121) ──────────────────────────
+  // Tramos del ticket (el más antiguo primero) con sus avances. Solo lectura:
+  // tramos y avances los escriben las tres RPC de abajo.
+  async listEscalamientosTicket(ticketId) {
+    const { data, error } = await getClient().database
+      .from('ticket_escalamientos')
+      .select(`
+        id, nivel_desde, nivel_hacia, direccion, motivo, responsable_id,
+        especialista_tipo, especialista_nombre, referencia_externa, fecha_estimada,
+        inicio_at, fin_at, fin_motivo, created_by,
+        avances:ticket_escalamiento_avances(id, nota, fecha_estimada_nueva, visible_usuario, autor_id, created_at)
+      `)
+      .eq('ticket_id', ticketId)
+      .order('inicio_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map((t) => ({
+      ...t,
+      avances: [...(t.avances || [])].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))),
+    }));
+  },
+
+  // `datos`: { nivel: 'N2'|'N3', motivo, responsable_id?, especialista_tipo?,
+  // especialista_nombre?, referencia?, fecha_estimada? }. N2 exige responsable
+  // (reasigna); N3 exige especialista y conserva al responsable salvo otro.
+  // Rechazos: 42501 sin el módulo; P0001 con el mensaje de la regla.
+  async escalarTicket(ticketId, datos) {
+    return rpcEscalamiento('escalar_ticket', ticketId, datos);
+  },
+
+  // `datos`: { nivel (inferior al actual), motivo, responsable_id? }.
+  async devolverNivelTicket(ticketId, datos) {
+    return rpcEscalamiento('devolver_nivel_ticket', ticketId, datos);
+  },
+
+  // `datos`: { nota, fecha_estimada?, referencia?, visible_usuario }. Si es
+  // visible, la nota también llega al solicitante como respuesta pública.
+  async registrarAvanceEscalamiento(ticketId, datos) {
+    return rpcEscalamiento('registrar_avance_escalamiento', ticketId, datos);
+  },
+
+
   // Resolver (120): en curso → resuelto con la solución aplicada, que la base
   // publica como comentario visible; el ticket espera la calificación del
   // solicitante (o el cierre automático a las 24 h). Sin solicitante se cierra
@@ -321,12 +365,34 @@ export const ticketsApi = {
   },
 };
 
+// Tramos del escalamiento (121), para saber el abierto: su fecha estimada se
+// muestra en la tarjeta y en la ficha (vencida = sello). Son pocos por ticket.
+const EMBED_ESCALAMIENTO = 'escalamientos:ticket_escalamientos(nivel_hacia, fecha_estimada, fin_at)';
+
 const SELECT_BASE = `
   id, codigo, titulo, estado, prioridad, nivel_atencion, tipo, vinculado, contacto_ingresado,
   created_at, updated_at, asignado_a, empleado_id, cerrado_por,
   empleados(nombres, apellidos),
-  categorias_ticket(nombre), subcategorias_ticket(nombre)
+  categorias_ticket(nombre), subcategorias_ticket(nombre),
+  ${EMBED_ESCALAMIENTO}
 `;
+
+// Fecha estimada del tramo abierto (o null).
+function fechaEstimadaAbierta(row) {
+  const abierto = (row.escalamientos || []).find((e) => !e.fin_at);
+  return abierto?.fecha_estimada || null;
+}
+
+// Las RPC del escalamiento reciben (p_ticket_id, p_datos jsonb). Vacíos se
+// mandan como null: el servidor los trata como "no indicado".
+async function rpcEscalamiento(nombre, ticketId, datos = {}) {
+  const limpios = Object.fromEntries(Object.entries(datos)
+    .map(([k, v]) => [k, typeof v === 'string' ? (v.trim() || null) : v])
+    .filter(([, v]) => v !== undefined));
+  const { data, error } = await getClient().database.rpc(nombre, { p_ticket_id: ticketId, p_datos: limpios });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
 
 // resuelto_at (migración 089): fecha de resolución para la columna "Fecha"
 // del listado. Si el proyecto todavía no tiene la migración aplicada, la
@@ -425,11 +491,10 @@ function mapTicketResumen(row) {
     titulo: row.titulo,
     estado: row.estado,
     prioridad: row.prioridad,
-    // Nivel de atención (N1/N2/N3) en el LISTADO, no solo en el detalle
-    // (ago 2026): la columna "Nivel" de la tabla lo necesita. Hasta acá
-    // nivel_atencion solo viajaba en getTicket(), así que la columna habría
-    // salido vacía sin este cambio — no era un problema de UI.
+    // Nivel de atención (N1/N2/N3) en el LISTADO, no solo en el detalle: la
+    // tarjeta del Triage lo muestra y el filtro «Nivel» lo usa.
     nivel_atencion: row.nivel_atencion,
+    escalamiento_fecha_estimada: fechaEstimadaAbierta(row),
     tipo: row.tipo,
     vinculado: row.vinculado,
     solicitante: empleado ? `${empleado.nombres} ${empleado.apellidos}`.trim() : (row.contacto_ingresado || ''),
@@ -481,6 +546,8 @@ function mapTicketDetalle(row) {
     subcategoria_id: row.subcategoria_id,
     subcategoria_nombre: row.subcategorias_ticket?.nombre || '',
     subcategoria_tipo_sugerido: row.subcategorias_ticket?.tipo_sugerido || null,
+    subcategoria_nivel_sugerido: row.subcategorias_ticket?.nivel_sugerido || null,
+    escalamiento_fecha_estimada: fechaEstimadaAbierta(row),
     // Aviso de la categoría/subcategoría (114), ya resuelto: el técnico lo ve
     // en el contexto del ticket para recordar la regla que vio el solicitante.
     aviso: resolverAvisoCategoria(row.categorias_ticket, row.subcategorias_ticket),
