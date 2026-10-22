@@ -13,6 +13,7 @@ import { useRouter, RouterLink } from 'vue-router';
 import { useSolicitudesStore } from '../../stores/solicitudes.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
+import { subtituloListado } from '../../core/subtituloListado.js';
 import { formatFecha } from '../../core/formatters.js';
 import {
   OPCIONES_TIPO_SOLICITUD, avanceSolicitud, textoAvance, siguientePaso, origenSolicitudInfo,
@@ -69,11 +70,12 @@ async function refrescarConteos() {
   }
 }
 
+// «Todas» primero (SISTEMA-DISENO §3.2.1); la de defecto sigue siendo «Abiertas».
 const VISTAS = computed(() => [
+  { valor: 'todas', label: 'Todas', conteo: conteos.value?.todas },
   { valor: 'abierta', label: 'Abiertas', conteo: conteos.value?.abierta, titulo: 'Con pasos pendientes' },
   { valor: 'completada', label: 'Completadas', conteo: conteos.value?.completada },
   { valor: 'cancelada', label: 'Canceladas', conteo: conteos.value?.cancelada },
-  { valor: 'todas', label: 'Todas', conteo: conteos.value?.todas },
 ]);
 
 const DIMENSIONES = [
@@ -105,6 +107,13 @@ const filas = computed(() => lista.value.map((s) => {
     fechaTexto: formatFecha(s.created_at),
     origenTexto: origenSolicitudInfo(s.origen),
   };
+}));
+
+// El subtítulo dice qué se está viendo (2026-10-21; antes era una frase fija).
+const FRASE_VISTA = { abierta: ['abierta', 'abiertas'], completada: ['completada', 'completadas'], cancelada: ['cancelada', 'canceladas'] };
+const subtitulo = computed(() => subtituloListado(total.value, ['solicitud', 'solicitudes'], {
+  frase: FRASE_VISTA[filtros.estado], filtrado: hayFiltros.value,
+  descripcion: 'altas, bajas y pedidos de servicio con sus pasos',
 }));
 
 const vistaVacia = computed(() => {
@@ -143,19 +152,19 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado
       titulo="Solicitudes"
-      subtitulo="Altas, bajas y pedidos de servicio con sus pasos"
+      :subtitulo="subtitulo"
     >
       <template #acciones>
         <AppButton icon="ti ti-plus" label="Nueva solicitud" @click="mostrarForm = true" />
       </template>
     </AppEncabezado>
 
-    <AppVistas v-model="filtros.estado" :opciones="VISTAS" label="Vista de solicitudes" />
 
-    <AppBarraFiltros class="pt-3">
+    <AppBarraFiltros>
       <AppBuscador v-model="busqueda" label="Buscar solicitudes" placeholder="Buscar por código o por persona" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <AppVistas v-model="filtros.estado" en-barra class="ml-auto" :opciones="VISTAS" label="Vista de solicitudes" />
     </AppBarraFiltros>
 
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">

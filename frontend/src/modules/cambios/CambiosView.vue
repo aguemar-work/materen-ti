@@ -11,6 +11,7 @@ import { useCambiosStore } from '../../stores/cambios.js';
 import { useServiciosStore } from '../../stores/catalogos.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { showToast } from '../../core/toast.js';
+import { subtituloListado } from '../../core/subtituloListado.js';
 import {
   ESTADOS_DE_VISTA, ETIQUETAS_VISTA, VISTA_CAMBIO_DEFECTO, OPCIONES_TIPO_CAMBIO,
   estadosDeVista, plazoAprobacion, fechaVentana, emergenciaSinAprobar,
@@ -97,6 +98,18 @@ const filas = computed(() => lista.value.map((c) => {
   return { ...c, ventanaTexto: fechaVentana(c), plazo };
 }));
 
+// El subtítulo dice qué se está viendo (2026-10-21; antes era una frase fija).
+const FRASE_VISTA = {
+  activos: ['en curso', 'en curso'],
+  por_aprobar: ['por aprobar', 'por aprobar'],
+  en_ejecucion: ['en ejecución', 'en ejecución'],
+  cerrados: ['terminado', 'terminados'],
+};
+const subtitulo = computed(() => subtituloListado(total.value, ['cambio', 'cambios'], {
+  frase: FRASE_VISTA[filtros.vista], filtrado: hayFiltros.value,
+  descripcion: 'cambios en producción y su aprobación',
+}));
+
 const vistaVacia = computed(() => {
   if (filtros.vista === 'todos' || !(conteos.value?.todos > 0)) return null;
   const nombre = ETIQUETAS_VISTA[filtros.vista]?.toLowerCase();
@@ -144,21 +157,21 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado
       titulo="Cambios"
-      subtitulo="Cambios en producción y su aprobación"
+      :subtitulo="subtitulo"
     >
       <template #acciones>
         <AppButton icon="ti ti-plus" label="Nuevo cambio" @click="mostrarForm = true" />
       </template>
     </AppEncabezado>
 
-    <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de cambios" />
 
     <CambiosResumen :kpi="kpi" :vencidas="vencidas" />
 
-    <AppBarraFiltros class="pt-3">
+    <AppBarraFiltros>
       <AppBuscador v-model="busqueda" label="Buscar cambios" placeholder="Buscar por código o título" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <AppVistas v-model="filtros.vista" en-barra class="ml-auto" :opciones="VISTAS" label="Vista de cambios" />
     </AppBarraFiltros>
 
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">

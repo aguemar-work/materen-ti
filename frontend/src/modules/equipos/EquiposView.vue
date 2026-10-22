@@ -12,6 +12,7 @@ import { useEquiposStore } from '../../stores/equipos.js';
 import { insforgeApi } from '../../api/insforge.js';
 import { useRealtimeRefresco, REFRESCO_LISTA_DEBOUNCE_MS } from '../../composables/useRealtimeRefresco.js';
 import { showToast } from '../../core/toast.js';
+import { subtituloListado } from '../../core/subtituloListado.js';
 import { REPORTE_POR_ID, puedeVerReporte, rutaReporte } from '../../core/reportes.js';
 import { useAuthStore } from '../../stores/auth.js';
 import { useEquiposAcciones } from './useEquiposAcciones.js';
@@ -91,6 +92,27 @@ function limpiarFiltros() {
   limpiar(CLAVES_FILTRO);
   busqueda.value = '';
 }
+
+// El subtítulo dice qué se está viendo (2026-10-21; antes era una frase fija).
+const FRASE_VISTA = {
+  disponible: ['libre', 'libres'],
+  asignado: ['con una persona', 'con personas'],
+  en_ubicacion: ['en una ubicación', 'en ubicaciones'],
+  en_reparacion: ['en reparación', 'en reparación'],
+  fuera: ['fuera de servicio', 'fuera de servicio'],
+};
+const subtitulo = computed(() => subtituloListado(total.value, ['equipo', 'equipos'], {
+  frase: FRASE_VISTA[filtros.situacion], filtrado: hayFiltros.value,
+  descripcion: 'quién tiene cada equipo, dónde está y en qué estado',
+}));
+
+// Una vista sin filas en un inventario que sí tiene equipos ("Libres: 0")
+// no es "Sin equipos todavía": dice que esa vista está vacía, nada más.
+const vistaVacia = computed(() => {
+  if (!filtros.situacion || !(conteos.value?.todos > 0)) return null;
+  const nombre = VISTAS.value.find((v) => v.valor === filtros.situacion)?.label.toLowerCase();
+  return { titulo: `Sin equipos ${nombre}`, mensaje: 'No hay equipos en esta vista. Las demás pestañas muestran el resto del inventario.' };
+});
 
 watch(filtrosServidor, (f) => store.aplicarFiltros(f), { deep: true });
 watch(filtrosSinSituacion, refrescarConteos, { deep: true });
@@ -187,7 +209,7 @@ onMounted(async () => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <AppEncabezado titulo="Equipos" subtitulo="Quién tiene cada equipo, dónde está y en qué estado">
+    <AppEncabezado titulo="Equipos" :subtitulo="subtitulo">
       <template #acciones>
         <MenuAcciones
           label="Más acciones"
@@ -203,14 +225,13 @@ onMounted(async () => {
       </template>
     </AppEncabezado>
 
-    <!-- ══ Vistas (situación) ══ -->
-    <AppVistas v-model="filtros.situacion" :opciones="VISTAS" label="Vista de equipos" />
 
     <!-- ══ Barra de filtros: búsqueda + chips bajo demanda ══ -->
-    <AppBarraFiltros class="pt-3">
-      <AppBuscador v-model="busqueda" label="Buscar equipos" placeholder="Buscar por código, marca, serie o portador" />
+    <AppBarraFiltros>
+      <AppBuscador v-model="busqueda" label="Buscar equipos" placeholder="Buscar por código, modelo, serie o portador" />
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
+      <AppVistas v-model="filtros.situacion" en-barra class="ml-auto" :opciones="VISTAS" label="Vista de equipos" />
     </AppBarraFiltros>
 
     <!-- ══ Selección para etiquetas ══ -->
@@ -235,11 +256,11 @@ onMounted(async () => {
       <AppVacio
         v-else-if="!cargando && total === 0"
         icono="ti ti-devices"
-        :titulo="hayFiltros ? 'Sin resultados' : 'Sin equipos todavía'"
-        :mensaje="hayFiltros ? 'No hay equipos con los filtros aplicados.' : 'Registre el primer equipo del inventario o impórtelos desde Excel.'"
+        :titulo="hayFiltros ? 'Sin resultados' : vistaVacia ? vistaVacia.titulo : 'Sin equipos todavía'"
+        :mensaje="hayFiltros ? 'No hay equipos con los filtros aplicados.' : vistaVacia ? vistaVacia.mensaje : 'Registre el primer equipo del inventario o impórtelos desde Excel.'"
       >
         <AppButton v-if="hayFiltros" variant="outline" severity="secondary" icon="ti ti-x" label="Limpiar filtros" @click="limpiarFiltros" />
-        <AppButton v-else variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar equipo" @click="abrirNuevo" />
+        <AppButton v-else-if="!vistaVacia" variant="outline" severity="secondary" icon="ti ti-plus" label="Registrar equipo" @click="abrirNuevo" />
       </AppVacio>
 
       <template v-else>

@@ -186,11 +186,11 @@ onMounted(async () => {
     </AppEncabezado>
 
     <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
-    <AppVistas v-model="filtros.vista" :opciones="VISTAS" label="Vista de actividad" />
-    <AppBarraFiltros class="pt-3">
+    <AppBarraFiltros>
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiar(CLAVES_FILTRO)" />
       <span class="ml-auto hidden text-xs text-gray-500 sm:inline">Últimos 200 registros</span>
+      <AppVistas v-model="filtros.vista" en-barra :opciones="VISTAS" label="Vista de actividad" />
     </AppBarraFiltros>
 
     <!-- ══ Línea de tiempo ════════════════════════════════════════ -->

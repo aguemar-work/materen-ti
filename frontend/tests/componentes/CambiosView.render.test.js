@@ -58,6 +58,8 @@ async function montar(url = '/cambios') {
 }
 
 const vistas = (w) => w.findAll('[role="group"][aria-label="Vista de cambios"] button');
+// Por nombre, no por posición: el orden de las pestañas es presentación.
+const vista = (w, nombre) => vistas(w).find((b) => b.text().startsWith(nombre));
 const filas = (w) => w.findAll('tbody tr');
 const llamadaLista = () => insforgeApi.listCambiosPage.mock.calls.at(-1)[0];
 
@@ -106,27 +108,27 @@ describe('CambiosView — listado', () => {
   it('las vistas llevan su conteo y «En curso» viene elegida', async () => {
     const { w } = await montar();
     const etiquetas = vistas(w).map((b) => b.text().replace(/\s+/g, ' ').trim());
-    expect(etiquetas).toEqual(['En curso 8', 'Por aprobar 1', 'En ejecución 2', 'Terminados 14', 'Todos 22']);
-    expect(vistas(w)[0].attributes('aria-pressed')).toBe('true');
-    expect(vistas(w)[1].attributes('aria-pressed')).toBe('false');
+    expect(etiquetas).toEqual(['Todos 22', 'En curso 8', 'Por aprobar 1', 'En ejecución 2', 'Terminados 14']);
+    expect(vista(w, 'En curso').attributes('aria-pressed')).toBe('true');
+    expect(vista(w, 'Todos').attributes('aria-pressed')).toBe('false');
   });
 
   it('elegir una vista pide sus estados y la deja en la URL; «Todos» no filtra; el defecto no ensucia la URL', async () => {
     const { w, router } = await montar();
-    await vistas(w)[1].trigger('click');
+    await vista(w, 'Por aprobar').trigger('click');
     await espera(10);
     expect(llamadaLista().estados).toEqual(['solicitado']);
     expect(router.currentRoute.value.query.vista).toBe('por_aprobar');
     // en una vista de un solo estado la columna Estado repetiría la pestaña
     expect(w.findAll('thead th').map((t) => t.text())).not.toContain('Estado');
-    await vistas(w)[4].trigger('click');
+    await vista(w, 'Todos').trigger('click');
     await espera(10);
     expect(llamadaLista().estados).toEqual([]);
     expect(w.findAll('thead th').map((t) => t.text())).toContain('Estado');
-    await vistas(w)[3].trigger('click');
+    await vista(w, 'Terminados').trigger('click');
     await espera(10);
     expect(llamadaLista().estados).toEqual(['cerrado', 'rechazado', 'cancelado', 'revertido']);
-    await vistas(w)[0].trigger('click');
+    await vista(w, 'En curso').trigger('click');
     await espera(10);
     expect(router.currentRoute.value.query.vista).toBeUndefined();
   });
@@ -135,7 +137,7 @@ describe('CambiosView — listado', () => {
     const { w } = await montar('/cambios?vista=en_ejecucion&tipo=emergencia,normal&servicio=vpn&q=router');
     expect(llamadaLista()).toMatchObject({ estados: ['en_ejecucion'], tipos: ['emergencia', 'normal'], servicios: ['vpn'], q: 'router' });
     expect(insforgeApi.conteosCambiosPorVista).toHaveBeenCalledWith({ q: 'router', tipos: ['emergencia', 'normal'], servicios: ['vpn'] });
-    expect(vistas(w)[2].attributes('aria-pressed')).toBe('true');
+    expect(vista(w, 'En ejecución').attributes('aria-pressed')).toBe('true');
     expect(w.find('input[type="search"], input[type="text"]').element.value).toBe('router');
     expect(w.text()).toContain('Limpiar');
   });
@@ -176,13 +178,11 @@ describe('CambiosView — listado', () => {
   it('los chips ofrecen tipo y los servicios del catálogo', async () => {
     const { w } = await montar();
     expect(insforgeApi.listServicios).toHaveBeenCalled();
-    const boton = w.findAll('button').find((b) => b.text().includes('Filtro'));
-    expect(boton).toBeTruthy();
-    await boton.trigger('click');
+    // Desde 2026-10-21: un solo botón "Filtros" con un panel de secciones.
+    await w.find('button[aria-haspopup="dialog"]').trigger('click');
     await espera(10);
-    const panel = document.body.textContent;
-    expect(panel).toContain('Tipo');
-    expect(panel).toContain('Servicio');
+    const secciones = [...document.body.querySelectorAll('[role="dialog"] fieldset legend')].map((l) => l.textContent.trim());
+    expect(secciones).toEqual(['Filtrar por Tipo', 'Filtrar por Servicio']);
   });
 });
 

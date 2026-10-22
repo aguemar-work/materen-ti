@@ -61,3 +61,19 @@ describe('filtrosTickets', () => {
     expect(c).toMatchObject({ prioridad: ['alta'], categoria: ['red'], asignado: ['x'], estado: [] });
   });
 });
+
+
+// Orden de las secciones del panel "Filtros" (2026-10-21): lo diario primero.
+describe('dimensionesDe — orden', () => {
+  it('Asignado a, Prioridad, Categoría, Creado y después Estado, Tipo, Nivel y Vínculo', () => {
+    expect(dimensionesDe('pendientes').map((d) => d.id))
+      .toEqual(['asignado', 'prioridad', 'categoria', 'creado', 'estado', 'tipo', 'nivel', 'solicitante']);
+    // "Usted" y "Sin asignar" son las primeras opciones: la pregunta diaria.
+    expect(dimensionesDe('pendientes')[0].opciones.slice(0, 2).map((o) => o.valor)).toEqual([ASIGNADO_YO, SIN_ASIGNAR]);
+  });
+
+  it('Nivel muestra su descripción, no solo el código', () => {
+    const nivel = dimensionesDe('pendientes').find((d) => d.id === 'nivel');
+    expect(nivel.opciones[0]).toEqual({ valor: 'N1', label: 'N1 — Soporte básico' });
+  });
+});

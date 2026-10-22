@@ -4,8 +4,7 @@
   ],
   "azul-decorativo": [
     "components/shared/AppNotifications.vue",
-    "modules/soporte/SoporteView.vue",
-    "modules/tickets/TicketsView.vue"
+    "modules/soporte/SoporteView.vue"
   ],
   "caja-de-icono": [
     "components/shared/ConfirmDialog.vue",

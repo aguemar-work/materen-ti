@@ -229,7 +229,8 @@ describe('LicenciasView.vue — filtros V2 (vistas + chips + URL)', () => {
     await flushPromises();
     expect(insforgeApi.listLicenciasPage.mock.calls.at(-1)[0].empresaIds).toEqual(['emp-1']);
     expect(insforgeApi.conteosLicenciasPorSituacion.mock.calls.at(-1)[0].empresaIds).toEqual(['emp-1']);
-    expect(w.find('button[aria-label^="Filtro Empresa"]').text()).toContain('Materen');
+    // El botón "Filtros" dice qué hay puesto (2026-10-21: un solo menú).
+    expect(w.find('button[aria-haspopup="dialog"]').attributes('aria-label')).toContain('Empresa Materen');
   });
 });
 

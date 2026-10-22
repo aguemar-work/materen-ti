@@ -19,7 +19,7 @@ defineExpose({ focus: () => input.value?.focus() });
 </script>
 
 <template>
-  <label class="relative block w-full min-w-52 flex-1 sm:max-w-sm">
+  <label class="relative block w-full sm:w-auto sm:min-w-44 sm:max-w-xs sm:flex-1">
     <span class="sr-only">{{ label }}</span>
     <i class="ti ti-search pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true"></i>
     <input

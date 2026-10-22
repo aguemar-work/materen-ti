@@ -53,6 +53,8 @@ async function montar(url = '/solicitudes') {
 }
 
 const vistas = (w) => w.findAll('[role="group"][aria-label="Vista de solicitudes"] button');
+// Por nombre, no por posición: el orden de las pestañas es presentación.
+const vista = (w, nombre) => vistas(w).find((b) => b.text().startsWith(nombre));
 const filas = (w) => w.findAll('tbody tr');
 const llamadaLista = () => insforgeApi.listSolicitudesPage.mock.calls.at(-1)[0];
 
@@ -88,24 +90,24 @@ describe('SolicitudesView — listado', () => {
   it('las vistas llevan su conteo y la de trabajo (Abiertas) viene elegida', async () => {
     const { w } = await montar();
     const etiquetas = vistas(w).map((b) => b.text().replace(/\s+/g, ' ').trim());
-    expect(etiquetas).toEqual(['Abiertas 2', 'Completadas 5', 'Canceladas 1', 'Todas 8']);
-    expect(vistas(w)[0].attributes('aria-pressed')).toBe('true');
-    expect(vistas(w)[1].attributes('aria-pressed')).toBe('false');
+    expect(etiquetas).toEqual(['Todas 8', 'Abiertas 2', 'Completadas 5', 'Canceladas 1']);
+    expect(vista(w, 'Abiertas').attributes('aria-pressed')).toBe('true');
+    expect(vista(w, 'Todas').attributes('aria-pressed')).toBe('false');
   });
 
   it('elegir una vista pide ese estado al servidor y lo deja en la URL; "Todas" pide sin estado y suma la columna Estado', async () => {
     const { w, router } = await montar();
     expect(w.findAll('thead th').map((t) => t.text())).not.toContain('Estado');
-    await vistas(w)[1].trigger('click');
+    await vista(w, 'Completadas').trigger('click');
     await espera(10);
     expect(llamadaLista().estado).toBe('completada');
     expect(router.currentRoute.value.query.estado).toBe('completada');
-    await vistas(w)[3].trigger('click');
+    await vista(w, 'Todas').trigger('click');
     await espera(10);
     expect(llamadaLista().estado).toBe('');
     expect(router.currentRoute.value.query.estado).toBe('todas');
     expect(w.findAll('thead th').map((t) => t.text())).toContain('Estado');
-    await vistas(w)[0].trigger('click');
+    await vista(w, 'Abiertas').trigger('click');
     await espera(10);
     expect(router.currentRoute.value.query.estado).toBeUndefined(); // el valor por defecto no ensucia la URL
   });
@@ -114,7 +116,7 @@ describe('SolicitudesView — listado', () => {
     const { w } = await montar('/solicitudes?estado=completada&tipo=licencia,acceso_nuevo&q=ana');
     expect(llamadaLista()).toMatchObject({ estado: 'completada', tipos: ['licencia', 'acceso_nuevo'], q: 'ana' });
     expect(insforgeApi.conteosSolicitudesPorEstado).toHaveBeenCalledWith({ q: 'ana', tipos: ['licencia', 'acceso_nuevo'] });
-    expect(vistas(w)[1].attributes('aria-pressed')).toBe('true');
+    expect(vista(w, 'Completadas').attributes('aria-pressed')).toBe('true');
     expect(w.find('input[type="search"], input[type="text"]').element.value).toBe('ana');
     expect(w.text()).toContain('Limpiar');
   });

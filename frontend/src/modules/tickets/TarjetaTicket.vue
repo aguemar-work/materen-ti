@@ -8,8 +8,8 @@
 // punteado (ámbar si el ticket sigue vigente). La antigüedad solo aparece
 // cuando es una alerta (vigente y sin novedad hace demasiado).
 //
-// El contenedor (<li>, clic, selección) es del padre: este componente solo
-// pinta el contenido. Slot `inicio` para el checkbox de selección.
+// El contenedor (<li>, clic) es del padre: este componente solo pinta el
+// contenido.
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import AppAvatar from '../../components/ui/AppAvatar.vue';
 import AppTag from '../../components/ui/AppTag.vue';
@@ -34,7 +34,6 @@ defineProps({
        estiraban el documento ("scroll general" que llevaba a un vacío,
        reportado 2026-09-25). -->
   <div class="relative flex min-w-0 gap-3">
-    <slot name="inicio" />
     <div class="min-w-0 flex-1">
       <!-- 1 · número + prioridad + nivel + estado -->
       <div class="flex min-w-0 flex-wrap items-center gap-1.5">

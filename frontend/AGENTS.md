@@ -89,6 +89,14 @@
   `/tickets?asignado=yo` (mis tickets), `/empleados?estado=Inactivo`,
   `/correos?vista=compartida`, `/licencias?q=<software>` (búsqueda global).
   Un filtro nuevo es una clave del esquema, no un `route.query` leído a mano.
+- "Usted" viaja como `yo` (`?asignado=yo`, `/problemas?responsable=yo`,
+  `/base-conocimiento?autor=yo`) y se traduce al id en sesión antes de ir al
+  servidor: nunca el id propio en la URL.
+- Una línea por listado, en este orden: `<AppBarraFiltros>` con `AppBuscador` ·
+  `AppFiltros` · Limpiar · `AppVistas en-barra class="ml-auto"` (lo exige
+  `tests/vistas-en-barra.test.js`). `AppFiltros` es UN botón "Filtros" con UN
+  panel de secciones, en el orden del arreglo (lo más diario primero). Nunca un
+  menú que lleve a otro menú ni un botón por dimensión.
 - `?nuevo=1` abre el alta en Equipos y Licencias (y se quita de la URL).
 
 ## Accesibilidad y copy

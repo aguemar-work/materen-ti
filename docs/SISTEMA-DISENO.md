@@ -326,9 +326,9 @@ una decisión para pedir, no para completar.
 | Componente | Para qué | Props clave |
 | --- | --- | --- |
 | `AppEncabezado` | Encabezado de página | `titulo`, `subtitulo`, slots `acciones`, `junto-titulo`, `subtitulo` |
-| `AppBarraFiltros` | Fila de controles de 32px entre el encabezado y la tabla de un listado | slot (el selector de vista lleva `ml-auto`); con `AppVistas` arriba, `class="pt-3"` |
-| `AppVistas` | Pestañas de vista de un listado, con conteo (§3.2.1) | `v-model`, `opciones` [{valor,label,conteo?,icono?,titulo?}], `label` |
-| `AppFiltros` | Chips de filtro bajo demanda con selección múltiple (§3.2.1) | `v-model` ({[id]: valores[]}), `dimensiones` [{id,label,icono,opciones:[{valor,label}]}] o [{id,label,icono,tipo:'rango'}] (valor `[desde,hasta]`) |
+| `AppBarraFiltros` | UNA línea de controles de 32px entre el encabezado y la tabla de un listado: búsqueda · filtros · vistas | slot (las vistas llevan `ml-auto`) |
+| `AppVistas` | Vistas de un listado, con conteo (§3.2.1); `en-barra` en los listados, pestañas a lo ancho solo en Inicio | `v-model`, `opciones` [{valor,label,conteo?,icono?,titulo?}], `label`, `en-barra` |
+| `AppFiltros` | Un solo botón "Filtros" con un solo panel de secciones, selección múltiple (§3.2.1) | `v-model` ({[id]: valores[]}), `dimensiones` [{id,label,icono,opciones:[{valor,label}]}] o [{id,label,icono,tipo:'rango'}] (valor `[desde,hasta]`); el orden del arreglo es el de las secciones |
 | `AppMarcoTabla` | Tabla a sangre dentro de la hoja (sin card), no se estira: con pocas filas la paginación queda pegada a la última | slot (tabla con scroll + `AppPaginacion`) |
 | `AppButton` | Toda acción | `label`, `icon`, `severity` (primary/secondary/danger), `variant` (solid/outline/text), `size` (sm 32 / md 36 / lg 44), `loading`; `to` (renderiza `RouterLink`) o `href` (renderiza `<a>`) para un botón que navega |
 | `AppPortal` | Layout del portal público y de las páginas de error (4.5) | `titulo` (el `<h1>`), `descripcion`, `seccion`, `icono` + `tono`, `centrado`, `superpuesto`; slots `antetitulo`, `pie` |
@@ -369,26 +369,55 @@ deliberadas, que no son listados: el paso de revisión de
 Plataformas) solo tiene buscador: no hay nada que filtrar.
 
 ```
- Activos 9   Inactivos 3   Suspendidos 0   Todos 12          ← AppVistas
-──────────────────────────────────────────────────────────
-[🔍 Buscar…] [🏢 Empresa: Materen, Andes ⌄ ×] [⧩ Filtro] ✕ Limpiar   ← AppBarraFiltros
+[🔍 Buscar…] [⧩ Filtros 2 ⌄] ✕ Limpiar ··················· [Todos 12|Activos 9|Inactivos 3|Suspendidos 0]
+ └AppBuscador┘ └ AppFiltros ┘                                └──────── AppVistas en-barra (ml-auto) ───────┘
+                                                                             ← UNA línea (AppBarraFiltros)
 ```
-- **Vistas** (`AppVistas`): las 3–6 preguntas diarias de esa lista, a un
+- **Una sola línea** (pedido del dueño, 2026-10-21), en este orden: buscador
+  · Filtros (un solo menú) · Limpiar · y a la derecha las vistas
+  (`AppVistas en-barra class="ml-auto"`, que así no saltan cuando aparece
+  Limpiar) seguidas de lo que agregue la vista (Tabla/Triage en Tickets). Si
+  no entra, las vistas se deslizan; nunca se parte en dos filas. En móvil:
+  buscador, Filtros y vistas (deslizables), cada uno en su fila.
+  `tests/vistas-en-barra.test.js` exige ese orden en todo listado.
+- **Vistas** (`AppVistas en-barra`): las 3–6 preguntas diarias de esa lista, a un
   clic y con su conteo (el conteo respeta búsqueda y chips, no la vista
   elegida: dice cuántas filas va a mostrar esa pestaña). Reemplazan al
-  segmentado de estado y a los KPI que filtraban. Indicador de la activa:
-  marca horizontal de 2px debajo del texto (no es un borde, nunca lateral).
+  segmentado de estado y a los KPI que filtraban. Segmentado de 32px con la
+  activa como pastilla blanca ("pedazo de hoja", principio 7). Las pestañas a
+  lo ancho con la marca de 2px quedan solo para Inicio.
   **Coherencia (regla del dueño):** una fila de vistas responde UNA sola
   pregunta (casi siempre el estado del registro), nunca mezcla criterios
   (estado + responsable), y **"Todos" va siempre primero**. La vista por
   defecto puede ser otra (Empleados: Activos; Tickets: Pendientes;
   Problemas: Abiertos). Lo que no es estado — responsable, empresa… — es
   un chip.
-- **Chips bajo demanda** (`AppFiltros`): "+ Filtro" abre las dimensiones
-  del listado; cada dimensión elegida queda como chip con **selección
-  múltiple**. O dentro de una dimensión, Y entre dimensiones. Chip
-  aplicado = tinte `primary-50`; click lo edita, × lo quita entero. Nada
-  ocupa espacio hasta que se usa.
+- **Filtros en un solo menú** (`AppFiltros`, rediseño pedido por el dueño el
+  2026-10-21; reemplaza al "+ Filtro" con su menú de dimensiones y su segunda
+  pantalla de opciones, que hacía perder el hilo, y a la fila de un botón por
+  dimensión). UN botón "Filtros" abre UN panel con todas las dimensiones como
+  secciones a la vista, con **selección múltiple**: O dentro de una
+  dimensión, Y entre dimensiones. Cada cambio se aplica al instante.
+  - **Botón libre**: borde gris, ícono de embudo, "Filtros" y flecha.
+  - **Con algo elegido**: tinte `primary-50` y el número de dimensiones
+    puestas ("Filtros 2"); su nombre accesible y su `title` dicen cuáles
+    ("Filtros: Prioridad Crítica; Empresa Materen"). El subtítulo de la página
+    agrega ", con los filtros aplicados".
+  - **Secciones**: en el orden del arreglo `dimensiones`, de la pregunta más
+    diaria a la menos (Tickets: Asignado a · Prioridad · Categoría · Creado ·
+    Estado · Tipo · Nivel · Vínculo); dentro de cada una, las opciones diarias
+    primero ("Usted", "Sin asignar"). Con más de 7 opciones, la sección trae su
+    buscador. Una sección con algo elegido ofrece "Quitar".
+- **"Usted" es portable**: el usuario en sesión viaja como `yo`
+  (`?asignado=yo`, `?responsable=yo`, `?autor=yo`) y se traduce a su id
+  antes de ir al servidor; así el mismo enlace sirve a cualquiera. Nunca el
+  id propio con "(usted)" en la etiqueta.
+- **El subtítulo dice qué se ve**: "9 empleados activos, con los filtros
+  aplicados · descripción del módulo" (`core/subtituloListado.js`); el número
+  es lo que hay en pantalla, no el total del inventario.
+- **Una vista vacía no es un inventario vacío**: "Libres: 0" con equipos en
+  otras pestañas dice "Sin equipos libres" sin botón de alta; "…todavía" y el
+  alta quedan para cuando no hay ningún registro.
 - **"Limpiar"** vuelve búsqueda y chips a cero; la vista NO (una vista no
   es un filtro).
 - **La URL es la fuente de verdad** (`useFiltrosUrl`):
@@ -417,11 +446,13 @@ Vistas y chips de cada módulo:
 | --- | --- | --- |
 | Empleados | Todos · Activos (defecto) · Inactivos · Suspendidos | Empresa, Área/Obra, Ubicación |
 | Equipos | Todos · Libres · Con personas · En ubicaciones · En reparación · Fuera de servicio | Tipo, Empresa |
-| Tickets | Todos · Pendientes (defecto) · Resueltos · Rechazados | Estado (dentro de Pendientes/Todos), Asignado a (Usted · Sin asignar · técnicos), Prioridad, Categoría, Tipo, Nivel, Solicitante, Creado |
+| Tickets | Todos · Pendientes (defecto) · Resueltos · Rechazados | Asignado a (Usted · Sin asignar · técnicos), Prioridad, Categoría, Creado, Estado (dentro de Pendientes/Todos), Tipo, Nivel (con descripción), Vínculo con empleado |
 | Licencias | Todas · Por vencer · Vencidas · Perpetuas | Empresa, Acceso (correo / clave / sin credencial) |
 | Correos | Todos · Compartidos · Reutilizables · Por rotar | Plataforma |
-| Base de conocimiento | Todos · Publicados · En revisión · Borradores · Obsoletos | Categoría, Autor |
-| Problemas | Todos · Abiertos (defecto) · Cerrados | Etapa (no en Cerrados), Severidad, Responsable |
+| Base de conocimiento | Todos · Publicados · En revisión · Borradores · Obsoletos | Categoría, Autor (Usted · staff) |
+| Problemas | Todos · Abiertos (defecto) · Cerrados | Responsable (Usted · Sin responsable · staff), Severidad, Etapa (no en Cerrados) |
+| Cambios | Todos · En curso (defecto) · Por aprobar · En ejecución · Terminados | Tipo, Servicio |
+| Solicitudes | Todas · Abiertas (defecto) · Completadas · Canceladas | Tipo |
 | Actividad | Todo · Contraseñas · Entregas · Denegados | Quién, Plataforma, Fecha (rango) |
 | Accesos sensibles | Todas · Equipos · Correos · Otros | Permiso |
 
@@ -431,14 +462,15 @@ cargada); el resto, en el servidor, con un `conteos…` por módulo en su
 
 **Tickets** (`modules/tickets/filtrosTickets.js`): "Usted" viaja como
 `?asignado=yo` (el mismo enlace sirve a cualquier técnico: Inicio → "Ver mis
-tickets" = `?asignado=yo`). El subtítulo ofrece dos atajos a Pendientes con
+tickets" = `?asignado=yo`). El buscador encuentra por código, título,
+contacto y nombre o DNI del empleado. El subtítulo ofrece dos atajos a Pendientes con
 su chip puesto: "N sin asignar" y "N sin vincular". Los enlaces de la
 primera versión (`?vista=nuevos|mios`) se traducen a Pendientes + chip.
 
-**Selección múltiple** (Tickets, en Tabla y en Triage): con filas marcadas,
-la barra de acciones en lote **se sobrepone a la fila de búsqueda** (misma
-altura, `absolute`), que queda `inert`. Nunca se inserta encima de la
-tabla: empujarla hace perder de vista la fila que se estaba marcando.
+**Sin selección múltiple** (retirada el 2026-10-21, pedido del dueño): ni la
+tabla ni la cola de Triage llevan casillas ni barra de acciones en lote; no
+se usaban. Reasignar y cerrar se hacen desde la ficha de cada ticket.
+`TicketsView.render.test.js` verifica que no vuelvan.
 
 ### 3.3 Tablas (preset `pt/table.pt.js`)
 - Cabecera: banda `gray-50/80`, texto `text-xs font-medium text-gray-500`,
@@ -567,9 +599,8 @@ a su `buscar`.
 ```
 <div class="flex h-full min-h-0 flex-col">
   <AppEncabezado titulo subtitulo> #acciones: [secundarias text] [principal sólida]
-  <AppVistas v-model="filtros.estado" :opciones="VISTAS">          ← V2 (§3.2.1)
-  <AppBarraFiltros class="pt-3">
-    AppBuscador · AppFiltros (chips) · [Limpiar] · [SelectorVista ml-auto — solo Tickets: Tabla / Doble columna]
+  <AppBarraFiltros>                                              ← una línea (§3.2.1)
+    AppBuscador · AppFiltros (un solo menú) · [Limpiar] · AppVistas en-barra ml-auto · [SelectorVista — solo Tickets: Tabla / Triage]
   </AppBarraFiltros>
   <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">   ← contenedor de contenido
     error → .notif--danger · vacío → AppVacio (pagina)

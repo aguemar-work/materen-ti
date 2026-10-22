@@ -5,12 +5,15 @@
 // <div> copiado a mano en cada vista; como componente, el espaciado de
 // todos los listados es uno solo.
 //
-// Lo que va a la derecha del todo (selector de vista Tabla/Tarjetas) lleva
-// `class="ml-auto"` en el propio control, como hasta ahora.
+// Una sola línea desde `sm` (pedido del dueño, 2026-10-21), en este orden:
+// buscador · Filtros (un solo menú, AppFiltros) · Limpiar · y a la derecha las
+// vistas (`AppVistas en-barra class="ml-auto"`: no saltan cuando aparece
+// Limpiar) y, si hay, el selector Tabla/Triage. Nunca se parte en dos filas:
+// si no entra, las vistas se deslizan. En móvil cada pieza va en su fila.
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-2 px-4 pb-4 sm:px-6">
+  <div class="flex flex-wrap items-center gap-2 px-4 pb-4 sm:flex-nowrap sm:px-6">
     <slot />
   </div>
 </template>

@@ -23,6 +23,27 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-21** (**Tickets sin selección múltiple**, pedido del dueño, solo frontend) — Se retiran las casillas de la
+  tabla y de la cola de Triage, "Seleccionar todos", la barra de acciones en lote ("Reasignar a…", "Cerrar
+  seleccionados") y sus confirmaciones: no se usaban. Reasignar y cerrar siguen en la ficha de cada ticket.
+  `SISTEMA-DISENO.md` §3.2.1 y `README.md` actualizados.
+
+- **2026-10-21** (**Filtros más sencillos y útiles**, solo frontend, sin migración) — `SISTEMA-DISENO.md` §3.2.1.
+  **Filtros en un solo menú** (`AppFiltros`, pedido del dueño): un botón "Filtros" abre un panel con todas las
+  dimensiones como secciones a la vista, sin el menú "+ Filtro" ni su segunda pantalla; con algo elegido se tiñe y
+  cuenta las dimensiones puestas; las secciones van por uso (Tickets: Asignado a, Prioridad, Categoría, Creado, Estado,
+  Tipo, Nivel, Vínculo). **Buscador, Filtros y vistas en una sola línea**, en ese orden, desde `sm` (`AppVistas
+  en-barra`, un segmentado de 32px a la derecha de `AppBarraFiltros`; las pestañas a lo ancho quedan para Inicio;
+  `tests/vistas-en-barra.test.js` exige el orden en todo listado); en móvil van en filas; el placeholder de Tickets se
+  acorta («Código, título, nombre o DNI»). **"Usted" portable**
+  (`yo`) también en Problemas (`?responsable=yo`) y KB (`?autor=yo`; antes el id propio con "(usted)"). **«Todos»
+  primero** en Cambios y Solicitudes, como manda la regla de vistas. **Subtítulo que dice qué se ve** en Empleados,
+  Equipos, Cambios y Solicitudes (`core/subtituloListado.js`; antes una frase fija) y en Accesos sensibles (antes
+  siempre el total). **Vacío por vista** en Equipos y Correos (antes "…todavía" con botón de alta aunque hubiera
+  registros en otras pestañas). Sin jerga: "Solicitante" → "Vínculo con empleado", Nivel con su descripción, sin
+  "slug" en Plataformas. El buscador de Tickets encuentra también por **DNI** del empleado, y el de Equipos lo dice
+  (modelo).
+
 - **2026-10-06** (**Tablero de mesa de ayuda — migración 118**, escrita, **sin aplicar**; pedido del dueño) — El
   reporte de Tickets pasa a ser un tablero para gerencia, por **día**, semana, mes o rango: cifras (ingresaron,
   resueltos, % resuelto de lo que ingresó sin rechazar, pendientes al inicio y al cierre, tiempo mediano,
