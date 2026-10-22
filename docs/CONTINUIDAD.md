@@ -173,7 +173,10 @@ consultas de una línea: sin saltos de línea, sin `$$`, sin comillas dobles y s
 - [ ] Anotar el enlace a la página de estado de InsForge y de Vercel.
 - [ ] Preparar e imprimir el acta física en blanco y la hoja de cálculo de contingencia.
 - [ ] Hacer la primera restauración probada (sección 4) y registrar el tiempo.
-- [ ] La 120 está aplicada y `credenciales` desplegada (2026-10-22); falta cargar `MANTENIMIENTO_SECRET` y crear los schedules
+- [x] (2026-10-22) `MANTENIMIENTO_SECRET` cargado (`--reserved`, 64 hex) y los dos schedules creados y activos:
+      `autocierre-tickets` (`0 * * * *`, id `76a5b1c3…`) y `purga-datos-temporales` (`30 8 * * *` en UTC = 03:30 hora
+      de Lima, id `cedc8cab…`); logs con `npx @insforge/cli schedules logs <id>`. Probado antes con `curl` directo:
+      secret correcto → 200 `{"cerrados":0}`, incorrecto → 403. Comando original, por si hay que recrearlos:
       (`npx @insforge/cli schedules create --name autocierre-tickets --cron "0 * * * *" --method POST --url
       "<INSFORGE_PROJECT_URL>/functions/credenciales" --headers "{\"x-mantenimiento\":\"<valor>\",\"Content-Type\":\"application/json\"}"
       --body "{\"action\":\"mantenimiento\",\"tarea\":\"autocierre\"}"`, y el mismo con `"tarea":"purga"` y

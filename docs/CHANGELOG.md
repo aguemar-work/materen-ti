@@ -31,8 +31,10 @@
   desplegaron las cuatro functions cuyo `dist/` difería del desplegado: `tickets`, `credenciales` (un 502 temporal del
   servidor de build en el primer intento; el segundo pasó), `encuestas` y `equipos-fotos` (`portal` ya coincidía).
   `npm run snapshot` + `verify:db` sin diferencias (las 4 policies de storage de la plataforma quedan en el snapshot).
-  **Pendiente del dueño**: cargar `MANTENIMIENTO_SECRET` y crear los dos schedules (`docs/CONTINUIDAD.md`); mientras
-  tanto la acción `mantenimiento` responde 403 y ningún `resuelto` se cierra solo.
+  Con autorización del dueño, el mismo día: `MANTENIMIENTO_SECRET` cargado (`--reserved`) y schedules
+  `autocierre-tickets` (cada hora en punto) y `purga-datos-temporales` (08:30 UTC) creados y activos contra
+  `/functions/credenciales` (acción `mantenimiento`); la function lo tomó sin redesplegar (200 con el secret, 403 sin
+  él). Primera corrida del autocierre: 2026-10-22 16:00 hora local (`docs/CONTINUIDAD.md`).
 
 - **2026-10-22** (**Policies de storage de la plataforma**, solo documentación, investigación de solo lectura) —
   `HISTORIAL-AUDITORIAS.md`: InsForge instaló anoche sus 4 policies «owner-only» en `storage.objects` (RLS activo),

@@ -1751,9 +1751,10 @@ autocierre a las 24 h corridas, el técnico reabre por una calificación baja, r
 en verde: 390 tickets legados etiquetados, 0 sin cierre) y desplegadas `tickets`, `credenciales`, `encuestas` y
 `equipos-fotos`; snapshot regenerado. Disparador: el frontend ya estaba publicado en Vercel desde el push de `main`
 de ese mediodía y el listado de tickets devolvía 400 (`cerrado_por` y `ticket_escalamientos` no existían) —
-desorden del orden «migración → function → frontend», no de la invariante 12. **Queda del dueño**: cargar
-`MANTENIMIENTO_SECRET` y crear los dos schedules (`autocierre` cada hora, `purga` diaria; `docs/CONTINUIDAD.md`);
-hasta entonces la acción `mantenimiento` responde 403 y el autocierre a las 24 h no corre.
+desorden del orden «migración → function → frontend», no de la invariante 12. El mismo día, con autorización del
+dueño: `MANTENIMIENTO_SECRET` cargado y schedules `autocierre-tickets` (cada hora) y `purga-datos-temporales`
+(08:30 UTC) activos (`docs/CONTINUIDAD.md`). Con esto PROC-CIERRE-05 pasa de «cerrado en código» a **cerrado en
+producción**; la purga de la 112 también queda programada (pendiente desde el Ciclo 21).
 
 **Escalamiento por niveles (migración 121, 2026-10-21; aplicada el 2026-10-22 tras la 120, verificación en verde,
 `tickets` desplegada, snapshot regenerado).** **Pendiente de diseño:** sin programador de tareas no
