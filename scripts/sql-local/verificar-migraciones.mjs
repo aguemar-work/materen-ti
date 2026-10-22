@@ -18,6 +18,8 @@ const NUEVAS = readdirSync(MIG).filter((f) => /^\d{3}_.*\.sql$/.test(f) && Numbe
 // La 109 (portal del empleado) EXTIENDE la purga de la 112 (config_retencion): en produccion se aplica despues de la
 // 112 aunque su numero sea menor, asi que aqui va la ultima (y su rollback, la primera).
 if (NUEVAS.includes('109')) NUEVAS.splice(NUEVAS.indexOf('109'), 1), NUEVAS.push('109');
+// Las que redefinen algo de la 109 van después de ella (si no, la 109 las pisaría): 122 (portal_abrir).
+for (const n of ['122']) if (NUEVAS.includes(n)) NUEVAS.splice(NUEVAS.indexOf(n), 1), NUEVAS.push(n);
 // Rollback: de la mas nueva a la mas vieja, con la 104 (independiente) justo antes de la 099.
 const ROLLBACK_ORDEN = [...NUEVAS].reverse().filter((n) => n !== '104' && n !== '099').concat(NUEVAS.includes('104') ? ['104'] : [], ['099']).filter((n, i, a) => NUEVAS.includes(n) && a.indexOf(n) === i);
 const lee = (p) => readFileSync(p, 'utf8');
@@ -1356,7 +1358,7 @@ const fotoBase = await foto();
   let ok = 0; const malos = [];
   for (const [i, sql] of bloques.entries()) {
     const tag = (sql.match(/TESTS_OK \[([^\]]+)\]/) || [])[1] || `#${i + 1}`;
-    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121)/.test(tag)) continue;
+    if (/^(099|100|101|102|103|106|107|108|109|110|111|112|113|114|115|116|117|118|119|120|121|122)/.test(tag)) continue;
     let msg = ''; try { await db.exec(sql); } catch (e) { msg = e.message || ''; }
     if (msg.includes('TESTS_OK')) ok++; else malos.push(`[${tag}] ${msg.slice(0, 300)}`);
   }

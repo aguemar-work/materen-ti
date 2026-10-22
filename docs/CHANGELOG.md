@@ -23,6 +23,11 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-10-22** (**El portal del empleado ya no lista los tickets rechazados — migración 122**, escrita, **sin
+  aplicar**; hallazgo PROC-CIERRE-09) — `portal_abrir` (109) excluía de «Mis tickets» solo los resueltos y cerrados:
+  un ticket rechazado aparecía como si siguiera en curso. La 122 reemplaza el cuerpo con el filtro `not in ('resuelto',
+  'cerrado', 'rechazado')` (misma firma y permisos; `functions/portal.ts` no cambia). Rollback con el cuerpo de la 109;
+  el arnés aplica la 122 después de la 109 (que va última por la 112). Bloque 122a, maqueta y su test.
 - **2026-10-22** (**Despliegue de 119, 120 y 121 en producción**; incidente «Error al cargar tickets») — El push de
   `main` de las 12:36 publicó en Vercel el frontend unificado antes de aplicar las migraciones: el listado pedía
   `cerrado_por` (120) y el embed `ticket_escalamientos` (121) y PostgREST respondía 400 (`PGRST200` / `42703`).

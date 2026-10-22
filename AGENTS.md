@@ -105,7 +105,9 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   muestra más de una vez; su alcance nunca incluye contraseñas, URL ni notas; un token inválido responde
   siempre `no_existe`. `confirmado_por_empleado_at` solo lo escribe `portal_confirmar_equipo`;
   `portal_abrir` y `portal_confirmar_equipo` son solo `project_admin`. `functions/portal.ts` proyecta los
-  campos uno a uno: un campo nuevo se agrega en la RPC, en la proyección y en el test 109b.
+  campos uno a uno: un campo nuevo se agrega en la RPC, en la proyección y en el test 109b. «Mis tickets» lista solo
+  los activos (abierto, en_progreso, reabierto; 122): `portal_abrir` y `maqueta/rpc-portal.js` se mueven juntos. Una
+  migración que redefine algo de la 109 se agrega a la lista que `verificar-migraciones.mjs` aplica después de ella.
 - **Reportes (115)**: ninguna métrica de tickets se calcula en el cliente. La fórmula vive en
   `v_ticket_hechos`; `v_kpi_*` son su corte mensual y `reporte_tickets()` la compone para un rango.
   `maqueta/rpc-reportes.js` sigue la misma aritmética (el escenario S17 del arnés lo exige). El reporte
