@@ -1,7 +1,7 @@
 // Tests del debounce/coalescencia de refrescos disparados por realtime
 // (crearRefrescoDebounced) — ver P-02 en docs/HISTORIAL-AUDITORIAS.md.
-// El wrapper Vue (useRealtimeRefresco en sí, con onMounted/onUnmounted) no
-// se prueba acá, mismo criterio que el resto del pegamento de lifecycle.
+// El wrapper Vue (useRealtimeRefresco, con onMounted/onUnmounted) se prueba en
+// useRealtimeRefresco.ciclo.test.js.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { crearRefrescoDebounced, REFRESCO_LISTA_DEBOUNCE_MS } from '../src/composables/useRealtimeRefresco.js';
 

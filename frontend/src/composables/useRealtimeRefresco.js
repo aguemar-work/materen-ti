@@ -55,6 +55,9 @@ export function crearRefrescoDebounced(fn, { delayMs = REFRESCO_LISTA_DEBOUNCE_M
 // para canales que reaccionan a cada evento individual (ej. notificaciones).
 export function useRealtimeRefresco(canal, callback, opciones = {}) {
   let activo = true;
+  // El cliente que obtuvo onMounted; null si getClient() falló (p. ej. sin
+  // VITE_INSFORGE_* en un worktree o en tests): entonces no hay nada que soltar.
+  let rt = null;
   const alRefrescar = opciones.debounceMs != null
     ? crearRefrescoDebounced(callback, { delayMs: opciones.debounceMs })
     : callback;
@@ -69,7 +72,7 @@ export function useRealtimeRefresco(canal, callback, opciones = {}) {
 
   onMounted(async () => {
     try {
-      const rt = getClient().realtime;
+      rt = getClient().realtime;
       if (!rt.isConnected) await rt.connect();
       const res = await rt.subscribe(canal);
       if (!activo) return;
@@ -87,7 +90,7 @@ export function useRealtimeRefresco(canal, callback, opciones = {}) {
 
   onUnmounted(() => {
     activo = false;
-    const rt = getClient().realtime;
+    if (!rt) return;
     rt.off('changed', alCambiar);
     rt.unsubscribe(canal);
   });
