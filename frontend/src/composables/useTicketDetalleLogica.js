@@ -1,7 +1,7 @@
 import { ref, reactive, computed, onUnmounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { showToast } from '../core/toast.js';
-import { estadoInfo, prioridadInfo, destinoDeCambio, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, HITO_LABELS, EVENTO_LABELS, NIVELES_ATENCION } from '../core/dominio-tickets.js';
+import { estadoInfo, prioridadInfo, destinoDeCambio, ESTADOS_EN_CURSO, ESTADOS_TERMINALES, ESTADOS_RESOLUBLES, ESTADOS_REABRIBLES, HITO_LABELS, EVENTO_LABELS, NIVELES_ATENCION } from '../core/dominio-tickets.js';
 import { traducirErrorDb } from '../api/erroresDb.js';
 import { useAuthStore } from '../stores/auth.js';
 import { useTicketDetalleStore } from '../stores/ticketDetalle.js';
@@ -18,7 +18,7 @@ import { useTicketDetalleStore } from '../stores/ticketDetalle.js';
 export function useTicketDetalleLogica() {
   const auth = useAuthStore();
   const store = useTicketDetalleStore();
-  const { ticket, comentarios, eventos, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId } = storeToRefs(store);
+  const { ticket, comentarios, eventos, satisfaccion, equiposEmpleado, articulosRelacionados, problemaVinculado, cargando, staffActivo, staffPorId, horasAutocierre } = storeToRefs(store);
 
   const guardandoCampo = ref(false);
 
@@ -40,7 +40,7 @@ export function useTicketDetalleLogica() {
 
   // Cómo terminó el ticket, para el encabezado ("Resuelto hace 1 d por X ·
   // tardó 2 d"). Sale del historial: el último cambio a "resuelto" (el
-  // cierre que encadena cerrar_ticket() no cuenta como quien resolvió) o, si
+  // cierre por la calificación o el automático no cuentan como quien resolvió) o, si
   // nunca pasó por ahí, a "cerrado"/"rechazado". Solo con el ticket en un
   // estado final: un ticket reabierto ya no "está resuelto".
   const resolucion = computed(() => {
@@ -105,7 +105,15 @@ export function useTicketDetalleLogica() {
       } else if (ev.evento === 'encuesta_enviada') {
         hitos.push({ id: ev.id, label: EVENTO_LABELS.encuesta_enviada, fecha: ev.created_at, color: 'neutral' });
       } else if (ev.evento === 'encuesta_respondida') {
-        hitos.push({ id: ev.id, label: EVENTO_LABELS.encuesta_respondida, fecha: ev.created_at, color: 'success' });
+        // 120: «Nivel n» — calificar es lo que cierra el ticket resuelto.
+        const nivel = /^Nivel (\d)$/.exec(ev.detalle || '')?.[1];
+        const label = nivel ? `${EVENTO_LABELS.encuesta_respondida}: ${nivel}/5` : EVENTO_LABELS.encuesta_respondida;
+        hitos.push({ id: ev.id, label, fecha: ev.created_at, color: 'success' });
+      } else if (ev.evento === 'cerrado_automatico') {
+        hitos.push({ id: ev.id, label: EVENTO_LABELS.cerrado_automatico, fecha: ev.created_at, color: 'neutral' });
+      } else if (ev.evento === 'calificacion_revisada') {
+        const label = ev.detalle ? `${EVENTO_LABELS.calificacion_revisada}: ${ev.detalle}` : EVENTO_LABELS.calificacion_revisada;
+        hitos.push({ id: ev.id, label, fecha: ev.created_at, color: 'info' });
       }
     }
     return hitos;
@@ -237,46 +245,65 @@ export function useTicketDetalleLogica() {
     }
   }
 
-  // ── Marcar como resuelto: encadena resuelto -> cerrado en un solo paso
-  // (queda igual registrado en la hoja de vida). Exige confirmación — a
-  // diferencia de Rechazar/Reabrir, este botón vivía sin ninguna fricción justo
-  // debajo del selector de "Asignado a", y un clic reflejo tras reasignar
-  // bastaba para cerrar el ticket sin que nadie lo decidiera de verdad ────────
-  const resolviendo = ref(false);
-  const guardarComoKb = ref(false);
-  const mostrarConfirmarResolver = ref(false);
-  const dialogoResolver = ref(null);
+  // ── Resolver (procedimiento de cierre, migración 120): la solución aplicada
+  // es obligatoria y el solicitante la ve en su seguimiento; el ticket queda
+  // «Resuelto» esperando su calificación, que es la que lo cierra (o el cierre
+  // automático, a las horasAutocierre). Sin solicitante se cierra al resolver.
+  // El formulario es ResolverTicketDialog; la acción, store.resolver().
+  const puedeResolver = computed(() => !!ticket.value && ESTADOS_RESOLUBLES.includes(ticket.value.estado));
+  const ofrecerKb = computed(() => auth.puedeVerModulo('base_conocimiento'));
+  const mostrarResolver = ref(false);
+  const resolverConNota = (nota) => store.resolver(nota);
 
-  function cancelarResolver() {
-    mostrarConfirmarResolver.value = false;
-  }
-
-  async function confirmarResolver() {
-    resolviendo.value = true;
-    try {
-      await store.marcarResueltoYCerrado();
-      showToast('Ticket resuelto y cerrado');
-      await store.recargarSatisfaccion();
-      if (guardarComoKb.value) {
-        try {
-          await store.guardarComoBorradorKb();
-          showToast('Solución guardada como borrador en la Base de Conocimiento');
-        } catch (e) {
-          showToast('El ticket se cerró, pero no se pudo guardar el borrador en la Base de Conocimiento: ' + (e?.message || 'motivo desconocido'), 'error');
-        }
+  async function onResuelto(resultado) {
+    mostrarResolver.value = false;
+    if (!resultado) return;
+    showToast(ticket.value?.estado === 'cerrado'
+      ? 'Ticket resuelto y cerrado: no tiene un solicitante que califique'
+      : 'Ticket resuelto: espera la calificación del solicitante');
+    if (resultado.guardarKb) {
+      try {
+        await store.guardarComoBorradorKb({ solucion: resultado.nota });
+        showToast('Solución guardada como borrador en la Base de Conocimiento');
+      } catch (e) {
+        showToast(traducirErrorDb(e, { porDefecto: 'El ticket se resolvió, pero no se pudo guardar el borrador en la Base de Conocimiento.' }).mensaje, 'error');
       }
-      dialogoResolver.value?.cerrar();
-    } catch (e) {
-      showToast(e?.message || 'No se pudo marcar como resuelto', 'error');
-    } finally {
-      resolviendo.value = false;
     }
   }
 
-  // ── Reabrir: solo JEFE (reforzado también por trigger en BD) — exige
-  // motivo, igual que Rechazar. Queda como NOTA INTERNA (no visible para el
+  // Un ticket resuelto espera al solicitante: cuándo se cierra solo si no califica.
+  const esperaCalificacion = computed(() => {
+    const t = ticket.value;
+    if (t?.estado !== 'resuelto' || !t.resuelto_at) return null;
+    return { venceAt: new Date(new Date(t.resuelto_at).getTime() + horasAutocierre.value * 3600000).toISOString(), horas: horasAutocierre.value };
+  });
+
+  // ── Revisar una calificación de 1 o 2 (120): una sola vez, quien tenga el
+  // módulo tickets (el técnico asignado la recibe en sus notificaciones).
+  // Reabrir por acá no exige ser JEFE. Formulario: RevisarCalificacionDialog.
+  const puedeRevisarCalificacion = computed(() => {
+    const s = satisfaccion.value;
+    return !!s?.fecha_envio && s.nivel <= 2 && !s.revision_desenlace && auth.puedeVerModulo('tickets');
+  });
+  const mostrarRevisarCalificacion = ref(false);
+
+  async function onCalificacionRevisada(resultado) {
+    mostrarRevisarCalificacion.value = false;
+    if (!resultado) return;
+    showToast(resultado.desenlace === 'reabierto' ? 'Ticket reabierto: continúe la atención' : 'Revisión registrada');
+    try {
+      await store.recargarTrasCierre();
+    } catch (e) {
+      showToast(traducirErrorDb(e, { porDefecto: 'La revisión quedó registrada, pero no se pudo actualizar la ficha. Recargue la página.' }).mensaje, 'error');
+    }
+  }
+
+  // ── Reabrir: solo JEFE (la RPC reabrir_ticket lo exige, 42501) — también un
+  // ticket resuelto antes de que el solicitante califique (120). Exige motivo,
+  // igual que Rechazar, y queda como NOTA INTERNA (no visible para el
   // empleado): reabrir es una decisión interna, el empleado ya ve el cambio
   // de estado en su seguimiento público ────────────────────────────────────
+  const puedeReabrir = computed(() => !!ticket.value && auth.esJefe && ESTADOS_REABRIBLES.includes(ticket.value.estado));
   const mostrarReabrir = ref(false);
   const motivoReabrir = ref('');
   const reabriendo = ref(false);
@@ -294,12 +321,11 @@ export function useTicketDetalleLogica() {
     }
     reabriendo.value = true;
     try {
-      await store.actualizarCampos({ estado: 'reabierto' });
-      await store.comentar(motivo, true);
+      await store.reabrir(motivo);
       mostrarReabrir.value = false;
       showToast('Ticket reabierto');
     } catch (e) {
-      showToast(e?.message || 'No se pudo reabrir el ticket', 'error');
+      showToast(traducirErrorDb(e, { porDefecto: 'No se pudo reabrir el ticket' }).mensaje, 'error');
     } finally {
       reabriendo.value = false;
     }
@@ -471,11 +497,12 @@ export function useTicketDetalleLogica() {
   // automático (migración 055) — este botón es la vía real para que llegue.
   async function copiarMensajeSatisfaccion() {
     const link = linkSatisfaccion();
+    // 120: calificar es lo que cierra el ticket resuelto (si no, se cierra solo).
     const texto =
       `Hola, ${ticket.value.empleado_nombre}.\n` +
-      `Su ticket ${ticket.value.codigo} fue cerrado. Le pedimos calificar el servicio recibido en el siguiente enlace:\n` +
+      `Su ticket ${ticket.value.codigo} fue resuelto. Le pedimos calificar la atención en el siguiente enlace; con su calificación el ticket queda cerrado:\n` +
       `${link}\n\n` +
-      `Gracias por su tiempo.`;
+      `Si no califica en ${horasAutocierre.value} horas, el ticket se cerrará automáticamente. Gracias por su tiempo.`;
     try {
       await navigator.clipboard.writeText(texto);
       showToast('Mensaje de calificación copiado');
@@ -557,8 +584,9 @@ export function useTicketDetalleLogica() {
     atencionForm, iniciando, tipoAmbiguoSinClasificar,
     cargar, confirmarIniciar,
     mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
-    resolviendo, guardarComoKb, mostrarConfirmarResolver, dialogoResolver, cancelarResolver, confirmarResolver,
-    mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
+    puedeResolver, ofrecerKb, mostrarResolver, resolverConNota, onResuelto, esperaCalificacion, horasAutocierre,
+    puedeRevisarCalificacion, mostrarRevisarCalificacion, onCalificacionRevisada,
+    puedeReabrir, mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
     cambiarNivelAtencion, cambiarPrioridad,
     mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
     cambiarTipo,

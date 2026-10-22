@@ -31,7 +31,8 @@ export default [
     meta: { public: true },
   },
   {
-    // Encuesta de satisfacción, enlace enviado al cerrar
+    // Encuesta de satisfacción de un ticket resuelto: calificar lo cierra
+    // (120). El enlace lo copia el staff desde la ficha; el sistema no envía correo.
     path: '/soporte/:token/satisfaccion',
     name: 'ticket-satisfaccion',
     component: () => import('../../modules/tickets/ResponderEncuestaView.vue'),

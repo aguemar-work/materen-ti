@@ -43,13 +43,15 @@ const PERIODO = { termino: 'Período', definicion: 'días de calendario de Lima,
 export const GLOSARIOS = {
   satisfaccion: [
     { termino: 'Período', definicion: 'tickets con resolución vigente dentro del período (días de calendario de Lima); «Todo» no recorta.' },
-    { termino: 'Tickets', definicion: 'tickets de esa persona o de ese técnico resueltos en el período; cada uno genera a lo sumo una encuesta.' },
+    { termino: 'Tickets', definicion: 'tickets de esa persona o de ese técnico resueltos en el período; cuenta la encuesta de su última resolución (una por cada vez que se resolvió).' },
     { termino: 'Le faltan', definicion: 'encuestas enviadas que todavía no se respondieron.' },
     { termino: 'Satisfacción', definicion: 'respuestas con nivel 4 o 5 entre las respondidas. 3 es regular; 1 y 2, insatisfecho.' },
     { termino: 'Situación', definicion: 'conforme desde el umbral de Configuración (80 %), regular desde el segundo (60 %), inconforme debajo; con menos respuestas que el mínimo por persona (3), «Pocas respuestas».' },
     { termino: 'Promedio', definicion: 'de las respuestas con nivel 1 a 5; se publica solo con n igual o mayor a la muestra mínima (si no, «n insuficiente»).' },
     { termino: 'Técnico', definicion: 'quien marcó el ticket como resuelto por última vez; quien no es técnico de mesa va en «Jefatura y otros». Solo lo ve un JEFE.' },
     { termino: 'Mes', definicion: 'mes de la resolución vigente del ticket, en hora de Lima.' },
+    { termino: 'Cerrado sin validación', definicion: 'ticket resuelto que el solicitante no calificó en 24 horas y se cerró solo; se cuenta aparte y nunca como satisfecho.' },
+    { termino: 'Calificación baja', definicion: 'respuesta de 1 o 2; el técnico la revisa a más tardar el día hábil siguiente (lunes a viernes, sin feriados) y reabre el ticket o deja una nota interna.' },
   ],
   inventario: [
     FOTO,

@@ -47,6 +47,7 @@ por la edge function `credenciales`**. La base solo contiene el texto cifrado
 | `CRED_KEY_LEGACY` | Clave anterior, solo para descifrar filas viejas |
 | `CRED_KEY_SENSIBLE` | Clave aislada de los accesos sensibles |
 | `API_KEY`, `INSFORGE_BASE_URL` | Cliente admin de la function (no cifran datos) |
+| `MANTENIMIENTO_SECRET` | Encabezado `x-mantenimiento` de la acción `mantenimiento` de `credenciales` (migración 120): lo envían los schedules; no cifra datos y se puede rotar cuando se quiera (rotarlo exige actualizar los dos schedules) |
 
 Dónde están: como secrets del proyecto InsForge (`npx @insforge/cli secrets list`
 muestra solo los nombres; `secrets get <clave>` revela el valor y solo lo hace
@@ -172,3 +173,10 @@ consultas de una línea: sin saltos de línea, sin `$$`, sin comillas dobles y s
 - [ ] Anotar el enlace a la página de estado de InsForge y de Vercel.
 - [ ] Preparar e imprimir el acta física en blanco y la hoja de cálculo de contingencia.
 - [ ] Hacer la primera restauración probada (sección 4) y registrar el tiempo.
+- [ ] Tras aplicar la 120 y desplegar `credenciales`: cargar `MANTENIMIENTO_SECRET` y crear los schedules
+      (`npx @insforge/cli schedules create --name autocierre-tickets --cron "0 * * * *" --method POST --url
+      "<INSFORGE_PROJECT_URL>/functions/credenciales" --headers "{\"x-mantenimiento\":\"<valor>\",\"Content-Type\":\"application/json\"}"
+      --body "{\"action\":\"mantenimiento\",\"tarea\":\"autocierre\"}"`, y el mismo con `"tarea":"purga"` y
+      `--cron "30 8 * * *"` para la purga de la 112). Probarlos primero en una branch. Alarma: un ticket
+      `resuelto` con `resuelto_at` de hace más de 25 h (`select count(*) from tickets where estado = 'resuelto' and
+      resuelto_at < now() - interval '25 hours'`) significa que el autocierre no corrió.

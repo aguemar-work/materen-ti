@@ -2,11 +2,11 @@
 //
 // TicketDetallePanel.vue — Fase 2, la otra mitad de useTicketDetalleLogica.js
 // (split-view). A diferencia de TicketDetalleView.vue (ya cubierto), acá se
-// verifica lo que es distinto de este archivo específicamente: el toggle KB
-// (variant/severity de AppButton reusados para expresar "activo", sin una
-// prop `pressed` nueva) y que Rechazar/Reabrir usan ConfirmDialog (no el
-// formulario inline de la página completa) — ambos caminos deben seguir
-// disparando la misma transición en el backend.
+// verifica lo que es distinto de este archivo específicamente: Resolver con
+// la solución (y «guardar en KB», que desde la 120 vive en ese diálogo) y que
+// Rechazar/Reabrir usan ConfirmDialog (no el formulario inline de la página
+// completa) — ambos caminos deben seguir disparando la misma transición en el
+// backend.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
@@ -26,7 +26,7 @@ vi.mock('../../src/api/insforge.js', () => ({
     listArticulosRelacionados: vi.fn().mockResolvedValue([]),
     getProblemaAbiertoDeTicket: vi.fn().mockResolvedValue(null),
     actualizarTicket: vi.fn().mockResolvedValue(undefined),
-    cerrarTicket: vi.fn(),
+    resolverTicket: vi.fn(),
     crearComentarioTicket: vi.fn().mockResolvedValue(undefined),
     crearKbDesdeTicket: vi.fn().mockResolvedValue(undefined),
   },
@@ -77,12 +77,21 @@ function flushPromises() {
   return new Promise((r) => setTimeout(r, 0));
 }
 
-async function montar(ticketId = 'tck-1', { rol = 'ASISTENTE' } = {}) {
+// Espera a que se cumpla una condición, con tope (la suite completa corre en
+// paralelo: un tiempo fijo resulta corto).
+async function hastaQue(cond, tope = 3000) {
+  const desde = Date.now();
+  while (!cond() && Date.now() - desde < tope) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
+async function montar(ticketId = 'tck-1', { rol = 'ASISTENTE', modulos = ['tickets'] } = {}) {
   const router = crearRouter();
   router.push('/tickets'); // sin esto, isReady() nunca resuelve (no hay navegación inicial)
   await router.isReady();
   const auth = useAuthStore();
-  auth.$patch({ user: { id: 'staff-1' }, rol });
+  auth.$patch({ user: { id: 'staff-1' }, rol, modulosVisibles: modulos });
   const w = mount(TicketDetallePanel, {
     props: { ticketId },
     global: {
@@ -101,39 +110,41 @@ beforeEach(() => {
 });
 
 describe('TicketDetallePanel.vue — botones migrados a AppButton (Fase 2)', () => {
-  // Rediseño 2026-09-23: el estado activo pasa de "sólido primario" a
-  // "outline primario" (un solo sólido por pantalla: el de "Marcar
-  // resuelto"). Mismo comportamiento verificado — el toggle se distingue
-  // visualmente al activarse y aria-pressed lo acompaña — con las clases
-  // del estado nuevo.
-  it('toggle KB: arranca neutro y pasa a acento primario al activarse — sin romper aria-pressed', async () => {
+  // Procedimiento de cierre (120): ya no hay toggle «KB» en la cabecera; la
+  // opción vive en el diálogo de Resolver, solo para quien tiene el módulo.
+  it('sin el módulo Base de Conocimiento, Resolver no ofrece guardar la solución en la KB', async () => {
     const w = await montar();
-    const kb = w.findAll('button').find((b) => b.text() === 'KB');
-    expect(kb.attributes('aria-pressed')).toBe('false');
-    expect(kb.classes().join(' ')).not.toContain('text-primary-600');
-
-    await kb.trigger('click');
-    const kbActivo = w.findAll('button').find((b) => b.text() === 'KB');
-    expect(kbActivo.attributes('aria-pressed')).toBe('true');
-    expect(kbActivo.classes().join(' ')).toContain('text-primary-600');
-    expect(kbActivo.classes().join(' ')).toContain('border-primary-300');
+    expect(w.findAll('button').some((b) => b.text() === 'KB')).toBe(false);
+    await w.findAll('button').find((b) => b.text() === 'Resolver').trigger('click');
+    await flushPromises();
+    expect(document.body.textContent).toContain('Solución aplicada');
+    expect(document.body.textContent).not.toContain('Base de Conocimiento');
+    w.unmount();
+    document.body.innerHTML = '';
   });
 
-  it('"Marcar resuelto" -> ConfirmDialog -> guarda en KB si el toggle estaba activo', async () => {
-    insforgeApi.cerrarTicket.mockResolvedValue(ticketBase({ estado: 'cerrado' }));
-    const w = await montar();
+  it('"Resolver" -> solución -> resolverTicket; con «Guardar en la KB» el borrador lleva esa solución', async () => {
+    insforgeApi.resolverTicket.mockResolvedValue(ticketBase({ estado: 'resuelto' }));
+    const w = await montar('tck-1', { modulos: ['tickets', 'base_conocimiento'] });
 
-    await w.findAll('button').find((b) => b.text() === 'KB').trigger('click'); // activa guardarComoKb
-    await w.findAll('button').find((b) => b.text().includes('Marcar resuelto')).trigger('click');
+    await w.findAll('button').find((b) => b.text() === 'Resolver').trigger('click');
     await flushPromises();
+    const form = document.querySelector('#resolver-ticket-form');
+    const nota = form.querySelector('textarea');
+    nota.value = 'Se reinstaló el controlador de video';
+    nota.dispatchEvent(new Event('input'));
+    const kb = form.querySelector('input[type="checkbox"]');
+    kb.checked = true;
+    kb.dispatchEvent(new Event('change'));
+    form.dispatchEvent(new Event('submit'));
+    // La KB se guarda cuando el diálogo emite `cerrado` (tras su animación): se espera eso.
+    await hastaQue(() => insforgeApi.crearKbDesdeTicket.mock.calls.length > 0);
 
-    const confirmar = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Marcar como resuelto');
-    confirmar.click();
-    await flushPromises();
-
-    expect(insforgeApi.cerrarTicket).toHaveBeenCalledWith('tck-1');
+    expect(insforgeApi.resolverTicket).toHaveBeenCalledWith('tck-1', 'Se reinstaló el controlador de video');
     // KEDB (106): el borrador lo crea el servidor, no un insert de cliente.
-    expect(insforgeApi.crearKbDesdeTicket).toHaveBeenCalledWith('tck-1', { solucion: null, titulo: null, sintoma: null });
+    expect(insforgeApi.crearKbDesdeTicket).toHaveBeenCalledWith('tck-1', { solucion: 'Se reinstaló el controlador de video', titulo: null, sintoma: null });
+    w.unmount();
+    document.body.innerHTML = '';
   });
 
   it('estado "abierto": Rechazar vía ConfirmDialog con motivo llama a actualizarTicket(rechazado)', async () => {

@@ -56,7 +56,10 @@ const METODOS = [
   'listTicketsPorReclasificar', 'reclasificarTicket',
   'listTickets', 'listTicketsPage', 'contarTickets',
   'getTicket', 'listComentariosTicket', 'crearComentarioTicket',
-  'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket', 'cerrarTicket',
+  'listEventosTicket', 'getSatisfaccionTicket', 'actualizarTicket',
+  // cierre según el procedimiento (migración 120): resolver, reabrir (JEFE), calificaciones bajas
+  'resolverTicket', 'reabrirTicket', 'listCalificacionesBajasPendientes', 'contarCalificacionesBajasPendientes',
+  'revisarCalificacionBaja',
   // reportes (migración 115): solo RPC, nada se agrega en el cliente
   'obtenerReporteTickets', 'obtenerReporteSatisfaccion',
   // reportes centralizados (migración 117): una RPC por reporte, misma forma

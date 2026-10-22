@@ -12,6 +12,8 @@
 // NADA de esto entra al bundle de producción.
 
 export const VERSION_DEFINICIONES = 'reportes-2026-10-06';
+// Satisfacción sube con la 120 (cierres sin validación y calificaciones bajas).
+export const VERSION_SATISFACCION = 'reportes-2026-10-21';
 const ZONA = 'America/Lima';
 const TERMINALES = ['resuelto', 'cerrado', 'rechazado'];
 const ORDEN_PRIORIDAD = ['urgente', 'alta', 'media', 'baja'];
@@ -77,7 +79,12 @@ export function hechosDeTickets(db) {
   const porId = (tabla, clave = 'id') => Object.fromEntries((db[tabla] || []).map((r) => [r[clave], r]));
   const cats = porId('categorias_ticket'), subs = porId('subcategorias_ticket'), emps = porId('empleados');
   const areas = porId('areas_obras'), ubis = porId('ubicaciones');
-  const encuestaPor = porId('ticket_satisfaccion', 'ticket_id');
+  // Una encuesta por resolución (120): la de la última (resolucion_numero; sin él, 1).
+  const encuestaPor = {};
+  for (const s of db.ticket_satisfaccion || []) {
+    const previa = encuestaPor[s.ticket_id];
+    if (!previa || (s.resolucion_numero ?? 1) > (previa.resolucion_numero ?? 1)) encuestaPor[s.ticket_id] = s;
+  }
   const eventos = (db.ticket_eventos || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   const comentarios = db.ticket_comentarios || [];
 
@@ -133,6 +140,11 @@ export function hechosDeTickets(db) {
       encuesta_nivel: respondida ? (s.nivel ?? null) : null,
       encuesta_comentario: respondida ? (s.comentario ?? null) : null,
       encuesta_respondida_at: s?.fecha_envio || null,
+      // 120
+      cerrado_por: t.cerrado_por || null,
+      cerrado_at: t.cerrado_at || null,
+      cerrado_sin_validacion: t.estado === 'cerrado' && t.cerrado_por === 'sistema',
+      encuesta_anulada: !!s?.anulada_at,
     };
   });
 }
@@ -469,7 +481,7 @@ export function satisfaccionDe(db, { user, desde = null, hasta = null, ahora = n
   return {
     generado_en: ahora.toISOString(),
     generado_por: { user_id: user, nombre: rol.nombre },
-    definiciones_version: VERSION_DEFINICIONES,
+    definiciones_version: VERSION_SATISFACCION,
     periodo: desde == null ? null : { desde, hasta, dias: diasEntre(desde, hasta) + 1, completo: hasta < hoy, en_curso: desde <= hoy && hasta >= hoy },
     muestraMinima: minimo,
     umbrales: { conformePct: umbrales[0], regularPct: umbrales[1], minimoPersona: umbrales[2] },
@@ -485,6 +497,50 @@ export function satisfaccionDe(db, { user, desde = null, hasta = null, ahora = n
         nivel: h.encuesta_nivel, comentario: h.encuesta_comentario, fecha_envio: h.encuesta_respondida_at,
         created_at: h.encuesta_generada_at, respondida: h.encuesta_respondida,
       })),
+    // 120
+    cierresSinValidacion: {
+      total: b.filter((h) => h.cerrado_sin_validacion).length,
+      conEncuesta: b.filter((h) => h.cerrado_sin_validacion && h.encuesta_generada).length,
+    },
+    calificacionesBajas: calificacionesBajasDe(db, { desde, hasta, hoy, esJefe }),
+  };
+}
+
+// Día hábil siguiente (lunes a viernes, sin feriados): public.dia_habil_siguiente (120).
+export function diaHabilSiguiente(iso) {
+  const dow = new Date(`${iso}T00:00:00Z`).getUTCDay(); // 0 domingo … 6 sábado
+  return sumarDias(iso, dow === 5 ? 3 : dow === 6 ? 2 : 1);
+}
+
+// Cada respuesta de 1 o 2 del período (por fecha de respuesta en Lima), también las de
+// una resolución anterior, con su revisión y si se hizo a tiempo (120).
+function calificacionesBajasDe(db, { desde, hasta, hoy, esJefe }) {
+  const tickets = Object.fromEntries((db.tickets || []).map((t) => [t.id, t]));
+  const nombre = (id) => (db.staff || []).find((s) => s.user_id === id)?.nombre ?? null;
+  const filas = (db.ticket_satisfaccion || [])
+    .filter((x) => x.fecha_envio && x.nivel != null && x.nivel <= 2 && tickets[x.ticket_id])
+    .map((x) => ({ ...x, dia: diaLima(x.fecha_envio) }))
+    .filter((x) => desde == null || (x.dia >= desde && x.dia <= hasta))
+    .map((x) => {
+      const plazo = diaHabilSiguiente(x.dia);
+      const diaRevisado = diaLima(x.revisado_at);
+      const desenlace = x.revision_desenlace || null;
+      return {
+        id: x.id, ticket_id: x.ticket_id, ticket_codigo: tickets[x.ticket_id].codigo, ticket_titulo: tickets[x.ticket_id].titulo,
+        nivel: x.nivel, comentario: x.comentario ?? null, fecha_envio: x.fecha_envio, plazo,
+        desenlace, nota: x.revision_nota ?? null, revisado_at: x.revisado_at ?? null,
+        revisado_por: esJefe && x.revisado_por ? nombre(x.revisado_por) : null,
+        a_tiempo: desenlace ? diaRevisado <= plazo : hoy > plazo ? false : null,
+      };
+    })
+    .sort((a, c) => new Date(c.fecha_envio) - new Date(a.fecha_envio));
+  return {
+    total: filas.length,
+    reabiertos: filas.filter((x) => x.desenlace === 'reabierto').length,
+    conNota: filas.filter((x) => x.desenlace === 'nota').length,
+    pendientes: filas.filter((x) => !x.desenlace).length,
+    fueraDePlazo: filas.filter((x) => x.a_tiempo === false).length,
+    lista: filas,
   };
 }
 

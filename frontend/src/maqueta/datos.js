@@ -22,6 +22,7 @@ import { RPC_PORTAL } from './rpc-portal.js';
 import { RPC_REPORTES, definirActorReportes } from './rpc-reportes.js';
 import { RPC_REPORTES_117 } from './rpc-reportes-117.js';
 import { RPC_CATALOGO_TICKETS, definirActorCatalogoTickets, calcularPorReclasificar } from './rpc-catalogo-tickets.js';
+import { RPC_CIERRE_TICKETS, definirActorCierreTickets } from './rpc-cierre-tickets.js';
 import { crearDatosCambios } from './cambios-datos.js';
 import { TIPOS as TIPOS_SOLICITUD, plantillaDe, plantillaPaso, pasoDePlantilla } from './solicitudes-plantilla.js';
 import { ESCENARIO, resumenInicio } from './inicio.js';
@@ -54,6 +55,9 @@ definirActorReportes({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente'
 // Catálogo v2 (116): la vista de pendientes es solo del jefe. Reclasificar exige el
 // módulo tickets (Diego lo tiene) y un ticket cerrado o rechazado solo lo mueve el jefe (119).
 definirActorCatalogoTickets({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
+// Cierre según el procedimiento (120): resolver y revisar una calificación baja con
+// el módulo tickets; reabrir por la vía general, solo el jefe.
+definirActorCierreTickets({ id: USUARIO_MAQUETA.id, esJefe: ESCENARIO !== 'asistente', email: USUARIO_MAQUETA.email });
 
 // ── Staff ───────────────────────────────────────────────────────────────────
 const staff = [
@@ -594,13 +598,23 @@ const tickets = [
     empleado_id: 'e05', categoria_id: 'red', subcategoria_id: 'sub-07',
     descripcion: 'Volvió a pasar después del cambio de router.', created_at: hace(9),
   }),
-  ticket(110, 'Crear cuenta de Bitrix24 para asistente de TI', 'resuelto', 'media', {
-    asignado_a: 'u-asis-1', empleado_id: 'e12', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-02', tipo: 'solicitud', cuenta_id: 'c15',
-    descripcion: 'Nuevo ingreso del área de TI.', created_at: hace(4, 8), updated_at: hace(3), resuelto_at: hace(3),
+  // Resuelto hace unas horas: espera la calificación del solicitante (120).
+  ticket(120, 'Configurar la firma de correo institucional', 'resuelto', 'baja', {
+    asignado_a: 'u-asis-2', empleado_id: 'e06', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-02', tipo: 'solicitud',
+    descripcion: 'La firma no muestra el logo nuevo.', nota_resolucion: 'Se cargó la plantilla de firma con el logo nuevo en Outlook web y escritorio.',
+    created_at: hace(1, 2), updated_at: hace(0, 6), resuelto_at: hace(0, 6),
   }),
-  ticket(109, 'Excel muestra error al abrir macros', 'resuelto', 'baja', {
+  // Calificado con 2 por el solicitante: se cerró y espera la revisión del técnico (120).
+  ticket(110, 'Crear cuenta de Bitrix24 para asistente de TI', 'cerrado', 'media', {
+    asignado_a: 'u-asis-1', empleado_id: 'e12', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-02', tipo: 'solicitud', cuenta_id: 'c15',
+    descripcion: 'Nuevo ingreso del área de TI.', nota_resolucion: 'Cuenta creada y enviada por enlace de entrega.',
+    created_at: hace(4, 8), updated_at: hace(2), resuelto_at: hace(3), cerrado_at: hace(2), cerrado_por: 'usuario',
+  }),
+  // Nadie calificó en 24 h: «Cerrado automático – Sin validación» (120).
+  ticket(109, 'Excel muestra error al abrir macros', 'cerrado', 'baja', {
     empleado_id: 'e03', categoria_id: 'software', subcategoria_id: 'sub-06', nivel_atencion: 'N2',
-    descripcion: 'Aparece "contenido bloqueado" en los formatos de planilla.', created_at: hace(11), updated_at: hace(8), resuelto_at: hace(8),
+    descripcion: 'Aparece "contenido bloqueado" en los formatos de planilla.', nota_resolucion: 'Se agregó la carpeta de planillas como ubicación de confianza.',
+    created_at: hace(11), updated_at: hace(7), resuelto_at: hace(8), cerrado_at: hace(7), cerrado_por: 'sistema',
   }),
   ticket(108, 'Restablecer contraseña del ERP', 'cerrado', 'alta', {
     empleado_id: 'e05', categoria_id: 'accesos_cuentas', subcategoria_id: 'sub-01', tipo: 'solicitud', cuenta_id: 'c07',
@@ -636,7 +650,9 @@ const ticket_comentarios = [
   { id: 'tc04', ticket_id: 't112', mensaje: 'Se revisó temperatura: 95 °C en carga. Probable pasta térmica.', interno: true, autor_id: 'u-jefe', created_at: hace(15) },
   { id: 'tc05', ticket_id: 't112', mensaje: 'Se le prestó la LAP-003 mientras dura la reparación.', interno: false, autor_id: 'u-jefe', created_at: hace(14) },
   { id: 'tc06', ticket_id: 't118', mensaje: 'Por favor confirme si tiene acceso al número de respaldo.', interno: false, autor_id: 'u-jefe', created_at: hace(0, 1) },
-  { id: 'tc07', ticket_id: 't110', mensaje: 'Cuenta creada y enviada por enlace de entrega.', interno: false, autor_id: 'u-asis-1', created_at: hace(3) },
+  { id: 'tc07', ticket_id: 't110', mensaje: 'Solución aplicada: Cuenta creada y enviada por enlace de entrega.', interno: false, autor_id: 'u-asis-1', created_at: hace(3) },
+  { id: 'tc08', ticket_id: 't120', mensaje: 'Solución aplicada: Se cargó la plantilla de firma con el logo nuevo en Outlook web y escritorio.', interno: false, autor_id: 'u-asis-2', created_at: hace(0, 6) },
+  { id: 'tc09', ticket_id: 't109', mensaje: 'Solución aplicada: Se agregó la carpeta de planillas como ubicación de confianza.', interno: false, autor_id: 'u-jefe', created_at: hace(8) },
 ];
 
 const ticket_eventos = [
@@ -657,14 +673,20 @@ const ticket_eventos = [
   { id: 'te15', ticket_id: 't106', evento: 'estado_cambiado', detalle: 'De "en_progreso" a "resuelto"', user_email: 'lparedes@materen.pe', user_id: 'u-asis-2', created_at: hace(25, 6) },
   { id: 'te16', ticket_id: 't105', evento: 'estado_cambiado', detalle: 'De "abierto" a "rechazado"', user_email: 'jefe@materen.pe', user_id: 'u-jefe', created_at: hace(27) },
   { id: 'te17', ticket_id: 't108', evento: 'encuesta_enviada', detalle: null, user_email: null, user_id: null, created_at: hace(12) },
+  { id: 'te18', ticket_id: 't120', evento: 'estado_cambiado', detalle: 'De "en_progreso" a "resuelto"', user_email: 'lparedes@materen.pe', user_id: 'u-asis-2', created_at: hace(0, 6) },
+  { id: 'te19', ticket_id: 't110', evento: 'encuesta_respondida', detalle: 'Nivel 2', user_email: null, user_id: null, created_at: hace(2) },
+  { id: 'te20', ticket_id: 't110', evento: 'estado_cambiado', detalle: 'De "resuelto" a "cerrado"', user_email: null, user_id: null, created_at: hace(2) },
+  { id: 'te21', ticket_id: 't109', evento: 'estado_cambiado', detalle: 'De "resuelto" a "cerrado"', user_email: null, user_id: null, created_at: hace(7) },
+  { id: 'te22', ticket_id: 't109', evento: 'cerrado_automatico', detalle: 'Cerrado automático – Sin validación (24 h sin calificación)', user_email: null, user_id: null, created_at: hace(7) },
 ];
 
 const ticket_satisfaccion = [
   { id: 'ts01', ticket_id: 't108', nivel: 5, comentario: 'Muy rápido, gracias.', fecha_envio: hace(11), created_at: hace(12) },
   { id: 'ts02', ticket_id: 't107', nivel: 3, comentario: 'Se resolvió, pero la obra estuvo medio día sin internet.', fecha_envio: hace(18), created_at: hace(19) },
   { id: 'ts03', ticket_id: 't106', nivel: 4, comentario: null, fecha_envio: hace(24), created_at: hace(25) },
-  { id: 'ts04', ticket_id: 't109', nivel: null, comentario: null, fecha_envio: null, created_at: hace(8) },
+  { id: 'ts04', ticket_id: 't109', nivel: null, comentario: null, fecha_envio: null, created_at: hace(8), anulada_at: hace(7) },
   { id: 'ts05', ticket_id: 't110', nivel: 2, comentario: 'Tardaron en enviarme el enlace.', fecha_envio: hace(2), created_at: hace(3) },
+  { id: 'ts06', ticket_id: 't120', nivel: null, comentario: null, fecha_envio: null, created_at: hace(0, 6) },
 ];
 
 // ── Mes anterior completo (reportes, 115) ───────────────────────────────────
@@ -718,6 +740,10 @@ const ticket_satisfaccion = [
     { id: 'te-mp-91-6', ticket_id: 't091', evento: 'estado_cambiado', detalle: 'De "resuelto" a "cerrado"', user_email: null, user_id: 'u-asis-2', created_at: new Date(new Date(resuelto2).getTime() + 1000).toISOString() },
   );
   t91.resuelto_at = resuelto2;
+  // Su calificación de 2 se revisó (120): el técnico reabrió, pero pasado el día hábil siguiente.
+  Object.assign(ticket_satisfaccion.find((s) => s.ticket_id === 't091'), {
+    revision_desenlace: 'reabierto', revision_nota: 'El enlace seguía cayéndose: se cambió el router.', revisado_por: 'u-asis-2', revisado_at: reabierto,
+  });
 }
 
 // Parámetros de negocio (103 + 115): los mismos que lee el servidor.
@@ -725,6 +751,8 @@ const config_parametros = [
   { clave: 'dias_ventana_alta', valor: 30 }, { clave: 'dias_por_vencer_licencia', valor: 30 }, { clave: 'dias_por_vencer_garantia', valor: 30 },
   { clave: 'umbral_recurrencia_tickets', valor: { n: 3, dias: 30 } }, { clave: 'dias_ticket_viejo', valor: 3 },
   { clave: 'csat_muestra_minima', valor: 5 }, { clave: 'dias_corte_reapertura', valor: 30 },
+  // 120: horas del cierre automático de un ticket resuelto sin calificación.
+  { clave: 'horas_autocierre_resuelto', valor: 24 },
   // 110 + 117: actas pendientes (desde hace 60 días, como el Inicio de la maqueta) y revisión de accesos.
   { clave: 'dias_acta_sin_adjuntar', valor: 3 }, { clave: 'actas_pendientes_desde', valor: fecha(-60) },
   { clave: 'dias_revision_accesos', valor: 180 },
@@ -1106,11 +1134,9 @@ export const RPC = {
   // Reportes centralizados (117): inventario, licencias, correos, personal, solicitudes, cambios,
   // problemas, encuestas y auditoría — maqueta/rpc-reportes-*.js, misma aritmética que el SQL.
   ...RPC_REPORTES_117,
-  cerrar_ticket: (db, args) => {
-    const t = db.tickets.find((x) => x.id === args?.p_ticket_id);
-    if (t) t.estado = 'cerrado';
-    return t || null;
-  },
+  // Cierre según el procedimiento (120): resolver_ticket, reabrir_ticket y
+  // revisar_calificacion_baja — maqueta/rpc-cierre-tickets.js.
+  ...RPC_CIERRE_TICKETS,
   kb_registrar_feedback: (db, args) => {
     const a = db.kb_articulos.find((x) => x.id === args?.p_articulo_id);
     if (a) a[args.p_util ? 'util_si' : 'util_no'] += 1;

@@ -7,21 +7,17 @@
 // etiqueta lleva cada valor.
 import { claseBadge, TONO_ESTADO_TICKET as TE, TONO_PRIORIDAD as TP, TONO_TICKET_SIN_VINCULAR } from './tonos.js';
 
-// 'resuelto' y 'cerrado' se muestran como una sola cosa para el staff
-// (decisión de producto 2026-08-21): en la práctica nadie ve nunca un
-// ticket parado en 'resuelto' — cerrar_ticket() (migración 051) encadena
-// ambos en un solo clic — así que mostrarlos con label/color distinto solo
-// generaba la pregunta de "¿en qué se diferencian?". La columna `estado`
-// de la tabla sigue guardando los 2 valores reales (crear_encuesta_al_cerrar
-// depende del literal 'cerrado', igual que el resto de los triggers de
-// tickets) — esto es puramente la fachada que ve el staff. Ver
-// OPCIONES_FILTRO_ESTADO más abajo para el filtro (que sí necesita
-// colapsarlos en una sola opción, no solo un mismo label).
+// 'resuelto' y 'cerrado' son dos momentos distintos desde la migración 120
+// (procedimiento de cierre): el técnico RESUELVE con la solución visible y el
+// ticket espera que el solicitante califique; calificar lo CIERRA, y si nadie
+// califica en 24 h se cierra solo («Cerrado automático – Sin validación»,
+// ver CIERRE_POR). Hasta la 120, cerrar_ticket() encadenaba los dos en un clic
+// y la UI los mostraba con la misma etiqueta (decisión de 2026-08-21).
 export const ESTADOS_TICKET = {
   abierto:     { label: 'Abierto',       clase: claseBadge(TE.abierto) },
   en_progreso: { label: 'En progreso',   clase: claseBadge(TE.en_progreso) },
   resuelto:    { label: 'Resuelto',      clase: claseBadge(TE.resuelto) },
-  cerrado:     { label: 'Resuelto',      clase: claseBadge(TE.cerrado) },
+  cerrado:     { label: 'Cerrado',       clase: claseBadge(TE.cerrado) },
   reabierto:   { label: 'Reabierto',     clase: claseBadge(TE.reabierto) },
   rechazado:   { label: 'Rechazado',     clase: claseBadge(TE.rechazado) },
 };
@@ -103,9 +99,47 @@ export const NIVELES_ATENCION = [
   { valor: 'N3', label: 'N3 — Experto / desarrollo' },
 ];
 
-// Estados en los que el ticket ya está en curso: campos editables + botón Resuelto
+// Estados en los que el ticket ya está en curso: campos editables. Solo los
+// RESOLUBLES llevan el botón «Resolver» (resolver_ticket, 120); un resuelto
+// espera la calificación del solicitante.
 export const ESTADOS_EN_CURSO = ['en_progreso', 'reabierto', 'resuelto'];
+export const ESTADOS_RESOLUBLES = ['en_progreso', 'reabierto'];
 export const ESTADOS_TERMINALES = ['cerrado', 'rechazado'];
+// El JEFE reabre por la vía general (reabrir_ticket, 120): también un resuelto
+// mal resuelto, antes de que el solicitante califique.
+export const ESTADOS_REABRIBLES = ['resuelto', 'cerrado', 'rechazado'];
+
+// Quién cerró (tickets.cerrado_por, 120). 'sistema' es el cierre automático a
+// las 24 h sin calificación: se cuenta aparte y nunca como satisfecho.
+export const CIERRE_POR = {
+  usuario: 'Validado por el solicitante',
+  sistema: 'Cerrado automático – Sin validación',
+  sin_solicitante: 'Sin solicitante que califique',
+  legado: '',
+};
+export function etiquetaCierre(cerradoPor) {
+  return CIERRE_POR[cerradoPor] || '';
+}
+
+// Topes que también valida la base (resolver_ticket, revisar_calificacion_baja; 120).
+export const SOLUCION_MAX = 4000;
+export const NOTA_REVISION_MAX = 2000;
+// Horas por defecto del cierre automático (parámetro horas_autocierre_resuelto).
+export const HORAS_AUTOCIERRE_DEFECTO = 24;
+
+// Plazo de revisión de una calificación de 1 o 2 (120): el día hábil siguiente
+// a la respuesta (lunes a viernes, sin feriados; en hora de Lima). Misma regla
+// que public.dia_habil_siguiente. Devuelve 'AAAA-MM-DD'.
+const FMT_DIA_LIMA = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' });
+export function diaLimaDe(fecha = new Date()) {
+  return FMT_DIA_LIMA.format(fecha instanceof Date ? fecha : new Date(fecha));
+}
+export function plazoRevisionCalificacion(fechaRespuesta) {
+  const d = new Date(`${diaLimaDe(fechaRespuesta)}T00:00:00Z`);
+  const dow = d.getUTCDay(); // 0 domingo … 6 sábado
+  d.setUTCDate(d.getUTCDate() + (dow === 5 ? 3 : dow === 6 ? 2 : 1));
+  return d.toISOString().slice(0, 10);
+}
 
 // Valor de filtro (no un estado real): "vigentes" = todo lo que no sea
 // Resuelto (incluye 'cerrado' en la base) ni Rechazado — todo lo que
@@ -125,16 +159,13 @@ export const ESTADOS_VIGENTES = ['abierto', 'en_progreso', 'reabierto'];
 // staff): queryTickets() lo traduce a `asignado_a IS NULL`.
 export const SIN_ASIGNAR = 'sin_asignar';
 
-// Opciones del <select> de estado en la Lista de Tickets: DISTINTO de
-// iterar ESTADOS_TICKET directamente, porque ese mapa tiene 'resuelto' Y
-// 'cerrado' como dos claves con el mismo label ahora ("Resuelto") — un
-// v-for ahí mostraría la opción duplicada. Esta lista la colapsa en una
-// sola opción "Resuelto" (ver queryTickets(): filtra por
-// .in('estado', ['resuelto','cerrado']), no por .eq()).
+// Opciones del <select> de estado en la Lista de Tickets. Desde la 120
+// 'resuelto' (por calificar) y 'cerrado' son dos opciones.
 export const OPCIONES_FILTRO_ESTADO = [
   { valor: 'abierto', label: 'Abierto' },
   { valor: 'en_progreso', label: 'En progreso' },
-  { valor: 'resuelto', label: 'Resuelto' },
+  { valor: 'resuelto', label: 'Resuelto (por calificar)' },
+  { valor: 'cerrado', label: 'Cerrado' },
   { valor: 'reabierto', label: 'Reabierto' },
   { valor: 'rechazado', label: 'Rechazado' },
 ];
@@ -149,6 +180,8 @@ export const EVENTO_LABELS = {
   categoria_cambiada: 'Reclasificado',
   encuesta_enviada: 'Encuesta enviada',
   encuesta_respondida: 'Encuesta respondida',
+  cerrado_automatico: 'Cerrado automático – Sin validación',
+  calificacion_revisada: 'Calificación revisada',
 };
 
 // Hitos del historial esencial (TicketDetalleView): a qué estado se

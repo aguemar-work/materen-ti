@@ -25,11 +25,11 @@
 // Acciones (POST { action, ... }):
 //   catalogo       público          → { categorias[], subcategorias[] } (con `aviso`, 114, y `prioridad_sugerida`, 116)
 //   crear          público o staff  → { codigo, token, vinculado }
-//   seguimiento    público          → { codigo, titulo, estado, comentarios[], adjuntoUrl? }
+//   seguimiento    público          → { codigo, titulo, estado, cerradoPor, comentarios[], adjuntoUrl? }
 //   adjuntoStaff   staff            → { url, expiraSegundos } (URL firmada de la captura de un ticket)
-//   buscarPorDni   público          → { tickets[] } (solo tickets ACTIVOS; limitado por IP)
+//   buscarPorDni   público          → { tickets[] } (activos y los resueltos por calificar; limitado por IP)
 //   encuestaEstado público          → { respondida } (para no mostrar el formulario tras refrescar)
-//   encuesta       público          → { ok }
+//   encuesta       público          → { ok, cerrado } (calificar valida la solución y cierra el ticket, 120)
 //   version        staff            → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 //   ping           público          → { ok, funcion, hora } (healthcheck: sin sesión ni BD)
 //
@@ -480,6 +480,7 @@ const LIMITE_VENTANA_MIN = 10;
 const SEGUIMIENTO_MAX_IP = 60;
 const CATALOGO_MAX_IP = 60;
 const ENCUESTA_MAX_IP = 30; // encuestaEstado y encuesta, cada una por separado
+const COMENTARIO_ENCUESTA_MAX_LEN = 2000;
 
 // URL firmada de corta vida para una captura del bucket privado (111). null si
 // no se puede firmar (objeto ausente, falla de red): nunca rompe la respuesta
@@ -527,12 +528,6 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
 
   const baseUrl = Deno.env.get('INSFORGE_BASE_URL')!;
   const admin = createAdminClient({ baseUrl, apiKey: Deno.env.get('API_KEY')! });
-
-  async function log(ticketId: string, evento: string, detalle: string | null, userId: string | null, userEmail: string | null) {
-    await admin.database.from('ticket_eventos').insert([
-      { ticket_id: ticketId, evento, detalle, user_id: userId, user_email: userEmail },
-    ]);
-  }
 
   // Staff autenticado, si vino Authorization (opcional en "crear"). Ciclo 21 —
   // FAIL-CLOSED (ver _shared/auth.ts): "sin cabecera / token anónimo o inválido /
@@ -700,7 +695,7 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
 
     const { data: ticket } = await admin.database
       .from('tickets')
-      .select('id, codigo, titulo, descripcion, estado, adjunto_key, created_at, updated_at, categorias_ticket(nombre), subcategorias_ticket(nombre)')
+      .select('id, codigo, titulo, descripcion, estado, cerrado_por, adjunto_key, created_at, updated_at, categorias_ticket(nombre), subcategorias_ticket(nombre)')
       .eq('token', token)
       .maybeSingle();
     if (!ticket) return json({ ok: false, code: 'no_existe' });
@@ -723,6 +718,8 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       titulo: ticket.titulo,
       descripcion: ticket.descripcion,
       estado: ticket.estado,
+      // 120: 'sistema' = «Cerrado automático – Sin validación» (no se califica).
+      cerradoPor: ticket.cerrado_por || null,
       adjuntoUrl,
       adjuntoExpiraSegundos: adjuntoUrl ? ADJUNTO_URL_SEGUNDOS : null,
       categoria: uno(ticket.categorias_ticket)?.nombre || '',
@@ -769,9 +766,10 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
   }
 
   // ── buscarPorDni: público, para quien perdió el enlace de seguimiento ──
-  // Devuelve tickets ACTIVOS más los CERRADOS con encuesta de satisfacción
-  // pendiente (para que el empleado la complete aunque el envío automático
-  // haya fallado); nunca el resto del historial cerrado. Nunca revela si
+  // Devuelve tickets ACTIVOS más los RESUELTOS o CERRADOS con su encuesta
+  // vigente pendiente (120: un resuelto espera la calificación del empleado,
+  // que es la que lo cierra; un cerrado con encuesta pendiente es anterior a
+  // la 120); nunca el resto del historial cerrado. Nunca revela si
   // el DNI corresponde o no a un empleado real. Limitado por IP para
   // frenar enumeración de DNIs (8 dígitos es poco espacio).
   if (body.action === 'buscarPorDni') {
@@ -826,9 +824,10 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       .from('tickets')
       .select('id, codigo, titulo, estado, created_at, token')
       .eq('empleado_id', empleado.id)
-      .eq('estado', 'cerrado')
+      .in('estado', ['resuelto', 'cerrado'])
       .order('created_at', { ascending: false });
 
+    // Una encuesta anulada (reabierto, cierre automático) ya no se responde.
     let pendientesEncuesta: typeof cerrados = [];
     if (cerrados?.length) {
       const idsCerrados = cerrados.map((t) => t.id);
@@ -836,7 +835,8 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
         .from('ticket_satisfaccion')
         .select('ticket_id')
         .in('ticket_id', idsCerrados)
-        .is('fecha_envio', null);
+        .is('fecha_envio', null)
+        .is('anulada_at', null);
       const idsPendientes = new Set((encuestas || []).map((e) => e.ticket_id));
       pendientesEncuesta = cerrados.filter((t) => idsPendientes.has(t.id));
     }
@@ -871,39 +871,39 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
       .from('tickets').select('id').eq('token', token).maybeSingle();
     if (!ticket) return json({ ok: false, code: 'no_existe' });
 
-    const { data: encuesta } = await admin.database
-      .from('ticket_satisfaccion').select('fecha_envio').eq('ticket_id', ticket.id).maybeSingle();
+    // Una encuesta por resolución (120): la vigente es la de la última.
+    const { data: encuestas, error: eEncuesta } = await admin.database
+      .from('ticket_satisfaccion').select('fecha_envio, anulada_at')
+      .eq('ticket_id', ticket.id).order('resolucion_numero', { ascending: false }).limit(1);
+    if (eEncuesta) throw new Error(`No se pudo leer la encuesta: ${eEncuesta.message}`);
+    const encuesta = encuestas?.[0];
     if (!encuesta) return json({ ok: false, code: 'no_disponible' });
+    if (!encuesta.fecha_envio && encuesta.anulada_at) return json({ ok: false, code: 'no_vigente' });
 
     return json({ ok: true, respondida: !!encuesta.fecha_envio });
   }
 
+  // La respuesta, la validación del ticket (resuelto → cerrado, cerrado_por
+  // 'usuario') y su evento van en UNA transacción: responder_encuesta_ticket
+  // (migración 120). Devuelve los mismos códigos de negocio que antes más
+  // no_vigente (reabierto o cerrado solo a las 24 h).
   if (body.action === 'encuesta') {
     const token = String(body.token || '');
     const nivel = Number(body.nivel);
-    if (!token || !nivel || nivel < 1 || nivel > 5) return json({ ok: false, code: 'datos_invalidos' });
+    if (!token || !Number.isInteger(nivel) || nivel < 1 || nivel > 5) return json({ ok: false, code: 'datos_invalidos' });
+    const comentario = trimOVacio(body.comentario);
+    if (comentario && comentario.length > COMENTARIO_ENCUESTA_MAX_LEN) return json({ ok: false, code: 'texto_muy_largo' });
 
     if (await excedeLimite(admin, 'tickets.encuesta', ip, ENCUESTA_MAX_IP, LIMITE_VENTANA_MIN)) {
       return json({ ok: false, code: 'demasiados_intentos' }, 429);
     }
 
-    const { data: ticket } = await admin.database
-      .from('tickets').select('id').eq('token', token).maybeSingle();
-    if (!ticket) return json({ ok: false, code: 'no_existe' });
-
-    const { data: encuesta } = await admin.database
-      .from('ticket_satisfaccion').select('id, fecha_envio').eq('ticket_id', ticket.id).maybeSingle();
-    if (!encuesta) return json({ ok: false, code: 'no_disponible' });
-    if (encuesta.fecha_envio) return json({ ok: false, code: 'ya_respondida' });
-
-    const { error: eUpdate } = await admin.database
-      .from('ticket_satisfaccion')
-      .update({ nivel, comentario: trimOVacio(body.comentario), fecha_envio: new Date().toISOString() })
-      .eq('id', encuesta.id);
-    if (eUpdate) return json({ ok: false, code: 'error_guardando' }, 500);
-
-    await log(ticket.id, 'encuesta_respondida', `Nivel ${nivel}`, null, null);
-    return json({ ok: true });
+    const { data: r, error: eRpc } = await admin.database.rpc('responder_encuesta_ticket', {
+      p_token: token, p_nivel: nivel, p_comentario: comentario,
+    });
+    if (eRpc) throw new Error(`No se pudo registrar la encuesta: ${eRpc.message}`);
+    if (!r?.ok) return json({ ok: false, code: r?.code || 'error_guardando' });
+    return json({ ok: true, cerrado: r.cerrado === true });
   }
 
   return json({ ok: false, code: 'accion_desconocida' }, 400);

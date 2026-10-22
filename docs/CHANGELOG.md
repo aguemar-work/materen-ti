@@ -49,6 +49,20 @@
   "slug" en Plataformas. El buscador de Tickets encuentra también por **DNI** del empleado, y el de Equipos lo dice
   (modelo).
 
+- **2026-10-21** (**Cierre de tickets según el procedimiento de TI — migración 120**, escrita, **sin aplicar**; pedido
+  del dueño) — Análisis de las reglas de cierre del procedimiento contra el sistema (`docs/HISTORIAL-AUDITORIAS.md`,
+  PROC-CIERRE-01..09) e implementación con el diseño rescatado de `v2/tickets-f1`: «Resolver» exige la solución
+  (comentario visible) y deja el ticket `resuelto`; calificar lo cierra; sin calificación en 24 h se cierra como
+  «Cerrado automático – Sin validación» (`cerrar_resueltos_vencidos`, acción `mantenimiento` de `credenciales`,
+  por programar); una calificación de 1 o 2 avisa al técnico y se revisa en `/tickets/calificaciones` (reabrir sin
+  ser JEFE o nota). Una encuesta por resolución; `cerrar_ticket` y «Cerrar seleccionados» se retiran; el reporte de
+  Satisfacción cuenta los cierres sin validación y las calificaciones bajas con su revisión (`reportes-2026-10-21`).
+- **2026-10-21** (**Cuadro de subcategorías del procedimiento de TI**, solo documentación; pedido del dueño) — Nuevo
+  `docs/CUADRO-SUBCATEGORIAS-TICKETS.md`: el cuadro del procedimiento (naturaleza, nivel, destino PR-TI y condición
+  de cierre) estaba armado sobre el catálogo anterior a la 116 y se rehízo sobre las 31 subcategorías vigentes, con
+  la prioridad sugerida del sistema. Marca las diferencias con el sistema (Restablecer contraseña y Desbloquear
+  cuenta son Solicitud) y los valores propuestos para las subcategorías nuevas, pendientes de confirmar. «Gestión
+  interna TI» no es una categoría: sus filas apuntan a Solicitudes (108), Cambios (107) o CCTV.
 - **2026-10-21** (**El técnico reclasifica la categoría — migración 119**, escrita, **sin aplicar**; pedido del dueño) —
   `reclasificar_ticket` pasa de `rol:jefe` a `modulo:tickets`: quien atiende corrige la categoría que eligió el
   solicitante (p. ej. una falta de permisos registrada como «Error o falla en aplicación» va a «Accesos y Cuentas ›

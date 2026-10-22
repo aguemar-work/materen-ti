@@ -54,7 +54,10 @@ describe('ReporteSatisfaccionView', () => {
     expect(wrapper.findAll('dl dt').map((d) => d.text())).toContain('Faltan responder');
     expect(wrapper.findAll('[data-tag]').length).toBeGreaterThan(0);
     expect(wrapper.find('[data-sello]').exists()).toBe(false);
-    expect(wrapper.find('#reporte-glosario-titulo').text()).toContain('reportes-2026-10-06');
+    // 120: cierres sin validación aparte y la revisión de las calificaciones bajas.
+    expect(wrapper.findAll('dl dt').map((d) => d.text())).toContain('Cerrados sin validación');
+    expect(titulos.some((t) => /Calificaciones bajas y su revisión$/.test(t))).toBe(true);
+    expect(wrapper.find('#reporte-glosario-titulo').text()).toContain('reportes-2026-10-21');
     await wrapper.findAll('[data-caratula] button').find((b) => b.text() === 'CSV').trigger('click');
     const [nombre, cabecera, filas] = exportarCSV.mock.calls[0];
     expect(nombre).toBe('Reporte_satisfaccion_historico');

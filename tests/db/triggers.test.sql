@@ -73,6 +73,10 @@
 --         anonimas y auditoria; ninguna salida con DNI, contacto, IP ni user_agent
 --   [119] (bloque 119-a) reclasificar_ticket para el tecnico: modulo tickets (42501 sin el
 --         modulo o inactivo), ticket cerrado o rechazado solo JEFE (P0001), evento con su autor
+--   [120] (bloques 120-a a 120-c) cierre segun el procedimiento: resolver con solucion visible
+--         y encuesta por resolucion, calificar cierra (usuario), sin solicitante cierra al
+--         resolver, cierre automatico a las 24 h (sistema, encuesta anulada), guard de la
+--         encuesta, revision de calificaciones bajas (aviso, reabrir sin JEFE, nota), reporte
 --   [108] (bloques 108-a a 108-f) solicitudes de servicio: catalogo y privilegios,
 --         crear_solicitud (alta con persona nueva en la misma transaccion, validaciones,
 --         una sola abierta por tipo), AUTOCOMPLETADO por cuenta/entrega abierta/equipo/
@@ -7774,5 +7778,352 @@ begin
     raise exception 'TESTS_OK [119a] — invariantes verificados, todo revertido';
   else
     raise exception 'TESTS_FALLARON [119a]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 120a — Resolver y validar (120): resolver_ticket exige el módulo
+-- tickets y la solución; la solución queda como comentario visible y abre la
+-- encuesta de esa resolución; calificar cierra el ticket como 'usuario'; sin
+-- solicitante se cierra en el acto ('sin_solicitante'); una sesión no puede
+-- saltar resuelto → cerrado ni resolver sin solución con un UPDATE directo.
+-- ============================================================
+do $$
+declare
+  v_asis uuid;
+  v_sinmod uuid;
+  v_emp uuid;
+  v_empresa uuid;
+  v_t uuid;
+  v_ts uuid;
+  t public.tickets;
+  r jsonb;
+  v_n int;
+  v_enc public.ticket_satisfaccion;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_120a_asis@example.test') returning id into v_asis;
+  insert into auth.users (email) values ('__test_ci_120a_sinmod@example.test') returning id into v_sinmod;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set activo = true, nombre = 'Asistente 120a' where user_id in (v_asis, v_sinmod);
+  delete from public.staff_modulos_permisos where staff_user_id in (v_asis, v_sinmod);
+  insert into public.staff_modulos_permisos (staff_user_id, modulo) values (v_asis, 'tickets'), (v_sinmod, 'equipos');
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 120a') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('__TEST_CI__', 'Solicitante 120a', '91200001', v_empresa) returning id into v_emp;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, tipo, nivel_atencion, asignado_a, empleado_id)
+    values ('__TEST_CI_120A__', lpad('A', 24, 'W'), 'Con solicitante', 'd', 'en_progreso', 'media', 'incidente', 'N1', v_asis, v_emp) returning id into v_t;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, tipo, nivel_atencion, asignado_a)
+    values ('__TEST_CI_120B__', lpad('B', 24, 'W'), 'Sin solicitante', 'd', 'en_progreso', 'media', 'incidente', 'N1', v_asis) returning id into v_ts;
+
+  -- 1) guard y datos obligatorios
+  begin
+    perform public.resolver_ticket_de(v_sinmod, v_t, 'Se cambió el tóner');
+    fallos := fallos || '[120] resolvio un staff sin el modulo tickets; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[120] sin modulo lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.resolver_ticket(v_t, 'Se cambió el tóner');
+    fallos := fallos || '[120] la RPC resolvio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[120] la RPC sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.resolver_ticket_de(v_asis, v_t, '   ');
+    fallos := fallos || '[120] resolvio sin solucion; ';
+  exception when others then if sqlerrm not like 'Escriba la solución aplicada%' then fallos := fallos || '[120] sin solucion lanzo ' || sqlerrm || '; '; end if; end;
+  begin
+    update public.tickets set estado = 'resuelto' where id = v_t;
+    fallos := fallos || '[120] un UPDATE directo resolvio sin solucion; ';
+  exception when others then if sqlerrm not like 'Para resolver el ticket escriba la solución%' then fallos := fallos || '[120] UPDATE sin solucion lanzo ' || sqlerrm || '; '; end if; end;
+
+  -- 2) resolver: comentario visible y encuesta 1 pendiente
+  t := public.resolver_ticket_de(v_asis, v_t, '  Se cambió el tóner y se probó la impresión  ');
+  if t.estado <> 'resuelto' or t.nota_resolucion <> 'Se cambió el tóner y se probó la impresión' or t.cerrado_por is not null then
+    fallos := fallos || '[120] resolver no dejo el ticket resuelto con su nota; ';
+  end if;
+  select count(*) into v_n from public.ticket_comentarios
+   where ticket_id = v_t and interno = false and mensaje = 'Solución aplicada: Se cambió el tóner y se probó la impresión';
+  if v_n <> 1 then fallos := fallos || '[120] la solucion no quedo como comentario visible; '; end if;
+  select * into v_enc from public.ticket_satisfaccion where ticket_id = v_t;
+  if v_enc.id is null or v_enc.resolucion_numero <> 1 or v_enc.fecha_envio is not null or v_enc.resuelto_at is distinct from t.resuelto_at then
+    fallos := fallos || '[120] resolver no abrio la encuesta de la resolucion 1; ';
+  end if;
+  begin
+    perform public.resolver_ticket_de(v_asis, v_t, 'otra vez');
+    fallos := fallos || '[120] resolvio un ticket ya resuelto; ';
+  exception when others then if sqlerrm not like 'Solo se resuelve un ticket en progreso o reabierto%' then fallos := fallos || '[120] re-resolver lanzo ' || sqlerrm || '; '; end if; end;
+
+  -- 3) la encuesta: códigos y cierre por el usuario
+  if (public.responder_encuesta_ticket(lpad('A', 24, 'W'), 6, null) ->> 'code') <> 'datos_invalidos'
+     or (public.responder_encuesta_ticket('no-existe', 4, null) ->> 'code') <> 'no_existe' then
+    fallos := fallos || '[120] responder_encuesta_ticket no valida nivel o token; ';
+  end if;
+  r := public.responder_encuesta_ticket(lpad('A', 24, 'W'), 5, '  Muy rápido  ');
+  select * into t from public.tickets where id = v_t;
+  select * into v_enc from public.ticket_satisfaccion where ticket_id = v_t;
+  if (r ->> 'ok') <> 'true' or (r ->> 'cerrado') <> 'true' or t.estado <> 'cerrado' or t.cerrado_por <> 'usuario' or t.cerrado_at is null
+     or v_enc.nivel <> 5 or v_enc.comentario <> 'Muy rápido' or v_enc.fecha_envio is null then
+    fallos := fallos || '[120] calificar no cerro el ticket como usuario: ' || r::text || '; ';
+  end if;
+  if t.resuelto_at is distinct from v_enc.resuelto_at then fallos := fallos || '[120] el cierre movio resuelto_at; '; end if;
+  if not exists (select 1 from public.ticket_eventos where ticket_id = v_t and evento = 'encuesta_respondida' and detalle = 'Nivel 5') then
+    fallos := fallos || '[120] falta el evento encuesta_respondida; ';
+  end if;
+  if (public.responder_encuesta_ticket(lpad('A', 24, 'W'), 1, null) ->> 'code') <> 'ya_respondida' then
+    fallos := fallos || '[120] se respondio dos veces; ';
+  end if;
+  update public.tickets set cerrado_por = 'sistema', cerrado_at = now() - interval '1 day' where id = v_t;
+  select * into t from public.tickets where id = v_t;
+  if t.cerrado_por <> 'usuario' then fallos := fallos || '[120] cerrado_por se escribio con un UPDATE directo; '; end if;
+
+  -- 4) sin solicitante: se cierra al resolver, sin encuesta
+  t := public.resolver_ticket_de(v_asis, v_ts, 'Se reinició el servidor de impresión');
+  if t.estado <> 'cerrado' or t.cerrado_por <> 'sin_solicitante' or exists (select 1 from public.ticket_satisfaccion where ticket_id = v_ts) then
+    fallos := fallos || '[120] el ticket sin solicitante no se cerro al resolver; ';
+  end if;
+
+  -- 5) la whitelist: resuelto → cerrado y cerrado → reabierto no son de cualquiera
+  if (select quien from public.transiciones_ticket_permitidas where origen = 'resuelto' and destino = 'cerrado') <> 'usuario'
+     or (select count(*) from public.transiciones_ticket_permitidas where destino = 'reabierto' and quien = 'jefe') <> 3 then
+    fallos := fallos || '[120] la whitelist no tiene los quien esperados; ';
+  end if;
+  begin
+    update public.tickets set motivo_reapertura = 'x', estado = 'reabierto' where id = v_t;
+    fallos := fallos || '[120] reabrio un cerrado sin ser JEFE ni revision; ';
+  exception when others then if sqlerrm not like 'Solo el jefe puede hacer esta transición%' then fallos := fallos || '[120] reabrir lanzo ' || sqlerrm || '; '; end if; end;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [120a] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [120a]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 120b — Cierre automático y guard de la encuesta (120): un resuelto
+-- de hace más de 24 h se cierra como 'sistema' con su encuesta anulada y el
+-- evento cerrado_automatico (ya no se califica); uno reciente sigue resuelto;
+-- la respuesta solo vale una vez y para la encuesta vigente; el comentario
+-- solo se puede vaciar (anonimización); el Inicio no cuenta las anuladas.
+-- ============================================================
+do $$
+declare
+  v_asis uuid;
+  v_emp uuid;
+  v_empresa uuid;
+  v_viejo uuid;
+  v_nuevo uuid;
+  t public.tickets;
+  r jsonb;
+  v_enc public.ticket_satisfaccion;
+  v_cerrados int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_120b_asis@example.test') returning id into v_asis;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set activo = true, nombre = 'Asistente 120b' where user_id = v_asis;
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 120b') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('__TEST_CI__', 'Solicitante 120b', '91200002', v_empresa) returning id into v_emp;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, tipo, nivel_atencion, asignado_a, empleado_id)
+    values ('__TEST_CI_120C__', lpad('C', 24, 'W'), 'Viejo', 'd', 'en_progreso', 'media', 'incidente', 'N1', v_asis, v_emp) returning id into v_viejo;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, tipo, nivel_atencion, asignado_a, empleado_id)
+    values ('__TEST_CI_120D__', lpad('D', 24, 'W'), 'Reciente', 'd', 'en_progreso', 'media', 'incidente', 'N1', v_asis, v_emp) returning id into v_nuevo;
+  perform public.resolver_ticket_de(v_asis, v_viejo, 'Se reemplazó el cable de red');
+  perform public.resolver_ticket_de(v_asis, v_nuevo, 'Se configuró la VPN');
+
+  -- 1) guard de la encuesta antes de responder
+  begin
+    update public.ticket_satisfaccion set revision_desenlace = 'nota', revisado_at = now() where ticket_id = v_nuevo;
+    fallos := fallos || '[120] se reviso una encuesta sin responder; ';
+  exception when others then if sqlerrm not like 'Solo se revisa una encuesta respondida%' then fallos := fallos || '[120] revisar sin responder lanzo ' || sqlerrm || '; '; end if; end;
+
+  -- 2) cierre automático: solo el resuelto hace más de 24 h
+  alter table public.tickets disable trigger tickets_resuelto_at;
+  update public.tickets set resuelto_at = now() - interval '25 hours' where id = v_viejo;
+  alter table public.tickets enable trigger tickets_resuelto_at;
+  r := public.cerrar_resueltos_vencidos();
+  v_cerrados := (r ->> 'cerrados')::int;
+  select * into t from public.tickets where id = v_viejo;
+  if v_cerrados < 1 or (r ->> 'horas')::int <> 24 or t.estado <> 'cerrado' or t.cerrado_por <> 'sistema' then
+    fallos := fallos || '[120] el cierre automatico no cerro el vencido: ' || r::text || '; ';
+  end if;
+  if (select estado from public.tickets where id = v_nuevo) <> 'resuelto' then fallos := fallos || '[120] el cierre automatico cerro uno reciente; '; end if;
+  if not exists (select 1 from public.ticket_eventos where ticket_id = v_viejo and evento = 'cerrado_automatico' and detalle like 'Cerrado automático – Sin validación%') then
+    fallos := fallos || '[120] falta el evento cerrado_automatico; ';
+  end if;
+  select * into v_enc from public.ticket_satisfaccion where ticket_id = v_viejo;
+  if v_enc.anulada_at is null then fallos := fallos || '[120] la encuesta del cierre automatico no quedo anulada; '; end if;
+  if (public.responder_encuesta_ticket(lpad('C', 24, 'W'), 5, null) ->> 'code') <> 'no_vigente' then
+    fallos := fallos || '[120] se califico un cierre automatico; ';
+  end if;
+  if (select count(*) from public.v_ticket_hechos where ticket_id = v_viejo and cerrado_sin_validacion and encuesta_anulada and encuesta_generada and not encuesta_respondida) <> 1 then
+    fallos := fallos || '[120] v_ticket_hechos no marca el cierre sin validacion; ';
+  end if;
+  if (public.cerrar_resueltos_vencidos() ->> 'cerrados')::int <> 0 then fallos := fallos || '[120] el cierre automatico no es idempotente; '; end if;
+
+  -- 3) la respuesta: una vez, inmutable; el comentario solo se vacía
+  begin
+    update public.ticket_satisfaccion set nivel = 3, fecha_envio = now() where ticket_id = v_viejo;
+    fallos := fallos || '[120] se respondio una encuesta anulada; ';
+  exception when others then if sqlerrm not like 'Esta encuesta ya no se puede responder%' then fallos := fallos || '[120] responder anulada lanzo ' || sqlerrm || '; '; end if; end;
+  perform public.responder_encuesta_ticket(lpad('D', 24, 'W'), 4, 'Bien');
+  begin
+    update public.ticket_satisfaccion set nivel = 1 where ticket_id = v_nuevo;
+    fallos := fallos || '[120] cambio el nivel de una respuesta; ';
+  exception when others then if sqlerrm not like 'La encuesta ya fue respondida%' then fallos := fallos || '[120] cambiar nivel lanzo ' || sqlerrm || '; '; end if; end;
+  begin
+    update public.ticket_satisfaccion set comentario = 'Otro' where ticket_id = v_nuevo;
+    fallos := fallos || '[120] cambio el comentario de una respuesta; ';
+  exception when others then null; end;
+  update public.ticket_satisfaccion set comentario = null where ticket_id = v_nuevo;
+  begin
+    update public.ticket_satisfaccion set revision_desenlace = 'nota', revisado_at = now() where ticket_id = v_nuevo;
+    fallos := fallos || '[120] se reviso una calificacion de 4; ';
+  exception when others then if sqlerrm not like 'Solo se revisa una calificación de 1 o 2%' then fallos := fallos || '[120] revisar un 4 lanzo ' || sqlerrm || '; '; end if; end;
+
+  -- 4) el Inicio no cuenta las anuladas
+  if position('anulada_at is null' in pg_get_functiondef('public.dashboard_resumen_de(uuid)'::regprocedure)) = 0 then
+    fallos := fallos || '[120] dashboard_resumen_de cuenta las encuestas anuladas; ';
+  end if;
+  if (select valor::text from public.config_parametros where clave = 'horas_autocierre_resuelto') <> '24' then
+    fallos := fallos || '[120] falta el parametro horas_autocierre_resuelto; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [120b] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [120b]: %', fallos;
+  end if;
+end $$;
+
+-- ============================================================
+-- BLOQUE 120c — Calificaciones bajas (120): una respuesta de 1 o 2 avisa al
+-- técnico asignado; revisar_calificacion_baja exige el módulo, desenlace y
+-- nota, y se hace una vez; 'reabierto' reabre el cerrado sin ser JEFE y la
+-- siguiente resolución abre la encuesta 2 (la vista lee la última); 'nota'
+-- deja el ticket cerrado; el día hábil siguiente salta el fin de semana; el
+-- reporte de Satisfacción cuenta los cierres sin validación y las bajas.
+-- ============================================================
+do $$
+declare
+  v_asis uuid;
+  v_sinmod uuid;
+  v_jefe uuid;
+  v_emp uuid;
+  v_empresa uuid;
+  v_t uuid;
+  v_u uuid;
+  v_enc uuid;
+  v_enc_u uuid;
+  t public.tickets;
+  r jsonb;
+  v_n int;
+  fallos text := '';
+begin
+  insert into auth.users (email) values ('__test_ci_120c_asis@example.test') returning id into v_asis;
+  insert into auth.users (email) values ('__test_ci_120c_sinmod@example.test') returning id into v_sinmod;
+  insert into auth.users (email) values ('__test_ci_120c_jefe@example.test') returning id into v_jefe;
+  alter table public.staff disable trigger trg_staff_autoedicion_solo_nombre;
+  update public.staff set activo = true, nombre = 'Asistente 120c' where user_id in (v_asis, v_sinmod);
+  update public.staff set activo = true, rol = 'JEFE', nombre = 'Jefe 120c' where user_id = v_jefe;
+  delete from public.staff_modulos_permisos where staff_user_id in (v_asis, v_sinmod);
+  insert into public.staff_modulos_permisos (staff_user_id, modulo) values (v_asis, 'tickets'), (v_sinmod, 'equipos');
+  insert into public.empresas (nombre) values ('__TEST_CI__ Empresa 120c') returning id into v_empresa;
+  insert into public.empleados (nombres, apellidos, dni, empresa_id) values ('__TEST_CI__', 'Solicitante 120c', '91200003', v_empresa) returning id into v_emp;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, tipo, nivel_atencion, asignado_a, empleado_id)
+    values ('__TEST_CI_120E__', lpad('E', 24, 'W'), 'Mal calificado', 'd', 'en_progreso', 'media', 'incidente', 'N1', v_asis, v_emp) returning id into v_t;
+  insert into public.tickets (codigo, token, titulo, descripcion, estado, prioridad, tipo, nivel_atencion, asignado_a, empleado_id)
+    values ('__TEST_CI_120F__', lpad('F', 24, 'W'), 'Mal calificado 2', 'd', 'en_progreso', 'media', 'incidente', 'N1', v_asis, v_emp) returning id into v_u;
+  perform public.resolver_ticket_de(v_asis, v_t, 'Se reinstaló el controlador');
+  perform public.resolver_ticket_de(v_asis, v_u, 'Se liberó espacio en disco');
+  perform public.responder_encuesta_ticket(lpad('E', 24, 'W'), 2, 'Sigue fallando');
+  perform public.responder_encuesta_ticket(lpad('F', 24, 'W'), 1, null);
+  select id into v_enc from public.ticket_satisfaccion where ticket_id = v_t;
+  select id into v_enc_u from public.ticket_satisfaccion where ticket_id = v_u;
+
+  -- 1) aviso al técnico asignado
+  select count(*) into v_n from public.notificaciones
+   where tipo = 'ticket_calificacion_baja' and entidad_id = v_t and destinatario_id = v_asis and titulo like 'Calificación 2/5 · __TEST_CI_120E__ — revisar a más tardar el %';
+  if v_n <> 1 then fallos := fallos || '[120] la calificacion baja no aviso al tecnico; '; end if;
+
+  -- 2) guard y datos de la revisión
+  begin
+    perform public.revisar_calificacion_baja_de(v_sinmod, v_enc, 'nota', 'x');
+    fallos := fallos || '[120] reviso un staff sin el modulo tickets; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[120] revisar sin modulo lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.revisar_calificacion_baja(v_enc, 'nota', 'x');
+    fallos := fallos || '[120] la RPC de revision corrio sin sesion; ';
+  exception when others then if sqlstate <> '42501' then fallos := fallos || '[120] la RPC de revision sin sesion lanzo ' || sqlstate || '; '; end if; end;
+  begin
+    perform public.revisar_calificacion_baja_de(v_asis, v_enc, 'borrar', 'x');
+    fallos := fallos || '[120] acepto un desenlace invalido; ';
+  exception when others then if sqlerrm not like 'Elija si se reabre%' then fallos := fallos || '[120] desenlace invalido lanzo ' || sqlerrm || '; '; end if; end;
+  begin
+    perform public.revisar_calificacion_baja_de(v_asis, v_enc, 'nota', '  ');
+    fallos := fallos || '[120] acepto una revision sin nota; ';
+  exception when others then if sqlerrm not like 'Escriba qué se revisó%' then fallos := fallos || '[120] sin nota lanzo ' || sqlerrm || '; '; end if; end;
+
+  -- 3) reabrir por revisión, sin ser JEFE; una sola vez
+  r := public.revisar_calificacion_baja_de(v_asis, v_enc, 'reabierto', 'El controlador no quedó firmado');
+  select * into t from public.tickets where id = v_t;
+  if (r ->> 'estado') <> 'reabierto' or t.estado <> 'reabierto' or t.motivo_reapertura <> 'Calificación 2/5: El controlador no quedó firmado'
+     or t.nota_resolucion is not null or t.cerrado_por is not null then
+    fallos := fallos || '[120] la revision no reabrio el ticket: ' || r::text || '; ';
+  end if;
+  if not exists (select 1 from public.ticket_satisfaccion where id = v_enc and revision_desenlace = 'reabierto' and revisado_por = v_asis and revisado_at is not null)
+     or not exists (select 1 from public.ticket_eventos where ticket_id = v_t and evento = 'calificacion_revisada' and user_id = v_asis and detalle like 'Calificación 2/5 · Reabierto: %') then
+    fallos := fallos || '[120] la revision no quedo registrada; ';
+  end if;
+  begin
+    perform public.revisar_calificacion_baja_de(v_asis, v_enc, 'nota', 'otra');
+    fallos := fallos || '[120] se reviso dos veces; ';
+  exception when others then if sqlerrm not like 'Esta calificación ya fue revisada%' then fallos := fallos || '[120] doble revision lanzo ' || sqlerrm || '; '; end if; end;
+
+  -- 4) la nueva resolución abre la encuesta 2 y la vista lee la última
+  perform public.resolver_ticket_de(v_asis, v_t, 'Se firmó el controlador y se probó');
+  if (select count(*) from public.ticket_satisfaccion where ticket_id = v_t) <> 2
+     or (select resolucion_numero from public.ticket_satisfaccion s join public.v_ticket_hechos h on h.encuesta_id = s.id where h.ticket_id = v_t) <> 2
+     or (select encuesta_respondida from public.v_ticket_hechos where ticket_id = v_t) then
+    fallos := fallos || '[120] la segunda resolucion no abrio la encuesta 2; ';
+  end if;
+
+  -- 5) nota: el ticket sigue cerrado
+  r := public.revisar_calificacion_baja_de(v_asis, v_enc_u, 'nota', 'Se explicó que el disco está al límite');
+  if (select estado from public.tickets where id = v_u) <> 'cerrado' or (r ->> 'desenlace') <> 'nota' then
+    fallos := fallos || '[120] la revision con nota cambio el ticket; ';
+  end if;
+
+  -- 6) día hábil siguiente (2026-10-23 es viernes)
+  if public.dia_habil_siguiente('2026-10-23') <> '2026-10-26' or public.dia_habil_siguiente('2026-10-24') <> '2026-10-26'
+     or public.dia_habil_siguiente('2026-10-25') <> '2026-10-26' or public.dia_habil_siguiente('2026-10-26') <> '2026-10-27' then
+    fallos := fallos || '[120] dia_habil_siguiente no salta el fin de semana; ';
+  end if;
+
+  -- 7) el reporte de Satisfacción
+  r := public.reporte_satisfaccion_de(v_jefe, null, null);
+  if (r -> 'calificacionesBajas' ->> 'total')::int < 2 or (r -> 'calificacionesBajas' ->> 'reabiertos')::int < 1
+     or (r -> 'calificacionesBajas' ->> 'conNota')::int < 1 or r -> 'cierresSinValidacion' is null
+     or not exists (select 1 from jsonb_array_elements(r -> 'calificacionesBajas' -> 'lista') x
+                     where x ->> 'ticket_codigo' = '__TEST_CI_120E__' and x ->> 'desenlace' = 'reabierto' and x ->> 'a_tiempo' = 'true'
+                       and x ->> 'revisado_por' = 'Asistente 120c') then
+    fallos := fallos || '[120] el reporte no trae las calificaciones bajas; ';
+  end if;
+
+  -- 8) privilegios
+  if not has_function_privilege('authenticated', 'public.resolver_ticket(uuid,text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.reabrir_ticket(uuid,text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.revisar_calificacion_baja(uuid,text,text)', 'execute')
+     or has_function_privilege('anon', 'public.resolver_ticket(uuid,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.resolver_ticket_de(uuid,uuid,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.revisar_calificacion_baja_de(uuid,uuid,text,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.responder_encuesta_ticket(text,integer,text)', 'execute')
+     or has_function_privilege('anon', 'public.responder_encuesta_ticket(text,integer,text)', 'execute')
+     or has_function_privilege('authenticated', 'public.cerrar_resueltos_vencidos()', 'execute')
+     or to_regprocedure('public.cerrar_ticket(uuid)') is not null then
+    fallos := fallos || '[120] privilegios de las RPC de cierre incorrectos; ';
+  end if;
+
+  if fallos = '' then
+    raise exception 'TESTS_OK [120c] — invariantes verificados, todo revertido';
+  else
+    raise exception 'TESTS_FALLARON [120c]: %', fallos;
   end if;
 end $$;

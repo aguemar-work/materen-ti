@@ -32,6 +32,10 @@ function etiquetaMes(iso) {
 
 const esInsatisfecha = (r) => r.nivel != null && r.nivel <= 2;
 
+// Revisión de una calificación baja (120): qué se hizo y si fue a tiempo.
+const DESENLACES = { reabierto: 'Reabierto', nota: 'Nota interna' };
+const aTiempo = (v) => (v == null ? celda('—', { tenue: true }) : celda(v ? 'Sí' : 'No', { tag: v ? 'ok' : 'critico' }));
+
 /**
  * @param {object} c  jsonb de insforgeApi.obtenerReporteSatisfaccion()
  * @returns {Array<{ id, titulo, nota?, cifras?, distribucion?, barras?, tablas? }>}
@@ -62,6 +66,8 @@ export function seccionesSatisfaccion(c) {
       { rotulo: 'Faltan responder', valor: r.faltan ?? 0, detalle: 'encuestas sin respuesta' },
       { rotulo: 'Insatisfechos', valor: r.insatisfechos ?? 0, detalle: 'respondieron 1 o 2' },
       { rotulo: 'Tickets resueltos', valor: r.tickets ?? 0, detalle: c.periodo ? 'en el período' : 'en todo el historial' },
+      // 120: se cuentan aparte; sin calificación no entran en ninguna muestra.
+      ...(c.cierresSinValidacion ? [{ rotulo: 'Cerrados sin validación', valor: c.cierresSinValidacion.total ?? 0, detalle: 'nadie calificó a tiempo; no cuentan como satisfechos' }] : []),
     ],
     distribucion: {
       titulo: 'Cómo respondieron',
@@ -125,6 +131,36 @@ export function seccionesSatisfaccion(c) {
           { titulo: '% satisf.', num: true }, { titulo: 'Promedio', num: true }, { titulo: 'Insatisf.', num: true },
         ],
         filas: c.porMes.map((f) => [celda(etiquetaMes(f.mes)), num(f.tickets), num(f.encuestasRespondidas), num(f.faltan), pctFila(f), promedio(f), num(f.insatisfechos)]),
+      }],
+    });
+  }
+
+  // 120: cada respuesta de 1 o 2 del período con su revisión (informe mensual).
+  const cb = c.calificacionesBajas;
+  if (cb) {
+    secciones.push({
+      id: 'revision',
+      titulo: 'Calificaciones bajas y su revisión',
+      nota: 'Cada respuesta de 1 o 2 del período, por fecha de respuesta. El técnico la revisa a más tardar el día hábil siguiente (lunes a viernes, sin feriados): reabre el ticket si la necesidad no se resolvió o deja una nota interna si se resolvió.',
+      cifras: [
+        { rotulo: 'Calificaciones bajas', valor: cb.total ?? 0, detalle: 'respuestas de 1 o 2' },
+        { rotulo: 'Reabiertas', valor: cb.reabiertos ?? 0, detalle: 'la atención continuó' },
+        { rotulo: 'Con nota', valor: cb.conNota ?? 0, detalle: 'se explicó la solución' },
+        { rotulo: 'Sin revisar', valor: cb.pendientes ?? 0, detalle: 'todavía pendientes' },
+        { rotulo: 'Fuera de plazo', valor: cb.fueraDePlazo ?? 0, detalle: 'revisadas tarde o vencidas' },
+      ],
+      tablas: [{
+        columnas: [
+          { titulo: 'Ticket', ancho: 'w-28' }, { titulo: 'Nivel', num: true, ancho: 'w-16' }, { titulo: 'Respondió', ancho: 'w-28' },
+          { titulo: 'Plazo', ancho: 'w-28' }, { titulo: 'Revisión' }, { titulo: 'A tiempo', ancho: 'w-24' },
+          ...(conTecnicos ? [{ titulo: 'Revisó' }] : []), { titulo: 'Nota' },
+        ],
+        filas: (cb.lista || []).map((x) => [
+          celda(x.ticket_codigo, { codigo: true }), num(x.nivel), celda(formatFecha(x.fecha_envio)), celda(formatFecha(x.plazo)),
+          celda(DESENLACES[x.desenlace] || 'Sin revisar', { tenue: !x.desenlace }), aTiempo(x.a_tiempo),
+          ...(conTecnicos ? [celda(x.revisado_por || SIN, { tenue: !x.revisado_por })] : []), celda(x.nota || '—', { tenue: !x.nota }),
+        ]),
+        vacio: 'Ninguna calificación de 1 o 2 en el período',
       }],
     });
   }

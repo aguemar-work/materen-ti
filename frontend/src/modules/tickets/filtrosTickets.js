@@ -25,7 +25,8 @@ export const ASIGNADO_YO = 'yo';
 export const VISTAS_TICKETS = [
   { valor: 'todos', label: 'Todos', titulo: 'Cualquier estado', frase: ['en total', 'en total'], estados: null },
   { valor: 'pendientes', label: 'Pendientes', titulo: 'Abiertos, en progreso o reabiertos', frase: ['pendiente', 'pendientes'], estados: ESTADOS_VIGENTES },
-  { valor: 'resueltos', label: 'Resueltos', titulo: 'Resueltos y cerrados', frase: ['resuelto', 'resueltos'], estados: ['resuelto'] },
+  // 120: «resuelto» espera la calificación del solicitante; «cerrado» ya terminó.
+  { valor: 'resueltos', label: 'Resueltos', titulo: 'Resueltos (por calificar) y cerrados', frase: ['resuelto', 'resueltos'], estados: ['resuelto', 'cerrado'] },
   { valor: 'rechazados', label: 'Rechazados', titulo: 'Descartados sin atención', frase: ['rechazado', 'rechazados'], estados: ['rechazado'] },
 ];
 
@@ -44,7 +45,8 @@ const OPCIONES_ESTADO = [
   { valor: 'abierto', label: 'Abierto' },
   { valor: 'en_progreso', label: 'En progreso' },
   { valor: 'reabierto', label: 'Reabierto' },
-  { valor: 'resuelto', label: 'Resuelto' },
+  { valor: 'resuelto', label: 'Resuelto (por calificar)' },
+  { valor: 'cerrado', label: 'Cerrado' },
   { valor: 'rechazado', label: 'Rechazado' },
 ];
 

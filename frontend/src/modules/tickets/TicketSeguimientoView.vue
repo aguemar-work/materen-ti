@@ -164,8 +164,23 @@ const mensajeCopiado = computed(() => {
         </ol>
       </section>
 
-      <div v-if="ticket.estado === 'cerrado'" class="mt-6 border-t border-gray-100 pt-5 empty:hidden">
-        <EncuestaSatisfaccionForm :token="route.params.token" embebido />
+      <!-- 120: un ticket resuelto espera la calificación del solicitante, que
+           es la que lo cierra; sin calificación se cierra solo. -->
+      <div v-if="ticket.estado === 'resuelto'" class="notif notif--info notif--inline mt-6" role="status">
+        <i class="ti ti-circle-check" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">Su ticket fue resuelto: revise la solución en las actualizaciones y califique la atención para cerrarlo. Si no califica en 24 horas, el ticket se cerrará automáticamente.</p>
+        </div>
+      </div>
+      <div v-else-if="ticket.estado === 'cerrado' && ticket.cerradoPor === 'sistema'" class="notif notif--warning notif--inline mt-6" role="status">
+        <i class="ti ti-clock-x" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__detalle">Cerrado automático – Sin validación: no se recibió su calificación dentro del plazo. Si el problema continúa, registre un ticket nuevo.</p>
+        </div>
+      </div>
+
+      <div v-if="ticket.estado === 'resuelto' || (ticket.estado === 'cerrado' && ticket.cerradoPor !== 'sistema')" class="mt-6 border-t border-gray-100 pt-5 empty:hidden">
+        <EncuestaSatisfaccionForm :token="route.params.token" embebido @respondida="cargar" />
       </div>
     </template>
 

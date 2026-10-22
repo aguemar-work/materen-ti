@@ -1727,3 +1727,27 @@ migrar los 66 adjuntos y cerrar el bucket; `portal` en `healthcheck.yml`; progra
 corregir el DNI de 9 dígitos y validar el CHECK; `npm run snapshot`; paridad de reportes contra producción;
 redactar los avisos de categoría (114). **Depende de V2:** 105, Triage y detalle de ticket, «Convertir en
 solicitud», `TicketKbCrear`, `confirmar_ticket`, `nota_resolucion`.
+
+## Procedimiento de cierre de tickets de TI contra el sistema (2026-10-21)
+
+El dueño pidió contrastar las reglas de cierre del procedimiento de TI (el que cierra los tickets que
+PR-TI-002 y PR-TI-003 ejecutan) con el sistema. Resultado del análisis y decisiones (respuestas del dueño:
+autocierre a las 24 h corridas, el técnico reabre por una calificación baja, rescatar el diseño de
+`v2/tickets-f1`):
+
+| ID | Regla del procedimiento | Estado antes | Estado |
+|---|---|---|---|
+| PROC-CIERRE-01 | Solo este procedimiento cierra; 002/003 dejan evidencia sin cerrar | Cumplía: solo `cerrar_ticket()` cerraba; 107/108/problemas no tocan el estado | **Se mantiene** (120: solo la calificación o el cierre automático cierran un resuelto) |
+| PROC-CIERRE-02 | Verificar la condición del Anexo 1 antes de resolver; en espera, el ticket sigue abierto con una nota | Solo de palabra | **Fuera del sistema a propósito**: KAPO Almacén es externo; la solución obligatoria debe citar la evidencia y el diálogo de Resolver lo recuerda. La espera es el ticket en curso con una nota |
+| PROC-CIERRE-03 | Al resolver, comentario visible con la solución (una nota interna no lo reemplaza) | No se exigía; el composer viene como nota interna | **Cerrado en código (120, sin aplicar)**: `nota_resolucion` obligatoria, publicada como comentario visible por trigger |
+| PROC-CIERRE-04 | Consulta por DNI y calificación de 1 a 5 con comentario opcional | Cumplía | **Se mantiene**; la búsqueda por DNI lista además los resueltos por calificar |
+| PROC-CIERRE-05 | Sin calificación en 24 h → «Cerrado automático – Sin validación», contado aparte y nunca satisfecho | No existía (resuelto → cerrado en un clic, sin cron ni `cerrado_por`) | **Cerrado en código (120, sin aplicar)**: doble cierre, `cerrar_resueltos_vencidos()`, `cerrado_por = 'sistema'`, conteo aparte en Satisfacción. **Falta programarlo** (acción `mantenimiento` + `insforge schedules`) |
+| PROC-CIERRE-06 | Calificación 1-2: el técnico revisa al día hábil siguiente, reabre o deja nota; ambos al informe mensual | No existía (solo el JEFE reabría) | **Cerrado en código (120, sin aplicar)**: aviso `ticket_calificacion_baja`, bandeja `/tickets/calificaciones`, `revisar_calificacion_baja` (reabre sin JEFE), sección del reporte de Satisfacción con desenlace y plazo |
+| PROC-CIERRE-07 | (hallazgo de paso) Un ticket reabierto y vuelto a cerrar no generaba encuesta nueva (`on conflict do nothing`) | Abierto | **Cerrado en código (120)**: una encuesta por resolución |
+| PROC-CIERRE-08 | (hallazgo de paso) «Guardar en la KB» al resolver fallaba siempre (no existía `nota_resolucion`) | Abierto (PANORAMA §pendientes) | **Cerrado en código (120)**: la solución del diálogo es la del borrador |
+| PROC-CIERRE-09 | (hallazgo de paso) El portal (109) lista los tickets `rechazado` como activos | Abierto | **Abierto**: fuera del alcance de la 120 |
+
+**Pendientes de despliegue de la 120** (commit antes que producción, invariante 12): aplicar la 120
+(`deploy.mjs migracion`, `--dry-run` primero) → desplegar `tickets` → desplegar `credenciales` y cargar
+el secret `MANTENIMIENTO_SECRET` → publicar el frontend → con autorización del dueño, crear los dos schedules
+(`autocierre` cada hora, `purga` diaria; `docs/CONTINUIDAD.md`) → `npm run snapshot`. La 119 va antes.

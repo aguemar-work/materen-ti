@@ -27,7 +27,9 @@ vi.mock('../../src/api/insforge.js', () => ({
     listArticulosRelacionados: vi.fn().mockResolvedValue([]),
     getProblemaAbiertoDeTicket: vi.fn().mockResolvedValue(null),
     actualizarTicket: vi.fn().mockResolvedValue(undefined),
-    cerrarTicket: vi.fn(),
+    resolverTicket: vi.fn(),
+    reabrirTicket: vi.fn(),
+    revisarCalificacionBaja: vi.fn(),
     crearComentarioTicket: vi.fn().mockResolvedValue(undefined),
     crearKbDesdeTicket: vi.fn().mockResolvedValue(undefined),
     listCategoriasTicket: vi.fn(),
@@ -81,6 +83,15 @@ function crearRouter() {
 
 function flushPromises() {
   return new Promise((r) => setTimeout(r, 0));
+}
+
+// Espera a que se cumpla una condición, con tope (la suite completa corre en
+// paralelo: un tiempo fijo resulta corto).
+async function hastaQue(cond, tope = 3000) {
+  const desde = Date.now();
+  while (!cond() && Date.now() - desde < tope) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
 }
 
 async function montar(id = 'tck-1', { rol = 'ASISTENTE', userId = 'staff-1', modulos = ['tickets'] } = {}) {
@@ -142,26 +153,83 @@ describe('TicketDetalleView.vue — botones migrados a AppButton (Fase 2)', () =
     expect(insforgeApi.actualizarTicket).toHaveBeenCalledWith('tck-1', { estado: 'rechazado' });
   });
 
-  it('estado "en_progreso": "Marcar como resuelto" abre ConfirmDialog; confirmar cierra el ticket', async () => {
+  // Procedimiento de cierre (120): «Resolver» pide la solución aplicada, que el
+  // solicitante ve; sin solución no llama a la RPC. El ticket queda resuelto.
+  it('estado "en_progreso": "Resolver" pide la solución y llama a resolverTicket con ella', async () => {
     insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'en_progreso', asignado_a: 'staff-1' }));
-    insforgeApi.cerrarTicket.mockResolvedValue(ticketBase({ estado: 'cerrado' }));
+    insforgeApi.resolverTicket.mockResolvedValue(ticketBase({ estado: 'resuelto', asignado_a: 'staff-1' }));
     const w = await montar();
 
-    const abrirResolver = w.findAll('button').find((b) => b.text().includes('Marcar como resuelto'));
-    await abrirResolver.trigger('click');
+    expect(w.findAll('button').some((b) => b.text().includes('Marcar como resuelto'))).toBe(false);
+    await w.findAll('button').find((b) => b.text() === 'Resolver').trigger('click');
     await flushPromises();
 
-    expect(document.body.textContent).toContain('cierra el ticket de inmediato');
-    const confirmar = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Marcar como resuelto');
-    expect(confirmar).toBeTruthy();
-    confirmar.click();
+    expect(document.body.textContent).toContain('Solución aplicada');
+    expect(document.body.textContent).toContain('Cerrado automático – Sin validación');
+    document.querySelector('#resolver-ticket-form').dispatchEvent(new Event('submit'));
+    await flushPromises();
+    expect(insforgeApi.resolverTicket).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Escriba la solución aplicada');
+
+    const nota = document.querySelector('#resolver-ticket-form textarea');
+    nota.value = 'Se cambió el cable de video y se probó el monitor';
+    nota.dispatchEvent(new Event('input'));
+    document.querySelector('#resolver-ticket-form').dispatchEvent(new Event('submit'));
     await flushPromises();
 
-    expect(insforgeApi.cerrarTicket).toHaveBeenCalledWith('tck-1');
+    expect(insforgeApi.resolverTicket).toHaveBeenCalledWith('tck-1', 'Se cambió el cable de video y se probó el monitor');
+    w.unmount();
+    document.body.innerHTML = '';
   });
 
-  it('estado terminal + JEFE: "Reabrir ticket" abre el form inline; confirmar reabre con motivo', async () => {
+  it('estado "resuelto": no ofrece Resolver otra vez y avisa que espera la calificación', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'resuelto', resuelto_at: '2026-10-21T10:00:00Z' }));
+    const w = await montar();
+    expect(w.findAll('button').some((b) => b.text() === 'Resolver')).toBe(false);
+    expect(w.text()).toContain('espera la calificación del solicitante');
+    expect(w.text()).toContain('Cerrado automático – Sin validación');
+  });
+
+  // Calificación de 1 o 2 (120): quien tiene el módulo tickets la revisa una vez
+  // desde la ficha; reabrir por esta vía no exige ser JEFE.
+  it('calificación 2/5 sin revisar: «Revisar» abre el diálogo y reabre el ticket con la nota', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'cerrado', cerrado_por: 'usuario' }));
+    insforgeApi.getSatisfaccionTicket.mockResolvedValue({ id: 'enc-1', nivel: 2, comentario: 'Sigue fallando', fecha_envio: '2026-10-21T15:00:00Z', revision_desenlace: null });
+    insforgeApi.revisarCalificacionBaja.mockResolvedValue({ ok: true, desenlace: 'reabierto', estado: 'reabierto' });
+    const w = await montar();
+
+    expect(w.text()).toContain('Validado por el solicitante');
+    expect(w.findAll('button').some((b) => b.text().includes('Reabrir ticket'))).toBe(false);
+    await w.findAll('button').find((b) => b.text() === 'Revisar').trigger('click');
+    await flushPromises();
+
+    const form = document.querySelector('#revisar-calificacion-form');
+    expect(form.textContent).toContain('Sigue fallando');
+    expect(form.querySelector('input[value="reabierto"]').checked).toBe(true);
+    const nota = form.querySelector('textarea');
+    nota.value = 'El monitor vuelve a apagarse: se cambia la fuente';
+    nota.dispatchEvent(new Event('input'));
+    form.dispatchEvent(new Event('submit'));
+    await hastaQue(() => insforgeApi.revisarCalificacionBaja.mock.calls.length > 0 && !document.querySelector('#revisar-calificacion-form'));
+
+    expect(insforgeApi.revisarCalificacionBaja).toHaveBeenCalledWith('enc-1', 'reabierto', 'El monitor vuelve a apagarse: se cambia la fuente');
+    expect(document.querySelector('#revisar-calificacion-form')).toBeNull();
+    w.unmount();
+    document.body.innerHTML = '';
+  });
+
+  it('cierre automático: la ficha lo dice y no ofrece revisar ni reenviar la encuesta anulada', async () => {
+    insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'cerrado', cerrado_por: 'sistema', cerrado_at: '2026-10-21T15:00:00Z' }));
+    insforgeApi.getSatisfaccionTicket.mockResolvedValue({ id: 'enc-2', nivel: null, fecha_envio: null, anulada_at: '2026-10-21T15:00:00Z' });
+    const w = await montar();
+    expect(w.text()).toContain('Cerrado automático – Sin validación');
+    expect(w.text()).not.toContain('Encuesta sin responder');
+    expect(w.findAll('button').some((b) => b.text() === 'Revisar')).toBe(false);
+  });
+
+  it('estado terminal + JEFE: "Reabrir ticket" abre el form inline; confirmar reabre con motivo (RPC reabrir_ticket)', async () => {
     insforgeApi.getTicket.mockResolvedValue(ticketBase({ estado: 'cerrado' }));
+    insforgeApi.reabrirTicket.mockResolvedValue(ticketBase({ estado: 'reabierto' }));
     const w = await montar('tck-1', { rol: 'JEFE' });
 
     const abrir = w.findAll('button').find((b) => b.text().includes('Reabrir ticket'));
@@ -173,8 +241,9 @@ describe('TicketDetalleView.vue — botones migrados a AppButton (Fase 2)', () =
     await w.findAll('button').find((b) => b.text().includes('Confirmar reabrir')).trigger('click');
     await flushPromises();
 
-    expect(insforgeApi.actualizarTicket).toHaveBeenCalledWith('tck-1', { estado: 'reabierto' });
-    expect(insforgeApi.crearComentarioTicket).toHaveBeenCalledWith('tck-1', 'Se reporta el mismo problema otra vez', true);
+    // Estado + nota interna en UNA transacción de servidor (antes, dos llamadas del cliente).
+    expect(insforgeApi.reabrirTicket).toHaveBeenCalledWith('tck-1', 'Se reporta el mismo problema otra vez');
+    expect(insforgeApi.actualizarTicket).not.toHaveBeenCalledWith('tck-1', { estado: 'reabierto' });
   });
 
   it('estado terminal, sin ser JEFE: no muestra "Reabrir ticket"', async () => {

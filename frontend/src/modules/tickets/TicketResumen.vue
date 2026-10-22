@@ -12,15 +12,29 @@
 //   👤 Julio Vargas   🕒 hace 4 d   ✓ hace 3 d · Diego H.   ⏳ 1 d   ★ 4/5
 import { computed } from 'vue';
 import { formatFechaHora, formatAntiguedad, formatFecha } from '../../core/formatters.js';
+import { etiquetaCierre } from '../../core/dominio-tickets.js';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const props = defineProps({
   ticket: { type: Object, required: true },
   // { tipo: 'resuelto' | 'rechazado', fecha, por } o null (useTicketDetalleLogica).
   resolucion: { type: Object, default: null },
-  // Fila de ticket_satisfaccion ({ nivel, comentario, fecha_envio }) o null.
+  // Fila de ticket_satisfaccion ({ nivel, comentario, fecha_envio, anulada_at,
+  // revision_desenlace, … }) de la última resolución, o null.
   satisfaccion: { type: Object, default: null },
+  // Calificación de 1 o 2 sin revisar y quien mira puede revisarla (120).
+  puedeRevisar: { type: Boolean, default: false },
 });
-defineEmits(['copiar-encuesta']);
+defineEmits(['copiar-encuesta', 'revisar-calificacion']);
+
+// Quién cerró (120): «Cerrado automático – Sin validación», «Validado por el
+// solicitante»… Nada para los cerrados de antes de la 120 (legado).
+const cierre = computed(() => (props.ticket.estado === 'cerrado' ? etiquetaCierre(props.ticket.cerrado_por) : ''));
+const revision = computed(() => {
+  const s = props.satisfaccion;
+  if (!s?.revision_desenlace) return '';
+  return s.revision_desenlace === 'reabierto' ? 'Revisada: se reabrió' : 'Revisada: nota interna';
+});
 
 const solicitante = computed(() =>
   (props.ticket.vinculado && props.ticket.empleado_nombre) || props.ticket.contacto_ingresado || '');
@@ -81,6 +95,11 @@ const ICONO = 'shrink-0 text-base text-gray-400';
       </template>
     </li>
 
+    <li v-if="cierre" :class="DATO" :title="ticket.cerrado_at ? `${cierre} · ${formatFechaHora(ticket.cerrado_at)}` : cierre">
+      <i class="ti" :class="[ICONO, ticket.cerrado_por === 'sistema' ? 'ti-clock-x text-amber-600' : 'ti-lock-check']" aria-hidden="true"></i>
+      <span :class="ticket.cerrado_por === 'sistema' ? 'font-medium text-amber-800' : ''">{{ cierre }}</span>
+    </li>
+
     <li v-if="duracion" :class="DATO" title="Tiempo de resolución: de la llegada a la resolución">
       <i class="ti ti-hourglass" :class="ICONO" aria-hidden="true"></i>
       <span class="sr-only">Tiempo de resolución:</span>
@@ -92,8 +111,19 @@ const ICONO = 'shrink-0 text-base text-gray-400';
       <span class="sr-only">Satisfacción:</span>
       <span class="font-medium tabular-nums text-gray-900">{{ satisfaccion.nivel }}/5</span>
       <span v-if="satisfaccion.comentario" class="max-w-56 truncate text-gray-500">“{{ satisfaccion.comentario }}”</span>
+      <AppButton
+        v-if="puedeRevisar"
+        size="sm"
+        variant="outline"
+        severity="danger"
+        icon="ti ti-message-report"
+        label="Revisar"
+        title="Revisar la calificación baja: reabrir el ticket o dejar una nota (a más tardar el día hábil siguiente)"
+        @click="$emit('revisar-calificacion')"
+      />
+      <span v-else-if="revision" class="text-gray-500">· {{ revision }}</span>
     </li>
-    <li v-else-if="satisfaccion" :class="DATO">
+    <li v-else-if="satisfaccion && !satisfaccion.anulada_at" :class="DATO">
       <button
         type="button"
         class="inline-flex items-center gap-1.5 rounded text-gray-500 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"

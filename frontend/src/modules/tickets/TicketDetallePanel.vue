@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
-import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
+import { estadoInfo, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
+import { formatFechaHora } from '../../core/formatters.js';
 import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
@@ -12,6 +13,8 @@ import TicketTimelineUnificado from './TicketTimelineUnificado.vue';
 import TicketSolicitante from './TicketSolicitante.vue';
 import TicketContexto from './TicketContexto.vue';
 import TicketResumen from './TicketResumen.vue';
+import ResolverTicketDialog from './ResolverTicketDialog.vue';
+import RevisarCalificacionDialog from './RevisarCalificacionDialog.vue';
 import AppSegmentado from '../../components/ui/AppSegmentado.vue';
 
 // Panel de detalle para el split-view de Tickets — montado por
@@ -43,8 +46,9 @@ const {
   atencionForm, iniciando, tipoAmbiguoSinClasificar,
   cargar: cargarTicket, confirmarIniciar,
   mostrarRechazar, motivoRechazo, rechazando, abrirRechazar, confirmarRechazar,
-  resolviendo, guardarComoKb, mostrarConfirmarResolver, dialogoResolver, cancelarResolver, confirmarResolver,
-  mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
+  puedeResolver, ofrecerKb, mostrarResolver, resolverConNota, onResuelto, esperaCalificacion, horasAutocierre,
+  puedeRevisarCalificacion, mostrarRevisarCalificacion, onCalificacionRevisada,
+  puedeReabrir, mostrarReabrir, motivoReabrir, reabriendo, abrirReabrir, confirmarReabrir,
   cambiarNivelAtencion, cambiarPrioridad,
   mostrarConfirmarDesasignar, dialogoDesasignar, desasignando, cambiarAsignado, cancelarDesasignar, confirmarDesasignar,
   cambiarTipo,
@@ -138,8 +142,14 @@ function onConfirmarReabrir(motivo) {
             :ticket="ticket"
             :resolucion="resolucion"
             :satisfaccion="satisfaccion"
+            :puede-revisar="puedeRevisarCalificacion"
             @copiar-encuesta="copiarMensajeSatisfaccion"
+            @revisar-calificacion="mostrarRevisarCalificacion = true"
           />
+          <p v-if="esperaCalificacion" class="mt-2 flex items-start gap-1.5 text-xs text-gray-600" role="status">
+            <i class="ti ti-hourglass mt-0.5 text-gray-400" aria-hidden="true"></i>
+            <span>Espera la calificación del solicitante; si no califica, se cierra solo el <span class="tabular-nums">{{ formatFechaHora(esperaCalificacion.venceAt) }}</span>.</span>
+          </p>
         </div>
         <h2 v-else class="min-w-0 flex-1 text-lg font-semibold text-gray-900">Detalle del ticket</h2>
 
@@ -175,25 +185,8 @@ function onConfirmarReabrir(motivo) {
         </RouterLink>
         <AppButton v-else size="sm" variant="outline" severity="secondary" icon="ti ti-alert-hexagon" label="Problema" title="Agrupar este ticket en un problema: registrar la causa raíz cuando el mismo incidente se repite" @click="mostrarProblemaForm = true" />
 
-        <!-- Toggle "guardar en KB al resolver": el estado activo se expresa
-             con la severidad de AppButton (outline primario = ON, outline
-             neutro = OFF) — sin una prop `pressed` nueva, y sin sumar un
-             segundo sólido junto a "Marcar resuelto". aria-pressed viaja por
-             fallthrough: es semántica real, no visual. -->
-        <AppButton
-          v-if="ESTADOS_EN_CURSO.includes(ticket.estado)"
-          size="sm"
-          variant="outline"
-          :severity="guardarComoKb ? 'primary' : 'secondary'"
-          :icon="guardarComoKb ? 'ti ti-check' : 'ti ti-books'"
-          label="KB"
-          :class="guardarComoKb ? 'bg-primary-50' : ''"
-          :disabled="resolviendo"
-          :aria-pressed="guardarComoKb"
-          title="Guardar esta solución en la Base de Conocimiento al resolver"
-          @click="guardarComoKb = !guardarComoKb"
-        />
-
+        <!-- «Guardar en la Base de Conocimiento» vive en el diálogo de
+             Resolver (120): la solución que se guarda es la que se escribe ahí. -->
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <template v-if="ticket.estado === 'abierto'">
             <AppButton size="sm" variant="outline" severity="danger" icon="ti ti-x" label="Rechazar" title="Descartar el ticket sin atenderlo. El empleado verá el motivo en su seguimiento" :disabled="iniciando" @click="abrirRechazar" />
@@ -208,16 +201,16 @@ function onConfirmarReabrir(motivo) {
           </template>
 
           <AppButton
-            v-if="ESTADOS_EN_CURSO.includes(ticket.estado)"
+            v-if="puedeResolver"
             size="sm"
             icon="ti ti-circle-check"
-            label="Marcar resuelto"
-            title="Cerrar el ticket como resuelto y enviar la encuesta de satisfacción al empleado"
-            @click="mostrarConfirmarResolver = true"
+            label="Resolver"
+            title="Registrar la solución aplicada: el solicitante la ve en su seguimiento y califica la atención para cerrar el ticket"
+            @click="mostrarResolver = true"
           />
 
           <AppButton
-            v-if="ESTADOS_TERMINALES.includes(ticket.estado) && auth.esJefe"
+            v-if="puedeReabrir"
             size="sm"
             variant="outline"
             severity="secondary"
@@ -344,15 +337,20 @@ function onConfirmarReabrir(motivo) {
       @confirm="confirmarDesasignar"
     />
 
-    <ConfirmDialog
-      v-if="mostrarConfirmarResolver"
-      ref="dialogoResolver"
-      titulo="Marcar como resuelto"
-      mensaje="Esto cierra el ticket de inmediato — no hay un paso intermedio para revisar antes de cerrar. ¿Confirma que el problema quedó resuelto?"
-      confirmar-label="Marcar como resuelto"
-      :cargando="resolviendo"
-      @cerrado="cancelarResolver"
-      @confirm="confirmarResolver"
+    <ResolverTicketDialog
+      v-if="mostrarResolver"
+      :ticket="ticket"
+      :resolver="resolverConNota"
+      :horas-autocierre="horasAutocierre"
+      :ofrecer-kb="ofrecerKb"
+      @cerrar="onResuelto"
+    />
+
+    <RevisarCalificacionDialog
+      v-if="mostrarRevisarCalificacion && satisfaccion"
+      :encuesta="satisfaccion"
+      :ticket="ticket"
+      @cerrar="onCalificacionRevisada"
     />
 
     <!-- Rechazar/Reabrir como ConfirmDialog con motivo (en el panel no hay

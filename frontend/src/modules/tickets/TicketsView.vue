@@ -215,6 +215,19 @@ function verSinVincular() {
   filtros.solicitante = ['no'];
 }
 
+// Calificaciones de 1 o 2 sin revisar (procedimiento de cierre, 120): el
+// técnico las revisa a más tardar el día hábil siguiente. Un conteo que no se
+// puede leer no rompe la bandeja: el atajo simplemente no aparece.
+const calificacionesPorRevisar = ref(0);
+async function cargarCalificacionesPorRevisar() {
+  try {
+    calificacionesPorRevisar.value = await insforgeApi.contarCalificacionesBajasPendientes();
+  } catch {
+    calificacionesPorRevisar.value = 0;
+  }
+}
+const RUTA_CALIFICACIONES = '/tickets/calificaciones';
+
 // Estado vacío: con filtros es "sin resultados"; sin filtros, cada vista
 // explica por qué está vacía (una cola en cero es una buena noticia).
 const VACIO_POR_VISTA = {
@@ -323,6 +336,7 @@ async function copiarEnlaceSoporte() {
 // sus dos hojas (el CSV de la bandeja se integró en el de Tickets).
 const accionesMas = computed(() => [
   { icono: 'ti-link', label: 'Enlace soporte', onClick: copiarEnlaceSoporte },
+  { icono: 'ti-message-report', label: 'Calificaciones por revisar', onClick: () => router.push(RUTA_CALIFICACIONES) },
   ...(puedeVerReporte(auth, REPORTE_POR_ID.tickets) ? [
     { icono: 'ti-report', label: 'Ver reporte', onClick: () => router.push(rutaReporte('tickets')) },
     { icono: 'ti-mood-smile', label: 'Ver satisfacción', onClick: () => router.push(rutaReporte('satisfaccion')) },
@@ -350,6 +364,7 @@ onMounted(async () => {
     staffLista.value = staff;
     // Sin await: los conteos no deben retrasar la primera pintada.
     cargarConteos();
+    cargarCalificacionesPorRevisar();
   } catch {
     showToast(error.value || 'Error al cargar tickets', 'error');
   }
@@ -378,6 +393,14 @@ onMounted(async () => {
             title="Pendientes cuyo solicitante no se pudo identificar"
             @click="verSinVincular"
           >{{ pendientesSinVincular }} sin vincular</button>
+        </template>
+        <template v-if="calificacionesPorRevisar > 0">
+          ·
+          <RouterLink
+            :to="RUTA_CALIFICACIONES"
+            class="rounded font-medium text-red-700 tabular-nums hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            title="Calificaciones de 1 o 2 que el técnico debe revisar a más tardar el día hábil siguiente"
+          >{{ calificacionesPorRevisar }} {{ calificacionesPorRevisar === 1 ? 'calificación' : 'calificaciones' }} por revisar</RouterLink>
         </template>
       </template>
       <template #acciones>

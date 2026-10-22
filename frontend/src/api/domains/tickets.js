@@ -27,6 +27,8 @@ const COLS_CATEGORIA = 'id, nombre, servicio_id, aviso';
 // subcategoría (NULL = media); la aplica crear_ticket_publico en el servidor.
 const COLS_SUBCATEGORIA = 'id, categoria_id, nombre, tipo_sugerido, prioridad_sugerida, aviso';
 const avisoONull = (v) => String(v ?? '').trim() || null;
+// Encuesta de satisfacción con su revisión (120: una por resolución).
+const COLS_ENCUESTA = 'id, nivel, comentario, fecha_envio, created_at, resolucion_numero, anulada_at, revision_desenlace, revision_nota, revisado_por, revisado_at';
 
 export const ticketsApi = {
   async listCategoriasTicket() {
@@ -200,7 +202,8 @@ export const ticketsApi = {
       .select(`
         id, codigo, token, titulo, descripcion, estado, prioridad, nivel_atencion, tipo, origen, vinculado,
         contacto_ingresado, asignado_a,
-        adjunto_key, created_at, updated_at,
+        adjunto_key, created_at, updated_at, resuelto_at,
+        nota_resolucion, cerrado_at, cerrado_por,
         empleado_id, empleados(nombres, apellidos, dni, correo_personal, whatsapp),
         categoria_id, categorias_ticket(nombre, aviso),
         subcategoria_id, subcategorias_ticket(nombre, tipo_sugerido, aviso),
@@ -241,12 +244,49 @@ export const ticketsApi = {
     return data || [];
   },
 
+  // Una encuesta por resolución (120): la de la última resolución, con su revisión.
   async getSatisfaccionTicket(ticketId) {
     const { data, error } = await getClient().database
       .from('ticket_satisfaccion')
-      .select('nivel, comentario, fecha_envio')
+      .select(COLS_ENCUESTA)
       .eq('ticket_id', ticketId)
-      .maybeSingle();
+      .order('resolucion_numero', { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    return data?.[0] || null;
+  },
+
+  // Calificaciones de 1 o 2 sin revisar (120), la más antigua primero: es la
+  // que vence antes (día hábil siguiente a la respuesta).
+  async listCalificacionesBajasPendientes() {
+    const { data, error } = await getClient().database
+      .from('ticket_satisfaccion')
+      .select(`${COLS_ENCUESTA}, ticket_id, tickets(id, codigo, titulo, estado, asignado_a)`)
+      .lte('nivel', 2)
+      .not('fecha_envio', 'is', null)
+      .is('revision_desenlace', null)
+      .order('fecha_envio', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async contarCalificacionesBajasPendientes() {
+    const { count, error } = await getClient().database
+      .from('ticket_satisfaccion')
+      .select('id', { count: 'exact', head: true })
+      .lte('nivel', 2)
+      .not('fecha_envio', 'is', null)
+      .is('revision_desenlace', null);
+    if (error) throw error;
+    return count || 0;
+  },
+
+  // Revisión de una calificación de 1 o 2 (120): desenlace 'reabierto' (reabre
+  // el ticket cerrado, sin ser JEFE) o 'nota'. Una sola vez.
+  async revisarCalificacionBaja(encuestaId, desenlace, nota) {
+    const { data, error } = await getClient().database.rpc('revisar_calificacion_baja', {
+      p_encuesta_id: encuestaId, p_desenlace: desenlace, p_nota: String(nota ?? '').trim(),
+    });
     if (error) throw error;
     return data;
   },
@@ -259,13 +299,23 @@ export const ticketsApi = {
     if (error) throw error;
   },
 
-  // Cierre atómico (resuelto -> cerrado) vía RPC (migración 051):
-  // reemplaza las 2 llamadas HTTP secuenciales que hacía marcarResuelto().
+  // Resolver (120): en curso → resuelto con la solución aplicada, que la base
+  // publica como comentario visible; el ticket espera la calificación del
+  // solicitante (o el cierre automático a las 24 h). Sin solicitante se cierra
+  // en el acto. Reemplaza cerrarTicket (051), que cerraba en el mismo clic.
   // Mismo criterio que bajaEmpleado() (empleados.js): se ignora la fila
   // que devuelve el RPC y se refresca con getTicket() para quedar con el
   // shape mapeado (con los joins resueltos), no el shape crudo de la tabla.
-  async cerrarTicket(id) {
-    const { error } = await getClient().database.rpc('cerrar_ticket', { p_ticket_id: id });
+  async resolverTicket(id, nota) {
+    const { error } = await getClient().database.rpc('resolver_ticket', { p_ticket_id: id, p_nota: String(nota ?? '').trim() });
+    if (error) throw error;
+    return ticketsApi.getTicket(id);
+  },
+
+  // Reabrir (JEFE, 120): resuelto, cerrado o rechazado → reabierto; el motivo
+  // queda como nota interna en la misma transacción.
+  async reabrirTicket(id, motivo) {
+    const { error } = await getClient().database.rpc('reabrir_ticket', { p_ticket_id: id, p_motivo: String(motivo ?? '').trim() });
     if (error) throw error;
     return ticketsApi.getTicket(id);
   },
@@ -273,7 +323,7 @@ export const ticketsApi = {
 
 const SELECT_BASE = `
   id, codigo, titulo, estado, prioridad, nivel_atencion, tipo, vinculado, contacto_ingresado,
-  created_at, updated_at, asignado_a, empleado_id,
+  created_at, updated_at, asignado_a, empleado_id, cerrado_por,
   empleados(nombres, apellidos),
   categorias_ticket(nombre), subcategorias_ticket(nombre)
 `;
@@ -322,25 +372,19 @@ async function queryTickets(
   const db = getClient().database;
   const seleccion = soloConteo ? 'id' : selectResumen();
   let query = db.from('tickets').select(seleccion, conteo ? { count: 'exact' } : undefined);
-  // 'resuelto' agrupa los 2 valores reales (resuelto+cerrado, fusionados
-  // en la UI — ver dominio-tickets.js) — de ahí el .in() en vez de .eq().
-  // "vigentes" excluye los mismos 3 valores que ya excluyen dashboard.js
-  // y el RPC de reportes (053): antes solo excluía 2, dejando pasar
-  // 'resuelto' como si siguiera necesitando atención (bug real, no solo
-  // de UI, corregido junto con la fusión de labels).
+  // Desde la 120 'resuelto' (espera la calificación del solicitante) y
+  // 'cerrado' son dos estados distintos también en la UI: cada uno filtra por
+  // su valor. "vigentes" excluye los mismos 3 valores que ya excluyen
+  // dashboard.js y el RPC de reportes (053): un resuelto ya no espera al
+  // técnico sino al solicitante.
   if (estado === ESTADO_FILTRO_VIGENTES) query = query.not('estado', 'in', '("resuelto","cerrado","rechazado")');
-  else if (estado === 'resuelto') query = query.in('estado', ['resuelto', 'cerrado']);
   else if (estado) query = query.eq('estado', estado);
   // estado === '' (default): sin cláusula — "Todos" real, cualquier estado.
   if (sinAsignar) query = query.is('asignado_a', null);
   else if (asignadoA) query = query.eq('asignado_a', asignadoA);
   if (sinVincular) query = query.eq('vinculado', false);
   if (categoriaId) query = query.eq('categoria_id', categoriaId);
-  if (estados.length) {
-    // 'resuelto' es la fachada de los 2 valores reales (ver arriba).
-    const reales = estados.flatMap((e) => (e === 'resuelto' ? ['resuelto', 'cerrado'] : [e]));
-    query = query.in('estado', reales);
-  }
+  if (estados.length) query = query.in('estado', estados);
   if (asignados.length) {
     const sinAsignar = asignados.includes(SIN_ASIGNAR);
     const ids = asignados.filter((a) => a && a !== SIN_ASIGNAR);
@@ -422,6 +466,11 @@ function mapTicketDetalle(row) {
     tiene_adjunto: Boolean(row.adjunto_key),
     created_at: row.created_at,
     updated_at: row.updated_at,
+    // Cierre según el procedimiento (120): la solución visible, cuándo y quién cerró.
+    resuelto_at: row.resuelto_at || null,
+    nota_resolucion: row.nota_resolucion || '',
+    cerrado_at: row.cerrado_at || null,
+    cerrado_por: row.cerrado_por || null,
     empleado_id: row.empleado_id,
     empleado_nombre: empleado ? `${empleado.nombres} ${empleado.apellidos}`.trim() : '',
     empleado_dni: empleado?.dni || '',

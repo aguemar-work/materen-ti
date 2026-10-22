@@ -106,6 +106,29 @@ export async function esperarRpcRechazada(nombre, args) {
   expect(esRechazoDeAutorizacionSql(error), mensajeRpc(nombre, error)).toBe(true);
 }
 
+// ¿La RPC existe en el backend real? Para las que una migración todavía sin
+// aplicar crea o retira (120: cerrar_ticket → resolver_ticket): PGRST202 es
+// «no está en el esquema». Se llama con argumentos que el guard rechaza
+// antes de tocar nada, así que no deja efectos.
+export async function rpcExiste(nombre, args) {
+  const { error } = await getClient().database.rpc(nombre, args);
+  return error?.code !== 'PGRST202';
+}
+
+// Cierre de tickets (migración 120): con la 120 aplicada, resolver, reabrir y
+// revisar (y las dos solo de servidor) rechazan; antes, cerrar_ticket.
+export async function esperarCierreTicketsRechazado(uuidInexistente) {
+  if (await rpcExiste('resolver_ticket', { p_ticket_id: uuidInexistente, p_nota: 'x' })) {
+    await esperarRpcRechazada('resolver_ticket', { p_ticket_id: uuidInexistente, p_nota: 'x' });
+    await esperarRpcRechazada('reabrir_ticket', { p_ticket_id: uuidInexistente, p_motivo: 'x' });
+    await esperarRpcRechazada('revisar_calificacion_baja', { p_encuesta_id: uuidInexistente, p_desenlace: 'nota', p_nota: 'x' });
+    await esperarRpcRechazada('responder_encuesta_ticket', { p_token: 'x', p_nivel: 5, p_comentario: null });
+    await esperarRpcRechazada('cerrar_resueltos_vencidos', undefined);
+  } else {
+    await esperarRpcRechazada('cerrar_ticket', { p_ticket_id: uuidInexistente });
+  }
+}
+
 export async function esperarAccionRechazada(funcion, body) {
   const { error } = await getClient().functions.invoke(funcion, { body });
   expect(esRechazoDeAutorizacionAccion(error), mensajeAccion(funcion, body.action, error)).toBe(true);

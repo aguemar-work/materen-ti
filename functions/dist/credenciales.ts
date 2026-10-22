@@ -35,6 +35,10 @@
 //   accesoDenegado       staff   { ruta }                  → { ok }  (audita un bloqueo por rol del router)
 //   version              staff   {}                        → { funcion, sdkVersion, ultimaMigracion, ultimoDeploy }
 //   ping                 público {}                        → { ok, funcion, hora }  (healthcheck: sin sesión ni BD)
+//   mantenimiento        secret  { tarea }                 → { ok, tarea, resultado }
+//     (sin sesión: encabezado x-mantenimiento = secret MANTENIMIENTO_SECRET;
+//      tarea autocierre → cerrar_resueltos_vencidos (120), purga →
+//      purgar_datos_temporales (112). Lo llaman los insforge schedules)
 //
 //   -- Módulo "accesos sensibles" (más estricto que lo de arriba: no
 //      alcanza con ser staff activo, hace falta ser JEFE Y estar en
@@ -475,6 +479,26 @@ export async function hashToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ── Mantenimiento programado (acción `mantenimiento`) ────────
+// Tarea → RPC. autocierre cada hora (120: «Cerrado automático – Sin
+// validación» a las 24 h), purga una vez al día (112).
+export const TAREAS_MANTENIMIENTO: Record<string, string> = {
+  autocierre: 'cerrar_resueltos_vencidos',
+  purga: 'purgar_datos_temporales',
+};
+
+// Compara el secret recibido con el configurado sin cortar en el primer byte
+// distinto: se comparan los SHA-256 (mismo largo siempre) byte a byte.
+// export: probado en frontend/tests/credenciales.test.js
+export async function secretoValido(recibido: string, esperado: string): Promise<boolean> {
+  if (!recibido || !esperado) return false;
+  const [a, b] = await Promise.all([recibido, esperado].map(async (s) =>
+    new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))));
+  let distinto = 0;
+  for (let i = 0; i < a.length; i++) distinto |= a[i] ^ b[i];
+  return distinto === 0;
+}
+
 // ── Rate-limit de revelado (auditoría H-05) ──────────────────
 // Un staff activo puede revelar cualquier contraseña por ID; sin tope,
 // un insider (o una cuenta comprometida) exfiltra todo el almacén en un
@@ -753,6 +777,26 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
         url: c.url,
       })),
     });
+  }
+
+  // ── mantenimiento: tareas programadas (insforge schedules), sin sesión ──
+  // Opción A de la migración 112: protegida por el secret MANTENIMIENTO_SECRET
+  // en el encabezado `x-mantenimiento` (comparación en tiempo constante). Sin
+  // el secret configurado la acción no existe para nadie (403). No audita los
+  // intentos fallidos: un barrido llenaría accesos_log. Cada tarea es una RPC
+  // solo de project_admin que ya deja su propio rastro (purga_ejecutada en
+  // accesos_log, cerrado_automatico en el historial del ticket).
+  if (body.action === 'mantenimiento') {
+    const esperado = Deno.env.get('MANTENIMIENTO_SECRET') || '';
+    if (!esperado || !(await secretoValido(req.headers.get('x-mantenimiento') || '', esperado))) {
+      return json({ ok: false, code: 'no_autorizado' }, 403);
+    }
+    const tarea = String(body.tarea || '');
+    const rpc = TAREAS_MANTENIMIENTO[tarea];
+    if (!rpc) return json({ ok: false, code: 'tarea_desconocida' }, 400);
+    const { data, error } = await admin.database.rpc(rpc);
+    if (error) throw new Error(`No se pudo ejecutar ${rpc}: ${error.message}`);
+    return json({ ok: true, tarea, resultado: data });
   }
 
   // ── Resto de acciones: requieren staff activo ──────────────

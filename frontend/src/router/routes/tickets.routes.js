@@ -7,6 +7,14 @@ export default [
     meta: { modulo: 'tickets' },
   },
   {
+    // Calificaciones de 1 o 2 por revisar (procedimiento de cierre, 120).
+    // Estática: vue-router la matchea antes que '/tickets/:id'.
+    path: '/tickets/calificaciones',
+    name: 'tickets-calificaciones',
+    component: () => import('../../modules/tickets/CalificacionesBajasView.vue'),
+    meta: { modulo: 'tickets' },
+  },
+  {
     path: '/tickets/:id',
     name: 'ticket-detalle',
     component: () => import('../../modules/tickets/TicketDetalleView.vue'),

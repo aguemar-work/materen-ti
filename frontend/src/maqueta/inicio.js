@@ -258,7 +258,8 @@ export function resumenInicio(db, { usuarioId }) {
     };
   }
 
-  const encuestas = puede('tickets') ? db.ticket_satisfaccion.filter((s) => s.fecha_envio == null).length : null;
+  // 120: una encuesta anulada (reabierto o cierre automático) ya no está «sin responder».
+  const encuestas = puede('tickets') ? db.ticket_satisfaccion.filter((s) => s.fecha_envio == null && !s.anulada_at).length : null;
 
   const errores = [];
   let problemasFinal = problemas;
