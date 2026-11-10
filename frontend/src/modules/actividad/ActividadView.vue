@@ -5,10 +5,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import EnlaceReporte from '../../components/shared/EnlaceReporte.vue';
-import { showToast } from '../../core/toast.js';
-import { formatFechaHora, formatAntiguedad } from '../../core/formatters.js';
 import { usePaginacion } from '../../composables/usePaginacion.js';
-import { rolDeTag } from '../../core/tagRol.js';
 import AppEncabezado from '../../components/ui/AppEncabezado.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppVistas from '../../components/ui/AppVistas.vue';
@@ -18,18 +15,35 @@ import AppVacio from '../../components/ui/AppVacio.vue';
 import AppPaginacion from '../../components/ui/AppPaginacion.vue';
 import AppBarraFiltros from '../../components/ui/AppBarraFiltros.vue';
 import AppMarcoTabla from '../../components/ui/AppMarcoTabla.vue';
+import AppLibro from '../../components/ui/AppLibro.vue';
 
 const registros = ref([]);
 const cargando = ref(true);
+const error = ref(false);
+const LIMITE = 200;
 
 const ACCIONES = {
-  ver:             { label: 'Vio la contraseña',   icon: 'ti ti-eye',              clase: 'badge--info' },
-  copiar:          { label: 'Copió la contraseña', icon: 'ti ti-copy',             clase: 'badge--accent' },
-  enviar:          { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'badge--success' },
-  entrega_creada:  { label: 'Creó una entrega',    icon: 'ti ti-send',             clase: 'badge--success' },
-  entrega_abierta: { label: 'Entrega abierta',     icon: 'ti ti-mail-opened',     clase: 'badge--warning' },
-  acceso_denegado: { label: 'Acceso denegado',     icon: 'ti ti-shield-x',        clase: 'badge--danger' },
+  ver: 'Contraseña vista',
+  copiar: 'Contraseña copiada',
+  enviar: 'Entrega creada',
+  entrega_creada: 'Entrega creada',
+  entrega_abierta: 'Entrega abierta',
+  entrega_fallida: 'Entrega fallida',
+  creado: 'Cuenta creada',
+  editado: 'Cuenta editada',
+  eliminado: 'Cuenta eliminada',
+  acceso_denegado: 'Acceso denegado',
+  permiso_otorgado: 'Permiso otorgado',
+  permiso_revocado: 'Permiso revocado',
+  revelado_fallido: 'Revelación fallida',
+  revelado_denegado: 'Revelación denegada',
+  purga_ejecutada: 'Limpieza ejecutada',
+  portal_abierto: 'Portal abierto',
+  exportacion: 'Exportación',
 };
+const ACCIONES_ENLACE = ['entrega_abierta', 'portal_abierto'];
+const ACTORES = { enlace: 'Empleado, vía enlace', sistema: 'Sistema', 'sin-actor': 'Sin actor registrado' };
+const etiquetaActor = (id) => ACTORES[id] || id;
 
 // ── Filtros V2: vistas + chips + URL (2026-09-25, SISTEMA-DISENO §3.2.1) ──
 // Filtran en el cliente: la vista trae los últimos 200 registros de una vez.
@@ -39,8 +53,9 @@ const ACCIONES = {
 const VISTAS_ACCION = {
   todo: null,
   contrasenas: ['ver', 'copiar'],
-  entregas: ['enviar', 'entrega_creada', 'entrega_abierta'],
-  denegados: ['acceso_denegado'],
+  entregas: ['enviar', 'entrega_creada', 'entrega_abierta', 'entrega_fallida'],
+  permisos: ['permiso_otorgado', 'permiso_revocado'],
+  denegados: ['acceso_denegado', 'revelado_denegado'],
 };
 const { filtros, limpiar, hayActivos } = useFiltrosUrl({
   vista: { tipo: 'valor', defecto: 'todo' },
@@ -51,15 +66,19 @@ const { filtros, limpiar, hayActivos } = useFiltrosUrl({
 });
 const CLAVES_FILTRO = ['quien', 'plataforma', 'desde', 'hasta'];
 const hayFiltros = computed(() => hayActivos(CLAVES_FILTRO));
-// El empleado que abre una entrega no tiene sesión: su "quién" es este valor.
-const SIN_SESION = 'enlace';
+// Identificador reservado para enlaces sin sesión ya guardados en la URL.
+function quienDe(fila) {
+  if (fila.user_email) return fila.user_email;
+  if (ACCIONES_ENLACE.includes(fila.accion)) return 'enlace';
+  return fila.accion === 'purga_ejecutada' ? 'sistema' : 'sin-actor';
+}
 
 function fechaLocal(iso) {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 function pasaChips(r) {
-  if (filtros.quien.length && !filtros.quien.includes(r.user_email || SIN_SESION)) return false;
+  if (filtros.quien.length && !filtros.quien.includes(quienDe(r))) return false;
   if (filtros.plataforma.length && !filtros.plataforma.includes(r.plataforma || '')) return false;
   const dia = fechaLocal(r.created_at);
   if (filtros.desde && dia < filtros.desde) return false;
@@ -73,7 +92,8 @@ const listaFiltrada = computed(() => deVista(filtros.vista, filtradosPorChips.va
 const VISTAS = computed(() => [
   { valor: 'todo', label: 'Todo', conteo: cargando.value ? null : filtradosPorChips.value.length },
   { valor: 'contrasenas', label: 'Contraseñas', titulo: 'Vio o copió una contraseña', conteo: cargando.value ? null : deVista('contrasenas', filtradosPorChips.value).length },
-  { valor: 'entregas', label: 'Entregas', titulo: 'Entregas creadas y abiertas', conteo: cargando.value ? null : deVista('entregas', filtradosPorChips.value).length },
+  { valor: 'entregas', label: 'Entregas', titulo: 'Entregas creadas, abiertas o fallidas', conteo: cargando.value ? null : deVista('entregas', filtradosPorChips.value).length },
+  { valor: 'permisos', label: 'Permisos', titulo: 'Permisos otorgados o revocados', conteo: cargando.value ? null : deVista('permisos', filtradosPorChips.value).length },
   { valor: 'denegados', label: 'Denegados', titulo: 'Intentos sin permiso', conteo: cargando.value ? null : deVista('denegados', filtradosPorChips.value).length },
 ]);
 
@@ -90,7 +110,7 @@ function opcionesPorFrecuencia(valorDe, etiquetaDe) {
 const DIMENSIONES = computed(() => [
   {
     id: 'quien', label: 'Quién', icono: 'ti ti-user',
-    opciones: opcionesPorFrecuencia((r) => r.user_email || SIN_SESION, (v) => (v === SIN_SESION ? 'Empleado, vía enlace' : v)),
+    opciones: opcionesPorFrecuencia(quienDe, etiquetaActor),
   },
   { id: 'plataforma', label: 'Plataforma', icono: 'ti ti-apps', opciones: opcionesPorFrecuencia((r) => r.plataforma, (v) => v) },
   { id: 'creado', label: 'Fecha', icono: 'ti ti-calendar', tipo: 'rango' },
@@ -104,104 +124,68 @@ const chips = computed({
   },
 });
 
-// Rediseño 2026-09-23: la auditoría se lee como una línea de tiempo
-// (más reciente primero, agrupada por día), no como una tabla ordenable —
-// la pregunta del JEFE es "qué pasó y cuándo", y el orden cronológico es
-// el único que responde eso.
+// Se conserva el orden cronológico de la consulta (lo más reciente primero).
 const { paginaActual, listaPaginada, totalItems, tamPagina, cambiarTamPagina } = usePaginacion(listaFiltrada);
 // Otro filtro, otra lista: vuelve a la primera página.
 watch(() => JSON.stringify(filtros), () => { paginaActual.value = 1; });
 
-function infoAccion(accion) {
-  return ACCIONES[accion] || { label: accion, icon: 'ti ti-activity', clase: '' };
-}
-
-const CIRCULO = {
-  info: 'bg-primary-50 text-primary-600',
-  accent: 'bg-primary-50 text-primary-600',
-  success: 'bg-green-50 text-green-600',
-  warning: 'bg-amber-50 text-amber-600',
-  danger: 'bg-red-50 text-red-600',
-  neutral: 'bg-gray-100 text-gray-500',
-};
-function circuloAccion(accion) {
-  return CIRCULO[rolDeTag(infoAccion(accion).clase)] || CIRCULO.neutral;
-}
-
-function claveDia(iso) {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-function etiquetaDia(iso) {
-  const d = new Date(iso);
-  const hoy = new Date();
-  const ayer = new Date();
-  ayer.setDate(hoy.getDate() - 1);
-  if (claveDia(d) === claveDia(hoy)) return 'Hoy';
-  if (claveDia(d) === claveDia(ayer)) return 'Ayer';
-  const txt = d.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: d.getFullYear() === hoy.getFullYear() ? undefined : 'numeric' });
-  return txt.charAt(0).toUpperCase() + txt.slice(1);
-}
-function horaDe(iso) {
-  return new Date(iso).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
-}
-// Días de la página actual, en el orden en que llegan (más reciente primero).
-const dias = computed(() => {
-  const grupos = [];
-  for (const r of listaPaginada.value) {
-    const clave = claveDia(r.created_at);
-    let g = grupos[grupos.length - 1];
-    if (!g || g.clave !== clave) {
-      g = { clave, label: etiquetaDia(r.created_at), items: [] };
-      grupos.push(g);
-    }
-    g.items.push(r);
-  }
-  return grupos;
-});
+const movimientos = computed(() => listaPaginada.value.map((fila) => ({
+  id: fila.id,
+  fecha: fila.created_at,
+  movimiento: ACCIONES[fila.accion] || fila.accion,
+  detalle: [fila.cuenta_usuario, fila.plataforma, fila.detalle].filter(Boolean).join(' · '),
+  por: etiquetaActor(quienDe(fila)),
+})));
 
 const subtitulo = computed(() => {
+  if (cargando.value || error.value) return 'Consulta de accesos, entregas e intentos denegados.';
   const n = listaFiltrada.value.length;
   const base = `${n} ${n === 1 ? 'movimiento' : 'movimientos'}`;
-  return `${base}${hayFiltros.value ? ', con los filtros aplicados' : ''} · quién vio, copió o entregó contraseñas`;
+  return `${base}${hayFiltros.value ? ', con los filtros aplicados' : ''} · búsqueda en los últimos ${LIMITE} registros`;
 });
 
-onMounted(async () => {
+async function cargar() {
+  cargando.value = true;
+  error.value = false;
   try {
-    registros.value = await insforgeApi.listActividad(200);
-  } catch (e) {
-    showToast(e?.message || 'Error al cargar la actividad', 'error');
+    const filas = await insforgeApi.listActividad(LIMITE);
+    registros.value = [...filas].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  } catch {
+    error.value = true;
   } finally {
     cargando.value = false;
   }
-});
+}
+
+onMounted(cargar);
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <AppEncabezado titulo="Actividad" :subtitulo="subtitulo">
+    <AppEncabezado titulo="Registro de actividad" :subtitulo="subtitulo">
       <template #acciones>
         <EnlaceReporte reporte="auditoria" />
       </template>
     </AppEncabezado>
 
     <!-- ══ Vistas + barra de filtros (SISTEMA-DISENO §3.2.1) ══════ -->
-    <AppBarraFiltros>
+    <AppBarraFiltros v-if="!error">
       <AppFiltros v-model="chips" :dimensiones="DIMENSIONES" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiar(CLAVES_FILTRO)" />
-      <span class="ml-auto hidden text-xs text-gray-500 sm:inline">Últimos 200 registros</span>
-      <AppVistas v-model="filtros.vista" en-barra :opciones="VISTAS" label="Vista de actividad" />
+      <AppVistas v-model="filtros.vista" en-barra class="ml-auto" :opciones="VISTAS" label="Vista de actividad" />
     </AppBarraFiltros>
 
-    <!-- ══ Línea de tiempo ════════════════════════════════════════ -->
+    <!-- ══ Libro de movimientos ════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
-      <div v-if="cargando" class="rounded-lg border border-gray-200 bg-white p-4" aria-hidden="true">
-        <div v-for="n in 6" :key="n" class="flex items-center gap-3 py-3">
-          <div class="h-8 w-8 animate-pulse rounded-full bg-gray-100"></div>
-          <div class="h-3 flex-1 animate-pulse rounded bg-gray-100"></div>
+      <p v-if="cargando" class="py-6 text-sm text-gray-600" role="status">Cargando actividad…</p>
+      <div v-else-if="error" class="notif notif--danger" role="alert">
+        <i class="ti ti-alert-circle" aria-hidden="true"></i>
+        <div class="notif__texto">
+          <p class="notif__titulo">No se pudo cargar el registro</p>
+          <p class="notif__detalle">Vuelva a intentar la consulta para revisar los movimientos recientes.</p>
         </div>
+        <AppButton size="sm" variant="outline" severity="secondary" label="Reintentar" @click="cargar" />
       </div>
-      <p v-if="cargando" class="sr-only" role="status">Cargando actividad…</p>
 
       <AppVacio
         v-else-if="totalItems === 0"
@@ -214,47 +198,7 @@ onMounted(async () => {
 
       <AppMarcoTabla v-else>
         <div class="min-h-0 flex-1 overflow-auto">
-          <section v-for="dia in dias" :key="dia.clave" :aria-label="dia.label">
-            <h2 class="sticky top-0 z-10 border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-xs font-medium text-gray-600 sm:px-5">
-              {{ dia.label }}
-            </h2>
-            <ol class="px-4 sm:px-5">
-              <li v-for="(fila, i) in dia.items" :key="fila.id" class="relative flex gap-3 py-3">
-                <!-- Riel vertical que une los eventos del día -->
-                <span
-                  v-if="i < dia.items.length - 1"
-                  class="absolute left-4 top-11 -bottom-3 w-px -translate-x-1/2 bg-gray-200"
-                  aria-hidden="true"
-                ></span>
-                <span
-                  class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-base"
-                  :class="circuloAccion(fila.accion)"
-                >
-                  <i :class="infoAccion(fila.accion).icon" aria-hidden="true"></i>
-                </span>
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <p class="min-w-0 text-sm text-gray-700">
-                      <span class="font-medium text-gray-900">{{ fila.user_email || 'Empleado, vía enlace' }}</span>
-                      <span :class="fila.accion === 'acceso_denegado' ? 'font-medium text-red-700' : ''"> · {{ infoAccion(fila.accion).label.toLowerCase() }}</span>
-                    </p>
-                    <time
-                      class="ml-auto shrink-0 text-xs text-gray-500 tabular-nums"
-                      :datetime="fila.created_at"
-                      :title="`${formatFechaHora(fila.created_at)} · ${formatAntiguedad(fila.created_at)}`"
-                    >{{ horaDe(fila.created_at) }}</time>
-                  </div>
-                  <p v-if="fila.cuenta_usuario || fila.plataforma" class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-gray-500">
-                    <i class="ti ti-key text-gray-500" aria-hidden="true"></i>
-                    <span v-if="fila.cuenta_usuario" class="break-all font-medium text-gray-700">{{ fila.cuenta_usuario }}</span>
-                    <span v-if="fila.cuenta_usuario && fila.plataforma" aria-hidden="true">·</span>
-                    <span v-if="fila.plataforma">{{ fila.plataforma }}</span>
-                  </p>
-                  <p v-if="fila.detalle" class="mt-1 line-clamp-2 text-xs text-gray-500" :title="fila.detalle">{{ fila.detalle }}</p>
-                </div>
-              </li>
-            </ol>
-          </section>
+          <AppLibro :filas="movimientos" etiqueta="Movimientos recientes de auditoría" :mostrar-referencia="false" />
         </div>
 
         <AppPaginacion

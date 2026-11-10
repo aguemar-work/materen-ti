@@ -113,7 +113,7 @@ function limpiarFiltros() {
   limpiar(CLAVES_FILTRO);
 }
 
-const sinPermiso = computed(() => lista.value.filter((f) => !f.puedeRevelar).length);
+const sinPermiso = computed(() => listaFiltrada.value.filter((f) => !f.puedeRevelar).length);
 
 const ICONO_CATEGORIA = { equipos: 'ti ti-router', correos: 'ti ti-mail', otro: 'ti ti-shield-lock' };
 
@@ -193,11 +193,14 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado titulo="Accesos sensibles">
       <template #subtitulo>
-        {{ listaFiltrada.length }} {{ listaFiltrada.length === 1 ? 'credencial' : 'credenciales' }} de alta sensibilidad{{ vistaActual ? ` en «${vistaActual}»` : '' }}{{ hayFiltros ? ', con los filtros aplicados' : '' }}
-        <template v-if="sinPermiso"> · <span class="font-medium text-gray-700">{{ sinPermiso }} sin permiso para usted</span></template>
-        · cada una la revelan solo los JEFE autorizados y queda registrada en Actividad
+        <template v-if="!cargando && !error">
+          {{ listaFiltrada.length }} {{ listaFiltrada.length === 1 ? 'credencial' : 'credenciales' }}{{ vistaActual ? ` en «${vistaActual}»` : '' }}{{ hayFiltros ? ', con los filtros aplicados' : '' }}.
+          <template v-if="sinPermiso">{{ sinPermiso }} sin permiso para revelar.</template>
+        </template>
+        Cada revelación requiere autorización y queda registrada.
       </template>
       <template #acciones>
+        <AppButton variant="text" severity="secondary" icon="ti ti-activity" label="Ver actividad" to="/actividad" />
         <AppButton icon="ti ti-plus" label="Nuevo acceso" @click="abrirNuevo" />
       </template>
     </AppEncabezado>

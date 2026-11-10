@@ -269,9 +269,9 @@ onMounted(async () => {
   <!-- Panel embebido en Configuración (la cabecera de página la pone ConfiguracionView) -->
   <div class="space-y-4">
     <EncabezadoCatalogo
-      titulo="Staff"
+      titulo="Personal de TI y permisos"
       :conteo="lista.length"
-      descripcion="Quién entra al panel y qué puede hacer. Las cuentas se crean desde InsForge Auth y llegan inactivas hasta que un JEFE las activa."
+      descripcion="Revise quién puede entrar y qué puede hacer. Las cuentas nuevas requieren la activación de la jefatura."
     />
 
     <div v-if="error" class="notif notif--danger" role="alert">
@@ -294,11 +294,11 @@ onMounted(async () => {
         v-if="!cargando && !lista.length"
         icono="ti ti-users"
         titulo="Sin miembros"
-        mensaje="Los miembros del staff se crean desde el panel de InsForge Auth."
+        mensaje="Registre la cuenta del integrante desde el panel de autenticación de InsForge."
       />
 
       <template v-else>
-        <p v-if="cargando" class="sr-only" role="status">Cargando staff…</p>
+        <p v-if="cargando" class="sr-only" role="status">Cargando personal de TI…</p>
 
         <!-- ── Tabla (escritorio) ── -->
         <div v-if="!esMovil" class="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -369,7 +369,7 @@ onMounted(async () => {
                 </template>
               </AppColumn>
 
-              <AppColumn field="credenciales_ver" header="Contraseñas" :header-style="{ width: '150px' }">
+              <AppColumn field="credenciales_ver" header="Ver contraseñas" :header-style="{ width: '150px' }">
                 <template #body="{ data: fila }">
                   <!-- Interruptor cosmético: la barrera real es functions/credenciales.ts -->
                   <button
@@ -497,7 +497,7 @@ onMounted(async () => {
                   </ul>
                 </dd>
 
-                <dt class="text-xs text-gray-500">Contraseñas</dt>
+                <dt class="text-xs text-gray-500">Ver contraseñas</dt>
                 <dd>
                   <button
                     type="button"

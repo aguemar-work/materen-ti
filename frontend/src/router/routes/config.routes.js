@@ -1,29 +1,25 @@
 // Configuración: catálogos y administración del sistema.
 // ConfiguracionView es el layout de pestañas; cada pestaña es una ruta
 // hija (/configuracion/<seccion>) con su propio chunk, enlazable directo.
-const SECCIONES = [
-  'empresas',
-  'areas-obras',
-  'plataformas',
-  'tipos-equipo',
-  'ubicaciones',
-  'categorias-ticket',
-  'servicios',
-  'staff',
-];
+import { SECCIONES_CONFIGURACION } from '../../core/configuracion.js';
 
 export default [
   {
     path: '/configuracion',
-    name: 'configuracion',
     component: () => import('../../modules/configuracion/ConfiguracionView.vue'),
-    // Compat: los enlaces viejos /configuracion?tab=<seccion> caen en su
-    // ruta hija; sin tab (o tab desconocido), a la primera pestaña.
-    redirect: (to) => {
-      const tab = SECCIONES.includes(to.query.tab) ? to.query.tab : 'empresas';
-      return { name: `configuracion-${tab}`, query: {} };
-    },
     children: [
+      {
+        path: '',
+        name: 'configuracion',
+        // El índice se pinta en el layout. Los enlaces con tab llevan a
+        // su ruta hija, incluso si se llega desde otro catálogo.
+        beforeEnter: (to) => {
+          const tab = to.query.tab;
+          if (SECCIONES_CONFIGURACION.some((s) => s.id === tab)) {
+            return { name: `configuracion-${tab}`, replace: true };
+          }
+        },
+      },
       {
         path: 'empresas',
         name: 'configuracion-empresas',

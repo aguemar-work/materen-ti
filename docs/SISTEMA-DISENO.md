@@ -684,12 +684,22 @@ cuándo se guardan los campos, dentro de `TicketCamposGestion`.
   no gráficos decorativos.
 
 ### 4.4 Catálogos / configuración
-- Navegación de secciones a la izquierda (lista vertical con el ítem activo
-  en `bg-primary-50 text-primary-700`); contenido a la derecha como listado
-  compacto dentro de una card (4.1 sin encabezado grande).
+- `/configuracion` abre un índice de catálogos agrupados por tarea.
+  Cada fila explica qué se administra y abre su ruta. El grupo
+  «Equipo de TI» se muestra solo a la jefatura.
+- Dentro de un catálogo, escritorio conserva el índice agrupado a la
+  izquierda y móvil usa un selector que muestra la sección actual.
+  La miga de Configuración vuelve al índice.
 - Cada sección abre con `modules/configuracion/EncabezadoCatalogo.vue`
   (`titulo`, `conteo`, `descripcion`, slot `acciones` con la única acción
   sólida): el título grande de página ya lo pone `ConfiguracionView`.
+- Registro de actividad usa `AppLibro` en orden cronológico inverso. La
+  cabecera indica que los filtros operan sobre los últimos 200 registros.
+  «Permisos» reúne otorgamientos y revocaciones, y «Denegados» incluye
+  intentos de acceso al panel y de revelación de contraseñas.
+  Los fallos de carga tienen un estado propio con reintento. Accesos
+  sensibles enlaza al registro y resume el permiso de revelación sobre
+  las credenciales visibles.
 
 ### 4.5 Portal público (sin sesión)
 - Centrado, `max-w-lg`, logo arriba, una sola card blanca, textos cortos,

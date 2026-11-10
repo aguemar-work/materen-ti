@@ -44,6 +44,7 @@ defineProps({
   vacio: { type: String, default: 'Sin movimientos registrados' },
   /** Nombre accesible de la tabla (se lee como `caption`). */
   etiqueta: { type: String, default: 'Libro de movimientos' },
+  mostrarReferencia: { type: Boolean, default: true },
 });
 
 const SIN_ACTOR = 'no registrado (legado)';
@@ -61,8 +62,8 @@ const actorDe = (fila) => fila.por || SIN_ACTOR;
       <col class="w-[88px]">
       <col class="w-[34%] sm:w-[24%]">
       <col>
-      <col class="hidden w-[120px] sm:table-column">
-      <col class="hidden w-[96px] sm:table-column">
+      <col class="hidden sm:table-column" :class="mostrarReferencia ? 'w-[120px]' : 'w-36 lg:w-52'">
+      <col v-if="mostrarReferencia" class="hidden w-[96px] sm:table-column">
     </colgroup>
     <thead>
       <tr class="h-8 border-b border-gray-200">
@@ -70,12 +71,12 @@ const actorDe = (fila) => fila.por || SIN_ACTOR;
         <th scope="col" class="px-3 py-0 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Movimiento</th>
         <th scope="col" class="px-3 py-0 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">Detalle</th>
         <th scope="col" class="hidden px-3 py-0 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:table-cell">Por</th>
-        <th scope="col" class="hidden px-3 py-0 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:table-cell">Ref.</th>
+        <th v-if="mostrarReferencia" scope="col" class="hidden px-3 py-0 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:table-cell">Ref.</th>
       </tr>
     </thead>
     <tbody>
       <tr v-if="!filas.length" data-libro-vacio class="h-10 border-b border-gray-100">
-        <td colspan="5" class="px-3 py-2 text-gray-500">
+        <td :colspan="mostrarReferencia ? 5 : 4" class="px-3 py-2 text-gray-500">
           — {{ vacio }}
           <slot name="vacio" />
         </td>
@@ -97,7 +98,7 @@ const actorDe = (fila) => fila.por || SIN_ACTOR;
             <span class="block font-medium text-gray-900">{{ fila.autor }}</span>
             <span class="block text-xs text-gray-500">{{ VISIBILIDAD[fila.visibilidad] || VISIBILIDAD.visible }}</span>
           </td>
-          <td colspan="3" class="whitespace-pre-line px-3 py-2 align-top text-gray-900 [overflow-wrap:anywhere]">{{ fila.texto }}</td>
+          <td :colspan="mostrarReferencia ? 3 : 2" class="whitespace-pre-line px-3 py-2 align-top text-gray-900 [overflow-wrap:anywhere]">{{ fila.texto }}</td>
         </template>
 
         <template v-else>
@@ -105,11 +106,11 @@ const actorDe = (fila) => fila.por || SIN_ACTOR;
           <td class="px-3 py-2 align-top text-gray-700 [overflow-wrap:anywhere]">
             {{ fila.detalle }}
             <span class="mt-0.5 block text-xs text-gray-500 sm:hidden">
-              {{ actorDe(fila) }}<template v-if="fila.ref"> · {{ fila.ref.texto }}</template>
+              {{ actorDe(fila) }}<template v-if="mostrarReferencia && fila.ref"> · {{ fila.ref.texto }}</template>
             </span>
           </td>
           <td class="hidden px-3 py-2 align-top sm:table-cell [overflow-wrap:anywhere]" :class="fila.por ? 'text-gray-700' : 'text-gray-500'">{{ actorDe(fila) }}</td>
-          <td class="hidden px-3 py-2 align-top sm:table-cell">
+          <td v-if="mostrarReferencia" class="hidden px-3 py-2 align-top sm:table-cell">
             <RouterLink
               v-if="fila.ref && fila.ref.to"
               :to="fila.ref.to"
