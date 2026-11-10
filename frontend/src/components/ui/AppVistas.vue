@@ -53,7 +53,7 @@ defineEmits(['update:modelValue']);
     </button>
   </div>
 
-  <div v-else class="flex items-center gap-6 overflow-x-auto border-b border-gray-200 px-4 sm:px-6" role="group" :aria-label="label">
+  <div v-else class="flex items-center gap-6 overflow-x-auto overflow-y-hidden border-b border-gray-200 px-4 [scrollbar-width:thin] sm:px-6" role="group" :aria-label="label">
     <button
       v-for="op in opciones"
       :key="String(op.valor)"
@@ -71,7 +71,7 @@ defineEmits(['update:modelValue']);
         class="rounded-full px-1.5 text-xs leading-5 tabular-nums"
         :class="modelValue === op.valor ? 'bg-primary-50 text-primary-700' : 'bg-gray-100 text-gray-600'"
       >{{ op.conteo }}</span>
-      <span v-if="modelValue === op.valor" class="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary-500" aria-hidden="true"></span>
+      <span v-if="modelValue === op.valor" class="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-primary-500" aria-hidden="true"></span>
     </button>
   </div>
 </template>

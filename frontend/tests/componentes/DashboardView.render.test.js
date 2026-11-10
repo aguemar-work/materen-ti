@@ -67,6 +67,17 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('Inicio — encabezado', () => {
+  it('permite atender el segundo nivel sin desplegar antes todos los críticos', async () => {
+    responde(resumenCompleto());
+    const w = await montar();
+    const nivel = w.get('[aria-label="Nivel de atención de los pendientes"]');
+    await nivel.findAll('button').find((b) => b.text().startsWith('Atención')).trigger('click');
+    expect(w.findAll('[data-bloque] h3').every((h) => h.text().includes('Atención'))).toBe(true);
+    expect(filas(w).length).toBeGreaterThan(0);
+    expect(cliente.rpc).toHaveBeenCalledTimes(1);
+    await nivel.findAll('button').find((b) => b.text().startsWith('Críticos')).trigger('click');
+    expect(w.findAll('[data-bloque] h3').every((h) => h.text().includes('Crítico'))).toBe(true);
+  });
   it('saluda con el nombre y escribe la fecha de Lima con el total y los críticos del feed', async () => {
     responde(resumenCompleto());
     const w = await montar();

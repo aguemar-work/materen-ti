@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { estadoInfo, ESTADOS_EN_CURSO, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
+import { estadoInfo, ESTADOS_TERMINALES } from '../../core/dominio-tickets.js';
 import { formatFechaHora } from '../../core/formatters.js';
 import { useTicketDetalleLogica } from '../../composables/useTicketDetalleLogica.js';
 import BadgeEstado from '../../components/shared/BadgeEstado.vue';
@@ -63,7 +63,6 @@ const campoMotivoReabrir = useCampoAccesible();
 
 // ── Presentación (rediseño 2026-09-23) ──
 const esTerminal = computed(() => !!ticket.value && ESTADOS_TERMINALES.includes(ticket.value.estado));
-const enCurso = computed(() => !!ticket.value && ESTADOS_EN_CURSO.includes(ticket.value.estado));
 const comentariosTotal = computed(() => timelineUnificado.value.filter((f) => f.tipo === 'comentario').length);
 
 // Actividad y conversación van juntas a propósito: es UNA historia en orden
@@ -299,10 +298,7 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
                compartidos con TicketDetallePanel.vue. Se ocultan mientras un
                formulario inline está abierto: rechazar solo ocurre en
                abierto y reabrir solo en terminal. -->
-          <AppSeccion
-            titulo="Gestión"
-            :descripcion="ticket.estado === 'abierto' ? 'Se aplican al iniciar la atención.' : enCurso ? 'Cada cambio se guarda al momento.' : ''"
-          >
+          <AppSeccion titulo="Gestión">
             <TicketCamposGestion
               v-if="!mostrarRechazar && !mostrarReabrir"
               v-model:atencion-prioridad="atencionForm.prioridad"

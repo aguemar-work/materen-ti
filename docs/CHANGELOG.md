@@ -23,6 +23,8 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-11-10** (**Revisión de producto y diseño**) — Inicio permite separar críticos y atención; Reportes incorpora búsqueda por tema y filas enlazables; se corrigen la búsqueda del shell en escritorio, los estados vacíos y la jerarquía de componentes compartidos. Ver SISTEMA-DISENO.
+
 - **2026-11-10** (**Accesibilidad y orientación**) — Actualizada la guía del menú móvil, búsqueda global, filtros de Tickets y entradas al alta de personal.
 
 - **2026-10-22** (**Despliegue de la 122 en producción**) — Aplicada con `deploy.mjs migracion` (`--dry-run` primero;

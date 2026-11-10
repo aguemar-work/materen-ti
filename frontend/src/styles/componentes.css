@@ -53,7 +53,8 @@
   /* V2: mismo lenguaje que AppSegmentado (32px, pastilla blanca activa). */
   .selector-vista { @apply inline-flex h-8 items-center gap-0.5 rounded-md bg-gray-100 p-0.5; }
   .selector-vista .icon-btn { @apply h-7 w-7 rounded-[5px] text-base; }
-  .selector-vista__btn--activo { @apply bg-white text-primary-600 shadow-xs ring-1 ring-gray-900/5 hover:bg-white hover:text-primary-600; }
+  .selector-vista .selector-vista__btn--etiqueta { @apply w-auto gap-1.5 px-2; }
+  .selector-vista__btn--activo { @apply bg-white text-gray-900 shadow-xs ring-1 ring-gray-900/5 hover:bg-white hover:text-gray-900; }
 
   /* ── Avisos inline (notif) ────────────────────────────────────────── */
   /* Sin borde de acento (retirado 2026-09-24): superficie fundida lisa,
