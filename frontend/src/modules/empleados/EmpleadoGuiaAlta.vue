@@ -36,24 +36,25 @@ const abierta = computed(() => {
 
 <template>
   <section data-no-print class="border-b border-gray-200 px-4 py-3 sm:px-6" aria-labelledby="alta-titulo">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
       <h2 id="alta-titulo" class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
         Alta en curso · {{ hechos }} de {{ pasos.length }} pasos<template v-if="abierta"> · {{ abierta }}</template>
-        ·
+      </h2>
+      <div class="flex shrink-0 items-center gap-2">
         <RouterLink
           :to="`/solicitudes/${solicitud.id}`"
-          class="rounded-sm normal-case text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-        ><AppCodigo :valor="solicitud.codigo" titulo="Número de solicitud" /></RouterLink>
-      </h2>
-      <button
-        class="icon-btn"
-        type="button"
-        title="Ocultar la guía"
-        aria-label="Ocultar la guía de alta"
-        @click="$emit('cerrar')"
-      >
-        <i class="ti ti-x" aria-hidden="true"></i>
-      </button>
+          class="rounded-sm text-sm font-medium text-primary-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+        >Ver trámite de alta <AppCodigo :valor="solicitud.codigo" titulo="Número de solicitud" /></RouterLink>
+        <button
+          class="icon-btn"
+          type="button"
+          title="Ocultar la guía"
+          aria-label="Ocultar la guía de alta"
+          @click="$emit('cerrar')"
+        >
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
     </div>
 
     <ol class="mt-2 flex flex-wrap gap-x-6 gap-y-1">

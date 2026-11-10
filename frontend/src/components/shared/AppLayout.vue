@@ -1,40 +1,11 @@
 <script setup>
-// ── Shell raíz V2: "marco + hoja" (2026-09-25) ────────────────────────
-//
-// ANATOMÍA
-//   Marco   gris 50, ocupa toda la ventana. Sobre él vive el sidebar SIN
-//           borde propio: marca arriba, navegación, usuario abajo.
-//   Hoja    superficie blanca con esquinas redondeadas, inset de 8px sobre
-//           el marco (en desktop; en móvil ocupa todo). Es "la página":
-//           barra superior de 48px (menú · migas · búsqueda · campana) y
-//           debajo el <main> con su propio scroll.
-//
-// Por qué así (reemplaza al header blanco de 56px + sidebar blanco con
-// borde, 2026-09-22): aquel shell eran tres franjas del mismo blanco
-// separadas por líneas, sin contexto de dónde estaba uno. Acá el marco
-// agrupa todo lo que es "el sistema" (marca, menú, usuario) y la hoja todo
-// lo que es "esta página", con las migas diciendo en qué grupo y módulo
-// se está. El ítem activo del menú se dibuja como un pedazo de la hoja
-// (ver AppNav.vue), así las dos mitades se leen como una sola pieza.
-//
-// Sin bordes laterales en ningún nivel (regla de producto): la hoja se
-// despega del marco con un anillo de 1px que la rodea entera y una sombra
-// mínima, no con una línea vertical.
-//
-// POR QUÉ FLEX Y NO `position: fixed`: el <main> es su PROPIO contenedor de
-// scroll, así el `sticky top-0` de cada vista se pega justo debajo de la
-// barra de la hoja sin saber cuánto mide. Solo en móvil el sidebar pasa a
-// `fixed` (panel deslizante).
-import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
+// Marco con navegación y hoja con desplazamiento propio.
+import { ref, computed, watch, nextTick, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.js';
 import { useTicketsStore } from '../../stores/tickets.js';
 import { useDashboardStore } from '../../stores/dashboard.js';
 import { getClient } from '../../api/client.js';
-// El nombre del header es marca + descriptor, y marca.js ya tiene las dos
-// piezas por separado (NOMBRE_MARCA sobrevive al crecimiento fuera de TI,
-// NOMBRE_CORTO no). Se consumen las tres: las dos piezas para el título
-// visible y el nombre completo para el alt.
 import { NOMBRE_PRODUCTO, NOMBRE_MARCA, NOMBRE_CORTO } from '../../core/marca.js';
 import { ACCION_HEADER } from './shellClases.js';
 import { migasDeRuta } from './navegacion.js';
@@ -47,15 +18,7 @@ import AppNotifications from './AppNotifications.vue';
 import MenuAcciones from './MenuAcciones.vue';
 import AppAvatar from '../ui/AppAvatar.vue';
 import { useEsMovil } from '../../composables/useEsMovil.js';
-// Única dependencia del shell hacia un módulo de dominio, y es a propósito:
-// "editar mi nombre para mostrar" se dispara desde el menú de usuario del
-// header, pero el formulario es el MISMO que usa StaffView.vue cuando el
-// JEFE edita el de otro (`updateStaff`). Se evaluó moverlo a
-// `components/shared/`: sería meter un formulario de dominio (tabla
-// `staff`) entre los componentes genéricos, cambiar un problema por otro.
-// Queda acá como excepción documentada (ARQ-10, ver
-// docs/HISTORIAL-AUDITORIAS.md), pero en carga diferida: es un modal que
-// casi nunca se abre y así no viaja en el chunk principal junto al shell.
+// Se reutiliza el formulario de Staff, con carga diferida.
 const StaffNombreForm = defineAsyncComponent(() => import('../../modules/staff/StaffNombreForm.vue'));
 
 const router = useRouter();
@@ -93,7 +56,7 @@ const appSearchRef = ref(null);
 
 function onAtajoBusqueda(e) {
   if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k') return;
-  if (document.activeElement?.closest('[role="dialog"]')) return;
+  if (panelMovilAbierto.value || document.activeElement?.closest('[role="dialog"]')) return;
   e.preventDefault();
   appSearchRef.value?.enfocar();
 }
@@ -150,6 +113,12 @@ useRealtimeRefresco('tickets:list', (payload) => {
 //   navEnRiel    solo desktop: el nav se contrae a 48px y deja solo los
 //                íconos (riel). Es una preferencia, y se recuerda.
 const navAbierto = ref(false);
+const { esMovil } = useEsMovil('(width < 48rem)');
+const panelMovilAbierto = computed(() => esMovil.value && navAbierto.value);
+const panelNav = ref(null);
+const botonNav = ref(null);
+const botonCerrarNav = ref(null);
+const contenidoPrincipal = ref(null);
 
 const CLAVE_NAV = 'sistema-ti-sidebar';
 // Sin preferencia guardada: riel por defecto por debajo de 1056px (el punto
@@ -169,9 +138,11 @@ const navEnRiel = ref(
 // El botón de menú del header hace dos cosas distintas según el ancho, y es
 // la misma cosa desde el punto de vista del usuario ("mostrame/escondeme la
 // navegación"): en móvil abre el panel, en desktop alterna el riel.
-function alternarNav() {
-  if (window.innerWidth < 768) {
-    navAbierto.value = !navAbierto.value;
+async function alternarNav() {
+  if (esMovil.value) {
+    navAbierto.value = true;
+    await nextTick();
+    botonCerrarNav.value?.focus();
     return;
   }
   navEnRiel.value = !navEnRiel.value;
@@ -183,13 +154,41 @@ function expandirNav() {
   localStorage.setItem(CLAVE_NAV, 'expandido');
 }
 
-function cerrarNav() {
+async function cerrarNav() {
+  if (!navAbierto.value) return;
   navAbierto.value = false;
+  await nextTick();
+  if (esMovil.value) botonNav.value?.focus();
 }
+
+function enfocarContenido() {
+  contenidoPrincipal.value?.focus();
+}
+
+function alTeclearNav(evento) {
+  if (!panelMovilAbierto.value || evento.defaultPrevented) return;
+  if (evento.key === 'Escape') {
+    evento.preventDefault();
+    cerrarNav();
+  }
+  if (evento.key !== 'Tab') return;
+  const controles = [...panelNav.value.querySelectorAll('a[href], button:not([disabled])')]
+    .filter((control) => control.tabIndex >= 0 && control.getClientRects().length);
+  const extremo = evento.shiftKey ? controles[0] : controles.at(-1);
+  if (evento.target !== extremo) return;
+  evento.preventDefault();
+  (evento.shiftKey ? controles.at(-1) : controles[0])?.focus();
+}
+
+watch(esMovil, (movil) => { if (!movil) navAbierto.value = false; });
+watch(() => route.path, async () => {
+  navAbierto.value = false;
+  await nextTick();
+  enfocarContenido();
+});
 
 // El mismo botón hace dos cosas según el ancho; su nombre accesible y su
 // aria-expanded tienen que decir la verdad en cada caso.
-const { esMovil } = useEsMovil();
 const etiquetaNav = computed(() => {
   if (esMovil.value) return navAbierto.value ? 'Cerrar menú' : 'Abrir menú';
   return navEnRiel.value ? 'Expandir navegación' : 'Contraer navegación';
@@ -205,7 +204,7 @@ const rolUsuario = computed(() => (auth.esJefe ? 'Jefe de TI' : 'Asistente de TI
 // fondo propio — 240px, o 64px en riel.
 const claseNav = computed(() => [
   'z-40 flex flex-col',
-  'fixed inset-y-0 left-0 w-72 bg-white shadow-xl transition-transform duration-200',
+  'fixed inset-y-0 left-0 w-72 max-w-full bg-white shadow-xl transition-transform duration-200 motion-reduce:transition-none',
   navAbierto.value ? 'translate-x-0' : '-translate-x-full',
   'md:static md:translate-x-0 md:bg-transparent md:shadow-none md:transition-[width]',
   navEnRiel.value ? 'md:w-16' : 'md:w-60',
@@ -239,6 +238,12 @@ async function cerrarSesion() {
   <!-- data-marco / data-hoja: ganchos de styles/impresion.css (en papel el
        marco, el menú y la barra de la hoja desaparecen y la hoja es A4). -->
   <div data-marco class="flex h-screen overflow-hidden bg-gray-50">
+    <a
+      href="#contenido-principal"
+      class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-primary-700 focus:px-4 focus:py-2 focus:text-white"
+      :inert="panelMovilAbierto"
+      @click.prevent="enfocarContenido"
+    >Ir al contenido principal</a>
     <!-- Velo del panel deslizante (solo móvil) -->
     <transition
       enter-active-class="transition-opacity duration-200"
@@ -255,13 +260,30 @@ async function cerrarSesion() {
     </transition>
 
     <!-- ── Sidebar: marca · navegación · usuario ── -->
-    <aside :class="claseNav">
+    <aside
+      id="panel-navegacion"
+      ref="panelNav"
+      :class="claseNav"
+      :inert="esMovil && !navAbierto"
+      :role="panelMovilAbierto ? 'dialog' : undefined"
+      :aria-modal="panelMovilAbierto ? 'true' : undefined"
+      :aria-label="panelMovilAbierto ? 'Menú del sistema' : undefined"
+      @keydown="alTeclearNav"
+    >
+      <button
+        v-if="panelMovilAbierto"
+        ref="botonCerrarNav"
+        type="button"
+        class="absolute right-2 top-2 inline-flex size-12 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary-500"
+        aria-label="Cerrar menú"
+        @click="cerrarNav"
+      ><i class="ti ti-x" aria-hidden="true"></i></button>
       <!-- Marca. Mismo alto que la barra de la hoja + su margen superior,
            para que marca y migas queden en la misma línea. -->
       <RouterLink
         to="/dashboard"
         class="mx-2 mt-2 flex h-12 shrink-0 items-center gap-2.5 rounded-lg px-2 transition-colors duration-150 hover:bg-gray-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-        :class="{ 'md:justify-center md:px-0': navEnRiel }"
+        :class="{ 'md:justify-center md:px-0': navEnRiel, 'mr-16': panelMovilAbierto }"
         @click="cerrarNav"
       >
         <img :src="'/icon_sisti.svg'" :alt="NOMBRE_PRODUCTO" class="h-7 w-7 shrink-0">
@@ -302,16 +324,18 @@ async function cerrarSesion() {
     </aside>
 
     <!-- ══ Hoja ═══════════════════════════════════════════════════ -->
-    <div class="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2">
+    <div class="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2" :inert="panelMovilAbierto">
       <div data-hoja class="flex min-h-0 flex-1 flex-col overflow-hidden bg-white md:rounded-xl md:shadow-xs md:ring-1 md:ring-gray-900/[0.07]">
         <!-- Barra de la hoja: menú · migas · acciones globales -->
         <header class="flex h-12 shrink-0 items-center gap-2 border-b border-gray-100 px-3 sm:px-4">
           <button
+            ref="botonNav"
             :class="ACCION_HEADER"
             type="button"
             :title="etiquetaNav"
             :aria-label="etiquetaNav"
             :aria-expanded="esMovil ? navAbierto : !navEnRiel"
+            aria-controls="panel-navegacion"
             @click="alternarNav"
           >
             <i class="ti ti-menu-2 md:hidden" aria-hidden="true"></i>
@@ -343,12 +367,12 @@ async function cerrarSesion() {
           <div v-else class="flex-1"></div>
 
           <div class="flex shrink-0 items-center gap-1">
-            <AppSearch ref="appSearchRef" @navegado="cerrarNav" />
+            <AppSearch ref="appSearchRef" @navegado="enfocarContenido" />
             <NotificacionesCampana />
           </div>
         </header>
 
-        <main class="min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <main id="contenido-principal" ref="contenidoPrincipal" tabindex="-1" class="min-h-0 min-w-0 flex-1 overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-500">
           <slot />
         </main>
       </div>

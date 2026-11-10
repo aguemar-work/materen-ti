@@ -209,7 +209,7 @@ global `Deno`.
 
 ## Flujos principales
 
-1. **Alta guiada**: Empleados → "Nuevo empleado" → guarda → aterriza en la
+1. **Alta guiada**: Empleados → "Registrar empleado" → guarda → aterriza en la
    ficha (`/empleados/:id?nuevo=1`) con guía de 5 pasos: registrado → cuenta de
    correo → **credenciales entregadas** (enviar por WhatsApp — requisito, no
    opcional: tener la cuenta creada no es lo mismo que el empleado ya la

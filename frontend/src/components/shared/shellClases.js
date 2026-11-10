@@ -7,10 +7,9 @@
 // PrimeVue.
 
 // Botón solo-ícono de la barra superior de la hoja (y del marco): sin borde,
-// hover con fondo tenue. Mismo alto (32px) que el resto de controles
-// compactos del sistema V2.
+// hover con fondo tenue. En móvil la superficie táctil es de 44px.
 export const ACCION_HEADER =
-  'relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-lg text-gray-500 ' +
+  'relative inline-flex size-11 shrink-0 items-center justify-center rounded-md text-lg text-gray-500 md:size-8 ' +
   'transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
 

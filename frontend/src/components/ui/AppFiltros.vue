@@ -122,10 +122,20 @@ function resumen(d) {
 const descripcion = computed(() => (activas.value.length
   ? `Filtros: ${activas.value.map((d) => `${d.label} ${resumen(d)}`).join('; ')}`
   : 'Filtros'));
+
+const resumenActivo = computed(() => activas.value.map((d) => ({ ...d, texto: resumen(d) })));
+
+function quitarDesdeResumen(d) {
+  quitar(d);
+  trigger.value?.focus();
+}
+
+defineExpose({ resumenActivo, quitarDesdeResumen });
 </script>
 
 <template>
   <button
+    ref="trigger"
     type="button"
     class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
     :class="activas.length

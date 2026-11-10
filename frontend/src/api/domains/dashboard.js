@@ -67,7 +67,10 @@ export const dashboardApi = {
         .or(`software.ilike.%${qSafe}%,proveedor.ilike.%${qSafe}%`)
         .limit(6),
     ]);
+    const respuestas = [empRes, cuentasRes, equiposRes, ticketsRes, licenciasRes];
+    if (respuestas.every((respuesta) => respuesta.error)) throw empRes.error;
     return {
+      incompleta: respuestas.some((respuesta) => Boolean(respuesta.error)),
       empleados: (empRes.data || []).map((e) => ({
         id: e.id, nombres: e.nombres, apellidos: e.apellidos,
         dni: e.dni, cargo: e.cargo, estado: e.estado,

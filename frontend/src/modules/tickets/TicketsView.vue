@@ -314,6 +314,7 @@ function verTicket(ticket) {
 // ── Atajos de teclado: "/" enfoca el buscador ───────────────────────────
 // AppBuscador no expone focus(): se enfoca su <input> interno.
 const refBuscador = ref(null);
+const refFiltros = ref(null);
 
 useAtajosLista({
   onBuscar: () => refBuscador.value?.$el?.querySelector?.('input')?.focus(),
@@ -427,11 +428,30 @@ onMounted(async () => {
         placeholder="Código, título, nombre o DNI"
         title="Atajo: /"
       />
-      <AppFiltros v-model="chips" :dimensiones="dimensiones" />
+      <AppFiltros ref="refFiltros" v-model="chips" :dimensiones="dimensiones" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
       <AppVistas v-model="filtros.vista" en-barra class="ml-auto" :opciones="opcionesVistas" label="Vista de tickets" />
       <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" />
     </AppBarraFiltros>
+
+    <ul
+      v-if="refFiltros?.resumenActivo?.length"
+      aria-label="Filtros aplicados"
+      class="flex flex-wrap items-center gap-2 px-4 pb-3 sm:px-6"
+    >
+      <li v-for="filtro in refFiltros.resumenActivo" :key="filtro.id" class="min-w-0">
+        <button
+          type="button"
+          data-chip
+          class="inline-flex min-h-9 max-w-full items-center gap-2 rounded-md bg-primary-50 px-2.5 text-left text-sm text-primary-800 hover:bg-primary-100 focus-visible:ring-2 focus-visible:ring-primary-500"
+          :aria-label="`Quitar filtro ${filtro.label}: ${filtro.texto}`"
+          @click="refFiltros.quitarDesdeResumen(filtro)"
+        >
+          <span class="break-words">{{ filtro.label }} · {{ filtro.texto }}</span>
+          <i class="ti ti-x shrink-0" aria-hidden="true"></i>
+        </button>
+      </li>
+    </ul>
 
     <!-- ══ Contenido ═══════════════════════════════════════════════ -->
     <div class="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">

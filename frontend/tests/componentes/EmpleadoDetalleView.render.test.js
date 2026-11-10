@@ -405,8 +405,8 @@ describe('Expediente — guía de alta (la solicitud de alta abierta)', () => {
     sinCuentas();
     const { w } = await montar();
     const guia = guiaDe(w);
-    expect(guia.querySelector('h2').textContent.replace(/\s+/g, ' ')).toMatch(/Alta en curso · 1 de 6 pasos · abierta hace 1 día · SOL-0012/i);
-    expect(guia.querySelector('a[href="/solicitudes/s1"]')).not.toBeNull();
+    expect(guia.querySelector('h2').textContent.replace(/\s+/g, ' ')).toMatch(/Alta en curso · 1 de 6 pasos · abierta hace 1 día/i);
+    expect(guia.querySelector('a[href="/solicitudes/s1"]').textContent).toMatch(/Ver trámite de alta\s+SOL-0012/);
     expect(pasosDe(guia)).toEqual([
       'Registrar a la persona',
       'Crear la cuenta de correo Crear cuenta',

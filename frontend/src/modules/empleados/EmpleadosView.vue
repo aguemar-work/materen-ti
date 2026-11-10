@@ -294,7 +294,7 @@ onMounted(async () => {
     >
       <template #acciones>
         <EnlaceReporte reporte="personal" />
-        <AppButton icon="ti ti-plus" label="Nuevo empleado" @click="abrirNuevo" />
+        <AppButton icon="ti ti-plus" label="Registrar empleado" @click="abrirNuevo" />
       </template>
     </AppEncabezado>
 

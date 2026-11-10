@@ -83,6 +83,10 @@ const OPCIONES_FEED = computed(() => [
 // propio scroll. La conversación arranca abajo — lo último que pasó es lo
 // que se viene a ver — y vuelve abajo con cada mensaje nuevo.
 const refFeed = ref(null);
+const gestionTicket = ref(null);
+function enfocarGestion() {
+  gestionTicket.value?.focus();
+}
 async function bajarAlFinal() {
   await nextTick();
   if (refFeed.value) refFeed.value.scrollTop = refFeed.value.scrollHeight;
@@ -122,6 +126,12 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
             @copiar-encuesta="copiarMensajeSatisfaccion"
             @revisar-calificacion="mostrarRevisarCalificacion = true"
           />
+          <a
+            v-if="ticket.estado === 'abierto'"
+            href="#gestion-ticket"
+            class="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded text-sm font-medium text-primary-700 hover:underline focus-visible:ring-2 focus-visible:ring-primary-500 lg:hidden"
+            @click.prevent="enfocarGestion"
+          >Ir a gestión del ticket <i class="ti ti-arrow-down" aria-hidden="true"></i></a>
           <RouterLink
             v-if="problemaVinculado"
             :to="`/problemas/${problemaVinculado.id}`"
@@ -284,9 +294,7 @@ watch(() => [cargando.value, filasFeed.value.length], bajarAlFinal);
           </div>
         </AppSeccion>
 
-        <!-- En abierto, lo primero es triar (prioridad, responsable): en móvil
-             la gestión sube antes de la conversación. -->
-        <aside class="space-y-6 lg:min-h-0 lg:overflow-y-auto" :class="{ 'order-first lg:order-none': ticket.estado === 'abierto' }">
+        <aside id="gestion-ticket" ref="gestionTicket" tabindex="-1" aria-label="Gestión y contexto del ticket" class="space-y-6 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-500 lg:min-h-0 lg:overflow-y-auto">
           <!-- Campos según el estado (abierto / en curso / terminal) —
                compartidos con TicketDetallePanel.vue. Se ocultan mientras un
                formulario inline está abierto: rechazar solo ocurre en

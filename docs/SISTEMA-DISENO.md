@@ -308,17 +308,24 @@ una decisión para pedir, no para completar.
   `core/modulos.js` (`tests/modulos-unicos.test.js` los compara con el CHECK de
   `staff_modulos_permisos` y con los guards del router). Grupos desde el
   2026-10-01: Inicio · Mesa de ayuda (Tickets, Conocimiento, Problemas) ·
-  Personas (Empleados, Encuestas) · Custodia (Equipos, Licencias, Correos) ·
+  Personas (Empleados, Solicitudes, Encuestas) · Custodia (Equipos, Licencias, Correos) ·
   Administración (Registro de actividad, Accesos sensibles, Configuración).
-  "Solicitudes" entra a Mesa de ayuda cuando exista su ruta.
 - **Diálogos**: `AppDialog` es el diálogo único de formularios y paneles
   (centrado o `lateral`); `Modal.vue` y sus clases `.modal-*` se retiraron
   (2026-10-02): todo diálogo es `AppDialog`.
 - **Barra de la hoja** (48px): botón de menú (en desktop alterna el riel, en
   móvil abre el panel), migas, búsqueda global (`AppSearch`: un campo a la
   vista con el atajo Ctrl/⌘K desde `sm`, lupa en móvil) y campana.
+- **Búsqueda global**: las flechas recorren los resultados y Enter abre el
+  resultado activo. Una región de estado anuncia carga y coincidencias.
+  Si hay un fallo se conserva la consulta y se ofrece reintento. Si falla
+  solo una parte de la consulta, se muestran los resultados disponibles.
 - **Móvil**: la hoja ocupa toda la pantalla sin margen ni radio; el sidebar
-  es un panel blanco deslizante con sombra y velo detrás.
+  es un panel blanco deslizante con sombra y velo detrás. Cerrado, queda
+  fuera del recorrido del teclado. Abierto, el foco entra al panel y
+  Escape lo devuelve al botón de menú. Las acciones de la barra tienen
+  un área táctil de 44 px. «Ir al contenido principal» aparece al enfocarlo
+  con Tab.
 - Clases compartidas del shell: `components/shared/shellClases.js`.
 
 ### 3.2 Componentes (`components/ui/`)
@@ -361,6 +368,10 @@ Tags: un estado del dominio va con `BadgeEstado`; cualquier otro tag, con
 `rolDeTag()`). No se escriben tags a mano con clases.
 
 ### 3.2.1 Filtros V2: vistas + chips + URL (2026-09-25)
+
+En Tickets, debajo de la barra se muestran los criterios activos por
+dimensión. Cada criterio se puede retirar desde esa fila y el foco vuelve
+al botón de filtros.
 Modelo de filtrado de **todos** los listados (cerrado el 2026-09-25: no
 queda ningún listado con segmentados o selects de filtro). Excepciones
 deliberadas, que no son listados: el paso de revisión de
@@ -619,6 +630,12 @@ a su `buscar`.
   xl:grid-cols-3`), cada tarjeta `rounded-lg border bg-white p-4`, mismo ⋮.
 
 ### 4.2 Detalle / ficha (referencia: `EmpleadoDetalleView.vue`)
+
+En Tickets, la conversación precede a la gestión en el orden de lectura.
+En pantallas estrechas, un ticket abierto ofrece un salto directo a gestión.
+En Empleados, «Registrar empleado» inicia el flujo desde la ficha de la persona.
+En Solicitudes, «Nueva solicitud» inicia el trámite, que puede asociarse a
+una persona ya registrada. La guía de alta enlaza al trámite en curso.
 ```
 <div class="w-full px-4 pb-10 pt-6 sm:px-6">
   perfil: [avatar/ícono grande] [título + estado · línea secundaria · meta con íconos] [acciones]

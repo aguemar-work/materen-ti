@@ -23,6 +23,8 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-11-10** (**Accesibilidad y orientación**) — Actualizada la guía del menú móvil, búsqueda global, filtros de Tickets y entradas al alta de personal.
+
 - **2026-10-22** (**Despliegue de la 122 en producción**) — Aplicada con `deploy.mjs migracion` (`--dry-run` primero;
   verificación en verde: filtro sin rechazados en `portal_abrir`, permisos iguales —solo `project_admin`—, token
   inválido → `no_existe`; registrada en `schema_migrations` con el commit dd75d9c). Sin redesplegar `portal`. Snapshot

@@ -152,8 +152,8 @@ onMounted(async () => {
   <div class="flex h-full min-h-0 flex-col">
     <AppEncabezado
       titulo="Solicitudes"
-      :subtitulo="subtitulo"
     >
+      <template #subtitulo>{{ subtitulo }} · Trámites de alta, cambios y baja del personal</template>
       <template #acciones>
         <AppButton icon="ti ti-plus" label="Nueva solicitud" @click="mostrarForm = true" />
       </template>

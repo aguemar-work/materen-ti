@@ -8,8 +8,8 @@ import { ref, onMounted, onUnmounted } from 'vue';
 // a /tickets/:id como página completa (mobile, sin cambios).
 const CONSULTA_MOVIL = '(max-width: 768px)';
 
-export function useEsMovil() {
-  const mql = window.matchMedia(CONSULTA_MOVIL);
+export function useEsMovil(consulta = CONSULTA_MOVIL) {
+  const mql = window.matchMedia(consulta);
   const esMovil = ref(mql.matches);
 
   function actualizar(e) {

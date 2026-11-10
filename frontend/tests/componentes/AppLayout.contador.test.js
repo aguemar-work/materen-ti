@@ -33,6 +33,7 @@ vi.mock('../../src/api/client.js', () => ({
   getClient: () => ({ database: { rpc: rt.rpc, from: rt.from }, realtime: rt.realtime }),
 }));
 vi.mock('../../src/stores/tickets.js', () => ({ useTicketsStore: () => ({ cargar: rt.cargarTickets }) }));
+vi.mock('../../src/core/notificacionSonido.js', () => ({ reproducirNotificacion: vi.fn() }));
 
 import AppLayout from '../../src/components/shared/AppLayout.vue';
 import { useAuthStore } from '../../src/stores/auth.js';
@@ -53,6 +54,7 @@ async function montar() {
   router.push('/dashboard');
   await router.isReady();
   const w = mount(AppLayout, {
+    attachTo: document.body,
     global: {
       plugins: [router],
       stubs: {
@@ -80,6 +82,30 @@ beforeEach(() => {
   auth.user = { id: 'u-1' };
   auth.rol = 'JEFE';
   auth.nombre = 'Alejandro Guevara';
+});
+
+it('el menú móvil excluye el fondo al abrir y devuelve el foco al cerrar con Escape', async () => {
+  vi.spyOn(window, 'matchMedia').mockReturnValue({
+    matches: true, addEventListener() {}, removeEventListener() {},
+  });
+  responde(conSinAsignar(0));
+  const w = await montar();
+  const panel = w.get('#panel-navegacion');
+  const abrir = w.get('button[aria-label="Abrir menú"]');
+  expect(panel.attributes()).toHaveProperty('inert');
+
+  await abrir.trigger('click');
+  await asentar();
+  expect(abrir.attributes('aria-expanded')).toBe('true');
+  const botonInterior = panel.get('button[aria-label="Cerrar menú"]');
+  expect(panel.attributes('aria-modal')).toBe('true');
+  expect(w.get('[data-hoja]').element.parentElement.hasAttribute('inert')).toBe(true);
+  expect(document.activeElement).toBe(botonInterior.element);
+
+  await botonInterior.trigger('keydown', { key: 'Escape' });
+  await asentar();
+  expect(panel.attributes()).toHaveProperty('inert');
+  expect(document.activeElement).toBe(abrir.element);
 });
 afterEach(() => {
   // Desmontar quita los listeners de `document`: si no, se acumulan entre pruebas.

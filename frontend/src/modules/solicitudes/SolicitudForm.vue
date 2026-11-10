@@ -142,6 +142,7 @@ async function guardar() {
           </select>
           <i class="ti ti-chevron-down campo__adorno" aria-hidden="true"></i>
         </div>
+        <p v-if="esAlta" class="campo__pie text-gray-600">El trámite permite seguir los pasos del alta de una persona nueva o ya registrada.</p>
       </div>
 
       <!-- ── Persona ── -->

@@ -213,7 +213,7 @@ async function guardar() {
   <AppDialog
     ref="modal"
     size="lg"
-    :titulo="esEdicion ? 'Editar empleado' : 'Nuevo empleado'"
+    :titulo="esEdicion ? 'Editar empleado' : 'Registrar empleado'"
     :confirmar-cierre="confirmarCierre"
     :cerrar-en-backdrop="false"
     @cerrado="emit('cerrar', resultado)"
