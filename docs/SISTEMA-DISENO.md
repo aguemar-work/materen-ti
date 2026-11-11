@@ -68,7 +68,9 @@
 11. **Acciones de fila en un menú ⋮** (`MenuAcciones`); la fila entera abre
     el detalle. Nada de íconos que aparecen al pasar el mouse.
 12. **Vacíos y cargas con intención**: `AppVacio` dice qué falta y ofrece la
-    acción que lo resuelve. Nunca un guion suelto: "Sin registrar" en gris.
+    acción que lo resuelve. El mensaje se apoya directamente en la hoja,
+    con espacio de lectura y sin un marco punteado. Nunca un guion suelto:
+    "Sin registrar" en gris.
 13. **Móvil real**: a < 768px la hoja ocupa toda la pantalla, el menú es un
     panel deslizante y las tablas pasan a tarjetas o listas; nada con scroll
     horizontal accidental.
@@ -650,6 +652,24 @@ hoja es tan ancha como la ventana, igual que el Listado. El texto largo
 (`max-w-prose`/`max-w-[70ch]`).
 
 ### 4.3 Tablero (Inicio, reportes)
+
+Inicio conserva la prioridad y los umbrales del servidor. En la lista
+de pendientes se puede alternar entre Todos, Críticos y Atención sin
+consultas adicionales. El nivel se reinicia al cambiar de área. Los
+títulos y el contexto de cada asunto se leen completos, también en
+escritorio. Los paneles usan títulos de 14 px en caja normal para distinguir
+la sección del rótulo de severidad.
+
+El índice de Reportes usa dos columnas desde `xl` y una en móvil. Una fila
+completa abre su reporte y muestra su alcance junto al título. La búsqueda
+por área, título o descripción ignora acentos y se conserva en `?q=`.
+Los resultados siempre parten del catálogo permitido para la sesión.
+Un resultado vacío ofrece limpiar la búsqueda.
+
+En la vista de Tickets, Tabla y Triage muestran sus nombres junto al ícono.
+El panel sin selección invita a elegir un ticket y permite volver a tabla.
+La ficha y el panel comparten el título Gestión y la ayuda que explica
+cuándo se guardan los campos, dentro de `TicketCamposGestion`.
 - Inicio abre con un saludo ("Buenos días, Alejandro") y la fecha con el
   total de pendientes: es la portada de quien entra, no un "Dashboard".
 - Fila de `AppKpi` (`grid gap-3 sm:grid-cols-2 xl:grid-cols-4`); cada cifra
@@ -664,12 +684,22 @@ hoja es tan ancha como la ventana, igual que el Listado. El texto largo
   no gráficos decorativos.
 
 ### 4.4 Catálogos / configuración
-- Navegación de secciones a la izquierda (lista vertical con el ítem activo
-  en `bg-primary-50 text-primary-700`); contenido a la derecha como listado
-  compacto dentro de una card (4.1 sin encabezado grande).
+- `/configuracion` abre un índice de catálogos agrupados por tarea.
+  Cada fila explica qué se administra y abre su ruta. El grupo
+  «Equipo de TI» se muestra solo a la jefatura.
+- Dentro de un catálogo, escritorio conserva el índice agrupado a la
+  izquierda y móvil usa un selector que muestra la sección actual.
+  La miga de Configuración vuelve al índice.
 - Cada sección abre con `modules/configuracion/EncabezadoCatalogo.vue`
   (`titulo`, `conteo`, `descripcion`, slot `acciones` con la única acción
   sólida): el título grande de página ya lo pone `ConfiguracionView`.
+- Registro de actividad usa `AppLibro` en orden cronológico inverso. La
+  cabecera indica que los filtros operan sobre los últimos 200 registros.
+  «Permisos» reúne otorgamientos y revocaciones, y «Denegados» incluye
+  intentos de acceso al panel y de revelación de contraseñas.
+  Los fallos de carga tienen un estado propio con reintento. Accesos
+  sensibles enlaza al registro y resume el permiso de revelación sobre
+  las credenciales visibles.
 
 ### 4.5 Portal público (sin sesión)
 - Centrado, `max-w-lg`, logo arriba, una sola card blanca, textos cortos,

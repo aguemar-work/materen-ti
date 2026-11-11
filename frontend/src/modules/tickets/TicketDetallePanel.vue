@@ -271,7 +271,7 @@ function onConfirmarReabrir(motivo) {
         <!-- Campos de gestión: no se ocultan mientras Rechazar/Reabrir están
              abiertos — acá esos formularios son ConfirmDialog (overlay). -->
         <section aria-labelledby="pnl-gestion">
-          <h3 id="pnl-gestion" class="mb-2 text-sm font-semibold text-gray-900">Datos del ticket</h3>
+          <h3 id="pnl-gestion" class="mb-2 text-sm font-semibold text-gray-900">Gestión</h3>
           <TicketCamposGestion
             v-model:atencion-prioridad="atencionForm.prioridad"
             v-model:atencion-nivel="atencionForm.nivelAtencion"

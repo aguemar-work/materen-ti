@@ -38,7 +38,7 @@ describe('ReportesIndiceView', () => {
     const w = await montar(ReportesIndiceView);
     expect(w.find('h1').text()).toBe('Reportes');
     expect(w.findAll('h2').map((h) => h.text())).toEqual(['Mesa de ayuda', 'Personas', 'Custodia', 'Administración']);
-    const enlaces = w.findAll('a').map((a) => [a.text(), a.attributes('href')]);
+    const enlaces = w.findAll('a').map((a) => [a.find('span[id$="-nombre"]').text(), a.attributes('href')]);
     expect(enlaces).toHaveLength(11);
     expect(enlaces).toContainEqual(['Inventario de equipos', '/reportes/inventario']);
     expect(enlaces).toContainEqual(['Auditoría', '/reportes/auditoria']);
@@ -47,7 +47,7 @@ describe('ReportesIndiceView', () => {
   it('un asistente solo ve los reportes de sus módulos, sin Auditoría', async () => {
     const w = await montar(ReportesIndiceView, { rol: 'ASISTENTE', modulos: ['equipos', 'empleados'] });
     expect(w.findAll('h2').map((h) => h.text())).toEqual(['Personas', 'Custodia']);
-    expect(w.findAll('a').map((a) => a.text())).toEqual(['Personal', 'Solicitudes', 'Inventario de equipos']);
+    expect(w.findAll('a').map((a) => a.find('span[id$="-nombre"]').text())).toEqual(['Personal', 'Solicitudes', 'Inventario de equipos']);
     expect(w.text()).not.toContain('Auditoría');
   });
 
@@ -55,6 +55,18 @@ describe('ReportesIndiceView', () => {
     const w = await montar(ReportesIndiceView, { rol: 'ASISTENTE', modulos: ['base_conocimiento'] });
     expect(w.findAll('h2')).toHaveLength(0);
     expect(w.text()).toContain('No tiene acceso a ningún reporte');
+  });
+
+  it('busca por tema sin acentos, conserva los permisos y permite limpiar', async () => {
+    const w = await montar(ReportesIndiceView, { rol: 'ASISTENTE', modulos: ['equipos', 'empleados'] });
+    await w.get('input[type="search"]').setValue('garantias');
+    expect(w.findAll('a').map((a) => a.attributes('href'))).toEqual(['/reportes/inventario']);
+    expect(w.get('[role="status"]').text()).toBe('1 reporte disponible');
+    await w.get('input[type="search"]').setValue('auditoria');
+    expect(w.findAll('a')).toHaveLength(0);
+    expect(w.text()).toContain('Sin reportes para esta búsqueda');
+    await w.findAll('button').find((b) => b.text() === 'Limpiar búsqueda').trigger('click');
+    expect(w.findAll('a')).toHaveLength(3);
   });
 });
 

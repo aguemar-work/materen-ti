@@ -1,7 +1,6 @@
 <script setup>
 // Estado vacío. `variante`:
-//   pagina   — ocupa el área de contenido (listado sin resultados), borde
-//              punteado: se lee como "acá iría algo", no como una card rota.
+//   pagina   — mensaje centrado en la hoja con una acción de salida.
 //   seccion  — compacto, dentro de una AppSeccion.
 // El slot default lleva la acción que resuelve el vacío (ej. "Agregar").
 defineProps({
@@ -15,13 +14,13 @@ defineProps({
 <template>
   <div
     v-if="variante === 'pagina'"
-    class="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white px-6 py-16 text-center"
+    class="flex min-h-64 flex-1 flex-col items-center justify-center px-6 py-12 text-center"
   >
-    <span class="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-2xl text-gray-500">
+    <span class="mb-4 text-3xl text-gray-500">
       <i :class="icono" aria-hidden="true"></i>
     </span>
     <h2 class="text-base font-semibold text-gray-900">{{ titulo }}</h2>
-    <p v-if="mensaje" class="mt-1 max-w-sm text-sm text-gray-500">{{ mensaje }}</p>
+    <p v-if="mensaje" class="mt-2 max-w-sm text-sm leading-relaxed text-gray-600">{{ mensaje }}</p>
     <div v-if="$slots.default" class="mt-5"><slot /></div>
   </div>
   <div v-else class="px-4 py-8 text-center">

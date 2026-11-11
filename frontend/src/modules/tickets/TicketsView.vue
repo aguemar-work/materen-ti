@@ -431,7 +431,7 @@ onMounted(async () => {
       <AppFiltros ref="refFiltros" v-model="chips" :dimensiones="dimensiones" />
       <AppButton v-if="hayFiltros" size="sm" variant="text" severity="secondary" icon="ti ti-x" label="Limpiar" @click="limpiarFiltros" />
       <AppVistas v-model="filtros.vista" en-barra class="ml-auto" :opciones="opcionesVistas" label="Vista de tickets" />
-      <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" />
+      <SelectorVista v-if="!esMovil" v-model="vista" :opciones="OPCIONES_VISTA_TICKETS" mostrar-etiquetas />
     </AppBarraFiltros>
 
     <ul
@@ -676,9 +676,11 @@ onMounted(async () => {
         <AppVacio
           v-else
           icono="ti ti-message-2"
-          titulo="Ningún ticket abierto"
+          titulo="Seleccione un ticket"
           mensaje="Seleccione un ticket de la cola para leer la conversación, responder y gestionarlo sin salir de la lista."
-        />
+        >
+          <AppButton variant="outline" severity="secondary" label="Ver como tabla" @click="vista = 'tabla'" />
+        </AppVacio>
       </div>
     </div>
 

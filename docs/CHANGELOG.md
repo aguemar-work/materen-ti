@@ -23,6 +23,12 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-11-10** (**Dependencias del frontend**) — Se actualizan Vue y Tabler, y se resuelven los avisos de DOMPurify, source-map-js y Zod. El ajuste de Zod se limita a `@insforge/shared-schemas` mientras InsForge actualiza su rango de dependencia.
+
+- **2026-11-10** (**Administración de TI**) — Configuración abre un índice por tarea con navegación móvil; Registro de actividad adopta el libro compartido y muestra los fallos con reintento; Accesos sensibles aclara el alcance de los permisos visibles. Ver SISTEMA-DISENO.
+
+- **2026-11-10** (**Revisión de producto y diseño**) — Inicio permite separar críticos y atención; Reportes incorpora búsqueda por tema y filas enlazables; se corrigen la búsqueda del shell en escritorio, los estados vacíos y la jerarquía de componentes compartidos. Ver SISTEMA-DISENO.
+
 - **2026-11-10** (**Accesibilidad y orientación**) — Actualizada la guía del menú móvil, búsqueda global, filtros de Tickets y entradas al alta de personal.
 
 - **2026-10-22** (**Despliegue de la 122 en producción**) — Aplicada con `deploy.mjs migracion` (`--dry-run` primero;

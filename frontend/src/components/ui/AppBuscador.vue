@@ -27,7 +27,7 @@ defineExpose({ focus: () => input.value?.focus() });
       :value="modelValue"
       type="search"
       :placeholder="placeholder"
-      class="h-8 w-full rounded-md border border-gray-300 bg-white pl-8 pr-3 text-sm text-gray-900 shadow-xs placeholder:text-gray-400 transition-colors duration-150 hover:border-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+      class="h-8 w-full rounded-md border border-gray-300 bg-white pl-8 pr-3 text-sm text-gray-900 shadow-xs placeholder:text-gray-500 transition-colors duration-150 hover:border-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
       @input="$emit('update:modelValue', $event.target.value)"
     >
   </label>

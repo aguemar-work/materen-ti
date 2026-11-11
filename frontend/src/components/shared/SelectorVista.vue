@@ -9,6 +9,7 @@
 defineProps({
   modelValue: { type: String, required: true },
   opciones: { type: Array, required: true }, // [{ valor, icono, label }]
+  mostrarEtiquetas: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue']);
 </script>
@@ -20,13 +21,14 @@ const emit = defineEmits(['update:modelValue']);
       :key="op.valor"
       type="button"
       class="icon-btn selector-vista__btn"
-      :class="{ 'selector-vista__btn--activo': modelValue === op.valor }"
+      :class="{ 'selector-vista__btn--activo': modelValue === op.valor, 'selector-vista__btn--etiqueta': mostrarEtiquetas }"
       :aria-pressed="modelValue === op.valor"
       :title="op.label"
       :aria-label="op.label"
       @click="emit('update:modelValue', op.valor)"
     >
       <i class="ti" :class="op.icono" aria-hidden="true"></i>
+      <span v-if="mostrarEtiquetas" class="text-sm">{{ op.label }}</span>
     </button>
   </div>
 </template>

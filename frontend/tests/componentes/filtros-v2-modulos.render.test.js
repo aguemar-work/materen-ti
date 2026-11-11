@@ -93,6 +93,7 @@ describe('ActividadView — filtros V2 (en el cliente)', () => {
       { id: 2, accion: 'copiar', user_email: 'ana@x.pe', plataforma: 'Gmail', created_at: hoy },
       { id: 3, accion: 'entrega_abierta', user_email: null, plataforma: 'ERP', created_at: hoy },
       { id: 4, accion: 'acceso_denegado', user_email: 'ana@x.pe', plataforma: 'ERP', created_at: hoy },
+      { id: 5, accion: 'permiso_otorgado', user_email: 'jefe@x.pe', plataforma: 'ERP', created_at: hoy },
     ]);
   });
 
@@ -100,12 +101,12 @@ describe('ActividadView — filtros V2 (en el cliente)', () => {
 
   it('las vistas agrupan acciones y cuentan cada grupo', async () => {
     const { w } = await montar(ActividadView, '/actividad', RUTAS_ACTIVIDAD);
-    expect(conteos(w)).toEqual(['Todo 4', 'Contraseñas 2', 'Entregas 1', 'Denegados 1']);
+    expect(conteos(w)).toEqual(['Todo 5', 'Contraseñas 2', 'Entregas 1', 'Permisos 1', 'Denegados 1']);
   });
 
   it('el chip "Quién" (incluido el empleado sin sesión) recalcula los conteos', async () => {
     const { w } = await montar(ActividadView, '/actividad?quien=ana@x.pe', RUTAS_ACTIVIDAD);
-    expect(conteos(w)).toEqual(['Todo 2', 'Contraseñas 1', 'Entregas 0', 'Denegados 1']);
+    expect(conteos(w)).toEqual(['Todo 2', 'Contraseñas 1', 'Entregas 0', 'Permisos 0', 'Denegados 1']);
     const { w: w2 } = await montar(ActividadView, '/actividad?vista=entregas&quien=enlace', RUTAS_ACTIVIDAD);
     expect(w2.text()).toContain('Empleado, vía enlace');
   });

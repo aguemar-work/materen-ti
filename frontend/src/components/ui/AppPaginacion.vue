@@ -35,7 +35,7 @@ function irA(p) {
 }
 
 const FLECHA =
-  'inline-flex h-8 w-8 items-center justify-center rounded-md text-base text-gray-600 transition-colors ' +
+  'inline-flex size-11 items-center justify-center rounded-md text-base text-gray-600 transition-colors md:size-8 ' +
   'hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ' +
   'disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent';
 const SELECT =

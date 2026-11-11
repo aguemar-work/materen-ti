@@ -1,5 +1,6 @@
 import { MODULO_POR_ID } from '../../core/modulos.js';
 import { REPORTES, MODULOS_CON_REPORTE, rutaReporte } from '../../core/reportes.js';
+import { SECCIONES_CONFIGURACION } from '../../core/configuracion.js';
 
 // Estructura de la navegación del shell: áreas → grupos → ítems.
 //
@@ -115,6 +116,7 @@ function rutaDentroDe(path, base) {
 // con `:id` no: la hoja ya muestra el nombre del registro como título).
 const SUBRUTAS = {
   '/equipos/importar': 'Importar desde Excel',
+  ...Object.fromEntries(SECCIONES_CONFIGURACION.map((s) => [`/configuracion/${s.id}`, s.titulo])),
   // Cada reporte: Reportes › <reporte>.
   ...Object.fromEntries(REPORTES.map((r) => [rutaReporte(r.id), r.titulo])),
 };

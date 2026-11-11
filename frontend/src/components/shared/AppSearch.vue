@@ -33,7 +33,7 @@ const VACIO = 'px-3 py-6 text-center text-sm text-gray-500';
 // Desde sm el botón colapsado se dibuja como un campo (fondo gris tenue,
 // texto de ayuda y el atajo); por debajo sigue siendo el botón de lupa.
 const CAMPO_COLAPSADO =
-  'sm:w-56 sm:justify-start sm:gap-2 sm:bg-gray-100 sm:px-2.5 sm:text-base sm:text-gray-500 sm:hover:bg-gray-200/70';
+  'sm:w-56 sm:justify-start sm:gap-2 sm:bg-gray-100 sm:px-2.5 sm:text-base sm:text-gray-500 sm:hover:bg-gray-200/70 md:w-56';
 const atajo = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K';
 
 const emit = defineEmits(['navegado']);

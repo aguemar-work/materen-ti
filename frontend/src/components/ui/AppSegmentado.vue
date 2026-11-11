@@ -15,7 +15,7 @@ defineEmits(['update:modelValue']);
 </script>
 
 <template>
-  <div class="inline-flex h-8 max-w-full shrink-0 items-center overflow-x-auto rounded-md bg-gray-100 p-0.5" role="group" :aria-label="label">
+  <div class="inline-flex h-8 max-w-full shrink-0 items-center overflow-x-auto overflow-y-hidden rounded-md bg-gray-100 p-0.5" role="group" :aria-label="label">
     <button
       v-for="op in opciones"
       :key="String(op.valor)"

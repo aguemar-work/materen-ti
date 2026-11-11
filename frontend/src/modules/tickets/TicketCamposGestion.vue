@@ -89,6 +89,8 @@ const datosTerminal = computed(() => [
 
 <template>
   <div class="grid gap-3">
+  <p v-if="ticket.estado === 'abierto'" class="text-xs leading-relaxed text-gray-600">Prioridad, nivel, responsable y tipo se aplican al iniciar la atención.</p>
+  <p v-else-if="ESTADOS_EN_CURSO.includes(ticket.estado)" class="text-xs leading-relaxed text-gray-600">La prioridad, el responsable y el tipo se guardan al cambiarlos.</p>
   <!-- categoría: en todos los estados; se cambia con un motivo (diálogo) -->
   <div class="flex items-start justify-between gap-3" data-clasificacion>
     <dl class="min-w-0 text-sm">
