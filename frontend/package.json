@@ -15,13 +15,13 @@
     "@fontsource-variable/inter": "5.3.0",
     "@insforge/sdk": "1.5.2",
     "@sentry/vue": "^10.70.0",
-    "@tabler/icons-webfont": "3.48.0",
+    "@tabler/icons-webfont": "3.51.0",
     "jspdf": "^4.2.1",
     "pinia": "^3.0.4",
     "primevue": "^4.4.1",
     "qrcode": "1.5.4",
     "tailwind-merge": "^3.4.0",
-    "vue": "^3.5.38",
+    "vue": "^3.5.42",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
@@ -32,6 +32,11 @@
     "tailwindcss": "^4.1.16",
     "vite": "^6.3.5",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "@insforge/shared-schemas": {
+      "zod": "4.6.6"
+    }
   },
   "engines": {
     "node": ">=22"
