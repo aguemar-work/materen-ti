@@ -4,6 +4,8 @@
 // públicas existentes; no consulta ningún dato, solo navega.
 import AppPortal from '../../components/ui/AppPortal.vue';
 import AppTag from '../../components/ui/AppTag.vue';
+import AvisoNuevoSistema from '../tickets/AvisoNuevoSistema.vue';
+import { CREACION_TICKETS_CERRADA } from '../../core/dominio-tickets.js';
 
 // Fila de acción del menú: toda la fila es el objetivo táctil (≥ 64px de
 // alto), hover con fondo tenue, sin bordes extra (principios del JEFE).
@@ -20,9 +22,13 @@ const CLASE_ENLACE =
     titulo="Solicitudes de soporte"
     descripcion="Registro y seguimiento de incidencias técnicas."
   >
+    <!-- Migración a Kapo TI (2026-11-13): los tickets nuevos se registran allá;
+         el seguimiento de los existentes sigue aquí. -->
+    <AvisoNuevoSistema v-if="CREACION_TICKETS_CERRADA" class="mb-4" />
+
     <nav aria-label="Acciones de soporte">
       <ul class="flex flex-col gap-3">
-        <li>
+        <li v-if="!CREACION_TICKETS_CERRADA">
           <RouterLink
             :to="{ name: 'ticket-nuevo' }"
             :class="CLASE_ENLACE"

@@ -141,6 +141,10 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   atención, solo cambia escalando o devolviendo (Iniciar fija el inicial). N2 reasigna (responsable obligatorio); N3
   conserva al responsable y avisa al JEFE. El solicitante ve nivel, fecha estimada y avances visibles, nunca el motivo
   ni el especialista; `nivel_atencion_publico()` y `NIVEL_PUBLICO` (dominio) se mueven juntos.
+- **Creación de tickets cerrada (Kapo TI, 2026-11-13)**: la mesa de ayuda pasó a kapo.com.pe. `tickets` acción
+  `crear` responde `creacion_cerrada` (público y staff) salvo el secret `TICKETS_CREACION_ABIERTA = 'si'`; el aviso del
+  frontend sale de `CREACION_TICKETS_CERRADA` / `AVISO_NUEVO_SISTEMA` (`core/dominio-tickets.js`) y `AvisoNuevoSistema.vue`.
+  Reabrir mueve juntos el secret y la constante. Los tickets existentes se siguen atendiendo y calificando.
 - **Historial**: `asignaciones_cuenta` es append-only en la práctica — se
   cierran (`fecha_fin`), no se borran.
 - Al editar una cuenta, `password_cambiada: true` solo si se escribió una
@@ -209,7 +213,7 @@ URL real y el DSN de Sentry), `.insforge/project.json`, `frontend/dist/**`,
   | Function | Qué hace | Notas |
   | --- | --- | --- |
   | `credenciales` | cifrar/revelar/entregas/auditoría; `mantenimiento` (autocierre y purga, 120) | secrets `CRED_KEY_V2`, `CRED_KEY_LEGACY`, `API_KEY`, `INSFORGE_BASE_URL`, `MANTENIMIENTO_SECRET`; auditoría fail-closed |
-  | `tickets` | crear/buscar/seguir tickets públicos, adjuntos | rate-limit por IP/DNI |
+  | `tickets` | crear (cerrada desde 2026-11-13)/buscar/seguir tickets públicos, adjuntos | rate-limit por IP/DNI |
   | `encuestas` | `abrir`/`responder` rondas anónimas | distinta de `ticket_satisfaccion` |
   | `equipos-fotos` | subir/borrar fotos (magic bytes + tamaño) | exige staff activo **con** módulo `equipos` |
   | `portal` | portal del empleado por enlace firmado (`abrir`, `confirmarEquipo`) | sin sesión; rate-limit por IP y por token; sin desplegar hasta aplicar la 109 |

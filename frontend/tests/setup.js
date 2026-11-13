@@ -4,6 +4,9 @@
 const CLAVES = {
   CRED_KEY_V2: Buffer.from(new Uint8Array(32).fill(7)).toString('base64'),
   CRED_KEY_LEGACY: Buffer.from(new Uint8Array(32).fill(9)).toString('base64'),
+  // tickets.crear está cerrada en producción (Kapo TI, 2026-11-13); los tests
+  // del flujo de creación la abren. El cierre se prueba en tickets-creacion-cerrada.test.js.
+  TICKETS_CREACION_ABIERTA: 'si',
 };
 
 globalThis.Deno = {

@@ -17,6 +17,12 @@ import { nextTick } from 'vue';
 import PrimeVue from 'primevue/config';
 import TicketInternoForm from '../../src/modules/tickets/TicketInternoForm.vue';
 
+// La creación está cerrada en producción (Kapo TI, 2026-11-13): estas pruebas
+// cubren el formulario abierto; el cierre se prueba en tickets-creacion-cerrada.
+vi.mock('../../src/core/dominio-tickets.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  CREACION_TICKETS_CERRADA: false,
+}));
 vi.mock('../../src/api/insforge.js', () => ({
   insforgeApi: {
     listCategoriasTicket: vi.fn().mockResolvedValue([{ id: 'cat-1', nombre: 'Hardware' }]),
