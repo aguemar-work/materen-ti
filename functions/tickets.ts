@@ -8,7 +8,7 @@
 //
 // Acciones (POST { action, ... }):
 //   catalogo       público          → { categorias[], subcategorias[] } (con `aviso`, 114, y `prioridad_sugerida`, 116)
-//   crear          público o staff  → { codigo, token, vinculado }
+//   crear          público o staff  → { codigo, token, vinculado } (CERRADA desde 2026-11-13: creacion_cerrada, ver la acción)
 //   seguimiento    público          → { codigo, titulo, descripcion, estado, cerradoPor, nivel, fechaEstimada, categoria, subcategoria, creado, actualizado, comentarios[], adjuntoUrl? }
 //   adjuntoStaff   staff            → { url, expiraSegundos } (URL firmada de la captura de un ticket)
 //   buscarPorDni   público          → { tickets[] } (activos y los resueltos por calificar; limitado por IP)
@@ -191,6 +191,14 @@ async function manejar(req: Request, cors: Record<string, string>): Promise<Resp
   // puede subir archivos al bucket, y un fallo de la subida nunca deja un
   // ticket sin hoja de vida.
   if (body.action === 'crear') {
+    // Migración a Kapo TI (2026-11-13): la mesa de ayuda pasó a kapo.com.pe y
+    // aquí ya no se crean tickets nuevos, ni públicos ni de staff. Seguimiento,
+    // atención, encuesta y búsqueda por DNI de los existentes siguen igual.
+    // Cerrado por defecto: solo el secret TICKETS_CREACION_ABIERTA = 'si' lo
+    // reabre (sin redesplegar). El frontend muestra el aviso, pero la barrera es esta.
+    if (Deno.env.get('TICKETS_CREACION_ABIERTA') !== 'si') {
+      return json({ ok: false, code: 'creacion_cerrada' });
+    }
     const titulo = String(body.titulo || '').trim();
     const descripcion = String(body.descripcion || '').trim();
     const categoriaId = String(body.categoriaId || '');

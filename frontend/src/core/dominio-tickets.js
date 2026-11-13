@@ -284,6 +284,14 @@ export function partesCambioNivel(detalle) {
   return m ? { desde: m[1], hacia: m[2], resto: m[3].trim() } : null;
 }
 
+// ── Creación de tickets cerrada: migración a Kapo TI (2026-11-13) ──────────
+// La barrera es la edge function `tickets` (acción `crear` → `creacion_cerrada`
+// salvo el secret TICKETS_CREACION_ABIERTA = 'si'); esto solo decide qué se
+// muestra. Si algún día se reabre, se mueven juntos el secret y esta constante.
+export const CREACION_TICKETS_CERRADA = true;
+export const AVISO_NUEVO_SISTEMA = 'POR FAVOR EL NUEVO ENLACE ES kapo.com.pe - Modulo TI';
+export const ENLACE_NUEVO_SISTEMA = 'https://kapo.com.pe';
+
 // ── Aviso al solicitante por categoría / subcategoría (migración 114) ──────
 // Tope de la columna `aviso` (CHECK en la base): el contador del formulario de
 // Configuración y el maxlength del textarea salen de acá, no de un literal.

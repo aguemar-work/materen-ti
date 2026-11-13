@@ -11,6 +11,12 @@ import { createRouter, createMemoryHistory } from 'vue-router';
 import PrimeVue from 'primevue/config';
 import TicketNuevoView from '../../src/modules/tickets/TicketNuevoView.vue';
 
+// La creación está cerrada en producción (Kapo TI, 2026-11-13): estas pruebas
+// cubren el formulario abierto; el cierre se prueba en tickets-creacion-cerrada.
+vi.mock('../../src/core/dominio-tickets.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  CREACION_TICKETS_CERRADA: false,
+}));
 vi.mock('../../src/api/ticketsPublicos.js', () => ({
   catalogoTickets: vi.fn(),
   crearTicket: vi.fn(),

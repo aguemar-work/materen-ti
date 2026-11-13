@@ -6,13 +6,14 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { insforgeApi } from '../../api/insforge.js';
 import { crearTicket } from '../../api/ticketsPublicos.js';
-import { OPCIONES_TIPO as TIPOS, OPCIONES_PRIORIDAD, PRIORIDAD_POR_DEFECTO, prioridadSugeridaDe, resolverAvisoCategoria } from '../../core/dominio-tickets.js';
+import { OPCIONES_TIPO as TIPOS, OPCIONES_PRIORIDAD, PRIORIDAD_POR_DEFECTO, prioridadSugeridaDe, resolverAvisoCategoria, CREACION_TICKETS_CERRADA } from '../../core/dominio-tickets.js';
 import { useFormularioModal } from '../../composables/useFormularioModal.js';
 import AppDialog from '../../components/ui/AppDialog.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import ConfirmDialog from '../../components/shared/ConfirmDialog.vue';
 import BuscadorCombo from '../../components/shared/BuscadorCombo.vue';
 import AvisoCategoria from './AvisoCategoria.vue';
+import AvisoNuevoSistema from './AvisoNuevoSistema.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
@@ -123,6 +124,10 @@ async function guardar() {
 }
 
 onMounted(async () => {
+  if (CREACION_TICKETS_CERRADA) {
+    cargandoCatalogo.value = false;
+    return;
+  }
   try {
     const [cats, subs, empleados] = await Promise.all([
       insforgeApi.listCategoriasTicket(),
@@ -148,7 +153,10 @@ onMounted(async () => {
     :cerrar-en-backdrop="false"
     @cerrado="emit('cerrar', resultado)"
   >
-    <form id="ti-form" class="form-grid" @submit.prevent="guardar">
+    <!-- Migración a Kapo TI (2026-11-13): la edge function ya no crea tickets
+         (creacion_cerrada); el modal solo muestra a dónde ir. -->
+    <AvisoNuevoSistema v-if="CREACION_TICKETS_CERRADA" />
+    <form v-else id="ti-form" class="form-grid" @submit.prevent="guardar">
         <!-- Para quién es: interno de TI (por defecto) o a nombre de un
              empleado. Va primero porque cambia qué más hay que llenar. -->
         <div class="full">
@@ -295,8 +303,9 @@ onMounted(async () => {
     </form>
 
     <template #acciones>
-      <AppButton variant="text" severity="secondary" label="Cancelar" :disabled="guardando" @click="cancelar" />
+      <AppButton variant="text" severity="secondary" :label="CREACION_TICKETS_CERRADA ? 'Cerrar' : 'Cancelar'" :disabled="guardando" @click="cancelar" />
       <AppButton
+        v-if="!CREACION_TICKETS_CERRADA"
         type="submit"
         form="ti-form"
         severity="primary"

@@ -23,6 +23,8 @@
 > de diseño del sistema anterior (`design.pen`/`docs/GUIA-UX-UI.md`, ambos
 > retirados) se archivó en `docs/archivo/CHANGELOG-apendice-diseno-v1.md`.
 
+- **2026-11-13** (**Creación de tickets cerrada — Kapo TI**) — La acción `crear` de la edge function `tickets` responde `creacion_cerrada` (pública y de staff) salvo el secret `TICKETS_CREACION_ABIERTA = 'si'`; `/soporte`, `/soporte/nuevo` y el modal de ticket interno muestran «POR FAVOR EL NUEVO ENLACE ES kapo.com.pe - Modulo TI». Seguimiento, atención y encuesta de los tickets existentes no cambian. Ver AGENTS (reglas de dominio).
+
 - **2026-11-10** (**Dependencias del frontend**) — Se actualizan Vue y Tabler, y se resuelven los avisos de DOMPurify, source-map-js y Zod. El ajuste de Zod se limita a `@insforge/shared-schemas` mientras InsForge actualiza su rango de dependencia.
 
 - **2026-11-10** (**Administración de TI**) — Configuración abre un índice por tarea con navegación móvil; Registro de actividad adopta el libro compartido y muestra los fallos con reintento; Accesos sensibles aclara el alcance de los permisos visibles. Ver SISTEMA-DISENO.

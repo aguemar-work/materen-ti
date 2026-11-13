@@ -15,15 +15,17 @@ import { ref, computed, onMounted } from 'vue';
 import { catalogoTickets, crearTicket, MENSAJES_ERROR_TICKETS } from '../../api/ticketsPublicos.js';
 import { comprimirImagen, archivoABase64 } from '../../core/imagenes.js';
 import { esDniValido } from '../../core/utils.js';
-import { resolverAvisoCategoria } from '../../core/dominio-tickets.js';
+import { resolverAvisoCategoria, CREACION_TICKETS_CERRADA } from '../../core/dominio-tickets.js';
 import AppPortal from '../../components/ui/AppPortal.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AvisoCategoria from './AvisoCategoria.vue';
+import AvisoNuevoSistema from './AvisoNuevoSistema.vue';
 import { useCampoAccesible } from '../../composables/useCampoAccesible.js';
 import { infoNotificacion } from '../../core/notificacionInfo.js';
 
-// estado: 'cargando_catalogo' | 'formulario' | 'enviando' | 'confirmacion' | 'error_catalogo'
-const estado = ref('cargando_catalogo');
+// estado: 'cargando_catalogo' | 'formulario' | 'enviando' | 'confirmacion' | 'error_catalogo' | 'cerrado'
+// 'cerrado' (Kapo TI, 2026-11-13): todo enlace a esta página ve el aviso, sin catálogo.
+const estado = ref(CREACION_TICKETS_CERRADA ? 'cerrado' : 'cargando_catalogo');
 const error = ref('');
 
 const categorias = ref([]);
@@ -145,7 +147,9 @@ async function cargarCatalogo() {
   }
 }
 
-onMounted(cargarCatalogo);
+onMounted(() => {
+  if (estado.value !== 'cerrado') cargarCatalogo();
+});
 
 // ── Solo presentación (rediseño 2026-09-24, receta 4.5) ──────────────────
 // Controles del portal: 44px de alto (objetivo táctil) y 16px en móvil para
@@ -163,7 +167,7 @@ const encabezado = computed(() => {
     titulo: 'Nuevo ticket',
     icono: '',
     tono: 'neutral',
-    descripcion: 'Complete los datos para registrar su solicitud de soporte.',
+    descripcion: estado.value === 'cerrado' ? '' : 'Complete los datos para registrar su solicitud de soporte.',
   };
 });
 </script>
@@ -176,7 +180,9 @@ const encabezado = computed(() => {
     :icono="encabezado.icono"
     :tono="encabezado.tono"
   >
-    <p v-if="estado === 'cargando_catalogo'" class="py-4 text-center text-sm text-gray-500" role="status">
+    <AvisoNuevoSistema v-if="estado === 'cerrado'" />
+
+    <p v-else-if="estado === 'cargando_catalogo'" class="py-4 text-center text-sm text-gray-500" role="status">
       Cargando formulario...
     </p>
 

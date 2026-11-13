@@ -2,6 +2,7 @@
 // satisfacción) pasa por la edge function "tickets" — igual patrón que
 // passwords.js: el cliente nunca escribe directo en la tabla `tickets`.
 import { crearInvocador } from './invocarFuncion.js';
+import { AVISO_NUEVO_SISTEMA } from '../core/dominio-tickets.js';
 
 const invoke = crearInvocador('tickets', mensajeError);
 
@@ -9,6 +10,8 @@ const invoke = crearInvocador('tickets', mensajeError);
 // locales (ej. el aviso de DNI en vivo de TicketBuscarView) sin duplicarlo.
 export const MENSAJES_ERROR_TICKETS = {
   datos_requeridos: 'Complete el título, la descripción y la categoría',
+  // Migración a Kapo TI (2026-11-13): `crear` ya no registra tickets.
+  creacion_cerrada: AVISO_NUEVO_SISTEMA,
   no_existe: 'El ticket no existe o el enlace ya no es válido',
   no_disponible: 'La encuesta de este ticket no está disponible',
   ya_respondida: 'Ya se registró una respuesta para esta encuesta',
